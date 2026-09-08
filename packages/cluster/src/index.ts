@@ -1,2 +1,13 @@
-// Placeholder entry for @titan-design/cluster (tier 0). Filled in by TP-5.
-export {};
+export type { DrainCluster, MatchResult } from "./drain/types.js";
+export { WILDCARD } from "./drain/types.js";
+export { mergeTemplate, tokenSimilarity } from "./drain/similarity.js";
+export type { DrainTreeOptions, DrainTreeSnapshot } from "./drain/tree.js";
+export { DrainTree } from "./drain/tree.js";
+export { DrainTreeRegistry } from "./registry.js";
+export type { LineCountBucket, Signature } from "./signature.js";
+export { extractSignature, hasErrorSignal } from "./signature.js";
+export type { MaskConfigs, MaskResult, MaskRule } from "./masks.js";
+export { DEFAULT_MASK_CONFIGS, applyMasks } from "./masks.js";
+export { templateId } from "./template-id.js";
+export type { ClusterInput, ClusterResult, ClustererOptions, ClustererSnapshot, PartitionSnapshot } from "./clusterer.js";
+export { Clusterer } from "./clusterer.js";
