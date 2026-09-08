@@ -1,8 +1,47 @@
 # @titan-design/session-graph
 
-Fold session events into the activity graph on store-sqlite
+The activity graph behind a corpus of Claude Code transcripts: sessions, turns, token
+buckets, permission phases, touched files, branches, PRs, subagents, and the edges between
+them, all in one SQLite file built from `@titan-design/store-sqlite` kit tables and kept
+current incrementally.
 
-Tier 2 of the titan-platform DAG. May import only packages in the same tier or
-below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
+Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`, and
+`cluster`. Extracted from active-work's session index (AW-23, TP-6).
 
-Status: placeholder. Tracked by TP-6.
+```ts
+import { discoverTranscripts } from "@titan-design/session-read";
+import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
+
+const graph = openSessionGraph("~/.local/state/miner/index.sqlite3");
+const summary = await refreshCorpus(graph, await discoverTranscripts());
+// summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing
+```
+
+## What a refresh does
+
+1. For every transcript, `indexTranscript` asks the watermark table where it stopped,
+   checks the file (`unchanged`, `appended`, `rewritten`, `missing`), reads the delta with
+   `extractTranscript`, applies it in one transaction, and advances the watermark with the
+   new prefix hash. A malformed line quarantines that transcript only.
+2. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
+   time) for the sessions that changed. Recompute, never accumulate, so incremental and
+   full passes converge.
+3. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
+   complete `gh pr create` sightings into new PR rows, subagent end times and parentage
+   from child sessions.
+4. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
+   Claude Code's own pruning is much of the point.
+
+`resetIndex` clears every derived table and rewinds watermarks; the next refresh rebuilds
+from byte 0 to the same rows a chunked history produced.
+
+## Tables
+
+Kit tables: `transcript` (watermark), `edge` (bi-temporal, `session:… touched file:…`),
+`search_span` + `search_fts` (contentless full-text over prompts, responses, tool inputs
+and results, keyed by the session ref). Domain tables: `fact`, `session`,
+`session_model_usage`, `turn`, `permission_phase`, `human_edit`, `file_checkpoint`, `pr`,
+`branch`, `file`, `task`, `subagent`, `artifact`, and the two PR observation tables.
+
+Everything except `transcript` is derivable, which is what makes the schema safe to evolve
+by drop-and-rederive.

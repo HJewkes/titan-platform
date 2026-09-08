@@ -108,6 +108,9 @@ importers:
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../cluster
+      '@titan-design/locator':
+        specifier: workspace:^
+        version: link:../locator
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read
