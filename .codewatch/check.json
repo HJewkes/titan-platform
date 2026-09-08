@@ -23,7 +23,9 @@
           "packages/session-graph"
         ],
         "ui": [],
-        "product": []
+        "product": [
+          "products/session-miner"
+        ]
       },
       "layers": [
         [
@@ -42,6 +44,9 @@
         [
           "packages/session-read",
           "packages/session-graph"
+        ],
+        [
+          "products/session-miner"
         ]
       ]
     },

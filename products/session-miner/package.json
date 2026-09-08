@@ -1,0 +1,52 @@
+{
+  "name": "@titan-design/session-miner",
+  "version": "0.0.0",
+  "description": "The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/session-miner"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@titan-design/cluster": "workspace:^",
+    "@titan-design/daemon": "workspace:^",
+    "@titan-design/embed": "workspace:^",
+    "@titan-design/locator": "workspace:^",
+    "@titan-design/registry": "workspace:^",
+    "@titan-design/retrieval": "workspace:^",
+    "@titan-design/session-graph": "workspace:^",
+    "@titan-design/session-read": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "commander": "^14.0.3",
+    "zod": "^4.4.3"
+  },
+  "private": true,
+  "bin": {
+    "titan-miner": "./dist/bin.js"
+  }
+}
