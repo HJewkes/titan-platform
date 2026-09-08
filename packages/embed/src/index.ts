@@ -1,2 +1,10 @@
-// Placeholder entry for @titan-design/embed (tier 0). Filled in by TP-8.
-export {};
+export type { Embedder } from "./types.js";
+export type { HashEmbedderOptions } from "./hash-embedder.js";
+export { HashEmbedder } from "./hash-embedder.js";
+export type { OllamaEmbedderOptions } from "./ollama-embedder.js";
+export { OllamaEmbedder } from "./ollama-embedder.js";
+export type { FeatureExtractor, LocalEmbedderOptions, PipelineFactory } from "./local-embedder.js";
+export { LocalEmbedder } from "./local-embedder.js";
+export type { CreateEmbedderOptions, EmbedderConfig } from "./create.js";
+export { createEmbedder, instantiateEmbedder } from "./create.js";
+export { cosineSimilarity, dot, fromFloat32Buffer, norm, normalize, toFloat32Buffer } from "./vector.js";
