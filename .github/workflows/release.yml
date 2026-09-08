@@ -30,8 +30,9 @@ jobs:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older npm.
-      - run: npm install -g npm@latest && npm --version
+      # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older npm. Pinned to 11.x:
+      # changesets passes pnpm's --git-checks to npm publish, which npm 12 rejects outright.
+      - run: npm install -g npm@11 && npm --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
