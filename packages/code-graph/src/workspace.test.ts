@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { indexPaths } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 
@@ -16,7 +17,10 @@ const PACKAGES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
  * it back to `src/`. That makes `pnpm build` a prerequisite of this test, exactly
  * as it is of `dag:check` — CI runs build before test for the same reason.
  */
-describe("indexing this workspace", () => {
+// Skipped, not failed, on a checkout that has not run `pnpm build`; CI always builds first.
+const REGISTRY_BUILT = existsSync(path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."), "registry", "dist", "index.d.ts"));
+
+describe.skipIf(!REGISTRY_BUILT)("indexing this workspace", () => {
   let tmp: string;
   let store: CodeGraphStore;
   let snapshotId: number;
