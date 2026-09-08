@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The changeset guard diffs against origin/<base>, which a shallow clone lacks.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -24,12 +27,16 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - name: Require a changeset for package changes
+        if: github.event_name == 'pull_request'
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
   dag-check:
     runs-on: ubuntu-latest
     env:
       # codewatch is not on npm; build a pinned checkout and point the check at its CLI.
-      CODEWATCH_REF: main
+      # Pinned to a sha so an upstream change cannot redden this repo; bump deliberately.
+      CODEWATCH_REF: f36631f5b3709e2dbd313e37fb968d86f362bfed
     steps:
       - uses: actions/checkout@v4
         with:

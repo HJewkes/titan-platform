@@ -7,3 +7,4 @@ coverage/
 .codewatch/graph.db-*
 .codewatch/baseline/
 .codewatch-tool/
+.worktrees/

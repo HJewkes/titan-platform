@@ -64,6 +64,20 @@ The default path is exactly that, so a plain `pnpm dag:check` works on a machine
 codewatch built next to this repo. Set `BASE_REF=origin/main` to only report violations
 that are new relative to main, which is what CI does.
 
+## Releasing
+
+CI on a pull request fails if a package changed without a changeset (`pnpm changeset`).
+On every merge to main, the Release workflow either updates the "Version Packages" pull
+request from pending changesets or, once that PR is merged, publishes the bumped packages
+to npm. Publishing uses npm trusted publishing (OIDC), so there is no token secret: each
+package has a trusted publisher on npmjs.com pointing at `HJewkes/titan-platform` and
+`release.yml`. A package's first publish must happen before that publisher can be
+configured, so bootstrap new packages once by hand with `pnpm release` from a logged-in
+shell.
+
+A red `lint`, `typecheck`, or `test` on main blocks every publish, since the release job
+runs them first.
+
 ## Full verification
 
 ```

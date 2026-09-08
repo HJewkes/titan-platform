@@ -1,0 +1,48 @@
+name: Release
+
+# Changesets flow: every merge to main either refreshes the "Version Packages" PR
+# (when changesets are pending) or, once that PR is merged, publishes the bumped
+# packages to npm. Publishing authenticates through npm trusted publishing (OIDC),
+# so no NPM_TOKEN secret exists; each package needs a trusted publisher on
+# npmjs.com pointing at this repo and this workflow file.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older npm.
+      - run: npm install -g npm@latest && npm --version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Version packages or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          title: "Version Packages"
+          commit: "Version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
