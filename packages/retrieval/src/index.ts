@@ -1,2 +1,15 @@
-// Placeholder entry for @titan-design/retrieval (tier 1). Filled in by TP-8.
-export {};
+export type { FusedResult, Hit, RetrieveOptions, Retriever } from "./types.js";
+export type { RankedList, RrfOptions } from "./fusion.js";
+export { applyDropoff, fuseByRRF } from "./fusion.js";
+export type { Degradation, GatherOptions, GatheredLists } from "./fail-open.js";
+export { gatherFailOpen } from "./fail-open.js";
+export type { FtsRetrieverOptions } from "./retrievers/fts.js";
+export { defaultMatchExpression, ftsRetriever } from "./retrievers/fts.js";
+export type { VectorIndex, VectorMatch, VectorRetrieverOptions } from "./retrievers/vector.js";
+export { BruteForceVectorIndex, vectorRetriever } from "./retrievers/vector.js";
+export type { GraphRetrieverOptions } from "./retrievers/graph.js";
+export { expandGraph, graphRetriever } from "./retrievers/graph.js";
+export type { Candidate, CrossEncoderOptions, Reranked, Reranker } from "./rerank.js";
+export { crossEncoderReranker, rerankCandidates } from "./rerank.js";
+export type { EngineOptions, RetrievalEngine, SearchOptions, SearchResponse } from "./engine.js";
+export { createRetrievalEngine } from "./engine.js";
