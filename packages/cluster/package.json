@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/cluster",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Deterministic Drain template mining with optional DeepParse bootstrap",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/embed",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback",
   "type": "module",
   "main": "./dist/index.js",
