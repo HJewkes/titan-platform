@@ -1,2 +1,18 @@
-// Placeholder entry for @titan-design/store-sqlite (tier 0). Filled in by TP-4.
-export {};
+export type { Db, OpenOptions } from "./open.js";
+export { SQL_NOW, hasColumn, hasTable, nowIso, openDatabase, quoteIdent } from "./open.js";
+export type { Migration } from "./migrations.js";
+export { appliedVersions, runMigrations } from "./migrations.js";
+export type { ParsedRef } from "./ref.js";
+export { isRef, parseRef, ref, refKind } from "./ref.js";
+export type { KitSelection } from "./kit.js";
+export { kitDdl, kitMigration } from "./kit.js";
+export type { EdgeInput, EdgeRow, EdgeTableOptions } from "./tables/edge.js";
+export { EdgeTable, edgeTableDdl } from "./tables/edge.js";
+export type { EntityInput, EntityRow, TableName } from "./tables/entity.js";
+export { EntityTable, entitySnapTableDdl, entityTableDdl, snapshotTableDdl } from "./tables/entity.js";
+export type { CacheBlobOptions, CacheHit, CacheKey } from "./tables/cache-blob.js";
+export { CacheBlobTable, cacheBlobTableDdl, contentHashOf } from "./tables/cache-blob.js";
+export type { SpanFtsOptions, SpanHit, SpanInput } from "./tables/span-fts.js";
+export { SpanFtsTables, spanFtsTablesDdl } from "./tables/span-fts.js";
+export type { WatermarkAdvance, WatermarkOptions, WatermarkRow, WatermarkStatus } from "./tables/watermark.js";
+export { WatermarkTable, watermarkTableDdl } from "./tables/watermark.js";
