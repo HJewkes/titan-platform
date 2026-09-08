@@ -134,6 +134,42 @@ importers:
         specifier: ^7.6.13
         version: 7.6.13
 
+  products/session-miner:
+    dependencies:
+      '@titan-design/cluster':
+        specifier: workspace:^
+        version: link:../../packages/cluster
+      '@titan-design/daemon':
+        specifier: workspace:^
+        version: link:../../packages/daemon
+      '@titan-design/embed':
+        specifier: workspace:^
+        version: link:../../packages/embed
+      '@titan-design/locator':
+        specifier: workspace:^
+        version: link:../../packages/locator
+      '@titan-design/registry':
+        specifier: workspace:^
+        version: link:../../packages/registry
+      '@titan-design/retrieval':
+        specifier: workspace:^
+        version: link:../../packages/retrieval
+      '@titan-design/session-graph':
+        specifier: workspace:^
+        version: link:../../packages/session-graph
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
 packages:
 
   '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.263':
@@ -1245,6 +1281,10 @@ packages:
 
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+
+  commander@14.0.3:
+    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
+    engines: {node: '>=20'}
 
   commander@4.1.1:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
@@ -3419,6 +3459,8 @@ snapshots:
       color-name: 1.1.4
 
   color-name@1.1.4: {}
+
+  commander@14.0.3: {}
 
   commander@4.1.1: {}
 
