@@ -1,0 +1,39 @@
+{
+  "name": "titan-platform",
+  "private": true,
+  "type": "module",
+  "description": "Reusable @titan-design/* packages (a strict acyclic DAG) and the products composed from them",
+  "license": "MIT",
+  "author": "Henry Jewkes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "dag:check": "scripts/dag-check.sh",
+    "new:package": "node scripts/new-package.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm -r run build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^25.3.2",
+    "eslint": "^9.39.0",
+    "globals": "^16.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.0.0"
+  }
+}

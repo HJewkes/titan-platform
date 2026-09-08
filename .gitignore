@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.codewatch/graph.db
+.codewatch/graph.db-*
+.codewatch/baseline/
+.codewatch-tool/

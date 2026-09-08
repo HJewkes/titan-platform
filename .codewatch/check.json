@@ -1,0 +1,66 @@
+{
+  "$comment": "Architectural fitness rules for titan-platform, run by codewatch's `graph check` (scripts/dag-check.sh). The package-layers rule IS the platform DAG: a package may import only packages in the same tier or a lower one. `$tiers` is the source of truth (edited by scripts/new-package.mjs); `layers` is derived from it by dropping empty tiers, because codewatch rejects empty layers.",
+  "rules": [
+    {
+      "id": "package-layers",
+      "type": "layered-deps",
+      "$tiers": {
+        "0": [
+          "packages/store-sqlite",
+          "packages/locator",
+          "packages/cluster",
+          "packages/embed"
+        ],
+        "1": [
+          "packages/retrieval",
+          "packages/agent",
+          "packages/registry",
+          "packages/daemon",
+          "packages/hitl"
+        ],
+        "2": [],
+        "ui": [],
+        "product": []
+      },
+      "layers": [
+        [
+          "packages/store-sqlite",
+          "packages/locator",
+          "packages/cluster",
+          "packages/embed"
+        ],
+        [
+          "packages/retrieval",
+          "packages/agent",
+          "packages/registry",
+          "packages/daemon",
+          "packages/hitl"
+        ]
+      ]
+    },
+    {
+      "id": "max-file-loc",
+      "type": "metric-max",
+      "metric": "loc",
+      "kind": "file",
+      "max": 350,
+      "excludeRoles": ["test", "fixture"]
+    },
+    {
+      "id": "max-cyclomatic-per-function",
+      "type": "metric-max",
+      "metric": "cyclomatic_max",
+      "kind": "file",
+      "max": 30,
+      "excludeRoles": ["test", "fixture"]
+    },
+    {
+      "id": "max-nesting-depth",
+      "type": "metric-max",
+      "metric": "max_nesting_depth",
+      "kind": "file",
+      "max": 5,
+      "excludeRoles": ["test", "fixture"]
+    }
+  ]
+}
