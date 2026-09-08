@@ -52,7 +52,9 @@ afterEach(() => {
 const count = (table: string) => (graph.db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
 // Wall-clock audit columns differ between passes by construction; everything else must match.
 const stripClock = (row: unknown) => {
-  const { t_indexed: _i, t_created: _c, ...rest } = row as Record<string, unknown>;
+  const rest = { ...(row as Record<string, unknown>) };
+  delete rest.t_indexed;
+  delete rest.t_created;
   return rest;
 };
 const dump = () =>
