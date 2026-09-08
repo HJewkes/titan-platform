@@ -18,7 +18,10 @@
           "packages/daemon",
           "packages/hitl"
         ],
-        "2": [],
+        "2": [
+          "packages/session-read",
+          "packages/session-graph"
+        ],
         "ui": [],
         "product": []
       },
@@ -35,6 +38,10 @@
           "packages/registry",
           "packages/daemon",
           "packages/hitl"
+        ],
+        [
+          "packages/session-read",
+          "packages/session-graph"
         ]
       ]
     },
@@ -44,7 +51,10 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
-      "excludeRoles": ["test", "fixture"]
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
     },
     {
       "id": "max-cyclomatic-per-function",
@@ -52,7 +62,10 @@
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
-      "excludeRoles": ["test", "fixture"]
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
     },
     {
       "id": "max-nesting-depth",
@@ -60,7 +73,10 @@
       "metric": "max_nesting_depth",
       "kind": "file",
       "max": 5,
-      "excludeRoles": ["test", "fixture"]
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
     }
   ]
 }

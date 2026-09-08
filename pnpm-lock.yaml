@@ -87,6 +87,24 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
+  packages/session-graph:
+    dependencies:
+      '@titan-design/cluster':
+        specifier: workspace:^
+        version: link:../cluster
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+
+  packages/session-read:
+    dependencies:
+      '@titan-design/locator':
+        specifier: workspace:^
+        version: link:../locator
+
   packages/store-sqlite:
     dependencies:
       better-sqlite3:
