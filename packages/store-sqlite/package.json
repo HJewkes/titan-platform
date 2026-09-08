@@ -34,5 +34,11 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }
