@@ -1,2 +1,11 @@
-// Placeholder entry for @titan-design/locator (tier 0). Filled in by TP-5.
-export {};
+export type { Locator } from "./locator.js";
+export { formatLocator, isLocator, parseLocator } from "./locator.js";
+export type { RawLine } from "./json-lines.js";
+export { nextOffset, readJsonLines } from "./json-lines.js";
+export { contentHash, prefixHash } from "./hash.js";
+export type { ResumePoint, TranscriptEntry, TranscriptState, TranscriptTable } from "./transcript-table.js";
+export { emptyTable, resumePoint, transcriptIndexFor } from "./transcript-table.js";
+export { readLocatorBytes, readLocatorText } from "./read-locator.js";
+export type { MirrorRecord } from "./mirror.js";
+export { mirrorFile, mirrorPathFor, resolveSource } from "./mirror.js";
+export { atomicWrite } from "./atomic-write.js";
