@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@titan-design/cluster": "workspace:^",
+    "@titan-design/locator": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
   }
