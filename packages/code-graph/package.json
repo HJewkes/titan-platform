@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/code-graph",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit",
   "type": "module",
   "main": "./dist/index.js",

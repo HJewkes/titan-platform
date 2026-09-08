@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/registry",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "zod command registry projected to CLI, MCP, and HTTP surfaces",
   "type": "module",
   "main": "./dist/index.js",
