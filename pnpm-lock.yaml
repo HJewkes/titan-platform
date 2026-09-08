@@ -75,7 +75,17 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/retrieval: {}
+  packages/retrieval:
+    dependencies:
+      '@huggingface/transformers':
+        specifier: ^3.0.0
+        version: 3.8.1
+      '@titan-design/embed':
+        specifier: workspace:^
+        version: link:../embed
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
 
   packages/store-sqlite:
     dependencies:
