@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-read",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators",
   "type": "module",
   "main": "./dist/index.js",
