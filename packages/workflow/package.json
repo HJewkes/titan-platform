@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/workflow",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart",
   "type": "module",
   "main": "./dist/index.js",
