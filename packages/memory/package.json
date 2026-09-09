@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/memory",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Decaying rule playbook: bullets, feedback, deterministic curation, recall",
   "type": "module",
   "main": "./dist/index.js",
