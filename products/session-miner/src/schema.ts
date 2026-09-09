@@ -1,3 +1,4 @@
+import { memoryMigration } from "@titan-design/memory";
 import type { Migration } from "@titan-design/store-sqlite";
 
 /**
@@ -39,4 +40,5 @@ export const MINER_MIGRATIONS: Migration[] = [
         );
       `),
   },
+  memoryMigration(1001),
 ];
