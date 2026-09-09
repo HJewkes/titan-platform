@@ -21,7 +21,8 @@
         "2": [
           "packages/session-read",
           "packages/session-graph",
-          "packages/code-graph"
+          "packages/code-graph",
+          "packages/workflow"
         ],
         "ui": [],
         "product": [
@@ -45,7 +46,8 @@
         [
           "packages/session-read",
           "packages/session-graph",
-          "packages/code-graph"
+          "packages/code-graph",
+          "packages/workflow"
         ],
         [
           "products/session-miner"

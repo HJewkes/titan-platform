@@ -152,6 +152,22 @@ importers:
         specifier: ^7.6.13
         version: 7.6.13
 
+  packages/workflow:
+    dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../agent
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   products/session-miner:
     dependencies:
       '@titan-design/cluster':
