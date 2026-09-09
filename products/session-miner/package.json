@@ -37,6 +37,7 @@
     "@titan-design/daemon": "workspace:^",
     "@titan-design/embed": "workspace:^",
     "@titan-design/locator": "workspace:^",
+    "@titan-design/memory": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/session-graph": "workspace:^",
