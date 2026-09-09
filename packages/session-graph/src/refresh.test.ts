@@ -62,6 +62,48 @@ const dump = () =>
     (t) => `${t}:${JSON.stringify(graph.db.prepare(`SELECT * FROM "${t}" ORDER BY 1`).all().map(stripClock))}`,
   );
 
+describe("task status (TP-20)", () => {
+  const withCommands = (...commands: string[]) =>
+    render([
+      prompt("p1", "2026-07-01T00:00:00Z", "work the task"),
+      ...commands.map((command, i) => assistant(`2026-07-01T00:01:0${i}Z`, [tool(`t${i}`, "Bash", { command })])),
+    ]);
+
+  const taskRows = () => graph.db.prepare("SELECT task_ref, status FROM task ORDER BY task_ref").all();
+
+  it("records the status a done command states", async () => {
+    writeFileSync(transcript.absolutePath, withCommands("active-work task done demo AW-23"));
+    await refreshCorpus(graph, [transcript]);
+    expect(taskRows()).toEqual([{ task_ref: "task:AW-23", status: "done" }]);
+  });
+
+  it("leaves the status null when the session only read the task", async () => {
+    writeFileSync(transcript.absolutePath, withCommands("active-work task list demo AW-23"));
+    await refreshCorpus(graph, [transcript]);
+    expect(taskRows()).toEqual([{ task_ref: "task:AW-23", status: null }]);
+  });
+
+  it("upgrades an earlier bare mention when the task is closed later in the session", async () => {
+    writeFileSync(transcript.absolutePath, withCommands("active-work task list demo AW-23", "active-work task done demo AW-23"));
+    await refreshCorpus(graph, [transcript]);
+    expect(taskRows()).toEqual([{ task_ref: "task:AW-23", status: "done" }]);
+  });
+
+  it("never lets a later bare mention erase a known status", async () => {
+    writeFileSync(transcript.absolutePath, withCommands("active-work task done demo AW-23", "active-work task list demo AW-23"));
+    await refreshCorpus(graph, [transcript]);
+    expect(taskRows()).toEqual([{ task_ref: "task:AW-23", status: "done" }]);
+  });
+
+  it("keeps a status across a later chunk of the same transcript", async () => {
+    writeFileSync(transcript.absolutePath, withCommands("active-work task done demo AW-23"));
+    await refreshCorpus(graph, [transcript]);
+    appendFileSync(transcript.absolutePath, render([assistant("2026-07-01T00:02:00Z", [tool("t9", "Bash", { command: "aw task list demo AW-23" })])]));
+    await refreshCorpus(graph, [transcript]);
+    expect(taskRows()).toEqual([{ task_ref: "task:AW-23", status: "done" }]);
+  });
+});
+
 describe("refreshCorpus", () => {
   it("indexes a transcript into facts, sessions, usage, phases, assets, edges, and searchable spans", async () => {
     const summary = await refreshCorpus(graph, [transcript]);

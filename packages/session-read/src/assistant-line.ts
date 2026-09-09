@@ -1,4 +1,4 @@
-import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskId, realCommand, type GitIntent } from "./bash-parse.js";
+import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
 import { asObject, blocks, int, str, thinkingTokens, type Json } from "./text.js";
@@ -71,10 +71,9 @@ function readBash(reader: LineReader, ctx: LineContext, block: Json, input: Json
   const title = parsePrCreateTitle(raw);
   const toolUseId = str(block, "id");
   if (title && toolUseId) reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title, number: null, repo: null, url: null });
-  const taskId = parseTaskId(realCommand(raw));
-  if (taskId) {
-    reader.emit({ ...reader.base(ctx), kind: "task", taskRef: taskRef(taskId), taskId });
-    reader.edge(ctx, sessionRef(ctx.sessionId), RELATIONS.RAN, taskRef(taskId));
+  for (const task of parseTaskIntents(raw)) {
+    reader.emit({ ...reader.base(ctx), kind: "task", taskRef: taskRef(task.taskId), taskId: task.taskId, status: task.status });
+    reader.edge(ctx, sessionRef(ctx.sessionId), RELATIONS.RAN, taskRef(task.taskId));
   }
 }
 

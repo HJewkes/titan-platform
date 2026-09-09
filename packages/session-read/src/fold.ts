@@ -91,7 +91,7 @@ export class EventFolder {
       case "file":
         return this.keyed("files", event.fileRef, event);
       case "task":
-        return this.keyed("tasks", event.taskRef, event);
+        return this.foldTask(event);
       case "subagent":
         return this.keyed("subagents", event.agentRef, event);
       case "subagent_transcript":
@@ -197,13 +197,29 @@ export class EventFolder {
     this.branches.set(event.branchRef, merged);
   }
 
+  /**
+   * `keyed` keeps the first event for a key, but a session usually reads a task
+   * before it closes one: `task list TP-1`, then `task done TP-1`. A status-
+   * bearing mention therefore upgrades a bare one, never the other way round.
+   */
+  private foldTask(event: EventOf<"task">): void {
+    const map = this.mapFor("tasks");
+    const existing = map.get(event.taskRef) as EventOf<"task"> | undefined;
+    if (!existing || (event.status !== null && existing.status === null)) map.set(event.taskRef, event);
+  }
+
   private keyed(name: string, key: string, event: SessionEvent): void {
+    const map = this.mapFor(name);
+    if (!map.has(key)) map.set(key, event);
+  }
+
+  private mapFor(name: string): Map<string, SessionEvent> {
     let map = this.byKey.get(name);
     if (!map) {
       map = new Map();
       this.byKey.set(name, map);
     }
-    if (!map.has(key)) map.set(key, event);
+    return map;
   }
 
   private append(name: string, event: SessionEvent): void {
