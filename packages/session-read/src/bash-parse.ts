@@ -191,7 +191,55 @@ export function parsePrCreateTitle(raw: string): string | null {
  * spans every initiative and repo-scoping is a query-time concern.
  */
 export function parseTaskId(command: string): string | null {
-  const words = command.split(/\s+/);
-  if (words[0] !== 'active-work' && words[0] !== 'aw') return null;
-  return TASK_ID.exec(command)?.[1] ?? null;
+  return parseTaskIntents(command)[0]?.taskId ?? null;
+}
+
+export interface TaskIntent {
+  taskId: string;
+  /** The state the command puts the task in, when it says so outright. */
+  status: string | null;
+}
+
+/**
+ * `<tool> task <verb> <slug> <ID>`, anywhere in a compound command. Matching
+ * only at the start of the line misses the dominant real shape, where closing a
+ * task is the tail of a chain: `cd repo && gh pr merge 5 && … && active-work
+ * task done slug TP-5`. Measured on 366 transcripts, anchoring cost 38 of 63
+ * closed tasks.
+ */
+const RE_TASK = /\b(?:active-work|aw)\s+task\s+([a-z-]+)\s+[^\s&|;]+\s+([A-Z]{1,5}-\d+)((?:\s+[^\s&|;]+){0,2})/g;
+
+/**
+ * Every task an `active-work`/`aw` invocation acts on. Two forms state a status
+ * unambiguously, and across the same corpus they are the only ones worth
+ * reading: `task done <slug> <ID>` (193 uses) and the explicit
+ * `task edit <slug> <ID> status <value>` (1). `task add` mints the id inside the
+ * tool, so it names no task; every other form is a read.
+ *
+ * A quoted mention inside `echo` now parses too. That trade is deliberate: a
+ * stray reference is a task ref with no status, which is what a read produces
+ * anyway, and losing three fifths of real closures is the worse error.
+ */
+export function parseTaskIntents(command: string): TaskIntent[] {
+  const byId = new Map<string, TaskIntent>();
+  for (const match of command.matchAll(RE_TASK)) {
+    const [, verb, taskId, tail] = match;
+    if (!taskId) continue;
+    const intent = { taskId, status: statusFrom(verb, tail) };
+    const seen = byId.get(taskId);
+    if (!seen || (intent.status !== null && seen.status === null)) byId.set(taskId, intent);
+  }
+  return [...byId.values()];
+}
+
+/** The first task the command names, or null. Kept for callers that want one. */
+export function parseTaskIntent(command: string): TaskIntent | null {
+  return parseTaskIntents(command)[0] ?? null;
+}
+
+function statusFrom(verb: string | undefined, tail: string | undefined): string | null {
+  if (verb === 'done') return 'done';
+  if (verb !== 'edit') return null;
+  const words = (tail ?? '').trim().split(/\s+/);
+  return words[0] === 'status' ? (words[1] ?? null) : null;
 }

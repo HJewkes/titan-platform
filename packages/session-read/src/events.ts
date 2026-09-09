@@ -44,7 +44,7 @@ export type SessionEvent =
   | (EventBase & { kind: "pr_create"; toolUseId: string; title: string | null; number: number | null; repo: string | null; url: string | null })
   | (EventBase & { kind: "branch"; branchRef: string; repo: string | null; name: string; base: string | null; deleted: boolean })
   | (EventBase & { kind: "file"; fileRef: string; repo: string | null; path: string })
-  | (EventBase & { kind: "task"; taskRef: string; taskId: string })
+  | (EventBase & { kind: "task"; taskRef: string; taskId: string; status: string | null })
   | (EventBase & { kind: "subagent"; agentRef: string; agentType: string | null; label: string | null })
   | (EventBase & { kind: "subagent_transcript"; agentRef: string; childSessionId: string })
   | (EventBase & { kind: "artifact"; artifactRef: string; artifactKind: string; title: string | null; url: string | null; path: string | null })

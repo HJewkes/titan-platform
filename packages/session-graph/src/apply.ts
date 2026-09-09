@@ -78,7 +78,8 @@ const ASSET_UPSERTS = {
           created_at = MIN(COALESCE(created_at, excluded.created_at), COALESCE(excluded.created_at, created_at)),
           deleted_at = MAX(COALESCE(deleted_at, excluded.deleted_at), COALESCE(excluded.deleted_at, deleted_at))`,
   files: `INSERT INTO file (file_ref, repo, path) VALUES (@fileRef, @repo, @path) ON CONFLICT (file_ref) DO NOTHING`,
-  tasks: `INSERT INTO task (task_ref, task_id) VALUES (@taskRef, @taskId) ON CONFLICT (task_ref) DO NOTHING`,
+  tasks: `INSERT INTO task (task_ref, task_id, status) VALUES (@taskRef, @taskId, @status)
+        ON CONFLICT (task_ref) DO UPDATE SET status = COALESCE(excluded.status, status)`,
   artifacts: `INSERT INTO artifact (artifact_ref, kind, title, url, path, created_at) VALUES (@artifactRef, @artifactKind, @title, @url, @path, @ts)
         ON CONFLICT (artifact_ref) DO NOTHING`,
   prMerges: `INSERT INTO pr_merge_observation (number, repo_hint, merged_at) VALUES (@number, @repoHint, @ts)
