@@ -103,6 +103,22 @@ importers:
 
   packages/locator: {}
 
+  packages/memory:
+    dependencies:
+      '@titan-design/embed':
+        specifier: workspace:^
+        version: link:../embed
+      '@titan-design/retrieval':
+        specifier: workspace:^
+        version: link:../retrieval
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/registry:
     devDependencies:
       zod:
