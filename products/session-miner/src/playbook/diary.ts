@@ -110,7 +110,8 @@ function errorSignatures(graph: SessionGraph, sessionId: string): ErrorSignature
 /**
  * Hard labels, not self-report: a merged PR or a closed task is success, an
  * abandoned PR or errors with nothing shipped is failure. cass-memory asks a
- * model for this; the graph already knows.
+ * model for this; the graph already knows. Task status is null for every row
+ * the graph writes today, so that half contributes nothing until TP-20.
  */
 export function classifyOutcome(prs: SessionDiary["prs"], tasks: SessionDiary["tasks"], errors: ErrorSignature[]): SessionOutcome {
   const prsMerged = prs.filter((p) => p.mergedAt !== null || p.state === "MERGED").length;

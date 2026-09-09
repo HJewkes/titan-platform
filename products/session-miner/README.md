@@ -56,8 +56,10 @@ than accumulating near-duplicates. `playbook recall` ranks by relevance times co
 diary out of the session's own subgraph, never a model: title, branch, turns, files
 touched, tasks and their status, linked pull requests, subagents, and the recurring error
 signatures Drain already clustered. The outcome label is derived the same way, from merged
-versus abandoned pull requests, done versus open tasks, and error counts, so the training
-signal is graph-derived rather than self-reported. By default it renders the diary and
+versus abandoned pull requests, task status, and error counts, so the training signal is
+graph-derived rather than self-reported. Note that the task half is inert today: the graph
+mints task refs but never resolves their status, so on the real corpus only the pull
+request and error signals move the label (TP-20). By default it renders the diary and
 applies nothing; supply a `Reflector` on the context to let a model propose deltas, which
 are then zod-validated and stamped with `{ sessionRef, byteOffset }` provenance by the
 curator rather than by the model.
