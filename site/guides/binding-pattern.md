@@ -46,7 +46,7 @@ reading as written:
  *
  * The package's `Command` carries a third type parameter for the context, so
  * every command would otherwise have to spell out `Command<A, R, CommandContext>`.
- * These aliases bind it once, which is why all 62 command modules import from
+ * These aliases bind it once, which is why all 60 command modules import from
  * here unchanged. The package is the implementation; this file is the product's
  * dialect of it.
  */
@@ -70,7 +70,7 @@ export function defineCommand<Args, Result>(cmd: Command<Args, Result>): Command
 }
 ```
 
-Sixty-two command modules kept importing `defineCommand` and `Command` from the same path
+Sixty command modules kept importing `defineCommand` and `Command` from the same path
 they always had. The registry underneath them changed from 117 hand-written lines to a
 dependency, and not one of them was edited.
 
