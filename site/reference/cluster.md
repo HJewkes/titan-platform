@@ -68,8 +68,7 @@ them. Storing the snapshot and the occurrences is the caller's job. A chunked se
 runs converges on the same templates as one all-at-once run.
 
 **Only the generic mask config exists today.** Per-tool configs (`Bash.ts`, `test.ts`, …)
-were meant to come from a DeepParse mask-bootstrap script, which is not built; the npm
-description's "optional DeepParse bootstrap" describes a plan, not a feature.
+were meant to come from a DeepParse mask-bootstrap script, which is not built.
 `DEFAULT_MASK_CONFIGS` holds `generic` only, so every partition falls back to it. Pass
 `new Clusterer({ masks })` if you need per-partition rules now.
 
