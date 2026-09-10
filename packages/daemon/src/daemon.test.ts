@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -105,4 +107,24 @@ describe("startDaemon", () => {
     await expect(handle.close()).resolves.toBeUndefined();
     handle = null;
   });
+
+  it("closes while a client still holds a connection open", async () => {
+    handle = await startDaemon(options({ shutdownGraceMs: 50 }));
+    const socket = connect(handle.port, "127.0.0.1");
+    await once(socket, "connect");
+    socket.write("GET /events HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n");
+    await once(socket, "data");
+
+    await expect(withTimeout(handle.close(), 5_000)).resolves.toBeUndefined();
+
+    socket.destroy();
+    handle = null;
+  });
 });
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  const expiry = new Promise<never>((_resolve, reject) => {
+    setTimeout(() => reject(new Error(`close did not settle within ${ms}ms`)), ms).unref();
+  });
+  return Promise.race([promise, expiry]);
+}
