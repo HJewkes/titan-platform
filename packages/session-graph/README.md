@@ -29,11 +29,35 @@ const summary = await refreshCorpus(graph, await discoverTranscripts());
 3. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage
    from child sessions.
-4. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
+4. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
+   task table. See below.
+5. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex` clears every derived table and rewinds watermarks; the next refresh rebuilds
 from byte 0 to the same rows a chunked history produced.
+
+## The task resolver
+
+A transcript states the id a command acted on and nothing else, so a task's title, its
+initiative, and the status it holds *right now* exist nowhere in the corpus. Pass a
+resolver and a product fills them; pass nothing and the graph is exactly what the
+transcripts said.
+
+```ts
+await refreshCorpus(graph, transcripts, {
+  resolveTasks: async (taskIds) => new Map(taskIds.map((id) => [id, myStore.get(id)])),
+});
+```
+
+- **Precedence.** Every field the resolver states wins; every field it omits or nulls keeps
+  what the transcripts derived. The store is the system of record for a task's present
+  status, while a transcript only witnesses a command that was observed to run.
+- **Batching.** One call per refresh, holding every task id in the graph, because a real
+  resolver reads a database. Returning an id no transcript mentioned inserts that task.
+- **Failure.** A resolver that throws costs that pass its enrichment and nothing else; the
+  rows stand as the transcripts left them and `summary.tasks` carries `failed` plus the
+  `error` message for the caller to log.
 
 ## Tables
 

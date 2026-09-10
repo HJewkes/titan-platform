@@ -4,17 +4,20 @@ import { TranscriptParseError, extractTranscript, type DiscoveredTranscript } fr
 import { applyDelta } from "./apply.js";
 import { allSessionIds, type SessionGraph } from "./graph.js";
 import { reconcile, rollupSessions, type ReconcileCounts } from "./rollup.js";
+import { allTaskIds, enrichTasks, NO_ENRICHMENT, type TaskEnrichment, type TaskResolver } from "./tasks.js";
 
 export interface IndexOptions {
   /** Re-hash the already-read prefix to catch same-length rewrites. O(file), so opt in. */
   verifyHash?: boolean;
   /** Store a whole-file content hash for durability reporting. O(file), so opt in. */
   withContentHash?: boolean;
+  /** Fill task title, initiative and present status from the caller's store. Absent means transcripts alone. */
+  resolveTasks?: TaskResolver;
 }
 
 export type TranscriptOutcome =
-  | { status: "unchanged" | "indexed" | "rewound"; transcriptId: number; sessionIds: string[]; facts: number }
-  | { status: "missing" | "quarantined"; transcriptId: number; sessionIds: string[]; facts: 0; reason: string };
+  | { status: "unchanged" | "indexed" | "rewound"; transcriptId: number; sessionIds: string[]; facts: number; tasks: TaskEnrichment }
+  | { status: "missing" | "quarantined"; transcriptId: number; sessionIds: string[]; facts: 0; tasks: TaskEnrichment; reason: string };
 
 /**
  * Bring one transcript up to date: read from its watermark (or byte 0 after a
@@ -25,7 +28,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
   const row = graph.transcripts.ensure(transcript.displayPath);
   const entry = { path: transcript.displayPath, lastByteOffset: row.lastOffset, prefixHash: row.prefixHash };
   const point = await resumePoint(entry, transcript.absolutePath, { verifyHash: options.verifyHash });
-  const base = { transcriptId: row.sourceId, sessionIds: [] as string[] };
+  const base = { transcriptId: row.sourceId, sessionIds: [] as string[], tasks: NO_ENRICHMENT };
   if (point.state === "missing") {
     graph.transcripts.markStatus(transcript.displayPath, "missing", "source file no longer exists");
     return { ...base, status: "missing", facts: 0, reason: "source file no longer exists" };
@@ -48,7 +51,9 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
       contentHash: options.withContentHash ? await contentHash(transcript.absolutePath) : null,
     });
     const sessionIds = delta.sessions.map((s) => s.sessionId);
-    return { ...base, sessionIds, status: point.state === "rewritten" ? "rewound" : "indexed", facts: delta.facts.length };
+    const taskIds = delta.tasks.map((t) => t.taskId);
+    const tasks = taskIds.length > 0 ? await enrichTasks(graph, options.resolveTasks, taskIds) : NO_ENRICHMENT;
+    return { ...base, sessionIds, tasks, status: point.state === "rewritten" ? "rewound" : "indexed", facts: delta.facts.length };
   } catch (err) {
     if (!(err instanceof TranscriptParseError)) throw err;
     graph.transcripts.markStatus(transcript.displayPath, "quarantined", err.message);
@@ -66,28 +71,37 @@ export interface RefreshSummary {
   facts: number;
   turnsRolledUp: number;
   reconciled: ReconcileCounts;
+  tasks: TaskEnrichment;
   markedMissing: number;
 }
 
 /**
  * One pass over a corpus: index every transcript, roll up the sessions that
- * changed, reconcile cross-transcript observations, and mark rows whose source
- * file is gone. Idempotent: a second pass over unchanged files changes nothing.
+ * changed, reconcile cross-transcript observations, enrich tasks, and mark rows
+ * whose source file is gone. Idempotent: a second pass over unchanged files
+ * changes nothing.
+ *
+ * The resolver is hoisted out of the per-transcript loop and run once over the
+ * whole task table, so a corpus of N transcripts costs one resolver call rather
+ * than N, and a task whose store row changed refreshes even when no transcript
+ * did. That bounds staleness to one pass.
  */
 export async function refreshCorpus(graph: SessionGraph, transcripts: readonly DiscoveredTranscript[], options: IndexOptions & { full?: boolean } = {}): Promise<RefreshSummary> {
+  const { resolveTasks, ...perTranscript } = options;
   const counts = { indexed: 0, unchanged: 0, rewound: 0, missing: 0, quarantined: 0 };
   const touched: string[] = [];
   let facts = 0;
   for (const transcript of transcripts) {
-    const outcome = await indexTranscript(graph, transcript, options);
+    const outcome = await indexTranscript(graph, transcript, perTranscript);
     counts[outcome.status] += 1;
     facts += outcome.facts;
     touched.push(...outcome.sessionIds);
   }
   const turnsRolledUp = rollupSessions(graph, options.full ? allSessionIds(graph) : touched);
   const reconciled = reconcile(graph);
+  const tasks = await enrichTasks(graph, resolveTasks, allTaskIds(graph));
   const markedMissing = await markMissing(graph, transcripts);
-  return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, markedMissing };
+  return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, tasks, markedMissing };
 }
 
 /** Rows absent from discovery are only nominated; an `fs.stat` decides, so an empty scan cannot condemn the corpus. */
