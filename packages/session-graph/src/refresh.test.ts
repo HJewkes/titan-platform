@@ -242,6 +242,30 @@ describe("refreshCorpus", () => {
     expect(count("pr")).toBe(0);
   });
 
+  it("rewinds a rotation that grew the file instead of quarantining it (TP-38)", async () => {
+    await refreshCorpus(graph, [transcript]);
+    // A rotation replaces the file from byte 0 with *different* content that
+    // happens to be longer, so resuming at the old watermark lands mid-line.
+    // That used to quarantine a perfectly healthy transcript until the next
+    // --full. Appending would not reproduce it: the prefix would still match.
+    const rotated = render([...LINES_B, ...LINES_B, ...LINES_B, ...LINES_B, ...LINES_B]);
+    const watermark = graph.transcripts.get(transcript.displayPath)?.lastOffset ?? 0;
+    expect(rotated.length).toBeGreaterThan(watermark);
+    writeFileSync(transcript.absolutePath, rotated);
+
+    const summary = await refreshCorpus(graph, [transcript]);
+    expect(summary.quarantined).toBe(0);
+    expect(summary.rewound).toBe(1);
+    const afterRotation = dumpOwned();
+
+    // What a graph that had only ever seen the rotated file holds. Without the
+    // purge the counters accumulate instead, which is what this compares against.
+    resetIndex(graph);
+    await refreshCorpus(graph, [transcript], { full: true });
+
+    expect(afterRotation).toEqual(dumpOwned());
+  });
+
   it("restores a missing transcript to ok when the file comes back", async () => {
     const content = render(LINES_A);
     await refreshCorpus(graph, [transcript]);

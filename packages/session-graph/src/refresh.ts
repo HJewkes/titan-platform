@@ -27,7 +27,7 @@ export type TranscriptOutcome =
  */
 export async function indexTranscript(graph: SessionGraph, transcript: DiscoveredTranscript, options: IndexOptions = {}): Promise<TranscriptOutcome> {
   const row = graph.transcripts.ensure(transcript.displayPath);
-  const entry = { path: transcript.displayPath, lastByteOffset: row.lastOffset, prefixHash: row.prefixHash };
+  const entry = { path: transcript.displayPath, lastByteOffset: row.lastOffset, prefixHash: row.prefixHash, mtime: row.fileMtime };
   const point = await resumePoint(entry, transcript.absolutePath, { verifyHash: options.verifyHash });
   const base = { transcriptId: row.sourceId, sessionIds: [] as string[], tasks: NO_ENRICHMENT };
   if (point.state === "missing") {
@@ -50,9 +50,16 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
       priorPrefixHash: point.state === "rewritten" ? null : row.prefixHash,
       subagentId: transcript.subagentId,
     });
+    // Two ways to learn a transcript was rewritten, and both must purge. `resumePoint`
+    // catches a file that shrank; `extractTranscript` re-hashes the prefix it was asked
+    // to skip and restarts from zero on its own when the bytes moved — a rotation that
+    // left the file the same length or longer. Ignoring its answer replays the whole
+    // file onto rows that were never removed, which is the accumulation purge exists
+    // to prevent, reached by a different road.
+    const rewound = point.state === "rewritten" || delta.restartedFromZero;
     // After extraction, never before: a parse failure quarantines the transcript,
     // and purging first would destroy rows we could then no longer rebuild.
-    if (point.state === "rewritten") purgeTranscript(graph, row.sourceId);
+    if (rewound) purgeTranscript(graph, row.sourceId);
     applyDelta(graph, row.sourceId, delta);
     const stat = await fs.stat(transcript.absolutePath);
     graph.transcripts.advance(transcript.displayPath, {
@@ -65,7 +72,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     const sessionIds = delta.sessions.map((s) => s.sessionId);
     const taskIds = delta.tasks.map((t) => t.taskId);
     const tasks = taskIds.length > 0 ? await enrichTasks(graph, options.resolveTasks, taskIds) : NO_ENRICHMENT;
-    return { ...base, sessionIds, tasks, status: point.state === "rewritten" ? "rewound" : "indexed", facts: delta.facts.length };
+    return { ...base, sessionIds, tasks, status: rewound ? "rewound" : "indexed", facts: delta.facts.length };
   } catch (err) {
     if (!(err instanceof TranscriptParseError)) throw err;
     graph.transcripts.markStatus(transcript.displayPath, "quarantined", err.message);
