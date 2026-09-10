@@ -38,6 +38,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   health?: () => Record<string, unknown>;
   /** Hook for product-owned routes. */
   mountRoutes?: (app: Hono) => void;
+  /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
+  shutdownGraceMs?: number;
   logger?: Logger;
 }
 
@@ -49,6 +51,8 @@ export interface DaemonHandle {
   /** Stop the watcher, close the socket, and release the pid file. Idempotent. */
   close(): Promise<void>;
 }
+
+const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
 export class DaemonAlreadyRunningError extends Error {
   constructor(readonly pid: number, readonly port: number) {
@@ -76,7 +80,8 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   ready = true;
   log.info({ pid: process.pid, port: boundPort }, "daemon started");
 
-  return { port: boundPort, hub, close: onceAsync(() => shutdown({ server, watcher, paths, log })) };
+  const graceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
+  return { port: boundPort, hub, close: onceAsync(() => shutdown({ server, watcher, paths, log, graceMs })) };
 }
 
 /** Start, then run until SIGTERM/SIGINT, then close. Resolves after shutdown completes. */
@@ -239,16 +244,17 @@ interface ShutdownParts {
   watcher: TreeWatcher | null;
   paths: DaemonPaths;
   log: Logger;
+  graceMs: number;
 }
 
-async function shutdown({ server, watcher, paths, log }: ShutdownParts): Promise<void> {
+async function shutdown({ server, watcher, paths, log, graceMs }: ShutdownParts): Promise<void> {
   try {
     watcher?.close();
   } catch (err) {
     log.error({ err }, "error closing file watcher");
   }
   try {
-    await closeServer(server);
+    await closeServer(server, graceMs);
   } catch (err) {
     log.error({ err }, "error closing server");
   }
@@ -260,10 +266,29 @@ async function shutdown({ server, watcher, paths, log }: ShutdownParts): Promise
   }
 }
 
-function closeServer(server: ServerType): Promise<void> {
-  return new Promise((resolve, reject) => {
+/**
+ * `server.close` stops accepting new connections but resolves only once every open one ends,
+ * and an MCP or `/events` client holds one open for its whole session. Without the forced
+ * sweep the process outlives SIGTERM indefinitely and a restart finds the port still held.
+ */
+function closeServer(server: ServerType, graceMs: number): Promise<void> {
+  // The executor runs synchronously, so the server is already closing before either sweep —
+  // node only destroys sockets on a server that has been told to close.
+  const closed = new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });
+  destroyConnections(server, "closeIdleConnections");
+  const forced = setTimeout(() => destroyConnections(server, "closeAllConnections"), graceMs);
+  forced.unref();
+  return closed.finally(() => clearTimeout(forced));
+}
+
+type ConnectionSweep = "closeIdleConnections" | "closeAllConnections";
+
+/** Http2 members of the `ServerType` union do not carry these; loopback daemons are http1. */
+function destroyConnections(server: ServerType, sweep: ConnectionSweep): void {
+  const close = (server as Partial<Record<ConnectionSweep, () => void>>)[sweep];
+  if (typeof close === "function") close.call(server);
 }
 
 function onceAsync(fn: () => Promise<void>): () => Promise<void> {
