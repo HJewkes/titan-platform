@@ -63,6 +63,27 @@ describe("watchTree", () => {
     expect(watcher.isWatching(root)).toBe(false);
   });
 
+  it("covers a deep tree and still tears down promptly (TP-37)", async () => {
+    // 60 nested directories. Watching per directory cost one FSEvents handle each,
+    // and each close is a serialized semaphore round-trip — the shape that made a
+    // real daemon spend 12.6s in its SIGTERM handler across 1,593 directories.
+    let deep = root;
+    for (let i = 0; i < 60; i++) {
+      deep = path.join(deep, `d${i}`);
+      await mkdir(deep);
+    }
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+    expect(await watcher.whenWatching(deep)).toBe(true);
+
+    const started = Date.now();
+    watcher.close();
+    const elapsed = Date.now() - started;
+    watcher = null;
+
+    // 60 handles at the measured ~8ms each would be ~480ms; one handle is ~8ms.
+    expect(elapsed).toBeLessThan(400);
+  });
+
   it("reports errors instead of throwing when the root is missing", () => {
     const errors: unknown[] = [];
 
