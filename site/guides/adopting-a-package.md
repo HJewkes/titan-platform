@@ -22,7 +22,7 @@ Every product-specific fact went into a binding module, and nothing else in the 
 learned that a package had arrived. Four bindings, one per seam:
 
 - **`registry/types.ts`** binds the `Ctx` type parameter to active-work's `CommandContext`.
-  All 62 command modules import `defineCommand` and `Command` from the same path as before.
+  All 60 command modules import `defineCommand` and `Command` from the same path as before.
 - **`server/lifecycle.ts`** binds the package's pid helpers to active-work's single state
   root, so its eight importers are untouched.
 - **`server/mcp.ts`** pins the `active__` tool prefix and the MCP handshake identity.
