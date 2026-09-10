@@ -6,3 +6,5 @@ export type { ReconcileCounts } from "./rollup.js";
 export { reconcile, rollupSessions } from "./rollup.js";
 export type { IndexOptions, RefreshSummary, TranscriptOutcome } from "./refresh.js";
 export { indexTranscript, refreshCorpus } from "./refresh.js";
+export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from "./tasks.js";
+export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
