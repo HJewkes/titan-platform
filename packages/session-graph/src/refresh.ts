@@ -3,6 +3,7 @@ import { contentHash, resumePoint } from "@titan-design/locator";
 import { TranscriptParseError, extractTranscript, type DiscoveredTranscript } from "@titan-design/session-read";
 import { applyDelta } from "./apply.js";
 import { allSessionIds, type SessionGraph } from "./graph.js";
+import { purgeTranscript } from "./purge.js";
 import { reconcile, rollupSessions, type ReconcileCounts } from "./rollup.js";
 import { allTaskIds, enrichTasks, NO_ENRICHMENT, type TaskEnrichment, type TaskResolver } from "./tasks.js";
 
@@ -33,7 +34,15 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     graph.transcripts.markStatus(transcript.displayPath, "missing", "source file no longer exists");
     return { ...base, status: "missing", facts: 0, reason: "source file no longer exists" };
   }
-  if (point.state === "unchanged") return { ...base, status: "unchanged", facts: 0 };
+  if (point.state === "unchanged") {
+    // A file that vanished and came back unchanged resumes at EOF, so there are no
+    // bytes to read and `advance()` — the only writer of status 'ok' — never runs,
+    // stranding the row on 'missing' forever. Clear it here rather than forcing a
+    // re-read, which would rewrite the prefix hash from a zero-byte delta.
+    // Quarantine is deliberately not cleared: the same bytes still will not parse.
+    if (row.status === "missing") graph.transcripts.markStatus(transcript.displayPath, "ok", null);
+    return { ...base, status: "unchanged", facts: 0 };
+  }
 
   try {
     const delta = await extractTranscript(transcript.absolutePath, {
@@ -41,6 +50,9 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
       priorPrefixHash: point.state === "rewritten" ? null : row.prefixHash,
       subagentId: transcript.subagentId,
     });
+    // After extraction, never before: a parse failure quarantines the transcript,
+    // and purging first would destroy rows we could then no longer rebuild.
+    if (point.state === "rewritten") purgeTranscript(graph, row.sourceId);
     applyDelta(graph, row.sourceId, delta);
     const stat = await fs.stat(transcript.absolutePath);
     graph.transcripts.advance(transcript.displayPath, {

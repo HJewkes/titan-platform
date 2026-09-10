@@ -57,10 +57,11 @@ const stripClock = (row: unknown) => {
   delete rest.t_created;
   return rest;
 };
-const dump = () =>
-  ["fact", "session", "session_model_usage", "turn", "permission_phase", "pr", "file", "edge"].map(
-    (t) => `${t}:${JSON.stringify(graph.db.prepare(`SELECT * FROM "${t}" ORDER BY 1`).all().map(stripClock))}`,
-  );
+const dumpOf = (tables: readonly string[]) =>
+  tables.map((t) => `${t}:${JSON.stringify(graph.db.prepare(`SELECT * FROM "${t}" ORDER BY 1`).all().map(stripClock))}`);
+const dump = () => dumpOf(["fact", "session", "session_model_usage", "turn", "permission_phase", "pr", "file", "edge"]);
+/** Only what `purgeTranscript` owns; `pr` and `file` are shared across transcripts and survive a rewind. */
+const dumpOwned = () => dumpOf(["fact", "session", "session_model_usage", "turn", "permission_phase", "edge"]);
 
 describe("task status (TP-20)", () => {
   const withCommands = (...commands: string[]) =>
@@ -223,6 +224,44 @@ describe("refreshCorpus", () => {
     expect(graph.transcripts.get(transcript.displayPath)?.lastOffset).toBe(0);
     await refreshCorpus(graph, [transcript], { full: true });
     expect(dump()).toEqual(chunked);
+  });
+
+  it("rebuilds a rewritten transcript's rows rather than accumulating onto them", async () => {
+    await refreshCorpus(graph, [transcript]);
+    writeFileSync(transcript.absolutePath, render(LINES_A.slice(0, 4)));
+    expect(await refreshCorpus(graph, [transcript])).toMatchObject({ rewound: 1 });
+    const afterRewind = dumpOwned();
+
+    // What a graph that had only ever seen the truncated file holds.
+    resetIndex(graph);
+    await refreshCorpus(graph, [transcript], { full: true });
+
+    expect(afterRewind).toEqual(dumpOwned());
+    // Scope, asserted rather than assumed: the pr row came from a line the
+    // rewrite removed, and survives because many transcripts can assert it.
+    expect(count("pr")).toBe(0);
+  });
+
+  it("restores a missing transcript to ok when the file comes back", async () => {
+    const content = render(LINES_A);
+    await refreshCorpus(graph, [transcript]);
+    rmSync(transcript.absolutePath);
+    await refreshCorpus(graph, [transcript]);
+    expect(graph.transcripts.get(transcript.displayPath)?.status).toBe("missing");
+
+    writeFileSync(transcript.absolutePath, content);
+    await refreshCorpus(graph, [transcript]);
+
+    expect(graph.transcripts.get(transcript.displayPath)?.status).toBe("ok");
+  });
+
+  it("leaves a quarantined transcript quarantined when its bytes have not changed", async () => {
+    await refreshCorpus(graph, [transcript]);
+    graph.transcripts.markStatus(transcript.displayPath, "quarantined", "bad line");
+
+    await refreshCorpus(graph, [transcript]);
+
+    expect(graph.transcripts.get(transcript.displayPath)?.status).toBe("quarantined");
   });
 
   it("rewinds a rewritten transcript and marks a vanished one missing", async () => {
