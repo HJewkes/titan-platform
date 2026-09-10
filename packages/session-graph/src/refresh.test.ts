@@ -164,6 +164,7 @@ describe("task resolver (TP-22)", () => {
       },
     });
     expect(summary).toMatchObject({ indexed: 1, tasks: { requested: 1, applied: 0, failed: true } });
+    expect(summary.tasks.error).toBe("task store is gone");
     expect(taskRows()).toEqual([{ task_ref: "task:AW-23", task_id: "AW-23", initiative: null, title: null, status: "done" }]);
   });
 

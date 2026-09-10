@@ -32,6 +32,8 @@ export interface TaskEnrichment {
   applied: number;
   /** The resolver threw; rows stand as the transcripts left them. */
   failed: boolean;
+  /** Why it failed, for the caller to log. Absent unless `failed`. */
+  error?: string;
 }
 
 export const NO_ENRICHMENT: TaskEnrichment = Object.freeze({ requested: 0, applied: 0, failed: false });
@@ -64,8 +66,8 @@ export async function enrichTasks(graph: SessionGraph, resolver: TaskResolver | 
   try {
     const resolved = await resolver(unique);
     return { requested: unique.length, applied: write(graph, resolved), failed: false };
-  } catch {
-    return { requested: unique.length, applied: 0, failed: true };
+  } catch (err) {
+    return { requested: unique.length, applied: 0, failed: true, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

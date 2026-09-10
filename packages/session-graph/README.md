@@ -55,8 +55,9 @@ await refreshCorpus(graph, transcripts, {
   status, while a transcript only witnesses a command that was observed to run.
 - **Batching.** One call per refresh, holding every task id in the graph, because a real
   resolver reads a database. Returning an id no transcript mentioned inserts that task.
-- **Failure.** A resolver that throws costs that pass its enrichment and nothing else;
-  `summary.tasks.failed` reports it and the rows stand as the transcripts left them.
+- **Failure.** A resolver that throws costs that pass its enrichment and nothing else; the
+  rows stand as the transcripts left them and `summary.tasks` carries `failed` plus the
+  `error` message for the caller to log.
 
 ## Tables
 
