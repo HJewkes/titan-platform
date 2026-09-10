@@ -11,6 +11,8 @@ export interface TranscriptEntry {
   lastByteOffset: number;
   /** sha256 of bytes `[0, lastByteOffset)`, or null when never verified. */
   prefixHash: string | null;
+  /** The file's mtime when it was last read, ISO-8601. Enables the cheap rewrite check below. */
+  mtime?: string | null;
 }
 
 export interface TranscriptTable {
@@ -43,24 +45,37 @@ export interface ResumePoint {
  * was rewritten or truncated, so every stored offset past that point is
  * meaningless and the only correct answer is byte 0. `verifyHash` extends the
  * same check to a same-length rewrite at the cost of re-reading the prefix.
+ *
+ * Transcripts only ever grow, so a file that is exactly as long as its watermark
+ * yet carries a newer mtime was rewritten in place — the one rotation a size
+ * comparison cannot see. That case hashes without being asked to, because the
+ * cost lands on the handful of files that look wrong rather than on every file
+ * on every pass, which is what makes `verifyHash` too expensive to leave on.
  */
 export async function resumePoint(
   entry: TranscriptEntry,
   absolutePath: string,
   options: { verifyHash?: boolean } = {},
 ): Promise<ResumePoint> {
-  let size: number;
+  let stat;
   try {
-    size = (await fs.stat(absolutePath)).size;
+    stat = await fs.stat(absolutePath);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { state: "missing", start: 0, size: 0 };
     throw err;
   }
+  const size = stat.size;
   let rewritten = size < entry.lastByteOffset;
-  if (!rewritten && options.verifyHash && entry.prefixHash !== null) {
+  if (!rewritten && entry.prefixHash !== null && (options.verifyHash || touchedInPlace(entry, stat.mtime, size))) {
     rewritten = (await prefixHash(absolutePath, entry.lastByteOffset)) !== entry.prefixHash;
   }
   if (rewritten) return { state: "rewritten", start: 0, size };
   const state = size > entry.lastByteOffset ? "appended" : "unchanged";
   return { state, start: entry.lastByteOffset, size };
+}
+
+/** Same length as when we last read it, but written to since. Unknown mtime means no signal. */
+function touchedInPlace(entry: TranscriptEntry, mtime: Date, size: number): boolean {
+  if (entry.mtime == null || size !== entry.lastByteOffset) return false;
+  return mtime.toISOString() !== entry.mtime;
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -48,6 +48,27 @@ describe("resumePoint", () => {
     writeFileSync(file, "xyz\n");
     expect((await resumePoint(entry(4, hash), file)).state).toBe("unchanged");
     expect((await resumePoint(entry(4, hash), file, { verifyHash: true })).state).toBe("rewritten");
+  });
+
+  it("detects a same-length rewrite from a moved mtime, without being asked to verify (TP-38)", async () => {
+    const file = path.join(dir, "t.jsonl");
+    writeFileSync(file, "abc\n");
+    const hash = await prefixHash(file, 4);
+    const recordedAt = statSync(file).mtime.toISOString();
+
+    writeFileSync(file, "xyz\n");
+    utimesSync(file, new Date(), new Date(Date.now() + 5_000));
+
+    expect((await resumePoint({ ...entry(4, hash), mtime: recordedAt }, file)).state).toBe("rewritten");
+  });
+
+  it("does not hash a file whose mtime has not moved", async () => {
+    const file = path.join(dir, "t.jsonl");
+    writeFileSync(file, "abc\n");
+    const hash = await prefixHash(file, 4);
+    const recordedAt = statSync(file).mtime.toISOString();
+
+    expect((await resumePoint({ ...entry(4, hash), mtime: recordedAt }, file)).state).toBe("unchanged");
   });
 
   it("reports a missing file instead of throwing", async () => {
