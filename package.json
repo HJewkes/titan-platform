@@ -21,6 +21,10 @@
     "test:watch": "vitest",
     "dag:check": "scripts/dag-check.sh",
     "new:package": "node scripts/new-package.mjs",
+    "docs:reference": "node scripts/gen-docs-reference.mjs",
+    "docs:dev": "pnpm docs:reference && vitepress dev site",
+    "docs:build": "pnpm docs:reference && vitepress build site",
+    "docs:preview": "vitepress preview site",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm -r run build && changeset publish"
@@ -31,9 +35,12 @@
     "@types/node": "^25.3.2",
     "eslint": "^9.39.0",
     "globals": "^16.0.0",
+    "mermaid": "^11.17.2",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.46.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17",
     "vitest": "^3.0.0"
   }
 }

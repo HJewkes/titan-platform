@@ -8,3 +8,5 @@ coverage/
 .codewatch/baseline/
 .codewatch-tool/
 .worktrees/
+site/.vitepress/cache/
+site/.vitepress/dist/
