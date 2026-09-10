@@ -1,0 +1,86 @@
+[
+  {
+    "text": "Tier 0 — primitives",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "cluster",
+        "link": "/reference/cluster"
+      },
+      {
+        "text": "embed",
+        "link": "/reference/embed"
+      },
+      {
+        "text": "locator",
+        "link": "/reference/locator"
+      },
+      {
+        "text": "store-sqlite",
+        "link": "/reference/store-sqlite"
+      }
+    ]
+  },
+  {
+    "text": "Tier 1 — engines",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "agent",
+        "link": "/reference/agent"
+      },
+      {
+        "text": "daemon",
+        "link": "/reference/daemon"
+      },
+      {
+        "text": "hitl",
+        "link": "/reference/hitl"
+      },
+      {
+        "text": "registry",
+        "link": "/reference/registry"
+      },
+      {
+        "text": "retrieval",
+        "link": "/reference/retrieval"
+      }
+    ]
+  },
+  {
+    "text": "Tier 2 — domain",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "code-graph",
+        "link": "/reference/code-graph"
+      },
+      {
+        "text": "memory",
+        "link": "/reference/memory"
+      },
+      {
+        "text": "session-graph",
+        "link": "/reference/session-graph"
+      },
+      {
+        "text": "session-read",
+        "link": "/reference/session-read"
+      },
+      {
+        "text": "workflow",
+        "link": "/reference/workflow"
+      }
+    ]
+  },
+  {
+    "text": "UI",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "react-ui",
+        "link": "/reference/react-ui"
+      }
+    ]
+  }
+]
