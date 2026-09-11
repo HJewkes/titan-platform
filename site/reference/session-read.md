@@ -103,6 +103,8 @@ quarantine, and scheduler stayed behind as storage concerns and became
 source bytes and semantic subrecord selectors. Stateful formats can replay prefixes
 or resume validated checkpoints. Usage distinguishes response deltas from snapshots.
 
-These are additive contracts; this release does not implement a Codex decoder or
-change the existing Claude reader and graph rows. See the
+`discoverCodexSources({ namespace, codexHome })`, `readCodexObservations(source)` and
+`readCodexText(locator)` implement the initial Codex rollout path. Source line hashes
+protect readback; prefix replay preserves model, usage and projection state across
+chunks. The existing Claude reader remains available. See the
 [contract decision](/guides/multi-harness-contracts) for compatibility and migration.
