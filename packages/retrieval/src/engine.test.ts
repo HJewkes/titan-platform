@@ -43,6 +43,47 @@ describe("retrievers over real store tables", () => {
     expect(await ftsRetriever(spans).retrieve("!!!", { limit: 10 })).toEqual([]);
   });
 
+  it("one scoped retriever per class keeps the large class from swamping the small one", async () => {
+    // The situation this exists for: one class outnumbers another by enough that
+    // a pooled query returns nothing else. Measured on active-work's graph,
+    // 92,713 transcript spans against 1,569 note spans.
+    const { spans } = await corpus();
+    for (let i = 0; i < 30; i++) {
+      spans.index({ ownerRef: `session:s${i}`, field: "tool_result", sourceId: 2, byteOffset: i * 40, byteLength: 40 }, "vitest vitest vitest failing failing");
+    }
+
+    const pooled = await ftsRetriever(spans).retrieve("vitest failing", { limit: 5 });
+    expect(pooled.every((h) => h.id.startsWith("session:"))).toBe(true);
+
+    const notes = ftsRetriever(spans, { name: "notes", scope: { ownerPrefix: "note:" } });
+    const transcripts = ftsRetriever(spans, { name: "transcripts", scope: { ownerPrefix: "session:", fields: ["tool_result"] } });
+    const engine = createRetrievalEngine({
+      retrievers: [notes, transcripts],
+      fusion: { weights: { notes: 3, transcripts: 1 } },
+    });
+
+    const { results } = await engine.search("vitest failing", { limit: 5 });
+    // Both notes outrank every transcript, and the transcripts still appear:
+    // a class prior, not a filter. Which note leads is BM25's business.
+    const classOf = (id: string) => id.split(":")[0];
+    expect(results.slice(0, 2).map((r) => classOf(r.id))).toEqual(["note", "note"]);
+    expect(results.slice(2).every((r) => classOf(r.id) === "session")).toBe(true);
+    expect(results.some((r) => classOf(r.id) === "session")).toBe(true);
+  });
+
+  it("a cap bounds a class's candidates regardless of what the engine overfetches", async () => {
+    const { spans } = await corpus();
+    for (let i = 0; i < 30; i++) {
+      spans.index({ ownerRef: `session:s${i}`, field: "tool_result", sourceId: 2, byteOffset: i * 40, byteLength: 40 }, "vitest failing");
+    }
+    const capped = ftsRetriever(spans, { scope: { ownerPrefix: "session:" }, cap: 3 });
+
+    expect(await capped.retrieve("vitest failing", { limit: 30 })).toHaveLength(3);
+    // A cap is a ceiling, not a floor: a smaller engine limit still wins.
+    expect(await capped.retrieve("vitest failing", { limit: 2 })).toHaveLength(2);
+    expect(await ftsRetriever(spans, { cap: 0 }).retrieve("vitest", { limit: 10 })).toEqual([]);
+  });
+
   it("vector ranks by cosine similarity and honors a similarity floor", async () => {
     const { embedder, index } = await corpus();
     const hits = await vectorRetriever(embedder, index).retrieve("vitest suite failing in packages/registry", { limit: 2 });

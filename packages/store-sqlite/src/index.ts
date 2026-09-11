@@ -12,7 +12,7 @@ export type { EntityInput, EntityRow, TableName } from "./tables/entity.js";
 export { EntityTable, entitySnapTableDdl, entityTableDdl, snapshotTableDdl } from "./tables/entity.js";
 export type { CacheBlobOptions, CacheHit, CacheKey } from "./tables/cache-blob.js";
 export { CacheBlobTable, cacheBlobTableDdl, contentHashOf } from "./tables/cache-blob.js";
-export type { SpanFtsOptions, SpanHit, SpanInput } from "./tables/span-fts.js";
+export type { SpanFtsOptions, SpanHit, SpanInput, SpanScope } from "./tables/span-fts.js";
 export { SpanFtsTables, spanFtsTablesDdl } from "./tables/span-fts.js";
 export type { WatermarkAdvance, WatermarkOptions, WatermarkRow, WatermarkStatus } from "./tables/watermark.js";
 export { WatermarkTable, watermarkTableDdl } from "./tables/watermark.js";
