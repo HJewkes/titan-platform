@@ -8,9 +8,14 @@ export interface MinerConfig {
   /** Root of the transcript corpus, `~/.claude/projects` by default. */
   corpusRoot: string;
   dbPath: string;
+  /** Optional Codex home; enabled explicitly to preserve existing corpus defaults. */
+  codexHome?: string;
+  namespace?: string;
 }
 
 export interface ConfigOverrides {
+  codexHome?: string;
+  namespace?: string;
   stateDir?: string;
   corpusRoot?: string;
 }
@@ -19,7 +24,9 @@ export interface ConfigOverrides {
 export function resolveConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessEnv = process.env): MinerConfig {
   const stateDir = expandHome(overrides.stateDir ?? env.TITAN_MINER_STATE ?? path.join(os.homedir(), ".local", "state", "titan-session-miner"));
   const corpusRoot = expandHome(overrides.corpusRoot ?? env.TITAN_MINER_CORPUS ?? transcriptsRoot());
-  return { stateDir, corpusRoot, dbPath: path.join(stateDir, "index.sqlite3") };
+  const codexHome = overrides.codexHome ?? env.TITAN_MINER_CODEX_HOME;
+  return { stateDir, corpusRoot, dbPath: path.join(stateDir, "index.sqlite3"),
+    ...(codexHome ? { codexHome: expandHome(codexHome), namespace: overrides.namespace ?? env.TITAN_MINER_NAMESPACE ?? os.hostname() } : {}) };
 }
 
 function expandHome(p: string): string {

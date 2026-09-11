@@ -1,11 +1,12 @@
+import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, kitMigration, type Migration } from "@titan-design/store-sqlite";
 
 /** Kit table names this graph uses. `watermark` rows are transcripts; `search_*` are the FTS spans. */
 export const KIT = { watermark: "transcript", edge: "edge", spanFts: "search" } as const;
 
 /**
- * Domain tables. Everything here is derivable from the transcripts plus the
- * watermark table, which is what makes drop-and-rederive a safe rebuild.
+ * Legacy domain tables. Original sources can be pruned; schema migrations must
+ * preserve these rows rather than assuming a replay is possible.
  * Locators are `(transcript_id, byte_offset, byte_length)`; `fact_id` rows
  * resolve through the facts table's unique `(transcript_id, byte_offset)`.
  */
@@ -140,6 +141,9 @@ export const DOMAIN_DDL = `
 
 /** Every derived table, in an order safe to clear. The watermark table is not derived. */
 export const DERIVED_TABLES = [
+  "normalized_span",
+  "normalized_event",
+  "normalized_source",
   `${KIT.spanFts}_span`,
   KIT.edge,
   "turn",
@@ -162,4 +166,5 @@ export const DERIVED_TABLES = [
 export const MIGRATIONS: Migration[] = [
   kitMigration(1, { watermark: KIT.watermark, edge: KIT.edge, spanFts: KIT.spanFts }, "kit tables"),
   { version: 2, name: "session graph tables", up: (db) => db.exec(DOMAIN_DDL) },
+  { version: 3, name: "normalized conversations and source evidence", up: (db) => { db.exec(NORMALIZED_DDL); backfillClaudeAliases(db); } },
 ];

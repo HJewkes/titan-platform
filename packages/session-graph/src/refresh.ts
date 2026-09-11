@@ -130,7 +130,8 @@ async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredT
   let marked = 0;
   for (const row of graph.transcripts.list()) {
     if (row.status === "missing" || present.has(row.sourceKey)) continue;
-    const absolute = byPath.get(row.sourceKey) ?? row.sourceKey;
+    const normalized = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) as { descriptor: string } | undefined;
+    const absolute = normalized ? (JSON.parse(normalized.descriptor) as { path: string }).path : byPath.get(row.sourceKey) ?? row.sourceKey;
     if (await exists(absolute)) continue;
     graph.transcripts.markStatus(row.sourceKey, "missing", "source file no longer exists");
     marked += 1;

@@ -69,3 +69,27 @@ and results, keyed by the session ref). Domain tables: `fact`, `session`,
 
 Everything except `transcript` is derivable, which is what makes the schema safe to evolve
 by drop-and-rederive.
+
+
+## Mixed harnesses
+
+`indexCodexSource(graph, source)` consumes descriptors returned by session-read's
+`discoverCodexSources`. Changed source contents are replayed into temporary staging,
+then structural observations, searchable spans and the watermark are replaced in one
+transaction. Malformed or missing sources retain their prior indexed rows. The
+initial implementation favors correctness over tail-only parsing; prefix replay can
+be expensive on large rollouts.
+
+`normalizedSessions`, `normalizedUsage` and `readIndexedText` provide summaries,
+response-deduplicated token accounting and source-aware excerpt readback. Unknown
+tokens stay null. Response deltas take precedence over snapshot projections; snapshots
+are ordered within reset epochs. Multiple semantic subrecords remain independently
+stored, while text siblings in the same line/field share a span with several selectors.
+
+Migration 3 adds conversation, alias, source and semantic-event tables without
+rewriting legacy session/fact/turn rows. Known Claude transcript sessions get explicit
+aliases in the `legacy` corpus namespace; workspace session-body refs are not
+reclassified. `resolveConversationAlias` rejects ambiguous aliases. Original source
+files are not needed to migrate. Back up the database before upgrading; restoring
+that backup is the rollback path for an older binary. Explicit `resetIndex` remains a
+destructive rebuild and requires the original sources; it is never run by migration.

@@ -9,3 +9,7 @@ export type { IndexOptions, RefreshSummary, TranscriptOutcome } from "./refresh.
 export { indexTranscript, refreshCorpus } from "./refresh.js";
 export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from "./tasks.js";
 export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
+
+export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
+export { normalizedSessions, normalizedUsage, readIndexedText, type ConversationSummary, type IndexedSpan, type NormalizedUsageSummary } from "./normalized-query.js";
+export { resolveConversationAlias } from "./normalized-schema.js";

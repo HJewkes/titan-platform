@@ -1,8 +1,6 @@
-import { readLocatorText } from "@titan-design/locator";
 import { defineCommand } from "@titan-design/registry";
 import { createRetrievalEngine, ftsRetriever, graphRetriever, type FusedResult } from "@titan-design/retrieval";
-import { searchText, toAbsolutePath, type SpanField } from "@titan-design/session-read";
-import type { SessionGraph } from "@titan-design/session-graph";
+import { normalizedSessions, readIndexedText, type SessionGraph } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 
@@ -52,28 +50,17 @@ async function toHit(graph: SessionGraph, result: FusedResult): Promise<SearchHi
     | undefined;
   const span = result.payloads.fts as { sourceId: number; byteOffset: number; byteLength: number; field: string } | undefined;
   const transcript = span ? graph.transcripts.list().find((t) => t.sourceId === span.sourceId) : undefined;
-  const locator = span && transcript ? { transcript: transcript.sourceKey, byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field } : null;
+  const normalizedSource = span ? graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(span.sourceId) as { descriptor: string } | undefined : undefined;
+  const sourcePath = normalizedSource ? (JSON.parse(normalizedSource.descriptor) as { path: string }).path : transcript?.sourceKey;
+  const locator = span && sourcePath ? { transcript: sourcePath, byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field } : null;
+  const normalized = result.id.startsWith("conversation:") ? normalizedSessions(graph, { ref: result.id, limit: 1 })[0] : undefined;
   return {
     ref: result.id,
     score: result.score,
     sources: result.sources,
-    title: session?.ai_title ?? null,
-    startedAt: session?.started_at ?? null,
+    title: session?.ai_title ?? normalized?.title ?? null,
+    startedAt: session?.started_at ?? normalized?.startedAt ?? null,
     locator,
-    excerpt: locator ? await excerptFor(locator) : null,
+    excerpt: span ? (await readIndexedText(graph, span))?.slice(0, EXCERPT_CHARS) ?? null : null,
   };
-}
-
-/**
- * Read the line back through its locator and project the field's prose, the same
- * projection that was indexed. Best effort: a rotated transcript yields null.
- */
-async function excerptFor(locator: NonNullable<SearchHit["locator"]>): Promise<string | null> {
-  try {
-    const line = await readLocatorText(toAbsolutePath(locator.transcript), [0, locator.byteOffset, locator.byteLength]);
-    const parsed = JSON.parse(line) as { message?: Record<string, unknown> };
-    return searchText(parsed.message ?? null, locator.field as SpanField).slice(0, EXCERPT_CHARS);
-  } catch {
-    return null;
-  }
 }

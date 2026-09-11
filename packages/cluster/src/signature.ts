@@ -27,6 +27,8 @@ export interface Signature {
 }
 
 const BASH_ANCHOR_RULES: RegExp[] = [
+  // Native shell diagnostics are not necessarily prefixed with an Error class.
+  /^[^\s:]+: .+: (?:No such file or directory|Permission denied|Not a directory|Is a directory)\s*$/i,
   /^\w*Error\b.*$/,
   /^\s*at\s.*$/,
   /exit (?:code|status)[: ]+\d+/i,

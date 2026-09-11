@@ -41,4 +41,9 @@ export const MINER_MIGRATIONS: Migration[] = [
       `),
   },
   memoryMigration(1001),
+  { version: 1002, name: "screened tool results", up: db => db.exec(`
+    CREATE TABLE IF NOT EXISTS drain_screened (
+      transcript_id INTEGER NOT NULL, byte_offset INTEGER NOT NULL,
+      source_hash TEXT NOT NULL, PRIMARY KEY(transcript_id,byte_offset,source_hash)
+    )`) },
 ];

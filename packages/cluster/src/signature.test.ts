@@ -66,3 +66,11 @@ describe("applyMasks", () => {
     });
   });
 });
+
+
+describe("native shell diagnostics", () => {
+  it("recognizes a real-shaped missing-file diagnostic without treating prose as an error", () => {
+    expect(hasErrorSignal("tool_result", "Script completed\ncat: missing-fixture.txt: No such file or directory\nproofmarker")).toBe(true);
+    expect(hasErrorSignal("tool_result", "The docs explain No such file or directory messages.")).toBe(false);
+  });
+});

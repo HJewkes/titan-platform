@@ -30,7 +30,7 @@ export function serveOptions(config: MinerConfig, options: ServeOptions = {}): S
 function summarize(ctx: MinerContext): Record<string, unknown> {
   try {
     const graph = ctx.graph();
-    const sessions = (graph.db.prepare("SELECT count(*) AS n FROM session").get() as { n: number }).n;
+    const sessions = (graph.db.prepare("SELECT (SELECT count(*) FROM session) + (SELECT count(DISTINCT conversation_ref) FROM normalized_source) AS n").get() as { n: number }).n;
     return { sessions, ftsOrphanRatio: graph.spans.orphanRatio() };
   } catch (err) {
     return { indexError: err instanceof Error ? err.message : String(err) };

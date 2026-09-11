@@ -1,3 +1,4 @@
+import { backfillClaudeAliases } from "./normalized-schema.js";
 import { sessionRef, type TranscriptDelta } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import type { SessionGraph } from "./graph.js";
@@ -13,6 +14,7 @@ export function applyDelta(graph: SessionGraph, transcriptId: number, delta: Tra
   graph.db.transaction(() => {
     applyFacts(graph.db, transcriptId, delta);
     applySessions(graph.db, transcriptId, delta);
+    backfillClaudeAliases(graph.db, delta.sessions.map(s => s.sessionId));
     applyAssets(graph.db, delta);
     applyPhases(graph.db, transcriptId, delta);
     applyLinkedRows(graph, transcriptId, delta);

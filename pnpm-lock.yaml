@@ -153,6 +153,9 @@ importers:
 
   packages/session-graph:
     dependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
       '@titan-design/cluster':
         specifier: workspace:^
         version: link:../cluster

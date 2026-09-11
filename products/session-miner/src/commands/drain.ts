@@ -1,8 +1,6 @@
 import { Clusterer, hasErrorSignal, type ClustererSnapshot } from "@titan-design/cluster";
-import { readLocatorText } from "@titan-design/locator";
 import { defineCommand } from "@titan-design/registry";
-import { searchText, toAbsolutePath } from "@titan-design/session-read";
-import type { SessionGraph } from "@titan-design/session-graph";
+import { readIndexedText, type SessionGraph } from "@titan-design/session-graph";
 import { nowIso } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
@@ -27,6 +25,7 @@ interface ErrorFact {
   session_id: string;
   ts: string;
   path: string;
+  source_hash: string;
 }
 
 const DrainArgs = z.object({ limit: z.number().int().positive().optional().describe("Cluster at most this many new error blobs") });
@@ -43,13 +42,14 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
     const summary: DrainSummary = { candidates: 0, screened: 0, clustered: 0, newTemplates: 0, templates: 0, unreadable: 0 };
     for (const fact of pendingErrorFacts(graph, args.limit)) {
       summary.candidates += 1;
-      const text = await blobText(fact);
+      const text = await readIndexedText(graph, { sourceId: fact.transcript_id, byteOffset: fact.byte_offset, byteLength: fact.byte_length, field: "tool_result" });
       if (text === null) {
         summary.unreadable += 1;
         continue;
       }
       if (!hasErrorSignal(PARTITION, text)) {
         summary.screened += 1;
+        graph.db.prepare("INSERT OR IGNORE INTO drain_screened VALUES (?,?,?)").run(fact.transcript_id, fact.byte_offset, fact.source_hash);
         continue;
       }
       const result = clusterer.cluster({ partition: PARTITION, text });
@@ -67,23 +67,21 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
 function pendingErrorFacts(graph: SessionGraph, limit?: number): ErrorFact[] {
   return graph.db
     .prepare(
-      `SELECT f.fact_id, f.transcript_id, f.byte_offset, f.byte_length, f.session_id, f.ts, t.source_key AS path
+      `SELECT f.fact_id, f.transcript_id, f.byte_offset, f.byte_length, f.session_id, f.ts, t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
        FROM fact f JOIN transcript t ON t.source_id = f.transcript_id
        LEFT JOIN occurrence o ON o.transcript_id = f.transcript_id AND o.byte_offset = f.byte_offset
-       WHERE f.event_type = 'tool_result_error' AND o.template_id IS NULL AND t.status = 'ok'
-       ORDER BY f.ts LIMIT ?`,
+       LEFT JOIN drain_screened d ON d.transcript_id = f.transcript_id AND d.byte_offset = f.byte_offset AND d.source_hash = COALESCE(t.content_hash,t.prefix_hash,'')
+       WHERE f.event_type = 'tool_result_error' AND o.template_id IS NULL AND d.transcript_id IS NULL AND t.status = 'ok'
+       UNION ALL
+       SELECT 0 AS fact_id,n.transcript_id,n.byte_offset,MAX(n.byte_length),n.conversation_ref AS session_id,COALESCE(MIN(n.ts),t.created_at) AS ts,t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
+       FROM normalized_event n JOIN transcript t ON t.source_id = n.transcript_id
+       LEFT JOIN occurrence o ON o.transcript_id = n.transcript_id AND o.byte_offset = n.byte_offset
+       LEFT JOIN drain_screened d ON d.transcript_id = n.transcript_id AND d.byte_offset = n.byte_offset AND d.source_hash = COALESCE(t.content_hash,t.prefix_hash,'')
+       WHERE n.kind = 'tool_result' AND n.is_error IS NOT 0 AND o.template_id IS NULL AND d.transcript_id IS NULL AND t.status = 'ok'
+       GROUP BY n.transcript_id,n.byte_offset
+       ORDER BY ts LIMIT ?`,
     )
     .all(limit ?? -1) as ErrorFact[];
-}
-
-async function blobText(fact: ErrorFact): Promise<string | null> {
-  try {
-    const line = await readLocatorText(toAbsolutePath(fact.path), [0, fact.byte_offset, fact.byte_length]);
-    const parsed = JSON.parse(line) as { message?: Record<string, unknown> };
-    return searchText(parsed.message ?? null, "tool_result");
-  } catch {
-    return null;
-  }
 }
 
 function recordOccurrence(graph: SessionGraph, fact: ErrorFact, templateId: string, maskedSignature: string, params: Record<string, string>): void {
