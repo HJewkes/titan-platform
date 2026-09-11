@@ -25,3 +25,12 @@ snapshots must not be added to response deltas.
 
 See the [multi-harness contract decision](/guides/multi-harness-contracts) for
 execution and decoder integration, compatibility boundaries and implementation order.
+
+## Execution lifecycle
+
+`ExecutionRecord`, `ExecutionTransition`, and `reduceExecutionTransition` define
+preparation, dispatch, observation, cancellation, recovery, terminal state, and
+leased ownership. Revisions and captured owner generations fence every mutation;
+terminal states are absorbing. Caller execution identity stays separate from the
+adapter invocation and native conversation identities. Persistence and event replay
+live in [`agent-lifecycle`](/reference/agent-lifecycle).

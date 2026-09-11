@@ -180,3 +180,52 @@ successful finish.
 Every run ends cleanly. The inactivity watchdog resets on each streamed message
 and, like the caller's `AbortSignal`, ends the run through the SDK's
 `abortController` and then `query.close()`, so no CLI subprocess is left behind.
+
+## Bounded Claude adapter
+
+`createClaudeCodeAdapter({ maxTurns, maxBudgetUsd, inactivityTimeoutMs?, deps? })`
+wraps the existing `runAgent` in the common `HarnessAdapter<"claude-code">`
+contract. Both native circuit breakers remain required. Every request also supplies
+`wallTimeMs`; expiration aborts and closes the owned SDK query. A local stop cannot
+prove that native execution was cancelled, so the durable dispatcher records an
+unknown cancellation unless terminal evidence is available.
+
+Fresh and resumed requests keep invocation identity separate from native session
+identity. Native options, permission settings, MCP servers, schema validation, and
+cached-auth handling flow through `runAgent`. Structured output remains validated
+by the caller's Zod schema. SDK query usage is aggregated across its main, subagent, and internal model calls
+into one turn-scoped snapshot with estimated cost. Multiple models yield a null
+model label so their totals do not overwrite each other. Total input includes cache
+reads and cache creation; those subset counters must not be added again.
+
+The adapter does not translate SDK `maxTurns` into a generic model-request or
+agent-iteration limit, or treat the SDK budget estimate as an exact monetary cap.
+Generic optional limits remain unsupported until their semantics are verified.
+No process reattachment, visible terminal, or semantic-interrupt capability is
+claimed by this wrapper. Legacy `runAgent` callers retain their existing API.
+
+## Durable harness dispatch
+
+`createDurableHarnessDispatcher(adapter, { ledger, supervisorId, leaseMs })`
+wraps either harness adapter with an early durable acknowledgment and a completion
+promise. Apply `executionLedgerMigration(version)` from
+`@titan-design/agent-lifecycle` to the authoritative database before constructing
+the ledger. Each dispatch requires caller-generated `executionId` and `requestKey`
+values. The dispatcher commits `prepare` and `begin_dispatch` before calling the
+adapter, renews its captured owner lease while the call is live, and commits the
+terminal result before resolving completion.
+
+`reconcile(executionId)` returns a live handle only in the same dispatcher instance
+while its exact owner generation and lease remain valid. After restart it can read
+back a durable terminal result. An expired record that never committed
+`begin_dispatch` is closed as a retryable failure because the ledger proves the
+adapter was not called. A missing record or any post-dispatch record without an
+attachment handle returns unknown or recovery-required evidence and never
+authorizes resubmission. The dispatcher does not infer liveness from a PID or a
+transcript.
+
+Cancellation intent is stored before the local abort signal fires. Without a
+native terminal acknowledgment after a deadline or abort, the ledger records
+`cancellation_unknown`. Lease-renewal, stale-owner, and local persistence failures
+settle completion promptly even when the adapter ignores abort; they cannot write a
+terminal result through a newer owner's fence. Durable results must be JSON-safe.

@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/workflow",
-  "version": "0.1.1",
-  "description": "Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart",
+  "name": "@titan-design/agent-lifecycle",
+  "version": "0.0.0",
+  "description": "Durable agent execution state and fenced ownership",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "packages/workflow"
+    "directory": "packages/agent-lifecycle"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
@@ -36,15 +36,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@titan-design/agent": "workspace:^",
-    "@titan-design/hitl": "workspace:^",
+    "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
-  },
-  "devDependencies": {
-    "@titan-design/agent-lifecycle": "workspace:^",
-    "zod": "^4.4.3"
-  },
-  "peerDependencies": {
-    "zod": "^4.0.0"
   }
 }

@@ -34,6 +34,10 @@
         "link": "/reference/agent"
       },
       {
+        "text": "agent-lifecycle",
+        "link": "/reference/agent-lifecycle"
+      },
+      {
         "text": "daemon",
         "link": "/reference/daemon"
       },

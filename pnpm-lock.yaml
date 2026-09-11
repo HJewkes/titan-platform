@@ -50,6 +50,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.263
         version: 0.3.263(@anthropic-ai/sdk@0.124.0(zod@4.5.4))(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(zod@4.5.4)
+      '@titan-design/agent-lifecycle':
+        specifier: workspace:^
+        version: link:../agent-lifecycle
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
@@ -57,6 +60,15 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+
+  packages/agent-lifecycle:
+    dependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
 
   packages/agent-protocol: {}
 
@@ -200,6 +212,9 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
     devDependencies:
+      '@titan-design/agent-lifecycle':
+        specifier: workspace:^
+        version: link:../agent-lifecycle
       zod:
         specifier: ^4.4.3
         version: 4.5.4

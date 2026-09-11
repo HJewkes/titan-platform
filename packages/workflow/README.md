@@ -1,81 +1,124 @@
 # @titan-design/workflow
 
-Durable, imperative workflows. You write an ordinary async function that calls
-`dispatch`, `seed`, and `assisted`; every call is memoized in SQLite, so after a crash
-or restart the function re-runs from the top and resumes exactly where it stopped.
-Human-in-the-loop pauses are durable gates, resolvable from any process.
+Durable imperative workflows backed by SQLite. A workflow is an ordinary async
+function that calls `dispatch`, `seed`, and `assisted`. Completed calls are
+memoized, so replay starts at the function entry without repeating committed
+work. Human gates and in-flight execution identities survive process restarts.
 
 Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `agent`, and `hitl`.
-Ported from brain's bespoke SQLite runtime (TP-12) with its PM, template, and
-process-polling couplings turned into injectable seams.
 
 ```ts
-import { WorkflowRuntime, agentRunner, workflowMigration } from "@titan-design/workflow";
+import {
+  WorkflowRuntime,
+  agentRunner,
+  workflowMigration,
+  workflowOwnershipMigration,
+} from "@titan-design/workflow";
 import { SqliteGateStore, gateMigration } from "@titan-design/hitl";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 
 const db = openDatabase("state.sqlite3");
-runMigrations(db, [gateMigration(1), workflowMigration(2)]);
+runMigrations(db, [
+  gateMigration(1),
+  workflowMigration(2),
+  workflowOwnershipMigration(3),
+]);
 
 const runtime = new WorkflowRuntime({
   db,
   gates: new SqliteGateStore(db, { migrate: false }),
   runner: agentRunner({ cwd: repo, maxTurns: 40, maxBudgetUsd: 5 }),
-  onEvent: (e) => console.log(e.type, e),
+  onEvent: (event) => console.log(event.type, event),
 });
 
 runtime.register("review", async (ctx) => {
   const plan = await ctx.dispatch("plan", "Plan {{brief}}.");
-  if (plan.signal === "needs_revision") await ctx.dispatch("plan", "Revise: {{STEP_OUTPUT_PLAN}}");
-  const ok = await ctx.assisted("approve", "Ship it?");
-  if (ok.signal === "approved") await ctx.dispatch("ship", "Ship {{STEP_OUTPUT_PLAN}}");
+  if (plan.signal === "needs_revision") {
+    await ctx.dispatch("plan", "Revise: {{STEP_OUTPUT_PLAN}}");
+  }
+  const approval = await ctx.assisted("approve", "Ship it?");
+  if (approval.signal === "approved") {
+    await ctx.dispatch("ship", "Ship {{STEP_OUTPUT_PLAN}}");
+  }
 });
 
 const runId = runtime.start("review", { brief: "the thing" });
-await runtime.hydrate(); // after a restart: resumes every running or paused run
-runtime.signal(runId, "approve", { signal: "approved" }); // from a CLI, MCP tool, dashboard
+await runtime.hydrate();
+runtime.signal(runId, "approve", { signal: "approved" });
 ```
 
-## The three step kinds
+## Database upgrade
 
-- `dispatch(stepId, template, { model?, vars? })` renders the template (`{{VAR}}` over the
-  run's params, `STEP_OUTPUT_<STEP>`, `PREVIOUS_STEP_OUTPUTS`, `WORKFLOW_NAME`, …), hands
-  the prompt to the `StepRunner`, and parses a signal from the output. Results are keyed
-  `stepId:iteration`, so calling the same step again in a loop is a new iteration and
-  `ctx.iteration(stepId)` is the loop guard. A retryable runner failure is re-dispatched
-  once (`maxRetries`); anything else fails the run.
-- `seed(stepId, fn)` runs a deterministic function once; its `data` merges into the
-  params for later prompts.
-- `assisted(stepId, prompt)` opens a gate with id `<runId>/<stepId>` and waits. The row
-  survives restarts; `runtime.signal(runId, stepId, payload)` resolves it from anywhere.
-  A `signal` field in the payload becomes the step's signal.
+`workflowMigration` creates new tables with revision and ownership columns.
+Applications that already ran an earlier `workflowMigration` must append
+`workflowOwnershipMigration` at the next unused database migration version.
+Keep the original migration in the list; do not replace or renumber it.
 
-## Runners
+```ts
+runMigrations(db, [
+  gateMigration(1),
+  workflowMigration(2),          // may already be recorded
+  workflowOwnershipMigration(3), // additive upgrade for existing tables
+]);
+```
 
-`agentRunner({ cwd, maxTurns, maxBudgetUsd })` runs each step as one headless Claude Code
-session via `@titan-design/agent`. Rate limits, runtime errors, and inactivity are
-retryable; budget, auth, refusal, and schema failures are not. `inlineRunner(fn)` is for
-tests and for steps that are not agents. Implement `StepRunner` yourself for a queue or a
-subprocess; add `attach(step)` if your runner can re-join work started before a restart,
-otherwise `hydrate()` re-dispatches it.
+The ownership migration is idempotent at the schema level, so using the same
+sequence for new and upgraded databases is supported. A custom run table name
+must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
 
-## Signals
+## Step kinds
 
-`<!-- signal: needs_revision -->` in the output is authoritative. Without a marker, the
-default patterns recognize the verdict conventions brain's prompts use (`Verdict: PASS`,
-`NEEDS REVISION`, `Risk Score: 5`, …). Pass `parseSignal: createSignalParser(patterns)` to
-use your own.
+- `dispatch(stepId, template, { model?, vars? })` renders a prompt, asks the
+  runner to execute it, and parses a signal from the output. Results use the key
+  `stepId:iteration`. Retry attempts persist their attempt number and get a new
+  execution ID and request key.
+- `seed(stepId, fn)` runs deterministic work once and merges its data into the
+  workflow parameters.
+- `assisted(stepId, prompt)` opens the durable gate `<runId>/<stepId>` and waits
+  for `runtime.signal` to resolve it.
 
-## Lifecycle
+`<!-- signal: needs_revision -->` in runner output is authoritative. The default
+parser also recognizes common verdict text. Pass a custom `parseSignal` to
+change those conventions.
 
-`start` persists the run and launches it; `wait` resolves when it finishes; `status` and
-`list` read state; `cancel` aborts the runner through its `AbortSignal`, cancels the run's
-pending gates, and marks the row `cancelled`. Events (`step_started`, `step_complete`,
-`step_retry`, `step_failed`, `gate_opened`, `workflow_*`) go to `onEvent`; brain pushed
-these over an MCP channel, and that adapter belongs to the product.
+## Execution recovery
 
-## What stayed in brain
+`RecoverableStepRunner` is the durable runner contract. `dispatch` receives a
+persisted `executionId`, deterministic `requestKey`, and attempt number. It must
+return an acknowledgment containing the same IDs, a `runnerRef`, and a terminal
+completion promise. The runtime persists the intent before dispatch and the
+acknowledgment before it awaits completion.
 
-PM task claiming and release on failure, prompt rendering from PM notes, model routing by
-turn complexity, `.plans/` output files, and the agent-process reconciler. Each maps onto a
-seam here: `onEvent`, `render`, `DispatchOptions.model`, and `StepRunner.attach`.
+After restart, `hydrate` claims each workflow row and calls `reconcile` for every
+active recoverable step. A terminal or running result resumes replay. A
+`not_found` result permits a new attempt only when `retrySafe` is true.
+`unknown`, `ownership_lost`, unsafe absence, rejection, and timeout persist
+`recovery_required` with the active intent intact. Calling `hydrate` later tries
+reconciliation again, which allows a temporarily unavailable ledger to recover
+without redispatching unknown work.
+
+`durableHarnessRunner` adapts a durable harness dispatcher from
+`@titan-design/agent` to this handshake. `agentRunner` and `inlineRunner` remain
+legacy live runners. The deprecated optional `LegacyStepRunner.attach` can
+return a confirmed terminal result after restart; missing or failed attachment
+requires recovery. Legacy work is never automatically redispatched after an
+unsafe restart.
+
+## Ownership and cancellation
+
+Each live runtime claims a workflow with a leased owner generation and advances
+the row revision on every write. Saves, renewals, and release use both values as
+a fence, so a stale callback cannot overwrite a newer owner. Configure
+`runtimeId`, `leaseMs`, and `reconcileTimeoutMs` when the defaults do not fit the
+host. Lease and timeout values must be positive safe integer milliseconds.
+
+`cancel` first persists `cancelling`, then aborts live work and pending gates. A
+confirmed cancellation becomes `cancelled`. A success that wins the race is
+memoized before the workflow is finalized as cancelled. If the runner cannot
+confirm cancellation, the row becomes `recovery_required` and retains its
+active execution evidence.
+
+`start` creates and claims a run; `wait` observes a live completion; `status`
+and `list` read durable state. `shutdown` aborts callbacks and releases leases.
+Events include step starts, completions, retries, failures, gate activity,
+terminal workflow states, and `workflow_recovery_required`.

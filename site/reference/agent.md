@@ -136,3 +136,23 @@ with an explicit model and mandatory wall deadline. The installed version is che
 before launch. `runAgent` retains its existing Claude behavior.
 
 See the [contract decision](/guides/multi-harness-contracts) for the staged migration.
+
+## Durable dispatch
+
+`createClaudeCodeAdapter({ maxTurns, maxBudgetUsd })` exposes the existing Claude
+SDK runner through the common bounded harness API. Native circuit breakers remain
+mandatory; a local wall deadline aborts and closes the owned query. Generic optional
+limits are rejected until their units and enforcement are verified.
+
+`createDurableHarnessDispatcher(adapter, { ledger, supervisorId, leaseMs })` wraps
+either Claude or Codex. Each dispatch takes a caller-generated execution ID and
+request key and returns a durable acknowledgment plus a separate completion promise.
+Use the [`agent-lifecycle`](/reference/agent-lifecycle) migration and ledger in
+product-owned authoritative state. Results must be JSON-safe.
+
+Same-instance reconciliation can return a live completion handle while its exact
+owner generation remains valid. After restart, terminal ledger results are readable;
+uncertain native state requires recovery. A local deadline or abort without native
+terminal evidence is `cancellation_unknown`. No transport reattachment or PID-based
+ownership is inferred. [`durableHarnessRunner`](/reference/workflow#execution-recovery)
+provides the workflow bridge.
