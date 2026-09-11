@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/hitl",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Human-in-the-loop gate()/resolve() primitive",
   "type": "module",
   "main": "./dist/index.js",

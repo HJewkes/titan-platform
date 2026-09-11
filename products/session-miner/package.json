@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-miner",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP",
   "type": "module",
   "main": "./dist/index.js",

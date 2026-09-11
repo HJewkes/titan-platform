@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-graph",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Fold session events into the activity graph on store-sqlite",
   "type": "module",
   "main": "./dist/index.js",
