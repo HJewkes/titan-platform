@@ -120,6 +120,34 @@ says. Prefer `allowedTools` wildcards over a permissive mode.
 This package runs one session. It does not pool, schedule, or retry; that
 belongs to the workflow tier.
 
+## Explicit multi-harness contracts
+
+`dispatchHarnessRun(request, adapter)` is the new, explicit contract for Claude
+Code and Codex adapters. It does not replace or reroute `runAgent()`. Every request
+has a discriminating `harness`, a fresh or resume target, and a required positive
+finite `wallTimeMs`. Claude's Anthropic SDK fields live only under the
+`claude-code` branch; Codex model, reasoning, sandbox, approval, and native JSON
+Schema fields live only under the `codex` branch.
+
+Optional limits name their unit (`usd`, `model_requests`, `agent_iterations`, or
+`tokens`), scope (`execution` or `conversation`), and enforcement (`hard` or
+`advisory`). These are not interchangeable: an agent iteration is not a model
+request, and an estimated SDK dollar stop is not a hard financial cap.
+
+Adapters supply a `HarnessCapabilityDescriptor` that marks every operation and
+declared limit `supported`, `unsupported`, or `unverified`, with evidence or a
+reason. Core declares no adapter capabilities itself. Before invoking an adapter,
+the dispatcher checks the operation, resume identity, structured-output and
+cancellation needs, caller requirements, mandatory hard execution deadline, and
+all optional limits. Unsupported and unverified requirements return an
+`unsupported_requirement` result with no adapter call.
+
+Support for the hard `milliseconds` execution limit means the adapter can stop
+the local execution at its deadline. It does not claim that a remote model request
+has stopped unless the adapter separately reports verified cancellation support.
+Normalized progress, results, usage measurements, execution identity, conversation
+identity, and transcript source hints contain no harness-native event types.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message

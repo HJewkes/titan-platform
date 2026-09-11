@@ -27,7 +27,7 @@ higher tier, never upward.
 
 | Tier | Packages | Role |
 |---|---|---|
-| 0 | store-sqlite, locator, cluster, embed | domain-free primitives |
+| 0 | store-sqlite, locator, cluster, embed, agent-protocol | primitives and shared wire contracts |
 | 1 | retrieval, agent, registry, daemon, hitl | engines |
 | 2 | session-read, session-graph, code-graph, memory, workflow | domain modules |
 | ui | ui | generic dashboard kit |

@@ -11,7 +11,8 @@ Domain-free building blocks. No titan dependencies.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`cluster`](/reference/cluster) | Deterministic Drain template mining with optional DeepParse bootstrap | none |
+| [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
+| [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |
@@ -22,7 +23,7 @@ Reusable machinery over the primitives.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`agent`](/reference/agent) | Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets | none |
+| [`agent`](/reference/agent) | Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets | `agent-protocol` |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `store-sqlite` |
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | none |
@@ -37,7 +38,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `cluster`, `locator`, `session-read`, `store-sqlite` |
-| [`session-read`](/reference/session-read) | Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators | `locator` |
+| [`session-read`](/reference/session-read) | Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol` |
 | [`workflow`](/reference/workflow) | Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart | `agent`, `hitl`, `store-sqlite` |
 
 ## UI

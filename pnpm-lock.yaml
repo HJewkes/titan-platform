@@ -50,10 +50,15 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.263
         version: 0.3.263(@anthropic-ai/sdk@0.124.0(zod@4.5.4))(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(zod@4.5.4)
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
     devDependencies:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+
+  packages/agent-protocol: {}
 
   packages/cluster: {}
 
@@ -163,6 +168,9 @@ importers:
 
   packages/session-read:
     dependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
