@@ -87,7 +87,14 @@ export interface NormalizedTextPart {
   locator: SourceTextLocator;
 }
 
+/** Native source fields retained without assigning portable semantics. */
+export interface NormalizedNativeExtension {
+  name: string;
+  value: unknown;
+}
+
 export interface NormalizedObservationBase {
+  nativeExtensions?: readonly NormalizedNativeExtension[];
   id: ObservationIdentity;
   /** Conversation represented by the physical source. */
   conversation: ConversationIdentity;

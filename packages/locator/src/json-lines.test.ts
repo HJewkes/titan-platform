@@ -52,3 +52,22 @@ describe("readJsonLines", () => {
     expect(await collect(file)).toEqual([]);
   });
 });
+
+
+it("can reject malformed UTF-8 instead of manufacturing source evidence", async () => {
+  const file = path.join(dir, "invalid.jsonl");
+  writeFileSync(file, Buffer.concat([Buffer.from('{"text":"'), Buffer.from([0xff]), Buffer.from('"}\n')]));
+  expect((await collect(file))[0]?.text).toContain("�");
+  const strict = async () => { for await (const line of readJsonLines(file, 0, { strictUtf8: true })) void line; };
+  await expect(strict()).rejects.toThrow();
+});
+
+
+it("retains a UTF-8 BOM in strict text so evidence hashes still match the bytes", async () => {
+  const file = path.join(dir, "bom.jsonl");
+  writeFileSync(file, '\ufeff{"a":1}\n');
+  const strict: RawLine[] = [];
+  for await (const line of readJsonLines(file, 0, { strictUtf8: true })) strict.push(line);
+  expect(strict[0]?.text.charCodeAt(0)).toBe(0xfeff);
+  expect(Buffer.byteLength(strict[0]!.text)).toBe(strict[0]!.byteLength);
+});

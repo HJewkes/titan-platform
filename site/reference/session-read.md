@@ -108,3 +108,15 @@ or resume validated checkpoints. Usage distinguishes response deltas from snapsh
 protect readback; prefix replay preserves model, usage and projection state across
 chunks. The existing Claude reader remains available. See the
 [contract decision](/guides/multi-harness-contracts) for compatibility and migration.
+
+## Graph-free consumer views
+
+The normalized reader dispatches both Claude and Codex source descriptors through
+`readSessionObservations`. `findClaudeSessionSource` supports exact conversation
+lookup, while `readRecentSessionTurns` provides an independently bounded tail with
+explicit truncation and unknown-field reporting. Whole-source prefix replay and
+bounded tail reading have different guarantees.
+
+`SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
+usage without a database. `SessionUsageAccumulator` is shared with graph queries;
+response deltas, reset epochs and unknown token categories retain their semantics.
