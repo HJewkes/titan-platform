@@ -43,3 +43,77 @@ describe("SpanFtsTables", () => {
     expect(fts.orphanRatio()).toBe(0);
   });
 });
+
+describe("SpanFtsTables scope", () => {
+  /** Two classes of owner, one of them far larger, which is the situation scope exists for. */
+  function crowded(): SpanFtsTables {
+    const db = openDatabase(":memory:");
+    db.exec(spanFtsTablesDdl());
+    const fts = new SpanFtsTables(db);
+    fts.index({ ownerRef: "note:a", field: "body", sourceId: 1, byteOffset: 0, byteLength: 10 }, "alpha note");
+    fts.index({ ownerRef: "note:b", field: "title", sourceId: 1, byteOffset: 10, byteLength: 10 }, "alpha title");
+    for (let i = 0; i < 40; i++) {
+      fts.index({ ownerRef: `session:s${i}`, field: "tool_result", sourceId: 2, byteOffset: i * 10, byteLength: 10 }, "alpha alpha alpha");
+    }
+    // Same `session:` prefix as the transcript spans above, different field.
+    fts.index({ ownerRef: "session:s0", field: "body", sourceId: 3, byteOffset: 0, byteLength: 10 }, "alpha record");
+    return fts;
+  }
+
+  it("returns one class's own top-N rather than what survives a global top-N", () => {
+    const fts = crowded();
+    // Unscoped, the 40 transcript spans outrank both notes and crowd them out.
+    expect(fts.search("alpha", 5).every((h) => h.ownerRef.startsWith("session:"))).toBe(true);
+
+    const notes = fts.search("alpha", 5, { ownerPrefix: "note:" });
+    expect(notes.map((h) => h.ownerRef).sort()).toEqual(["note:a", "note:b"]);
+  });
+
+  it("separates two classes that share an owner prefix, which a prefix alone cannot", () => {
+    // active-work keys a mined transcript and a workspace session record both
+    // under `session:`. Prefix-only, the record is buried under 40 transcripts.
+    const fts = crowded();
+
+    const records = fts.search("alpha", 10, { ownerPrefix: "session:", fields: ["body"] });
+    expect(records.map((h) => h.ownerRef)).toEqual(["session:s0"]);
+    expect(records[0]!.sourceId).toBe(3);
+
+    const transcripts = fts.search("alpha", 50, { ownerPrefix: "session:", fields: ["tool_result"] });
+    expect(transcripts).toHaveLength(40);
+    expect(transcripts.every((h) => h.field === "tool_result")).toBe(true);
+  });
+
+  it("treats fields and prefix as independent, and an empty field list as matching nothing", () => {
+    const fts = crowded();
+
+    expect(fts.search("alpha", 50, { fields: ["title"] }).map((h) => h.ownerRef)).toEqual(["note:b"]);
+    expect(fts.search("alpha", 50, { fields: [] })).toEqual([]);
+    // An empty prefix means every owner, which is what omitting it already means.
+    expect(fts.search("alpha", 50, { ownerPrefix: "" })).toHaveLength(43);
+  });
+
+  it("does not let a prefix bleed into the next class", () => {
+    const db = openDatabase(":memory:");
+    db.exec(spanFtsTablesDdl());
+    const fts = new SpanFtsTables(db);
+    // `note:` and `notebook:` share a prefix up to the colon; a sloppy range
+    // upper bound would return both.
+    fts.index({ ownerRef: "note:a", field: "body", sourceId: 1, byteOffset: 0, byteLength: 5 }, "alpha");
+    fts.index({ ownerRef: "notebook:a", field: "body", sourceId: 1, byteOffset: 5, byteLength: 5 }, "alpha");
+
+    expect(fts.search("alpha", 10, { ownerPrefix: "note:" }).map((h) => h.ownerRef)).toEqual(["note:a"]);
+    expect(fts.search("alpha", 10, { ownerPrefix: "note" }).map((h) => h.ownerRef).sort()).toEqual(["note:a", "notebook:a"]);
+  });
+
+  it("reuses one prepared statement per scope shape, not per query", () => {
+    const fts = crowded();
+    const statements = () => (fts as unknown as { scopedSearchStmts: Map<string, unknown> }).scopedSearchStmts.size;
+
+    fts.search("alpha", 5, { ownerPrefix: "note:" });
+    fts.search("beta", 5, { ownerPrefix: "session:" });
+    expect(statements()).toBe(1);
+
+    fts.search("alpha", 5, { ownerPrefix: "session:", fields: ["body"] });
+    expect(statements()).toBe(2);
+  });
+});
