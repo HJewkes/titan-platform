@@ -4,6 +4,10 @@
     "collapsed": false,
     "items": [
       {
+        "text": "agent-protocol",
+        "link": "/reference/agent-protocol"
+      },
+      {
         "text": "cluster",
         "link": "/reference/cluster"
       },

@@ -8,6 +8,9 @@
   parameters in one module so every call site stays unchanged. The single idea most worth
   reading before you adopt anything.
 
+- **[Multi-harness contracts](/guides/multi-harness-contracts)** — the additive Claude/Codex
+  contracts and the compatibility migration required before mixed-session ingestion.
+
 ## End-to-end stories
 
 - **[Case study: the session miner](/guides/session-miner)** — ten packages composed into

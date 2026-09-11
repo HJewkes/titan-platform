@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/session-read",
-  "version": "0.2.0",
-  "description": "Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators",
+  "name": "@titan-design/agent-protocol",
+  "version": "0.0.0",
+  "description": "Harness-neutral identity and usage contracts for execution and session readers",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "packages/session-read"
+    "directory": "packages/agent-protocol"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
@@ -34,9 +34,5 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
-  },
-  "dependencies": {
-    "@titan-design/locator": "workspace:^",
-    "@titan-design/agent-protocol": "workspace:^"
   }
 }

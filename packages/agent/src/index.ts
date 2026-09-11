@@ -1,6 +1,37 @@
 export type { AgentRunDeps } from "./run.js";
 export { DEFAULT_INACTIVITY_MS, runAgent } from "./run.js";
 export type {
+  BoundedRunBase,
+  CapabilityAssessment,
+  ClaudeCodeNativeOptions,
+  ClaudeCodeRunRequest,
+  CodexNativeOptions,
+  CodexOutputSchema,
+  CodexApprovalPolicy,
+  CodexRunRequest,
+  CodexSandbox,
+  ExecutionCapability,
+  ExecutionLimit,
+  Harness,
+  HarnessAdapter,
+  HarnessCapabilityDescriptor,
+  HarnessRunFailure,
+  HarnessRunOutput,
+  HarnessRunProgress,
+  HarnessRunRequest,
+  HarnessRunRequestFor,
+  HarnessRunResult,
+  LimitCapability,
+  LimitEnforcement,
+  LimitScope,
+  LimitUnit,
+  OptionalLimitUnit,
+  RunTarget,
+  TranscriptSourceHint,
+} from "./harness-contracts.js";
+export { CODEX_APPROVAL_POLICIES, CODEX_SANDBOXES, EXECUTION_CAPABILITIES } from "./harness-contracts.js";
+export { dispatchHarnessRun, preflightHarnessRun } from "./preflight.js";
+export type {
   AgentFailure,
   AgentFailureKind,
   AgentInit,

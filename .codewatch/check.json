@@ -9,7 +9,8 @@
           "packages/store-sqlite",
           "packages/locator",
           "packages/cluster",
-          "packages/embed"
+          "packages/embed",
+          "packages/agent-protocol"
         ],
         "1": [
           "packages/retrieval",
@@ -35,7 +36,8 @@
           "packages/store-sqlite",
           "packages/locator",
           "packages/cluster",
-          "packages/embed"
+          "packages/embed",
+          "packages/agent-protocol"
         ],
         [
           "packages/retrieval",

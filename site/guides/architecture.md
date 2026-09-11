@@ -3,7 +3,7 @@
 ## The rule
 
 A package may import only packages in its own tier or a lower one. Never sideways across a
-higher tier, never upward. That single constraint is what keeps fourteen packages from
+higher tier, never upward. That single constraint is what keeps the packages from
 collapsing back into the one big system they were extracted from.
 
 It is not a convention. `.codewatch/check.json` lists every package under a tier, and CI
@@ -22,6 +22,7 @@ graph TD
     locator["locator"]
     clusterpkg["cluster"]
     embed["embed"]
+    protocol["agent-protocol"]
   end
   subgraph T1["Tier 1 · engines"]
     retrieval["retrieval"]
@@ -45,6 +46,8 @@ graph TD
   retrieval --> embed
   daemon --> registry
   hitl --> store
+  agent --> protocol
+  sessionread --> protocol
   sessionread --> locator
   sessiongraph --> sessionread
   sessiongraph --> store
@@ -64,15 +67,16 @@ graph TD
 ```
 
 `daemon --> registry` is the only same-tier edge, and it is legal: a package may import its
-own tier. `agent`, `registry`, `cluster`, `locator`, `store-sqlite`, and `embed` have no
+own tier. `agent-protocol`, `registry`, `cluster`, `locator`, `store-sqlite`, and `embed` have no
 titan dependencies at all, which is why any of them can be adopted on its own.
 
 ## What each tier means
 
-**Tier 0, primitives.** Domain-free. `store-sqlite` knows about tables, not about sessions.
+**Tier 0, primitives and wire contracts.** No product policy. `store-sqlite` knows about tables, not about sessions.
 `locator` knows about byte offsets, not about transcripts. `cluster` knows about masked
 token sequences, not about Bash. `embed` knows about vectors. None of them can name a
-concept from any product, which is what makes them safe to depend on everywhere.
+concept specific to any product. `agent-protocol` shares identity and usage vocabulary
+without importing a harness SDK or runtime. See the [multi-harness ADR](/guides/multi-harness-contracts).
 
 **Tier 1, engines.** Reusable machinery with a real job but no subject matter.
 `retrieval` fuses ranked lists; it does not know that the things ranked are transcripts.

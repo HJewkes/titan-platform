@@ -52,6 +52,30 @@ Files and branches are attributed to the nearest `.git` ancestor of the path or 
 command's effective cwd (`cd …` and `git -C …` are honored), named from the origin remote.
 Anything outside a working tree stays unattributed rather than guessed.
 
+## Multi-harness contracts
+
+The additive normalized contracts describe transcript sources and semantic observations
+without changing the existing Claude reader. `SessionSourceDescriptor` keeps the harness,
+format/version, physical path, source namespace, and native `ConversationIdentity`
+separate. Observations carry line plus subrecord evidence, so one JSONL line can yield
+multiple messages, calls, results, usage rows, or metadata records without sharing an ID.
+
+Native turn, call, item, and response IDs use `ScopedConversationItemId`; their stable refs
+include harness, namespace, conversation, and category. Codex `sessionTreeId` remains source
+provenance and never replaces the child thread's conversation ID. Usage observations retain
+the protocol package's delta-versus-snapshot semantics, including response deduplication and
+snapshot epoch/sequence fields.
+
+`SessionFormatDecoder` streams observations through an emitter while supporting prefix replay
+and versioned checkpoints. Reading may begin before the emission boundary to rebuild state,
+while the verified boundary determines which observations are emitted. Its text resolver
+accepts only a `SourceTextLocator` selecting a semantic subrecord; it does not expose a
+whole-JSON-line readback path.
+
+Legacy refs stay opt-in. `sessionRef(id)` is unchanged, and
+`legacyClaudeSessionRef(source)` returns one only when the source carries explicit
+`claude-code-transcript` provenance.
+
 ## What stayed behind
 
 active-work's writer, rollups, PR reconciliation, quarantine, and scheduler are storage

@@ -1,6 +1,6 @@
 # agent
 
-**Tier 1 · engines.** No titan dependencies. Depends on `@anthropic-ai/claude-agent-sdk`;
+**Tier 1 · engines.** Depends on [`agent-protocol`](/reference/agent-protocol) and `@anthropic-ai/claude-agent-sdk`;
 `zod` v4 is a peer.
 
 ```sh
@@ -126,3 +126,12 @@ the caller's `AbortSignal`, ends the run through the SDK's `abortController` and
 
 brain's `agent-submission` spike (925 tested lines), rather than its PM-tangled production
 path.
+
+## Shared harness contracts
+
+The additive `HarnessAdapter`, `HarnessRunRequest` and `dispatchHarnessRun` API
+separates Claude and Codex native options and checks declared capabilities and limits
+before invoking an adapter. TP-44 supplies contracts and preflight only: no Codex
+adapter is included, and `runAgent` retains its existing behavior.
+
+See the [contract decision](/guides/multi-harness-contracts) for the staged migration.

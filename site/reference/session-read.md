@@ -1,6 +1,6 @@
 # session-read
 
-**Tier 2 · domain.** Depends on [`locator`](/reference/locator).
+**Tier 2 · domain.** Depends on [`locator`](/reference/locator) and [`agent-protocol`](/reference/agent-protocol).
 
 ```sh
 npm install @titan-design/session-read
@@ -96,3 +96,13 @@ shape is the fastest way to get a confusing NOT NULL failure downstream.
 active-work's session miner (the AW-23 line handler). The writer, rollups, PR reconciliation,
 quarantine, and scheduler stayed behind as storage concerns and became
 [`session-graph`](/reference/session-graph).
+
+## Normalized decoder contracts
+
+`SessionFormatDecoder` defines streaming observations with conversation-scoped IDs,
+source bytes and semantic subrecord selectors. Stateful formats can replay prefixes
+or resume validated checkpoints. Usage distinguishes response deltas from snapshots.
+
+These are additive contracts; this release does not implement a Codex decoder or
+change the existing Claude reader and graph rows. See the
+[contract decision](/guides/multi-harness-contracts) for compatibility and migration.
