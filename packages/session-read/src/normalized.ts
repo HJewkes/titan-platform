@@ -30,6 +30,8 @@ export interface SourceLineEvidence {
   sourceId: string;
   byteOffset: number;
   byteLength: number;
+  /** SHA-256 of the exact line bytes, excluding its newline. */
+  contentHash: string;
   lineNumber: number | null;
   nativeOrdinal: number | null;
 }
@@ -89,6 +91,8 @@ export interface NormalizedObservationBase {
   id: ObservationIdentity;
   /** Conversation represented by the physical source. */
   conversation: ConversationIdentity;
+  /** Active native turn when the source format provides one. */
+  turn?: ScopedConversationItemId<"turn"> | null;
   /** Set when copied history originated in a different conversation. */
   historyOrigin: ConversationIdentity | null;
   timestamp: string | null;

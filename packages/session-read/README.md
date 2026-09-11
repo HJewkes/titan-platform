@@ -76,6 +76,28 @@ Legacy refs stay opt-in. `sessionRef(id)` is unchanged, and
 `legacyClaudeSessionRef(source)` returns one only when the source carries explicit
 `claude-code-transcript` provenance.
 
+## Codex rollouts
+
+`discoverCodexSources({ codexHome, namespace })` scans both `sessions/` and
+`archived_sessions/`. It reads conversation identity from `session_meta`; a filename stem
+never substitutes for the native thread ID. Source IDs include namespace, thread, and
+rollout filename, so moving an identical rollout between active and archived storage keeps
+its identity while distinct files for one thread remain separate. Divergent files that
+claim the same source ID raise `CodexSourceCollisionError`.
+
+`readCodexObservations(source, { from }, onDone)` streams normalized observations. It
+replays the prefix to recover turn/model context, validates a prior boundary hash, and
+restarts from zero after a rewrite. Incomplete final lines remain before the returned
+boundary. Raw `response_item` messages take precedence over matching `event_msg`
+projections; unmatched projections become explicit fallbacks at a turn boundary. Response
+usage is emitted as idempotent deltas, while turn/thread totals remain ordered snapshots in
+reset epochs.
+
+`readCodexText(locator, { sources })` resolves moved sources by stable source ID and checks
+the exact source-line hash before returning the selected value. `readSessionText({ path,
+byteOffset, byteLength, field })` provides the corresponding legacy Claude field projection
+for miner consumers.
+
 ## What stayed behind
 
 active-work's writer, rollups, PR reconciliation, quarantine, and scheduler are storage

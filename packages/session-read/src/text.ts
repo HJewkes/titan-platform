@@ -45,7 +45,30 @@ export function stringLeaves(value: unknown, out: string[], depth = 0): void {
     return;
   }
   const object = asObject(value);
-  if (object) for (const item of Object.values(object)) stringLeaves(item, out, depth + 1);
+  if (!object) return;
+  if (isTextBlock(object)) {
+    stringLeaves(object.text, out, depth + 1);
+    return;
+  }
+  for (const item of Object.values(object)) stringLeaves(item, out, depth + 1);
+}
+
+/** Bounded semantic text projection shared by normalized indexing and locator readback. */
+export function normalizedSearchText(value: unknown): string {
+  if (Array.isArray(value) && value.every(item => {
+    const block = asObject(item);
+    return block && ["text", "input_text", "output_text"].includes(String(block.type)) && typeof block.text === "string";
+  })) return value.map(item => (item as { text: string }).text).join("\n").slice(0, SPAN_TEXT_CAP);
+  const leaves: string[] = [];
+  stringLeaves(value, leaves);
+  return leaves.join("\n").slice(0, SPAN_TEXT_CAP);
+}
+
+function isTextBlock(value: Json): value is Json & { text: string } {
+  return (
+    (value.type === "input_text" || value.type === "output_text" || value.type === "text") &&
+    typeof value.text === "string"
+  );
 }
 
 /** A `tool_result` block's content is either a bare string or text blocks. */
