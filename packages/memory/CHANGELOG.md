@@ -1,5 +1,14 @@
 # @titan-design/memory
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [8153dd8]
+- Updated dependencies [8153dd8]
+  - @titan-design/retrieval@0.2.0
+  - @titan-design/store-sqlite@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
