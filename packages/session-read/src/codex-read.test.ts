@@ -296,3 +296,21 @@ function usage(input: number, output: number) {
     total_tokens: input + output,
   };
 }
+
+it("rejects invalid-byte rewrites even when lossy UTF-8 would preserve displayed text", async () => {
+  records.push({ type: "response_item", payload: { type: "message", role: "assistant",
+    content: [{ type: "output_text", text: "replacement �" }] } });
+  const original = Buffer.from(renderCodexRollout(records));
+  writeFileSync(filePath, original);
+  const { observations } = await collect(source);
+  const message = observations.find((observation): observation is NormalizedMessageObservation =>
+    observation.kind === "message" && observation.content.some(part => part.text === "replacement �"))!;
+  const locator = message.content[0]!.locator;
+  expect(await readCodexText(locator)).toBe("replacement �");
+  const corrupted = Buffer.from(original);
+  corrupted.set([0xf0, 0x90, 0x80], corrupted.indexOf(Buffer.from("�")));
+  expect(corrupted.toString("utf8")).toBe(original.toString("utf8"));
+  writeFileSync(filePath, corrupted);
+  expect(await readCodexText(locator)).toBeNull();
+  await expect(collect(source)).rejects.toThrow();
+});

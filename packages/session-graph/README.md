@@ -93,3 +93,10 @@ reclassified. `resolveConversationAlias` rejects ambiguous aliases. Original sou
 files are not needed to migrate. Back up the database before upgrading; restoring
 that backup is the rollback path for an older binary. Explicit `resetIndex` remains a
 destructive rebuild and requires the original sources; it is never run by migration.
+
+For snapshot-only usage across multiple physical sources, queries select one source
+by latest native usage timestamp, then greatest usage-record coverage and stable
+source ID. Source-local reset epochs cannot safely be summed across copies. This is
+a conservative projection, not a claim of complete usage across disjoint partial
+sources. Response deltas still deduplicate across sources by native response ID.
+Codex commit/push analytics are currently unreported (`null`), rather than zero.

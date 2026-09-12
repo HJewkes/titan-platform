@@ -32,6 +32,7 @@ export type {
   NormalizedCompactionObservation,
   NormalizedLineageObservation,
   NormalizedMessageObservation,
+  NormalizedNativeExtension,
   NormalizedMetadataObservation,
   NormalizedNativeTurnObservation,
   NormalizedObservationBase,
@@ -55,3 +56,19 @@ export type {
   SourceTextLocator,
 } from "./normalized.js";
 export { legacyClaudeSessionRef, scopedConversationItemRef } from "./normalized.js";
+
+export { SessionUsageAccumulator } from "./session-usage.js";
+export type { SessionUsageSummary } from "./session-usage.js";
+export { SessionSummaryAccumulator, summarizeSession } from "./session-summary.js";
+export type { SessionSummary, SessionToolSummary } from "./session-summary.js";
+export { CLAUDE_TRANSCRIPT_FORMAT, claudeProjectSlug, claudeSourceId, findClaudeSessionSource, assertClaudeSessionSource } from "./claude-source.js";
+export type { FindClaudeSessionSourceInput, SessionSourceLookup } from "./claude-source.js";
+export { CLAUDE_DECODER_ID, CLAUDE_CHECKPOINT_VERSION, ClaudeTranscriptDecoder } from "./claude-decoder.js";
+export { readClaudeObservations, readClaudeText } from "./claude-read.js";
+export type { ReadClaudeTextOptions } from "./claude-read.js";
+export { readSessionObservations, readSessionSourceText } from "./session-observations.js";
+export type { ReadSessionObservationOptions, ReadSessionSourceTextOptions, SessionObservationReadResult } from "./session-observations.js";
+export { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-session-turns.js";
+export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionReadError, RecentSessionTurn,
+  RecentSessionTurns, RecentSessionUnknown, RecentTurnKind, RecentTurnRepresentation, RecentTurnRole,
+  RecentUnknownReason } from "./recent-session-turns.js";

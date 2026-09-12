@@ -20,16 +20,17 @@ const NEWLINE = 0x0a;
  * watermark advanced to `byteOffset + byteLength + 1` never lands mid-record.
  * `startOffset` must therefore be a line boundary.
  */
-export async function* readJsonLines(filePath: string, startOffset = 0): AsyncGenerator<RawLine> {
+export async function* readJsonLines(filePath: string, startOffset = 0, options: { strictUtf8?: boolean } = {}): AsyncGenerator<RawLine> {
   let pending = Buffer.alloc(0);
   let cursor = startOffset;
+  const decoder = options.strictUtf8 ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }) : null;
 
   for await (const chunk of createReadStream(filePath, { start: startOffset })) {
     pending = Buffer.concat([pending, chunk as Buffer]);
     let newlineAt = pending.indexOf(NEWLINE);
     while (newlineAt !== -1) {
       const line = pending.subarray(0, newlineAt);
-      yield { byteOffset: cursor, byteLength: line.length, text: line.toString("utf8") };
+      yield { byteOffset: cursor, byteLength: line.length, text: decoder ? decoder.decode(line) : line.toString("utf8") };
       cursor += newlineAt + 1;
       pending = pending.subarray(newlineAt + 1);
       newlineAt = pending.indexOf(NEWLINE);

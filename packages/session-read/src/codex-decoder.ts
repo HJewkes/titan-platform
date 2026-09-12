@@ -299,13 +299,16 @@ class CodexContext {
 
   private metadata(scope: "source" | "conversation" | "turn", path: readonly (string | number)[]): void {
     if (!this.payload) return;
-    const normalized = new Set(["id", "thread_id", "session_id", "parent_thread_id", "turn_id", "root_turn_id", "model", "cwd", "cli_version"]);
+    const normalized = new Set(["id", "thread_id", "session_id", "parent_thread_id", "turn_id", "root_turn_id", "model", "cwd", "cli_version", "git_branch"]);
+    const entries = Object.entries(this.payload).map(([name, value]) => ({ name, value, meaning: normalized.has(name) ? "normalized" as const : "native" as const }));
+    const branch = str(this.payload, "git_branch") ?? str(this.payload, "gitBranch") ?? str(asObject(this.payload.git), "branch");
+    if (branch && !("git_branch" in this.payload)) entries.push({ name: "git_branch", value: branch, meaning: "normalized" });
     this.observe({
       ...this.base(path),
       kind: "metadata",
       scope,
       turn: this.activeTurnId ? this.item("turn", this.activeTurnId) : null,
-      entries: Object.entries(this.payload).map(([name, value]) => ({ name, value, meaning: normalized.has(name) ? "normalized" : "native" })),
+      entries,
     });
   }
 

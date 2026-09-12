@@ -50,7 +50,7 @@ describe("normalized ingestion", () => {
       const hit=graph.spans.search("obsoleteword")[0]!;expect(hit.ownerRef).toBe(ref);expect(await readIndexedText(graph,hit)).toBe("café obsoleteword");
       const before=graph.db.prepare("SELECT count(*) AS n FROM normalized_event").get();
       expect(await indexCodexSource(graph,source)).toMatchObject({status:"unchanged"});expect(graph.db.prepare("SELECT count(*) AS n FROM normalized_event").get()).toEqual(before);
-      expect(normalizedSessions(graph)).toEqual([expect.objectContaining({harness:"codex",nativeId:"same-id",cwd:"/scratch"})]);
+      expect(normalizedSessions(graph)).toEqual([expect.objectContaining({harness:"codex",nativeId:"same-id",cwd:"/scratch",commitCount:null,pushCount:null})]);
     } finally {graph.db.close();}
   });
   it("atomically replaces rewritten text and retains prior rows when malformed or missing", async () => {
@@ -86,4 +86,20 @@ describe("normalized ingestion", () => {
       expect(normalizedUsage(graph,conversationRef(source.conversation))).toEqual([expect.objectContaining({inputTokens:10,outputTokens:4,requestCount:1,basis:"delta"})]);
     } finally {graph.db.close();}
   });
+});
+
+it("does not add snapshot-only totals from duplicate physical sources", async () => {
+  const { dir, file } = fixture();
+  appendFileSync(file, line("event_msg", { type: "token_count", info: { total_token_usage: {
+    input_tokens: 10, output_tokens: 4, total_tokens: 14,
+  } } }));
+  const source = (await discoverCodexSources({ codexHome: dir, namespace: "host" }))[0]!;
+  const graph = openSessionGraph(":memory:");
+  try {
+    await indexCodexSource(graph, source);
+    await indexCodexSource(graph, { ...source, sourceId: source.sourceId + ":copy" });
+    expect(normalizedUsage(graph, conversationRef(source.conversation))).toEqual([
+      expect.objectContaining({ inputTokens: 10, outputTokens: 4, basis: "snapshot" }),
+    ]);
+  } finally { graph.db.close(); }
 });

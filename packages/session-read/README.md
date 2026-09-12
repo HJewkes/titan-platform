@@ -103,3 +103,32 @@ for miner consumers.
 active-work's writer, rollups, PR reconciliation, quarantine, and scheduler are storage
 concerns and belong to session-graph. Brain's session analytics (segmentation, friction,
 classification) consume a whole session at once and can be built over this event stream.
+
+## Storage-free session views
+
+`findClaudeSessionSource({ cwd, conversation, configDir? })` returns an explicit
+found/not-written/unavailable result. `readSessionObservations(source)` dispatches
+to Claude or Codex normalization, preserving exact line evidence and native fields.
+Both whole-source readers may replay the prefix to recover context and validate a
+resume boundary. They do not establish execution liveness.
+
+`readRecentSessionTurns(source, { maxBytes, maxTurns, maxCharsPerTurn })` uses a
+separate bounded filesystem window. It reports byte/turn truncation, malformed
+complete records, and unknown model/branch/error fields when the evidence is outside
+that window. It never runs the replay-prefix reader behind a purported tail read.
+
+`summarizeSession(source)` and `SessionSummaryAccumulator` derive observation spans,
+message/tool counts, explicit native permission-denial evidence and usage. Generic
+tool errors are separate from permission denials; missing error and token fields
+remain unknown. Usage deduplicates response deltas and replaces snapshots within
+scope/reset epochs. Conversation-wide snapshots are not attributed to one model.
+`SessionUsageAccumulator` provides the same fold to graph-backed consumers.
+Consumer-specific cost estimates, friction heuristics and presentation remain in
+the consumer. Native extensions retain provider fields without making them portable.
+
+Copied-history metrics are excluded when `historyOrigin` is explicitly populated.
+Current Claude/Codex decoders preserve lineage but do not yet identify copied
+records reliably; fork-copy accounting therefore remains unsupported until native
+fixtures establish that mapping. Do not treat a child transcript's totals as proof
+of newly executed work. Repeated deltas for one response use the latest observed
+native values, allowing a provider to revise a response's usage as it completes.
