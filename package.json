@@ -27,7 +27,8 @@
     "docs:preview": "vitepress preview site",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm -r run build && changeset publish"
+    "release": "pnpm -r run build && changeset publish",
+    "smoke:codex": "node scripts/smoke-codex.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",

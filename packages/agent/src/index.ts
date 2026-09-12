@@ -32,6 +32,27 @@ export type {
 export { CODEX_APPROVAL_POLICIES, CODEX_SANDBOXES, EXECUTION_CAPABILITIES } from "./harness-contracts.js";
 export { dispatchHarnessRun, preflightHarnessRun } from "./preflight.js";
 export type {
+  CodexExecAdapterOptions,
+  CodexExecDeps,
+} from "./codex-exec.js";
+export type {
+  CodexProcessExit,
+  CodexProcessInput,
+  CodexSchemaFile,
+  CodexVersionInspectionOptions,
+  SupervisedCodexProcess,
+} from "./codex-process.js";
+export {
+  DEFAULT_CODEX_EXECUTABLE,
+  STRIPPED_CODEX_AUTH_VARS,
+  SUPPORTED_CODEX_EXEC_VERSION,
+  buildCodexExecArgs,
+  codexExecCapabilities,
+  createCodexExecAdapter,
+  prepareCodexEnv,
+} from "./codex-exec.js";
+export { DEFAULT_CODEX_KILL_GRACE_MS } from "./codex-exec-session.js";
+export type {
   AgentFailure,
   AgentFailureKind,
   AgentInit,

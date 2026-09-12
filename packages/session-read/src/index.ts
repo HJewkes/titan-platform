@@ -13,7 +13,14 @@ export type { GitIntent, TaskIntent } from "./bash-parse.js";
 export { IGNORED_PATH, TASK_ID, commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 export type { DiscoveredTranscript } from "./discover.js";
 export { discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
-export { SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";
+export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";
+export type { DiscoverCodexSourcesOptions } from "./codex-discover.js";
+export { CODEX_ROLLOUT_FORMAT, CodexSourceCollisionError, codexHome, codexSourceId, discoverCodexSources } from "./codex-discover.js";
+export { CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CodexRolloutDecoder } from "./codex-decoder.js";
+export type { CodexReadResult, ReadCodexOptions, ReadCodexTextOptions } from "./codex-read.js";
+export { readCodexObservations, readCodexText } from "./codex-read.js";
+export type { SessionTextRequest } from "./source-text.js";
+export { readSessionText } from "./source-text.js";
 export type {
   ConversationItemKind,
   DecodeRequest,

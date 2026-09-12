@@ -117,3 +117,18 @@ read the original bytes back with [`locator`](/reference/locator).
 
 active-work's session index (AW-23). The `TaskResolver` seam was added here, so the package
 can stay ignorant of any product's task store.
+
+
+## Mixed Codex/Claude graphs
+
+`indexCodexSource` stages a normalized rollout before atomically replacing its source
+rows and watermark. Malformed/missing files retain prior indexed data. Semantic
+subrecords retain distinct identities; `readIndexedText` resolves their selected
+text and returns null if source evidence changed.
+
+Migration 3 adds canonical conversations and explicit aliases for known legacy Claude
+transcript sessions without rewriting existing rows or requiring original files.
+`normalizedSessions` and `normalizedUsage` expose Codex metadata and usage, while
+existing Claude APIs continue to operate. Back up the database before upgrading;
+restore that backup when rolling back to an older binary. Migration never resets
+or rebuilds the corpus.

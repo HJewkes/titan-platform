@@ -131,7 +131,8 @@ path.
 
 The additive `HarnessAdapter`, `HarnessRunRequest` and `dispatchHarnessRun` API
 separates Claude and Codex native options and checks declared capabilities and limits
-before invoking an adapter. TP-44 supplies contracts and preflight only: no Codex
-adapter is included, and `runAgent` retains its existing behavior.
+before invoking an adapter. `createCodexExecAdapter({ auth: "cached-cli" })` implements supervised Codex exec
+with an explicit model and mandatory wall deadline. The installed version is checked
+before launch. `runAgent` retains its existing Claude behavior.
 
 See the [contract decision](/guides/multi-harness-contracts) for the staged migration.

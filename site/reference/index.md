@@ -37,7 +37,7 @@ Modules that know about a subject: transcripts, code, rules.
 | --- | --- | --- |
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
-| [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `cluster`, `locator`, `session-read`, `store-sqlite` |
+| [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `cluster`, `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol` |
 | [`workflow`](/reference/workflow) | Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart | `agent`, `hitl`, `store-sqlite` |
 

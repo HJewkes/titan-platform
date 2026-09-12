@@ -29,7 +29,9 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.exitOverride();
   program.option("--json", "emit a JSON envelope on stdout");
   program.option("--state <dir>", "state directory (TITAN_MINER_STATE)");
-  program.option("--corpus <dir>", "transcript corpus root (TITAN_MINER_CORPUS)");
+  program.option("--corpus <dir>", "Claude transcript corpus root (TITAN_MINER_CORPUS)");
+  program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
+  program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   let exitCode: number = EXIT.OK;
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));
@@ -53,8 +55,8 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
   sub.action(async (...handlerArgs: unknown[]) => {
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
     const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;
-    const root = program.opts() as { json?: boolean; state?: string; corpus?: string };
-    const ctx = createMinerContext(resolveConfig({ stateDir: root.state, corpusRoot: root.corpus }, io.env), root.json ? "json" : "human");
+    const root = program.opts() as { json?: boolean; state?: string; corpus?: string; codexHome?: string; namespace?: string };
+    const ctx = createMinerContext(resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env), root.json ? "json" : "human");
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
       emit(io, envelope, ctx.format);
@@ -80,8 +82,8 @@ function emit(io: CliIo, envelope: JsonEnvelope<unknown>, format: "human" | "jso
 
 function attachLongRunning(program: Command, io: CliIo): void {
   const config = () => {
-    const root = program.opts() as { state?: string; corpus?: string };
-    return resolveConfig({ stateDir: root.state, corpusRoot: root.corpus }, io.env);
+    const root = program.opts() as { state?: string; corpus?: string; codexHome?: string; namespace?: string };
+    return resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env);
   };
   program
     .command("serve")

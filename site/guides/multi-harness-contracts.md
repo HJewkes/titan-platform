@@ -1,8 +1,8 @@
 # ADR: shared harness contracts (TP-44)
 
-Status: accepted direction; additive contracts delivered in TP-44. Decoder, executor and
-store integration follow in TP-45–TP-48. Existing Claude APIs and stored rows retain
-their behavior in this change.
+Status: accepted. TP-44 defines the contracts; TP-45–TP-48 implement the initial
+Codex exec, rollout decoder and mixed miner slice. Existing Claude APIs and stored
+rows retain their compatibility paths.
 
 ## Context
 
@@ -147,3 +147,21 @@ Communication delivery is not execution. Stored, transport-accepted, acknowledge
 turn-started and completed are different observations. Codex steering/turn submission
 and Claude channels need distinct adapters. The temporary MCP bridge used during
 planning proves cross-harness coordination can be arranged, not durable integration.
+
+
+## Initial implementation
+
+The Codex exec adapter is version-checked and uses explicit model selection, cached
+CLI authentication and owned process cleanup. Required hard monetary/request limits
+are rejected before launch. Its local deadline does not imply an upstream billing cap.
+
+Graph migration 3 retains legacy tables and introduces explicit aliases for known
+Claude transcript rows. Codex semantic observations are keyed by physical source,
+line byte offset and subrecord index. Indexing stages a replay before replacing that
+source's rows, so parse failures cannot destroy indexed history. Search spans group
+same-field text siblings and retain each selector for readback; raw prose is not
+stored in the semantic tables. Prefix verification makes stale excerpts unavailable.
+
+Usage deduplicates response IDs across physical copies and excludes identified copied
+history. Ordered snapshot fallback is used only when response deltas are absent.
+The first path uses replay for correctness, with optimization deferred until measured.

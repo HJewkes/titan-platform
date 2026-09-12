@@ -1,6 +1,6 @@
 import { defineCommand } from "@titan-design/registry";
-import { discoverTranscripts } from "@titan-design/session-read";
-import { refreshCorpus, resetIndex, type RefreshSummary } from "@titan-design/session-graph";
+import { discoverCodexSources, discoverTranscripts } from "@titan-design/session-read";
+import { refreshCorpus, indexCodexSource, resetIndex, type RefreshSummary } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 
@@ -27,6 +27,17 @@ export const refresh = defineCommand<z.infer<typeof RefreshArgs>, RefreshSummary
     if (args.full) resetIndex(graph);
     const discovered = await discoverTranscripts(ctx.config.corpusRoot);
     const visiting = args.limit === undefined ? discovered : discovered.slice(0, args.limit);
-    return refreshCorpus(graph, visiting, { full: args.full, verifyHash: args.verify_hashes });
+    const summary = await refreshCorpus(graph, visiting, { full: args.full, verifyHash: args.verify_hashes });
+    if (ctx.config.codexHome) {
+      const sources = await discoverCodexSources({ codexHome: ctx.config.codexHome, namespace: ctx.config.namespace ?? "local" });
+      const remaining = args.limit === undefined ? sources : sources.slice(0, Math.max(0, args.limit - visiting.length));
+      for (const source of remaining) {
+        const result = await indexCodexSource(graph, source);
+        summary.transcripts++;
+        summary[result.status]++;
+        summary.facts += result.observations;
+      }
+    }
+    return summary;
   },
 });

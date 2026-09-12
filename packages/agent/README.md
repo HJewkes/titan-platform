@@ -148,6 +148,33 @@ has stopped unless the adapter separately reports verified cancellation support.
 Normalized progress, results, usage measurements, execution identity, conversation
 identity, and transcript source hints contain no harness-native event types.
 
+## Supervised Codex exec adapter
+
+`createCodexExecAdapter({ auth: "cached-cli" })` runs the pinned ChatGPT desktop
+Codex binary through `codex exec --json`. The caller must select a model and an
+absolute working directory. Fresh runs persist a native thread; resumes always use
+the supplied native thread ID and never `--last`. The adapter ignores user config,
+strips API-key credentials from the child environment, accepts only the
+noninteractive `never` approval policy, and leaves persistence enabled so
+`@titan-design/session-read` can discover the rollout by thread ID and namespace.
+
+The adapter checks `codex --version` before every launch. The mandatory wall deadline
+covers that check, temporary output-schema setup, and the run itself. Timeout or
+caller abort terminates the owned process group, then sends `SIGKILL` after the
+configured grace period. JSONL output becomes normalized progress, conversation
+identity, final text or locally validated structured output, and token usage with
+Codex event provenance. Hard dollar, request, iteration, and token caps remain
+unsupported and fail preflight before either version probing or process spawn.
+
+A zero exit is successful only after Codex emits `turn.completed`. Its usage is a
+turn snapshot: the adapter uses Codex's native turn ID when one is present and an
+execution-correlated synthetic turn ID otherwise. It is never labeled as a
+conversation total. If an abort or wall deadline stops the OS process without a
+native terminal turn event, the result is `cancelled_unknown` and retains the
+requested cause and process exit evidence. Temporary schema cleanup completes
+before the terminal progress event, so cleanup failure cannot follow a reported
+successful finish.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message

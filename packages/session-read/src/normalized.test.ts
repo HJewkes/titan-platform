@@ -46,7 +46,7 @@ const codexSource = {
 } satisfies SessionSourceDescriptor;
 
 const evidence = (sourceId: string, byteOffset: number, index: number, path: readonly (string | number)[]): SourceEvidence => ({
-  line: { sourceId, byteOffset, byteLength: 180, lineNumber: 4, nativeOrdinal: 3 },
+  line: { sourceId, byteOffset, byteLength: 180, contentHash: "fixture-line-hash", lineNumber: 4, nativeOrdinal: 3 },
   subrecord: { index, path },
 });
 

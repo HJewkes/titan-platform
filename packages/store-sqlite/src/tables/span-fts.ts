@@ -120,8 +120,11 @@ export class SpanFtsTables {
     const { span, fts } = names(name);
     this.db = db;
     this.tableNames = { span, fts };
+    // Contentless FTS retains orphan rowids after a purge. Never reuse one: old
+    // tokens would otherwise become visible through an unrelated replacement span.
     this.insertSpan = db.prepare(
-      `INSERT INTO ${span} (owner_ref, field, source_id, byte_offset, byte_length) VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO ${span} (span_id, owner_ref, field, source_id, byte_offset, byte_length)
+       VALUES ((SELECT MAX(id) + 1 FROM (SELECT COALESCE(MAX(span_id), 0) AS id FROM ${span} UNION ALL SELECT COALESCE(MAX(rowid), 0) AS id FROM ${fts})), ?, ?, ?, ?, ?)
        ON CONFLICT (owner_ref, field, source_id, byte_offset) DO NOTHING`,
     );
     this.findSpan = db.prepare(

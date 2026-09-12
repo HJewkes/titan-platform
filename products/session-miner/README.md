@@ -77,3 +77,23 @@ refreshes (the daemon serves; a supervisor drives `refresh`).
 The playbook has no semantic recall yet: `memory` supports a vector index, but the miner
 does not build one, so recall is keyword-only. Repeatable array options are a registry
 gap, so `--tag` takes a comma-separated list instead of repeating the flag.
+
+
+## Codex sessions
+
+Opt in with `--codex-home ~/.codex --namespace workstation-account` (or
+`TITAN_MINER_CODEX_HOME` and `TITAN_MINER_NAMESPACE`). Existing `--corpus` remains the
+Claude projects root. Choose a stable host/account namespace; moving a source must
+not rename its conversation.
+
+Refresh discovers active and archived Codex rollouts. Session list/show report the
+harness and native ID; Codex session IDs are canonical `conversation:` refs. Search
+and Drain use the shared format-aware resolver, including semantic subrecords, and
+return unavailable excerpts when indexed source bytes have changed or disappeared.
+Tool errors with no explicit native error flag are screened by the existing error
+signal classifier; they are not classified as permission denials.
+
+The initial normalized ingest replays changed files for correct model context,
+projection deduplication and usage accounting. Execution stdout is not a second
+transcript corpus. Back up existing graph databases before upgrading; migration is
+additive and preserves historical rows even when their originals have been pruned.
