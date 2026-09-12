@@ -1,5 +1,27 @@
 # @titan-design/session-read
 
+## 0.3.0
+
+### Minor Changes
+
+- 11b94a2: Add bounded Codex execution, rollout discovery/decoding, and opt-in mixed-harness
+  session ingestion with format-aware search excerpts and error readback. Preserve
+  legacy Claude rows and references through additive conversation aliases. Prevent
+  orphaned contentless FTS row IDs from leaking stale terms after source replacement.
+  Recognize native shell missing-file diagnostics in error clustering.
+- 81b60ee: Add graph-free Claude/Codex observation dispatch, source lookup, bounded recent-turn reads and session summaries. Share usage folding with graph queries and preserve native denial evidence separately from generic tool errors.
+- 3bde552: Add opt-in harness-neutral identity, usage, execution preflight and normalized session
+  contracts for Claude/Codex integration. Existing Claude execution and transcript APIs
+  retain their behavior. Codex execution, decoding and graph migration follow separately.
+
+### Patch Changes
+
+- Updated dependencies [81b60ee]
+- Updated dependencies [25391fa]
+- Updated dependencies [3bde552]
+  - @titan-design/locator@0.2.1
+  - @titan-design/agent-protocol@0.1.0
+
 ## 0.2.1
 
 ### Patch Changes

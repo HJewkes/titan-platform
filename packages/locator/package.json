@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/locator",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Byte-offset provenance locators and raw-mirror durability helpers",
   "type": "module",
   "main": "./dist/index.js",

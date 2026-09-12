@@ -1,5 +1,15 @@
 # @titan-design/store-sqlite
 
+## 0.2.1
+
+### Patch Changes
+
+- 11b94a2: Add bounded Codex execution, rollout discovery/decoding, and opt-in mixed-harness
+  session ingestion with format-aware search excerpts and error readback. Preserve
+  legacy Claude rows and references through additive conversation aliases. Prevent
+  orphaned contentless FTS row IDs from leaking stale terms after source replacement.
+  Recognize native shell missing-file diagnostics in error clustering.
+
 ## 0.2.0
 
 ### Minor Changes
