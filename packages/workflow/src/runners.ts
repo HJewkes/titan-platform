@@ -1,5 +1,5 @@
 import { runAgent, type AgentRunConfig, type AgentRunDeps } from "@titan-design/agent";
-import type { StepRunInput, StepRunOutcome, StepRunner } from "./types.js";
+import type { LegacyStepRunner, StepRunInput, StepRunOutcome } from "./types.js";
 
 /** Failure kinds where a fresh attempt could plausibly succeed. Budget, auth, and refusal would only repeat. */
 const RETRYABLE = new Set(["rate_limited", "runtime_error", "inactivity_timeout"]);
@@ -15,10 +15,10 @@ export interface AgentRunnerOptions {
 
 /**
  * Run each step as one headless Claude Code session through
- * `@titan-design/agent`. In-process, so a restart cannot re-attach: an
- * interrupted step is re-dispatched from the workflow's replay.
+ * `@titan-design/agent`. In-process, so a restart cannot re-attach; hydrate
+ * marks interrupted steps recovery_required without redispatching them.
  */
-export function agentRunner(options: AgentRunnerOptions): StepRunner {
+export function agentRunner(options: AgentRunnerOptions): LegacyStepRunner {
   return {
     async run(input: StepRunInput): Promise<StepRunOutcome> {
       const result = await runAgent(
@@ -32,7 +32,7 @@ export function agentRunner(options: AgentRunnerOptions): StepRunner {
 }
 
 /** Run steps with a plain function. For tests and for workflows whose steps are not agents. */
-export function inlineRunner(fn: (input: StepRunInput) => Promise<string> | string): StepRunner {
+export function inlineRunner(fn: (input: StepRunInput) => Promise<string> | string): LegacyStepRunner {
   return {
     async run(input) {
       try {

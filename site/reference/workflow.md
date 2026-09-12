@@ -15,8 +15,9 @@ or a durable-execution engine you now have to operate.
 
 Here you write an **ordinary async function**. Every `dispatch`, `seed`, and `assisted` call
 is memoized in SQLite, so after a crash or restart the function re-runs from the top and
-resumes exactly where it stopped. Human pauses are durable gates, resolvable from any
-process.
+reconciles unfinished agent work before replay. Uncertain work stays marked for
+recovery instead of being submitted again. Human pauses are durable gates, resolvable
+from any process.
 
 ## When to reach for it
 
@@ -67,7 +68,9 @@ import { agentRunner } from "@titan-design/workflow";
 runner: agentRunner({ cwd: repo, maxTurns: 40, maxBudgetUsd: 5 })
 ```
 
-After a restart, `await runtime.hydrate()` resumes every running or paused run.
+After a restart, `await runtime.hydrate()` claims eligible runs and reconciles their
+active steps. Legacy agent runs without confirmed attachment remain
+`recovery_required`.
 
 ## The three step kinds
 
@@ -92,8 +95,28 @@ and inactivity are retryable; budget, auth, refusal, and schema failures are not
 plain string**, not a `StepRunOutcome` — the wrapper turns a thrown error into a
 non-retryable failure.
 
-Implement `StepRunner` yourself for a queue or a subprocess. Add `attach(step)` if your
-runner can re-join work started before a restart; otherwise `hydrate()` re-dispatches it.
+Implement `RecoverableStepRunner` for a queue or a subprocess. Its early acknowledgment
+and terminal completion must already be durable. The optional legacy `attach(step)`
+API is deprecated; missing or failed attachment requires recovery.
+
+## Execution recovery
+
+`durableHarnessRunner(dispatcher, { request })` connects the durable dispatcher from
+[`agent`](/reference/agent#durable-dispatch) to the workflow. The request builder
+receives the rendered prompt, step model, and execution intent; it supplies harness
+configuration and bounds. Workflow owns the cancellation signal.
+
+The runtime persists execution identity and request key before dispatch, then stores
+the acknowledged runner reference before awaiting completion. On restart, a stored
+terminal result or a still-owned live handle can resume replay. Only explicit safe
+absence permits a replacement attempt. Unknown state, ownership loss, timeout, or
+failed persistence keeps the active step intact. A later `hydrate()` may reconcile
+new evidence, but never blindly resubmits an uncertain execution.
+
+Existing databases must apply `workflowOwnershipMigration(version)` with a new
+migration version. Fresh workflow DDL already includes ownership columns; the
+additive migration also tolerates that case. Saves and renewals require the captured
+runtime generation, unexpired lease, and expected row revision.
 
 ## Signals
 
@@ -104,8 +127,10 @@ default patterns recognise verdict conventions like `Verdict: PASS`, `NEEDS REVI
 ## Lifecycle
 
 `start` persists the run and launches it. `wait` resolves when it finishes. `status` and
-`list` read state. `cancel` aborts the runner through its `AbortSignal`, cancels the run's
-pending gates, and marks the row `cancelled`. Events — `step_started`, `step_complete`,
+`list` read state. `cancel` persists `cancelling` before aborting live work and pending
+gates. Confirmed cancellation becomes `cancelled`; unconfirmed cancellation retains
+the active step as `recovery_required`. A success racing cancellation is memoized
+before the workflow finishes cancelled. Events — `step_started`, `step_complete`,
 `step_retry`, `step_failed`, `gate_opened`, `workflow_*` — go to `onEvent`.
 
 ## Gotchas
@@ -133,4 +158,4 @@ brain's bespoke SQLite runtime, ported with its PM, template, and process-pollin
 turned into injectable seams. What stayed in brain — PM task claiming, prompt rendering from
 notes, model routing by turn complexity, `.plans/` output files, the agent-process reconciler
 — each maps onto one of those seams: `onEvent`, `render`, `DispatchOptions.model`, and
-`StepRunner.attach`.
+`RecoverableStepRunner.reconcile`.

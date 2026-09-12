@@ -17,7 +17,8 @@
           "packages/agent",
           "packages/registry",
           "packages/daemon",
-          "packages/hitl"
+          "packages/hitl",
+          "packages/agent-lifecycle"
         ],
         "2": [
           "packages/session-read",
@@ -44,7 +45,8 @@
           "packages/agent",
           "packages/registry",
           "packages/daemon",
-          "packages/hitl"
+          "packages/hitl",
+          "packages/agent-lifecycle"
         ],
         [
           "packages/session-read",

@@ -1,6 +1,15 @@
 import type { ZodType } from "zod";
 
-export type WorkflowStatus = "running" | "paused" | "completed" | "failed" | "cancelled";
+export type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
+
+export interface WorkflowOwnerFence {
+  runtimeId: string;
+  generation: number;
+}
+
+export interface WorkflowOwnerLease extends WorkflowOwnerFence {
+  leaseUntil: string;
+}
 
 export interface StepResult {
   stepId: string;
@@ -15,14 +24,26 @@ export interface StepResult {
   data?: Record<string, unknown>;
 }
 
-/** A step handed to a runner and not yet finished; persisted so a restart can re-attach or re-dispatch. */
-export interface ActiveStep {
+export interface ActiveStepBase {
   stepId: string;
   iterKey: string;
-  /** Whatever the runner needs to find the work again, if it supports that. */
-  runnerRef?: string;
+  attempt: number;
   startedAt: string;
+  runnerRef?: string;
+  recovery?: { kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown"; evidence: string; observedAt: string };
 }
+
+export interface LegacyActiveStep extends ActiveStepBase {
+  kind: "legacy";
+}
+
+export interface RecoverableActiveStep extends ActiveStepBase {
+  kind: "recoverable";
+  executionId: string;
+  requestKey: string;
+}
+
+export type ActiveStep = LegacyActiveStep | RecoverableActiveStep;
 
 export interface WorkflowRun {
   id: string;
@@ -34,6 +55,9 @@ export interface WorkflowRun {
   /** Keyed by `stepId:iteration` for dispatches and by `stepId` for seeds and gates. */
   stepResults: Record<string, StepResult>;
   activeSteps: Record<string, ActiveStep>;
+  revision: number;
+  ownerGeneration: number;
+  owner?: WorkflowOwnerLease;
   startedAt: string;
   completedAt: string | null;
   error: string | null;
@@ -86,15 +110,52 @@ export interface StepRunInput {
   signal: AbortSignal;
 }
 
+export type DurableStepOutcome =
+  | { kind: "succeeded"; output: string }
+  | { kind: "failed"; error: string; retryable: boolean }
+  | { kind: "cancelled"; reason: string }
+  | { kind: "cancellation_unknown"; reason: string };
+
+export interface RecoverableStepDispatchInput extends StepRunInput {
+  executionId: string;
+  requestKey: string;
+  attempt: number;
+}
+
+export interface StepDispatchAck {
+  executionId: string;
+  requestKey: string;
+  runnerRef: string;
+  completion: Promise<DurableStepOutcome>;
+}
+
+export type StepReconcileOutcome =
+  | { kind: "running"; runnerRef: string; completion: Promise<DurableStepOutcome>; evidence: string }
+  | { kind: "terminal"; outcome: DurableStepOutcome; evidence: string }
+  | { kind: "not_found"; retrySafe: boolean; evidence: string }
+  | { kind: "ownership_lost"; evidence: string }
+  | { kind: "unknown"; evidence: string };
+
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string }
   | { ok: false; error: string; retryable: boolean };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
-export interface StepRunner {
+export interface LegacyStepRunner {
   run(input: StepRunInput): Promise<StepRunOutcome>;
-  /** Re-attach to work started before a restart. Return undefined when that is not possible; the step re-dispatches. */
+  /** @deprecated Prefer RecoverableStepRunner. Undefined or failed attachment requires recovery. */
   attach?(step: ActiveStep, signal: AbortSignal): Promise<StepRunOutcome> | undefined;
+}
+
+export interface RecoverableStepRunner {
+  dispatch(input: RecoverableStepDispatchInput): Promise<StepDispatchAck>;
+  reconcile(step: RecoverableActiveStep, signal: AbortSignal): Promise<StepReconcileOutcome>;
+}
+
+export type StepRunner = LegacyStepRunner | RecoverableStepRunner;
+
+export function workflowStepRequestKey(runId: string, stepId: string, iteration: number, attempt: number): string {
+  return `workflow:${[runId, stepId, String(iteration), String(attempt)].map(encodeURIComponent).join(":")}`;
 }
 
 export type WorkflowEvent =
@@ -102,6 +163,7 @@ export type WorkflowEvent =
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
   | { type: "step_failed"; runId: string; stepId: string; error: string }
+  | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string }
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }
@@ -125,5 +187,16 @@ export class WorkflowCancelledError extends Error {
   ) {
     super(`workflow ${runId} cancelled: ${reason}`);
     this.name = "WorkflowCancelledError";
+  }
+}
+
+export class WorkflowRecoveryRequiredError extends Error {
+  constructor(
+    readonly runId: string,
+    readonly stepId: string,
+    readonly evidence: string,
+  ) {
+    super(`workflow ${runId} requires recovery for step ${stepId}: ${evidence}`);
+    this.name = "WorkflowRecoveryRequiredError";
   }
 }

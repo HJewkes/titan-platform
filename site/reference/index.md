@@ -23,7 +23,8 @@ Reusable machinery over the primitives.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`agent`](/reference/agent) | Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets | `agent-protocol` |
+| [`agent`](/reference/agent) | Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets | `agent-protocol`, `agent-lifecycle` |
+| [`agent-lifecycle`](/reference/agent-lifecycle) | Durable agent execution state and fenced ownership | `agent-protocol`, `store-sqlite` |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `store-sqlite` |
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | none |

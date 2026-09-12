@@ -67,15 +67,17 @@ agent iteration and dollar estimate are different units. Codex's initial adapter
 must reject a required hard cost/request cap it cannot enforce. Existing Claude
 maxBudgetUsd remains the SDK's estimate-based stop condition, not a billing receipt.
 
-A bounded result is not a durable peer handle. Future workflow recovery must persist
-a start handle before waiting; today's StepRunner only receives runnerRef after
-completion. TP-50 owns that change. No shared API here claims live steering, fork,
+A bounded result is not a durable peer handle. The lifecycle ledger records execution
+intent and ownership independently of transcript data. Recoverable workflow runners
+persist a start acknowledgment before waiting; legacy runners remain usable live but
+uncertain interrupted steps require recovery instead of silent redispatch. No shared API here claims live steering, fork,
 terminal switching or durable attach for an adapter that does not implement it.
 
 ## Decision: normalized observations alongside the legacy event stream
 
 Session-read's new contracts coexist with its existing SessionEvent and EventFolder.
-They do not change the current parser or claim the graph can consume the new stream.
+The legacy parser remains available; Codex indexing uses the normalized stream, and
+both formats also support graph-free observation and recent-turn reads.
 A source descriptor identifies format, physical location and conversation. Semantic
 observations retain original line byte locators plus a subrecord selector. Multiple
 observations on one line must remain independently addressable.

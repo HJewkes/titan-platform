@@ -75,3 +75,19 @@ export {
   assertAuthEnvOk,
   prepareEnv,
 } from "./env.js";
+export { createDurableHarnessDispatcher } from "./durable-dispatcher.js";
+export type {
+  DurableCancelResult,
+  DurableDispatchAck,
+  DurableDispatchInput,
+  DurableHarnessDispatcher,
+  DurableHarnessDispatcherDeps,
+  DurableHarnessDispatcherOptions,
+  DurableHarnessRecord,
+  DurableHarnessSuccess,
+  DurableLiveHandle,
+  DurableReconcileOutcome,
+  DurableSettlement,
+} from "./durable-types.js";
+export type { ClaudeCodeAdapterOptions } from "./claude-code-adapter.js";
+export { claudeCodeCapabilities, createClaudeCodeAdapter } from "./claude-code-adapter.js";

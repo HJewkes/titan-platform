@@ -27,6 +27,7 @@ graph TD
   subgraph T1["Tier 1 · engines"]
     retrieval["retrieval"]
     agent["agent"]
+    lifecycle["agent-lifecycle"]
     registry["registry"]
     daemon["daemon"]
     hitl["hitl"]
@@ -47,6 +48,9 @@ graph TD
   daemon --> registry
   hitl --> store
   agent --> protocol
+  agent --> lifecycle
+  lifecycle --> protocol
+  lifecycle --> store
   sessionread --> protocol
   sessionread --> locator
   sessiongraph --> sessionread
@@ -66,8 +70,8 @@ graph TD
   miner --> memory
 ```
 
-`daemon --> registry` is the only same-tier edge, and it is legal: a package may import its
-own tier. `agent-protocol`, `registry`, `cluster`, `locator`, `store-sqlite`, and `embed` have no
+Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
+`session-graph --> session-read` are legal when they remain acyclic. `agent-protocol`, `registry`, `cluster`, `locator`, `store-sqlite`, and `embed` have no
 titan dependencies at all, which is why any of them can be adopted on its own.
 
 ## What each tier means
@@ -81,11 +85,11 @@ without importing a harness SDK or runtime. See the [multi-harness ADR](/guides/
 **Tier 1, engines.** Reusable machinery with a real job but no subject matter.
 `retrieval` fuses ranked lists; it does not know that the things ranked are transcripts.
 `registry` projects command definitions onto surfaces; it does not know what the commands
-do. `daemon` hosts a registry. `agent` runs one headless Claude Code session. `hitl` pauses
+do. `daemon` hosts a registry. `agent` runs bounded Claude or Codex executions. `agent-lifecycle` persists authoritative
+execution state and fenced ownership independently of transcript indexes. `hitl` pauses
 work on a human.
 
-**Tier 2, domain.** These know a subject. `session-read` and `session-graph` know Claude
-Code's transcript format. `code-graph` knows TypeScript and Python module structure.
+**Tier 2, domain.** These know a subject. `session-read` and `session-graph` normalize and index Claude and Codex transcripts. `code-graph` knows TypeScript and Python module structure.
 `memory` knows what a rule with decaying confidence is. `workflow` knows what a durable
 step is.
 

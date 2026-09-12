@@ -22,6 +22,25 @@ export interface SurfaceIdentity {
   owned: boolean;
 }
 
+export type {
+  ExecutionOwnerFence,
+  ExecutionOwnerLease,
+  ExecutionPhase,
+  ExecutionRecord,
+  ExecutionReconcileOutcome,
+  ExecutionTerminal,
+  ExecutionTransition,
+  LifecycleExecutionTarget,
+  TerminalExecutionPhase,
+} from "./lifecycle.js";
+export { EXECUTION_PHASES } from "./lifecycle.js";
+export type { ExecutionTransitionErrorCode } from "./lifecycle-validation.js";
+export { ExecutionTransitionError } from "./lifecycle-validation.js";
+export {
+  isTerminalExecutionPhase,
+  reduceExecutionTransition,
+} from "./lifecycle-reducer.js";
+
 /** Stable, collision-free key. Legacy session refs remain a separate alias vocabulary. */
 export function conversationRef(identity: ConversationIdentity): string {
   return `conversation:${[identity.harness, identity.namespace, identity.nativeId].map(component).join(":")}`;
