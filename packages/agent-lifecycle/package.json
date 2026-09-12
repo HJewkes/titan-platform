@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent-lifecycle",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Durable agent execution state and fenced ownership",
   "type": "module",
   "main": "./dist/index.js",

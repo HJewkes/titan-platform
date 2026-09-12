@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/cluster",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Deterministic Drain template mining with pluggable line masking",
   "type": "module",
   "main": "./dist/index.js",

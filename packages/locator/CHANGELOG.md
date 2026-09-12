@@ -1,5 +1,11 @@
 # @titan-design/locator
 
+## 0.2.1
+
+### Patch Changes
+
+- 81b60ee: Add graph-free Claude/Codex observation dispatch, source lookup, bounded recent-turn reads and session summaries. Share usage folding with graph queries and preserve native denial evidence separately from generic tool errors.
+
 ## 0.2.0
 
 ### Minor Changes
