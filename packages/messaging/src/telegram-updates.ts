@@ -41,18 +41,32 @@ function isAbort(cause: unknown): boolean {
   return cause instanceof Error && cause.name.endsWith("AbortError");
 }
 
+/** The token is in the URL, and a thrown fetch quotes the URL it tried. */
+async function fetchUpdates(
+  config: TelegramConfig,
+  body: { offset?: number; timeout?: number },
+  signal?: AbortSignal,
+): Promise<Response> {
+  const doFetch = config.fetch ?? globalThis.fetch;
+  try {
+    return await doFetch(methodUrl(config, "getUpdates"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (cause) {
+    if (isAbort(cause)) throw cause;
+    throw new Error(redactToken(describeCause(cause), config.token));
+  }
+}
+
 async function getUpdates(
   config: TelegramConfig,
   body: { offset?: number; timeout?: number },
   signal?: AbortSignal,
 ): Promise<unknown[]> {
-  const doFetch = config.fetch ?? globalThis.fetch;
-  const response = await doFetch(methodUrl(config, "getUpdates"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const response = await fetchUpdates(config, body, signal);
   const envelope = await readEnvelope(response);
   if (!response.ok || !envelope.ok) {
     const description = envelope.description ?? response.statusText;
@@ -106,7 +120,7 @@ export async function* pollUpdates(
       batch = await getUpdates(config, { offset, timeout: timeoutSeconds }, signal);
     } catch (cause) {
       if (isAbort(cause) || signal?.aborted) return;
-      throw new Error(redactToken(describeCause(cause), config.token));
+      throw cause;
     }
     offset = nextOffset(batch, offset);
     for (const raw of batch) {

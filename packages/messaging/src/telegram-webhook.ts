@@ -35,6 +35,31 @@ function rejected(reason: TelegramRejection): TelegramInboundResult {
   return { status: "rejected", reason };
 }
 
+type AcceptedUpdate = Omit<
+  Extract<TelegramInboundResult, { status: "accepted" }>,
+  "status"
+>;
+
+function readTextMessage(
+  body: unknown,
+): { ok: true; update: AcceptedUpdate } | { ok: false; reason: TelegramRejection } {
+  const parsed = telegramUpdateEvent.safeParse(body);
+  if (!parsed.success) return { ok: false, reason: "malformed" };
+
+  const { update_id: updateId, message } = parsed.data;
+  if (!message?.text || !message.from) return { ok: false, reason: "not-text" };
+  return {
+    ok: true,
+    update: {
+      updateId,
+      chatId: message.chat.id,
+      fromId: message.from.id,
+      text: message.text,
+      date: message.date,
+    },
+  };
+}
+
 /**
  * Pure: every effect is in the injected `seen` store. Telegram signs nothing,
  * so the echoed secret header, the chat allowlist and the update_id dedupe are
@@ -52,24 +77,16 @@ export async function validateTelegramWebhook({
     return rejected("bad-secret");
   }
 
-  const parsed = telegramUpdateEvent.safeParse(body);
-  if (!parsed.success) return rejected("malformed");
+  const parsed = readTextMessage(body);
+  if (!parsed.ok) return rejected(parsed.reason);
 
-  const { update_id: updateId, message } = parsed.data;
-  if (!message?.text || !message.from) return rejected("not-text");
-  if (!isAllowedChat(message.chat.id, allowedChatIds)) {
+  const update = parsed.update;
+  if (!isAllowedChat(update.chatId, allowedChatIds)) {
     return rejected("sender-not-allowed");
   }
-  if (message.text.length > maxTextLength) return rejected("too-long");
-  if (await seen.has(String(updateId))) return rejected("duplicate");
+  if (update.text.length > maxTextLength) return rejected("too-long");
+  if (await seen.has(String(update.updateId))) return rejected("duplicate");
 
-  await seen.add(String(updateId));
-  return {
-    status: "accepted",
-    updateId,
-    chatId: message.chat.id,
-    fromId: message.from.id,
-    text: message.text,
-    date: message.date,
-  };
+  await seen.add(String(update.updateId));
+  return { status: "accepted", ...update };
 }

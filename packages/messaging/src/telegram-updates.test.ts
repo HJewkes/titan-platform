@@ -3,6 +3,7 @@ import type { TelegramConfig } from "./telegram.js";
 import { pollUpdates, readChatIds } from "./telegram-updates.js";
 
 const TOKEN = "123456789:AAH-fake-bot-token_for-tests";
+const UPDATES_URL = `https://api.telegram.org/bot${TOKEN}/getUpdates`;
 const CHAT = 4242;
 
 function textUpdate(updateId: number, text: string, chatId = CHAT): unknown {
@@ -199,6 +200,23 @@ describe("pollUpdates", () => {
     expect(String(failure)).toMatch(/getUpdates failed \(401\)/);
     expect(String(failure)).not.toContain(TOKEN);
   });
+
+  it("keeps the token out of a fetch error that embeds the whole url", async () => {
+    const iterator = pollUpdates(
+      configWith(async () => {
+        throw new TypeError(`request to ${UPDATES_URL} failed, reason: ECONNREFUSED`);
+      }),
+      { timeoutSeconds: 1, allowedChatIds: [CHAT] },
+    );
+
+    const failure = await iterator.next().then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+
+    expect(String(failure)).toContain("***");
+    expect(String(failure)).not.toContain(TOKEN);
+  });
 });
 
 describe("readChatIds", () => {
@@ -218,5 +236,19 @@ describe("readChatIds", () => {
 
     expect(ids).toEqual([CHAT, 777]);
     expect(bodies).toEqual([{ timeout: 0 }]);
+  });
+
+  it("keeps the token out of a fetch error that embeds the whole url", async () => {
+    const failure = await readChatIds(
+      configWith(async () => {
+        throw new TypeError(`request to ${UPDATES_URL} failed, reason: ECONNREFUSED`);
+      }),
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+
+    expect(String(failure)).toContain("***");
+    expect(String(failure)).not.toContain(TOKEN);
   });
 });
