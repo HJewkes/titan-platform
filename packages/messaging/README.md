@@ -104,6 +104,75 @@ if (liveness.state === "dark") {
 reports them. The probe races its own timer and aborts the request it gave up
 on, so a hung server cannot wedge a caller's tick.
 
+## Telegram
+
+`TelegramTransport` talks to the [Bot API](https://core.telegram.org/bots/api).
+A bot cannot open a conversation either: the person messages the bot first, and
+the chat id is resolved by the caller exactly like the BlueBubbles chat GUID.
+The token sits in the URL path (`/bot<token>/sendMessage`), so every error,
+including the ones `fetch` raises with the URL inside them, is redacted before
+it leaves the transport.
+
+```ts
+import { createTelegramTransport } from "@titan-design/messaging";
+
+const transport = createTelegramTransport({
+  token: config.telegramBotToken,   // never read from env by this package
+  chatIdFor: (handle) => chatIds.get(handle),
+});
+
+const result = await transport.send({ handle: "lifter", text: "sunday?" });
+if (!result.ok && result.error.kind === "too-long") {
+  split(result.error.length, result.error.limit); // 4096 characters
+}
+```
+
+No `parse_mode` is sent, so coach copy is never mangled by Markdown parsing.
+`too-long` is checked before the call and is its own `SendError` kind, so a
+composer can split rather than retry.
+
+Inbound arrives either way Telegram offers. `pollUpdates` is the long poll a
+daemon runs; it tracks the offset (`last update_id + 1`), acknowledges every
+update it saw, yields only text messages from an allowed chat, and stops when
+the signal aborts:
+
+```ts
+import { pollUpdates, readChatIds } from "@titan-design/messaging";
+
+const chatIds = await readChatIds(config); // one-time: "what is my chat id?"
+
+for await (const update of pollUpdates(config, {
+  timeoutSeconds: 30,
+  allowedChatIds: [chatIds[0]],
+  signal: controller.signal,
+})) {
+  await enqueue({ chatId: update.chatId, text: update.text });
+}
+```
+
+`validateTelegramWebhook` is the push equivalent: same shape as
+`validateInbound`, over the `X-Telegram-Bot-Api-Secret-Token` header that
+Telegram echoes from `setWebhook`, the same constant-time compare, a chat
+allowlist, a length cap and an `update_id` dedupe through the same `SeenStore`.
+Its rejection reasons are `bad-secret`, `malformed`, `not-text`,
+`sender-not-allowed`, `too-long` and `duplicate`.
+
+```ts
+const result = await validateTelegramWebhook({
+  headerSecret: request.headers.get("x-telegram-bot-api-secret-token") ?? "",
+  expectedSecret: env.TELEGRAM_WEBHOOK_SECRET,
+  allowedChatIds: [4242],
+  body: await request.json(),
+  maxTextLength: 2000,
+  seen,
+});
+```
+
+`probeTelegramLiveness(config, { timeoutMs })` calls `getMe`, the documented way
+to test a token, so one probe answers both "does the API answer" and "does this
+token still work". It returns the same `alive` / `dark` shape as
+`probeLiveness`, with the bot username on `alive`.
+
 ## What this package deliberately does not do
 
 - **Secrets.** The server password and the webhook secret are configuration
@@ -111,10 +180,12 @@ on, so a hung server cannot wedge a caller's tick.
   a file, and nothing here writes one.
 - **Persistence.** The GUID dedupe is an injected `SeenStore`. Keeping it out
   means no tier-0 dependency, so the validator runs unchanged in a Worker.
-- **Private API features.** Read receipts, typing indicators, tapbacks and
-  effects all need the SIP-disabled helper bundle. The contract exposes no
-  delivered or read signal at all, so a state machine above it cannot
-  accidentally branch on one.
+- **Delivery and read signals.** For iMessage, read receipts, typing
+  indicators, tapbacks and effects all need the SIP-disabled helper bundle. The
+  Bot API has no delivery or read receipt for bots at all: a successful
+  `sendMessage` means Telegram accepted the message, and nothing more is ever
+  reported. The contract therefore exposes no delivered or read signal, so a
+  state machine above it cannot accidentally branch on one.
 - **Scheduling.** No cron, no queue, no quiet hours, no retry loop. The
   transport reports one typed failure per attempt; when to try again is the
   consumer's policy.
