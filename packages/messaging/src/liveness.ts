@@ -19,13 +19,13 @@ export interface ProbeOptions {
   timeoutMs: number;
 }
 
-type Outcome =
+export type Outcome =
   | { kind: "response"; response: Response }
   | { kind: "timeout" }
   | { kind: "error"; cause: unknown };
 
 /** Races the request so an injected fetch that ignores the signal still times out. */
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   doFetch: typeof fetch,
   url: string,
   timeoutMs: number,

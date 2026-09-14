@@ -31,3 +31,31 @@ export {
 
 export type { Liveness, ProbeOptions } from "./liveness.js";
 export { probeLiveness } from "./liveness.js";
+
+export type { TelegramConfig, TelegramEnvelope } from "./telegram.js";
+export {
+  createTelegramTransport,
+  redactToken,
+  TELEGRAM_MAX_TEXT_LENGTH,
+  TelegramTransport,
+} from "./telegram.js";
+
+export type {
+  PollUpdatesOptions,
+  TelegramTextUpdate,
+} from "./telegram-updates.js";
+export {
+  pollUpdates,
+  readChatIds,
+  telegramUpdateEvent,
+} from "./telegram-updates.js";
+
+export type {
+  TelegramInboundResult,
+  TelegramRejection,
+  ValidateTelegramWebhookInput,
+} from "./telegram-webhook.js";
+export { validateTelegramWebhook } from "./telegram-webhook.js";
+
+export type { TelegramLiveness } from "./telegram-liveness.js";
+export { probeTelegramLiveness } from "./telegram-liveness.js";
