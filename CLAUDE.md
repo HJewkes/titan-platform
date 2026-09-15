@@ -7,10 +7,10 @@ the short version for agents.
 ## Before you finish any change
 
 ```
-pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check
+pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
 ```
 
-All five must be green. `dag:check` needs codewatch built at
+All six must be green. `dag:check` needs codewatch built at
 `~/projects/codewatch/packages/cli/dist/index.js` (or set `CODEWATCH_CLI`). Zero lint
 warnings in files you touched.
 
@@ -21,7 +21,11 @@ warnings in files you touched.
   `pnpm new:package <name> --tier <0|1|2|ui|product>` does this for you.
 - **Changesets.** Any change under `packages/*` needs a changeset (`pnpm changeset`) or the
   PR fails. Packages version independently.
-- **Uniform scaffold.** Never hand-copy a package; stamp it with `pnpm new:package`.
+- **Uniform scaffold.** Never hand-copy a package; stamp it with `pnpm new:package`. It also
+  stamps `site/reference/<name>.md` from `templates/reference-page.md` and refreshes the
+  generated index and sidebar. Fill the page in; a re-stamp never overwrites it.
+- **Docs build.** The `validate` job runs `pnpm docs:build` on every pull request, with no
+  path filter. A public package with no reference page fails that check before merge.
 
 ## Conventions
 
