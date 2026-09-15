@@ -46,6 +46,10 @@
         "link": "/reference/hitl"
       },
       {
+        "text": "messaging",
+        "link": "/reference/messaging"
+      },
+      {
         "text": "registry",
         "link": "/reference/registry"
       },
