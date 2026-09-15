@@ -1,0 +1,45 @@
+name: Bootstrap publish
+
+# First publish for a brand-new @titan-design package. npm refuses to configure a trusted
+# publisher for a package that does not exist yet, so the first version cannot go through
+# release.yml's OIDC path. This dispatch-only workflow carries a short-lived granular token
+# instead, and release.yml stays token-free. Sequence and token settings: site/guides/contributing.md.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: One package name or directory under packages/. Leave empty to scan them all.
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: bootstrap-publish
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    # NPM_BOOTSTRAP_TOKEN is an environment secret, so required reviewers gate every use of it.
+    environment: npm-bootstrap
+    # No id-token: write. This job authenticates with the token, and withholding the OIDC
+    # permission stops npm from attempting a trusted-publisher exchange that cannot succeed yet.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Same pin and reason as release.yml: pnpm forwards --git-checks, which npm 12 rejects outright.
+      - run: npm install -g npm@11 && npm --version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Publish packages npm has never seen
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          BOOTSTRAP_PACKAGE: ${{ inputs.package }}
+        run: node scripts/bootstrap-publish-candidates.mjs

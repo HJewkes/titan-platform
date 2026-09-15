@@ -35,5 +35,25 @@ warnings in files you touched.
 ## Releasing
 
 Merging to main lets the Release workflow open or refresh the "Version Packages" PR.
-Merging that PR publishes via npm trusted publishing. A brand-new package must be
-published once by hand before its trusted publisher can be configured on npmjs.com.
+Merging that PR publishes via npm trusted publishing. Never add a token secret to
+`release.yml`.
+
+A brand-new package cannot use that path yet: npm only accepts a trusted publisher for a
+package that already exists. Its first publish runs through `bootstrap-publish.yml`:
+
+1. On npmjs.com create a granular access token — `@titan-design` scope only, organizations
+   "No access", "Read and write (publish and stage)", Bypass 2FA on, expiry 1 day (the
+   floor; 90 days is the cap for a write token). Store it as `NPM_BOOTSTRAP_TOKEN` on the
+   `npm-bootstrap` GitHub environment, never as a repo secret.
+2. Dispatch **Bootstrap publish** (optionally with a `package` input) and approve the
+   environment review. It publishes only packages npm answers 404 for.
+3. Add the trusted publisher on the new package's npmjs.com settings page. This needs an
+   interactive 2FA challenge and cannot be automated.
+4. Delete the token or let it expire. Every later release is token-free.
+
+Around January 2027 npm removes direct publishing from bypass-2FA tokens; step 2 then has
+to become `npm stage publish` plus a human 2FA approval.
+
+Do not bump the `packageManager` pin (`pnpm@9.15.0`) without testing a real publish. pnpm
+implements `publish` natively from v11 instead of delegating to the npm CLI, and that
+delegation is what performs the OIDC exchange release.yml depends on.

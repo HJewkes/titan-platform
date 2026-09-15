@@ -83,12 +83,52 @@ to npm.
 
 Publishing uses npm trusted publishing (OIDC), so there is no token secret: each package
 has a trusted publisher on npmjs.com pointing at `HJewkes/titan-platform` and
-`release.yml`. A package's first publish must happen before its trusted publisher can be
-configured, so bootstrap a brand-new package once by hand with `pnpm release` from a
-logged-in shell.
+`release.yml`. Never add a token to `release.yml`.
 
 A red `lint`, `typecheck`, or `test` on main blocks every publish, since the release job
 runs them first.
+
+### The first publish of a brand-new package
+
+npm accepts a trusted publisher only for a package that already exists on the registry, so
+a package's very first version cannot come from `release.yml`. It comes from
+`.github/workflows/bootstrap-publish.yml`, the one workflow that carries a token. Land the
+package on main first, then:
+
+1. **Create a short-lived token.** On npmjs.com, *Access Tokens → Generate New Token →
+   Granular*. Packages and scopes: "Only select packages and scopes", the `@titan-design`
+   scope, permission "Read and write (publish and stage)". Organizations: "No access".
+   Check **Bypass 2FA**, which an unattended publish needs. Set the expiry to **1 day** —
+   npm's floor is one day and its cap for a write token is 90.
+2. **Store it on the environment, not the repo.** Add it as `NPM_BOOTSTRAP_TOKEN` under
+   *Settings → Environments → `npm-bootstrap` → Environment secrets*. Create that
+   environment once with **required reviewers**; the review is what stops an ordinary push
+   from reaching a publish token.
+3. **Dispatch the workflow.** *Actions → Bootstrap publish → Run workflow*, optionally
+   naming one `package`. Approve the environment review. The job runs
+   `scripts/bootstrap-publish-candidates.mjs`, which asks `npm view <name> version` about
+   every public package under `packages/*` and publishes only the ones npm answers 404
+   for. A package that already exists is never republished.
+4. **Add the trusted publisher.** On the new package's npmjs.com settings page, point it at
+   `HJewkes/titan-platform` and `release.yml`. This step needs an interactive 2FA challenge
+   and cannot be automated: since 2026-07-31, npm blocks bypass-2FA tokens from changing
+   trusted-publishing configuration.
+5. **Delete the token,** or let the one-day expiry do it.
+
+Every later release of that package then goes through `release.yml` with no token at all.
+
+Two dates worth knowing. Around **January 2027** npm removes direct publishing from
+bypass-2FA tokens, leaving them able to stage a publish that a human approves with 2FA;
+step 3 has to move to `npm stage publish` then. And the bootstrap job publishes with
+`pnpm publish`, not `npm publish`, because only pnpm rewrites `workspace:^` dependency
+ranges into real version ranges — `npm pack` leaves them literal and produces an
+uninstallable tarball.
+
+::: warning Do not bump the pnpm pin casually
+`packageManager` pins `pnpm@9.15.0`. From v11, `pnpm publish` is implemented natively and
+no longer delegates to the npm CLI — and that delegation is what performs the OIDC
+exchange trusted publishing relies on. Any pnpm upgrade needs a real publish to verify.
+:::
 
 ## The docs site
 
