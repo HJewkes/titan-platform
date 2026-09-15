@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stamp a new workspace package from templates/package and register its tier in check.json.
-import { cpSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { cpSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +46,21 @@ export function registerLayer(checkJsonText, prefix, tier) {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+/**
+ * Writes the reference page the docs build demands for every public package. Returns the
+ * path when it stamped one, and null when a page is already there — a re-stamp must never
+ * flatten a hand-written page.
+ */
+export function stampReferencePage(root, opts) {
+  const page = join(root, "site", "reference", `${opts.name}.md`);
+  if (existsSync(page)) return null;
+  let text = readFileSync(join(root, "templates", "reference-page.md"), "utf8");
+  const vars = { NAME: opts.name, TIER: String(opts.tier), DESCRIPTION: opts.description, TASK: opts.task };
+  for (const [key, value] of Object.entries(vars)) text = text.replaceAll(`__${key}__`, value);
+  writeFileSync(page, text);
+  return page;
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const dir = opts.tier === "product" ? "products" : "packages";
@@ -52,7 +68,9 @@ function main() {
   cpSync(TEMPLATE, dest, { recursive: true, errorOnExist: true, force: false });
   substitute(dest, { NAME: opts.name, DIR: dir, TIER: String(opts.tier), DESCRIPTION: opts.description, TASK: opts.task });
   writeFileSync(CHECK_JSON, registerLayer(readFileSync(CHECK_JSON, "utf8"), `${dir}/${opts.name}`, opts.tier));
-  console.log(`created ${dir}/${opts.name} (tier ${opts.tier})`);
+  const page = stampReferencePage(ROOT, opts);
+  execFileSync(process.execPath, [join(ROOT, "scripts", "gen-docs-reference.mjs")], { stdio: "inherit" });
+  console.log(`created ${dir}/${opts.name} (tier ${opts.tier})${page ? ` and site/reference/${opts.name}.md` : ""}`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

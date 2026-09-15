@@ -16,10 +16,10 @@ One shared `tsconfig.base.json` (ES2022, NodeNext, strict, `verbatimModuleSyntax
 
 ## Before you finish any change
 
-All five must be green:
+All six must be green:
 
 ```sh
-pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check
+pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
 ```
 
 Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test` and
@@ -35,11 +35,18 @@ pnpm new:package <name> --tier <0|1|2|ui|product> --description "..." --task TP-
 pnpm install
 ```
 
-That copies `templates/package`, fills in the name and tier, and registers the package in
-`.codewatch/check.json` under its tier. Edit the `$tiers` map, never `layers` directly.
+That copies `templates/package`, fills in the name and tier, registers the package in
+`.codewatch/check.json` under its tier, stamps `site/reference/<name>.md` from
+`templates/reference-page.md`, and regenerates the index and sidebar. Edit the `$tiers` map,
+never `layers` directly.
 
-Then write `site/reference/<name>.md`. The docs build fails without it — see
-[the reference index](#the-reference-index) below.
+The stamped reference page is a placeholder with every section heading and no content. Fill
+it in before the package ships; a second stamp of the same name leaves an existing page
+untouched, so hand-written prose is never flattened.
+
+The docs build is a pull-request gate, not just a deploy step: `validate` runs
+`pnpm docs:build` on every pull request, so a public package with no reference page turns
+the required check red before merge. See [the reference index](#the-reference-index) below.
 
 ## Checking the DAG locally
 
@@ -138,8 +145,10 @@ pnpm docs:build    # regenerates the reference index, then builds to site/.vitep
 pnpm docs:preview  # serve the built output
 ```
 
-`.github/workflows/pages.yml` builds the site on every pull request that touches `site/`
-and deploys it to GitHub Pages on every push to main.
+`.github/workflows/pages.yml` deploys the site to GitHub Pages on every push to main. The
+build itself is guarded earlier: `ci.yml`'s `validate` job runs `pnpm docs:build` on every
+pull request with no path filter, so a change under `packages/` that breaks the reference
+fails the required check rather than the deploy.
 
 ### The reference index {#the-reference-index}
 
@@ -151,7 +160,8 @@ every workspace `package.json`, then writes two files that are committed:
 
 A new package therefore never needs a hand edit to the nav. The script *fails* if a public
 package has no `site/reference/<name>.md`, which is the mechanism that stops an undocumented
-package from shipping.
+package from shipping. `pnpm new:package` stamps that page and reruns the script, so the
+default path is green without a hand edit.
 
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.

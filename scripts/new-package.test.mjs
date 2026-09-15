@@ -1,5 +1,20 @@
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseArgs, registerLayer } from "./new-package.mjs";
+import { parseArgs, registerLayer, stampReferencePage } from "./new-package.mjs";
+
+const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** A root with only the two paths stampReferencePage touches: the template and the pages. */
+function fakeRoot() {
+  const root = mkdtempSync(join(tmpdir(), "new-package-"));
+  mkdirSync(join(root, "templates"), { recursive: true });
+  mkdirSync(join(root, "site", "reference"), { recursive: true });
+  cpSync(join(REPO, "templates", "reference-page.md"), join(root, "templates", "reference-page.md"));
+  return root;
+}
 
 const baseCheck = JSON.stringify({
   rules: [
@@ -59,5 +74,28 @@ describe("registering a package in the layered-deps rule", () => {
   it("does not duplicate a package that is already registered", () => {
     const rule = layeredRule(registerLayer(baseCheck, "packages/store-sqlite", "0"));
     expect(rule.$tiers[0]).toEqual(["packages/store-sqlite"]);
+  });
+});
+
+describe("stamping the reference page the docs build demands", () => {
+  const opts = { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" };
+
+  it("writes site/reference/<name>.md with the placeholders filled in", () => {
+    const root = fakeRoot();
+    expect(stampReferencePage(root, opts)).toBe(join(root, "site", "reference", "beacon.md"));
+    const page = readFileSync(join(root, "site", "reference", "beacon.md"), "utf8");
+    expect(page).toContain("# beacon");
+    expect(page).toContain("**Tier 1.**");
+    expect(page).toContain("signals a thing");
+    expect(page).toContain("Tracked by TP-99");
+    expect(page).not.toMatch(/__[A-Z]+__/);
+  });
+
+  it("leaves an existing page alone so a re-stamp cannot flatten hand-written prose", () => {
+    const root = fakeRoot();
+    const page = join(root, "site", "reference", "beacon.md");
+    writeFileSync(page, "# beacon\n\nhand-written\n");
+    expect(stampReferencePage(root, opts)).toBeNull();
+    expect(readFileSync(page, "utf8")).toBe("# beacon\n\nhand-written\n");
   });
 });
