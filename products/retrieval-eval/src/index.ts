@@ -1,5 +1,5 @@
-export type { Arm, EvalPair, Label, LinkMethod, Provenance } from "./pairs.js";
-export { formatPairs, labelKeys, parsePairs } from "./pairs.js";
+export type { Arm, EvalPair, Label, LabelScope, LinkMethod, Provenance } from "./pairs.js";
+export { formatPairs, labelKeys, LABEL_SCOPES, parsePairs, scopePair } from "./pairs.js";
 export type { ToolUse, TranscriptHead } from "./corpus/transcripts.js";
 export {
   defaultTranscriptRoots,

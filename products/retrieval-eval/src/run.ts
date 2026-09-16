@@ -1,7 +1,8 @@
 import type { Candidate, SearchContext } from "./candidates/candidate.js";
 import type { AggregateScore, PairScore } from "./metrics.js";
 import { aggregate, scorePair } from "./metrics.js";
-import type { Arm, EvalPair } from "./pairs.js";
+import type { Arm, EvalPair, LabelScope } from "./pairs.js";
+import { LABEL_SCOPES, scopePair } from "./pairs.js";
 import type { QueryVariant } from "./query/variants.js";
 import { deriveQuery, documentFrequency } from "./query/variants.js";
 
@@ -15,6 +16,7 @@ export interface RunRow {
   arm: Arm;
   candidate: string;
   variant: QueryVariant;
+  scope: LabelScope;
   score: AggregateScore;
   /** Queries the candidate threw on, counted rather than hidden. */
   errors: number;
@@ -40,7 +42,7 @@ export async function runEval(options: RunOptions): Promise<RunRow[]> {
     const armPairs = options.pairs.filter((pair) => pair.arm === arm);
     for (const candidate of options.candidates) {
       for (const variant of options.variants) {
-        rows.push(await scoreOne({ arm, armPairs, candidate, variant, df, ks, limit }));
+        rows.push(...(await scoreCell({ arm, armPairs, candidate, variant, df, ks, limit })));
         options.onProgress?.(++done, total);
       }
     }
@@ -62,8 +64,9 @@ interface ScoreOneInput {
   limit: number;
 }
 
-async function scoreOne(input: ScoreOneInput): Promise<RunRow> {
-  const scores: PairScore[] = [];
+/** Both label scopes come from one search per pair; scoring twice is free, searching twice is not. */
+async function scoreCell(input: ScoreOneInput): Promise<RunRow[]> {
+  const scores = new Map<LabelScope, PairScore[]>(LABEL_SCOPES.map((scope) => [scope, []]));
   let errors = 0;
   for (const pair of input.armPairs) {
     const query = deriveQuery(input.variant, pair.query, input.df);
@@ -73,15 +76,19 @@ async function scoreOne(input: ScoreOneInput): Promise<RunRow> {
       errors++;
       continue;
     }
-    scores.push(scorePair(hits, pair, input.ks, BUDGET_K));
+    for (const scope of LABEL_SCOPES) {
+      const scoped = scopePair(pair, scope);
+      if (scoped) scores.get(scope)!.push(scorePair(hits, scoped, input.ks, BUDGET_K));
+    }
   }
-  return {
+  return LABEL_SCOPES.map((scope) => ({
     arm: input.arm,
     candidate: input.candidate.name,
     variant: input.variant,
-    score: aggregate(scores, input.ks),
+    scope,
+    score: aggregate(scores.get(scope)!, input.ks),
     errors,
-  };
+  }));
 }
 
 /**
@@ -102,12 +109,13 @@ async function safeSearch(candidate: Candidate, query: string, limit: number, co
 }
 
 export function formatRows(rows: RunRow[], ks: number[] = DEFAULT_KS): string {
-  const header = ["arm", "candidate", "variant", "pairs", ...ks.flatMap((k) => [`R@${k}`, `P@${k}`]), "MRR", `chars@${BUDGET_K}`, "err"];
+  const header = ["arm", "scope", "candidate", "variant", "pairs", ...ks.flatMap((k) => [`R@${k}`, `P@${k}`]), "MRR", `chars@${BUDGET_K}`, "err"];
   const lines = [header.join("\t")];
   for (const row of rows) {
     lines.push(
       [
         row.arm,
+        row.scope,
         row.candidate,
         row.variant,
         String(row.score.pairs),

@@ -54,6 +54,26 @@ export function labelKeys(label: Label): string[] {
   return [label.absolute, label.relative, label.ref].filter((k): k is string => k !== undefined);
 }
 
+/**
+ * Which labels a run is scored against.
+ *
+ * `all` is the honest denominator: everything the agent opened. It is also a
+ * denominator no workspace retriever can ever fill, because most of what an
+ * agent opens is repository code that the workspace index does not contain. So
+ * both are reported. `all` answers "how much of the agent's reading could this
+ * have replaced"; `workspace` answers "of the things this retriever could
+ * possibly have returned, how many did it rank", which is the ranking question.
+ */
+export type LabelScope = "all" | "workspace";
+export const LABEL_SCOPES: LabelScope[] = ["all", "workspace"];
+
+/** Narrow a pair to one scope, or drop it when the scope leaves it with no labels. */
+export function scopePair(pair: EvalPair, scope: LabelScope): EvalPair | undefined {
+  if (scope === "all") return pair;
+  const labels = pair.labels.filter((label) => label.relative !== undefined);
+  return labels.length === 0 ? undefined : { ...pair, labels };
+}
+
 export function parsePairs(jsonl: string): EvalPair[] {
   return jsonl
     .split("\n")
