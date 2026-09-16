@@ -16,7 +16,10 @@ export interface Spawn {
   name: string;
   brief: string;
   briefing?: string;
+  /** Where the spawned agent will run, from the tool input. */
   cwd?: string;
+  /** Where the requesting session was running, from the transcript line. */
+  requesterCwd?: string;
   parentTranscript: string;
   timestamp?: string;
 }
@@ -30,15 +33,20 @@ const AUTO_BRIEFING = "auto";
  * Which initiative the spawn was briefed from, mirroring agent-chat's
  * `resolveBriefing`.
  *
- * An explicit slug wins. `auto` falls back to the first path segment under the
- * active root, which is all `slugForPath` does. The requester's cwd is not in
- * the tool input, so only the target's is tried; a spawn resolved by the
- * requester alone is therefore counted unresolved here rather than guessed at.
+ * An explicit slug wins. `auto` takes the requester's cwd and then the target's,
+ * in that order, and reduces each to the first path segment under the active
+ * root — which is all `slugForPath` does. The requester's cwd is not in the tool
+ * input but the transcript line carries it, which is what makes this the same
+ * answer agent-chat computed rather than a subset of it.
  */
 export function briefingSlug(spawn: Spawn, activeRoot: string): string | undefined {
   if (spawn.briefing !== undefined && spawn.briefing !== AUTO_BRIEFING) return spawn.briefing;
-  if (spawn.cwd === undefined) return undefined;
-  const relative = path.relative(activeRoot, spawn.cwd);
+  return slugForPath(spawn.requesterCwd, activeRoot) ?? slugForPath(spawn.cwd, activeRoot);
+}
+
+function slugForPath(dir: string | undefined, activeRoot: string): string | undefined {
+  if (dir === undefined) return undefined;
+  const relative = path.relative(activeRoot, dir);
   if (relative.startsWith("..") || path.isAbsolute(relative) || relative.length === 0) return undefined;
   return relative.split(path.sep)[0];
 }
@@ -63,6 +71,7 @@ function spawnOf(tool: ToolUse, parentTranscript: string): Spawn | undefined {
     brief,
     ...(typeof briefing === "string" ? { briefing } : {}),
     ...(typeof cwd === "string" ? { cwd } : {}),
+    ...(tool.cwd ? { requesterCwd: tool.cwd } : {}),
     parentTranscript,
     ...(tool.timestamp ? { timestamp: tool.timestamp } : {}),
   };

@@ -17,6 +17,22 @@ describe("briefingSlug", () => {
     expect(briefingSlug(spawn({ briefing: "auto", cwd: `${ROOT}/relay/sources` }), ROOT)).toBe("relay");
   });
 
+  it("prefers the requester's directory over the target's, as resolveBriefing does", () => {
+    const resolved = briefingSlug(
+      spawn({ briefing: "auto", requesterCwd: `${ROOT}/titan-platform`, cwd: `${ROOT}/relay` }),
+      ROOT,
+    );
+    expect(resolved).toBe("titan-platform");
+  });
+
+  it("falls through to the target when the requester is outside the root", () => {
+    const resolved = briefingSlug(
+      spawn({ briefing: "auto", requesterCwd: "/Users/x/projects/titan-platform", cwd: `${ROOT}/relay` }),
+      ROOT,
+    );
+    expect(resolved).toBe("relay");
+  });
+
   it("resolves an absent briefing the same way auto does", () => {
     expect(briefingSlug(spawn({ cwd: `${ROOT}/relay` }), ROOT)).toBe("relay");
   });

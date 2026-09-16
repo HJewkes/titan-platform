@@ -14,6 +14,8 @@ export interface ToolUse {
   input: Record<string, unknown>;
   timestamp?: string;
   sessionId?: string;
+  /** The issuing session's working directory, which the record carries per line. */
+  cwd?: string;
 }
 
 /** `~/.claude/projects` plus every profile's, since spawned agents run under profiles. */
@@ -79,6 +81,7 @@ export async function* streamToolUses(file: string): AsyncGenerator<ToolUse> {
         input: (item.input ?? {}) as Record<string, unknown>,
         timestamp: typeof record?.timestamp === "string" ? record.timestamp : undefined,
         sessionId: typeof record?.sessionId === "string" ? record.sessionId : undefined,
+        cwd: typeof record?.cwd === "string" ? record.cwd : undefined,
       };
     }
   }
