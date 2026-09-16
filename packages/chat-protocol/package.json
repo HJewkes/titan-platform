@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/chat-protocol",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The canonical chat message document and envelope every agent-chat surface speaks",
   "type": "module",
   "main": "./dist/index.js",
