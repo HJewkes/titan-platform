@@ -94,5 +94,15 @@
         "link": "/reference/react-ui"
       }
     ]
+  },
+  {
+    "text": "Products",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "retrieval-eval",
+        "link": "/reference/retrieval-eval"
+      }
+    ]
   }
 ]
