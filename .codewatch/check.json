@@ -10,7 +10,8 @@
           "packages/locator",
           "packages/cluster",
           "packages/embed",
-          "packages/agent-protocol"
+          "packages/agent-protocol",
+          "packages/chat-protocol"
         ],
         "1": [
           "packages/retrieval",
@@ -39,7 +40,8 @@
           "packages/locator",
           "packages/cluster",
           "packages/embed",
-          "packages/agent-protocol"
+          "packages/agent-protocol",
+          "packages/chat-protocol"
         ],
         [
           "packages/retrieval",

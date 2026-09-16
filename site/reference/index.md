@@ -12,6 +12,7 @@ Domain-free building blocks. No titan dependencies.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
+| [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
 | [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
