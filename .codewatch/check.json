@@ -31,7 +31,8 @@
         ],
         "ui": [],
         "product": [
-          "products/session-miner"
+          "products/session-miner",
+          "products/retrieval-eval"
         ]
       },
       "layers": [
@@ -60,7 +61,8 @@
           "packages/memory"
         ],
         [
-          "products/session-miner"
+          "products/session-miner",
+          "products/retrieval-eval"
         ]
       ]
     },

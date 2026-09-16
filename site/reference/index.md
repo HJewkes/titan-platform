@@ -58,4 +58,5 @@ Thin compositions of the tiers. Private, not published.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
+| `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `locator`, `memory`, `registry`, `retrieval`, `session-graph`, `session-read`, `store-sqlite` |

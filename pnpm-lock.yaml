@@ -234,6 +234,21 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  products/retrieval-eval:
+    dependencies:
+      '@titan-design/embed':
+        specifier: workspace:^
+        version: link:../../packages/embed
+      '@titan-design/retrieval':
+        specifier: workspace:^
+        version: link:../../packages/retrieval
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+
   products/session-miner:
     dependencies:
       '@titan-design/cluster':
