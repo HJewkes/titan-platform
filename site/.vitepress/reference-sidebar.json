@@ -8,6 +8,10 @@
         "link": "/reference/agent-protocol"
       },
       {
+        "text": "chat-protocol",
+        "link": "/reference/chat-protocol"
+      },
+      {
         "text": "cluster",
         "link": "/reference/cluster"
       },
