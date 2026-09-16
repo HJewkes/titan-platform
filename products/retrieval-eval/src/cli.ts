@@ -63,9 +63,10 @@ async function mine(
 
 async function buildCandidates(names: string[], common: CommonOptions): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
+  // Baseline first, so the row everything else has to beat is the row above them.
+  if (names.includes("date-order-notes")) candidates.push(dateOrderNotes({ activeRoot: common.activeRoot }));
   if (names.includes("active-work-search")) candidates.push(activeWorkSearch({ activeRoot: common.activeRoot }));
   if (names.includes("notes-fts")) candidates.push(notesFts({ graphPath: common.graph, activeRoot: common.activeRoot }));
-  if (names.includes("date-order-notes")) candidates.push(dateOrderNotes({ activeRoot: common.activeRoot }));
   if (names.includes("hybrid-fts-vector")) {
     const lexical = notesFts({ graphPath: common.graph, activeRoot: common.activeRoot });
     candidates.push(await hybridVector({ activeRoot: common.activeRoot, lexical }));
