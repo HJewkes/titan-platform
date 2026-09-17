@@ -13,8 +13,9 @@ function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
   });
 }
 
-async function postRpc(app: Hono, name: string, body?: string): Promise<Response> {
-  return app.request(`/rpc/${name}`, { method: "POST", body });
+async function postRpc(app: Hono, name: string, body?: string, init: RequestInit = {}): Promise<Response> {
+  const headers = { "content-type": "application/json", ...(init.headers as Record<string, string> | undefined) };
+  return app.request(`/rpc/${name}`, { method: "POST", body, ...init, headers });
 }
 
 describe("/health", () => {
@@ -99,6 +100,84 @@ describe("POST /rpc/:name", () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false, error: "redacted", code: 70 });
+  });
+});
+
+describe("request guards", () => {
+  it("rejects a non-JSON body on a state-changing request", async () => {
+    const res = await postRpc(buildApp(), "greet", "name=world", { headers: { "content-type": "text/plain" } });
+
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ ok: false, error: "Content-Type must be application/json", code: 64 });
+  });
+
+  it("rejects a POST with no Content-Type at all", async () => {
+    const res = await buildApp().request("/rpc/boom", { method: "POST" });
+
+    expect(res.status).toBe(415);
+  });
+
+  it("rejects a rebinding-style Host even when the body is JSON", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "world" }), {
+      headers: { host: "evil.example" },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "Host header is not one this daemon answers to", code: 64 });
+  });
+
+  it("rejects a foreign Origin on a state-changing request", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "world" }), {
+      headers: { origin: "http://evil.example" },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "Origin is not one this daemon answers to", code: 64 });
+  });
+
+  it("rejects an opaque (null) Origin", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "world" }), {
+      headers: { origin: "null" },
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("accepts the loopback Origin the daemon is bound to", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "world" }), {
+      headers: { origin: "http://127.0.0.1:7400", host: "127.0.0.1:7400" },
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("serves a command with no Origin header at all, as a CLI or curl sends it", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "cli" }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("keeps /health and /version reachable from an allowed host", async () => {
+    const app = buildApp();
+
+    expect((await app.request("/health", { headers: { host: "127.0.0.1:7400" } })).status).toBe(200);
+    expect((await app.request("/version", { headers: { host: "[::1]:7400" } })).status).toBe(200);
+  });
+
+  it("guards reads too, so a rebound page cannot even poll /health", async () => {
+    const res = await buildApp().request("/health", { headers: { host: "evil.example" } });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("honours a product's own allowlist", async () => {
+    const app = buildApp({ guards: { allowedHosts: ["daemon.internal"], allowedOrigins: ["https://console.internal"] } });
+
+    const allowed = await postRpc(app, "greet", JSON.stringify({ name: "ops" }), {
+      headers: { host: "daemon.internal", origin: "https://console.internal" },
+    });
+    expect(allowed.status).toBe(200);
+    expect((await postRpc(app, "greet", "{}", { headers: { host: "localhost" } })).status).toBe(403);
   });
 });
 

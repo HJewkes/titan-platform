@@ -66,11 +66,29 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
+| `POST /rpc/:name` | 403 bad Host/Origin, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope and
 exit codes are identical across surfaces.
+
+## Request guards
+
+An unauthenticated daemon on loopback is reachable from every browser on the machine, so
+every route is behind three checks: the `Host` header must be in an allowlist (403), a
+state-changing request's `Origin`, when it sends one, must be in an allowlist (403), and a
+state-changing request's `Content-Type` must be `application/json` (415).
+
+The default allowlist is `localhost`, `127.0.0.1`, and `[::1]`, each with and without the
+bound port, plus a non-default `host` option. A client that sends no `Origin` — a CLI,
+curl, an MCP client — is unaffected, and `GET /health` and `GET /version` stay reachable.
+
+```ts
+await startDaemon({
+  guards: { allowedHosts: ["daemon.internal"], allowedOrigins: ["https://console.internal"] },
+  // ...
+});
+```
 
 ## The seams
 

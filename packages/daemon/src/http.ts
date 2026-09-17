@@ -8,6 +8,7 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EXIT, errorEnvelope, invokeCommand, type BaseContext } from "@titan-design/registry";
 import type { EventHub } from "./events.js";
+import { createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
 import type { SurfaceOptions } from "./surface.js";
 
@@ -30,6 +31,8 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
   health?: () => Record<string, unknown>;
   /** Hook for product-owned routes (a dashboard, static assets, extra endpoints). */
   mountRoutes?: (app: Hono) => void;
+  /** Host/Origin allowlists and the JSON body gate. Defaults to loopback only. */
+  guards?: RequestGuardOptions;
 }
 
 /** Interval between SSE keep-alive comments (ms). */
@@ -38,6 +41,7 @@ const HEARTBEAT_MS = 25_000;
 export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ctx>): Hono {
   const app = new Hono();
   const startedAt = options.startedAt ?? Date.now();
+  registerGuards(app, options);
 
   app.get("/health", (c) => {
     if (options.ready && !options.ready()) return c.json({ ok: false, starting: true }, 503);
@@ -55,6 +59,22 @@ export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ct
   registerRpc(app, options);
   options.mountRoutes?.(app);
   return app;
+}
+
+function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
+  const guard = createRequestGuard(options.guards, options.port);
+  app.use("*", async (c, next) => {
+    const refusal = guard({
+      method: c.req.method,
+      // No Host header means HTTP/1.0 or a synthetic Request; the URL's host is then the
+      // server's own bind address, never anything a client supplied.
+      host: c.req.header("host") ?? new URL(c.req.url).host,
+      origin: c.req.header("origin"),
+      contentType: c.req.header("content-type"),
+    });
+    if (refusal) return c.json(errorEnvelope(refusal.message, EXIT.USAGE), refusal.status);
+    await next();
+  });
 }
 
 function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
