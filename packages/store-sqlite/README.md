@@ -24,6 +24,27 @@ Migrations are `{ version, up(db) }`, applied in order, each in its own transact
 recorded in a `_migration` table. `hasTable` and `hasColumn` make `ALTER` migrations
 idempotent.
 
+### Refusing a database from the future
+
+Migrations only move forward, so a database stamped past the highest migration a runtime
+knows was written by a newer version of that runtime: the columns this process is about to
+query may already be gone. Pass the version you own and `openDatabase` refuses it up front
+instead of letting a query die on a dropped column much later.
+
+```ts
+const db = openDatabase(dbPath, { schemaVersion: 2 }); // throws SchemaTooNewError at 3
+```
+
+`SchemaTooNewError` carries `storedVersion` and `knownVersion`, and its `name` is set, so a
+caller can tell "upgrade the package" apart from a migration that genuinely failed.
+`assertSchemaVersion(db, knownVersion)` is the same check on an open connection, for a
+read-only open that cannot run migrations at all.
+
+The check is opt-in because only a caller that owns the whole schema can name that version.
+A store layering its own migrations onto a shared database sees one band of versions rather
+than the top of it — `products/session-miner` numbers its own from 1000 precisely so it can
+sit above `@titan-design/session-graph`'s.
+
 ## The primitives
 
 Every factory takes an optional `name` so a store can host several instances or keep a
