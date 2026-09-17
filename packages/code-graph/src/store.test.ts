@@ -1,4 +1,9 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { SchemaTooNewError, nowIso, openDatabase } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { SCHEMA_VERSION } from "./schema.js";
 import { openCodeGraph } from "./store.js";
 
 const openTemp = () => openCodeGraph(":memory:");
@@ -64,5 +69,23 @@ describe("CodeGraphStore", () => {
     store.insertNodes(first, [{ id: "src/a.ts", kind: "file", name: "a.ts" }]);
     expect(store.listNodes(second)).toEqual([]);
     expect(store.listSnapshots()).toHaveLength(2);
+  });
+});
+
+describe("forward-schema guard", () => {
+  it("refuses a database a newer code-graph stamped, rather than querying its schema", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "titan-code-graph-"));
+    const dbPath = path.join(dir, "graph.sqlite3");
+    try {
+      openCodeGraph(dbPath).close();
+      const db = openDatabase(dbPath);
+      db.prepare("INSERT INTO _migration (version, name, applied_at) VALUES (?, ?, ?)").run(SCHEMA_VERSION + 1, "from a newer build", nowIso());
+      db.close();
+
+      expect(() => openCodeGraph(dbPath)).toThrow(SchemaTooNewError);
+      expect(() => openCodeGraph(dbPath)).toThrow(new RegExp(`version ${SCHEMA_VERSION + 1}`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
