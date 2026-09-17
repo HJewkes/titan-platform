@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appliedVersions, runMigrations, type Migration } from "./migrations.js";
-import { SchemaTooNewError, assertSchemaVersion, hasColumn, hasTable, openDatabase } from "./open.js";
+import { MIGRATION_TABLE_NAME, SchemaTooNewError, assertSchemaVersion, hasColumn, hasTable, openDatabase } from "./open.js";
 
 const v1: Migration = { version: 1, name: "create t", up: (db) => db.exec("CREATE TABLE t (a INTEGER)") };
 const v2: Migration = { version: 2, up: (db) => db.exec("ALTER TABLE t ADD COLUMN b TEXT") };
@@ -83,7 +83,7 @@ describe("forward-schema guard", () => {
       db.close();
     }
     const fresh = openDatabase(path.join(dir, "fresh.db"), { schemaVersion: 1 });
-    expect(hasTable(fresh, "_migration")).toBe(false);
+    expect(hasTable(fresh, MIGRATION_TABLE_NAME)).toBe(false);
     fresh.close();
   });
 

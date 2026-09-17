@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { invokeCommand } from "@titan-design/registry";
-import { SchemaTooNewError } from "@titan-design/store-sqlite";
+import { MIGRATION_TABLE_NAME, SchemaTooNewError } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
@@ -132,7 +132,7 @@ describe("forward-schema guard", () => {
   it("refuses a database a newer miner stamped, rather than indexing into its schema", async () => {
     await run(refresh, {});
     const db = ctx.graph().db;
-    db.prepare("INSERT INTO _migration (version, name, applied_at) VALUES (?, ?, ?)").run(
+    db.prepare(`INSERT INTO ${MIGRATION_TABLE_NAME} (version, name, applied_at) VALUES (?, ?, ?)`).run(
       MINER_SCHEMA_VERSION + 1,
       "from a newer miner",
       new Date().toISOString(),

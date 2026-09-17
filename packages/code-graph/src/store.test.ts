@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SchemaTooNewError, nowIso, openDatabase } from "@titan-design/store-sqlite";
+import { MIGRATION_TABLE_NAME, SchemaTooNewError, nowIso, openDatabase } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { SCHEMA_VERSION } from "./schema.js";
 import { openCodeGraph } from "./store.js";
@@ -79,7 +79,7 @@ describe("forward-schema guard", () => {
     try {
       openCodeGraph(dbPath).close();
       const db = openDatabase(dbPath);
-      db.prepare("INSERT INTO _migration (version, name, applied_at) VALUES (?, ?, ?)").run(SCHEMA_VERSION + 1, "from a newer build", nowIso());
+      db.prepare(`INSERT INTO ${MIGRATION_TABLE_NAME} (version, name, applied_at) VALUES (?, ?, ?)`).run(SCHEMA_VERSION + 1, "from a newer build", nowIso());
       db.close();
 
       expect(() => openCodeGraph(dbPath)).toThrow(SchemaTooNewError);

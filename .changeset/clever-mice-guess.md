@@ -1,5 +1,5 @@
 ---
-"@titan-design/store-sqlite": patch
+"@titan-design/store-sqlite": minor
 ---
 
 Add an opt-in forward-schema guard. `openDatabase(path, { schemaVersion })` and
