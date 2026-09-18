@@ -6,7 +6,7 @@ index-time source metrics, in one SQLite file built from `@titan-design/store-sq
 tables and refreshed incrementally.
 
 Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `code-parser` (tree-sitter WASM
-parsing and the file filter), `ts-morph`, and `web-tree-sitter` for node types. Extracted from codewatch's `@codewatch/graph` (TP-9), split along the seam the
+parsing and the file filter), `ts-morph`, `web-tree-sitter` for node types, and `embed` plus `retrieval` for similar-symbol search. Extracted from codewatch's `@codewatch/graph` (TP-9), split along the seam the
 audit identified: that package did the job of both a store and a code graph.
 
 ```ts
@@ -44,7 +44,7 @@ change to it:
   what a file's own bytes and the assembled graph determine.
 - Graph analyses over a finished snapshot: communities, pagerank, partition quality,
   relevance, conventions, coverage overlay, dead code, growth risk, patterns, prune,
-  test-linker, reuse-delta reporting, embeddings.
+  test-linker, reuse-delta reporting.
 
 Python support is new here rather than ported. codewatch walked TypeScript only; the parser
 already had the grammar. The Python extractor is deliberately narrower than the ts-morph one:
@@ -145,3 +145,38 @@ violations are further split into worsened and improved by value.
 
 `scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
 instead of codewatch's CLI.
+
+## Similar symbols
+
+Ported from codewatch's `embeddings.ts` (TP-129). It answers "does something like this
+already exist?" before you write it. The embedder is injected; this package never builds
+one and never talks to a network on its own.
+
+```ts
+import { OllamaEmbedder } from "@titan-design/embed";
+import { findSimilarCapability, tryEmbedSnapshot } from "@titan-design/code-graph";
+
+const embedder = new OllamaEmbedder();
+const attempt = await tryEmbedSnapshot(store, snapshotId, embedder);
+// { ok: true, result: { symbols, embedded, withPurpose, newlyEmbedded, reused, model } }
+// or { ok: false, model, error } when the backend is down; the snapshot is unaffected
+const { candidates, coverage } = await findSimilarCapability(store, snapshotId, "parse a duration", embedder);
+```
+
+- **Corpus.** Exported symbols with a signature, minus test, fixture and generated files.
+  The embedded text is `signature -- purpose` (the docstring), never the body.
+- **Storage.** Vectors go in `blob_cache` under namespace `code-graph/symbol-embedding`,
+  keyed by `embedder.model` and the SHA-256 of the text. They are not snapshot-scoped, so
+  re-embedding unchanged text costs zero embed calls. `embedSnapshot` throws on a backend
+  failure; `tryEmbedSnapshot` reports it.
+- **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`, which adds
+  `search_query: ` for nomic models. Pass `queryPrefix` to override.
+- **Results are candidates, not verdicts.** Each has a cosine score, and `coverage` says how
+  many symbols were searchable and how many carry purpose text. There is deliberately no
+  co-location filter.
+- **Python symbols are not in the corpus yet.** The Python extractor records no signature or
+  docstring, so no Python symbol passes the corpus filter.
+- **One prefix per database.** `OllamaEmbedder` prepends its `prefix` (default
+  `search_document: `) to every text, queries included, and `model` does not encode it.
+  codewatch used no prefix; `new OllamaEmbedder({ prefix: "" })` with `queryPrefix: ""`
+  reproduces its rankings exactly.

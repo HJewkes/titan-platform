@@ -1,7 +1,8 @@
 # code-graph
 
 **Tier 2 · domain.** Depends on [`store-sqlite`](/reference/store-sqlite),
-[`code-parser`](/reference/code-parser), and `ts-morph`.
+[`code-parser`](/reference/code-parser), [`embed`](/reference/embed),
+[`retrieval`](/reference/retrieval), and `ts-morph`.
 
 ```sh
 npm install @titan-design/code-graph
@@ -105,6 +106,35 @@ a delete plus an add, and its edges do not churn. `diffCheckResults` buckets vio
 new, resolved, or unchanged, and splits unchanged metric violations into worsened and
 improved by value.
 
+## Finding similar symbols
+
+"Does something like this already exist?" Ported from codewatch (TP-129). Verified against
+this release with Ollama's `nomic-embed-text`, indexing this repo's `packages`:
+
+```ts
+import { OllamaEmbedder } from "@titan-design/embed";
+import { findSimilarCapability, tryEmbedSnapshot } from "@titan-design/code-graph";
+
+const embedder = new OllamaEmbedder();
+await tryEmbedSnapshot(store, snapshotId, embedder);
+// { ok: true, result: { symbols: 1196, withPurpose: 429, newlyEmbedded: 1191, reused: 0, … } }
+// a second run: { newlyEmbedded: 0, reused: 1196 }
+
+await findSimilarCapability(store, snapshotId, "fuse ranked lists with reciprocal rank fusion", embedder);
+// { coverage: { symbols: 1196, embedded: 1196, withPurpose: 429 },
+//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.864 },
+//                 { id: 'packages/retrieval/src/fusion.ts#RankedList', score: 0.714 }, … ] }
+```
+
+The embedded text per symbol is its signature plus its docstring, never its body. Vectors live
+in `blob_cache`, keyed by model and text hash rather than snapshot, so unchanged text is never
+re-embedded. `tryEmbedSnapshot` reports a down backend instead of throwing. Results are
+candidates with scores and a coverage figure, never verdicts.
+
+**Keep one prefix per database.** `OllamaEmbedder` prepends its `prefix` to every text,
+queries included, and its `model` does not record the prefix. Vectors made under two prefixes
+would share a cache key. Python symbols carry no signature yet, so they are not searchable.
+
 ## The id scheme
 
 Preserved exactly from codewatch, because this repo's `dag:check` consumes it:
@@ -162,9 +192,9 @@ tree-sitter declaration walk that feeds complexity.
 
 All of it follow-up work *on* this package rather than changes *to* it: git-history mining
 (churn, ownership, change coupling, test linking), and every graph analysis over a finished
-snapshot (communities, pagerank, partition quality, relevance, dead code, growth risk,
-embeddings). The rules engine and the snapshot diff started here too and have since been
-ported.
+snapshot (communities, pagerank, partition quality, relevance, dead code, growth risk).
+The rules engine, the snapshot diff, and symbol embeddings started here too and have since
+been ported.
 
 `buildIndexerMetrics` used to fold history into the same pass; here it computes only what a
 file's own bytes and the assembled graph determine.
