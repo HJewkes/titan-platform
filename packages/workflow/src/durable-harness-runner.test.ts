@@ -7,7 +7,7 @@ import {
   type HarnessRunResult,
 } from "@titan-design/agent";
 import { SqliteExecutionLedger, executionLedgerMigration } from "@titan-design/agent-lifecycle";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { durableHarnessRunner } from "./durable-harness-runner.js";
 import { WorkflowRuntime } from "./runtime.js";

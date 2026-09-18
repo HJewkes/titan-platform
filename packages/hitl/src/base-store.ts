@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { checkAgainstJsonSchema } from "./json-schema.js";
 import {
   GateAlreadyExists,
@@ -24,7 +23,7 @@ export abstract class BaseGateStore implements GateStore {
   protected abstract readByStatus(status: GateRecord["status"]): GateRecord[];
 
   create(input: GateInput): GateRecord {
-    const id = input.id ?? randomUUID();
+    const id = input.id ?? globalThis.crypto.randomUUID();
     if (this.read(id)) throw new GateAlreadyExists(id);
     const record: GateRecord = {
       id,

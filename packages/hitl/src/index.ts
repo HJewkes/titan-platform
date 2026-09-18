@@ -14,6 +14,4 @@ export {
 export { BaseGateStore } from "./base-store.js";
 export type { MemoryGateStoreOptions } from "./memory-store.js";
 export { MemoryGateStore } from "./memory-store.js";
-export type { SqliteGateStoreOptions } from "./sqlite-store.js";
-export { DEFAULT_GATE_TABLE, SqliteGateStore, gateMigration, gateTableDdl } from "./sqlite-store.js";
 export { checkAgainstJsonSchema } from "./json-schema.js";

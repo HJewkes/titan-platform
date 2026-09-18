@@ -1,10 +1,13 @@
 # hitl
 
-**Tier 1 · engines.** Depends on [`store-sqlite`](/reference/store-sqlite). `zod` v4 is a
-peer.
+**Tier 1 · engines.** `zod` v4 is a peer. The root entry is runtime-neutral; the SQLite
+store lives on a subpath, `@titan-design/hitl/sqlite`, which depends on
+[`store-sqlite`](/reference/store-sqlite).
 
 ```sh
-npm install @titan-design/hitl @titan-design/store-sqlite zod
+npm install @titan-design/hitl zod
+# add these too if you use @titan-design/hitl/sqlite
+npm install @titan-design/store-sqlite
 ```
 
 ## The problem it solves
@@ -23,11 +26,12 @@ a restart. [`workflow`](/reference/workflow) builds its `assisted()` step on thi
 
 ## Example
 
-Verified against 0.1.0.
+Verified against 0.2.0.
 
 ```ts
 import { z } from "zod";
-import { SqliteGateStore, openGate, resolveGate } from "@titan-design/hitl";
+import { openGate, resolveGate } from "@titan-design/hitl";
+import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
 
 const store = new SqliteGateStore(openDatabase("~/.local/state/thing/gates.sqlite3"));
@@ -95,6 +99,10 @@ suite.
 `migrate: false` and put `gateMigration(n)` in your own migration list when hitl shares a
 database with domain tables — which is what [`workflow`](/reference/workflow) does. `table`
 renames the table so one database can host several gate spaces.
+
+`SqliteGateStore`, `gateMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
+not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare
+Workers isolate. `MemoryGateStore` stays on the root.
 
 ## Gotchas
 
