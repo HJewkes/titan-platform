@@ -1,0 +1,46 @@
+# {{language}} Style Rules
+
+{{#if criticalRules}}
+## Critical Rules
+{{#each criticalRules}}
+### {{category}}: {{name}}
+
+**Convention**: `{{convention}}`
+**Confidence**: {{confidencePercent}}%
+
+{{#if description}}
+{{description}}
+{{/if}}
+
+{{/each}}
+{{/if}}
+
+{{#if strongRules}}
+## Strong Conventions
+{{#each strongRules}}
+### {{category}}: {{name}}
+
+**Convention**: `{{convention}}`
+**Confidence**: {{confidencePercent}}%
+
+{{#if description}}
+{{description}}
+{{/if}}
+
+{{/each}}
+{{/if}}
+
+{{#if preferredRules}}
+## Preferred Style
+{{#each preferredRules}}
+### {{category}}: {{name}}
+
+**Convention**: `{{convention}}`
+**Confidence**: {{confidencePercent}}%
+
+{{#if description}}
+{{description}}
+{{/if}}
+
+{{/each}}
+{{/if}}
