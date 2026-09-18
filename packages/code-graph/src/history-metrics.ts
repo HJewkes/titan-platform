@@ -74,7 +74,8 @@ function collectFileIds(nodes: Iterable<GraphNode>): Set<string> {
   return out;
 }
 
-function churnMetrics(churnByWindow: ReadonlyMap<ChurnWindow, ReadonlyMap<string, PathChurn>>): GraphMetric[] {
+/** Name one window's per-path churn as `churn_{w}`, `churn_{w}_commits`, `churn_{w}_authors`. */
+export function churnMetrics(churnByWindow: ReadonlyMap<ChurnWindow, ReadonlyMap<string, PathChurn>>): GraphMetric[] {
   const out: GraphMetric[] = [];
   for (const [window, byPath] of churnByWindow) {
     const suffix = windowSuffix(window);
@@ -89,10 +90,11 @@ function churnMetrics(churnByWindow: ReadonlyMap<ChurnWindow, ReadonlyMap<string
   return out;
 }
 
-function ownershipMetrics(
+/** Name ownership as `bus_factor_{w}` and `top_author_share_{w}` (rounded to 3 places). */
+export function ownershipMetrics(
   entries: readonly ChurnEntry[],
   window: ChurnWindow,
-  knownPaths: ReadonlySet<string>,
+  knownPaths?: ReadonlySet<string>,
 ): GraphMetric[] {
   const suffix = windowSuffix(window);
   const out: GraphMetric[] = [];
