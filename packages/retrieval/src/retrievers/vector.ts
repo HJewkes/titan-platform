@@ -40,19 +40,17 @@ export class BruteForceVectorIndex implements VectorIndex {
 
 export interface VectorRetrieverOptions {
   name?: string;
-  /** Prepended to the query before embedding; nomic models expect `search_query: `. */
-  queryPrefix?: string;
   /** Drop matches below this cosine similarity. */
   minSimilarity?: number;
 }
 
 export function vectorRetriever(embedder: Embedder, index: VectorIndex, options: VectorRetrieverOptions = {}): Retriever {
-  const prefix = options.queryPrefix ?? (embedder.model.includes("nomic") ? "search_query: " : "");
   const minSimilarity = options.minSimilarity ?? -Infinity;
   return {
     name: options.name ?? "vector",
     async retrieve(query: string, { limit }: RetrieveOptions): Promise<Hit[]> {
-      const [vector] = await embedder.embed([`${prefix}${query}`]);
+      // The embedder owns prefixes; adding text here would double-prefix nomic queries.
+      const [vector] = await embedder.embed([query], { role: "query" });
       if (!vector) return [];
       const matches = await index.search(vector, limit);
       return matches

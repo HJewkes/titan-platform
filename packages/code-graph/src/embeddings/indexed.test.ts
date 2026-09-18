@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
-import { HashEmbedder, type Embedder } from "@titan-design/embed";
+import { HashEmbedder, OllamaEmbedder, type EmbedRole, type Embedder } from "@titan-design/embed";
 import { indexPaths } from "../indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "../store.js";
 import { SYMBOL_EMBEDDING_NAMESPACE } from "./cache.js";
@@ -24,18 +24,33 @@ export function clamp(value: number, min: number, max: number): number {
 `;
 
 /** Counts every text it is asked to embed; vectors come from the lexical hash backend. */
-function countingEmbedder(model = "nomic-embed-text"): Embedder & { calls: string[][] } {
+function countingEmbedder(model = "nomic-embed-text"): Embedder & { calls: string[][]; roles: EmbedRole[] } {
   const inner = new HashEmbedder();
   const calls: string[][] = [];
+  const roles: EmbedRole[] = [];
   return {
     model,
     dimensions: inner.dimensions,
     calls,
-    embed: (texts) => {
+    roles,
+    embed: (texts, options) => {
       calls.push([...texts]);
+      roles.push(options?.role ?? "document");
       return inner.embed(texts);
     },
   };
+}
+
+/** A real OllamaEmbedder over a fake fetch that serves hash vectors and records what reached the backend. */
+function fakeOllama(prefixes?: { document?: string; query?: string }): { embedder: OllamaEmbedder; inputs: string[] } {
+  const hash = new HashEmbedder();
+  const inputs: string[] = [];
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    const { input } = JSON.parse(String(init.body)) as { input: string[] };
+    inputs.push(...input);
+    return new Response(JSON.stringify({ embeddings: await hash.embed(input) }), { status: 200 });
+  }) as typeof fetch;
+  return { embedder: new OllamaEmbedder({ dimensions: hash.dimensions, fetch: fetchImpl, prefixes }), inputs };
 }
 
 function failingEmbedder(): Embedder {
@@ -93,14 +108,44 @@ describe("embeddings over an indexed snapshot", () => {
     await expect(tryEmbedSnapshot(store, snapshotId, countingEmbedder())).resolves.toMatchObject({ ok: true });
   });
 
-  it("prefixes the query with search_query for nomic models and not the stored texts", async () => {
+  it("hands the query to the embedder verbatim with role query, and stored texts with role document", async () => {
     const embedder = countingEmbedder("nomic-embed-text");
     await embedSnapshot(store, snapshotId, embedder);
 
     await findSimilarCapability(store, snapshotId, "render a duration", embedder);
 
-    expect(embedder.calls.at(-1)).toEqual(["search_query: render a duration"]);
-    expect(embedder.calls.flat().filter((t) => t.startsWith("search_query: "))).toHaveLength(1);
+    expect(embedder.calls.at(-1)).toEqual(["render a duration"]);
+    expect(embedder.roles).toEqual(["document", "query"]);
+  });
+
+  it("sends each text to a default nomic backend with exactly one prefix", async () => {
+    const { embedder, inputs } = fakeOllama();
+    await embedSnapshot(store, snapshotId, embedder);
+
+    await findSimilarCapability(store, snapshotId, "render a duration", embedder);
+
+    expect(inputs.at(-1)).toBe("search_query: render a duration");
+    expect(inputs.slice(0, -1).every((t) => t.startsWith("search_document: ") && !t.includes("search_query"))).toBe(true);
+  });
+
+  it("never shares a cache entry between two prefix configurations of one model", async () => {
+    const nomic = fakeOllama();
+    const raw = fakeOllama({ document: "", query: "" });
+
+    await embedSnapshot(store, snapshotId, nomic.embedder);
+    const second = await embedSnapshot(store, snapshotId, raw.embedder);
+
+    expect(second).toMatchObject({ newlyEmbedded: 3, reused: 0 });
+    const rows = store.db.prepare("SELECT DISTINCT model FROM blob_cache ORDER BY model").all() as { model: string }[];
+    expect(rows.map((r) => r.model)).toEqual([nomic.embedder.model, raw.embedder.model].sort());
+  });
+
+  it("does not serve vectors cached under the bare pre-0.2 model name", async () => {
+    await embedSnapshot(store, snapshotId, countingEmbedder("nomic-embed-text"));
+
+    await expect(findSimilarCapability(store, snapshotId, "render", fakeOllama().embedder)).rejects.toThrow(
+      /No capability embeddings/,
+    );
   });
 
   it("ranks the lexically closest symbol first with the hash backend", async () => {

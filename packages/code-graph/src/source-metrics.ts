@@ -3,6 +3,7 @@ import type { Node } from "web-tree-sitter";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { symbolId } from "./extractors/ids.js";
+import { qualify, walkScopes } from "./scope-path.js";
 import type { GraphMetric } from "./types.js";
 
 const TS_FUNCTION_TYPES = new Set([
@@ -50,7 +51,7 @@ const PY_BRANCH_TYPES = new Set([
 ]);
 
 interface FunctionStats {
-  /** Declared name, or null for an anonymous function (e.g. `export default () => {}`). */
+  /** Scope-qualified declared name (`Job.run`), or null for an anonymous function (e.g. `export default () => {}`). */
   name: string | null;
   cyclomatic: number;
   cognitive: number;
@@ -159,12 +160,12 @@ function metricsForFile(
 }
 
 /**
- * Per-symbol complexity (C-58, C-64): for each named function whose name has a
- * `symbol` node on this file, emit `symbol_cognitive`/`symbol_cyclomatic` on that
- * node (`<fileId>#<name>`). Model B (C-64) gives non-exported helpers a node too,
- * so internal functions now get their own complexity here, not just exports. A
- * name shared by several functions takes the max (the file-level `_max` framing);
- * a declared name with no complexity (a bare class) matches no stat, emits nothing.
+ * Per-symbol complexity (C-58, C-64): for each named function whose qualified
+ * name has a `symbol` node on this file, emit `symbol_cognitive`/`symbol_cyclomatic`
+ * on that node (`<fileId>#<qualifiedName>`). Model B (C-64) gives non-exported
+ * helpers a node too, so internal functions get their own complexity here, not
+ * just exports. A qualified name shared by several functions (a getter/setter
+ * pair) takes the max; a declared name with no complexity (a bare class) emits nothing.
  */
 function symbolComplexityMetrics(
   fileId: string,
@@ -199,21 +200,16 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   const stats: FunctionStats[] = [];
   const fnTypes =
     file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
-  const visit = (node: Node): void => {
+  walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
-    if (fn) {
-      stats.push({
-        name: fn.name,
-        cyclomatic: cyclomaticOf(fn.body, file.language),
-        cognitive: cognitiveComplexityOf(fn.body, file.language),
-        nestingDepth: nestingDepthOf(fn.body, file.language, 0),
-      });
-    }
-    for (const child of node.children) {
-      if (child) visit(child);
-    }
-  };
-  visit(file.tree.rootNode);
+    if (!fn) return;
+    stats.push({
+      name: fn.name === null ? null : qualify(scope, fn.name),
+      cyclomatic: cyclomaticOf(fn.body, file.language),
+      cognitive: cognitiveComplexityOf(fn.body, file.language),
+      nestingDepth: nestingDepthOf(fn.body, file.language, 0),
+    });
+  });
   return stats;
 }
 
