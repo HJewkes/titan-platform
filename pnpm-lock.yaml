@@ -225,6 +225,25 @@ importers:
         specifier: ^7.6.13
         version: 7.6.13
 
+  packages/style-analyzer:
+    dependencies:
+      '@jscpd/core':
+        specifier: 3.5.10
+        version: 3.5.10
+      '@jscpd/tokenizer':
+        specifier: 3.5.4
+        version: 3.5.4
+      '@titan-design/code-parser':
+        specifier: workspace:^
+        version: link:../code-parser
+      '@titan-design/style-profile':
+        specifier: workspace:^
+        version: link:../style-profile
+    devDependencies:
+      web-tree-sitter:
+        specifier: ^0.26.6
+        version: 0.26.13
+
   packages/style-profile:
     dependencies:
       handlebars:
@@ -1265,6 +1284,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@jscpd/core@3.5.10':
+    resolution: {integrity: sha512-k8owgREEI6bUHtVq+PM3+Gp5GgLgwMklWabJzZdtNXpHeC22EzviAW1Of7cifPLmdMJ3xfkoHl5No9/gg6y5FA==}
+
+  '@jscpd/tokenizer@3.5.4':
+    resolution: {integrity: sha512-qvGbHNFaGXqMqgw0cujRqSM2cuPBAR9EOtZNUx4eGQ6IeuJhsS+aI0ijEUOE1OdVBStdu5xYdyytuLkkmtJzHA==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -2413,6 +2438,9 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
+  eventemitter3@5.0.4:
+    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
+
   eventsource-parser@3.1.1:
     resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
     engines: {node: '>=18.0.0'}
@@ -3166,6 +3194,9 @@ packages:
   regex@6.1.0:
     resolution: {integrity: sha512-6VwtthbV4o/7+OaAF9I5L5V3llLEsoPyq9P1JVXkedTP33c7MfCG0/5NOPcSJn0TzXcG9YUrR0gQSWioew3LDg==}
 
+  reprism@0.0.11:
+    resolution: {integrity: sha512-VsxDR5QxZo08M/3nRypNlScw5r3rKeSOPdU/QhDmu3Ai3BJxHn/qgfXGWQp/tAxUtzwYNo9W6997JZR0tPLZsA==}
+
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
@@ -3295,6 +3326,9 @@ packages:
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
+
+  spark-md5@3.0.2:
+    resolution: {integrity: sha512-wcFzz9cDfbuqe0FZzfi2or1sgyIrsDwmPwfZC4hiNidPdPINjeUwNfv5kldczoEAcjl9Y1L3SM7Uz2PUEQzxQw==}
 
   spawndamnit@3.0.1:
     resolution: {integrity: sha512-MmnduQUuHCoFckZoWnXsTg7JaiLBJrKFj9UI2MbRPGaJeVpsLcVBu6P/IGZovziM/YBsellCmsprgNA+w0CzVg==}
@@ -4546,6 +4580,16 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@jscpd/core@3.5.10':
+    dependencies:
+      eventemitter3: 5.0.4
+
+  '@jscpd/tokenizer@3.5.4':
+    dependencies:
+      '@jscpd/core': 3.5.10
+      reprism: 0.0.11
+      spark-md5: 3.0.2
 
   '@manypkg/find-root@1.1.0':
     dependencies:
@@ -5830,6 +5874,8 @@ snapshots:
 
   etag@1.8.1: {}
 
+  eventemitter3@5.0.4: {}
+
   eventsource-parser@3.1.1: {}
 
   eventsource@3.0.7:
@@ -6578,6 +6624,8 @@ snapshots:
     dependencies:
       regex-utilities: 2.3.0
 
+  reprism@0.0.11: {}
+
   require-from-string@2.0.2: {}
 
   resolve-from@4.0.0: {}
@@ -6782,6 +6830,8 @@ snapshots:
   source-map@0.7.6: {}
 
   space-separated-tokens@2.0.2: {}
+
+  spark-md5@3.0.2: {}
 
   spawndamnit@3.0.1:
     dependencies:
