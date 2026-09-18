@@ -1,4 +1,4 @@
-import type { Profile } from "../schema/profile.js";
+import { PROFILE_CATEGORIES, type Profile } from "../schema/profile.js";
 
 export interface RuleEntry {
   category: string;
@@ -15,16 +15,8 @@ export type ExtractedRule = RuleEntry;
 
 export function extractAllRules(profile: Profile): RuleEntry[] {
   const rules: RuleEntry[] = [];
-  const categories = [
-    "naming",
-    "structure",
-    "documentation",
-    "errorHandling",
-    "formatting",
-    "patterns",
-  ] as const;
 
-  for (const category of categories) {
+  for (const category of PROFILE_CATEGORIES) {
     const section = profile[category];
     if (!section || typeof section !== "object") continue;
 
@@ -76,6 +68,9 @@ export function getRulesByCategory(
   return grouped;
 }
 
+const byConfidence = (a: RuleEntry, b: RuleEntry) =>
+  b.confidence - a.confidence;
+
 export function getRulesByTier(profile: Profile): {
   critical: RuleEntry[];
   strong: RuleEntry[];
@@ -100,8 +95,6 @@ export function getRulesByTier(profile: Profile): {
     }
   }
 
-  const byConfidence = (a: RuleEntry, b: RuleEntry) =>
-    b.confidence - a.confidence;
   critical.sort(byConfidence);
   strong.sort(byConfidence);
   preferred.sort(byConfidence);

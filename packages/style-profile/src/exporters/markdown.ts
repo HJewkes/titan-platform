@@ -27,6 +27,51 @@ function groupByCategory(rules: RuleEntry[]): Map<string, RuleEntry[]> {
   return byCategory;
 }
 
+function exampleLines(examples: NonNullable<RuleEntry["examples"]>): string[] {
+  const lines: string[] = [];
+  for (const example of examples) {
+    if (example.good) {
+      lines.push("```typescript");
+      lines.push("// Preferred");
+      lines.push(example.good);
+      lines.push("```");
+      lines.push("");
+    }
+    if (example.bad) {
+      lines.push("```typescript");
+      lines.push("// Avoid");
+      lines.push(example.bad);
+      lines.push("```");
+      lines.push("");
+    }
+  }
+  return lines;
+}
+
+function ruleLines(rule: RuleEntry): string[] {
+  const lines: string[] = [];
+  const confPct = (rule.confidence * 100).toFixed(0);
+  const value = formatConvention(rule.convention);
+
+  lines.push(`### ${capitalize(rule.name)}`);
+  lines.push("");
+  lines.push(
+    `**Convention**: \`${value}\` | **Confidence**: ${confPct}%${rule.stability ? ` | **Stability**: ${rule.stability}` : ""}`,
+  );
+  lines.push("");
+
+  if (rule.description) {
+    lines.push(rule.description);
+    lines.push("");
+  }
+
+  if (rule.examples && rule.examples.length > 0) {
+    lines.push(...exampleLines(rule.examples));
+  }
+
+  return lines;
+}
+
 export function generateMarkdownExport(profile: Profile): GeneratedFile {
   const allRules = extractAllRules(profile);
   const byCategory = groupByCategory(allRules);
@@ -46,39 +91,7 @@ export function generateMarkdownExport(profile: Profile): GeneratedFile {
 
     const sorted = [...rules].sort((a, b) => b.confidence - a.confidence);
     for (const rule of sorted) {
-      const confPct = (rule.confidence * 100).toFixed(0);
-      const value = formatConvention(rule.convention);
-
-      lines.push(`### ${capitalize(rule.name)}`);
-      lines.push("");
-      lines.push(
-        `**Convention**: \`${value}\` | **Confidence**: ${confPct}%${rule.stability ? ` | **Stability**: ${rule.stability}` : ""}`,
-      );
-      lines.push("");
-
-      if (rule.description) {
-        lines.push(rule.description);
-        lines.push("");
-      }
-
-      if (rule.examples && rule.examples.length > 0) {
-        for (const example of rule.examples) {
-          if (example.good) {
-            lines.push("```typescript");
-            lines.push("// Preferred");
-            lines.push(example.good);
-            lines.push("```");
-            lines.push("");
-          }
-          if (example.bad) {
-            lines.push("```typescript");
-            lines.push("// Avoid");
-            lines.push(example.bad);
-            lines.push("```");
-            lines.push("");
-          }
-        }
-      }
+      lines.push(...ruleLines(rule));
     }
   }
 

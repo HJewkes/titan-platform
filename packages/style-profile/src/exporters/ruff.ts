@@ -2,16 +2,25 @@ import type { Profile } from "../schema/profile.js";
 import type { StyleRule } from "../schema/style-rule.js";
 import type { GeneratedFile } from "./types.js";
 
+interface RuffLintSubsections {
+  mccabe?: { maxComplexity: number };
+  pydocstyle?: { convention: string };
+  isort?: { sectionOrder: string[] };
+}
+
+interface RuffLint extends RuffLintSubsections {
+  select: string[];
+  ignore: string[];
+  fixable: string[];
+}
+
 interface RuffConfig {
   lineLength?: number;
-  lint: {
-    select: string[];
-    ignore: string[];
-    fixable: string[];
-    mccabe?: { maxComplexity: number };
-    pydocstyle?: { convention: string };
-    isort?: { sectionOrder: string[] };
-  };
+  lint: RuffLint;
+}
+
+interface RuffAccumulator extends RuffLintSubsections {
+  select: Set<string>;
 }
 
 const CATEGORY_KEYS = [
@@ -23,13 +32,69 @@ const CATEGORY_KEYS = [
   "patterns",
 ] as const;
 
+function addExtensionCodes(rule: StyleRule, select: Set<string>): void {
+  if (!rule.extensions?.ruff) return;
+  const ext = rule.extensions.ruff as { codes?: string[] };
+  if (!ext.codes) return;
+  for (const code of ext.codes) {
+    select.add(code.replace(/\d+$/, ""));
+  }
+}
+
+function applyFunctionMaxLines(
+  category: string,
+  name: string,
+  rule: StyleRule,
+  acc: RuffAccumulator,
+): void {
+  if (category !== "structure" || name !== "functionMaxLines") return;
+  acc.select.add("C90");
+  if (typeof rule.convention === "number") {
+    acc.mccabe = { maxComplexity: rule.convention };
+  }
+}
+
+function applyRule(
+  category: string,
+  name: string,
+  rule: StyleRule,
+  acc: RuffAccumulator,
+): void {
+  addExtensionCodes(rule, acc.select);
+
+  if (category === "naming") {
+    acc.select.add("N");
+  }
+
+  if (category === "structure" && name === "importOrder") {
+    acc.select.add("I");
+    if (Array.isArray(rule.convention)) {
+      acc.isort = { sectionOrder: rule.convention as string[] };
+    }
+  }
+
+  if (category === "documentation" && name === "functionDocs") {
+    acc.select.add("D");
+    if (typeof rule.convention === "string") {
+      acc.pydocstyle = { convention: rule.convention };
+    }
+  }
+
+  applyFunctionMaxLines(category, name, rule, acc);
+}
+
+function lineLengthOf(profile: Profile): number | undefined {
+  const lineLengthRule = profile.formatting?.lineLength;
+  if (lineLengthRule && typeof lineLengthRule.convention === "number") {
+    return lineLengthRule.convention;
+  }
+  return undefined;
+}
+
 function buildRuffConfig(profile: Profile): RuffConfig {
   const thresholds = profile.severityThresholds;
-  const select = new Set<string>();
+  const acc: RuffAccumulator = { select: new Set<string>() };
   const fixable = new Set<string>(["ALL"]);
-  let mccabe: { maxComplexity: number } | undefined;
-  let pydocstyle: { convention: string } | undefined;
-  let isort: { sectionOrder: string[] } | undefined;
 
   for (const category of CATEGORY_KEYS) {
     const section = profile[category];
@@ -39,64 +104,64 @@ function buildRuffConfig(profile: Profile): RuffConfig {
       section as Record<string, StyleRule>,
     )) {
       if (rule.confidence < thresholds.info) continue;
-
-      if (rule.extensions?.ruff) {
-        const ext = rule.extensions.ruff as { codes?: string[] };
-        if (ext.codes) {
-          for (const code of ext.codes) {
-            select.add(code.replace(/\d+$/, ""));
-          }
-        }
-      }
-
-      if (category === "naming") {
-        select.add("N");
-      }
-
-      if (category === "structure" && name === "importOrder") {
-        select.add("I");
-        if (Array.isArray(rule.convention)) {
-          isort = { sectionOrder: rule.convention as string[] };
-        }
-      }
-
-      if (category === "documentation" && name === "functionDocs") {
-        select.add("D");
-        if (typeof rule.convention === "string") {
-          pydocstyle = { convention: rule.convention };
-        }
-      }
-
-      if (category === "structure" && name === "functionMaxLines") {
-        select.add("C90");
-        if (typeof rule.convention === "number") {
-          mccabe = { maxComplexity: rule.convention };
-        }
-      }
+      applyRule(category, name, rule, acc);
     }
   }
 
-  let lineLength: number | undefined;
-  const lineLengthRule = profile.formatting?.lineLength;
-  if (lineLengthRule && typeof lineLengthRule.convention === "number") {
-    lineLength = lineLengthRule.convention;
-  }
-
   return {
-    lineLength,
+    lineLength: lineLengthOf(profile),
     lint: {
-      select: [...select].sort(),
+      select: [...acc.select].sort(),
       ignore: [],
       fixable: [...fixable],
-      mccabe,
-      pydocstyle,
-      isort,
+      mccabe: acc.mccabe,
+      pydocstyle: acc.pydocstyle,
+      isort: acc.isort,
     },
   };
 }
 
 function toTomlArray(items: string[]): string {
   return `[${items.map((s) => `"${s}"`).join(", ")}]`;
+}
+
+function serializeLintTable(lint: RuffLint): string[] {
+  const lines: string[] = ["[lint]"];
+  if (lint.select.length > 0) {
+    lines.push(`select = ${toTomlArray(lint.select)}`);
+  }
+  if (lint.ignore.length > 0) {
+    lines.push(`ignore = ${toTomlArray(lint.ignore)}`);
+  }
+  if (lint.fixable.length > 0) {
+    lines.push(`fixable = ${toTomlArray(lint.fixable)}`);
+  }
+  lines.push("");
+  return lines;
+}
+
+function serializeLintSubtables(lint: RuffLintSubsections): string[] {
+  const lines: string[] = [];
+
+  if (lint.mccabe) {
+    lines.push("[lint.mccabe]");
+    lines.push(`max-complexity = ${lint.mccabe.maxComplexity}`);
+    lines.push("");
+  }
+
+  if (lint.pydocstyle) {
+    lines.push("[lint.pydocstyle]");
+    lines.push(`convention = "${lint.pydocstyle.convention}"`);
+    lines.push("");
+  }
+
+  if (lint.isort) {
+    lines.push("[lint.isort]");
+    lines.push(`section-order = ${toTomlArray(lint.isort.sectionOrder)}`);
+    lines.push("");
+  }
+
+  return lines;
 }
 
 function serializeToToml(config: RuffConfig): string {
@@ -107,37 +172,8 @@ function serializeToToml(config: RuffConfig): string {
     lines.push("");
   }
 
-  lines.push("[lint]");
-  if (config.lint.select.length > 0) {
-    lines.push(`select = ${toTomlArray(config.lint.select)}`);
-  }
-  if (config.lint.ignore.length > 0) {
-    lines.push(`ignore = ${toTomlArray(config.lint.ignore)}`);
-  }
-  if (config.lint.fixable.length > 0) {
-    lines.push(`fixable = ${toTomlArray(config.lint.fixable)}`);
-  }
-  lines.push("");
-
-  if (config.lint.mccabe) {
-    lines.push("[lint.mccabe]");
-    lines.push(`max-complexity = ${config.lint.mccabe.maxComplexity}`);
-    lines.push("");
-  }
-
-  if (config.lint.pydocstyle) {
-    lines.push("[lint.pydocstyle]");
-    lines.push(`convention = "${config.lint.pydocstyle.convention}"`);
-    lines.push("");
-  }
-
-  if (config.lint.isort) {
-    lines.push("[lint.isort]");
-    lines.push(
-      `section-order = ${toTomlArray(config.lint.isort.sectionOrder)}`,
-    );
-    lines.push("");
-  }
+  lines.push(...serializeLintTable(config.lint));
+  lines.push(...serializeLintSubtables(config.lint));
 
   return lines.join("\n");
 }

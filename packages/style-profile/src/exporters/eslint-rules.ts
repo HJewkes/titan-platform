@@ -1,4 +1,5 @@
 import type { Profile, SeverityThresholds, Severity } from "../schema/profile.js";
+import type { StyleRule } from "../schema/style-rule.js";
 
 export function toEslintSeverity(
   confidence: number,
@@ -14,6 +15,32 @@ export function severityRank(s: Severity): number {
   return s === "error" ? 3 : s === "warn" ? 2 : 1;
 }
 
+const NAMING_SELECTORS: Record<string, string> = {
+  variables: "variable",
+  functions: "function",
+  types: "typeLike",
+  constants: "variable",
+};
+
+function eslintExtensionOptions(rule: StyleRule): unknown[] | undefined {
+  const eslintExt = rule.extensions?.eslint;
+  return eslintExt &&
+    typeof eslintExt === "object" &&
+    "options" in eslintExt &&
+    Array.isArray((eslintExt as Record<string, unknown>).options)
+    ? ((eslintExt as Record<string, unknown>).options as unknown[])
+    : undefined;
+}
+
+function namingSelectors(rule: StyleRule, selectorName: string): unknown[] {
+  const eslintOptions = eslintExtensionOptions(rule);
+  if (eslintOptions) return eslintOptions;
+  if (typeof rule.convention === "string") {
+    return [{ selector: selectorName, format: [rule.convention] }];
+  }
+  return [];
+}
+
 export function buildNamingConventionRule(
   profile: Profile,
 ): [string, unknown] | null {
@@ -24,16 +51,9 @@ export function buildNamingConventionRule(
   const selectors: unknown[] = [];
   let maxSeverity: Severity | null = null;
 
-  const selectorMap: Record<string, string> = {
-    variables: "variable",
-    functions: "function",
-    types: "typeLike",
-    constants: "variable",
-  };
-
   for (const [key, rule] of Object.entries(naming)) {
     if (key === "files") continue;
-    const selectorName = selectorMap[key];
+    const selectorName = NAMING_SELECTORS[key];
     if (!selectorName) continue;
 
     const severity = toEslintSeverity(rule.confidence, thresholds);
@@ -42,23 +62,7 @@ export function buildNamingConventionRule(
       maxSeverity = severity;
     }
 
-    const eslintExt = rule.extensions?.eslint;
-    const eslintOptions =
-      eslintExt &&
-      typeof eslintExt === "object" &&
-      "options" in eslintExt &&
-      Array.isArray((eslintExt as Record<string, unknown>).options)
-        ? ((eslintExt as Record<string, unknown>).options as unknown[])
-        : undefined;
-
-    if (eslintOptions) {
-      selectors.push(...eslintOptions);
-    } else if (typeof rule.convention === "string") {
-      selectors.push({
-        selector: selectorName,
-        format: [rule.convention],
-      });
-    }
+    selectors.push(...namingSelectors(rule, selectorName));
   }
 
   if (selectors.length === 0 || !maxSeverity) return null;

@@ -1,5 +1,5 @@
 import type { Profile } from "../schema/profile.js";
-import { extractAllRules } from "./template-helpers.js";
+import { extractAllRules, type RuleEntry } from "./template-helpers.js";
 import type { GeneratedFile } from "./types.js";
 
 function formatFrontmatter(globs: string[], description: string): string {
@@ -27,6 +27,18 @@ function formatRuleLine(
   return `- **${category}.${name}**: \`${value}\`${desc}`;
 }
 
+function formatBody(author: string, rules: RuleEntry[]): string {
+  return [
+    `# ${author}'s TypeScript Style`,
+    "",
+    ...rules
+      .sort((a, b) => b.confidence - a.confidence)
+      .map((r) =>
+        formatRuleLine(r.category, r.name, r.convention, r.description),
+      ),
+  ].join("\n");
+}
+
 export function generateClaudeRules(profile: Profile): GeneratedFile[] {
   const files: GeneratedFile[] = [];
   const allRules = extractAllRules(profile);
@@ -42,19 +54,9 @@ export function generateClaudeRules(profile: Profile): GeneratedFile[] {
       `${profile.author}'s TypeScript coding style preferences`,
     );
 
-    const body = [
-      `# ${profile.author}'s TypeScript Style`,
-      "",
-      ...eligibleRules
-        .sort((a, b) => b.confidence - a.confidence)
-        .map((r) =>
-          formatRuleLine(r.category, r.name, r.convention, r.description),
-        ),
-    ].join("\n");
-
     files.push({
       path: ".claude/rules/typescript.md",
-      content: frontmatter + body + "\n",
+      content: frontmatter + formatBody(profile.author, eligibleRules) + "\n",
     });
   }
 

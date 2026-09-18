@@ -27,6 +27,16 @@ export const SUPPORTED_FORMATS: ExportFormat[] = [
   "editorconfig",
 ];
 
+function hooksFiles(profile: Profile): GeneratedFile[] {
+  const config = generateHooksConfig(profile);
+  return [
+    {
+      path: ".claude/settings.json",
+      content: JSON.stringify(config, null, 2),
+    },
+  ];
+}
+
 export function exportProfile(
   profile: Profile,
   format: ExportFormat,
@@ -34,32 +44,18 @@ export function exportProfile(
   switch (format) {
     case "skill":
       return generateSkillFiles(profile);
-
     case "claude-rules":
       return generateClaudeRules(profile);
-
-    case "hooks": {
-      const config = generateHooksConfig(profile);
-      return [
-        {
-          path: ".claude/settings.json",
-          content: JSON.stringify(config, null, 2),
-        },
-      ];
-    }
-
+    case "hooks":
+      return hooksFiles(profile);
     case "eslint":
       return [generateEslintExport(profile)];
-
     case "ruff":
       return [generateRuffExport(profile)];
-
     case "markdown":
       return [generateMarkdownExport(profile)];
-
     case "editorconfig":
       return [generateEditorConfigExport(profile)];
-
     default:
       throw new Error(
         `Unsupported export format: "${format as string}". Supported formats: ${SUPPORTED_FORMATS.join(", ")}`,

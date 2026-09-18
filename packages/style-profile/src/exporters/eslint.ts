@@ -1,4 +1,9 @@
-import { PROFILE_CATEGORIES, type Profile } from "../schema/profile.js";
+import {
+  PROFILE_CATEGORIES,
+  type Profile,
+  type SeverityThresholds,
+} from "../schema/profile.js";
+import type { StyleRule } from "../schema/style-rule.js";
 import type { GeneratedFile } from "./types.js";
 import {
   toEslintSeverity,
@@ -12,35 +17,40 @@ interface EslintRuleEntry {
   options?: unknown[];
 }
 
+function extensionEntry(
+  rule: StyleRule,
+  thresholds: SeverityThresholds,
+): EslintRuleEntry | null {
+  const ext = rule.extensions?.eslint as
+    | { rule: string; options?: unknown[] }
+    | undefined;
+  if (!ext) return null;
+
+  const sev = toEslintSeverity(rule.confidence, thresholds);
+  if (sev === null) return null;
+
+  const plugin = ext.rule.includes("/")
+    ? ext.rule.split("/").slice(0, -1).join("/")
+    : "";
+
+  return {
+    plugin,
+    rule: ext.rule,
+    severity: sev === "info" ? "warn" : sev,
+    options: ext.options,
+  };
+}
+
 function collectEslintExtensions(profile: Profile): EslintRuleEntry[] {
   const entries: EslintRuleEntry[] = [];
-  const thresholds = profile.severityThresholds;
 
   for (const category of PROFILE_CATEGORIES) {
     const section = profile[category];
     if (!section) continue;
 
     for (const [, rule] of Object.entries(section)) {
-      if (!rule.extensions?.eslint) continue;
-
-      const ext = rule.extensions.eslint as {
-        rule: string;
-        options?: unknown[];
-      };
-
-      const sev = toEslintSeverity(rule.confidence, thresholds);
-      if (sev === null) continue;
-
-      const plugin = ext.rule.includes("/")
-        ? ext.rule.split("/").slice(0, -1).join("/")
-        : "";
-
-      entries.push({
-        plugin,
-        rule: ext.rule,
-        severity: sev === "info" ? "warn" : sev,
-        options: ext.options,
-      });
+      const entry = extensionEntry(rule, profile.severityThresholds);
+      if (entry) entries.push(entry);
     }
   }
 
