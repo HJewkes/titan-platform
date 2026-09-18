@@ -1,6 +1,7 @@
 import type { SeenStore } from "./inbound.js";
 import { constantTimeEqual } from "./inbound.js";
-import { isAllowedChat, telegramUpdateEvent } from "./telegram-updates.js";
+import type { TelegramInbound } from "./telegram-updates.js";
+import { isAllowedChat, readInbound } from "./telegram-updates.js";
 
 export type TelegramRejection =
   | "bad-secret"
@@ -11,14 +12,7 @@ export type TelegramRejection =
   | "not-text";
 
 export type TelegramInboundResult =
-  | {
-      status: "accepted";
-      updateId: number;
-      chatId: number;
-      fromId: number;
-      text: string;
-      date: number;
-    }
+  | ({ status: "accepted" } & TelegramInbound)
   | { status: "rejected"; reason: TelegramRejection };
 
 export interface ValidateTelegramWebhookInput {
@@ -27,6 +21,7 @@ export interface ValidateTelegramWebhookInput {
   expectedSecret: string;
   allowedChatIds: readonly (string | number)[];
   body: unknown;
+  /** Applies to text messages; callback data is already capped at 64 bytes by Telegram. */
   maxTextLength: number;
   seen: SeenStore;
 }
@@ -35,33 +30,9 @@ function rejected(reason: TelegramRejection): TelegramInboundResult {
   return { status: "rejected", reason };
 }
 
-type AcceptedUpdate = Omit<
-  Extract<TelegramInboundResult, { status: "accepted" }>,
-  "status"
->;
-
-function readTextMessage(
-  body: unknown,
-): { ok: true; update: AcceptedUpdate } | { ok: false; reason: TelegramRejection } {
-  const parsed = telegramUpdateEvent.safeParse(body);
-  if (!parsed.success) return { ok: false, reason: "malformed" };
-
-  const { update_id: updateId, message } = parsed.data;
-  if (!message?.text || !message.from) return { ok: false, reason: "not-text" };
-  return {
-    ok: true,
-    update: {
-      updateId,
-      chatId: message.chat.id,
-      fromId: message.from.id,
-      text: message.text,
-      date: message.date,
-    },
-  };
-}
-
 /**
- * Pure: every effect is in the injected `seen` store. Telegram signs nothing,
+ * Pure: every effect is in the injected `seen` store. Accepts a text message
+ * or a button tap, read exactly as `pollUpdates` reads them. Telegram signs nothing,
  * so the echoed secret header, the chat allowlist and the update_id dedupe are
  * the whole boundary.
  */
@@ -77,14 +48,16 @@ export async function validateTelegramWebhook({
     return rejected("bad-secret");
   }
 
-  const parsed = readTextMessage(body);
+  const parsed = readInbound(body);
   if (!parsed.ok) return rejected(parsed.reason);
 
-  const update = parsed.update;
+  const update = parsed.inbound;
   if (!isAllowedChat(update.chatId, allowedChatIds)) {
     return rejected("sender-not-allowed");
   }
-  if (update.text.length > maxTextLength) return rejected("too-long");
+  if (update.kind === "text" && update.text.length > maxTextLength) {
+    return rejected("too-long");
+  }
   if (await seen.has(String(update.updateId))) return rejected("duplicate");
 
   await seen.add(String(update.updateId));
