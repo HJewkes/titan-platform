@@ -37,14 +37,14 @@ Ported later (TP-123, TP-124), strictly as codewatch had them: the rules engine
 `check-diff.ts`, now `src/diff/`). See [Checks and diffs](#checks-and-diffs).
 Ported with TP-127 and TP-128: dead code, growth risk, PageRank, relevance, and symbol
 coupling, now `src/analysis/`. See [Graph analyses](#graph-analyses).
+Ported with TP-133: the test linker and the Istanbul coverage overlay, also in `src/analysis/`,
+and test-coverage ownership. See [Test linking and coverage](#test-linking-and-coverage).
 
 Deferred, all of it still in codewatch, all of it a follow-up on this package rather than a
 change to it:
 
-- Git-history consumers: test coverage linking. Churn, ownership and change coupling have
-  since been ported (TP-126, see [Git history](#git-history)).
 - Graph analyses over a finished snapshot: communities, partition quality, conventions,
-  coverage overlay, patterns, prune, test-linker, reuse-delta reporting.
+  patterns, prune, reuse-delta reporting.
 
 Python support is new here rather than ported. codewatch walked TypeScript only; the parser
 already had the grammar. The Python extractor is deliberately narrower than the ts-morph one:
@@ -252,3 +252,32 @@ that made it, so a file's churn before the rename stays on its old path and is d
 First-seen dates come from a separate `--no-renames` pass, which makes a renamed file look
 younger. `--since` resolves against git's clock while window slicing uses `nowEpoch`. History
 metrics are recomputed on every index and never carried forward under reuse.
+
+## Test linking and coverage
+
+Ported in TP-133, strictly as codewatch had it. `linkTestsToSources` pairs each test file
+with non-test files in two passes. Pass 1 uses path conventions: it strips a `.test` or `.spec`
+infix and collapses a `__tests__/`, `test/` or `tests/` segment. Pass 2 gives a test that
+pass 1 left unpaired its strongest co-edited non-test partner, with at least 2 shared commits.
+
+`indexPaths` writes `linked_test_count` on each linked source, with or without git. With git
+history on it also writes `test_bus_factor_{w}` and `test_top_author_share_{w}` for the
+primary window. These summarize churn authorship across all tests linked to a source, so a
+file can be well spread in production code and a single-author silo in its tests. All three
+are recomputed on every index and never carried forward.
+
+`computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
+`src/history/`. It needs test links, and the seam forbids history from importing them.
+
+```ts
+import { attributeCoverage } from "@titan-design/code-graph";
+
+// fileIdOf maps an absolute path to a file id, or null to skip; spans come from symbol nodes' attrs.
+const metrics = attributeCoverage(istanbulReport, fileIdOf, symbolSpansByFile);
+```
+
+`attributeCoverage` turns an Istanbul `coverage-final.json` into `coverage_pct` metrics: one
+per file (covered functions over total functions) and one per symbol, matched by line-range
+containment to the innermost symbol. Coverage depends on which tests ran, not on file bytes,
+so the index never writes or carries it. The caller stores it on the snapshot it measured,
+as codewatch's `graph coverage` command does.
