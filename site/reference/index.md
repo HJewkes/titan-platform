@@ -14,6 +14,7 @@ Domain-free building blocks. No titan dependencies.
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
 | [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
+| [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |
