@@ -5,6 +5,7 @@ import type {
   SendResult,
 } from "./contract.js";
 import { sendFailed } from "./contract.js";
+import { attemptFetch, unreadableSuccess } from "./send-failure.js";
 
 export interface BlueBubblesConfig {
   /** Origin of the BlueBubbles server, e.g. `http://127.0.0.1:1234`. */
@@ -39,10 +40,13 @@ export function describeCause(cause: unknown): string {
   return String(cause);
 }
 
-/** A BlueBubbles envelope: `{ status, message, data }`, or `error.message` on failure. */
-async function readEnvelope(
-  response: Response,
-): Promise<{ message?: string; guid?: string }> {
+interface Envelope {
+  message?: string;
+  guid?: string;
+}
+
+/** A BlueBubbles envelope: `{ status, message, data }`, or `error.message` on failure. Undefined when unreadable. */
+async function readEnvelope(response: Response): Promise<Envelope | undefined> {
   try {
     const body = (await response.json()) as {
       message?: unknown;
@@ -55,7 +59,7 @@ async function readEnvelope(
       guid: typeof body.data?.guid === "string" ? body.data.guid : undefined,
     };
   } catch {
-    return {};
+    return undefined;
   }
 }
 
@@ -86,35 +90,42 @@ export class BlueBubblesTransport implements MessageTransport {
     const chatGuid = await this.resolveChatGuid(handle);
     if (chatGuid.kind !== "ok") return sendFailed(chatGuid.error);
 
-    let response: Response;
-    try {
-      response = await this.postText(chatGuid.value, text);
-    } catch (cause) {
-      return sendFailed({
-        kind: "unreachable",
-        message: this.redact(describeCause(cause)),
-      });
+    const attempt = await attemptFetch(this.doFetch, () =>
+      this.textRequest(chatGuid.value, text),
+    );
+    if (!attempt.sent) {
+      return sendFailed({ kind: attempt.kind, message: this.redact(describeCause(attempt.cause)) });
     }
+    return await this.resultFor(attempt.response, handle);
+  }
 
+  private async resultFor(response: Response, handle: string): Promise<SendResult> {
     const envelope = await readEnvelope(response);
-    const message = this.redact(envelope.message ?? response.statusText);
+    if (response.ok && envelope === undefined) {
+      return sendFailed(unreadableSuccess(response.status));
+    }
+    const message = this.redact(envelope?.message ?? response.statusText);
     if (!response.ok) {
       return sendFailed(errorForStatus(response.status, message, handle));
     }
-    return { ok: true, messageGuid: envelope.guid };
+    return { ok: true, messageGuid: envelope?.guid };
   }
 
-  private async postText(chatGuid: string, text: string): Promise<Response> {
-    return await this.doFetch(apiUrl(this.config, SEND_PATH), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chatGuid,
-        tempGuid: (this.config.newTempGuid ?? (() => crypto.randomUUID()))(),
-        message: text,
-        method: "apple-script",
-      }),
-    });
+  /** The server forgets a tempGuid once its send settles, so a fresh one per call costs no safety. */
+  private textRequest(chatGuid: string, text: string): Parameters<typeof fetch> {
+    return [
+      apiUrl(this.config, SEND_PATH),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chatGuid,
+          tempGuid: (this.config.newTempGuid ?? (() => crypto.randomUUID()))(),
+          message: text,
+          method: "apple-script",
+        }),
+      },
+    ];
   }
 
   private async resolveChatGuid(
