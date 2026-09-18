@@ -42,9 +42,11 @@
     "@titan-design/style-profile": "workspace:^"
   },
   "peerDependencies": {
-    "web-tree-sitter": "^0.26.6"
+    "web-tree-sitter": "^0.26.6",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "web-tree-sitter": "^0.26.6"
+    "web-tree-sitter": "^0.26.6",
+    "zod": "^4.4.3"
   }
 }
