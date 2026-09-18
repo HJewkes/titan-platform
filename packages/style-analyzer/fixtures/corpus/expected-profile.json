@@ -1,22 +1,22 @@
 {
   "naming.constant": {
     "convention": "SCREAMING_SNAKE",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "naming.type": {
     "convention": "PascalCase",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "naming.variable": {
     "convention": "camelCase",
-    "confidence": 0.83,
-    "severity": "warn"
+    "confidence": 0.97,
+    "severity": "error"
   },
   "naming.function": {
     "convention": "camelCase",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "naming.parameter": {
@@ -56,7 +56,7 @@
   },
   "documentation.jsdoc-presence": {
     "convention": false,
-    "confidence": 0.47,
+    "confidence": 0.56,
     "severity": "info"
   },
   "documentation.private-coverage": {
@@ -131,17 +131,17 @@
   },
   "control-flow.async-await": {
     "convention": true,
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "error-handling.result-type": {
     "convention": "Result",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "error-handling.try-catch": {
     "convention": true,
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "error-handling.catch-specificity": {
@@ -151,7 +151,7 @@
   },
   "control-flow.guard-clause": {
     "convention": true,
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "control-flow.for-of": {
@@ -161,12 +161,12 @@
   },
   "naming.enum": {
     "convention": "PascalCase",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   },
   "control-flow.array-method": {
     "convention": "map",
-    "confidence": 0.85,
+    "confidence": 1,
     "severity": "error"
   }
 }
