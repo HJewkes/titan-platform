@@ -84,6 +84,10 @@
         "link": "/reference/session-read"
       },
       {
+        "text": "style-profile",
+        "link": "/reference/style-profile"
+      },
+      {
         "text": "workflow",
         "link": "/reference/workflow"
       }
