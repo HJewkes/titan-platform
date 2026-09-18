@@ -1,5 +1,6 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
+import { qualify, walkScopes } from "./scope-path.js";
 
 const TS_DECL_TYPES = new Set([
   "function_declaration",
@@ -15,33 +16,48 @@ export interface LineSpan {
   endLine: number;
 }
 
+/** One declaration: its own name, its scope-qualified name, and its line span. */
+export interface Declaration {
+  name: string;
+  qualifiedName: string;
+  span: LineSpan;
+}
+
 /**
- * Every function/method/class a file DECLARES, mapped to its 1-based line span
- * (the model-B symbol surface, C-64, now carrying spans for C-63 coverage
- * range-containment). A superset of the file's exports: internal helpers like
- * `mergeFragments` are included so they get a `symbol` node (and, by name match,
- * their complexity + coverage) even though nothing imports them. Names come from
- * the same tree-sitter walk that computes complexity, so they never drift.
- * Anonymous declarations (a default-exported arrow, inline callbacks) contribute
- * no name and are skipped. A name declared more than once keeps its last span
- * (overloads / same-named methods are rare; range lookup still resolves most).
+ * Every function/method/class a file DECLARES, in source order (the model-B
+ * symbol surface, C-64). A superset of the file's exports: internal helpers like
+ * `mergeFragments` are included so they get a `symbol` node (and their
+ * complexity + coverage) even though nothing imports them. Names come from the
+ * same tree-sitter walk that computes complexity, so they never drift.
+ * `qualifiedName` prefixes the enclosing named scopes (`Job.run`, `outer.inner`)
+ * so same-named members of different classes or functions stay apart (TP-182).
+ * Anonymous declarations (a default-exported arrow, inline callbacks) are skipped.
+ */
+export function collectDeclarations(file: ParsedFile): Declaration[] {
+  const python = file.language === "python";
+  const declTypes = python ? PY_DECL_TYPES : TS_DECL_TYPES;
+  const out: Declaration[] = [];
+  walkScopes(file.tree.rootNode, python, (node, scope) => {
+    const named = declaredNodeAt(node, declTypes);
+    if (!named) return;
+    out.push({
+      name: named.name,
+      qualifiedName: qualify(scope, named.name),
+      span: { startLine: named.node.startPosition.row + 1, endLine: named.node.endPosition.row + 1 },
+    });
+  });
+  return out;
+}
+
+/**
+ * Qualified declared names mapped to their 1-based line span (C-63 coverage
+ * range-containment). One scope binds a name once, as TypeScript and Python do,
+ * so a getter/setter pair, a Python property's accessors, and `@overload` stubs
+ * share one entry; when a qualified name repeats, the last span wins.
  */
 export function collectDeclaredSpans(file: ParsedFile): Map<string, LineSpan> {
-  const declTypes = file.language === "python" ? PY_DECL_TYPES : TS_DECL_TYPES;
   const spans = new Map<string, LineSpan>();
-  const visit = (node: Node): void => {
-    const named = declaredNodeAt(node, declTypes);
-    if (named) {
-      spans.set(named.name, {
-        startLine: named.node.startPosition.row + 1,
-        endLine: named.node.endPosition.row + 1,
-      });
-    }
-    for (const child of node.children) {
-      if (child) visit(child);
-    }
-  };
-  visit(file.tree.rootNode);
+  for (const d of collectDeclarations(file)) spans.set(d.qualifiedName, d.span);
   return spans;
 }
 

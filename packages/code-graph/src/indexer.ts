@@ -26,6 +26,7 @@ import { computeDeltaAffected } from "./reuse-delta.js";
 import { buildIndexerMetrics } from "./index-metrics.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
+import { predatesQualifiedSymbols, qualifiedSymbolAliases } from "./symbol-aliases.js";
 import type { GraphMetric, IdAlias } from "./types.js";
 
 /**
@@ -33,7 +34,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.13.0";
+export const INDEX_VERSION = "0.14.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -135,6 +136,19 @@ function resolveAliases(
   return buildAliases(idRoot, detectRenames({ repoRoot: rootDir, fromCommit: priorCommit, toCommit: target }));
 }
 
+/** Aliases from bare-name symbol ids to qualified ones, when the newest prior snapshot predates them. */
+function resolveSymbolAliases(
+  store: CodeGraphStore,
+  idRoot: string,
+  parsedByPath: ReadonlyMap<string, ParsedFile>,
+  nodeIds: ReadonlySet<string>,
+): IdAlias[] {
+  const prior = store.listSnapshots({ limit: 1 })[0];
+  if (!prior || !predatesQualifiedSymbols(prior.indexVersion)) return [];
+  const files = [...parsedByPath.values()].map((file) => ({ fileId: fileId(idRoot, file.filePath), file }));
+  return qualifiedSymbolAliases(files, nodeIds);
+}
+
 /**
  * Node ids are rooted at the git toplevel so a subtree index shares an id space
  * with a whole-repo one. Inside git, roots are canonicalized to match
@@ -214,7 +228,10 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
         });
 
   const rootDir = rootDirs[0]!;
-  const aliases = resolveAliases(rootDir, idRoot, options, store);
+  const aliases = [
+    ...resolveAliases(rootDir, idRoot, options, store),
+    ...resolveSymbolAliases(store, idRoot, parsedByPath, new Set(accumulator.nodes.keys())),
+  ];
   const commitHash = options.commitHash ?? detectGitHead(rootDir) ?? undefined;
   const snapshotId = persist(store, options.ref ?? "wd", commitHash, accumulator, aliases, metrics);
   store.insertFingerprints(snapshotId, buildFingerprints(readFiles, idRoot, classified.structuralByFileId));

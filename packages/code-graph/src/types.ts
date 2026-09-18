@@ -14,7 +14,8 @@ export type EdgeKind =
   | "references"
   | "depends-on";
 
-export type IdAliasReason = "rename" | "move" | "merge";
+/** `requalify` maps a bare-name symbol id from before index version 0.14.0 to its scope-qualified successor. */
+export type IdAliasReason = "rename" | "move" | "merge" | "requalify";
 
 export type NodeRole =
   | "test"
