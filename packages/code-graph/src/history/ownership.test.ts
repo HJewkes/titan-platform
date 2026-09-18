@@ -43,6 +43,12 @@ describe("computeOwnership", () => {
     expect(owner?.topAuthorShare).toBe(0.4);
   });
 
+  it("counts an author who reaches the threshold exactly (50/50 gives bus factor 1)", () => {
+    const owner = computeOwnership([entry("c1", "alice", "a.ts", 40), entry("c2", "bob", "a.ts", 40)]).get("a.ts");
+    expect(owner?.topAuthorShare).toBe(0.5);
+    expect(owner?.busFactor).toBe(1);
+  });
+
   it("respects busFactorThreshold (e.g. 80%)", () => {
     const owner = computeOwnership(
       [entry("c1", "alice", "a.ts", 60), entry("c2", "bob", "a.ts", 30), entry("c3", "carol", "a.ts", 10)],
