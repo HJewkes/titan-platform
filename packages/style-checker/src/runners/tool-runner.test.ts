@@ -18,6 +18,19 @@ describe("runTool", () => {
     expect(result.exitCode).toBe(2);
   });
 
+  it("reports a child killed by a signal with a null exit code, never as exit 0", async () => {
+    const result = await runTool("node", ["-e", "process.kill(process.pid, 'SIGKILL')"]);
+    expect(result.exitCode).toBeNull();
+    expect(result.signal).toBe("SIGKILL");
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("kills a child that outlives its timeout and says so", async () => {
+    const result = await runTool("node", ["-e", "setTimeout(() => {}, 10_000)"], { timeout: 100 });
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).toBeNull();
+  });
+
   it("rejects when command does not exist", async () => {
     await expect(
       runTool("nonexistent-command-xyz", []),

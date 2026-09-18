@@ -33,9 +33,10 @@ rules and docs for other tools lives in `style-profile`.
 | Export | What it does |
 |---|---|
 | `generateRuffConfig(profile)`, `RuffConfig` | ruff `select` codes (`N`, `I`, `D`, `C90`), isort section order, pydocstyle convention, mccabe max complexity, `line-length` |
-| `generateEslintConfig(profile)`, `EslintFlatConfigEntry` | one flat-config entry for `**/*.ts` and `**/*.tsx` with style-profile's rules, or `[]` |
-| `orchestrate(options)`, `OrchestratorOptions`, `OrchestratorResult` | generate configs, run ESLint on JS/TS files and ruff on Python files, merge diagnostics, count by severity |
-| `parseEslintJsonOutput(json)`, `parseRuffJsonOutput(json)` | normalize a tool's JSON output; throw on non-JSON |
+| `generateEslintConfig(profile)`, `EslintFlatConfigEntry` | one flat-config entry for `**/*.ts` and `**/*.tsx` with style-profile's rules (the `info` tier as `warn`), or `[]`; rule data only, plugins are loaded at run time |
+| `orchestrate(options)`, `OrchestratorOptions`, `OrchestratorResult` | generate configs, run ESLint on JS/TS files and ruff on Python files, merge diagnostics, count by severity, and return `failures` and `skippedRules` |
+| `ToolFailure`, `ToolFailureKind`, `ToolName`, `SkippedRule` | a run that could not check its files, and an ESLint rule left out because its plugin is not installed |
+| `parseEslintJsonOutput(json)`, `parseRuffJsonOutput(json)` | normalize a tool's JSON output; throw on non-JSON; rule-less messages are not diagnostics |
 | `formatDiagnostic(d)` | `file:line:column severity message [category.rule]` |
 | `CheckDiagnostic`, `CheckResult`, `Severity` | the normalized record and its severity (`error`, `warn`, `info`) |
 | `diffAgainstProfile(profile, observations)`, `Deviation`, `DiffResult` | observations that disagree with the profile's convention, with a severity from the rule's confidence |
@@ -111,30 +112,79 @@ diffAgainstProfile(profile, [
 //   summary: { total: 3, matching: 1, deviating: 1 } }
 ```
 
+## Failures and exit codes
+
+`orchestrate` returns `{ diagnostics, failures, skippedRules, summary }`. An empty
+`failures` means every tool that ran checked every file it was given, so an empty
+`diagnostics` with it really is a clean run. Each failure is
+`{ tool, kind, message, file? }`, and its message carries the tool's stderr:
+
+| `kind` | When |
+|---|---|
+| `spawn-failed` | `npx` or `ruff` could not be started |
+| `timeout` | the run outlived its 60-second timeout and was killed |
+| `signal` | the process was killed by a signal |
+| `exit-code` | an exit code other than 0 or 1 |
+| `unparseable-output` | exit 0 or 1 with empty or non-JSON stdout |
+| `file-not-checked` | one file was not checked: an ESLint parse error or ignored file, a ruff syntax error (`"code": "invalid-syntax"` in ruff 0.16.8, a null `code` in 0.9.10), or a path ruff could not read, which it reports only on stderr with exit 0 |
+| `missing-dependency` | the project has no TypeScript parser, so ESLint was not run |
+
+Exit codes 0 and 1 are both successful runs for both tools. ESLint documents 0 as no
+errors, 1 as at least one error, and 2 as a configuration problem or internal error
+([CLI reference](https://eslint.org/docs/latest/use/command-line-interface#exit-codes)).
+ruff documents 0 as no violations or all fixed, 1 as violations found, and 2 as abnormal
+termination from invalid configuration, invalid options or an internal error
+([linter docs](https://docs.astral.sh/ruff/linter/#exit-codes)).
+
+## ESLint plugins
+
+ESLint runs in the project, so its plugins must come from the project's `node_modules`.
+At run time the runner resolves, from the current working directory, the parser and
+each plugin a rule needs, and writes a flat config that imports them by absolute path.
+`@typescript-eslint/` rules use `@typescript-eslint/eslint-plugin` or the
+`typescript-eslint` meta-package; `perfectionist/`, `unicorn/` and `jsdoc/` rules use
+`eslint-plugin-perfectionist`, `eslint-plugin-unicorn` and `eslint-plugin-jsdoc`.
+
+A rule whose plugin is not installed is left out and listed in `skippedRules`, for
+example `{ tool: "eslint", rule: "unicorn/filename-case", plugin: "unicorn", reason:
+"eslint-plugin-unicorn is not installed in /app" }`. The other rules still run: a profile
+mixes core and plugin rules, and one missing plugin should not cost the core checks. The
+TypeScript parser (`@typescript-eslint/parser` or `typescript-eslint`) is required.
+Without it ESLint cannot parse `.ts`, so the run is not attempted and a
+`missing-dependency` failure names the package. `npx --no` stops npx from downloading an
+ESLint the project has not installed.
+
 ## What it deliberately does not do
 
 - It runs only ruff and ESLint. Other runners (pyright, jscpd, vulture and more) come
   after the port.
-- It does not install the tools. `ruff` must be on `PATH`; ESLint runs through `npx eslint`
-  from the current working directory.
+- It does not install the tools or plugins. `ruff` must be on `PATH`; ESLint, its
+  TypeScript parser and its plugins must be installed in the current working directory's
+  project.
 - It does not read profiles from disk, choose output formats, or set exit codes. Those
   belong to the product that calls it (codewatch's `check` and `diff` commands).
 - It does not list changed files from git. codewatch's CLI keeps that.
 
 ## Gotchas
 
-- The generated ESLint config names plugin rules but loads no plugins, so ESLint 9 exits
-  with a configuration error. The runner reads only stdout and returns zero diagnostics
-  rather than throwing.
+- The generated ESLint config covers only `**/*.ts` and `**/*.tsx`, though `orchestrate`
+  sends `.js` and `.jsx` too. A `.jsx` file comes back as `file-not-checked`; a `.js` file
+  matches ESLint's defaults, is linted with none of the profile's rules, and comes back
+  clean.
+- A file outside the current working directory comes back as `file-not-checked` ("File
+  ignored because outside of base path").
 - `max-complexity` comes from `functionMaxLines`, a line count, not a cyclomatic
   complexity.
-- Every ruff diagnostic is `warn`. ESLint severity 2 is `error`, anything else `warn`.
+- Every ruff diagnostic is `warn`. ruff 0.16.8's own `severity` field is ignored: it is
+  `"error"` for every rule finding. ESLint severity 2 is `error`, anything else `warn`.
   `summary.fixed` is always 0.
 - `diffAgainstProfile` compares `String(observation.value)` with
   `String(convention)`, and matches `type` against the profile key literally. Analyzer
   types such as `naming.variable` do not match a profile key `variables`.
-- The eslint JSON parser drops messages with no `ruleId`, which includes parse errors and
-  "file ignored" warnings.
+- `parseEslintJsonOutput` still drops messages with no `ruleId`, and `parseRuffJsonOutput`
+  drops syntax-error entries. The runners report the ones that mean a file was not
+  checked as failures; other rule-less ESLint messages, such as unused disable
+  directives, stay dropped.
 
 ## Where it came from
 

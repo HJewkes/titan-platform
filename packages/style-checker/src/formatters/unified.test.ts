@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   parseEslintJsonOutput,
@@ -73,6 +74,14 @@ describe("parseEslintJsonOutput", () => {
 });
 
 describe("parseRuffJsonOutput", () => {
+  it.each(["syntax-error", "syntax-error-ruff-0.9.10"])(
+    "leaves out syntax errors in captured ruff output (%s)",
+    (name) => {
+      const stdout = readFileSync(new URL(`../../fixtures/ruff/${name}.stdout.json`, import.meta.url), "utf-8");
+      expect(parseRuffJsonOutput(stdout).map((d) => d.rule)).toEqual(["N806"]);
+    },
+  );
+
   it("normalizes Ruff JSON output to CheckDiagnostic[]", () => {
     const ruffOutput = [
       {

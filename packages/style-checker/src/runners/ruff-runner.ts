@@ -1,9 +1,10 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runTool } from "./tool-runner.js";
-import { parseRuffJsonOutput } from "../formatters/unified.js";
-import type { CheckDiagnostic } from "../orchestrator/types.js";
+import { runAndClassify, parseOrFail } from "./failures.js";
+import { isRuffSyntaxError, parseRuffJsonOutput } from "../formatters/unified.js";
+import type { CheckDiagnostic, ToolFailure } from "../orchestrator/types.js";
+import type { RunnerOptions, RunnerResult } from "./types.js";
 import type { RuffConfig } from "../generators/ruff.js";
 
 type RuffLint = NonNullable<RuffConfig["lint"]>;
@@ -56,11 +57,44 @@ function toToml(config: RuffConfig): string {
   return lines.join("\n") + "\n";
 }
 
+interface RuffJsonMessage {
+  code: string | null;
+  filename: string;
+  message: string;
+}
+
+function notChecked(file: string, message: string): ToolFailure {
+  return { tool: "ruff", kind: "file-not-checked", file, message };
+}
+
+// ruff emits one entry per syntax error; a file that fails to parse is reported once.
+function unparsedFiles(stdout: string): ToolFailure[] {
+  const byFile = new Map<string, string[]>();
+  for (const e of JSON.parse(stdout) as RuffJsonMessage[]) {
+    if (!isRuffSyntaxError(e.code)) continue;
+    byFile.set(e.filename, [...(byFile.get(e.filename) ?? []), e.message]);
+  }
+  return [...byFile].map(([file, messages]) => notChecked(file, messages.join("; ")));
+}
+
+// ruff 0.16.8 flags an unreadable path (exit 0, "[]") only in this stderr wording; if ruff rewords it, the case goes silent again.
+function unreadFiles(stderr: string): ToolFailure[] {
+  return [...stderr.matchAll(/^warning: Failed to lint (.+?): (.+)$/gm)].map((m) => notChecked(m[1]!, m[2]!));
+}
+
+function readRuffOutput(stdout: string, stderr: string): { diagnostics: CheckDiagnostic[]; failures: ToolFailure[] } {
+  const parsed = parseOrFail("ruff", () => ({
+    diagnostics: parseRuffJsonOutput(stdout),
+    failures: [...unparsedFiles(stdout), ...unreadFiles(stderr)],
+  }));
+  return parsed.ok ? parsed.value : { diagnostics: [], failures: [parsed.failure] };
+}
+
 export async function runRuff(
   config: RuffConfig,
   files: string[],
-  options?: { fix?: boolean },
-): Promise<{ diagnostics: CheckDiagnostic[]; exitCode: number }> {
+  options?: RunnerOptions,
+): Promise<RunnerResult> {
   const tempDir = mkdtempSync(join(tmpdir(), "codewatch-ruff-"));
   const configPath = join(tempDir, "ruff.toml");
 
@@ -77,11 +111,9 @@ export async function runRuff(
       ...files,
     ];
 
-    const result = await runTool("ruff", args);
-    const diagnostics =
-      result.stdout.trim() ? parseRuffJsonOutput(result.stdout) : [];
-
-    return { diagnostics, exitCode: result.exitCode };
+    const run = await runAndClassify("ruff", "ruff", args, { cwd: options?.cwd, timeout: options?.timeout });
+    if (!run.ok) return { diagnostics: [], exitCode: run.exitCode, failures: [run.failure], skippedRules: [] };
+    return { ...readRuffOutput(run.stdout, run.stderr), exitCode: run.exitCode, skippedRules: [] };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

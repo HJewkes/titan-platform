@@ -81,4 +81,20 @@ describe("diffAgainstProfile", () => {
     expect(result.summary.matching).toBe(0);
     expect(result.summary.deviating).toBe(0);
   });
+
+  it("uses the higher severity when confidence sits exactly on a threshold", () => {
+    const atThreshold = (confidence: number): Profile => ({
+      ...sampleProfile,
+      naming: { variables: { convention: "camelCase", confidence, stability: "high" } },
+    });
+    const observations: Observation[] = [
+      { type: "naming.variables", category: "naming", value: "snake_case", file: "a.ts", line: 1 },
+    ];
+
+    const atError = diffAgainstProfile(atThreshold(0.85), observations);
+    const atWarn = diffAgainstProfile(atThreshold(0.6), observations);
+
+    expect(atError.deviations[0]!.severity).toBe("error");
+    expect(atWarn.deviations[0]!.severity).toBe("warn");
+  });
 });

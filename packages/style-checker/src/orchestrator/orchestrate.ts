@@ -2,6 +2,7 @@ import { generateEslintConfig } from "../generators/eslint.js";
 import { generateRuffConfig } from "../generators/ruff.js";
 import { runEslint } from "../runners/eslint-runner.js";
 import { runRuff } from "../runners/ruff-runner.js";
+import type { RunnerResult } from "../runners/types.js";
 import type {
   OrchestratorOptions,
   OrchestratorResult,
@@ -28,37 +29,36 @@ function buildSummary(
   };
 }
 
-export async function orchestrate(
-  options: OrchestratorOptions,
-): Promise<OrchestratorResult> {
+async function runTools(options: OrchestratorOptions): Promise<RunnerResult[]> {
   const { profile, files, fix } = options;
   const language = options.language ?? detectLanguage(files);
-  const allDiagnostics: CheckDiagnostic[] = [];
-
   const tsFiles = files.filter((f) => /\.[tj]sx?$/.test(f));
   const pyFiles = files.filter((f) => /\.py$/.test(f));
+  const results: RunnerResult[] = [];
 
-  if (
-    (language === "typescript" || language === "mixed") &&
-    tsFiles.length > 0
-  ) {
+  if ((language === "typescript" || language === "mixed") && tsFiles.length > 0) {
     const eslintConfig = generateEslintConfig(profile);
-    if (eslintConfig.length > 0) {
-      const result = await runEslint(eslintConfig, tsFiles, { fix });
-      allDiagnostics.push(...result.diagnostics);
-    }
+    if (eslintConfig.length > 0) results.push(await runEslint(eslintConfig, tsFiles, { fix }));
   }
 
   if ((language === "python" || language === "mixed") && pyFiles.length > 0) {
     const ruffConfig = generateRuffConfig(profile);
     if (ruffConfig.lint?.select && ruffConfig.lint.select.length > 0) {
-      const result = await runRuff(ruffConfig, pyFiles, { fix });
-      allDiagnostics.push(...result.diagnostics);
+      results.push(await runRuff(ruffConfig, pyFiles, { fix }));
     }
   }
+  return results;
+}
 
+export async function orchestrate(
+  options: OrchestratorOptions,
+): Promise<OrchestratorResult> {
+  const results = await runTools(options);
+  const diagnostics = results.flatMap((r) => r.diagnostics);
   return {
-    diagnostics: allDiagnostics,
-    summary: buildSummary(allDiagnostics),
+    diagnostics,
+    failures: results.flatMap((r) => r.failures),
+    skippedRules: results.flatMap((r) => r.skippedRules),
+    summary: buildSummary(diagnostics),
   };
 }
