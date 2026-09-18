@@ -1,6 +1,6 @@
 import { asObject } from "./text.js";
 import type { Json } from "./text.js";
-import type { RecentFormatResult, RecentObservedValue, RecentSessionTurn } from "./recent-types.js";
+import type { RecentFormatResult, RecentObservedValue, RecentSessionTurn, RecentTurnProjection } from "./recent-types.js";
 import type { RecentSourceLine } from "./recent-tail.js";
 import { observed, oneLine, parseRecentRecord, renderedValue, text, truncate, unknownValue, withNativeOrdinal } from "./recent-values.js";
 
@@ -8,6 +8,7 @@ export function parseRecentClaude(
   lines: readonly RecentSourceLine[],
   truncatedBefore: boolean,
   source: SessionSourceDescriptor,
+  projection: RecentTurnProjection,
 ): RecentFormatResult {
   const errors: RecentFormatResult["errors"] = [];
   const turns: RecentSessionTurn[] = [];
@@ -21,7 +22,7 @@ export function parseRecentClaude(
     const line = withNativeOrdinal(sourceLine, record);
     branch = updateObserved(branch, text(record.gitBranch), line);
     if (record.type === "assistant") model = updateObserved(model, assistantModel(record), line);
-    const parsed = claudeTurn(record, line);
+    const parsed = claudeTurn(record, line, projection);
     if (!parsed) continue;
     turns.push(parsed);
   }
@@ -49,11 +50,11 @@ function assertClaudeRecordIdentity(
   return sessionId;
 }
 
-function claudeTurn(record: Json, line: RecentSourceLine): RecentSessionTurn | null {
+function claudeTurn(record: Json, line: RecentSourceLine, projection: RecentTurnProjection): RecentSessionTurn | null {
   const role = record.type;
   if (role !== "user" && role !== "assistant" && role !== "system") return null;
   const message = asObject(record.message);
-  const rendered = renderClaudeContent(message ? message.content : record.content);
+  const rendered = renderClaudeContent(message ? message.content : record.content, projection);
   if (!rendered.text.trim()) return null;
   return {
     role,
@@ -73,10 +74,11 @@ interface RenderedClaudeContent {
   toolResultError: boolean | null;
 }
 
-function renderClaudeContent(content: unknown): RenderedClaudeContent {
+function renderClaudeContent(content: unknown, projection: RecentTurnProjection): RenderedClaudeContent {
   if (typeof content === "string") return { text: content, kind: "message", toolResultError: null };
   if (!Array.isArray(content)) return { text: "", kind: "message", toolResultError: null };
   const blocks = content.map((value) => asObject(value)).filter((value): value is Json => value !== null);
+  if (projection === "text") return { text: blocks.map(textBlock).filter(Boolean).join("\n"), kind: "message", toolResultError: null };
   const kind = blocks.some((block) => block.type === "tool_result")
     ? "tool_result"
     : blocks.some((block) => block.type === "tool_use") ? "tool_call" : "message";
@@ -88,8 +90,12 @@ function renderClaudeContent(content: unknown): RenderedClaudeContent {
   };
 }
 
+function textBlock(block: Json): string {
+  return block.type === "text" ? text(block.text) ?? "" : "";
+}
+
 function renderClaudeBlock(block: Json): string {
-  if (block.type === "text") return text(block.text) ?? "";
+  if (block.type === "text") return textBlock(block);
   if (block.type === "thinking") return `[thinking, ${Array.from(text(block.thinking) ?? "").length} chars]`;
   if (block.type === "tool_use") return `[tool ${text(block.name) ?? "?"}] ${truncate(oneLine(JSON.stringify(block.input ?? {}) ?? ""), 200)}`;
   if (block.type === "tool_result") {
@@ -106,8 +112,12 @@ function resultError(states: readonly (boolean | null)[]): boolean | null {
   return states.every((state) => state === false) ? false : null;
 }
 
+/** Claude Code stamps locally generated rows, such as API error notices, with a placeholder model. */
+const SYNTHETIC_MODEL = "<synthetic>";
+
 function assistantModel(record: Json): string | null {
-  return text(asObject(record.message)?.model);
+  const model = text(asObject(record.message)?.model);
+  return model === SYNTHETIC_MODEL ? null : model;
 }
 
 function updateObserved(

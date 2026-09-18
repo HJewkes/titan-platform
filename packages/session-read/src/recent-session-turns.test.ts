@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
-import { CLAUDE_TRANSCRIPT_FORMAT, claudeSourceId } from "./claude-source.js";
+import { CLAUDE_TRANSCRIPT_FORMAT, claudeSourceFromPath, claudeSourceId } from "./claude-source.js";
 import { CODEX_ROLLOUT_FORMAT, codexSourceId } from "./codex-discover.js";
 import { codexFixtureRecords, renderCodexRollout } from "./codex-fixture.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
@@ -241,6 +241,129 @@ describe("readRecentSessionTurns", () => {
     const conversation = identity("codex", "expected-thread");
     const source = await writeCodex(conversation, [codexEnvelope("session_meta", { id: "other-thread" })]);
     await expect(readRecentSessionTurns(source, options())).rejects.toThrow(/other-thread, expected expected-thread/);
+  });
+});
+
+describe("readRecentSessionTurns with the text projection", () => {
+  it("returns the last spoken turns, counting only after tool activity and thinking are dropped", async () => {
+    const conversation = identity("claude-code", "spoken-session");
+    const rows = [
+      claudeRow("user", "fix the build"),
+      claudeRow("assistant", [{ type: "thinking", thinking: "plan" }]),
+      claudeRow("assistant", [
+        { type: "text", text: "Reading the failing test now." },
+        { type: "tool_use", name: "Bash", input: { command: "npm test" } },
+      ]),
+      claudeRow("user", [{ type: "tool_result", is_error: true, content: "1 failed" }]),
+      claudeRow("assistant", [{ type: "tool_use", name: "Edit", input: {} }]),
+      { type: "system", timestamp: "2026-09-11T10:00:03Z", content: "compacted context" },
+      claudeRow("assistant", [{ type: "text", text: "Fixed; the suite passes." }]),
+    ];
+    const source = await writeClaude(conversation, rows);
+
+    const result = await readRecentSessionTurns(source, options({ maxTurns: 2, projection: "text" }));
+
+    expect(result.turns.map((turn) => [turn.role, turn.kind, turn.text])).toEqual([
+      ["assistant", "message", "Reading the failing test now."],
+      ["assistant", "message", "Fixed; the suite passes."],
+    ]);
+    expect(result.truncatedTurns).toBe(true);
+  });
+
+  it("returns every spoken turn without claiming truncation when fewer exist than requested", async () => {
+    const conversation = identity("claude-code", "short-session");
+    const source = await writeClaude(conversation, [claudeRow("user", "hi"), claudeRow("assistant", [{ type: "text", text: "hello" }])]);
+
+    const result = await readRecentSessionTurns(source, options({ maxTurns: 20, projection: "text" }));
+
+    expect(result.turns.map((turn) => turn.text)).toEqual(["hi", "hello"]);
+    expect(result.truncatedTurns).toBe(false);
+  });
+
+  it("reads an empty transcript as no turns and an unreported model", async () => {
+    const conversation = identity("claude-code", "empty-session");
+    const source = await writeClaudeText(conversation, "");
+
+    const result = await readRecentSessionTurns(source, options({ projection: "text" }));
+
+    expect(result).toMatchObject({ status: "read", turns: [], bytesRead: 0, truncatedAfter: false, errors: [] });
+    expect(result.model).toEqual({ status: "unknown", reason: "not_reported" });
+  });
+
+  it("keeps the last complete spoken turn while the next record is still being written", async () => {
+    const conversation = identity("claude-code", "live-session");
+    const complete = JSON.stringify(claudeRow("assistant", [{ type: "text", text: "halfway there" }]));
+    const source = await writeClaudeText(conversation, `${complete}\n{"type":"assistant","message":{"content":[{"type":"te`);
+
+    const result = await readRecentSessionTurns(source, options({ projection: "text" }));
+
+    expect(result.turns.map((turn) => turn.text)).toEqual(["halfway there"]);
+    expect(result.truncatedAfter).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("marks a subagent's spoken turns as sidechain in a transcript addressed by path", async () => {
+    const parent = "parent-session";
+    const directory = await temporaryDirectory();
+    const path = join(directory, "agent-child.jsonl");
+    const rows = [claudeRow("assistant", [{ type: "text", text: "child report" }], { sessionId: parent, isSidechain: true })];
+    await writeFile(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+
+    const result = await readRecentSessionTurns(claudeSourceFromPath(path, "test-host"), options({ projection: "text" }));
+
+    expect(result.turns.map((turn) => [turn.text, turn.sidechain])).toEqual([["child report", true]]);
+  });
+
+  it("reads only the byte window from a multi-megabyte transcript", async () => {
+    const conversation = identity("claude-code", "large-session");
+    const filler = JSON.stringify(claudeRow("user", [{ type: "tool_result", content: "x".repeat(64 * 1024) }]));
+    const recent = [claudeRow("user", "status?"), claudeRow("assistant", [{ type: "text", text: "nearly done" }])];
+    const prefix = `${filler}\n`.repeat(64);
+    const source = await writeClaudeText(conversation, `${prefix}${recent.map((row) => JSON.stringify(row)).join("\n")}\n`);
+    const maxBytes = 16 * 1024;
+
+    const result = await readRecentSessionTurns(source, options({ maxBytes, projection: "text" }));
+
+    expect(Buffer.byteLength(prefix)).toBeGreaterThan(4 * 1024 * 1024);
+    expect(result.bytesRead).toBe(maxBytes);
+    expect(result.truncatedBefore).toBe(true);
+    expect(result.turns.map((turn) => turn.text)).toEqual(["status?", "nearly done"]);
+  });
+
+  it("keeps only Codex messages", async () => {
+    const conversation = identity("codex", "child-thread");
+    const source = await writeCodex(conversation, codexFixtureRecords());
+
+    const result = await readRecentSessionTurns(source, options({ maxBytes: 1024 * 1024, projection: "text" }));
+
+    expect(result.turns.length).toBeGreaterThan(0);
+    expect(result.turns.every((turn) => turn.kind === "message")).toBe(true);
+  });
+
+  it("rejects an unknown projection before reading", async () => {
+    const conversation = identity("claude-code", "bad-projection");
+    const source = claudeSource("/does/not/exist.jsonl", conversation);
+    const projection = "spoken" as unknown as "text";
+
+    await expect(readRecentSessionTurns(source, options({ projection }))).rejects.toThrow(/projection must be one of/);
+  });
+});
+
+describe("readRecentSessionTurns model observation", () => {
+  it("ignores the placeholder model Claude Code writes on locally generated error rows", async () => {
+    const conversation = identity("claude-code", "synthetic-session");
+    const rows = [
+      claudeRow("assistant", [{ type: "text", text: "working" }], { message: { model: "claude-opus-5" } }),
+      claudeRow("assistant", [{ type: "text", text: "API Error: request aborted" }], {
+        message: { model: "<synthetic>" },
+        isApiErrorMessage: true,
+      }),
+    ];
+    const source = await writeClaude(conversation, rows);
+
+    const result = await readRecentSessionTurns(source, options());
+
+    expect(result.model).toMatchObject({ status: "observed", value: "claude-opus-5" });
   });
 });
 
