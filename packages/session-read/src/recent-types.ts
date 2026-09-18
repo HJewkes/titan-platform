@@ -3,6 +3,8 @@ import type { SessionSourceDescriptor, SourceLineEvidence } from "./normalized.j
 export type RecentTurnRole = "user" | "assistant" | "system";
 export type RecentTurnKind = "message" | "tool_call" | "tool_result";
 export type RecentTurnRepresentation = "native" | "canonical" | "projection-fallback";
+/** `activity` renders tool calls, results and thinking markers; `text` keeps only what user and assistant said. */
+export type RecentTurnProjection = "activity" | "text";
 
 export interface RecentSessionTurn {
   role: RecentTurnRole;
@@ -60,6 +62,8 @@ export interface ReadRecentSessionTurnsOptions {
   maxBytes: number;
   maxTurns: number;
   maxCharsPerTurn: number;
+  /** Applied before maxTurns, so `text` returns the last maxTurns spoken turns. Defaults to `activity`. */
+  projection?: RecentTurnProjection;
 }
 
 export interface RecentFormatResult {

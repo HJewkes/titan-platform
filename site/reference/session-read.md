@@ -117,6 +117,11 @@ lookup, while `readRecentSessionTurns` provides an independently bounded tail wi
 explicit truncation and unknown-field reporting. Whole-source prefix replay and
 bounded tail reading have different guarantees.
 
+For a readback of what an agent said, pass `projection: "text"`. It keeps only user and
+assistant text and applies `maxTurns` after tool traffic is dropped.
+`claudeSourceFromPath(path, namespace)` builds the descriptor when the caller already
+holds a transcript path. The package README has the recipe and measured window sizes.
+
 `SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
 usage without a database. `SessionUsageAccumulator` is shared with graph queries;
 response deltas, reset epochs and unknown token categories retain their semantics.

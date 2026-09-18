@@ -117,6 +117,36 @@ separate bounded filesystem window. It reports byte/turn truncation, malformed
 complete records, and unknown model/branch/error fields when the evidence is outside
 that window. It never runs the replay-prefix reader behind a purported tail read.
 
+### Reading back what an agent said
+
+A voice or chat readback of a live agent needs the last few things said, not its tool
+traffic. Pass `projection: "text"`: it keeps only the user and assistant text blocks. It
+also applies the turn limit after dropping tool calls, tool results, thinking and system
+rows, so `maxTurns: 20` means twenty spoken turns. When you already hold a transcript path,
+such as one from a roster, `claudeSourceFromPath(path, namespace)` builds the descriptor
+from the filename. For an `agent-<id>.jsonl` sidechain it uses the agent ID.
+
+```ts
+import { claudeSourceFromPath, readRecentSessionTurnsSync } from "@titan-design/session-read";
+
+const result = readRecentSessionTurnsSync(claudeSourceFromPath(transcriptPath, "local"), {
+  maxBytes: 4 * 1024 * 1024,
+  maxTurns: 20,
+  maxCharsPerTurn: 4000,
+  projection: "text",
+});
+if (result.status === "unavailable") throw new Error(result.errors[0]?.reason);
+const spoken = result.turns.map((turn) => `${turn.role}:\n${turn.text.trim()}`).join("\n\n");
+```
+
+Size `maxBytes` for spoken turns, not rows: tool results take up most of a transcript's
+bytes. Across 40 real transcripts of 5 to 50 MB, 20 turns of any kind fit in the last 63 to
+905 KB. Where 20 spoken turns existed at all, they needed 247 KB to 3 MB. A 256 KB window
+returned 11 of 20 on a 50 MB session. Reading 4 MB and parsing it took 12 ms. Parsing that whole file took 146 ms.
+A partly written final record is skipped and reported through `truncatedAfter`. `model` is
+the newest assistant row's model, ignoring the `<synthetic>` placeholder Claude Code writes on
+locally generated error rows.
+
 `summarizeSession(source)` and `SessionSummaryAccumulator` derive observation spans,
 message/tool counts, explicit native permission-denial evidence and usage. Generic
 tool errors are separate from permission denials; missing error and token fields

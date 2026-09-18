@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertClaudeSessionSource,
   claudeProjectSlug,
+  claudeSourceFromPath,
   claudeSourceId,
   CLAUDE_TRANSCRIPT_FORMAT,
   findClaudeSessionSource,
@@ -116,3 +117,36 @@ function writeTranscript(projectSlug: string, recordSessionId: string | null, fi
   writeFileSync(filePath, text, "utf8");
   return filePath;
 }
+
+describe("claudeSourceFromPath", () => {
+  it("qualifies a known transcript path without scanning the projects directory", () => {
+    const filePath = "/nowhere/projects/-repo/session-1.jsonl";
+
+    const source = claudeSourceFromPath(filePath, "host-a");
+
+    expect(source).toEqual({
+      sourceId: claudeSourceId("host-a", "session-1"),
+      harness: "claude-code",
+      format: CLAUDE_TRANSCRIPT_FORMAT,
+      formatVersion: null,
+      path: filePath,
+      namespace: "host-a",
+      conversation,
+      provenance: { kind: "claude-code-transcript", legacySessionId: "session-1" },
+    });
+  });
+
+  it("names a subagent sidechain by its agent ID rather than the filename prefix", () => {
+    const source = claudeSourceFromPath("/nowhere/session-1/subagents/agent-a1b2.jsonl", "host-a");
+
+    expect(source.conversation.nativeId).toBe("a1b2");
+  });
+
+  it("refuses a path that is not a JSONL transcript", () => {
+    expect(() => claudeSourceFromPath("/nowhere/session-1.json", "host-a")).toThrow(/\.jsonl extension/);
+  });
+
+  it("refuses an empty namespace", () => {
+    expect(() => claudeSourceFromPath("/nowhere/session-1.jsonl", " ")).toThrow(/nonempty/);
+  });
+});

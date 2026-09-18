@@ -9,8 +9,10 @@ import type {
   ReadRecentSessionTurnsOptions,
   RecentFormatResult,
   RecentObservedValue,
+  RecentSessionTurn,
   RecentSessionTurns,
   RecentSessionUnknown,
+  RecentTurnProjection,
 } from "./recent-types.js";
 import { truncate } from "./recent-values.js";
 
@@ -39,9 +41,11 @@ function assembleResult(
   tail: RecentTailRead,
 ): RecentSessionTurns {
   if (tail.status === "unavailable") return unavailable(source, tail.reason);
-  const parsed = parseFormat(source, tail.lines, tail.truncatedBefore);
+  const projection = options.projection ?? "activity";
+  const parsed = parseFormat(source, tail.lines, tail.truncatedBefore, projection);
   const errors = [...tail.errors, ...parsed.errors];
-  const turns = parsed.turns.slice(-options.maxTurns).map((turn) => ({
+  const projected = projection === "text" ? parsed.turns.filter(isSpoken) : parsed.turns;
+  const turns = projected.slice(-options.maxTurns).map((turn) => ({
     ...turn,
     text: truncate(turn.text, options.maxCharsPerTurn),
   }));
@@ -56,7 +60,7 @@ function assembleResult(
     bytesRead: tail.bytesRead,
     truncatedBefore: tail.truncatedBefore,
     truncatedAfter: tail.truncatedAfter,
-    truncatedTurns: parsed.turns.length > options.maxTurns,
+    truncatedTurns: projected.length > options.maxTurns,
     errors,
     unknown: collectUnknown(turns, model, branch),
   };
@@ -66,6 +70,15 @@ function validateOptions(options: ReadRecentSessionTurnsOptions): void {
   positiveInteger(options.maxBytes, "maxBytes");
   positiveInteger(options.maxTurns, "maxTurns");
   positiveInteger(options.maxCharsPerTurn, "maxCharsPerTurn");
+  if (options.projection !== undefined && !PROJECTIONS.has(options.projection)) {
+    throw new TypeError(`projection must be one of ${[...PROJECTIONS].join(", ")}`);
+  }
+}
+
+const PROJECTIONS: ReadonlySet<string> = new Set<RecentTurnProjection>(["activity", "text"]);
+
+function isSpoken(turn: RecentSessionTurn): boolean {
+  return turn.kind === "message" && turn.role !== "system";
 }
 
 function positiveInteger(value: number, name: string): void {
@@ -82,9 +95,10 @@ function parseFormat(
   source: SessionSourceDescriptor,
   lines: readonly RecentSourceLine[],
   truncatedBefore: boolean,
+  projection: RecentTurnProjection,
 ): RecentFormatResult {
   return source.format === CLAUDE_TRANSCRIPT_FORMAT
-    ? parseRecentClaude(lines, truncatedBefore, source)
+    ? parseRecentClaude(lines, truncatedBefore, source, projection)
     : parseRecentCodex(lines, truncatedBefore, source.conversation.nativeId);
 }
 
@@ -147,6 +161,7 @@ export type {
   RecentSessionTurns,
   RecentSessionUnknown,
   RecentTurnKind,
+  RecentTurnProjection,
   RecentTurnRepresentation,
   RecentTurnRole,
   RecentUnknownReason,

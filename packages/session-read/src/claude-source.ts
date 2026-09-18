@@ -77,6 +77,15 @@ export function findClaudeSessionSource(input: FindClaudeSessionSourceInput): Se
   return { status: "found", source: descriptor(found, input.conversation) };
 }
 
+/** Describe a transcript whose path is already known; the native ID comes from its filename. */
+export function claudeSourceFromPath(filePath: string, namespace: string): SessionSourceDescriptor {
+  const stem = path.basename(filePath, ".jsonl");
+  const nativeId = stem.startsWith("agent-") ? stem.slice("agent-".length) : stem;
+  const source = descriptor(filePath, { harness: "claude-code", namespace, nativeId });
+  assertClaudeSessionSource(source);
+  return source;
+}
+
 /** Reject descriptors whose path or provenance could name another conversation. */
 export function assertClaudeSessionSource(source: SessionSourceDescriptor): void {
   const problem = identityProblem(source.conversation);
