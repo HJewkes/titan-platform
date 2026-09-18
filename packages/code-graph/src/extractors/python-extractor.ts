@@ -72,6 +72,11 @@ export class PythonGraphExtractor implements Extractor<GraphFragment> {
   }
 }
 
+/** Python identifiers hold no dot, so the last segment of a qualified name is the declared name. */
+function isPublicName(qualifiedName: string): boolean {
+  return !qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1).startsWith("_");
+}
+
 function symbolNodes(fId: string, file: ParsedFile): GraphNode[] {
   return [...collectDeclaredSpans(file)].map(([name, span]) => ({
     id: symbolId(fId, name),
@@ -79,7 +84,7 @@ function symbolNodes(fId: string, file: ParsedFile): GraphNode[] {
     name,
     parentId: fId,
     language: "python",
-    attrs: { exported: !name.startsWith("_"), startLine: span.startLine, endLine: span.endLine },
+    attrs: { exported: isPublicName(name), startLine: span.startLine, endLine: span.endLine },
   }));
 }
 
