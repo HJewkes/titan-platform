@@ -77,6 +77,11 @@ found nothing.
 | `file-not-checked` | the tool ran but could not check one file (`file` names it): an ESLint parse error or ignored file, a ruff syntax error, or a path ruff could not read (which it reports only on stderr, with exit 0) |
 | `missing-dependency` | no TypeScript parser in the project, so ESLint was not run |
 
+An unreadable ruff path is detected by matching ruff's stderr warning `warning: Failed to
+lint <path>: <reason>`, captured from ruff 0.16.8. ruff has no structured signal for it
+and does not treat the wording as stable; if a later ruff rewords it, that case goes
+silent again.
+
 Exit codes 0 and 1 are both successful runs. ESLint documents 0 as no errors, 1 as at
 least one error, and 2 as a configuration problem or internal error
 ([CLI reference](https://eslint.org/docs/latest/use/command-line-interface#exit-codes)).

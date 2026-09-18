@@ -76,6 +76,15 @@ describe("runRuff", () => {
     ]);
   });
 
+  it("does not report ruff's benign 'No Python files found' warning as a file not checked", async () => {
+    bin.install("ruff", replay("empty-dir", 0));
+    bin.onPathFirst();
+
+    const result = await runRuff(config, ["/empty"]);
+
+    expect(result).toMatchObject({ diagnostics: [], failures: [], exitCode: 0 });
+  });
+
   it("reports an invalid configuration (exit 2) as an exit-code failure with ruff's message", async () => {
     bin.install("ruff", replay("bad-config", 2));
     bin.onPathFirst();

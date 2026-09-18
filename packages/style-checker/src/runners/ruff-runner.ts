@@ -77,7 +77,7 @@ function unparsedFiles(stdout: string): ToolFailure[] {
   return [...byFile].map(([file, messages]) => notChecked(file, messages.join("; ")));
 }
 
-// ruff exits 0 with "[]" for a path it cannot read, and says so only on stderr.
+// ruff 0.16.8 flags an unreadable path (exit 0, "[]") only in this stderr wording; if ruff rewords it, the case goes silent again.
 function unreadFiles(stderr: string): ToolFailure[] {
   return [...stderr.matchAll(/^warning: Failed to lint (.+?): (.+)$/gm)].map((m) => notChecked(m[1]!, m[2]!));
 }
