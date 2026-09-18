@@ -5,6 +5,8 @@ import { getLanguageFromPath, type ParsedFile } from "@titan-design/code-parser"
 import type { CodeGraphStore } from "./store.js";
 import { fileId } from "./extractors/ids.js";
 import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
+import { DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
+import { GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 import { reconstructCosmetic, reconstructFragment } from "./reconstruct.js";
 import type { Extractor } from "@titan-design/code-parser";
 import type {
@@ -247,9 +249,14 @@ export function loadReuseBasis(
 
     const sourceMetricsByFile = new Map<string, GraphMetric[]>();
     for (const m of db.listMetrics(snap.id)) {
-      // Source-content metrics are pure functions of a file's bytes, so they
-      // carry forward verbatim for an unchanged file.
-      if (!SOURCE_METRIC_NAMES.has(m.name)) continue;
+      // Source-content, dead-code, and growth-risk metrics are pure functions of
+      // a file's bytes, so they carry forward verbatim for an unchanged file.
+      if (
+        !SOURCE_METRIC_NAMES.has(m.name) &&
+        !DEAD_CODE_METRIC_NAMES.has(m.name) &&
+        !GROWTH_RISK_METRIC_NAMES.has(m.name)
+      )
+        continue;
       // Per-symbol metrics (C-58) live on `<fileId>#<name>` nodes; bucket them
       // under their parent file so an unchanged file carries its symbol
       // complexity forward alongside its file-level source metrics.

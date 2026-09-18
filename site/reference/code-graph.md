@@ -1,7 +1,8 @@
 # code-graph
 
 **Tier 2 · domain.** Depends on [`store-sqlite`](/reference/store-sqlite),
-[`code-parser`](/reference/code-parser), and `ts-morph`.
+[`code-parser`](/reference/code-parser), [`embed`](/reference/embed),
+[`retrieval`](/reference/retrieval), and `ts-morph`.
 
 ```sh
 npm install @titan-design/code-graph
@@ -105,6 +106,82 @@ a delete plus an add, and its edges do not churn. `diffCheckResults` buckets vio
 new, resolved, or unchanged, and splits unchanged metric violations into worsened and
 improved by value.
 
+## Finding similar symbols
+
+"Does something like this already exist?" Ported from codewatch (TP-129). Verified against
+this release with Ollama's `nomic-embed-text`, indexing this repo's `packages`:
+
+```ts
+import { OllamaEmbedder } from "@titan-design/embed";
+import { findSimilarCapability, tryEmbedSnapshot } from "@titan-design/code-graph";
+
+const embedder = new OllamaEmbedder();
+await tryEmbedSnapshot(store, snapshotId, embedder);
+// { ok: true, result: { symbols: 1196, withPurpose: 429, newlyEmbedded: 1191, reused: 0, … } }
+// a second run: { newlyEmbedded: 0, reused: 1196 }
+
+await findSimilarCapability(store, snapshotId, "fuse ranked lists with reciprocal rank fusion", embedder);
+// { coverage: { symbols: 1196, embedded: 1196, withPurpose: 429 },
+//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.864 },
+//                 { id: 'packages/retrieval/src/fusion.ts#RankedList', score: 0.714 }, … ] }
+```
+
+The embedded text per symbol is its signature plus its docstring, never its body. Vectors live
+in `blob_cache`, keyed by model and text hash rather than snapshot, so unchanged text is never
+re-embedded. `tryEmbedSnapshot` reports a down backend instead of throwing. Results are
+candidates with scores and a coverage figure, never verdicts.
+
+**Keep one prefix per database.** `OllamaEmbedder` prepends its `prefix` to every text,
+queries included, and its `model` does not record the prefix. Vectors made under two prefixes
+would share a cache key. Python symbols carry no signature yet, so they are not searchable.
+
+## Graph analyses
+
+Dead-code and growth-risk metrics land at index time, beside the source metrics, and carry
+forward for unchanged files. PageRank, relevance, and symbol coupling run at query time.
+Verified against this release, indexing this repo's `packages/`:
+
+```ts
+import {
+  snapshotPageRank,
+  snapshotRelevance,
+  snapshotSymbolConsumers,
+  snapshotSymbolCoupling,
+} from "@titan-design/code-graph";
+
+snapshotPageRank(store, snapshotId).rows.slice(0, 2);
+// [ { nodeId: 'npm:zod', score: 0.0335 }, { nodeId: 'npm:vitest', score: 0.0225 } ]
+
+snapshotRelevance(store, snapshotId, ["packages/registry/src/index.ts"]);
+// Map { 'packages/registry/src/index.ts' => 0.182, 'packages/registry/src/types.ts' => 0.080,
+//       'npm:zod' => 0.062, 'packages/registry/src/invoke.ts' => 0.046, … }
+
+snapshotSymbolCoupling(store, snapshotId)[0];
+// { aName: 'GraphEdge', bName: 'GraphNode', coImports: 15, crossFile: false, … }
+
+snapshotSymbolConsumers(store, snapshotId)[0];
+// { symbolId: 'packages/code-graph/src/types.ts#GraphNode', consumers: [ …21 files ] }
+```
+
+`snapshotPageRank` reads the file-level graph (no symbols, no `references` edges). Pass
+`personalization` to seed it toward target ids, which is what codewatch's `graph relevant`
+does. `snapshotRelevance` is the seeded variant over symmetrized edges that `graph context`
+uses, so relevance reaches a target's importers as well as its imports.
+
+The index-time metrics, all sparse (a row only when above zero):
+
+| Metric | Languages | Counts |
+| --- | --- | --- |
+| `unreachable_statements` | TypeScript | statements after a `return`, `throw`, `break` or `continue` in the same block |
+| `unused_locals` | TypeScript | plain-identifier locals never referenced in their function |
+| `unused_params` | TypeScript | the trailing run of unused plain parameters |
+| `loop_depth` | TypeScript, Python | deepest lexical loop nesting, emitted at 2 or more |
+| `recursive_functions` | TypeScript | named functions that call themselves by name |
+| `search_in_loop` | TypeScript | `.includes`, `.find`, `.filter` and similar inside a loop |
+
+Growth-risk metrics are smells, not complexity bounds: `.includes` on a `Set` is O(1), and
+two nested loops over different collections are linear.
+
 ## The id scheme
 
 Preserved exactly from codewatch, because this repo's `dag:check` consumes it:
@@ -123,7 +200,8 @@ Every run writes a fingerprint per file: a content hash, and a comment/whitespac
 hash of its parse structure. The next run diffs against the most recent snapshot carrying the
 same `INDEX_VERSION`. That version is bumped whenever a metric can change for the same bytes,
 not only when the node or edge shape changes. 0.12.0 marks `.tsx` files moving to the tsx
-grammar (TP-166).
+grammar (TP-166); 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward
+set (TP-127).
 
 | Tier | Trigger | Work skipped |
 | --- | --- | --- |
@@ -163,10 +241,10 @@ tree-sitter declaration walk that feeds complexity.
 ## What was deliberately left in codewatch
 
 All of it follow-up work *on* this package rather than changes *to* it: git-history mining
-(churn, ownership, change coupling, test linking), and every graph analysis over a finished
-snapshot (communities, pagerank, partition quality, relevance, dead code, growth risk,
-embeddings). The rules engine and the snapshot diff started here too and have since been
-ported.
+(churn, ownership, change coupling, test linking), and the remaining graph analyses over a
+finished snapshot (communities, partition quality). The rules engine, the snapshot diff,
+symbol embeddings, dead code, growth risk, PageRank, relevance, and symbol coupling started
+here too and have since been ported.
 
 `buildIndexerMetrics` used to fold history into the same pass; here it computes only what a
 file's own bytes and the assembled graph determine.

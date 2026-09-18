@@ -88,6 +88,12 @@ importers:
       '@titan-design/code-parser':
         specifier: workspace:^
         version: link:../code-parser
+      '@titan-design/embed':
+        specifier: workspace:^
+        version: link:../embed
+      '@titan-design/retrieval':
+        specifier: workspace:^
+        version: link:../retrieval
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
