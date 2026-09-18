@@ -29,8 +29,10 @@ Three ship:
 - `ftsRetriever(spans)`: BM25 over a contentless FTS5 span index. Spans collapse to their
   owner's best rank, and the winning span's locator travels in the payload. Query text is
   tokenized and quoted so punctuation cannot break FTS5 syntax.
-- `vectorRetriever(embedder, index)`: embeds the query (with `search_query: ` for nomic
-  models) and asks a `VectorIndex`. `BruteForceVectorIndex` is an exact in-memory cosine
+- `vectorRetriever(embedder, index)`: embeds the query with `embed([query], { role: "query" })`
+  and asks a `VectorIndex`. It never adds text to the query: prefixes such as nomic's
+  `search_query: ` belong to the embedder (see `@titan-design/embed`'s roles), and a
+  retriever-side prefix would stack on top of the embedder's. `BruteForceVectorIndex` is an exact in-memory cosine
   scan; implement the same interface over sqlite-vec when the corpus outgrows it.
 - `graphRetriever(edges, seededBy)`: takes another retriever's top results as seeds and
   walks the edge table by hop, optionally restricted to relations or outbound direction.

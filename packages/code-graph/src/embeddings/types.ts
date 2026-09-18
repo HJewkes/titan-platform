@@ -47,8 +47,7 @@ export interface SimilarResult {
   candidates: SimilarCandidate[];
 }
 
+/** Query prefixes are the embedder's to apply; configure them with its `prefixes` option. */
 export interface FindSimilarOptions {
   limit?: number;
-  /** Prepended to the query before embedding; defaults to retrieval's `search_query: ` for nomic models. */
-  queryPrefix?: string;
 }

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { instantiateEmbedder } from "@titan-design/embed";
 import { Command } from "commander";
 import { activeWorkSearch } from "./candidates/active-work-search.js";
 import { defaultGraphPath, type Candidate } from "./candidates/candidate.js";
@@ -23,6 +24,7 @@ import { countUptake } from "./uptake.js";
 interface CommonOptions {
   activeRoot: string;
   graph: string;
+  embedder: string;
 }
 
 function mineCommand(): Command {
@@ -69,9 +71,15 @@ async function buildCandidates(names: string[], common: CommonOptions): Promise<
   if (names.includes("notes-fts")) candidates.push(notesFts({ graphPath: common.graph, activeRoot: common.activeRoot }));
   if (names.includes("hybrid-fts-vector")) {
     const lexical = notesFts({ graphPath: common.graph, activeRoot: common.activeRoot });
-    candidates.push(await hybridVector({ activeRoot: common.activeRoot, lexical }));
+    const embedder = hybridEmbedder(common.embedder);
+    candidates.push(await hybridVector({ activeRoot: common.activeRoot, lexical, embedder }));
   }
   return candidates;
+}
+
+function hybridEmbedder(backend: string) {
+  if (backend === "hash" || backend === "ollama") return instantiateEmbedder({ backend });
+  throw new Error(`--embedder must be hash or ollama, got ${backend}`);
 }
 
 const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"];
@@ -82,6 +90,7 @@ function runCommand(): Command {
     .argument("<pairs>", "JSONL produced by `mine`")
     .option("--candidates <list>", "comma-separated", ALL_CANDIDATES.join(","))
     .option("--variants <list>", "comma-separated query derivations", QUERY_VARIANTS.join(","))
+    .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama", "hash")
     .option("--json", "emit rows as JSON instead of a table")
     .option("--active-root <dir>", "active-work root", defaultActiveRoot())
     .option("--graph <file>", "session graph, read-only", defaultGraphPath())

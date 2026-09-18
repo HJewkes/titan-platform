@@ -110,11 +110,11 @@ const { features, reviewQueue, summary } = new Aggregator().aggregate(observatio
 ```
 
 ```text
-naming.function {"convention":"camelCase","confidence":0.85,"stability":"medium","severity":"error","needsReview":false}
-control-flow.guard-clause {"convention":true,"confidence":0.85,"stability":"medium","severity":"error","needsReview":false}
+naming.function {"convention":"camelCase","confidence":1,"stability":"high","severity":"error","needsReview":false}
+control-flow.guard-clause {"convention":true,"confidence":1,"stability":"high","severity":"error","needsReview":false}
 formatting.quoteStyle {"convention":"double","confidence":1,"stability":"high","severity":"error","needsReview":false}
 complexity.cyclomatic {"convention":2,"confidence":1,"stability":"high","severity":"error","needsReview":false}
-summary {"totalObservations":22,"totalFeatures":22,"avgConfidence":0.9318181818181818,"featuresNeedingReview":0}
+summary {"totalObservations":22,"totalFeatures":22,"avgConfidence":0.9659090909090909,"featuresNeedingReview":0}
 ```
 
 One file makes every feature perfectly consistent, so confidence here is just the stability
@@ -146,10 +146,22 @@ README shows a ten-line adapter over `@titan-design/agent`.
   0.1.0, TP-166). codewatch parsed it with the `typescript` grammar, so extractor output for
   `.tsx` files can differ from the original's. Output for `.ts` and `.py` files is identical.
 - Review-voice observations carry `file: "_reviews"` and `line: 0`, not a real location.
-- `STABILITY_MAP` keys often differ from the types the extractors emit
-  (`naming.variables` against `naming.variable`, `controlFlow.guardClauses` against
-  `control-flow.guard-clause`). On a 60-file corpus, 26 of 43 emitted types missed the map
-  and fell back to `medium`. That is why `naming.function` above reports `medium`.
+- `STABILITY_MAP` is keyed by the exact types the extractors emit, and a test fails if an
+  emitted type has no entry or an entry names a type nothing emits. Three emitted types
+  have no taxonomy rating and take `medium` on purpose: `control-flow.if-else`,
+  `.promise-then` and `.else-after-return`. No emitted type is rated `low` today, so the
+  0.7 weight is unused.
+- A constant name is `SCREAMING_SNAKE` or one capitalised word of two or more characters
+  (`DEBUG`, `VERSION`), in both languages. A single letter (`T = TypeVar("T")`,
+  `const K = 1`) is left out and reports as `naming.variable` `PascalCase`. A two-letter
+  TypeVar such as `KT = TypeVar("KT")` is not left out and counts as a constant.
+- In TypeScript, any `const` with a constant name counts, at any depth. In Python, only an
+  assignment at module scope counts. That means top level or inside a module-level `if`,
+  `elif`, `else`, `try`, `except`, `finally` or `with` block, so
+  `try: HAS_LZMA = True / except: HAS_LZMA = False` qualifies. Plain, annotated
+  (`TIMEOUT_S: int = 30`) and chained (`A_MAX = B_MAX = 5`) forms all count. Class, function
+  and loop bodies do not count, so their capitals report as `naming.variable`. Tuple targets
+  and dunders such as `__all__` emit nothing.
 - The enricher runs prompts one at a time and checks the budget only before each prompt,
   so the last prompt can overshoot `totalTokenBudget`.
 
@@ -162,3 +174,11 @@ also matched byte for byte. The only source changes are imports, erase-only non-
 assertions for `noUncheckedIndexedAccess`, and splitting long functions into helpers.
 Formatting's config parsing now lives in `formatting-config.ts`. The enricher's LLM types
 and its sequential, budgeted runner loop came from codewatch's `core/src/llm`.
+
+Two fixes changed behaviour after the port (TP-172, TP-173). `STABILITY_MAP` used to be
+keyed by taxonomy spellings such as `naming.variables` and `controlFlow.guardClauses`.
+Those keys matched none of the emitted types, so 30 of 49 types fell back to `medium`.
+Fourteen of those 30 are now rated `high`, and their confidence is `consistency` instead
+of `consistency * 0.85`. Python module-level constants used to report as `naming.variable`
+because the check looked at the wrong tree-sitter parent. Single-word capitals such as
+`DEBUG` used to report as `PascalCase` variables in both languages.

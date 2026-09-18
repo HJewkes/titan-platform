@@ -122,8 +122,8 @@ await tryEmbedSnapshot(store, snapshotId, embedder);
 
 await findSimilarCapability(store, snapshotId, "fuse ranked lists with reciprocal rank fusion", embedder);
 // { coverage: { symbols: 1196, embedded: 1196, withPurpose: 429 },
-//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.864 },
-//                 { id: 'packages/retrieval/src/fusion.ts#RankedList', score: 0.714 }, … ] }
+//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.819 },
+//                 { id: 'packages/retrieval/src/engine.ts#createRetrievalEngine', score: 0.599 }, … ] }
 ```
 
 The embedded text per symbol is its signature plus its docstring, never its body. Vectors live
@@ -131,9 +131,11 @@ in `blob_cache`, keyed by model and text hash rather than snapshot, so unchanged
 re-embedded. `tryEmbedSnapshot` reports a down backend instead of throwing. Results are
 candidates with scores and a coverage figure, never verdicts.
 
-**Keep one prefix per database.** `OllamaEmbedder` prepends its `prefix` to every text,
-queries included, and its `model` does not record the prefix. Vectors made under two prefixes
-would share a cache key. Python symbols carry no signature yet, so they are not searchable.
+**Prefixes belong to the embedder and are part of the cache key.** Symbol texts are embedded
+with role `document` and the query with role `query`, so a default nomic embedder sends
+`search_document: ` and `search_query: `, one prefix per text. `embedder.model` includes a
+hash of the prefix table, so vectors made under two prefix configurations never share a
+`blob_cache` key. Python symbols carry no signature yet, so they are not searchable.
 
 ## Graph analyses
 
@@ -184,14 +186,22 @@ two nested loops over different collections are linear.
 
 ## The id scheme
 
-Preserved exactly from codewatch, because this repo's `dag:check` consumes it:
+File, module and external ids are preserved exactly from codewatch, because this repo's
+`dag:check` consumes them. Symbol ids diverge from codewatch since index version 0.14.0:
 
 - A **file** id is its path relative to the git toplevel, in posix form:
   `packages/registry/src/index.ts`. Ids root at the git toplevel even when you walk a
   subtree, so importers across subtrees share one id space.
 - A **module** id is the file id minus its extension. Its parent is the directory above it.
-- A **symbol** id hangs under its declaring file as `<fileId>#<name>`. `#` is legal in
-  neither a posix path nor a JS identifier, so the first one is the split.
+- A **symbol** id hangs under its declaring file as `<fileId>#<qualifiedName>`, split on the
+  first `#`. A top-level declaration's qualified name is its own name
+  (`src/a.ts#createThing`). A member or nested declaration is prefixed by its enclosing named
+  scopes, joined with `.`: `src/a.ts#Job.run`, `src/a.ts#outer.helper`, and
+  `src/a.ts#handlers.onClick` for a method of `const handlers = {…}`. Anonymous scopes, such
+  as a callback argument or an unbound class expression, add no segment, so ids do not depend
+  on declaration order. One scope binds a name once: a getter/setter pair, a Python property's
+  accessors, and overloads each share one node. Index versions before 0.14.0 keyed members by
+  bare name, so same-named methods in one file collapsed into one node (TP-182).
 - An **external** id is `npm:<package>` (scope-aware) or the `node:` builtin verbatim.
 
 ## The three reuse tiers
@@ -201,7 +211,10 @@ hash of its parse structure. The next run diffs against the most recent snapshot
 same `INDEX_VERSION`. That version is bumped whenever a metric can change for the same bytes,
 not only when the node or edge shape changes. 0.12.0 marks `.tsx` files moving to the tsx
 grammar (TP-166); 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward
-set (TP-127).
+set (TP-127); 0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182). A snapshot
+from before 0.14.0 is never reused, so re-index. The first 0.14.0 run after an older snapshot
+writes `requalify` id aliases from each bare-name id to its qualified successor, only where
+exactly one declaration in the file carries that name.
 
 | Tier | Trigger | Work skipped |
 | --- | --- | --- |

@@ -20,10 +20,33 @@ function detectConvention(name: string): string | null {
   return null;
 }
 
+// One capitalised word counts too; a single letter does not, because it is almost always a TypeVar or generic.
+const SINGLE_WORD_CONSTANT = /^[A-Z][A-Z0-9]+$/;
+
+function isConstantName(name: string): boolean {
+  return NAMING_PATTERNS.SCREAMING_SNAKE!.test(name) || SINGLE_WORD_CONSTANT.test(name);
+}
+
 function detectBooleanPrefix(name: string, language: string): string | null {
   const pattern = language === "python" ? PYTHON_BOOLEAN_PREFIXES : BOOLEAN_PREFIXES;
   const match = name.match(pattern);
   return match ? match[1]! : null;
+}
+
+// Blocks that do not open a new scope, so an assignment inside one still binds a module global.
+const MODULE_SCOPE_BLOCKS = new Set([
+  "block", "if_statement", "elif_clause", "else_clause",
+  "try_statement", "except_clause", "finally_clause", "with_statement",
+]);
+
+// tree-sitter-python wraps an assignment in expression_statement; chained targets nest in assignment.
+function isModuleLevelAssignment(node: Node): boolean {
+  let scope = node.parent;
+  while (scope?.type === "assignment") scope = scope.parent;
+  if (scope?.type !== "expression_statement") return false;
+  scope = scope.parent;
+  while (scope && MODULE_SCOPE_BLOCKS.has(scope.type)) scope = scope.parent;
+  return scope?.type === "module";
 }
 
 export class NamingExtractor implements StyleExtractor {
@@ -103,7 +126,7 @@ export class NamingExtractor implements StyleExtractor {
       ? node.parent.children[0]?.text
       : null;
 
-    if (declKind === "const" && NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)) {
+    if (declKind === "const" && isConstantName(name)) {
       this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
       return;
     }
@@ -160,8 +183,8 @@ export class NamingExtractor implements StyleExtractor {
     const name = left.text;
 
     if (
-      node.parent?.type === "module" &&
-      NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)
+      isModuleLevelAssignment(node) &&
+      isConstantName(name)
     ) {
       this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
       return;

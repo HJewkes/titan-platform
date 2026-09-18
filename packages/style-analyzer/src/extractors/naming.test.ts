@@ -132,5 +132,131 @@ describe("NamingExtractor", () => {
       );
       expect(booleans.length).toBeGreaterThanOrEqual(2);
     });
+
+    it("reports the fixture's module-level constants as constants, not variables", () => {
+      const constants = observations.filter((o) => o.type === "naming.constant");
+      const screamingVars = observations.filter(
+        (o) => o.type === "naming.variable" && o.value === "SCREAMING_SNAKE",
+      );
+      expect(constants.map((o) => o.line)).toEqual([8, 9]);
+      expect(screamingVars).toEqual([]);
+    });
+  });
+
+  describe("Python assignment shapes", () => {
+    async function namesOf(source: string): Promise<string[]> {
+      const parsed = await parseFile(source, "snippet.py", "python");
+      return extractor
+        .extract(parsed)
+        .filter((o) => o.type === "naming.constant" || o.type === "naming.variable")
+        .map((o) => `${o.line} ${o.type} ${o.value}`);
+    }
+
+    it("classifies plain, annotated and chained module-level assignments as constants", async () => {
+      const names = await namesOf("MAX_RETRIES = 3\nTIMEOUT_S: int = 30\nX_ONE = Y_TWO = 5\n");
+      expect(names).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.constant SCREAMING_SNAKE",
+        "3 naming.constant SCREAMING_SNAKE",
+        "3 naming.constant SCREAMING_SNAKE",
+      ]);
+    });
+
+    it("classifies caps names in module-scope try, if and with blocks as constants", async () => {
+      const source = [
+        "try:",
+        "    import lzma",
+        "    HAS_LZMA = True",
+        "except ImportError:",
+        "    HAS_LZMA = False",
+        "if TYPE_CHECKING:",
+        "    CHECK_ONLY = 1",
+        "elif sys.platform == 'win32':",
+        "    PATH_SEP = ';'",
+        "else:",
+        "    PATH_SEP = ':'",
+        "with open('v') as f:",
+        "    RAW_VERSION = f.read()",
+        "",
+      ].join("\n");
+      expect(await namesOf(source)).toEqual(
+        [3, 5, 7, 9, 11, 13].map((line) => `${line} naming.constant SCREAMING_SNAKE`),
+      );
+    });
+
+    it("keeps class-body, function-local and loop-body caps names as variables", async () => {
+      const source = [
+        "class Config:",
+        "    DEFAULT_PORT = 8080",
+        "    if DEBUG_MODE:",
+        "        TRACE_LEVEL = 2",
+        "def run():",
+        "    try:",
+        "        LOCAL_MAX = 3",
+        "    except ValueError:",
+        "        LOCAL_MAX = 0",
+        "for item in items:",
+        "    LAST_ITEM = item",
+        "",
+      ].join("\n");
+      expect(await namesOf(source)).toEqual(
+        [2, 4, 7, 9, 11].map((line) => `${line} naming.variable SCREAMING_SNAKE`),
+      );
+    });
+
+    it("leaves non-constant module-level names classified as before", async () => {
+      const source = 'user_name = "a"\nUserId = int\n__all__ = ["x"]\nA_B, C_D = 1, 2\n';
+      expect(await namesOf(source)).toEqual([
+        "1 naming.variable snake_case",
+        "2 naming.variable PascalCase",
+      ]);
+    });
+  });
+
+  describe("single-word capitals", () => {
+    async function namesOf(source: string, file: string, language: string): Promise<string[]> {
+      const parsed = await parseFile(source, file, language);
+      return extractor
+        .extract(parsed)
+        .filter((o) => o.type === "naming.constant" || o.type === "naming.variable")
+        .map((o) => `${o.line} ${o.type} ${o.value}`);
+    }
+
+    it("classifies a Python module-level single capitalised word as a constant, but not one letter", async () => {
+      const source = [
+        "DEBUG = True",
+        "HEADERS: Dict[str, str] = {}",
+        'T = TypeVar("T")',
+        'P = ParamSpec("P")',
+        "class Option:",
+        "    TYPES = ()",
+        "",
+      ].join("\n");
+      expect(await namesOf(source, "snippet.py", "python")).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.constant SCREAMING_SNAKE",
+        "3 naming.variable PascalCase",
+        "4 naming.variable PascalCase",
+        "6 naming.variable PascalCase",
+      ]);
+    });
+
+    it("classifies a TypeScript const single capitalised word as a constant, but not one letter or a let", async () => {
+      const source = [
+        'export const VERSION = "1.0.0";',
+        "const K = 1;",
+        "let DEBUG = true;",
+        "function limit() {",
+        "  const MAX = 3;",
+        "}",
+        "",
+      ].join("\n");
+      expect(await namesOf(source, "snippet.ts", "typescript")).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.variable PascalCase",
+        "3 naming.variable PascalCase",
+        "5 naming.constant SCREAMING_SNAKE",
+      ]);
+    });
   });
 });

@@ -53,16 +53,24 @@ same tree-sitter declaration walk that feeds complexity.
 
 ## The id scheme
 
-Preserved exactly from codewatch, because this repo's own `dag:check` consumes it through
-codewatch's CLI:
+File, module and external ids are preserved exactly from codewatch, because this repo's own
+`dag:check` consumes them through codewatch's CLI. Symbol ids diverge from codewatch since
+index version 0.14.0:
 
 - A **file** id is its path relative to the git toplevel, in posix form:
   `packages/registry/src/index.ts`. Ids root at the git toplevel even when you walk a
   subtree, so importers across subtrees share one id space.
 - A **module** id is the file id minus its extension: `packages/registry/src/index`. Its
   parent is the directory above it.
-- A **symbol** id hangs under its declaring file as `<fileId>#<name>`. `#` is legal in
-  neither a posix path nor a JS identifier, so the first one is the split.
+- A **symbol** id hangs under its declaring file as `<fileId>#<qualifiedName>`, split on the
+  first `#`. A top-level declaration's qualified name is its own name
+  (`src/a.ts#createThing`). A member or nested declaration is prefixed by its enclosing named
+  scopes, joined with `.`: `src/a.ts#Job.run`, `src/a.ts#outer.helper`, and
+  `src/a.ts#handlers.onClick` for a method of `const handlers = {…}`. Anonymous scopes, such
+  as a callback argument or an unbound class expression, add no segment, so ids do not depend
+  on declaration order. One scope binds a name once: a getter/setter pair, a Python property's
+  accessors, and overloads each share one node. Index versions before 0.14.0 keyed members by
+  bare name, so same-named methods in one file collapsed into one node (TP-182).
 - An **external** id is `npm:<package>` (scope-aware) or the `node:` builtin verbatim.
 
 `NodeKind`, `EdgeKind`, and the `role` vocabulary are unchanged. So is the property the DAG
@@ -78,7 +86,11 @@ hash of its parse structure. The next run diffs against the most recent snapshot
 same `INDEX_VERSION` and sorts each file into one tier. `INDEX_VERSION` is bumped whenever a
 metric can change for the same bytes, not only when the node or edge shape changes: 0.12.0
 marks `.tsx` files moving to the tsx grammar, which changed their complexity metrics and
-symbol spans; 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward set.
+symbol spans; 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward set;
+0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182). A snapshot from before
+0.14.0 is never reused, so re-index. The first 0.14.0 run after an older snapshot writes
+`requalify` id aliases from each bare-name id to its qualified successor, only where exactly one
+declaration in the file carries that name.
 
 | Tier | Trigger | Work skipped |
 |---|---|---|
@@ -176,17 +188,17 @@ const { candidates, coverage } = await findSimilarCapability(store, snapshotId, 
   keyed by `embedder.model` and the SHA-256 of the text. They are not snapshot-scoped, so
   re-embedding unchanged text costs zero embed calls. `embedSnapshot` throws on a backend
   failure; `tryEmbedSnapshot` reports it.
-- **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`, which adds
-  `search_query: ` for nomic models. Pass `queryPrefix` to override.
+- **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`. The query is
+  embedded with role `query` and the symbol texts with role `document`; the embedder applies
+  the matching prefix (`search_query: ` / `search_document: ` for nomic models).
 - **Results are candidates, not verdicts.** Each has a cosine score, and `coverage` says how
   many symbols were searchable and how many carry purpose text. There is deliberately no
   co-location filter.
 - **Python symbols are not in the corpus yet.** The Python extractor records no signature or
   docstring, so no Python symbol passes the corpus filter.
-- **One prefix per database.** `OllamaEmbedder` prepends its `prefix` (default
-  `search_document: `) to every text, queries included, and `model` does not encode it.
-  codewatch used no prefix; `new OllamaEmbedder({ prefix: "" })` with `queryPrefix: ""`
-  reproduces its rankings exactly.
+- **Prefixes are part of the cache key.** `embedder.model` includes a hash of the embedder's
+  prefix table, so two prefix configurations never share a vector. codewatch used no prefix;
+  `new OllamaEmbedder({ prefixes: { document: "", query: "" } })` reproduces its rankings.
 
 ## Graph analyses
 
