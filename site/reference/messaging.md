@@ -71,7 +71,8 @@ const result = await transport.send({ handle: "+15550000000", text: "sunday?" })
 if (!result.ok) {
   switch (result.error.kind) {
     case "no-chat":       // a human must send the first message to this handle
-    case "unreachable":   // the session is dark; see Liveness
+    case "unreachable":   // provably never sent; the one kind safe to retry as-is
+    case "indeterminate": // may have been delivered; never resend automatically
     case "unauthorized":  // wrong server password
     case "too-long":      // carries limit and length, so a composer can split
     case "rejected":      // 4xx, result.error.message is the server's own text
@@ -229,6 +230,13 @@ returns the same `alive` / `dark` shape as `probeLiveness`, with the bot usernam
   identifier only exists once a human has sent the first message.
 
 ## Gotchas
+
+**`indeterminate` is not an error to retry.** A socket reset, a timeout awaiting the
+response, an unrecognised error shape, or a 2xx with an unreadable body can all follow a
+delivered message, so resending can deliver it twice. Only `unreachable` (and a 429 after its
+backoff) is safe to resend automatically. Neither backend has a dedupe key that changes this:
+BlueBubbles forgets a `tempGuid` once its send settles, and Telegram has none. The package
+README's "Retry semantics" section has the full table.
 
 **`no-chat` is not an error to retry.** It means no conversation exists yet, and no number of
 retries will create one. A human has to send the first message. Both adapters return it:

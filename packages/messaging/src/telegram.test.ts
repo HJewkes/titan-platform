@@ -12,6 +12,16 @@ function envelope(body: unknown, status = 200): Response {
   });
 }
 
+/** The shape Node's undici fetch throws: a bare TypeError with the coded socket error on `cause`. */
+function undiciFailure(code: string): TypeError {
+  const cause = Object.assign(new Error(`${code} from the socket`), { code });
+  return new TypeError("fetch failed", { cause });
+}
+
+function unreadable(status: number): Response {
+  return new Response("<html>gateway</html>", { status });
+}
+
 function transportWith(
   doFetch: typeof fetch,
   overrides: Partial<TelegramConfig> = {},
@@ -162,14 +172,102 @@ describe("TelegramTransport.send", () => {
     });
   });
 
-  it("reports unreachable when fetch throws", async () => {
-    const result = await transportWith(async () => {
-      throw new TypeError("fetch failed");
-    }).send({ handle: "lifter", text: "hi" });
+  describe("when fetch throws or the body cannot be read", () => {
+    const input = { handle: "lifter", text: "hi" };
 
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "unreachable", message: "TypeError: fetch failed" },
+    it("refused connection is unreachable", async () => {
+      const transport = transportWith(async () => {
+        throw undiciFailure("ECONNREFUSED");
+      });
+
+      const result = await transport.send(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "unreachable", message: "TypeError: fetch failed" },
+      });
+    });
+
+    it("a base URL that cannot be parsed is unreachable and never calls fetch", async () => {
+      let called = false;
+      const transport = transportWith(
+        async () => {
+          called = true;
+          return envelope({ ok: true, result: { message_id: 1 } });
+        },
+        { baseUrl: "not a url" },
+      );
+
+      const result = await transport.send(input);
+
+      expect(!result.ok && result.error.kind).toBe("unreachable");
+      expect(called).toBe(false);
+    });
+
+    it("reset after write is indeterminate", async () => {
+      const transport = transportWith(async () => {
+        throw undiciFailure("ECONNRESET");
+      });
+
+      const result = await transport.send(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "indeterminate", message: "TypeError: fetch failed" },
+      });
+    });
+
+    it("timeout awaiting response is indeterminate", async () => {
+      const headersTimeout = transportWith(async () => {
+        throw undiciFailure("UND_ERR_HEADERS_TIMEOUT");
+      });
+      const signalTimeout = transportWith(async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      });
+
+      const results = [await headersTimeout.send(input), await signalTimeout.send(input)];
+
+      expect(results.map((r) => !r.ok && r.error.kind)).toEqual(["indeterminate", "indeterminate"]);
+    });
+
+    it("unknown error shape is indeterminate", async () => {
+      const transport = transportWith(async () => {
+        throw new TypeError("Network connection lost.");
+      });
+
+      const result = await transport.send(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "indeterminate", message: "TypeError: Network connection lost." },
+      });
+    });
+
+    it("a 2xx whose body cannot be parsed is indeterminate", async () => {
+      const transport = transportWith(async () => unreadable(200));
+
+      const result = await transport.send(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          kind: "indeterminate",
+          message: "HTTP 200 with a body that could not be read; the message may have been sent",
+        },
+      });
+    });
+
+    it("HTTP error statuses unchanged, even with a body that cannot be parsed", async () => {
+      const statuses = { 400: "rejected", 401: "unauthorized", 403: "rejected", 429: "rejected", 500: "unknown", 502: "unknown" };
+
+      const kinds = await Promise.all(
+        Object.keys(statuses).map(async (status) => {
+          const result = await transportWith(async () => unreadable(Number(status))).send(input);
+          return [status, !result.ok && result.error.kind];
+        }),
+      );
+
+      expect(Object.fromEntries(kinds)).toEqual(statuses);
     });
   });
 

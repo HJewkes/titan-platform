@@ -53,6 +53,19 @@ describe("MockTransport", () => {
     expect(transport.sent.map((s) => s.text)).toEqual(["retry me"]);
   });
 
+  it("plays a scripted indeterminate send so a consumer can test it does not resend", async () => {
+    const transport = new MockTransport();
+    transport.failNext({ kind: "indeterminate", message: "reset after write" });
+
+    const result = await transport.send({ handle: "+1", text: "coach nudge" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "indeterminate", message: "reset after write" },
+    });
+    expect(transport.sent.map((s) => s.text)).toEqual(["coach nudge"]);
+  });
+
   it("clears sends and scripted failures on reset", async () => {
     const transport = new MockTransport();
     transport.failNext({ kind: "unknown", message: "x" });
