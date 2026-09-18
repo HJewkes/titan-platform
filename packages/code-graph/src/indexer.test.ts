@@ -143,6 +143,18 @@ describe("indexPaths", () => {
     expect(metric("src/List.tsx#count", "symbol_cyclomatic")).toBe(1);
   });
 
+  it("links a co-located test to its source (linked_test_count)", async () => {
+    await fs.writeFile(path.join(root, "src/calc.ts"), "export const add = (a: number, b: number) => a + b;\n");
+    await fs.writeFile(path.join(root, "src/calc.test.ts"), 'import { add } from "./calc.js";\nadd(1, 2);\n');
+    const result = await index();
+    const metrics = store.listMetrics(result.snapshotId);
+    const count = metrics.find((m) => m.nodeId === "src/calc.ts" && m.name === "linked_test_count");
+    expect(count?.value).toBe(1);
+    // The metric is keyed on the source, never the test file itself.
+    const onTest = metrics.some((m) => m.nodeId === "src/calc.test.ts" && m.name === "linked_test_count");
+    expect(onTest).toBe(false);
+  });
+
   it("indexes a Python file into nodes and edges", async () => {
     await fs.writeFile(path.join(root, "src/loader.py"), PY);
     await fs.writeFile(path.join(root, "src/util.py"), "def helper():\n    return 1\n");

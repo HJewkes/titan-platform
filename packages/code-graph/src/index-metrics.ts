@@ -4,7 +4,14 @@ import { computeSourceMetrics } from "./source-metrics.js";
 import { computeDeadCodeMetrics } from "./analysis/dead-code.js";
 import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
-import { buildHistoryMetrics, type HistoryMetricsOptions } from "./history-metrics.js";
+import { linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
+import { computeChangeCoupling, type ChurnEntry } from "./history/index.js";
+import {
+  collectFileIds,
+  computeTestCoverageOwnership,
+  loadHistoryMetrics,
+  type HistoryMetricsOptions,
+} from "./history-metrics.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "./types.js";
 
 export interface IndexerMetricsInput {
@@ -44,10 +51,11 @@ function symbolNamesByFile(nodes: Iterable<GraphNode>): Map<string, Set<string>>
  * full index regardless of how much was reused.
  *
  * Git-history metrics come from the path-based engine in `./history/` through
- * the `history-metrics.ts` adapter; test-coverage metrics are not ported yet.
+ * the `history-metrics.ts` adapter. Test-coverage metrics run with or without it.
  */
 export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
   const nodeList = [...input.nodes.values()];
+  const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
   return [
     ...computeMetrics(nodeList, [...input.edges.values()]),
     ...computeSourceMetrics(
@@ -58,6 +66,28 @@ export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
     ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...input.reusedSourceMetrics,
-    ...(input.history ? buildHistoryMetrics(nodeList, input.idRoot, input.history) : []),
+    ...(history?.metrics ?? []),
+    ...computeTestCoverage(nodeList, history?.primaryEntries ?? null, input.history?.churnWindowDays),
   ];
+}
+
+/**
+ * Two-pass test↔source linker outputs: per-source coverage counts (always) and,
+ * when churn is available, the bus-factor / top-author-share of each source's
+ * test coverage. Path-convention links need no churn; co-edit supplementation
+ * and the ownership split reuse the already-loaded churn entries.
+ */
+function computeTestCoverage(
+  nodes: readonly GraphNode[],
+  entries: readonly ChurnEntry[] | null,
+  windowDays: number | undefined,
+): GraphMetric[] {
+  const coEditPairs = entries ? computeChangeCoupling(entries, { knownPaths: collectFileIds(nodes) }).pairs : [];
+  const links = linkTestsToSources(nodes, coEditPairs);
+  if (links.length === 0) return [];
+  const out = testCoverageCountMetrics(links);
+  if (entries) {
+    out.push(...computeTestCoverageOwnership(entries, links, { windowDays }));
+  }
+  return out;
 }
