@@ -12,14 +12,25 @@ function isBanned(specifier: string): boolean {
   return NODE_BUILTINS.has(bare) || specifier === "better-sqlite3" || specifier === "@titan-design/store-sqlite";
 }
 
+/** Static `from "x"`, bare `import "x"`, dynamic `import("x")`, and `require("x")`. */
+const IMPORT_PATTERN =
+  /\bfrom\s*["']([^"']+)["']|(?:^|[\s;])import\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+export function extractSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(IMPORT_PATTERN)) {
+    const specifier = match[1] ?? match[2] ?? match[3] ?? match[4];
+    if (specifier) specifiers.push(specifier);
+  }
+  return specifiers;
+}
+
 /** Bundled output only, so a banned import here means the root entry pulled it in, not a test file. */
 function collectImportsForFile(file: string, visited: Set<string>, specifiers: Set<string>): void {
   if (visited.has(file)) return;
   visited.add(file);
   const source = readFileSync(file, "utf8");
-  for (const match of source.matchAll(/from\s*["']([^"']+)["']|(?:^|\s)import\s*["']([^"']+)["']/g)) {
-    const specifier = match[1] ?? match[2];
-    if (!specifier) continue;
+  for (const specifier of extractSpecifiers(source)) {
     if (specifier.startsWith(".")) {
       collectImportsForFile(path.join(path.dirname(file), specifier), visited, specifiers);
     } else {
@@ -27,6 +38,15 @@ function collectImportsForFile(file: string, visited: Set<string>, specifiers: S
     }
   }
 }
+
+describe("extractSpecifiers", () => {
+  it("finds a specifier in each of the four import/require forms", () => {
+    expect(extractSpecifiers('import { x } from "static-from";')).toEqual(["static-from"]);
+    expect(extractSpecifiers('import "bare-import";')).toEqual(["bare-import"]);
+    expect(extractSpecifiers('const x = await import("dynamic-import");')).toEqual(["dynamic-import"]);
+    expect(extractSpecifiers('const x = require("cjs-require");')).toEqual(["cjs-require"]);
+  });
+});
 
 describe("root entry import graph", () => {
   it("never imports better-sqlite3, store-sqlite, or a node: builtin", () => {
