@@ -10,9 +10,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { serve, type ServerType } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Hono } from "hono";
-import type { BaseContext } from "@titan-design/registry";
+import { EXIT, errorEnvelope, type BaseContext } from "@titan-design/registry";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
+import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, isProcessAlive, readPidFile, removePidFile, writePidFile, type DaemonPaths } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
@@ -38,6 +39,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   health?: () => Record<string, unknown>;
   /** Hook for product-owned routes. */
   mountRoutes?: (app: Hono) => void;
+  /** Host/Origin allowlists and the JSON body gate, shared by the hono routes and `/mcp`. */
+  guards?: RequestGuardOptions;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
@@ -70,7 +73,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
   let ready = false;
   const app = buildHttpApp({ ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready });
-  const server = await listen(app, options.host ?? "127.0.0.1", boundPort, mcpHandler(options));
+  const server = await listen(app, options.host ?? "127.0.0.1", boundPort, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
 
   const watcher = startWatcher(options, hub, log);
@@ -108,7 +111,15 @@ function toHttpOptions<Ctx extends BaseContext>(
     version: options.version,
     health: options.health,
     mountRoutes: options.mountRoutes,
+    guards: guardOptions(options),
   };
+}
+
+/** A non-default bind address joins the Host allowlist: its clients dial exactly that. */
+function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): RequestGuardOptions {
+  const guards = options.guards ?? {};
+  if (guards.allowedHosts || !options.host) return guards;
+  return { ...guards, allowedHosts: [...DEFAULT_ALLOWED_HOSTS, options.host] };
 }
 
 async function assertNotAlreadyRunning(paths: DaemonPaths): Promise<void> {
@@ -137,6 +148,7 @@ function startWatcher<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>,
 
 function mcpHandler<Ctx extends BaseContext>(
   options: StartDaemonOptions<Ctx>,
+  port: () => number,
 ): ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null {
   if (options.toolPrefix === undefined) return null;
   const mcpOptions: McpServerOptions<Ctx> = {
@@ -147,7 +159,8 @@ function mcpHandler<Ctx extends BaseContext>(
     name: options.mcpName ?? "titan-daemon",
     version: options.version,
   };
-  return (req, res) => handleMcpRequest(mcpOptions, req, res);
+  const guard = createRequestGuard(guardOptions(options), port);
+  return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
 }
 
 /**
@@ -159,27 +172,40 @@ function mcpHandler<Ctx extends BaseContext>(
  */
 async function handleMcpRequest<Ctx extends BaseContext>(
   options: McpServerOptions<Ctx>,
+  guard: RequestGuard,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const server = createMcpServer(options);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const refusal = guard({
+    method: req.method ?? "GET",
+    host: req.headers.host,
+    origin: req.headers.origin,
+    contentType: req.headers["content-type"],
+  });
+  if (refusal) return respondJson(res, refusal.status, refusal.message);
+
   let body: unknown;
   if (req.method === "POST") {
     try {
       body = await readJsonBody(req);
     } catch {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
-      return;
+      return respondJson(res, 400, "Invalid JSON body");
     }
   }
+  const server = createMcpServer(options);
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     void transport.close();
     void server.close();
   });
   await server.connect(transport);
   await transport.handleRequest(req, res, body);
+}
+
+function respondJson(res: ServerResponse, status: number, error: string): void {
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json");
+  res.end(JSON.stringify(errorEnvelope(error, EXIT.USAGE)));
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {

@@ -41,8 +41,36 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | Runs the command: 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
+| `POST /rpc/:name` | Runs the command: 403 bad Host/Origin, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
+
+## Request guards
+
+Every route is behind three checks, because an unauthenticated daemon on loopback is
+reachable from every browser on the machine:
+
+| Check | Applies to | Refusal |
+| --- | --- | --- |
+| `Host` is in the allowlist | every request | 403 |
+| `Origin`, when sent, is in the allowlist | POST/PUT/PATCH/DELETE | 403 |
+| `Content-Type` is `application/json` | POST/PUT/PATCH/DELETE | 415 |
+
+The default allowlist is `localhost`, `127.0.0.1`, and `[::1]`, each with and without the
+bound port, plus a non-default `host` option; origins are the `http://` and `https://`
+forms of those. A request with no `Origin` header — a CLI, curl, an MCP client — is
+unaffected, and `GET /health` and `GET /version` stay reachable. A state-changing request
+must carry a JSON `Content-Type`, which is exactly what a cross-origin page cannot send
+without a preflight the daemon never answers.
+
+```ts
+await startDaemon({
+  guards: { allowedHosts: ["daemon.internal"], allowedOrigins: ["https://console.internal"] },
+  // ...
+});
+```
+
+`createRequestGuard(options, () => port)` is exported on its own for a product that hosts
+its own surfaces.
 
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope
 and exit codes are identical across surfaces. `ListTools` uses `commandToTool`, so tool

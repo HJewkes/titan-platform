@@ -112,7 +112,10 @@ describe("daemon", () => {
     await run(refresh, {});
     const handle = await startMiner(config, { port: 0 });
     try {
-      const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/status`, { method: "POST" });
+      const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/status`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ok: boolean; data: { sessions: number } };
       expect(body).toMatchObject({ ok: true, data: { sessions: 1 } });
