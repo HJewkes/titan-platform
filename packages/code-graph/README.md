@@ -35,16 +35,16 @@ carry forward under reuse.
 Ported later (TP-123, TP-124), strictly as codewatch had them: the rules engine
 (`check*.ts`, now `src/check/`) and the snapshot diff plus check diff (`diff.ts`,
 `check-diff.ts`, now `src/diff/`). See [Checks and diffs](#checks-and-diffs).
+Ported with TP-127 and TP-128: dead code, growth risk, PageRank, relevance, and symbol
+coupling, now `src/analysis/`. See [Graph analyses](#graph-analyses).
 
 Deferred, all of it still in codewatch, all of it a follow-up on this package rather than a
 change to it:
 
-- Git-history mining: churn, ownership, change coupling, symbol coupling, test coverage
-  linking. `buildIndexerMetrics` used to fold these into the same pass; here it computes only
+- Git-history mining: churn, ownership, change coupling, test coverage linking. `buildIndexerMetrics` used to fold these into the same pass; here it computes only
   what a file's own bytes and the assembled graph determine.
-- Graph analyses over a finished snapshot: communities, pagerank, partition quality,
-  relevance, conventions, coverage overlay, dead code, growth risk, patterns, prune,
-  test-linker, reuse-delta reporting.
+- Graph analyses over a finished snapshot: communities, partition quality, conventions,
+  coverage overlay, patterns, prune, test-linker, reuse-delta reporting.
 
 Python support is new here rather than ported. codewatch walked TypeScript only; the parser
 already had the grammar. The Python extractor is deliberately narrower than the ts-morph one:
@@ -78,7 +78,7 @@ hash of its parse structure. The next run diffs against the most recent snapshot
 same `INDEX_VERSION` and sorts each file into one tier. `INDEX_VERSION` is bumped whenever a
 metric can change for the same bytes, not only when the node or edge shape changes: 0.12.0
 marks `.tsx` files moving to the tsx grammar, which changed their complexity metrics and
-symbol spans.
+symbol spans; 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward set.
 
 | Tier | Trigger | Work skipped |
 |---|---|---|
@@ -183,3 +183,34 @@ const { candidates, coverage } = await findSimilarCapability(store, snapshotId, 
   `search_document: `) to every text, queries included, and `model` does not encode it.
   codewatch used no prefix; `new OllamaEmbedder({ prefix: "" })` with `queryPrefix: ""`
   reproduces its rankings exactly.
+
+## Graph analyses
+
+Dead-code and growth-risk metrics are computed at index time, like the source metrics, and
+carry forward for unchanged files. Both are sparse: a file gets a row only when a count is
+above zero.
+
+- Dead code, TypeScript only: `unreachable_statements` (after a `return`, `throw`, `break`
+  or `continue` in the same block), `unused_locals`, and `unused_params` (trailing run only).
+- Growth risk, TypeScript and Python: `loop_depth` (at 2 or more), `recursive_functions`,
+  and `search_in_loop` (`.includes`, `.find` and similar inside a loop). These are smells,
+  not complexity bounds. Recursion and search match TypeScript call nodes only, so Python
+  files get `loop_depth` alone, as in codewatch.
+
+PageRank, relevance, and symbol coupling run at query time over one snapshot:
+
+```ts
+import {
+  snapshotPageRank,
+  snapshotRelevance,
+  snapshotSymbolCoupling,
+} from "@titan-design/code-graph";
+
+snapshotPageRank(store, snapshotId); // global centrality over the file-level graph
+snapshotPageRank(store, snapshotId, { personalization: new Map([[fileId, 1]]) }); // seeded
+snapshotRelevance(store, snapshotId, [fileId]); // seeded over symmetrized edges
+snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ files
+```
+
+The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
+`computeSymbolCoupling` take node and edge arrays instead of a store.
