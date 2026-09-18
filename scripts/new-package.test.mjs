@@ -71,6 +71,15 @@ describe("registering a package in the layered-deps rule", () => {
     ]);
   });
 
+  it("registers into the $tiers rule when another layered-deps rule comes first", () => {
+    const seam = { id: "seam", type: "layered-deps", layers: [["packages/a/src/x"], ["packages/a/src"]] };
+    const config = JSON.parse(baseCheck);
+    const withSeamFirst = JSON.stringify({ rules: [seam, ...config.rules] });
+    const rules = JSON.parse(registerLayer(withSeamFirst, "packages/locator", "0")).rules;
+    expect(rules[0]).toEqual(seam);
+    expect(rules[1].$tiers[0]).toEqual(["packages/store-sqlite", "packages/locator"]);
+  });
+
   it("does not duplicate a package that is already registered", () => {
     const rule = layeredRule(registerLayer(baseCheck, "packages/store-sqlite", "0"));
     expect(rule.$tiers[0]).toEqual(["packages/store-sqlite"]);
