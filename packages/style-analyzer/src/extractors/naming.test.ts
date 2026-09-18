@@ -132,5 +132,60 @@ describe("NamingExtractor", () => {
       );
       expect(booleans.length).toBeGreaterThanOrEqual(2);
     });
+
+    it("reports the fixture's module-level constants as constants, not variables", () => {
+      const constants = observations.filter((o) => o.type === "naming.constant");
+      const screamingVars = observations.filter(
+        (o) => o.type === "naming.variable" && o.value === "SCREAMING_SNAKE",
+      );
+      expect(constants.map((o) => o.line)).toEqual([8, 9]);
+      expect(screamingVars).toEqual([]);
+    });
+  });
+
+  describe("Python assignment shapes", () => {
+    async function namesOf(source: string): Promise<string[]> {
+      const parsed = await parseFile(source, "snippet.py", "python");
+      return extractor
+        .extract(parsed)
+        .filter((o) => o.type === "naming.constant" || o.type === "naming.variable")
+        .map((o) => `${o.line} ${o.type} ${o.value}`);
+    }
+
+    it("classifies plain, annotated and chained module-level assignments as constants", async () => {
+      const names = await namesOf("MAX_RETRIES = 3\nTIMEOUT_S: int = 30\nX_ONE = Y_TWO = 5\n");
+      expect(names).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.constant SCREAMING_SNAKE",
+        "3 naming.constant SCREAMING_SNAKE",
+        "3 naming.constant SCREAMING_SNAKE",
+      ]);
+    });
+
+    it("keeps class-level, function-local and block-nested caps names as variables", async () => {
+      const source = [
+        "class Config:",
+        "    DEFAULT_PORT = 8080",
+        "def run():",
+        "    LOCAL_MAX = 3",
+        "if True:",
+        "    GUARDED_FLAG = 1",
+        "",
+      ].join("\n");
+      expect(await namesOf(source)).toEqual([
+        "2 naming.variable SCREAMING_SNAKE",
+        "4 naming.variable SCREAMING_SNAKE",
+        "6 naming.variable SCREAMING_SNAKE",
+      ]);
+    });
+
+    it("leaves non-constant module-level names classified as before", async () => {
+      const source = 'user_name = "a"\nUserId = int\nDEBUG = True\n__all__ = ["x"]\nA_B, C_D = 1, 2\n';
+      expect(await namesOf(source)).toEqual([
+        "1 naming.variable snake_case",
+        "2 naming.variable PascalCase",
+        "3 naming.variable PascalCase",
+      ]);
+    });
   });
 });

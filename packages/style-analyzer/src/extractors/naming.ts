@@ -26,6 +26,13 @@ function detectBooleanPrefix(name: string, language: string): string | null {
   return match ? match[1]! : null;
 }
 
+// tree-sitter-python wraps a top-level assignment in expression_statement; chained targets nest in assignment.
+function isModuleLevelAssignment(node: Node): boolean {
+  let statement = node.parent;
+  while (statement?.type === "assignment") statement = statement.parent;
+  return statement?.type === "expression_statement" && statement.parent?.type === "module";
+}
+
 export class NamingExtractor implements StyleExtractor {
   readonly name = "naming";
 
@@ -160,7 +167,7 @@ export class NamingExtractor implements StyleExtractor {
     const name = left.text;
 
     if (
-      node.parent?.type === "module" &&
+      isModuleLevelAssignment(node) &&
       NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)
     ) {
       this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
