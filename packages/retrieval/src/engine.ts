@@ -52,10 +52,36 @@ export function createRetrievalEngine(options: EngineOptions): RetrievalEngine {
       if (options.minScore !== undefined) results = results.filter((r) => r.score >= options.minScore!);
       if (options.dropoff !== undefined) results = applyDropoff(results, options.dropoff);
       results = results.slice(0, limit);
-      if (options.reranker && searchOptions.rerank !== false) results = await rerank(options, query, results);
-      return { results, degraded: gathered.degraded, timingsMs: gathered.timingsMs };
+      const degraded = [...gathered.degraded];
+      if (options.reranker && searchOptions.rerank !== false) {
+        const outcome = await rerankFailOpen(options, query, results);
+        results = outcome.results;
+        if (outcome.degradation) degraded.push(outcome.degradation);
+      }
+      return { results, degraded, timingsMs: gathered.timingsMs };
     },
   };
+}
+
+/** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
+export const RERANK_STAGE = "rerank";
+
+interface RerankOutcome {
+  results: FusedResult[];
+  degradation?: Degradation;
+}
+
+/**
+ * The retrievers already fail open, so a throwing cross-encoder should cost the
+ * reordering and nothing else: the RRF-fused ranking underneath it is still an answer.
+ */
+async function rerankFailOpen(options: EngineOptions, query: string, fused: FusedResult[]): Promise<RerankOutcome> {
+  try {
+    return { results: await rerank(options, query, fused) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { results: fused, degradation: { retriever: RERANK_STAGE, reason: "error", message } };
+  }
 }
 
 async function rerank(options: EngineOptions, query: string, results: FusedResult[]): Promise<FusedResult[]> {
