@@ -261,6 +261,10 @@ importers:
       '@titan-design/style-profile':
         specifier: workspace:^
         version: link:../style-profile
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/style-profile:
     dependencies:
