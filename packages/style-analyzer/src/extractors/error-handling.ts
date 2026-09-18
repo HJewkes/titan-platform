@@ -34,6 +34,15 @@ export class ErrorHandlingExtractor implements StyleExtractor {
     file: ParsedFile,
     observations: Observation[],
   ): void {
+    this.processDeclaration(node, file, observations);
+    this.processFunctionCheck(node, file, observations);
+  }
+
+  private processDeclaration(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     if (node.type === "try_statement") {
       this.emit(observations, "error-handling.try-catch", true, file, node);
       this.analyzeCatchClauses(node, file, observations);
@@ -52,7 +61,13 @@ export class ErrorHandlingExtractor implements StyleExtractor {
     ) {
       this.detectResultType(node, file, observations);
     }
+  }
 
+  private processFunctionCheck(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     if (
       node.type === "function_declaration" ||
       node.type === "method_definition"

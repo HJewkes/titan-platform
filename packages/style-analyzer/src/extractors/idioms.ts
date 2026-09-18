@@ -18,6 +18,11 @@ interface CloneInstance {
   fragment: string;
 }
 
+interface CloneGroup {
+  instances: CloneInstance[];
+  linesCount: number;
+}
+
 export class IdiomsExtractor implements StyleExtractor {
   readonly name = "idioms";
 
@@ -43,33 +48,45 @@ export class IdiomsExtractor implements StyleExtractor {
       const frequency = group.instances.length;
       if (frequency < 2) continue;
 
-      const first = group.instances[0]!;
-
-      observations.push({
-        type: "idiom.clone",
-        category: "idioms",
-        value: this.summarizeClone(first.fragment),
-        file: first.sourceFile,
-        line: first.startLine,
-        metadata: {
-          frequency,
-          fragment: first.fragment,
-          linesCount: group.linesCount,
-          locations: group.instances.map((inst) => ({
-            file: inst.sourceFile,
-            startLine: inst.startLine,
-            endLine: inst.endLine,
-          })),
-        },
-      });
+      observations.push(this.cloneObservation(group));
     }
 
     return observations;
   }
 
+  private cloneObservation(group: CloneGroup): Observation {
+    const frequency = group.instances.length;
+    const first = group.instances[0]!;
+
+    return {
+      type: "idiom.clone",
+      category: "idioms",
+      value: this.summarizeClone(first.fragment),
+      file: first.sourceFile,
+      line: first.startLine,
+      metadata: {
+        frequency,
+        fragment: first.fragment,
+        linesCount: group.linesCount,
+        locations: group.instances.map((inst) => ({
+          file: inst.sourceFile,
+          startLine: inst.startLine,
+          endLine: inst.endLine,
+        })),
+      },
+    };
+  }
+
   private async detectClones(
     sources: SourceFile[],
-  ): Promise<Array<{ instances: CloneInstance[]; linesCount: number }>> {
+  ): Promise<CloneGroup[]> {
+    const { allClones, sourceMap } = await this.runDetector(sources);
+    return allClones.map((clone) => this.toCloneGroup(clone, sourceMap));
+  }
+
+  private async runDetector(
+    sources: SourceFile[],
+  ): Promise<{ allClones: IClone[]; sourceMap: Map<string, string> }> {
     const { Detector, MemoryStore } = await import("@jscpd/core");
     const { Tokenizer } = await import("@jscpd/tokenizer");
 
@@ -96,47 +113,38 @@ export class IdiomsExtractor implements StyleExtractor {
       allClones.push(...detected);
     }
 
-    const results: Array<{ instances: CloneInstance[]; linesCount: number }> =
-      [];
+    return { allClones, sourceMap };
+  }
 
-    for (const clone of allClones) {
-      const contentA =
-        sourceMap.get(clone.duplicationA.sourceId) ?? "";
-      const contentB =
-        sourceMap.get(clone.duplicationB.sourceId) ?? "";
+  private toCloneGroup(
+    clone: IClone,
+    sourceMap: Map<string, string>,
+  ): CloneGroup {
+    return {
+      instances: [
+        this.toInstance(clone.duplicationA, sourceMap),
+        this.toInstance(clone.duplicationB, sourceMap),
+      ],
+      linesCount:
+        clone.duplicationA.end.line - clone.duplicationA.start.line + 1,
+    };
+  }
 
-      const fragmentA = this.extractFragment(
-        contentA,
-        clone.duplicationA.start.line,
-        clone.duplicationA.end.line,
-      );
-      const fragmentB = this.extractFragment(
-        contentB,
-        clone.duplicationB.start.line,
-        clone.duplicationB.end.line,
-      );
-
-      results.push({
-        instances: [
-          {
-            sourceFile: clone.duplicationA.sourceId,
-            startLine: clone.duplicationA.start.line,
-            endLine: clone.duplicationA.end.line,
-            fragment: fragmentA,
-          },
-          {
-            sourceFile: clone.duplicationB.sourceId,
-            startLine: clone.duplicationB.start.line,
-            endLine: clone.duplicationB.end.line,
-            fragment: fragmentB,
-          },
-        ],
-        linesCount:
-          clone.duplicationA.end.line - clone.duplicationA.start.line + 1,
-      });
-    }
-
-    return results;
+  private toInstance(
+    duplication: IClone["duplicationA"],
+    sourceMap: Map<string, string>,
+  ): CloneInstance {
+    const content = sourceMap.get(duplication.sourceId) ?? "";
+    return {
+      sourceFile: duplication.sourceId,
+      startLine: duplication.start.line,
+      endLine: duplication.end.line,
+      fragment: this.extractFragment(
+        content,
+        duplication.start.line,
+        duplication.end.line,
+      ),
+    };
   }
 
   private extractFragment(
@@ -160,28 +168,16 @@ export class IdiomsExtractor implements StyleExtractor {
   }
 
   private groupClones(
-    clones: Array<{ instances: CloneInstance[]; linesCount: number }>,
-  ): Map<string, { instances: CloneInstance[]; linesCount: number }> {
-    const groups = new Map<
-      string,
-      { instances: CloneInstance[]; linesCount: number }
-    >();
+    clones: CloneGroup[],
+  ): Map<string, CloneGroup> {
+    const groups = new Map<string, CloneGroup>();
 
     for (const clone of clones) {
       const key = this.normalizeFragment(clone.instances[0]?.fragment ?? "");
 
       const existing = groups.get(key);
       if (existing) {
-        for (const inst of clone.instances) {
-          const alreadyTracked = existing.instances.some(
-            (e) =>
-              e.sourceFile === inst.sourceFile &&
-              e.startLine === inst.startLine,
-          );
-          if (!alreadyTracked) {
-            existing.instances.push(inst);
-          }
-        }
+        this.mergeInstances(existing, clone);
       } else {
         groups.set(key, {
           instances: [...clone.instances],
@@ -191,6 +187,19 @@ export class IdiomsExtractor implements StyleExtractor {
     }
 
     return groups;
+  }
+
+  private mergeInstances(existing: CloneGroup, clone: CloneGroup): void {
+    for (const inst of clone.instances) {
+      const alreadyTracked = existing.instances.some(
+        (e) =>
+          e.sourceFile === inst.sourceFile &&
+          e.startLine === inst.startLine,
+      );
+      if (!alreadyTracked) {
+        existing.instances.push(inst);
+      }
+    }
   }
 
   private normalizeFragment(fragment: string): string {

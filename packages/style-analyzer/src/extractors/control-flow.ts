@@ -31,6 +31,16 @@ export class ControlFlowExtractor implements StyleExtractor {
     file: ParsedFile,
     observations: Observation[],
   ): void {
+    this.processBranch(node, file, observations);
+    this.processLoop(node, file, observations);
+    this.processCall(node, file, observations);
+  }
+
+  private processBranch(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     if (
       node.type === "ternary_expression" ||
       node.type === "conditional_expression"
@@ -43,20 +53,21 @@ export class ControlFlowExtractor implements StyleExtractor {
       this.detectGuardClause(node, file, observations);
       this.detectElseAfterReturn(node, file, observations);
     }
+  }
 
+  private processLoop(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     if (node.type === "for_statement" && file.language !== "python") {
       this.emit(observations, "control-flow.for-loop", true, file, node);
     }
 
     if (node.type === "for_in_statement") {
       const isForOf = node.children.some((c) => c.type === "of");
-      this.emit(
-        observations,
-        isForOf ? "control-flow.for-of" : "control-flow.for-in",
-        true,
-        file,
-        node,
-      );
+      const loopType = isForOf ? "control-flow.for-of" : "control-flow.for-in";
+      this.emit(observations, loopType, true, file, node);
     }
 
     if (node.type === "for_statement" && file.language === "python") {
@@ -71,37 +82,52 @@ export class ControlFlowExtractor implements StyleExtractor {
     ) {
       this.emit(observations, "control-flow.array-method", true, file, node);
     }
+  }
 
+  private processCall(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     if (node.type === "call_expression") {
       const fn = node.childForFieldName("function");
       if (fn?.type === "member_expression") {
-        const property = fn.childForFieldName("property");
-        if (property) {
-          const methodName = property.text;
-          if (ARRAY_METHODS.has(methodName)) {
-            this.emit(
-              observations,
-              "control-flow.array-method",
-              methodName,
-              file,
-              node,
-            );
-          }
-          if (methodName === "then") {
-            this.emit(
-              observations,
-              "control-flow.promise-then",
-              true,
-              file,
-              node,
-            );
-          }
-        }
+        this.processMemberCall(fn, node, file, observations);
       }
     }
 
     if (node.type === "await_expression") {
       this.emit(observations, "control-flow.async-await", true, file, node);
+    }
+  }
+
+  private processMemberCall(
+    fn: Node,
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const property = fn.childForFieldName("property");
+    if (property) {
+      const methodName = property.text;
+      if (ARRAY_METHODS.has(methodName)) {
+        this.emit(
+          observations,
+          "control-flow.array-method",
+          methodName,
+          file,
+          node,
+        );
+      }
+      if (methodName === "then") {
+        this.emit(
+          observations,
+          "control-flow.promise-then",
+          true,
+          file,
+          node,
+        );
+      }
     }
   }
 
@@ -113,17 +139,7 @@ export class ControlFlowExtractor implements StyleExtractor {
     const parent = node.parent;
     if (!parent) return;
 
-    const isFunctionBody =
-      parent.type === "statement_block" &&
-      (parent.parent?.type === "function_declaration" ||
-        parent.parent?.type === "method_definition" ||
-        parent.parent?.type === "arrow_function");
-
-    const isPythonFunctionBody =
-      parent.type === "block" &&
-      parent.parent?.type === "function_definition";
-
-    if (!isFunctionBody && !isPythonFunctionBody) return;
+    if (!this.isFunctionBody(parent)) return;
 
     const siblings = parent.children.filter(
       (c) => c.type !== "comment" && c.type !== "{" && c.type !== "}",
@@ -140,14 +156,22 @@ export class ControlFlowExtractor implements StyleExtractor {
     const hasElse = node.childForFieldName("alternative") !== null;
 
     if (hasReturn && !hasElse) {
-      this.emit(
-        observations,
-        "control-flow.guard-clause",
-        true,
-        file,
-        node,
-      );
+      this.emit(observations, "control-flow.guard-clause", true, file, node);
     }
+  }
+
+  private isFunctionBody(parent: Node): boolean {
+    const isFunctionBody =
+      parent.type === "statement_block" &&
+      (parent.parent?.type === "function_declaration" ||
+        parent.parent?.type === "method_definition" ||
+        parent.parent?.type === "arrow_function");
+
+    const isPythonFunctionBody =
+      parent.type === "block" &&
+      parent.parent?.type === "function_definition";
+
+    return isFunctionBody || isPythonFunctionBody;
   }
 
   private detectElseAfterReturn(

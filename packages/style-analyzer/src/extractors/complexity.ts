@@ -79,35 +79,26 @@ export class ComplexityExtractor implements StyleExtractor {
     );
 
     for (const fn of functions) {
-      observations.push({
-        type: "complexity.functionLength",
-        category: "complexity",
-        value: fn.statementCount,
-        file: file.filePath,
-        line: fn.line,
-        metadata: { functionName: fn.name },
-      });
-
-      observations.push({
-        type: "complexity.nestingDepth",
-        category: "complexity",
-        value: fn.maxNestingDepth,
-        file: file.filePath,
-        line: fn.line,
-        metadata: { functionName: fn.name },
-      });
-
-      observations.push({
-        type: "complexity.cyclomatic",
-        category: "complexity",
-        value: fn.cyclomaticComplexity,
-        file: file.filePath,
-        line: fn.line,
-        metadata: { functionName: fn.name },
-      });
+      observations.push(...this.functionObservations(fn, file.filePath));
     }
 
     return observations;
+  }
+
+  private functionObservations(fn: FunctionInfo, filePath: string): Observation[] {
+    const metrics: Array<[string, number]> = [
+      ["complexity.functionLength", fn.statementCount],
+      ["complexity.nestingDepth", fn.maxNestingDepth],
+      ["complexity.cyclomatic", fn.cyclomaticComplexity],
+    ];
+    return metrics.map(([type, value]) => ({
+      type,
+      category: "complexity",
+      value,
+      file: filePath,
+      line: fn.line,
+      metadata: { functionName: fn.name },
+    }));
   }
 
   private getFunctionTypes(language: string): Set<string> {
@@ -255,26 +246,7 @@ export class ComplexityExtractor implements StyleExtractor {
       : TS_BRANCH_TYPES;
 
     const visit = (node: Node): void => {
-      if (branchTypes.has(node.type)) {
-        complexity++;
-      }
-
-      if (node.type === "binary_expression") {
-        const operator = node.childForFieldName("operator");
-        if (operator) {
-          const text = operator.text;
-          if (text === "&&" || text === "||") {
-            complexity++;
-          }
-        }
-      }
-
-      if (
-        language === "python" &&
-        node.type === "boolean_operator"
-      ) {
-        complexity++;
-      }
+      complexity += this.branchIncrement(node, language, branchTypes);
 
       for (const child of node.namedChildren) {
         visit(child);
@@ -283,5 +255,34 @@ export class ComplexityExtractor implements StyleExtractor {
 
     visit(body);
     return complexity;
+  }
+
+  private branchIncrement(
+    node: Node,
+    language: string,
+    branchTypes: Set<string>,
+  ): number {
+    let increment = 0;
+    if (branchTypes.has(node.type)) {
+      increment++;
+    }
+
+    if (node.type === "binary_expression") {
+      const operator = node.childForFieldName("operator");
+      if (operator) {
+        const text = operator.text;
+        if (text === "&&" || text === "||") {
+          increment++;
+        }
+      }
+    }
+
+    if (
+      language === "python" &&
+      node.type === "boolean_operator"
+    ) {
+      increment++;
+    }
+    return increment;
   }
 }
