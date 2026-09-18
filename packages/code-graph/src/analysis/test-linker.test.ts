@@ -176,6 +176,14 @@ describe("linkTestsToSources — pass 2 (co-edit supplement)", () => {
     ]);
   });
 
+  it("does not add a co-edit link to a real source once a path link exists", () => {
+    const links = linkTestsToSources(
+      [file("src/foo.test.ts", "test"), file("src/foo.ts", "source"), file("src/other.ts", "source")],
+      [pair("src/foo.test.ts", "src/other.ts", 9)],
+    );
+    expect(links).toEqual([{ testId: "src/foo.test.ts", sourceId: "src/foo.ts", method: "path" }]);
+  });
+
   it("ignores co-edit partners below minCoEditCount", () => {
     const links = linkTestsToSources(
       [file("src/weird.test.ts", "test"), file("src/engine.ts", "source")],

@@ -71,4 +71,24 @@ describe("attributeCoverage", () => {
     expect(pct(m, "c.ts#method")).toBe(0); // attributed to the inner method
     expect(pct(m, "c.ts#Klass")).toBeUndefined(); // not the outer class
   });
+
+  it("rounds file coverage to the nearest percent", () => {
+    const cov: IstanbulCoverage = {
+      "/repo/r.ts": { fnMap: { "0": fn(1), "1": fn(5), "2": fn(9) }, f: { "0": 1, "1": 1, "2": 0 } },
+    };
+    const m = attributeCoverage(cov, (a) => (a === "/repo/r.ts" ? "r.ts" : null), new Map());
+    expect(pct(m, "r.ts")).toBe(67);
+  });
+
+  it("attributes a function starting on a symbol's last line to that symbol", () => {
+    const cov: IstanbulCoverage = { "/repo/e.ts": { fnMap: { "0": fn(3) }, f: { "0": 1 } } };
+    const syms = new Map<string, SymbolSpan[]>([["e.ts", [{ id: "e.ts#one", startLine: 3, endLine: 3 }]]]);
+    const m = attributeCoverage(cov, (a) => (a === "/repo/e.ts" ? "e.ts" : null), syms);
+    expect(pct(m, "e.ts#one")).toBe(100);
+  });
+
+  it("emits nothing for a file with no functions", () => {
+    const cov: IstanbulCoverage = { "/repo/z.ts": { fnMap: {}, f: {} } };
+    expect(attributeCoverage(cov, () => "z.ts", new Map())).toEqual([]);
+  });
 });

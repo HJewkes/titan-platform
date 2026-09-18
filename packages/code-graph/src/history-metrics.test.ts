@@ -101,6 +101,25 @@ describe("computeTestCoverageOwnership", () => {
     expect(valueOf(metrics, "svc.ts", "test_top_author_share_30d")).toBe(0.5);
   });
 
+  it("sums one author's churn across every test linked to the source", () => {
+    const churn = [
+      entry("t1", "alice", "svc.a.test.ts", 20),
+      entry("t2", "alice", "svc.b.test.ts", 20),
+      entry("t3", "bob", "svc.b.test.ts", 30),
+    ];
+    const links = [pathLink("svc.a.test.ts", "svc.ts"), pathLink("svc.b.test.ts", "svc.ts")];
+    expect(valueOf(computeTestCoverageOwnership(churn, links), "svc.ts", "test_top_author_share_30d")).toBe(0.571);
+  });
+
+  it("needs two test authors when none clears the default 50% threshold", () => {
+    const churn = [
+      entry("t1", "alice", "a.test.ts", 40),
+      entry("t2", "bob", "a.test.ts", 30),
+      entry("t3", "carol", "a.test.ts", 30),
+    ];
+    expect(valueOf(computeTestCoverageOwnership(churn, [pathLink("a.test.ts", "a.ts")]), "a.ts", "test_bus_factor_30d")).toBe(2);
+  });
+
   it("emits nothing for a source whose linked tests have no churn", () => {
     const metrics = computeTestCoverageOwnership(
       [entry("c1", "alice", "unrelated.ts", 10)],
