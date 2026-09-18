@@ -1,0 +1,21 @@
+[
+  {
+    "cell": null,
+    "code": "N806",
+    "end_location": {
+      "column": 11,
+      "row": 2
+    },
+    "filename": "/project/findings.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 2
+    },
+    "message": "Variable `userId` in function should be lowercase",
+    "name": "non-lowercase-variable-in-function",
+    "noqa_row": 2,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function"
+  }
+]

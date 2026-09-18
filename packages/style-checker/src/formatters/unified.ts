@@ -96,6 +96,11 @@ export function parseEslintJsonOutput(jsonStr: string): CheckDiagnostic[] {
   return diagnostics;
 }
 
+// ruff 0.16.8 reports a syntax error as code "invalid-syntax"; 0.9.10 used a null code.
+export function isRuffSyntaxError(code: string | null): code is "invalid-syntax" | null {
+  return code === null || code === "invalid-syntax";
+}
+
 export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
   let entries: RuffJsonEntry[];
   try {
@@ -105,7 +110,7 @@ export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
       `Failed to parse Ruff JSON output. Raw output:\n${jsonStr.slice(0, 500)}`,
     );
   }
-  return entries.flatMap((entry) => entry.code === null ? [] : [{
+  return entries.flatMap((entry) => isRuffSyntaxError(entry.code) ? [] : [{
     file: entry.filename,
     line: entry.location.row,
     column: entry.location.column,

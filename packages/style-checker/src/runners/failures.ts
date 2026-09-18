@@ -6,7 +6,7 @@ import type { ToolFailure, ToolName } from "../orchestrator/types.js";
 const SUCCESS_EXIT_CODES = new Set([0, 1]);
 
 export type ToolRun =
-  | { ok: true; stdout: string; exitCode: number }
+  | { ok: true; stdout: string; stderr: string; exitCode: number }
   | { ok: false; failure: ToolFailure; exitCode: number | null };
 
 function excerpt(text: string): string {
@@ -35,7 +35,7 @@ export function classifyRun(tool: ToolName, run: ToolRunResult): ToolRun {
   if (!run.stdout.trim()) {
     return fail("unparseable-output", `${tool} exited ${run.exitCode} with no output`);
   }
-  return { ok: true, stdout: run.stdout, exitCode: run.exitCode };
+  return { ok: true, stdout: run.stdout, stderr: run.stderr, exitCode: run.exitCode };
 }
 
 export async function runAndClassify(

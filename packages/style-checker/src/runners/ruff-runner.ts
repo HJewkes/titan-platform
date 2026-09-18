@@ -2,7 +2,7 @@ import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAndClassify, parseOrFail } from "./failures.js";
-import { parseRuffJsonOutput } from "../formatters/unified.js";
+import { isRuffSyntaxError, parseRuffJsonOutput } from "../formatters/unified.js";
 import type { CheckDiagnostic, ToolFailure } from "../orchestrator/types.js";
 import type { RunnerOptions, RunnerResult } from "./types.js";
 import type { RuffConfig } from "../generators/ruff.js";
@@ -63,18 +63,29 @@ interface RuffJsonMessage {
   message: string;
 }
 
-// ruff reports a file it could not parse as a diagnostic with a null code.
-function unparsedFiles(stdout: string): ToolFailure[] {
-  const entries = JSON.parse(stdout) as RuffJsonMessage[];
-  return entries
-    .filter((e) => e.code === null)
-    .map((e) => ({ tool: "ruff" as const, kind: "file-not-checked" as const, file: e.filename, message: e.message }));
+function notChecked(file: string, message: string): ToolFailure {
+  return { tool: "ruff", kind: "file-not-checked", file, message };
 }
 
-function readRuffOutput(stdout: string): { diagnostics: CheckDiagnostic[]; failures: ToolFailure[] } {
+// ruff emits one entry per syntax error; a file that fails to parse is reported once.
+function unparsedFiles(stdout: string): ToolFailure[] {
+  const byFile = new Map<string, string[]>();
+  for (const e of JSON.parse(stdout) as RuffJsonMessage[]) {
+    if (!isRuffSyntaxError(e.code)) continue;
+    byFile.set(e.filename, [...(byFile.get(e.filename) ?? []), e.message]);
+  }
+  return [...byFile].map(([file, messages]) => notChecked(file, messages.join("; ")));
+}
+
+// ruff exits 0 with "[]" for a path it cannot read, and says so only on stderr.
+function unreadFiles(stderr: string): ToolFailure[] {
+  return [...stderr.matchAll(/^warning: Failed to lint (.+?): (.+)$/gm)].map((m) => notChecked(m[1]!, m[2]!));
+}
+
+function readRuffOutput(stdout: string, stderr: string): { diagnostics: CheckDiagnostic[]; failures: ToolFailure[] } {
   const parsed = parseOrFail("ruff", () => ({
     diagnostics: parseRuffJsonOutput(stdout),
-    failures: unparsedFiles(stdout),
+    failures: [...unparsedFiles(stdout), ...unreadFiles(stderr)],
   }));
   return parsed.ok ? parsed.value : { diagnostics: [], failures: [parsed.failure] };
 }
@@ -102,7 +113,7 @@ export async function runRuff(
 
     const run = await runAndClassify("ruff", "ruff", args, { cwd: options?.cwd, timeout: options?.timeout });
     if (!run.ok) return { diagnostics: [], exitCode: run.exitCode, failures: [run.failure], skippedRules: [] };
-    return { ...readRuffOutput(run.stdout), exitCode: run.exitCode, skippedRules: [] };
+    return { ...readRuffOutput(run.stdout, run.stderr), exitCode: run.exitCode, skippedRules: [] };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

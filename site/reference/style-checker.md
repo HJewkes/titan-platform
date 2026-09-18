@@ -126,7 +126,7 @@ diffAgainstProfile(profile, [
 | `signal` | the process was killed by a signal |
 | `exit-code` | an exit code other than 0 or 1 |
 | `unparseable-output` | exit 0 or 1 with empty or non-JSON stdout |
-| `file-not-checked` | one file was not checked: an ESLint parse error or ignored file, or a ruff syntax error |
+| `file-not-checked` | one file was not checked: an ESLint parse error or ignored file, a ruff syntax error (`"code": "invalid-syntax"` in ruff 0.16.8, a null `code` in 0.9.10), or a path ruff could not read, which it reports only on stderr with exit 0 |
 | `missing-dependency` | the project has no TypeScript parser, so ESLint was not run |
 
 Exit codes 0 and 1 are both successful runs for both tools. ESLint documents 0 as no
@@ -175,13 +175,14 @@ ESLint the project has not installed.
   ignored because outside of base path").
 - `max-complexity` comes from `functionMaxLines`, a line count, not a cyclomatic
   complexity.
-- Every ruff diagnostic is `warn`. ESLint severity 2 is `error`, anything else `warn`.
+- Every ruff diagnostic is `warn`. ruff 0.16.8's own `severity` field is ignored: it is
+  `"error"` for every rule finding. ESLint severity 2 is `error`, anything else `warn`.
   `summary.fixed` is always 0.
 - `diffAgainstProfile` compares `String(observation.value)` with
   `String(convention)`, and matches `type` against the profile key literally. Analyzer
   types such as `naming.variable` do not match a profile key `variables`.
 - `parseEslintJsonOutput` still drops messages with no `ruleId`, and `parseRuffJsonOutput`
-  drops entries with a null `code`. The runners report the ones that mean a file was not
+  drops syntax-error entries. The runners report the ones that mean a file was not
   checked as failures; other rule-less ESLint messages, such as unused disable
   directives, stay dropped.
 

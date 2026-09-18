@@ -1,26 +1,25 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runRuff } from "./ruff-runner.js";
 import { createFakeBin, heredoc } from "../test-support/fake-bin.js";
 import type { FakeBin } from "../test-support/fake-bin.js";
 import type { RuffConfig } from "../generators/ruff.js";
 
-// Written to ruff's documented `--output-format json` shape; ruff is not installed here to capture it.
-const findings = [
-  {
-    cell: null, code: "N806", filename: "/p/app.py", fix: null, noqa_row: 5,
-    location: { row: 5, column: 5 }, end_location: { row: 5, column: 11 },
-    message: "Variable `userId` in function should be lowercase",
-    url: "https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function",
-  },
-];
-const syntaxError = {
-  cell: null, code: null, filename: "/p/broken.py", fix: null, noqa_row: null,
-  location: { row: 1, column: 9 }, end_location: { row: 1, column: 10 },
-  message: "SyntaxError: Expected an expression", url: null,
-};
+// Output captured from real ruff; see fixtures/ruff/README.md for versions and commands.
+const captured = fileURLToPath(new URL("../../fixtures/ruff", import.meta.url));
 
+function replay(name: string, exitCode: number): string {
+  const lines = [`cp "$3" "$(dirname "$0")/seen.toml"`];
+  const stdout = join(captured, `${name}.stdout.json`);
+  const stderr = join(captured, `${name}.stderr.txt`);
+  if (existsSync(stdout)) lines.push(`cat "${stdout}"`);
+  if (existsSync(stderr)) lines.push(`cat "${stderr}" >&2`);
+  return [...lines, `exit ${exitCode}`].join("\n");
+}
+
+const naming = { file: "/project/findings.py", line: 2, column: 5, severity: "warn", category: "naming", rule: "N806" };
 const config: RuffConfig = { lint: { select: ["N"] } };
 
 describe("runRuff", () => {
@@ -32,45 +31,59 @@ describe("runRuff", () => {
   afterEach(() => bin.restore());
 
   it("treats exit 1 with findings as a successful run and passes the generated config", async () => {
-    bin.install("ruff", `cp "$3" "${bin.dir}/seen.toml"\n${heredoc(JSON.stringify(findings))}\nexit 1`);
+    bin.install("ruff", replay("findings", 1));
     bin.onPathFirst();
 
-    const result = await runRuff(config, ["app.py"]);
+    const result = await runRuff(config, ["findings.py"]);
 
     expect(result.failures).toEqual([]);
-    expect(result.diagnostics).toEqual([expect.objectContaining({ file: "/p/app.py", line: 5, rule: "N806", category: "naming" })]);
+    expect(result.exitCode).toBe(1);
+    expect(result.diagnostics).toEqual([expect.objectContaining(naming)]);
     expect(readFileSync(join(bin.dir, "seen.toml"), "utf-8")).toBe('[lint]\nselect = ["N"]\n');
   });
 
   it("returns no diagnostics and no failures for a clean run", async () => {
-    bin.install("ruff", `${heredoc("[]")}\nexit 0`);
+    bin.install("ruff", replay("clean", 0));
     bin.onPathFirst();
 
-    const result = await runRuff(config, ["app.py"]);
+    const result = await runRuff(config, ["clean.py"]);
 
     expect(result).toMatchObject({ diagnostics: [], failures: [], exitCode: 0 });
   });
 
-  it("reports a file ruff could not parse as a failure beside the other findings", async () => {
-    bin.install("ruff", `${heredoc(JSON.stringify([...findings, syntaxError]))}\nexit 1`);
+  it.each([
+    ["ruff 0.16.8 (code \"invalid-syntax\")", "syntax-error", "Expected a parameter or the end of the parameter list; Expected `)`, found newline"],
+    ["ruff 0.9.10 (null code)", "syntax-error-ruff-0.9.10", "SyntaxError: Expected a parameter or the end of the parameter list; SyntaxError: Expected ')', found newline"],
+  ])("reports a file %s could not parse once, beside the other findings", async (_label, name, message) => {
+    bin.install("ruff", replay(name, 1));
     bin.onPathFirst();
 
-    const result = await runRuff(config, ["app.py", "broken.py"]);
+    const result = await runRuff(config, ["findings.py", "broken.py"]);
 
-    expect(result.diagnostics.map((d) => d.rule)).toEqual(["N806"]);
+    expect(result.diagnostics).toEqual([expect.objectContaining(naming)]);
+    expect(result.failures).toEqual([{ tool: "ruff", kind: "file-not-checked", file: "/project/broken.py", message }]);
+  });
+
+  it("reports a file ruff could not read, which it mentions only on stderr", async () => {
+    bin.install("ruff", replay("missing-file", 1));
+    bin.onPathFirst();
+
+    const result = await runRuff(config, ["findings.py", "nope.py"]);
+
+    expect(result.diagnostics).toEqual([expect.objectContaining(naming)]);
     expect(result.failures).toEqual([
-      { tool: "ruff", kind: "file-not-checked", file: "/p/broken.py", message: "SyntaxError: Expected an expression" },
+      { tool: "ruff", kind: "file-not-checked", file: "nope.py", message: "No such file or directory (os error 2)" },
     ]);
   });
 
   it("reports an invalid configuration (exit 2) as an exit-code failure with ruff's message", async () => {
-    bin.install("ruff", `${heredoc("ruff failed\n  Cause: unknown field `selct`", "stderr")}\nexit 2`);
+    bin.install("ruff", replay("bad-config", 2));
     bin.onPathFirst();
 
-    const result = await runRuff(config, ["app.py"]);
+    const result = await runRuff(config, ["clean.py"]);
 
     expect(result.failures).toEqual([expect.objectContaining({ tool: "ruff", kind: "exit-code" })]);
-    expect(result.failures[0]!.message).toMatch(/exited with code 2: ruff failed/);
+    expect(result.failures[0]!.message).toMatch(/exited with code 2: ruff failed\n {2}Cause: Failed to load configuration/);
   });
 
   it("reports output that is not JSON as unparseable", async () => {

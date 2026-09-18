@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   parseEslintJsonOutput,
@@ -73,19 +74,13 @@ describe("parseEslintJsonOutput", () => {
 });
 
 describe("parseRuffJsonOutput", () => {
-  it("leaves out syntax errors, which ruff reports with a null code", () => {
-    const ruffOutput = [
-      {
-        code: null,
-        message: "SyntaxError: Expected an expression",
-        filename: "broken.py",
-        location: { row: 1, column: 9 },
-        end_location: { row: 1, column: 10 },
-        fix: null,
-      },
-    ];
-    expect(parseRuffJsonOutput(JSON.stringify(ruffOutput))).toEqual([]);
-  });
+  it.each(["syntax-error", "syntax-error-ruff-0.9.10"])(
+    "leaves out syntax errors in captured ruff output (%s)",
+    (name) => {
+      const stdout = readFileSync(new URL(`../../fixtures/ruff/${name}.stdout.json`, import.meta.url), "utf-8");
+      expect(parseRuffJsonOutput(stdout).map((d) => d.rule)).toEqual(["N806"]);
+    },
+  );
 
   it("normalizes Ruff JSON output to CheckDiagnostic[]", () => {
     const ruffOutput = [

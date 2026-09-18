@@ -1,0 +1,59 @@
+[
+  {
+    "cell": null,
+    "code": "invalid-syntax",
+    "end_location": {
+      "column": 13,
+      "row": 1
+    },
+    "filename": "/project/broken.py",
+    "fix": null,
+    "location": {
+      "column": 12,
+      "row": 1
+    },
+    "message": "Expected a parameter or the end of the parameter list",
+    "name": "invalid-syntax",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  },
+  {
+    "cell": null,
+    "code": "invalid-syntax",
+    "end_location": {
+      "column": 1,
+      "row": 2
+    },
+    "filename": "/project/broken.py",
+    "fix": null,
+    "location": {
+      "column": 13,
+      "row": 1
+    },
+    "message": "Expected `)`, found newline",
+    "name": "invalid-syntax",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  },
+  {
+    "cell": null,
+    "code": "N806",
+    "end_location": {
+      "column": 11,
+      "row": 2
+    },
+    "filename": "/project/findings.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 2
+    },
+    "message": "Variable `userId` in function should be lowercase",
+    "name": "non-lowercase-variable-in-function",
+    "noqa_row": 2,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function"
+  }
+]

@@ -48,8 +48,9 @@ const { diagnostics, failures, skippedRules, summary } = await orchestrate({
   detected from the file list.
 - `parseEslintJsonOutput(json)` and `parseRuffJsonOutput(json)` turn each tool's
   `--format json` output into `CheckDiagnostic[]`. Both throw on output that is not JSON.
-  Messages with no rule (ESLint parse errors and ignored files, ruff syntax errors) are
-  not diagnostics; the runners report them as `file-not-checked` failures.
+  Messages with no rule (ESLint parse errors and ignored files) and ruff syntax errors
+  (`"code": "invalid-syntax"` in ruff 0.16.8, a null `code` in 0.9.10) are not
+  diagnostics; the runners report them as `file-not-checked` failures.
 - `formatDiagnostic(d)` prints `file:line:column severity message [category.rule]`.
 - `diffAgainstProfile(profile, observations)` compares each observation's value with the
   profile's convention for its `type` and returns `{ deviations, summary }`. Observations
@@ -73,7 +74,7 @@ found nothing.
 | `signal` | the process was killed by a signal |
 | `exit-code` | an exit code other than 0 or 1 |
 | `unparseable-output` | exit 0 or 1 with empty or non-JSON stdout |
-| `file-not-checked` | the tool ran but could not check one file (`file` names it) |
+| `file-not-checked` | the tool ran but could not check one file (`file` names it): an ESLint parse error or ignored file, a ruff syntax error, or a path ruff could not read (which it reports only on stderr, with exit 0) |
 | `missing-dependency` | no TypeScript parser in the project, so ESLint was not run |
 
 Exit codes 0 and 1 are both successful runs. ESLint documents 0 as no errors, 1 as at
@@ -117,5 +118,6 @@ runners are added beside them.
 - ruff's `max-complexity` is set from the profile's `functionMaxLines`, a line count, not a
   cyclomatic complexity.
 - Every ruff diagnostic has severity `warn`. ESLint severity 2 maps to `error`, anything
-  else to `warn`. Nothing produces `info`.
+  else to `warn`. Nothing produces `info`. ruff 0.16.8 emits a `severity` field, but it is
+  `"error"` for every rule finding, so it is ignored.
 - `summary.fixed` is always 0, even with `fix: true`.

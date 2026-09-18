@@ -1,0 +1,9 @@
+ruff failed
+  Cause: Failed to load configuration `/config/bad.toml`
+  Cause: Failed to parse /config/bad.toml
+  Cause: TOML parse error at line 2, column 1
+  |
+2 | selct = ["N"]
+  | ^^^^^
+unknown field `selct`, expected one of `allowed-confusables`, `dummy-variable-rgx`, `extend-ignore`, `extend-select`, `extend-fixable`, `extend-unfixable`, `external`, `fixable`, `ignore`, `extend-safe-fixes`, `extend-unsafe-fixes`, `ignore-init-module-imports`, `logger-objects`, `select`, `explicit-preview-rules`, `task-tags`, `typing-modules`, `unfixable`, `flake8-annotations`, `flake8-bandit`, `flake8-boolean-trap`, `flake8-bugbear`, `flake8-builtins`, `flake8-comprehensions`, `flake8-copyright`, `flake8-errmsg`, `flake8-quotes`, `flake8-self`, `flake8-tidy-imports`, `flake8-type-checking`, `flake8-gettext`, `flake8-implicit-str-concat`, `flake8-import-conventions`, `flake8-pytest-style`, `flake8-unused-arguments`, `isort`, `mccabe`, `pep8-naming`, `pycodestyle`, `pydocstyle`, `pyflakes`, `pylint`, `pyupgrade`, `per-file-ignores`, `extend-per-file-ignores`, `exclude`, `pydoclint`, `ruff`, `preview`, `typing-extensions`, `future-annotations`
+
