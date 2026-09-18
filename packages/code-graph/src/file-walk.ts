@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isExcludedDir, shouldIncludeFile } from "./parser/index.js";
+import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
 
 /**
  * Recursively collect the source files under `rootDirs` that pass the ingest

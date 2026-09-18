@@ -9,7 +9,7 @@ import {
   type ImportDeclaration,
   type SourceFile,
 } from "ts-morph";
-import type { Extractor, ParsedFile } from "../parser/index.js";
+import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import type { GraphEdge, GraphFragment, GraphNode } from "../types.js";
 import { buildFileModuleNodes } from "./file-nodes.js";
 import { externalId, fileId, symbolId } from "./ids.js";

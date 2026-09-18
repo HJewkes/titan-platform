@@ -1,4 +1,4 @@
-import type { ParsedFile } from "../parser/index.js";
+import type { ParsedFile } from "@titan-design/code-parser";
 import type { SourceFile } from "ts-morph";
 import { collectDeclaredSpans, type LineSpan } from "../declared-names.js";
 import { fileId, symbolId } from "./ids.js";

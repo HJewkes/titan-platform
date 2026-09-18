@@ -1,4 +1,4 @@
-import type { ParsedFile } from "./parser/index.js";
+import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";

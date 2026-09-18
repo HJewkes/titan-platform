@@ -1,7 +1,7 @@
 # code-graph
 
-**Tier 2 · domain.** Depends on [`store-sqlite`](/reference/store-sqlite), `ts-morph`, and
-the tree-sitter WASM grammars.
+**Tier 2 · domain.** Depends on [`store-sqlite`](/reference/store-sqlite),
+[`code-parser`](/reference/code-parser), and `ts-morph`.
 
 ```sh
 npm install @titan-design/code-graph

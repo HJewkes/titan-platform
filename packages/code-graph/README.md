@@ -5,8 +5,8 @@ symbols, external packages, and the import / re-export / reference edges between
 index-time source metrics, in one SQLite file built from `@titan-design/store-sqlite` kit
 tables and refreshed incrementally.
 
-Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `ts-morph`, and the tree-sitter
-WASM grammars. Extracted from codewatch's `@codewatch/graph` (TP-9), split along the seam the
+Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `code-parser` (tree-sitter WASM
+parsing and the file filter), `ts-morph`, and `web-tree-sitter` for node types. Extracted from codewatch's `@codewatch/graph` (TP-9), split along the seam the
 audit identified: that package did the job of both a store and a code graph.
 
 ```ts
@@ -23,7 +23,8 @@ listEdges(store, snapshotId); // imports / re-exports, references on request
 
 ## What was extracted, and what was not
 
-In: the parser (tree-sitter WASM for TypeScript, TSX and Python), the walk, the ts-morph
+In: the parser (tree-sitter WASM for TypeScript, TSX and Python, since moved to
+`@titan-design/code-parser` and still re-exported here), the walk, the ts-morph
 extractor and its symbol layer, role classification, generated-file detection, id aliasing
 across git renames, the three-tier incremental reuse, and the metrics computed at index time
 (degree, utilization, loc, cyclomatic, cognitive, nesting, class count, lcom4, per-symbol

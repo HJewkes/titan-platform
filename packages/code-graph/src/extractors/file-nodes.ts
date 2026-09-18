@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getLanguageFromPath } from "../parser/index.js";
+import { getLanguageFromPath } from "@titan-design/code-parser";
 import { fileId, moduleId, parentModuleId } from "./ids.js";
 import type { GraphNode } from "../types.js";
 

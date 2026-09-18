@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFile } from "./parser/index.js";
+import { parseFile } from "@titan-design/code-parser";
 import { classifyForReuse, hashContent, structuralSignature, type ReuseBasis } from "./incremental.js";
 
 const SRC = `export function add(a: number, b: number): number {

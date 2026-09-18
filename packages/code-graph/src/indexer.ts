@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import * as path from "node:path";
-import { parseFile, type ParsedFile } from "./parser/index.js";
+import { parseFile, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
 import { LanguageExtractor } from "./extractors/dispatch.js";
 import {
