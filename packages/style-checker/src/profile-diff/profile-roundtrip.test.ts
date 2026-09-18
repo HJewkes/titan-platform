@@ -69,6 +69,36 @@ async function runFullPipeline(): Promise<{
   return { observations, result }
 }
 
+function toProfileCategory(category: string): string | undefined {
+  if (category === "error-handling") return "errorHandling"
+  if (category === "control-flow") return "patterns"
+  if (PROFILE_CATEGORIES.includes(category as ProfileCategory)) return category
+  return undefined
+}
+
+function profileFromCategories(
+  categoryMap: Record<string, Record<string, StyleRule>>,
+): Profile {
+  const profile: Profile = ProfileSchema.parse({
+    schemaVersion: SCHEMA_VERSION,
+    author: "integration-test",
+    generated: new Date().toISOString(),
+    sources: ["golden-corpus"],
+    naming: categoryMap["naming"] ?? {},
+    structure: categoryMap["structure"] ?? {},
+    documentation: categoryMap["documentation"] ?? {},
+    errorHandling: categoryMap["errorHandling"] ?? {},
+    formatting: categoryMap["formatting"] ?? {},
+    patterns: categoryMap["patterns"] ?? {},
+    idioms: { detected: [] },
+    antiPatterns: { acknowledged: [] },
+    overrides: [],
+    severityThresholds: DEFAULT_SEVERITY_THRESHOLDS,
+  })
+
+  return profile
+}
+
 /**
  * Convert AggregatorResult features into a Profile-compatible shape.
  * Groups features by their category prefix (e.g. "naming.variable" -> naming)
@@ -90,18 +120,8 @@ function buildProfileFromFeatures(
     const category = featureType.substring(0, dotIndex)
     const ruleName = featureType.substring(dotIndex + 1)
 
-    let profileCategory: string
-    if (category === "error-handling") {
-      profileCategory = "errorHandling"
-    } else if (category === "control-flow") {
-      profileCategory = "patterns"
-    } else if (
-      PROFILE_CATEGORIES.includes(category as ProfileCategory)
-    ) {
-      profileCategory = category
-    } else {
-      continue
-    }
+    const profileCategory = toProfileCategory(category)
+    if (profileCategory === undefined) continue
 
     if (!categoryMap[profileCategory]) {
       categoryMap[profileCategory] = {}
@@ -114,24 +134,7 @@ function buildProfileFromFeatures(
     }
   }
 
-  const profile: Profile = ProfileSchema.parse({
-    schemaVersion: SCHEMA_VERSION,
-    author: "integration-test",
-    generated: new Date().toISOString(),
-    sources: ["golden-corpus"],
-    naming: categoryMap["naming"] ?? {},
-    structure: categoryMap["structure"] ?? {},
-    documentation: categoryMap["documentation"] ?? {},
-    errorHandling: categoryMap["errorHandling"] ?? {},
-    formatting: categoryMap["formatting"] ?? {},
-    patterns: categoryMap["patterns"] ?? {},
-    idioms: { detected: [] },
-    antiPatterns: { acknowledged: [] },
-    overrides: [],
-    severityThresholds: DEFAULT_SEVERITY_THRESHOLDS,
-  })
-
-  return profile
+  return profileFromCategories(categoryMap)
 }
 
 describe("Profile roundtrip integration", () => {

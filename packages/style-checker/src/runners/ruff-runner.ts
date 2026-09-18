@@ -6,6 +6,42 @@ import { parseRuffJsonOutput } from "../formatters/unified.js";
 import type { CheckDiagnostic } from "../orchestrator/types.js";
 import type { RuffConfig } from "../generators/ruff.js";
 
+type RuffLint = NonNullable<RuffConfig["lint"]>;
+
+function quoteList(values: string[]): string {
+  return `[${values.map((s) => `"${s}"`).join(", ")}]`;
+}
+
+function lintSelectionLines(lint: RuffLint): string[] {
+  const lines: string[] = [];
+  if (lint.select) lines.push(`select = ${quoteList(lint.select)}`);
+  if (lint.ignore) lines.push(`ignore = ${quoteList(lint.ignore)}`);
+  return lines;
+}
+
+function lintSubsectionLines(lint: RuffLint): string[] {
+  const lines: string[] = [];
+  if (lint.mccabe) {
+    lines.push("[lint.mccabe]");
+    if (lint.mccabe["max-complexity"]) {
+      lines.push(`max-complexity = ${lint.mccabe["max-complexity"]}`);
+    }
+  }
+  if (lint.pydocstyle) {
+    lines.push("[lint.pydocstyle]");
+    if (lint.pydocstyle.convention) {
+      lines.push(`convention = "${lint.pydocstyle.convention}"`);
+    }
+  }
+  if (lint.isort) {
+    lines.push("[lint.isort]");
+    if (lint.isort["section-order"]) {
+      lines.push(`section-order = ${quoteList(lint.isort["section-order"])}`);
+    }
+  }
+  return lines;
+}
+
 function toToml(config: RuffConfig): string {
   const lines: string[] = [];
 
@@ -14,39 +50,7 @@ function toToml(config: RuffConfig): string {
   }
 
   if (config.lint) {
-    lines.push("[lint]");
-    if (config.lint.select) {
-      lines.push(
-        `select = [${config.lint.select.map((s) => `"${s}"`).join(", ")}]`,
-      );
-    }
-    if (config.lint.ignore) {
-      lines.push(
-        `ignore = [${config.lint.ignore.map((s) => `"${s}"`).join(", ")}]`,
-      );
-    }
-    if (config.lint.mccabe) {
-      lines.push("[lint.mccabe]");
-      if (config.lint.mccabe["max-complexity"]) {
-        lines.push(
-          `max-complexity = ${config.lint.mccabe["max-complexity"]}`,
-        );
-      }
-    }
-    if (config.lint.pydocstyle) {
-      lines.push("[lint.pydocstyle]");
-      if (config.lint.pydocstyle.convention) {
-        lines.push(`convention = "${config.lint.pydocstyle.convention}"`);
-      }
-    }
-    if (config.lint.isort) {
-      lines.push("[lint.isort]");
-      if (config.lint.isort["section-order"]) {
-        lines.push(
-          `section-order = [${config.lint.isort["section-order"].map((s) => `"${s}"`).join(", ")}]`,
-        );
-      }
-    }
+    lines.push("[lint]", ...lintSelectionLines(config.lint), ...lintSubsectionLines(config.lint));
   }
 
   return lines.join("\n") + "\n";
