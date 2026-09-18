@@ -122,8 +122,8 @@ await tryEmbedSnapshot(store, snapshotId, embedder);
 
 await findSimilarCapability(store, snapshotId, "fuse ranked lists with reciprocal rank fusion", embedder);
 // { coverage: { symbols: 1196, embedded: 1196, withPurpose: 429 },
-//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.864 },
-//                 { id: 'packages/retrieval/src/fusion.ts#RankedList', score: 0.714 }, … ] }
+//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.819 },
+//                 { id: 'packages/retrieval/src/engine.ts#createRetrievalEngine', score: 0.599 }, … ] }
 ```
 
 The embedded text per symbol is its signature plus its docstring, never its body. Vectors live
