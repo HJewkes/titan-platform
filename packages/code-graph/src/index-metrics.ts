@@ -1,6 +1,8 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import { computeMetrics } from "./metrics.js";
 import { computeSourceMetrics } from "./source-metrics.js";
+import { computeDeadCodeMetrics } from "./analysis/dead-code.js";
+import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "./types.js";
 
@@ -51,6 +53,8 @@ export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
       (p) => fileId(input.idRoot, p),
       symbolNamesByFile(nodeList),
     ),
+    ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
+    ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...input.reusedSourceMetrics,
   ];
 }

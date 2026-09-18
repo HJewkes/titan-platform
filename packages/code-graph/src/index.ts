@@ -51,6 +51,26 @@ export { buildAliases, detectGitHead, detectGitToplevel, detectRenames, isInside
 export { computeMetrics } from "./metrics.js";
 export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
 export { buildIndexerMetrics } from "./index-metrics.js";
+export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
+export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
+export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pagerank.js";
+export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
+export type { RelevanceOptions } from "./analysis/relevance.js";
+export { computeRelevance } from "./analysis/relevance.js";
+export type {
+  ReferenceEdgeLite,
+  SymbolConsumers,
+  SymbolCouplingOptions,
+  SymbolCouplingPair,
+} from "./analysis/symbol-coupling.js";
+export { computeSymbolConsumers, computeSymbolCoupling } from "./analysis/symbol-coupling.js";
+export {
+  snapshotPageRank,
+  snapshotReferenceEdges,
+  snapshotRelevance,
+  snapshotSymbolConsumers,
+  snapshotSymbolCoupling,
+} from "./analysis/snapshot.js";
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";
