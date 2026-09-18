@@ -242,9 +242,9 @@ top-df R@10 0.043 and MRR 0.046.
 **The fix does not move this eval.** Only spawn top-df shifts, down one to four thousandths
 (R@5 0.035 to 0.031, MRR 0.034 to 0.032), and R@10 is unchanged everywhere. On 246 pairs that
 is a handful of hits, well inside noise. The prefix was a correctness bug, not the reason
-the vector seam fails to beat `notes-fts`. nomic, fixed or not, does not beat FTS alone here:
-its whole-note vectors (notes are long, and Ollama truncates input at the model's context)
-rank too coarsely to add what FTS misses.
+the vector seam fails to beat `notes-fts`. nomic, fixed or not, does not beat FTS alone here.
+One untested explanation: each note is one whole-note vector, and Ollama truncates long input
+to the model's context, so the vector sees only the start of a long note.
 
 Snapshot for this section:
 
