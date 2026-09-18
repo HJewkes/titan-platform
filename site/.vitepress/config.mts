@@ -29,6 +29,7 @@ export default withMermaid(
             { text: "Get started", link: "/getting-started" },
             { text: "Architecture", link: "/guides/architecture" },
             { text: "The binding pattern", link: "/guides/binding-pattern" },
+            { text: "Where code goes", link: "/guides/where-code-goes" },
           ],
         },
         {

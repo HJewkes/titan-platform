@@ -8,6 +8,10 @@
   parameters in one module so every call site stays unchanged. The single idea most worth
   reading before you adopt anything.
 
+- **[Where code goes](/guides/where-code-goes)** — mechanism in packages, pixels in
+  titan-design, policy in products; how a product's own npm scope shrinks as its engine is
+  ported; and what a port pull request must prove.
+
 - **[Multi-harness contracts](/guides/multi-harness-contracts)** — the additive Claude/Codex
   contracts and the compatibility migration required before mixed-session ingestion.
 
