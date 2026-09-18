@@ -29,8 +29,8 @@ import type { GraphMetric, IdAlias } from "./types.js";
 
 /**
  * Bumping this invalidates every reuse basis: a snapshot written by a different
- * index version is never reused, so a change to node/edge shape can never be
- * carried forward from an incompatible graph.
+ * index version is never reused, so a change to node/edge shape or to a metric's
+ * value for the same bytes can never be carried forward from an incompatible graph.
  */
 export const INDEX_VERSION = "0.12.0";
 
