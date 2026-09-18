@@ -252,6 +252,35 @@ First-seen dates come from a separate `--no-renames` pass, which makes a renamed
 younger. `--since` resolves against git's clock while window slicing uses `nowEpoch`. History
 metrics are recomputed on every index and never carried forward under reuse.
 
+## Test linking and coverage
+
+Ported in TP-133, strictly as codewatch had it. `linkTestsToSources` pairs each test file
+with non-test files in two passes. Pass 1 uses path conventions: it strips a `.test` or `.spec`
+infix and collapses a `__tests__/`, `test/` or `tests/` segment. Pass 2 gives a test that
+pass 1 left unpaired its strongest co-edited non-test partner, with at least 2 shared commits.
+
+`indexPaths` writes `linked_test_count` on each linked source, with or without git. With git
+history on it also writes `test_bus_factor_{w}` and `test_top_author_share_{w}` for the
+primary window. These summarize churn authorship across all tests linked to a source, so a
+file can be well spread in production code and a single-author silo in its tests. All three
+are recomputed on every index and never carried forward.
+
+`computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
+`src/history/`. It needs test links, and the seam forbids history from importing them.
+
+```ts
+import { attributeCoverage } from "@titan-design/code-graph";
+
+// fileIdOf maps an absolute path to a file id, or null to skip; spans come from symbol nodes' attrs.
+const metrics = attributeCoverage(istanbulReport, fileIdOf, symbolSpansByFile);
+```
+
+`attributeCoverage` turns an Istanbul `coverage-final.json` into `coverage_pct` metrics: one
+per file (covered functions over total functions) and one per symbol, matched by line-range
+containment to the innermost symbol. Coverage depends on which tests ran, not on file bytes,
+so the index never writes or carries it. The caller stores it on the snapshot it measured,
+as codewatch's `graph coverage` command does.
+
 ## Gotchas
 
 **A database from a newer build is refused.** `openCodeGraph` throws `SchemaTooNewError`
@@ -283,11 +312,11 @@ tree-sitter declaration walk that feeds complexity.
 
 ## What was deliberately left in codewatch
 
-All of it follow-up work *on* this package rather than changes *to* it: test linking, and the
-remaining graph analyses over a finished snapshot (communities, partition quality). The rules
-engine, the snapshot diff, git history (churn, ownership, change coupling), symbol embeddings,
-dead code, growth risk, PageRank, relevance, and symbol coupling started here too and have
-since been ported.
+All of it follow-up work *on* this package rather than changes *to* it: the remaining graph
+analyses over a finished snapshot (communities, partition quality). The rules engine, the
+snapshot diff, git history (churn, ownership, change coupling), symbol embeddings, dead code,
+growth risk, PageRank, relevance, symbol coupling, test linking, and the coverage overlay
+started here too and have since been ported.
 
 ## Where it came from
 

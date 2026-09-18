@@ -92,6 +92,21 @@ describe("indexPaths with git-history metrics", () => {
     expect(all.some((m) => /^(churn_|recency_|bus_factor_|top_author_share_|file_age_days)/.test(m.name))).toBe(false);
   });
 
+  it("links a path-orphan test by co-edit and keys its test ownership on the source", async () => {
+    await repo.write("src/engine.ts", "export const e = 1;\n");
+    await repo.write("src/weird.test.ts", 'import { e } from "./engine.js";\ne;\n');
+    repo.commit("init", { date: daysAgo(3) });
+    await repo.write("src/engine.ts", "export const e = 2;\n");
+    await repo.write("src/weird.test.ts", 'import { e } from "./engine.js";\ne + 1;\n');
+    repo.commit("co-edit", { author: "bob", date: daysAgo(2) });
+
+    const { all, byKey } = await indexMetrics({ churnWindowDays: 7 });
+    expect(byKey("src/engine.ts", "linked_test_count")).toBe(1);
+    expect(byKey("src/engine.ts", "test_bus_factor_7d")).toBe(1);
+    expect(byKey("src/engine.ts", "test_top_author_share_7d")).toBe(0.5);
+    expect(all.some((m) => m.nodeId === "src/weird.test.ts" && m.name.startsWith("test_"))).toBe(false);
+  });
+
   it("produces git-root-relative ids even when indexing a subdir", async () => {
     await repo.write("packages/foo/src/inside.ts", "export const a = 1;\n");
     await repo.write("outside.ts", "export const b = 2;\n");
