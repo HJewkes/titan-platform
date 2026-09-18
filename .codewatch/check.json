@@ -29,7 +29,8 @@
           "packages/code-graph",
           "packages/workflow",
           "packages/memory",
-          "packages/style-profile"
+          "packages/style-profile",
+          "packages/style-analyzer"
         ],
         "ui": [],
         "product": [
@@ -62,7 +63,8 @@
           "packages/code-graph",
           "packages/workflow",
           "packages/memory",
-          "packages/style-profile"
+          "packages/style-profile",
+          "packages/style-analyzer"
         ],
         [
           "products/session-miner",
