@@ -42,8 +42,8 @@ package by tier, and CI fails any pull request that adds an import against the o
 pnpm install && pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check
 ```
 
-All six must be green before you finish a change. `dag:check` needs codewatch built at
-`~/projects/codewatch/packages/cli/dist/index.js`, or set `CODEWATCH_CLI`.
+All six must be green before you finish a change. `dag:check` runs the self-hosted check
+against this repo's own `@titan-design/code-graph`, built by `pnpm build`.
 
 Adding a package, running the DAG check against a base ref, the changeset requirement, the
 release flow, and the docs-site scripts are all documented in

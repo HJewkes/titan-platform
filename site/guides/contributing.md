@@ -50,16 +50,17 @@ the required check red before merge. See [the reference index](#the-reference-in
 
 ## Checking the DAG locally
 
-A package may import only packages in its own tier or a lower one. codewatch enforces it
-and is not on npm yet, so the check runs against a built checkout:
+A package may import only packages in its own tier or a lower one. `pnpm dag:check`
+enforces it, self-hosted against this repo's own `@titan-design/code-graph`:
 
 ```sh
-CODEWATCH_CLI=~/projects/codewatch/packages/cli/dist/index.js pnpm dag:check
+pnpm build && pnpm dag:check
 ```
 
-That path is the default, so a plain `pnpm dag:check` works on a machine with codewatch
-built next to this repo. Set `BASE_REF=origin/main` to report only violations that are new
-relative to main, which is what CI does.
+`pnpm build` has to run first; `dag:check` imports the package's built output. Set
+`BASE_REF=origin/main` to report only violations that are new relative to main, which is
+what CI does. `scripts/dag-check.sh` remains for one release as a fallback that needs
+`CODEWATCH_CLI` pointed at a built codewatch checkout.
 
 ## Conventions
 

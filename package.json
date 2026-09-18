@@ -19,7 +19,7 @@
     "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "dag:check": "scripts/dag-check.sh",
+    "dag:check": "node scripts/dag-check-self.mjs",
     "new:package": "node scripts/new-package.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "docs:dev": "pnpm docs:reference && vitepress dev site",

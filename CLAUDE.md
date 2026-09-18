@@ -48,9 +48,10 @@ back, and now a 14 percent subset of the original by lines.
 pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
 ```
 
-All six must be green. `dag:check` needs codewatch built at
-`~/projects/codewatch/packages/cli/dist/index.js` (or set `CODEWATCH_CLI`). Zero lint
-warnings in files you touched.
+All six must be green. `dag:check` is self-hosted: it runs against this repo's own
+`@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
+release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
+Zero lint warnings in files you touched.
 
 ## Rules that CI enforces
 
