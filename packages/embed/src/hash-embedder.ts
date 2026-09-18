@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Embedder } from "./types.js";
+import type { EmbedOptions, Embedder } from "./types.js";
 import { normalize } from "./vector.js";
 
 export interface HashEmbedderOptions {
@@ -23,7 +23,8 @@ export class HashEmbedder implements Embedder {
     this.model = `hash-v1-${dimensions}`;
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  /** Lexical, so a role changes nothing: documents and queries share one space with no prefixes. */
+  async embed(texts: string[], _options?: EmbedOptions): Promise<number[][]> {
     return texts.map((text) => this.embedOne(text));
   }
 

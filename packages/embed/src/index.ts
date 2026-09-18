@@ -1,4 +1,6 @@
-export type { Embedder } from "./types.js";
+export type { EmbedOptions, EmbedRole, Embedder } from "./types.js";
+export type { RolePrefixes } from "./prefixes.js";
+export { NOMIC_PREFIXES, NO_PREFIXES, defaultPrefixesFor, vectorSpaceId } from "./prefixes.js";
 export type { HashEmbedderOptions } from "./hash-embedder.js";
 export { HashEmbedder } from "./hash-embedder.js";
 export type { OllamaEmbedderOptions } from "./ollama-embedder.js";
