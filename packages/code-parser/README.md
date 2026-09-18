@@ -30,12 +30,17 @@ const functionSources: Extractor<string> = {
 
 - `parseFile(content, filePath, language)` returns a `ParsedFile` (`tree`, `content`,
   `filePath`, `language`). `language` is one of `getSupportedLanguages()`: `typescript`,
-  `tsx`, `python`. Anything else rejects with `Unsupported language: <name>`.
+  `tsx`, `python`. Anything else rejects with `Unsupported language: <name>`. A `.tsx` path
+  passed as `typescript` parses with the `tsx` grammar, so the filter's answer can be passed
+  straight through; `ParsedFile.language` stays the name you passed.
 - `shouldIncludeFile(path, languages)` accepts a path whose extension belongs to one of the
   languages and that sits under no excluded directory (`node_modules`, `dist`, `.git`,
   `.claude`, and others) and matches no excluded pattern (`.d.ts`, `.min.js`, lock files).
 - `isExcludedDir(name)` prunes the same directories during a recursive walk.
-- `getLanguageFromPath(path)` maps an extension to a filter language, or `null`.
+- `getLanguageFromPath(path)` maps an extension to a filter language, or `null`. The filter
+  knows `typescript` (`.ts`, `.tsx`) and `python` (`.py`). `.js` and `.jsx` map to `null` and
+  never pass `shouldIncludeFile`, so a walk skips them instead of handing `parseFile` a file
+  it cannot parse.
 - `Extractor<T>` is `{ name, extract(file: ParsedFile): T[] }`.
 
 ## Dependencies
@@ -49,10 +54,8 @@ unapproved.
 
 ## Gotchas
 
-- The filter knows `javascript` (`.js`, `.jsx`) but the parser has no JavaScript grammar. A
-  `.js` file passes `shouldIncludeFile(path, ["javascript"])`, `getLanguageFromPath` says
-  `javascript`, and `parseFile` then rejects it. `javascript-gap.test.ts` pins this until a
-  grammar is added.
-- The filter's language names and the parser's differ: `.tsx` files map to `typescript` in
-  the filter but parse cleanly only with `tsx`.
+- There is no JavaScript support. Before 0.1.0 the filter accepted `.js` and `.jsx` as
+  `javascript` and `parseFile` then rejected them; now the filter drops them.
+- The tsx grammar still reports an error for a bare `&` or a numeric entity (`&#128196;`)
+  in JSX text. Six of 542 `.tsx` files in titan-design's `packages/ui/src` hit this.
 - WASM initialisation and each grammar load happen once per process, on first use.

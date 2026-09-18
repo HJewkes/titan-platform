@@ -24,7 +24,6 @@ const EXCLUDED_PATTERNS = [
 
 const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
   typescript: [".ts", ".tsx"],
-  javascript: [".js", ".jsx"],
   python: [".py"],
 };
 
