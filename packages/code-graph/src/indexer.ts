@@ -24,6 +24,7 @@ import {
 } from "./incremental.js";
 import { computeDeltaAffected } from "./reuse-delta.js";
 import { buildIndexerMetrics } from "./index-metrics.js";
+import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
 import type { GraphMetric, IdAlias } from "./types.js";
 
@@ -52,6 +53,14 @@ export interface IndexOptions {
    * reason to disable it is to rebuild from scratch.
    */
   incremental?: boolean;
+  /** Git churn, recency, and ownership metrics. Defaults to `true`; history is skipped silently outside git. */
+  computeChurn?: boolean;
+  /** Primary churn window in days (default 30); scopes ownership. */
+  churnWindowDays?: number;
+  /** Windows to store churn for (default 30, 90, 180); the primary window is always included. */
+  churnWindows?: number[];
+  /** Also store an all-time `lifetime` churn and ownership window over full git history. */
+  lifetime?: boolean;
 }
 
 export interface IndexResult {
@@ -149,6 +158,14 @@ async function parseAll(
   return parsed;
 }
 
+function historyOptions(options: IndexOptions): HistoryMetricsOptions {
+  return {
+    churnWindowDays: options.churnWindowDays,
+    churnWindows: options.churnWindows,
+    includeLifetime: options.lifetime === true,
+  };
+}
+
 /**
  * Index one or more roots into a new snapshot: walk, read, parse what changed,
  * extract, annotate roles, compute metrics, and persist. Files unchanged since
@@ -193,6 +210,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
             ? reusedFileIds.flatMap((id) => reuse.sourceMetricsByFile.get(id) ?? [])
             : [],
           idRoot,
+          history: options.computeChurn === false ? undefined : historyOptions(options),
         });
 
   const rootDir = rootDirs[0]!;
