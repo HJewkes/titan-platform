@@ -9,8 +9,8 @@ describe the features that numbers alone cannot capture.
 
 Tier 2 of the titan-platform DAG (TP-134). Depends on `@titan-design/code-parser` (tier 0)
 and `@titan-design/style-profile` (tier 2). `zod` v4 is a peer because style-profile
-needs it at runtime. Ported unchanged from codewatch's
-`@codewatch/analyzer`.
+needs it at runtime. Ported from codewatch's `@codewatch/analyzer`, with two bug fixes
+since: stability keys and Python constants (see Gotchas).
 
 ```sh
 npm install @titan-design/style-analyzer web-tree-sitter@^0.26.6 zod
@@ -116,9 +116,14 @@ at the original's versions.
 - `extractFromConfig` swallows every error, including a missing file or malformed JSON,
   and returns `[]`.
 - Review-voice observations use `file: "_reviews"` and `line: 0`.
-- `STABILITY_MAP` uses spellings the extractors do not emit. Examples are
-  `naming.variables` against the emitted `naming.variable`, and `controlFlow.*` against
-  `control-flow.*`. Those types fall back to `medium`. This is the original's behaviour.
+- `STABILITY_MAP` keys are the exact emitted types, and `stability.test.ts` fails in both
+  directions when they drift. `UNRATED_TYPES` lists the three emitted types the taxonomy
+  never rated (`control-flow.if-else`, `.promise-then`, `.else-after-return`); they take
+  `medium` on purpose. The original codewatch map used taxonomy spellings that matched
+  none of 30 emitted types, so those types all fell back to `medium` (TP-172).
+- A Python assignment counts as `naming.constant` only at module top level, including
+  annotated and chained forms (TP-173). Class-level and function-local caps names, and
+  single-word caps names such as `DEBUG`, report as `naming.variable`.
 
 The worked example and the full observation list are in the site reference page,
 `site/reference/style-analyzer.md`.
