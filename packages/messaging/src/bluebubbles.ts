@@ -81,6 +81,7 @@ export class BlueBubblesTransport implements MessageTransport {
     this.doFetch = config.fetch ?? globalThis.fetch;
   }
 
+  /** `buttons` is ignored: iMessage has no inline keyboards, so only the text goes. */
   async send({ handle, text }: SendInput): Promise<SendResult> {
     const chatGuid = await this.resolveChatGuid(handle);
     if (chatGuid.kind !== "ok") return sendFailed(chatGuid.error);
