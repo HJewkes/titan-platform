@@ -1,5 +1,19 @@
 # @titan-design/session-graph
 
+## 0.5.0
+
+### Minor Changes
+
+- e204012: `openSessionGraph` accepts an optional `schemaVersion`: the highest migration version the
+  caller owns, checked before any migration runs. A product layering its own tables on the
+  graph passes its own top version, since this package's migrations are one band of a shared
+  database rather than the top of it.
+
+### Patch Changes
+
+- Updated dependencies [e204012]
+  - @titan-design/store-sqlite@0.3.0
+
 ## 0.4.1
 
 ### Patch Changes

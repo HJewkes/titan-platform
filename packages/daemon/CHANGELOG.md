@@ -1,5 +1,13 @@
 # @titan-design/daemon
 
+## 0.1.4
+
+### Patch Changes
+
+- 18e3cf0: Guard every daemon route with a Host allowlist, an Origin allowlist, and a JSON-only body
+  gate. A `text/plain` POST from a cross-origin page, or a request whose `Host` names a
+  rebinding attacker, previously reached the registry and ran the command.
+
 ## 0.1.3
 
 ### Patch Changes
