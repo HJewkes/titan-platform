@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Index the workspace with codewatch and enforce .codewatch/check.json (the package DAG).
-# codewatch is not on npm, so point CODEWATCH_CLI at a built checkout's cli entry.
+# `pnpm dag:check` now runs scripts/dag-check-self.mjs, the self-hosted check against
+# this repo's own @titan-design/code-graph. This script stays as a fallback for one
+# release: point CODEWATCH_CLI at a built codewatch checkout's cli entry to run it.
 # Set BASE_REF (e.g. origin/main) to suppress violations that already exist there.
 set -euo pipefail
 
