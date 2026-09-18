@@ -214,6 +214,44 @@ re-resolves back to full extraction even when they are byte-identical. Degree me
 always recomputed over the whole assembled graph, so a heavily-reused run and an
 `incremental: false` run produce the same snapshot — `indexer.test.ts` asserts that.
 
+## Git history
+
+Ported in TP-126, strictly as codewatch had it: churn over rolling windows, first-seen dates,
+ownership and bus factor, and change coupling. The engine lives in `src/history/` and is
+published on its own subpath. Its API is path-based: repo-relative posix paths in, plain
+records out, no node ids or snapshots.
+
+```ts
+import { computeChangeCoupling, couplingFor, loadChurnEntries } from "@titan-design/code-graph/history";
+
+const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git
+const { pairs, skippedLargeCommits } = computeChangeCoupling(entries);
+couplingFor(pairs, "packages/code-graph/src/indexer.ts"); // partners by co-edit count
+```
+
+`indexPaths` writes history metrics on file nodes by default, through the
+`history-metrics.ts` adapter, with codewatch's names: `churn_{w}`, `churn_{w}_commits`,
+`churn_{w}_authors` and `recency_{w}` for each window, `file_age_days`, and `bus_factor_{w}`
+plus `top_author_share_{w}` for the primary window. Windows default to 30, 90 and 180 days
+plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the defaults and
+`lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
+turns all of it off. Outside git, or without a git binary, the index simply has no history
+metrics.
+
+Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
+codewatch's `graph coupled` command did.
+
+**The seam.** Nothing under `src/history/` imports the rest of code-graph; the rest may import
+it. The `code-graph-history-seam` rule in `.codewatch/check.json` fails `pnpm dag:check` on
+any such import. That keeps a later extraction into `@titan-design/git-history` a directory
+move plus an import-path change.
+
+**Behaviour kept from codewatch, gaps included.** A rename is followed only inside the commit
+that made it, so a file's churn before the rename stays on its old path and is dropped.
+First-seen dates come from a separate `--no-renames` pass, which makes a renamed file look
+younger. `--since` resolves against git's clock while window slicing uses `nowEpoch`. History
+metrics are recomputed on every index and never carried forward under reuse.
+
 ## Gotchas
 
 **Workspace imports need the target package built.** An import of a workspace package by its
@@ -240,14 +278,11 @@ tree-sitter declaration walk that feeds complexity.
 
 ## What was deliberately left in codewatch
 
-All of it follow-up work *on* this package rather than changes *to* it: git-history mining
-(churn, ownership, change coupling, test linking), and the remaining graph analyses over a
-finished snapshot (communities, partition quality). The rules engine, the snapshot diff,
-symbol embeddings, dead code, growth risk, PageRank, relevance, and symbol coupling started
-here too and have since been ported.
-
-`buildIndexerMetrics` used to fold history into the same pass; here it computes only what a
-file's own bytes and the assembled graph determine.
+All of it follow-up work *on* this package rather than changes *to* it: test linking, and the
+remaining graph analyses over a finished snapshot (communities, partition quality). The rules
+engine, the snapshot diff, git history (churn, ownership, change coupling), symbol embeddings,
+dead code, growth risk, PageRank, relevance, and symbol coupling started here too and have
+since been ported.
 
 ## Where it came from
 

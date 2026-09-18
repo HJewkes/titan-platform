@@ -41,8 +41,8 @@ coupling, now `src/analysis/`. See [Graph analyses](#graph-analyses).
 Deferred, all of it still in codewatch, all of it a follow-up on this package rather than a
 change to it:
 
-- Git-history mining: churn, ownership, change coupling, test coverage linking. `buildIndexerMetrics` used to fold these into the same pass; here it computes only
-  what a file's own bytes and the assembled graph determine.
+- Git-history consumers: test coverage linking. Churn, ownership and change coupling have
+  since been ported (TP-126, see [Git history](#git-history)).
 - Graph analyses over a finished snapshot: communities, partition quality, conventions,
   coverage overlay, patterns, prune, test-linker, reuse-delta reporting.
 
@@ -214,3 +214,41 @@ snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ fil
 
 The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 `computeSymbolCoupling` take node and edge arrays instead of a store.
+
+## Git history
+
+Ported in TP-126, strictly as codewatch had it: churn over rolling windows, first-seen dates,
+ownership and bus factor, and change coupling. The engine lives in `src/history/` and is
+published on its own subpath. Its API is path-based: repo-relative posix paths in, plain
+records out, no node ids or snapshots.
+
+```ts
+import { computeChangeCoupling, couplingFor, loadChurnEntries } from "@titan-design/code-graph/history";
+
+const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git
+const { pairs, skippedLargeCommits } = computeChangeCoupling(entries);
+couplingFor(pairs, "packages/code-graph/src/indexer.ts"); // partners by co-edit count
+```
+
+`indexPaths` writes history metrics on file nodes by default, through the
+`history-metrics.ts` adapter, with codewatch's names: `churn_{w}`, `churn_{w}_commits`,
+`churn_{w}_authors` and `recency_{w}` for each window, `file_age_days`, and `bus_factor_{w}`
+plus `top_author_share_{w}` for the primary window. Windows default to 30, 90 and 180 days
+plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the defaults and
+`lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
+turns all of it off. Outside git, or without a git binary, the index simply has no history
+metrics.
+
+Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
+codewatch's `graph coupled` command did.
+
+**The seam.** Nothing under `src/history/` imports the rest of code-graph; the rest may import
+it. The `code-graph-history-seam` rule in `.codewatch/check.json` fails `pnpm dag:check` on
+any such import. That keeps a later extraction into `@titan-design/git-history` a directory
+move plus an import-path change.
+
+**Behaviour kept from codewatch, gaps included.** A rename is followed only inside the commit
+that made it, so a file's churn before the rename stays on its old path and is dropped.
+First-seen dates come from a separate `--no-renames` pass, which makes a renamed file look
+younger. `--since` resolves against git's clock while window slicing uses `nowEpoch`. History
+metrics are recomputed on every index and never carried forward under reuse.

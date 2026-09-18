@@ -4,6 +4,7 @@ import { computeSourceMetrics } from "./source-metrics.js";
 import { computeDeadCodeMetrics } from "./analysis/dead-code.js";
 import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
+import { buildHistoryMetrics, type HistoryMetricsOptions } from "./history-metrics.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "./types.js";
 
 export interface IndexerMetricsInput {
@@ -14,6 +15,8 @@ export interface IndexerMetricsInput {
   /** Source metrics carried forward verbatim for reused (unchanged) files. */
   reusedSourceMetrics: GraphMetric[];
   idRoot: string;
+  /** Git-history metrics (churn, recency, ownership); omitted means none. */
+  history?: HistoryMetricsOptions;
 }
 
 /**
@@ -40,9 +43,8 @@ function symbolNamesByFile(nodes: Iterable<GraphNode>): Map<string, Set<string>>
  * reused source metrics is recomputed over the full set, so the result matches a
  * full index regardless of how much was reused.
  *
- * Git-history metrics (churn, ownership, change coupling, test coverage) are
- * deliberately absent here; they are a separate analysis layer, deferred with
- * the rest of codewatch's analyses.
+ * Git-history metrics come from the path-based engine in `./history/` through
+ * the `history-metrics.ts` adapter; test-coverage metrics are not ported yet.
  */
 export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
   const nodeList = [...input.nodes.values()];
@@ -56,5 +58,6 @@ export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
     ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...input.reusedSourceMetrics,
+    ...(input.history ? buildHistoryMetrics(nodeList, input.idRoot, input.history) : []),
   ];
 }

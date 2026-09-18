@@ -12,7 +12,7 @@ const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 
 async function indexTree(graph, store, dir, ref) {
   const paths = [path.join(dir, "packages"), path.join(dir, "products")];
-  const r = await graph.indexPaths(store, { paths, ref });
+  const r = await graph.indexPaths(store, { paths, ref, computeChurn: false });
   console.error(`indexed ${ref}: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges -> snapshot ${r.snapshotId}`);
 }
 
