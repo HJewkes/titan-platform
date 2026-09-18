@@ -283,6 +283,11 @@ as codewatch's `graph coverage` command does.
 
 ## Gotchas
 
+**A database from a newer build is refused.** `openCodeGraph` throws `SchemaTooNewError`
+when the stored migration version exceeds `SCHEMA_VERSION`. A code graph database belongs to
+one build, so a higher version means a newer one already moved the schema and this build
+would query columns that are gone.
+
 **Workspace imports need the target package built.** An import of a workspace package by its
 published name resolves to that package's *source* file, not to an `npm:` external, by
 remapping the `dist/*.d.ts` entry ts-morph resolves back onto `src/`. That remap needs the

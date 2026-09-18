@@ -94,6 +94,11 @@ mean anything.
 works. The engine needs `textFor(result)` to know what text to show the reranker, because
 results are ids plus locators and never stored text.
 
+The rerank stage fails open like the retrievers do. A reranker (or a `textFor`) that
+throws leaves the RRF-fused ranking in place and adds
+`{ retriever: RERANK_STAGE, reason: 'error', message }` to the same `degraded` array, so a
+cross-encoder that runs out of memory costs the reordering and not the answer.
+
 ## Gotchas
 
 **A graph-only hit has no locator.** It was reached by expansion, not by matching text. Do

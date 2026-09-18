@@ -9,8 +9,17 @@ export interface SessionGraph {
   spans: SpanFtsTables;
 }
 
-export function openSessionGraph(dbPath: string): SessionGraph {
-  const db = openDatabase(dbPath);
+export interface OpenSessionGraphOptions {
+  /**
+   * The highest migration version the caller owns, checked before any migration runs.
+   * A product layering its own tables on this graph passes its own top version, not this
+   * package's: `MIGRATIONS` here is one band of a shared database, never the top of it.
+   */
+  schemaVersion?: number;
+}
+
+export function openSessionGraph(dbPath: string, options: OpenSessionGraphOptions = {}): SessionGraph {
+  const db = openDatabase(dbPath, { schemaVersion: options.schemaVersion });
   runMigrations(db, MIGRATIONS);
   return {
     db,

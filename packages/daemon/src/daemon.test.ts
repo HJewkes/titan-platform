@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,6 +47,7 @@ describe("startDaemon", () => {
 
     const rpc = await fetch(`http://127.0.0.1:${handle.port}/rpc/greet`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "socket" }),
     });
     expect(await rpc.json()).toMatchObject({ ok: true, data: { greeting: "hello socket" } });
@@ -121,6 +123,59 @@ describe("startDaemon", () => {
     handle = null;
   });
 });
+
+describe("request guards over a real socket", () => {
+  it("refuses the cross-origin probe: text/plain body with a foreign Host and Origin", async () => {
+    handle = await startDaemon(options());
+
+    const headers = { "content-type": "text/plain", host: "evil.example", origin: "http://evil.example" };
+    const res = await post(handle.port, "/rpc/greet", headers, '{"name":"probe"}');
+
+    expect(res.status).toBe(403);
+    expect(JSON.parse(res.body)).toMatchObject({ ok: false, code: 64 });
+  });
+
+  it("refuses a rebinding Host that carries a well-formed JSON body", async () => {
+    handle = await startDaemon(options());
+
+    const res = await post(handle.port, "/rpc/greet", { "content-type": "application/json", host: "evil.example" }, '{"name":"probe"}');
+
+    expect(res.status).toBe(403);
+  });
+
+  it("still serves a JSON POST from loopback with no Origin", async () => {
+    handle = await startDaemon(options());
+
+    const res = await post(handle.port, "/rpc/greet", { "content-type": "application/json" }, '{"name":"socket"}');
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, data: { greeting: "hello socket" } });
+  });
+
+  it("guards the mcp transport the same way", async () => {
+    handle = await startDaemon(options({ toolPrefix: "test__" }));
+    const listTools = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}';
+
+    const rebound = await post(handle.port, "/mcp", { "content-type": "application/json", host: "evil.example" }, listTools);
+    const plain = await post(handle.port, "/mcp", { "content-type": "text/plain", accept: "application/json, text/event-stream" }, listTools);
+
+    expect(rebound.status).toBe(403);
+    expect(plain.status).toBe(415);
+    expect(JSON.parse(plain.body)).toMatchObject({ ok: false, error: "Content-Type must be application/json" });
+  });
+});
+
+function post(port: number, route: string, headers: Record<string, string>, body: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, path: route, method: "POST", headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   const expiry = new Promise<never>((_resolve, reject) => {

@@ -12,4 +12,4 @@ export { expandGraph, graphRetriever } from "./retrievers/graph.js";
 export type { Candidate, CrossEncoderOptions, Reranked, Reranker } from "./rerank.js";
 export { crossEncoderReranker, rerankCandidates } from "./rerank.js";
 export type { EngineOptions, RetrievalEngine, SearchOptions, SearchResponse } from "./engine.js";
-export { createRetrievalEngine } from "./engine.js";
+export { RERANK_STAGE, createRetrievalEngine } from "./engine.js";

@@ -17,6 +17,12 @@ const summary = await refreshCorpus(graph, await discoverTranscripts());
 // summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing
 ```
 
+`openSessionGraph` takes an optional `schemaVersion`: the highest migration version the
+*caller* owns, checked before any migration runs. A product layering its own tables on this
+graph passes its own top version, since this package's `MIGRATIONS` are one band of a shared
+database rather than the top of it. `products/session-miner` numbers its own from 1000 and
+passes 1002.
+
 ## What a refresh does
 
 1. For every transcript, `indexTranscript` asks the watermark table where it stopped,

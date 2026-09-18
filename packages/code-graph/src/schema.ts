@@ -72,3 +72,6 @@ export const MIGRATIONS: Migration[] = [
   { version: 2, name: "code graph columns", up: (db) => db.exec(KIT_EXTENSIONS) },
   { version: 3, name: "code graph tables", up: (db) => db.exec(DOMAIN_DDL) },
 ];
+
+/** The top of this package's schema. A code graph database is never shared, so this is the top of one. */
+export const SCHEMA_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

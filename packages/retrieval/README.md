@@ -53,3 +53,8 @@ locked index lowers recall; it never breaks search.
 `@huggingface/transformers`, an optional peer dependency loaded on first use. Any object
 with `score(query, texts)` works. The engine needs `textFor(result)` to know what text to
 show the reranker, since results are ids plus locators, never stored text.
+A reranker that throws is the same kind of failure: the engine keeps the RRF-fused
+ranking and reports `{ retriever: RERANK_STAGE, reason: "error", message }` in the same
+`degraded` array, so a cross-encoder that runs out of memory costs the reordering and not
+the answer. `textFor` throwing degrades the same way.
+

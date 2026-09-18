@@ -1,8 +1,8 @@
 import { HashEmbedder } from "@titan-design/embed";
 import { EdgeTable, SpanFtsTables, edgeTableDdl, openDatabase, spanFtsTablesDdl } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
-import { createRetrievalEngine } from "./engine.js";
-import { crossEncoderReranker } from "./rerank.js";
+import { RERANK_STAGE, createRetrievalEngine } from "./engine.js";
+import { crossEncoderReranker, type Reranker } from "./rerank.js";
 import { defaultMatchExpression, ftsRetriever } from "./retrievers/fts.js";
 import { expandGraph, graphRetriever } from "./retrievers/graph.js";
 import { BruteForceVectorIndex, vectorRetriever } from "./retrievers/vector.js";
@@ -141,6 +141,56 @@ describe("createRetrievalEngine", () => {
     expect(plain.results.map((r) => r.id).sort()).toEqual(["note:flaky", "note:vitest"]);
     expect(plain.results[0]!.score).toBeLessThan(0.5);
     expect(classifier).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the fused ranking when the reranker throws, and says so in degraded", async () => {
+    const { spans } = await corpus();
+    const engine = (reranker: Reranker) =>
+      createRetrievalEngine({ retrievers: [ftsRetriever(spans)], reranker, textFor: (r) => docs[r.id]! });
+    const working = crossEncoderReranker({
+      loadClassifier: async () => async (pairs) => pairs.map(([, text]) => ({ label: "x", score: text.includes("flaky") ? 0.9 : 0.1 })),
+    });
+    const fused = await engine(working).search("vitest failing", { rerank: false });
+
+    const broken: Reranker = { model: "broken", score: () => Promise.reject(new Error("cross-encoder OOM")) };
+    const { results, degraded } = await engine(broken).search("vitest failing");
+
+    expect(results.map((r) => r.id)).toEqual(fused.results.map((r) => r.id));
+    expect(results.map((r) => r.score)).toEqual(fused.results.map((r) => r.score));
+    expect(degraded).toEqual([{ retriever: RERANK_STAGE, reason: "error", message: "cross-encoder OOM" }]);
+  });
+
+  it("keeps a retriever's degradation alongside the rerank one", async () => {
+    const { spans, index } = await corpus();
+    const down = { model: "dead", dimensions: 1, embed: async () => Promise.reject(new Error("ECONNREFUSED")) };
+    const broken: Reranker = { model: "broken", score: () => Promise.reject(new Error("no model")) };
+    const engine = createRetrievalEngine({
+      retrievers: [ftsRetriever(spans), vectorRetriever(down, index)],
+      reranker: broken,
+      textFor: (r) => docs[r.id]!,
+    });
+
+    const { results, degraded } = await engine.search("vitest failing");
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(degraded.map((d) => d.retriever)).toEqual(["vector", RERANK_STAGE]);
+  });
+
+  it("degrades when textFor throws, not only the reranker itself", async () => {
+    const { spans } = await corpus();
+    const reranker: Reranker = { model: "never-called", score: () => Promise.resolve([1, 0]) };
+    const engine = createRetrievalEngine({
+      retrievers: [ftsRetriever(spans)],
+      reranker,
+      textFor: () => {
+        throw new Error("span body unreadable");
+      },
+    });
+
+    const { results, degraded } = await engine.search("vitest failing");
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(degraded).toEqual([{ retriever: RERANK_STAGE, reason: "error", message: "span body unreadable" }]);
   });
 
   it("returns nothing for a blank query and requires textFor with a reranker", async () => {
