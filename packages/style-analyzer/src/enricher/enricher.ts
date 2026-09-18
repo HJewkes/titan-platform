@@ -1,5 +1,5 @@
 import type { AggregatedFeature } from "../aggregator/aggregator.js";
-import { LlmRunner, type LlmJob } from "./llm-runner.js";
+import { LlmRunner, type LlmJob, type LlmRunResult } from "./llm-runner.js";
 import type { LlmMessage, LlmProvider } from "./llm.js";
 import {
   getPromptForFeature,
@@ -62,6 +62,13 @@ export class Enricher {
       };
     }
 
+    const runResult = await this.runner.run(this.buildJobs(features));
+    return toEnrichmentResult(runResult);
+  }
+
+  private buildJobs(
+    features: Map<string, AggregatedFeature>,
+  ): LlmJob<string>[] {
     const jobs: LlmJob<string>[] = [];
     for (const [type, feature] of features) {
       if (!needsAiEnrichment(type)) continue;
@@ -79,28 +86,7 @@ export class Enricher {
 
       jobs.push({ key: type, messages, maxTokens: promptTemplate.maxTokens });
     }
-
-    const runResult = await this.runner.run(jobs);
-
-    const enriched = new Map<string, EnrichmentEntry>();
-    for (const r of runResult.results) {
-      enriched.set(r.key, {
-        featureType: r.key,
-        description: r.content,
-        tokensUsed: r.tokensUsed,
-      });
-    }
-
-    return {
-      enriched,
-      errors: runResult.errors.map((e) => ({
-        featureType: e.key,
-        error: e.error,
-      })),
-      totalTokensUsed: runResult.totalTokensUsed,
-      budgetExceeded: runResult.budgetExceeded,
-      skipped: false,
-    };
+    return jobs;
   }
 
   private buildPromptInput(
@@ -127,4 +113,26 @@ export class Enricher {
       distribution: distributionRecord,
     };
   }
+}
+
+function toEnrichmentResult(runResult: LlmRunResult<string>): EnrichmentResult {
+  const enriched = new Map<string, EnrichmentEntry>();
+  for (const r of runResult.results) {
+    enriched.set(r.key, {
+      featureType: r.key,
+      description: r.content,
+      tokensUsed: r.tokensUsed,
+    });
+  }
+
+  return {
+    enriched,
+    errors: runResult.errors.map((e) => ({
+      featureType: e.key,
+      error: e.error,
+    })),
+    totalTokensUsed: runResult.totalTokensUsed,
+    budgetExceeded: runResult.budgetExceeded,
+    skipped: false,
+  };
 }

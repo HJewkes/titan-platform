@@ -76,44 +76,16 @@ export class Aggregator {
     const reviewQueue: AggregatedFeature[] = [];
 
     for (const [type, typeObservations] of grouped) {
-      const distribution = computeDistribution(typeObservations);
-      const category = this.extractCategory(type);
-      const stability = lookupStability(type);
-      const confidence = computeConfidence(
-        distribution.consistency,
-        stability,
-        this.stabilityWeights,
-      );
-      const severity = mapSeverity(confidence, this.severityThresholds);
-      const needsReview = confidence < this.reviewThreshold;
-      const examples = selectExamples(typeObservations, this.maxExamples);
-
-      const feature: AggregatedFeature = {
-        type,
-        category,
-        convention: distribution.dominant,
-        distribution,
-        confidence,
-        stability,
-        severity,
-        needsReview,
-        examples,
-      };
+      const feature = this.buildFeature(type, typeObservations);
 
       features.set(type, feature);
 
-      if (needsReview) {
+      if (feature.needsReview) {
         reviewQueue.push(feature);
       }
     }
 
     reviewQueue.sort((a, b) => a.confidence - b.confidence);
-
-    const confidences = Array.from(features.values()).map((f) => f.confidence);
-    const avgConfidence =
-      confidences.length > 0
-        ? confidences.reduce((a, b) => a + b, 0) / confidences.length
-        : 0;
 
     return {
       features,
@@ -121,9 +93,34 @@ export class Aggregator {
       summary: {
         totalObservations: observations.length,
         totalFeatures: features.size,
-        avgConfidence,
+        avgConfidence: averageConfidence(features),
         featuresNeedingReview: reviewQueue.length,
       },
+    };
+  }
+
+  private buildFeature(
+    type: string,
+    typeObservations: Observation[],
+  ): AggregatedFeature {
+    const distribution = computeDistribution(typeObservations);
+    const stability = lookupStability(type);
+    const confidence = computeConfidence(
+      distribution.consistency,
+      stability,
+      this.stabilityWeights,
+    );
+
+    return {
+      type,
+      category: this.extractCategory(type),
+      convention: distribution.dominant,
+      distribution,
+      confidence,
+      stability,
+      severity: mapSeverity(confidence, this.severityThresholds),
+      needsReview: confidence < this.reviewThreshold,
+      examples: selectExamples(typeObservations, this.maxExamples),
     };
   }
 
@@ -131,4 +128,11 @@ export class Aggregator {
     const dotIndex = type.indexOf(".");
     return (dotIndex > 0 ? type.substring(0, dotIndex) : type) as ObservationCategory;
   }
+}
+
+function averageConfidence(features: Map<string, AggregatedFeature>): number {
+  const confidences = Array.from(features.values()).map((f) => f.confidence);
+  return confidences.length > 0
+    ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+    : 0;
 }

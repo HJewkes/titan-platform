@@ -56,24 +56,34 @@ export class LlmRunner {
         break;
       }
 
-      try {
-        const response = await this.provider.generate(job.messages, {
-          maxTokens: job.maxTokens,
-        });
-        results.push({
-          key: job.key,
-          content: response.content,
-          tokensUsed: response.tokensUsed,
-        });
-        totalTokensUsed += response.tokensUsed;
-      } catch (error) {
-        errors.push({
-          key: job.key,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      totalTokensUsed += await this.runJob(job, results, errors);
     }
 
     return { results, errors, totalTokensUsed, budgetExceeded };
+  }
+
+  // Returns the tokens the job consumed, which is zero when the provider throws.
+  private async runJob<TKey>(
+    job: LlmJob<TKey>,
+    results: LlmJobSuccess<TKey>[],
+    errors: LlmJobFailure<TKey>[],
+  ): Promise<number> {
+    try {
+      const response = await this.provider.generate(job.messages, {
+        maxTokens: job.maxTokens,
+      });
+      results.push({
+        key: job.key,
+        content: response.content,
+        tokensUsed: response.tokensUsed,
+      });
+      return response.tokensUsed;
+    } catch (error) {
+      errors.push({
+        key: job.key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
   }
 }
