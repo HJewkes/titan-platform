@@ -70,8 +70,11 @@ Three ship, and your own object satisfying that shape is a first-class citizen.
   their owner's best rank, and the winning span's locator travels in the payload. Query text
   is tokenised and quoted, so punctuation cannot break FTS5 syntax:
   `defaultMatchExpression("fix: the (broken) build!")` is `"fix" OR "the" OR "broken" OR "build"`.
-- **`vectorRetriever(embedder, index)`** — embeds the query (with `search_query: ` for nomic
-  models) and asks a `VectorIndex`. `BruteForceVectorIndex` is an exact in-memory cosine
+- **`vectorRetriever(embedder, index)`** — embeds the query with `embed([query], { role:
+  "query" })` and asks a `VectorIndex`. It never adds text to the query: the embedder owns
+  prefixes such as nomic's `search_query: ` (see [`embed`](/reference/embed)). Before 0.3 the
+  retriever prepended `search_query: ` itself, so a default nomic query reached the model as
+  `search_document: search_query: …`. `BruteForceVectorIndex` is an exact in-memory cosine
   scan; implement the same interface over sqlite-vec when the corpus outgrows it.
 - **`graphRetriever(edges, seededBy)`** — takes another retriever's top results as seeds and
   walks the edge table by hop, optionally restricted to relations or to outbound direction.
