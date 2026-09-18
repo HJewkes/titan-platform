@@ -80,3 +80,17 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+
+export type {
+  EmbedAttempt,
+  EmbedCoverage,
+  EmbeddableSymbol,
+  EmbedSnapshotResult,
+  FindSimilarOptions,
+  SimilarCandidate,
+  SimilarResult,
+} from "./embeddings/types.js";
+export { buildEmbedText, hashEmbedText, listEmbeddableSymbols } from "./embeddings/corpus.js";
+export type { CachedEmbedResult } from "./embeddings/cache.js";
+export { embedTextsCached, SYMBOL_EMBEDDING_NAMESPACE } from "./embeddings/cache.js";
+export { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings/embeddings.js";
