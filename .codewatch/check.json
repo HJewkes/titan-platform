@@ -30,7 +30,8 @@
           "packages/workflow",
           "packages/memory",
           "packages/style-profile",
-          "packages/style-analyzer"
+          "packages/style-analyzer",
+          "packages/style-checker"
         ],
         "ui": [],
         "product": [
@@ -64,7 +65,8 @@
           "packages/workflow",
           "packages/memory",
           "packages/style-profile",
-          "packages/style-analyzer"
+          "packages/style-analyzer",
+          "packages/style-checker"
         ],
         [
           "products/session-miner",

@@ -92,6 +92,10 @@
         "link": "/reference/style-analyzer"
       },
       {
+        "text": "style-checker",
+        "link": "/reference/style-checker"
+      },
+      {
         "text": "style-profile",
         "link": "/reference/style-profile"
       },
