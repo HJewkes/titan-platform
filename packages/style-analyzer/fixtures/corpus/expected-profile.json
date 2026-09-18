@@ -1,0 +1,172 @@
+{
+  "naming.constant": {
+    "convention": "SCREAMING_SNAKE",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "naming.type": {
+    "convention": "PascalCase",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "naming.variable": {
+    "convention": "camelCase",
+    "confidence": 0.83,
+    "severity": "warn"
+  },
+  "naming.function": {
+    "convention": "camelCase",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "naming.parameter": {
+    "convention": "camelCase",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "structure.import-group": {
+    "convention": "internal",
+    "confidence": 0.42,
+    "severity": "info"
+  },
+  "structure.import-order": {
+    "convention": "[\"builtin\",\"external\",\"internal\",\"relative\"]",
+    "confidence": 0.29,
+    "severity": "off"
+  },
+  "structure.export-style": {
+    "convention": "named",
+    "confidence": 1,
+    "severity": "error"
+  },
+  "structure.export-proximity": {
+    "convention": "inline",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "control-flow.if-else": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "control-flow.ternary": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "documentation.jsdoc-presence": {
+    "convention": false,
+    "confidence": 0.47,
+    "severity": "info"
+  },
+  "documentation.private-coverage": {
+    "convention": false,
+    "confidence": 0.75,
+    "severity": "warn"
+  },
+  "documentation.public-coverage": {
+    "convention": true,
+    "confidence": 0.81,
+    "severity": "warn"
+  },
+  "documentation.inline-comment": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "documentation.comment-placement": {
+    "convention": "leading",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "formatting.semicolons": {
+    "convention": false,
+    "confidence": 1,
+    "severity": "error"
+  },
+  "formatting.quoteStyle": {
+    "convention": "single",
+    "confidence": 1,
+    "severity": "error"
+  },
+  "formatting.trailingCommas": {
+    "convention": false,
+    "confidence": 1,
+    "severity": "error"
+  },
+  "formatting.braceStyle": {
+    "convention": "1tbs",
+    "confidence": 1,
+    "severity": "error"
+  },
+  "formatting.indentStyle": {
+    "convention": "space",
+    "confidence": 1,
+    "severity": "error"
+  },
+  "formatting.indentSize": {
+    "convention": 2,
+    "confidence": 1,
+    "severity": "error"
+  },
+  "complexity.fileLength": {
+    "convention": 53,
+    "confidence": 0.09,
+    "severity": "off"
+  },
+  "complexity.functionLength": {
+    "convention": 1,
+    "confidence": 0.42,
+    "severity": "info"
+  },
+  "complexity.nestingDepth": {
+    "convention": 0,
+    "confidence": 0.52,
+    "severity": "info"
+  },
+  "complexity.cyclomatic": {
+    "convention": 1,
+    "confidence": 0.48,
+    "severity": "info"
+  },
+  "control-flow.async-await": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "error-handling.result-type": {
+    "convention": "Result",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "error-handling.try-catch": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "error-handling.catch-specificity": {
+    "convention": "specific",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "control-flow.guard-clause": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "control-flow.for-of": {
+    "convention": true,
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "naming.enum": {
+    "convention": "PascalCase",
+    "confidence": 0.85,
+    "severity": "error"
+  },
+  "control-flow.array-method": {
+    "convention": "map",
+    "confidence": 0.85,
+    "severity": "error"
+  }
+}
