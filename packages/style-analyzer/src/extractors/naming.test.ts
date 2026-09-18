@@ -205,11 +205,57 @@ describe("NamingExtractor", () => {
     });
 
     it("leaves non-constant module-level names classified as before", async () => {
-      const source = 'user_name = "a"\nUserId = int\nDEBUG = True\n__all__ = ["x"]\nA_B, C_D = 1, 2\n';
+      const source = 'user_name = "a"\nUserId = int\n__all__ = ["x"]\nA_B, C_D = 1, 2\n';
       expect(await namesOf(source)).toEqual([
         "1 naming.variable snake_case",
         "2 naming.variable PascalCase",
+      ]);
+    });
+  });
+
+  describe("single-word capitals", () => {
+    async function namesOf(source: string, file: string, language: string): Promise<string[]> {
+      const parsed = await parseFile(source, file, language);
+      return extractor
+        .extract(parsed)
+        .filter((o) => o.type === "naming.constant" || o.type === "naming.variable")
+        .map((o) => `${o.line} ${o.type} ${o.value}`);
+    }
+
+    it("classifies a Python module-level single capitalised word as a constant, but not one letter", async () => {
+      const source = [
+        "DEBUG = True",
+        "HEADERS: Dict[str, str] = {}",
+        'T = TypeVar("T")',
+        'P = ParamSpec("P")',
+        "class Option:",
+        "    TYPES = ()",
+        "",
+      ].join("\n");
+      expect(await namesOf(source, "snippet.py", "python")).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.constant SCREAMING_SNAKE",
         "3 naming.variable PascalCase",
+        "4 naming.variable PascalCase",
+        "6 naming.variable PascalCase",
+      ]);
+    });
+
+    it("classifies a TypeScript const single capitalised word as a constant, but not one letter or a let", async () => {
+      const source = [
+        'export const VERSION = "1.0.0";',
+        "const K = 1;",
+        "let DEBUG = true;",
+        "function limit() {",
+        "  const MAX = 3;",
+        "}",
+        "",
+      ].join("\n");
+      expect(await namesOf(source, "snippet.ts", "typescript")).toEqual([
+        "1 naming.constant SCREAMING_SNAKE",
+        "2 naming.variable PascalCase",
+        "3 naming.variable PascalCase",
+        "5 naming.constant SCREAMING_SNAKE",
       ]);
     });
   });

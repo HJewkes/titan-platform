@@ -20,6 +20,13 @@ function detectConvention(name: string): string | null {
   return null;
 }
 
+// One capitalised word counts too; a single letter does not, because it is almost always a TypeVar or generic.
+const SINGLE_WORD_CONSTANT = /^[A-Z][A-Z0-9]+$/;
+
+function isConstantName(name: string): boolean {
+  return NAMING_PATTERNS.SCREAMING_SNAKE!.test(name) || SINGLE_WORD_CONSTANT.test(name);
+}
+
 function detectBooleanPrefix(name: string, language: string): string | null {
   const pattern = language === "python" ? PYTHON_BOOLEAN_PREFIXES : BOOLEAN_PREFIXES;
   const match = name.match(pattern);
@@ -119,7 +126,7 @@ export class NamingExtractor implements StyleExtractor {
       ? node.parent.children[0]?.text
       : null;
 
-    if (declKind === "const" && NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)) {
+    if (declKind === "const" && isConstantName(name)) {
       this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
       return;
     }
@@ -177,7 +184,7 @@ export class NamingExtractor implements StyleExtractor {
 
     if (
       isModuleLevelAssignment(node) &&
-      NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)
+      isConstantName(name)
     ) {
       this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
       return;
