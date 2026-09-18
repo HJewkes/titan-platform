@@ -65,86 +65,63 @@ export class NamingExtractor implements StyleExtractor {
     observations: Observation[],
   ): void {
     switch (node.type) {
-      case "variable_declarator": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode || nameNode.type !== "identifier") break;
-        const name = nameNode.text;
-
-        const declKind = node.parent?.type === "lexical_declaration"
-          ? node.parent.children[0]?.text
-          : null;
-
-        if (declKind === "const" && NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)) {
-          this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
-          break;
-        }
-
-        const prefix = detectBooleanPrefix(name, file.language);
-        if (prefix) {
-          this.addObservation(observations, "naming.boolean", prefix, file, node);
-        }
-
-        const convention = detectConvention(name);
-        if (convention) {
-          this.addObservation(observations, "naming.variable", convention, file, node);
-        }
+      case "variable_declarator":
+        this.processTypeScriptVariable(node, file, observations);
         break;
-      }
-
-      case "function_declaration": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode) break;
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.function", convention, file, node);
-        }
+      case "function_declaration":
+        this.observeDeclarationName(node, "naming.function", file, observations);
         break;
-      }
-
       case "interface_declaration":
-      case "type_alias_declaration": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode) break;
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.type", convention, file, node);
+      case "type_alias_declaration":
+        this.observeDeclarationName(node, "naming.type", file, observations);
+        break;
+      case "enum_declaration":
+        this.observeDeclarationName(node, "naming.enum", file, observations);
+        break;
+      case "class_declaration":
+        if (this.observeDeclarationName(node, "naming.type", file, observations)) {
+          this.detectPrivateMembers(node, file, observations);
         }
         break;
-      }
-
-      case "enum_declaration": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode) break;
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.enum", convention, file, node);
-        }
-        break;
-      }
-
-      case "class_declaration": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode) break;
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.type", convention, file, node);
-        }
-
-        this.detectPrivateMembers(node, file, observations);
-        break;
-      }
-
       case "required_parameter":
-      case "optional_parameter": {
-        const nameNode = node.childForFieldName("pattern") ?? node.childForFieldName("name");
-        if (!nameNode || nameNode.type !== "identifier") break;
-        if (nameNode.text === "this") break;
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.parameter", convention, file, node);
-        }
+      case "optional_parameter":
+        this.processTypeScriptParameter(node, file, observations);
         break;
-      }
+    }
+  }
+
+  private processTypeScriptVariable(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const nameNode = node.childForFieldName("name");
+    if (!nameNode || nameNode.type !== "identifier") return;
+    const name = nameNode.text;
+
+    const declKind = node.parent?.type === "lexical_declaration"
+      ? node.parent.children[0]?.text
+      : null;
+
+    if (declKind === "const" && NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)) {
+      this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
+      return;
+    }
+
+    this.observeVariable(name, node, file, observations);
+  }
+
+  private processTypeScriptParameter(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const nameNode = node.childForFieldName("pattern") ?? node.childForFieldName("name");
+    if (!nameNode || nameNode.type !== "identifier") return;
+    if (nameNode.text === "this") return;
+    const convention = detectConvention(nameNode.text);
+    if (convention) {
+      this.addObservation(observations, "naming.parameter", convention, file, node);
     }
   }
 
@@ -154,74 +131,100 @@ export class NamingExtractor implements StyleExtractor {
     observations: Observation[],
   ): void {
     switch (node.type) {
-      case "assignment": {
-        const left = node.childForFieldName("left");
-        if (!left || left.type !== "identifier") break;
-        const name = left.text;
-
-        if (
-          node.parent?.type === "module" &&
-          NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)
-        ) {
-          this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
-          break;
-        }
-
-        const prefix = detectBooleanPrefix(name, file.language);
-        if (prefix) {
-          this.addObservation(observations, "naming.boolean", prefix, file, node);
-        }
-
-        const convention = detectConvention(name);
-        if (convention) {
-          this.addObservation(observations, "naming.variable", convention, file, node);
-        }
+      case "assignment":
+        this.processPythonAssignment(node, file, observations);
         break;
-      }
-
       case "function_definition": {
         const nameNode = node.childForFieldName("name");
         if (!nameNode) break;
         if (nameNode.text.startsWith("__") && nameNode.text.endsWith("__")) break;
-
-        const convention = detectConvention(nameNode.text);
-        if (convention) {
-          this.addObservation(observations, "naming.function", convention, file, node);
-        }
+        this.observeDeclarationName(node, "naming.function", file, observations);
         break;
       }
+      case "class_definition":
+        this.observeDeclarationName(node, "naming.type", file, observations);
+        break;
+      case "parameters":
+        this.processPythonParameters(node, file, observations);
+        break;
+    }
+  }
 
-      case "class_definition": {
-        const nameNode = node.childForFieldName("name");
-        if (!nameNode) break;
-        const convention = detectConvention(nameNode.text);
+  private processPythonAssignment(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const left = node.childForFieldName("left");
+    if (!left || left.type !== "identifier") return;
+    const name = left.text;
+
+    if (
+      node.parent?.type === "module" &&
+      NAMING_PATTERNS.SCREAMING_SNAKE!.test(name)
+    ) {
+      this.addObservation(observations, "naming.constant", "SCREAMING_SNAKE", file, node);
+      return;
+    }
+
+    this.observeVariable(name, node, file, observations);
+  }
+
+  private processPythonParameters(
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    for (const child of node.children) {
+      if (child.type === "identifier" && child.text !== "self" && child.text !== "cls") {
+        const convention = detectConvention(child.text);
         if (convention) {
-          this.addObservation(observations, "naming.type", convention, file, node);
+          this.addObservation(observations, "naming.parameter", convention, file, child);
         }
-        break;
       }
-
-      case "parameters": {
-        for (const child of node.children) {
-          if (child.type === "identifier" && child.text !== "self" && child.text !== "cls") {
-            const convention = detectConvention(child.text);
-            if (convention) {
-              this.addObservation(observations, "naming.parameter", convention, file, child);
-            }
-          }
-          if (child.type === "typed_parameter") {
-            const paramName = child.childForFieldName("name") ?? child.children[0];
-            if (paramName && paramName.type === "identifier" && paramName.text !== "self") {
-              const convention = detectConvention(paramName.text);
-              if (convention) {
-                this.addObservation(observations, "naming.parameter", convention, file, child);
-              }
-            }
+      if (child.type === "typed_parameter") {
+        const paramName = child.childForFieldName("name") ?? child.children[0];
+        if (paramName && paramName.type === "identifier" && paramName.text !== "self") {
+          const convention = detectConvention(paramName.text);
+          if (convention) {
+            this.addObservation(observations, "naming.parameter", convention, file, child);
           }
         }
-        break;
       }
     }
+  }
+
+  private observeVariable(
+    name: string,
+    node: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const prefix = detectBooleanPrefix(name, file.language);
+    if (prefix) {
+      this.addObservation(observations, "naming.boolean", prefix, file, node);
+    }
+
+    const convention = detectConvention(name);
+    if (convention) {
+      this.addObservation(observations, "naming.variable", convention, file, node);
+    }
+  }
+
+  // Returns whether the node had a name, because a nameless class skips its private-member scan.
+  private observeDeclarationName(
+    node: Node,
+    type: string,
+    file: ParsedFile,
+    observations: Observation[],
+  ): boolean {
+    const nameNode = node.childForFieldName("name");
+    if (!nameNode) return false;
+    const convention = detectConvention(nameNode.text);
+    if (convention) {
+      this.addObservation(observations, type, convention, file, node);
+    }
+    return true;
   }
 
   private detectPrivateMembers(

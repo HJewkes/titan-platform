@@ -164,31 +164,7 @@ export class ReviewVoiceExtractor implements StyleExtractor {
   }
 
   private categorizeTopics(comments: ReviewComment[]): Observation[] {
-    const topicCounts = new Map<ReviewTopic, number>();
-    const topicExamples = new Map<ReviewTopic, string[]>();
-
-    for (const comment of comments) {
-      const matchedTopics = new Set<ReviewTopic>();
-
-      for (const { topic, patterns } of TOPIC_PATTERNS) {
-        for (const pattern of patterns) {
-          if (pattern.test(comment.body)) {
-            matchedTopics.add(topic);
-            break;
-          }
-        }
-      }
-
-      for (const topic of matchedTopics) {
-        topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
-
-        const examples = topicExamples.get(topic) ?? [];
-        if (examples.length < 3) {
-          examples.push(comment.body);
-          topicExamples.set(topic, examples);
-        }
-      }
-    }
+    const { topicCounts, topicExamples } = this.countTopics(comments);
 
     const observations: Observation[] = [];
 
@@ -217,16 +193,50 @@ export class ReviewVoiceExtractor implements StyleExtractor {
     return observations;
   }
 
+  private countTopics(comments: ReviewComment[]): {
+    topicCounts: Map<ReviewTopic, number>;
+    topicExamples: Map<ReviewTopic, string[]>;
+  } {
+    const topicCounts = new Map<ReviewTopic, number>();
+    const topicExamples = new Map<ReviewTopic, string[]>();
+
+    for (const comment of comments) {
+      for (const topic of this.matchTopics(comment.body)) {
+        topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
+
+        const examples = topicExamples.get(topic) ?? [];
+        if (examples.length < 3) {
+          examples.push(comment.body);
+          topicExamples.set(topic, examples);
+        }
+      }
+    }
+
+    return { topicCounts, topicExamples };
+  }
+
+  private matchTopics(body: string): Set<ReviewTopic> {
+    const matchedTopics = new Set<ReviewTopic>();
+
+    for (const { topic, patterns } of TOPIC_PATTERNS) {
+      for (const pattern of patterns) {
+        if (pattern.test(body)) {
+          matchedTopics.add(topic);
+          break;
+        }
+      }
+    }
+
+    return matchedTopics;
+  }
+
   private extractKeywords(comments: ReviewComment[]): Observation[] {
     const keywordCounts = new Map<string, number>();
 
     for (const comment of comments) {
       for (const { keyword, pattern } of KEYWORD_PATTERNS) {
         if (pattern.test(comment.body)) {
-          keywordCounts.set(
-            keyword,
-            (keywordCounts.get(keyword) ?? 0) + 1,
-          );
+          keywordCounts.set(keyword, (keywordCounts.get(keyword) ?? 0) + 1);
         }
       }
     }

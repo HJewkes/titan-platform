@@ -28,6 +28,15 @@ function classifyImportSource(source: string, language: string): string {
   return "external";
 }
 
+const EXPORT_DECLARATION_TYPES = [
+  "function_declaration",
+  "class_declaration",
+  "lexical_declaration",
+  "interface_declaration",
+  "type_alias_declaration",
+  "enum_declaration",
+];
+
 function isBarrelFile(root: Node): boolean {
   let exportFromCount = 0;
   let otherStatements = 0;
@@ -70,26 +79,7 @@ export class StructureExtractor implements StyleExtractor {
     const groupSequence: string[] = [];
 
     for (const child of root.children) {
-      let source: string | null = null;
-
-      if (file.language === "python") {
-        if (child.type === "import_statement") {
-          const nameNode = child.childForFieldName("name");
-          source = nameNode?.text ?? null;
-        } else if (child.type === "import_from_statement") {
-          const moduleNode = child.childForFieldName("module_name");
-          const dots = child.children
-            .filter((c) => c.type === "." || c.type === "relative_import")
-            .map((c) => c.text)
-            .join("");
-          source = dots + (moduleNode?.text ?? "");
-        }
-      } else {
-        if (child.type === "import_statement") {
-          const sourceNode = child.childForFieldName("source");
-          source = sourceNode?.text?.replace(/['"]/g, "") ?? null;
-        }
-      }
+      const source = this.importSource(child, file.language);
 
       if (source) {
         const group = classifyImportSource(source, file.language);
@@ -105,6 +95,14 @@ export class StructureExtractor implements StyleExtractor {
       }
     }
 
+    this.addImportOrder(groupSequence, file, observations);
+  }
+
+  private addImportOrder(
+    groupSequence: string[],
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
     const uniqueOrder = [...new Set(groupSequence)];
     if (uniqueOrder.length > 0) {
       observations.push({
@@ -118,6 +116,31 @@ export class StructureExtractor implements StyleExtractor {
     }
   }
 
+  private importSource(child: Node, language: string): string | null {
+    let source: string | null = null;
+
+    if (language === "python") {
+      if (child.type === "import_statement") {
+        const nameNode = child.childForFieldName("name");
+        source = nameNode?.text ?? null;
+      } else if (child.type === "import_from_statement") {
+        const moduleNode = child.childForFieldName("module_name");
+        const dots = child.children
+          .filter((c) => c.type === "." || c.type === "relative_import")
+          .map((c) => c.text)
+          .join("");
+        source = dots + (moduleNode?.text ?? "");
+      }
+    } else {
+      if (child.type === "import_statement") {
+        const sourceNode = child.childForFieldName("source");
+        source = sourceNode?.text?.replace(/['"]/g, "") ?? null;
+      }
+    }
+
+    return source;
+  }
+
   private extractExports(
     root: Node,
     file: ParsedFile,
@@ -127,48 +150,51 @@ export class StructureExtractor implements StyleExtractor {
 
     for (const child of root.children) {
       if (child.type === "export_statement") {
-        const isDefault = child.children.some((c) => c.type === "default");
-        const style = isDefault ? "default" : "named";
-
-        observations.push({
-          type: "structure.export-style",
-          category: "structure",
-          value: style,
-          file: file.filePath,
-          line: child.startPosition.row + 1,
-        });
-
-        const hasDeclaration = child.children.some((c) =>
-          [
-            "function_declaration",
-            "class_declaration",
-            "lexical_declaration",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
-          ].includes(c.type),
-        );
-        const isReExport = child.childForFieldName("source") !== null;
-
-        if (hasDeclaration || isDefault) {
-          observations.push({
-            type: "structure.export-proximity",
-            category: "structure",
-            value: "inline",
-            file: file.filePath,
-            line: child.startPosition.row + 1,
-          });
-        } else if (!isReExport) {
-          observations.push({
-            type: "structure.export-proximity",
-            category: "structure",
-            value: "trailing",
-            file: file.filePath,
-            line: child.startPosition.row + 1,
-          });
-        }
+        this.processExport(child, file, observations);
       }
     }
+  }
+
+  private processExport(
+    child: Node,
+    file: ParsedFile,
+    observations: Observation[],
+  ): void {
+    const isDefault = child.children.some((c) => c.type === "default");
+    const style = isDefault ? "default" : "named";
+
+    observations.push({
+      type: "structure.export-style",
+      category: "structure",
+      value: style,
+      file: file.filePath,
+      line: child.startPosition.row + 1,
+    });
+
+    const proximity = this.exportProximity(child, isDefault);
+    if (proximity) {
+      observations.push({
+        type: "structure.export-proximity",
+        category: "structure",
+        value: proximity,
+        file: file.filePath,
+        line: child.startPosition.row + 1,
+      });
+    }
+  }
+
+  private exportProximity(
+    child: Node,
+    isDefault: boolean,
+  ): "inline" | "trailing" | null {
+    const hasDeclaration = child.children.some((c) =>
+      EXPORT_DECLARATION_TYPES.includes(c.type),
+    );
+    const isReExport = child.childForFieldName("source") !== null;
+
+    if (hasDeclaration || isDefault) return "inline";
+    if (!isReExport) return "trailing";
+    return null;
   }
 
   private detectBarrelFile(
