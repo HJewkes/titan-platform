@@ -73,6 +73,20 @@ describe("parseEslintJsonOutput", () => {
 });
 
 describe("parseRuffJsonOutput", () => {
+  it("leaves out syntax errors, which ruff reports with a null code", () => {
+    const ruffOutput = [
+      {
+        code: null,
+        message: "SyntaxError: Expected an expression",
+        filename: "broken.py",
+        location: { row: 1, column: 9 },
+        end_location: { row: 1, column: 10 },
+        fix: null,
+      },
+    ];
+    expect(parseRuffJsonOutput(JSON.stringify(ruffOutput))).toEqual([]);
+  });
+
   it("normalizes Ruff JSON output to CheckDiagnostic[]", () => {
     const ruffOutput = [
       {

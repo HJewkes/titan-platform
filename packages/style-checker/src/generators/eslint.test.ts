@@ -149,4 +149,14 @@ describe("generateEslintConfig", () => {
     );
     expect(rulesConfig).toBeUndefined();
   });
+
+  it("emits the info tier as warn, because ESLint rejects any other severity", () => {
+    const infoProfile: Profile = {
+      ...baseProfile,
+      naming: { variables: { convention: "camelCase", confidence: 0.5, stability: "low" } },
+    };
+    const [entry] = generateEslintConfig(infoProfile);
+    const rule = entry!.rules!["@typescript-eslint/naming-convention"] as unknown[];
+    expect(rule[0]).toBe("warn");
+  });
 });
