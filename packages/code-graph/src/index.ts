@@ -14,7 +14,7 @@ export type {
 
 export type { SnapshotInsert } from "./store.js";
 export { CodeGraphStore, openCodeGraph } from "./store.js";
-export { DOMAIN_DDL, KIT, MIGRATIONS } from "./schema.js";
+export { DOMAIN_DDL, KIT, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 export type { IndexOptions, IndexResult } from "./indexer.js";
 export { INDEX_VERSION, indexPaths } from "./indexer.js";

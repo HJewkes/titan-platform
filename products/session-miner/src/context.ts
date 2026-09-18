@@ -3,7 +3,7 @@ import type { BaseContext } from "@titan-design/registry";
 import { openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import { runMigrations } from "@titan-design/store-sqlite";
 import type { MinerConfig } from "./config.js";
-import { MINER_MIGRATIONS } from "./schema.js";
+import { MINER_MIGRATIONS, MINER_SCHEMA_VERSION } from "./schema.js";
 
 export interface MinerContext extends BaseContext {
   config: MinerConfig;
@@ -32,7 +32,7 @@ export function createMinerContext(config: MinerConfig, options: BaseContext["fo
     reflector,
     graph() {
       if (!graph) {
-        graph = openSessionGraph(config.dbPath);
+        graph = openSessionGraph(config.dbPath, { schemaVersion: MINER_SCHEMA_VERSION });
         runMigrations(graph.db, MINER_MIGRATIONS);
       }
       return graph;

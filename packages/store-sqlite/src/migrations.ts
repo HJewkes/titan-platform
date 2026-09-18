@@ -1,5 +1,5 @@
 import type { Db } from "./open.js";
-import { nowIso } from "./open.js";
+import { MIGRATION_TABLE_NAME, nowIso } from "./open.js";
 
 export interface Migration {
   /** Positive, unique, applied in ascending order. */
@@ -9,7 +9,7 @@ export interface Migration {
 }
 
 const MIGRATION_TABLE = `
-  CREATE TABLE IF NOT EXISTS _migration (
+  CREATE TABLE IF NOT EXISTS ${MIGRATION_TABLE_NAME} (
     version    INTEGER PRIMARY KEY,
     name       TEXT,
     applied_at TEXT NOT NULL

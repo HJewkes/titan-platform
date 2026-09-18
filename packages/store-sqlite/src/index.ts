@@ -1,5 +1,15 @@
 export type { Db, OpenOptions } from "./open.js";
-export { SQL_NOW, hasColumn, hasTable, nowIso, openDatabase, quoteIdent } from "./open.js";
+export {
+  MIGRATION_TABLE_NAME,
+  SQL_NOW,
+  SchemaTooNewError,
+  assertSchemaVersion,
+  hasColumn,
+  hasTable,
+  nowIso,
+  openDatabase,
+  quoteIdent,
+} from "./open.js";
 export type { Migration } from "./migrations.js";
 export { appliedVersions, runMigrations } from "./migrations.js";
 export type { ParsedRef } from "./ref.js";

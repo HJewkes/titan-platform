@@ -113,6 +113,12 @@ looks `unchanged`.
 **No transcript text is stored.** The FTS index is contentless: hits carry a locator and you
 read the original bytes back with [`locator`](/reference/locator).
 
+**`schemaVersion` is the caller's version, not this package's.** `openSessionGraph` accepts
+one and refuses a database stamped past it, before any migration runs. Pass the top of the
+schema *you* own: this package's `MIGRATIONS` are one band of a shared database, and a
+product layering its own tables sits above them. `products/session-miner` numbers its own
+from 1000 and passes 1002.
+
 ## Where it came from
 
 active-work's session index (AW-23). The `TaskResolver` seam was added here, so the package

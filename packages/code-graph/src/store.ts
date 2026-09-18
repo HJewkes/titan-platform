@@ -1,5 +1,5 @@
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { MIGRATIONS } from "./schema.js";
+import { MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 import {
   rowToAlias,
   rowToEdge,
@@ -221,7 +221,7 @@ function prepareStatements(db: Db) {
 
 /** Open (creating if absent) a code graph database and bring it to the current schema. */
 export function openCodeGraph(dbPath: string): CodeGraphStore {
-  const db = openDatabase(dbPath);
+  const db = openDatabase(dbPath, { schemaVersion: SCHEMA_VERSION });
   runMigrations(db, MIGRATIONS);
   return new CodeGraphStore(db);
 }

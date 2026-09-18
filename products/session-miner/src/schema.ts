@@ -47,3 +47,9 @@ export const MINER_MIGRATIONS: Migration[] = [
       source_hash TEXT NOT NULL, PRIMARY KEY(transcript_id,byte_offset,source_hash)
     )`) },
 ];
+
+/**
+ * The top of the miner's database: its own tables sit above the session graph's, so this
+ * is the version a newer miner would have stamped and this one must refuse.
+ */
+export const MINER_SCHEMA_VERSION = Math.max(...MINER_MIGRATIONS.map((m) => m.version));

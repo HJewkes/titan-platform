@@ -95,6 +95,10 @@ always recomputed over the whole assembled graph, so a heavily-reused run and a
 
 `openCodeGraph` opens the database with the kit's pragmas and runs three migrations.
 
+It refuses a database stamped past `SCHEMA_VERSION` with `SchemaTooNewError`: a code graph
+database belongs to one build, so a higher version means a newer build already moved the
+schema and this one would query columns that are gone.
+
 Kit tables: `snapshot` (the snapshot registry), `node` (`entity_snap`, keyed
 `(snapshot_id, id)`), `blob_cache` (content-addressed, for the embedding and summary caches
 an analysis layer will want). Migration 2 adds four columns the kit shapes do not carry but

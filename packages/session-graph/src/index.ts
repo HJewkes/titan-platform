@@ -1,4 +1,5 @@
 export type { SessionGraph } from "./graph.js";
+export type { OpenSessionGraphOptions } from "./graph.js";
 export { allSessionIds, openSessionGraph, resetIndex } from "./graph.js";
 export { DERIVED_TABLES, DOMAIN_DDL, KIT, MIGRATIONS } from "./schema.js";
 export { applyDelta } from "./apply.js";

@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { invokeCommand } from "@titan-design/registry";
+import { MIGRATION_TABLE_NAME, SchemaTooNewError } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
@@ -11,6 +12,7 @@ import { sessionList, sessionShow } from "./commands/sessions.js";
 import { status } from "./commands/status.js";
 import { resolveConfig, type MinerConfig } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
+import { MINER_SCHEMA_VERSION } from "./schema.js";
 import { startMiner } from "./serve.js";
 
 const REPO = path.join(os.tmpdir(), "titan-miner-fixture-repo");
@@ -126,5 +128,23 @@ describe("daemon", () => {
     } finally {
       await handle.close();
     }
+  });
+});
+
+describe("forward-schema guard", () => {
+  it("refuses a database a newer miner stamped, rather than indexing into its schema", async () => {
+    await run(refresh, {});
+    const db = ctx.graph().db;
+    db.prepare(`INSERT INTO ${MIGRATION_TABLE_NAME} (version, name, applied_at) VALUES (?, ?, ?)`).run(
+      MINER_SCHEMA_VERSION + 1,
+      "from a newer miner",
+      new Date().toISOString(),
+    );
+    ctx.close();
+
+    const reopened = createMinerContext(config);
+
+    expect(() => reopened.graph()).toThrow(SchemaTooNewError);
+    expect(() => reopened.graph()).toThrow(new RegExp(`version ${MINER_SCHEMA_VERSION + 1}`));
   });
 });
