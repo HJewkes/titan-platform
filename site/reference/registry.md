@@ -81,7 +81,9 @@ use your own error hierarchy.
 `commandPath("task.done")` gives the sub-command path, `positionalSpec` gives `<slug>` or
 `[slug]` from the schema, `optionFlagSpec` gives `--force` or `--x <value>`, and
 `collectCliArgs` reads commander's parsed values back into an args record, coerced by schema
-kind.
+kind. An array-typed field's flag repeats (`--tag a --tag b` yields `["a", "b"]`);
+`collectOptionParser` gives commander's accumulator for it, and each element is coerced by
+the array's element kind.
 
 **MCP.** `commandToTool` builds the descriptor; `inputSchema` comes from zod 4's native
 `toJSONSchema` with `$schema` and `definitions` stripped, because some MCP clients reject
@@ -102,9 +104,6 @@ If you are migrating from an insertion-ordered map, your golden files will move.
 the `noX` key. `collectCliArgs` handles it. This is not hypothetical: a real product shipped
 a `--no-loops` flag that was inert for exactly this reason, and the regression test for it
 lives in this package.
-
-**Repeatable array options are a gap.** Products currently work around it with a
-comma-separated value.
 
 ## Where it came from
 

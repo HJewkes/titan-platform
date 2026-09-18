@@ -2,6 +2,7 @@ import { Command, CommanderError } from "commander";
 import {
   EXIT,
   collectCliArgs,
+  collectOptionParser,
   commandPath,
   invokeCommand,
   optionFlagSpec,
@@ -51,7 +52,12 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
   const parent = ensureGroup(program, parts.slice(0, -1));
   const sub = parent.command(parts[parts.length - 1]!).description(cmd.description);
   for (const name of cmd.cli?.positional ?? []) sub.argument(positionalSpec(cmd, name), name);
-  for (const [key, opt] of Object.entries(cmd.cli?.options ?? {})) sub.option(optionFlagSpec(cmd, key, opt), opt.description);
+  for (const [key, opt] of Object.entries(cmd.cli?.options ?? {})) {
+    const parser = collectOptionParser(cmd, key);
+    const spec = optionFlagSpec(cmd, key, opt);
+    if (parser) sub.option(spec, opt.description, parser);
+    else sub.option(spec, opt.description);
+  }
   sub.action(async (...handlerArgs: unknown[]) => {
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
     const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;

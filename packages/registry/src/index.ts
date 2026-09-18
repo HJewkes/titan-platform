@@ -5,11 +5,12 @@ export { createRegistry } from "./registry.js";
 export type { ErrorDescription, JsonEnvelope } from "./envelope.js";
 export { EXIT, describeError, errorEnvelope, successEnvelope } from "./envelope.js";
 export type { SchemaKind } from "./zod-introspect.js";
-export { fieldSchema, isOptionalField, schemaKind, unwrapSchema } from "./zod-introspect.js";
+export { arrayElementKind, fieldSchema, isOptionalField, schemaKind, unwrapSchema } from "./zod-introspect.js";
 export {
   camelizeFlagKey,
   coerceCliValue,
   collectCliArgs,
+  collectOptionParser,
   commandPath,
   flagToKey,
   optionFlagSpec,

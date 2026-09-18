@@ -103,11 +103,11 @@ describe("playbook commands", () => {
 });
 
 describe("playbook over the CLI", () => {
-  it("adds with comma-separated tags and recalls through the command line", async () => {
+  it("adds with a repeated --tag flag and recalls through the command line", async () => {
     const out: string[] = [];
     const io = { stdout: (t: string) => out.push(t), stderr: () => undefined, env: {} };
     const argv = ["--json", "--state", config.stateDir, "--corpus", config.corpusRoot];
-    expect(await runCli([...argv, "playbook", "add", "Pin npm to 11 in release jobs", "--tag", "ci,release"], io)).toBe(0);
+    expect(await runCli([...argv, "playbook", "add", "Pin npm to 11 in release jobs", "--tag", "ci", "--tag", "release"], io)).toBe(0);
     out.length = 0;
     expect(await runCli([...argv, "playbook", "recall", "npm release"], io)).toBe(0);
     const envelope = JSON.parse(out.join("")) as { ok: boolean; data: { bullets: BulletView[] } };

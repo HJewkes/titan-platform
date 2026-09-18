@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { fieldSchema, isOptionalField, schemaKind, unwrapSchema } from "./zod-introspect.js";
+import { arrayElementKind, fieldSchema, isOptionalField, schemaKind, unwrapSchema } from "./zod-introspect.js";
 
 const args = z.object({
   name: z.string(),
@@ -25,6 +25,18 @@ describe("unwrapSchema and schemaKind", () => {
 
   it("is undefined for a missing schema", () => {
     expect(schemaKind(undefined)).toBeUndefined();
+  });
+});
+
+describe("arrayElementKind", () => {
+  it("returns the element kind of an array field, unwrapping the array's own wrappers first", () => {
+    expect(arrayElementKind(args.shape.tags)).toBe("string");
+    expect(arrayElementKind(z.array(z.number()))).toBe("number");
+  });
+
+  it("is undefined for a non-array field or a missing schema", () => {
+    expect(arrayElementKind(args.shape.name)).toBeUndefined();
+    expect(arrayElementKind(undefined)).toBeUndefined();
   });
 });
 

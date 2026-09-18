@@ -17,7 +17,7 @@ titan-miner session list -n 20
 titan-miner session show <session-id>
 titan-miner drain ingest       # cluster tool errors into templates
 titan-miner drain templates
-titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci,release
+titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci --tag release
 titan-miner playbook recall "release job npm"
 titan-miner playbook reflect <session-id>   # renders the diary; applies nothing
 titan-miner playbook status
@@ -75,8 +75,7 @@ fact table does not carry tool names for results yet), and a scheduler for perio
 refreshes (the daemon serves; a supervisor drives `refresh`).
 
 The playbook has no semantic recall yet: `memory` supports a vector index, but the miner
-does not build one, so recall is keyword-only. Repeatable array options are a registry
-gap, so `--tag` takes a comma-separated list instead of repeating the flag.
+does not build one, so recall is keyword-only.
 
 
 ## Codex sessions

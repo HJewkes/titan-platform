@@ -37,6 +37,22 @@ describe("commandToTool", () => {
     expect(Object.keys(tool.inputSchema.properties as object)).toEqual(["slug", "title", "priority"]);
   });
 
+  it("projects an array-typed field as a JSON Schema array, independent of any CLI rendering", () => {
+    const withTags = defineCommand({
+      name: "task.tag",
+      description: "Tag a task",
+      args: z.object({ slug: z.string(), tags: z.array(z.string()) }),
+      result: z.object({ ok: z.literal(true) }),
+      cli: { positional: ["slug"], options: { tags: { long: "--tag", description: "tag" } } },
+      async run() {
+        return { ok: true as const };
+      },
+    });
+    const tool = commandToTool(withTags, naming);
+    const properties = tool.inputSchema.properties as Record<string, { type?: string; items?: { type?: string } }>;
+    expect(properties.tags).toMatchObject({ type: "array", items: { type: "string" } });
+  });
+
   it("strips the $schema and definitions keys some MCP clients reject", () => {
     const tool = commandToTool(taskAdd, naming);
     expect(tool.inputSchema).not.toHaveProperty("$schema");
