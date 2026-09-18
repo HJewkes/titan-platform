@@ -204,12 +204,67 @@ harness.
 
 Shape 1 does not need more tuning. It needs to stop being optional.
 
+## 2026-09-18: nomic through the vector seam, before and after the prefix fix
+
+TP-168. Until embed 0.2 / retrieval 0.3, `vectorRetriever` prepended `search_query: ` to a
+nomic query and `OllamaEmbedder` then prepended `search_document: `, so every nomic query was
+embedded as `search_document: search_query: <q>`. The fix moves prefixes into the embedder,
+one per text by role.
+
+**The 2026-09-15 tables above are unaffected.** They ran `hybrid-fts-vector` over
+`HashEmbedder`, which has no prefixes and was never given one, so the fix cannot change them.
+To measure the fix, `run` gained `--embedder ollama` (default `hash`), and both builds were
+run with Ollama `nomic-embed-text` over the same freshly mined pair file. The corpus has grown
+since 2026-09-15 (2,286 transcripts, 755 spawn and 47 bootstrap pairs; snapshot below), so
+compare rows within this section only, not against the tables above.
+
+`workspace` scope. "hash" is today's default, on the same pairs. `notes-fts` rows were
+identical before and after, as they must be, and are omitted. No candidate threw.
+
+| Arm (pairs) | Variant | Embedder | R@5 | R@10 | P@5 | MRR | chars@5 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| spawn (246) | heading-lead | hash | 0.021 | 0.036 | 0.008 | 0.027 | 8,639 |
+| spawn (246) | heading-lead | nomic, double prefix | 0.020 | 0.037 | 0.010 | 0.029 | 4,344 |
+| spawn (246) | heading-lead | nomic, fixed | 0.020 | 0.037 | 0.010 | 0.027 | 4,659 |
+| spawn (246) | top-df | hash | 0.031 | 0.038 | 0.013 | 0.036 | 7,613 |
+| spawn (246) | top-df | nomic, double prefix | 0.035 | 0.043 | 0.017 | 0.034 | 6,060 |
+| spawn (246) | top-df | nomic, fixed | 0.031 | 0.043 | 0.014 | 0.032 | 6,067 |
+| bootstrap (31) | heading-lead | hash | 0.021 | 0.021 | 0.019 | 0.032 | 7,068 |
+| bootstrap (31) | heading-lead | nomic, double prefix | 0.000 | 0.002 | 0.000 | 0.004 | 6,425 |
+| bootstrap (31) | heading-lead | nomic, fixed | 0.000 | 0.002 | 0.000 | 0.004 | 3,905 |
+| bootstrap (31) | top-df | hash | 0.016 | 0.016 | 0.006 | 0.032 | 3,451 |
+| bootstrap (31) | top-df | nomic, double prefix | 0.016 | 0.016 | 0.006 | 0.016 | 3,628 |
+| bootstrap (31) | top-df | nomic, fixed | 0.016 | 0.016 | 0.006 | 0.016 | 3,757 |
+
+For reference on the same pairs, `notes-fts` scores spawn heading-lead R@10 0.038, spawn
+top-df R@10 0.043 and MRR 0.046.
+
+**The fix does not move this eval.** Only spawn top-df shifts, down one to four thousandths
+(R@5 0.035 to 0.031, MRR 0.034 to 0.032), and R@10 is unchanged everywhere. On 246 pairs that
+is a handful of hits, well inside noise. The prefix was a correctness bug, not the reason
+the vector seam fails to beat `notes-fts`. nomic, fixed or not, does not beat FTS alone here:
+its whole-note vectors (notes are long, and Ollama truncates input at the model's context)
+rank too coarsely to add what FTS misses.
+
+Snapshot for this section:
+
+```json
+{
+  "takenAt": "2026-09-18T20:03:53.564Z",
+  "transcripts": 2286,
+  "transcriptRange": { "first": "2026-08-11T11:28:23.126Z", "last": "2026-09-18T19:49:47.532Z" },
+  "graph": { "bytes": 275095552, "modified": "2026-09-18T20:02:12.997Z" },
+  "activeWorkVersion": "0.9.0"
+}
+```
+
 ## Reproducing
 
 ```sh
 pnpm --filter @titan-design/retrieval-eval build
 node products/retrieval-eval/dist/bin.js mine --out pairs.jsonl   # stats to stderr
 node products/retrieval-eval/dist/bin.js run pairs.jsonl
+node products/retrieval-eval/dist/bin.js run pairs.jsonl --candidates notes-fts,hybrid-fts-vector --embedder ollama
 node products/retrieval-eval/dist/bin.js uptake --since 2026-09-01
 ```
 
