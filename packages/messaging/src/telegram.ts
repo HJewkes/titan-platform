@@ -1,4 +1,5 @@
 import type {
+  ButtonRow,
   MessageTransport,
   SendError,
   SendInput,
@@ -22,6 +23,9 @@ export const TELEGRAM_BASE_URL = "https://api.telegram.org";
 
 /** `sendMessage` documents `text` as 1-4096 characters after entities parsing. */
 export const TELEGRAM_MAX_TEXT_LENGTH = 4096;
+
+/** `callback_data` is documented as 1-64 bytes, and Telegram counts UTF-8 bytes. */
+export const TELEGRAM_MAX_CALLBACK_DATA_BYTES = 64;
 
 /** Every string that leaves this module passes through here. */
 export function redactToken(value: string, token: string): string {
@@ -81,6 +85,46 @@ function errorForStatus(
   return { kind: "unknown", message: `HTTP ${status}: ${message}` };
 }
 
+/** The message never quotes a data value: consumers may put ids in it. */
+function buttonsError(rows: readonly ButtonRow[]): SendError | undefined {
+  const buttons = rows.flat();
+  if (buttons.some((button) => button.label === "")) {
+    return { kind: "bad-buttons", message: "Every button needs a non-empty label" };
+  }
+  const encoder = new TextEncoder();
+  const tooLong = buttons.some(
+    (button) => encoder.encode(button.data).length > TELEGRAM_MAX_CALLBACK_DATA_BYTES,
+  );
+  if (!tooLong) return undefined;
+  return {
+    kind: "bad-buttons",
+    message: `Button data exceeds ${TELEGRAM_MAX_CALLBACK_DATA_BYTES} UTF-8 bytes`,
+  };
+}
+
+function sendError({ text, buttons }: SendInput): SendError | undefined {
+  if (text.length > TELEGRAM_MAX_TEXT_LENGTH) {
+    return {
+      kind: "too-long",
+      limit: TELEGRAM_MAX_TEXT_LENGTH,
+      length: text.length,
+      message: `Text is ${text.length} characters; the limit is ${TELEGRAM_MAX_TEXT_LENGTH}`,
+    };
+  }
+  return buttons ? buttonsError(buttons) : undefined;
+}
+
+function messageBody(
+  chatId: string | number,
+  { text, buttons }: SendInput,
+): Record<string, unknown> {
+  if (!buttons || buttons.length === 0) return { chat_id: chatId, text };
+  const inlineKeyboard = buttons.map((row) =>
+    row.map((button) => ({ text: button.label, callback_data: button.data })),
+  );
+  return { chat_id: chatId, text, reply_markup: { inline_keyboard: inlineKeyboard } };
+}
+
 function readMessageId(result: unknown): string | undefined {
   const id = (result as { message_id?: unknown } | null)?.message_id;
   return typeof id === "number" ? String(id) : undefined;
@@ -97,22 +141,17 @@ export class TelegramTransport implements MessageTransport {
     this.doFetch = config.fetch ?? globalThis.fetch;
   }
 
-  async send({ handle, text }: SendInput): Promise<SendResult> {
-    if (text.length > TELEGRAM_MAX_TEXT_LENGTH) {
-      return sendFailed({
-        kind: "too-long",
-        limit: TELEGRAM_MAX_TEXT_LENGTH,
-        length: text.length,
-        message: `Text is ${text.length} characters; the limit is ${TELEGRAM_MAX_TEXT_LENGTH}`,
-      });
-    }
+  async send(input: SendInput): Promise<SendResult> {
+    const { handle } = input;
+    const invalid = sendError(input);
+    if (invalid) return sendFailed(invalid);
 
     const chatId = await this.resolveChatId(handle);
     if (chatId.kind !== "ok") return sendFailed(chatId.error);
 
     let response: Response;
     try {
-      response = await this.postMessage(chatId.value, text);
+      response = await this.postMessage(messageBody(chatId.value, input));
     } catch (cause) {
       return sendFailed({
         kind: "unreachable",
@@ -128,14 +167,11 @@ export class TelegramTransport implements MessageTransport {
     return { ok: true, messageGuid: readMessageId(envelope.result) };
   }
 
-  private async postMessage(
-    chatId: string | number,
-    text: string,
-  ): Promise<Response> {
+  private async postMessage(body: Record<string, unknown>): Promise<Response> {
     return await this.doFetch(methodUrl(this.config, "sendMessage"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
+      body: JSON.stringify(body),
     });
   }
 

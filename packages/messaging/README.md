@@ -131,10 +131,33 @@ No `parse_mode` is sent, so coach copy is never mangled by Markdown parsing.
 `too-long` is checked before the call and is its own `SendError` kind, so a
 composer can split rather than retry.
 
+`buttons` on `SendInput` is channel-neutral: rows of `{ label, data }`.
+Telegram renders them as an inline keyboard (`reply_markup.inline_keyboard`,
+`data` as `callback_data`); BlueBubbles ignores them, since iMessage has no
+keyboards, and `MockTransport` records them. Telegram caps `callback_data` at
+64 UTF-8 bytes, so a longer `data` or an empty label fails with `bad-buttons`
+before any call. That message never quotes a data value. The package does not
+interpret `data`; the consumer owns its format (relay uses
+`v1|<action>|<slot>|<date>`).
+
+```ts
+await transport.send({
+  handle: "lifter",
+  text: "Lunch?",
+  buttons: [[
+    { label: "Ate", data: "v1|ate|lunch|2026-09-18" },
+    { label: "Skipped", data: "v1|skip|lunch|2026-09-18" },
+  ]],
+});
+```
+
 Inbound arrives either way Telegram offers. `pollUpdates` is the long poll a
 daemon runs; it tracks the offset (`last update_id + 1`), acknowledges every
-update it saw, yields only text messages from an allowed chat, and stops when
-the signal aborts:
+update it saw, yields only text messages and button taps from an allowed chat,
+and stops when the signal aborts. Each item is a `TelegramInbound`, told apart
+by `kind`: `"text"` carries `text`; `"callback"` carries `data`,
+`callbackQueryId` and the `messageId` the button sat on. A tap with no `data`
+or no `message` is acknowledged and skipped:
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";
@@ -146,14 +169,26 @@ for await (const update of pollUpdates(config, {
   allowedChatIds: [chatIds[0]],
   signal: controller.signal,
 })) {
-  await enqueue({ chatId: update.chatId, text: update.text });
+  if (update.kind === "text") {
+    await enqueue({ chatId: update.chatId, text: update.text });
+  } else {
+    await record(update.data);
+    await answerCallbackQuery(config, update.callbackQueryId, "Logged");
+  }
 }
 ```
+
+Answer every tap with `answerCallbackQuery(config, callbackQueryId, text?)`, or
+the button keeps spinning on the phone. `text` shows as a brief toast. It never
+throws: it returns `{ ok: true }` or `{ ok: false, reason }`, with the token
+redacted from `reason`.
 
 `validateTelegramWebhook` is the push equivalent: same shape as
 `validateInbound`, over the `X-Telegram-Bot-Api-Secret-Token` header that
 Telegram echoes from `setWebhook`, the same constant-time compare, a chat
-allowlist, a length cap and an `update_id` dedupe through the same `SeenStore`.
+allowlist, a length cap on text and an `update_id` dedupe through the same
+`SeenStore`. It reads the same two shapes as `pollUpdates`, and an accepted
+result is `{ status: "accepted" }` plus the `TelegramInbound` item.
 Its rejection reasons are `bad-secret`, `malformed`, `not-text`,
 `sender-not-allowed`, `too-long` and `duplicate`.
 

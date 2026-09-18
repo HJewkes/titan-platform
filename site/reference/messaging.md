@@ -156,9 +156,29 @@ if (!result.ok && result.error.kind === "too-long") {
 }
 ```
 
+`SendInput.buttons` is optional and channel-neutral: rows of `{ label, data }`. Telegram
+renders them as an inline keyboard with `data` as `callback_data`; BlueBubbles ignores them,
+because iMessage has no keyboards. Telegram caps `callback_data` at 64 UTF-8 bytes
+(`TELEGRAM_MAX_CALLBACK_DATA_BYTES`), so longer data or an empty label fails with
+`bad-buttons` before any call. The consumer owns the data format; relay uses
+`v1|<action>|<slot>|<date>`.
+
+```ts
+await transport.send({
+  handle: "lifter",
+  text: "Lunch?",
+  buttons: [[
+    { label: "Ate", data: "v1|ate|lunch|2026-09-18" },
+    { label: "Skipped", data: "v1|skip|lunch|2026-09-18" },
+  ]],
+});
+```
+
 Inbound arrives either way Telegram offers. `pollUpdates` is the long poll a daemon runs. It
-tracks the offset (`last update_id + 1`), acknowledges every update it saw, yields only text
-messages from an allowed chat, and returns when the signal aborts:
+tracks the offset (`last update_id + 1`), acknowledges every update it saw, yields text
+messages and button taps from an allowed chat, and returns when the signal aborts. Each item
+is a `TelegramInbound`, discriminated on `kind`: `"text"` carries `text`, and `"callback"`
+carries `data`, `callbackQueryId` and the `messageId` the button sat on.
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";
@@ -170,14 +190,24 @@ for await (const update of pollUpdates(config, {
   allowedChatIds: [chatIds[0]],
   signal: controller.signal,
 })) {
-  await enqueue({ chatId: update.chatId, text: update.text });
+  if (update.kind === "text") {
+    await enqueue({ chatId: update.chatId, text: update.text });
+  } else {
+    await record(update.data);
+    await answerCallbackQuery(config, update.callbackQueryId, "Logged");
+  }
 }
 ```
 
+Answer every tap with `answerCallbackQuery(config, callbackQueryId, text?)`, or the button
+keeps spinning on the phone. It never throws; a failure comes back as `{ ok: false, reason }`
+with the token redacted.
+
 `validateTelegramWebhook` is the push equivalent, over the `X-Telegram-Bot-Api-Secret-Token`
 header that Telegram echoes from `setWebhook`: the same constant-time compare, a chat
-allowlist, a length cap, and an `update_id` dedupe through the same `SeenStore`. Its
-rejection reasons are `bad-secret`, `malformed`, `not-text`, `sender-not-allowed`,
+allowlist, a length cap on text, and an `update_id` dedupe through the same `SeenStore`. It
+reads the same two shapes as `pollUpdates` and returns the same `TelegramInbound` on accept.
+Its rejection reasons are `bad-secret`, `malformed`, `not-text`, `sender-not-allowed`,
 `too-long` and `duplicate`.
 
 `probeTelegramLiveness(config, { timeoutMs })` calls `getMe`, the documented way to test a
@@ -207,6 +237,10 @@ BlueBubbles when `chatGuidFor` yields nothing, Telegram on a 400 whose descripti
 
 **`too-long` is checked before the call, not after.** That is why it is its own `SendError`
 kind rather than a `rejected` with a status: a composer should split the text, not back off.
+
+**A tap without `data` or `message` is skipped, not yielded.** Telegram omits `message` for a
+button on an inline-mode message and omits `data` for a game button. Neither can be routed, so
+the webhook rejects both as `not-text`.
 
 **A rejected inbound GUID is never recorded.** A genuine retry of a rejected request is still
 judged on its merits, so a transient allowlist misconfiguration does not permanently swallow

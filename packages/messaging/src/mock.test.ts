@@ -15,6 +15,15 @@ describe("MockTransport", () => {
     ]);
   });
 
+  it("records the buttons a send carried", async () => {
+    const transport = new MockTransport(() => 7);
+    const buttons = [[{ label: "Ate", data: "v1|ate|lunch|2026-09-18" }]];
+
+    await transport.send({ handle: "+1", text: "lunch?", buttons });
+
+    expect(transport.sent).toEqual([{ handle: "+1", text: "lunch?", buttons, at: 7 }]);
+  });
+
   it("plays scripted failures in order, then succeeds", async () => {
     const transport = new MockTransport();
     transport.failNext({ kind: "unreachable", message: "coach session is dark" });

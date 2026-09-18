@@ -38,6 +38,20 @@ function input(
   };
 }
 
+function callbackWith(query: Record<string, unknown>): unknown {
+  return {
+    update_id: 870123457,
+    callback_query: {
+      id: "cbq-1",
+      from: { id: 99, is_bot: false, first_name: "Lifter" },
+      message: { message_id: 1415, date: 1757808060, chat: { id: CHAT } },
+      chat_instance: "-123",
+      data: "v1|ate|lunch|2026-09-18",
+      ...query,
+    },
+  };
+}
+
 function updateWith(message: Record<string, unknown> | undefined): unknown {
   return { update_id: UPDATE.update_id, message };
 }
@@ -48,6 +62,7 @@ describe("validateTelegramWebhook", () => {
 
     expect(result).toEqual({
       status: "accepted",
+      kind: "text",
       updateId: 870123456,
       chatId: CHAT,
       fromId: 99,
@@ -160,5 +175,58 @@ describe("validateTelegramWebhook", () => {
     );
 
     expect(seen.has(String(UPDATE.update_id))).toBe(false);
+  });
+});
+
+describe("validateTelegramWebhook with button taps", () => {
+  it("accepts a tap from an allowed chat with every field", async () => {
+    const result = await validateTelegramWebhook(input({ body: callbackWith({}) }));
+
+    expect(result).toEqual({
+      status: "accepted",
+      kind: "callback",
+      updateId: 870123457,
+      chatId: CHAT,
+      fromId: 99,
+      callbackQueryId: "cbq-1",
+      messageId: 1415,
+      data: "v1|ate|lunch|2026-09-18",
+      date: 1757808060,
+    });
+  });
+
+  it("rejects a tap from a chat outside the allowlist", async () => {
+    const result = await validateTelegramWebhook(
+      input({
+        body: callbackWith({
+          message: { message_id: 1, date: 1, chat: { id: 9999 } },
+        }),
+      }),
+    );
+
+    expect(result).toEqual({ status: "rejected", reason: "sender-not-allowed" });
+  });
+
+  it("rejects a tap with no data or no message as unreadable", async () => {
+    const noData = await validateTelegramWebhook(
+      input({ body: callbackWith({ data: undefined }) }),
+    );
+    const noMessage = await validateTelegramWebhook(
+      input({ body: callbackWith({ message: undefined }) }),
+    );
+
+    for (const result of [noData, noMessage]) {
+      expect(result).toEqual({ status: "rejected", reason: "not-text" });
+    }
+  });
+
+  it("accepts a tap once and rejects the replay", async () => {
+    const seen = new MemorySeenStore();
+
+    const first = await validateTelegramWebhook(input({ seen, body: callbackWith({}) }));
+    const second = await validateTelegramWebhook(input({ seen, body: callbackWith({}) }));
+
+    expect(first.status).toBe("accepted");
+    expect(second).toEqual({ status: "rejected", reason: "duplicate" });
   });
 });

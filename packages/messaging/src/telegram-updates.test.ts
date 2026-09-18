@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TelegramConfig } from "./telegram.js";
+import type { TelegramInbound } from "./telegram-updates.js";
 import { pollUpdates, readChatIds } from "./telegram-updates.js";
 
 const TOKEN = "123456789:AAH-fake-bot-token_for-tests";
@@ -42,15 +43,19 @@ function scriptedFetch(batches: unknown[][]): {
   return { fetch: doFetch, bodies };
 }
 
+function textOf(update: TelegramInbound): string | undefined {
+  return update.kind === "text" ? update.text : undefined;
+}
+
 function configWith(doFetch: typeof fetch): TelegramConfig {
   return { token: TOKEN, chatIdFor: () => CHAT, fetch: doFetch };
 }
 
 async function collect(
-  iterator: AsyncGenerator<{ updateId: number; text: string }>,
+  iterator: AsyncGenerator<TelegramInbound>,
   count: number,
-): Promise<Array<{ updateId: number; text: string }>> {
-  const seen: Array<{ updateId: number; text: string }> = [];
+): Promise<TelegramInbound[]> {
+  const seen: TelegramInbound[] = [];
   for await (const update of iterator) {
     seen.push(update);
     if (seen.length === count) break;
@@ -73,7 +78,7 @@ describe("pollUpdates", () => {
       3,
     );
 
-    expect(updates.map((update) => update.text)).toEqual(["one", "two", "three"]);
+    expect(updates.map(textOf)).toEqual(["one", "two", "three"]);
     expect(scripted.bodies).toEqual([
       { timeout: 30 },
       { offset: 103, timeout: 30 },
@@ -92,6 +97,7 @@ describe("pollUpdates", () => {
     );
 
     expect(update).toEqual({
+      kind: "text",
       updateId: 7,
       chatId: CHAT,
       fromId: 99,
@@ -119,7 +125,7 @@ describe("pollUpdates", () => {
       1,
     );
 
-    expect(updates.map((update) => update.text)).toEqual(["mine"]);
+    expect(updates.map(textOf)).toEqual(["mine"]);
     expect(scripted.bodies).toEqual([{ timeout: 1 }]);
   });
 

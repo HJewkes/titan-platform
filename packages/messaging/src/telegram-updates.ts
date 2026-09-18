@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { TelegramConfig } from "./telegram.js";
 import { describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
 
-/** The one Update shape this package reads: a text message in a chat. */
+/** The Update shapes this package reads: a text message, or a tapped inline button. */
 export const telegramUpdateEvent = z.object({
   update_id: z.number().int(),
   message: z
@@ -13,7 +13,23 @@ export const telegramUpdateEvent = z.object({
       chat: z.object({ id: z.number().int() }),
     })
     .optional(),
+  callback_query: z
+    .object({
+      id: z.string(),
+      from: z.object({ id: z.number().int() }),
+      message: z
+        .object({
+          message_id: z.number().int(),
+          chat: z.object({ id: z.number().int() }),
+          date: z.number().int(),
+        })
+        .optional(),
+      data: z.string().optional(),
+    })
+    .optional(),
 });
+
+type TelegramUpdateEvent = z.infer<typeof telegramUpdateEvent>;
 
 export interface TelegramTextUpdate {
   updateId: number;
@@ -22,6 +38,25 @@ export interface TelegramTextUpdate {
   text: string;
   date: number;
 }
+
+/** A tapped inline button; `data` is the button's callback data, verbatim. */
+export interface TelegramCallback {
+  kind: "callback";
+  updateId: number;
+  chatId: number;
+  fromId: number;
+  callbackQueryId: string;
+  messageId: number;
+  data: string;
+  date: number;
+}
+
+export type TelegramInbound = ({ kind: "text" } & TelegramTextUpdate) | TelegramCallback;
+
+/** Why an update yields nothing: an unknown shape, or a known one missing a field this package needs. */
+export type InboundReadResult =
+  | { ok: true; inbound: TelegramInbound }
+  | { ok: false; reason: "malformed" | "not-text" };
 
 export interface PollUpdatesOptions {
   /** Passed straight to getUpdates; 0 is short polling and is for tests only. */
@@ -77,18 +112,46 @@ async function getUpdates(
   return Array.isArray(envelope.result) ? envelope.result : [];
 }
 
-function toTextUpdate(raw: unknown): TelegramTextUpdate | undefined {
-  const parsed = telegramUpdateEvent.safeParse(raw);
-  if (!parsed.success) return undefined;
-  const { update_id: updateId, message } = parsed.data;
+function toCallback(
+  updateId: number,
+  query: NonNullable<TelegramUpdateEvent["callback_query"]>,
+): TelegramCallback | undefined {
+  if (!query.message || query.data === undefined) return undefined;
+  return {
+    kind: "callback",
+    updateId,
+    chatId: query.message.chat.id,
+    fromId: query.from.id,
+    callbackQueryId: query.id,
+    messageId: query.message.message_id,
+    data: query.data,
+    date: query.message.date,
+  };
+}
+
+function toInbound({
+  update_id: updateId,
+  message,
+  callback_query: query,
+}: TelegramUpdateEvent): TelegramInbound | undefined {
+  if (query) return toCallback(updateId, query);
   if (!message?.text || !message.from) return undefined;
   return {
+    kind: "text",
     updateId,
     chatId: message.chat.id,
     fromId: message.from.id,
     text: message.text,
     date: message.date,
   };
+}
+
+/** Shared by the long poll and the webhook so both read exactly the same shapes. */
+export function readInbound(raw: unknown): InboundReadResult {
+  const parsed = telegramUpdateEvent.safeParse(raw);
+  if (!parsed.success) return { ok: false, reason: "malformed" };
+  const inbound = toInbound(parsed.data);
+  return inbound ? { ok: true, inbound } : { ok: false, reason: "not-text" };
 }
 
 /** The next offset acknowledges everything in the batch, read or skipped. */
@@ -105,14 +168,15 @@ function nextOffset(batch: readonly unknown[], current: number | undefined): num
 }
 
 /**
- * Long-polls getUpdates forever, yielding only text messages from an allowed
- * chat. Anything else (a photo, an edit, a stranger, a shape this package does
- * not read) is acknowledged and skipped, never thrown. Abort the signal to stop.
+ * Long-polls getUpdates forever, yielding only text messages and button taps
+ * from an allowed chat. Anything else (a photo, an edit, a stranger, a shape
+ * this package does not read) is acknowledged and skipped, never thrown. Abort
+ * the signal to stop.
  */
 export async function* pollUpdates(
   config: TelegramConfig,
   { timeoutSeconds, allowedChatIds, signal }: PollUpdatesOptions,
-): AsyncGenerator<TelegramTextUpdate> {
+): AsyncGenerator<TelegramInbound> {
   let offset: number | undefined;
   while (!signal?.aborted) {
     let batch: unknown[];
@@ -124,8 +188,8 @@ export async function* pollUpdates(
     }
     offset = nextOffset(batch, offset);
     for (const raw of batch) {
-      const update = toTextUpdate(raw);
-      if (update && isAllowedChat(update.chatId, allowedChatIds)) yield update;
+      const read = readInbound(raw);
+      if (read.ok && isAllowedChat(read.inbound.chatId, allowedChatIds)) yield read.inbound;
     }
   }
 }
@@ -142,4 +206,38 @@ export async function readChatIds(config: TelegramConfig): Promise<number[]> {
     if (parsed.success && parsed.data.message) ids.add(parsed.data.message.chat.id);
   }
   return [...ids];
+}
+
+export type AnswerCallbackResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Stops the tapped button's loading spinner; Telegram expects this for every
+ * callback. `text`, when given, shows as a brief toast. Never throws.
+ */
+export async function answerCallbackQuery(
+  config: TelegramConfig,
+  callbackQueryId: string,
+  text?: string,
+): Promise<AnswerCallbackResult> {
+  const doFetch = config.fetch ?? globalThis.fetch;
+  const body = text === undefined
+    ? { callback_query_id: callbackQueryId }
+    : { callback_query_id: callbackQueryId, text };
+  try {
+    const response = await doFetch(methodUrl(config, "answerCallbackQuery"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const envelope = await readEnvelope(response);
+    if (response.ok && envelope.ok) return { ok: true };
+    const description = envelope.description ?? response.statusText;
+    return failedAnswer(config, `answerCallbackQuery failed (${response.status}): ${description}`);
+  } catch (cause) {
+    return failedAnswer(config, describeCause(cause));
+  }
+}
+
+function failedAnswer(config: TelegramConfig, reason: string): AnswerCallbackResult {
+  return { ok: false, reason: redactToken(reason, config.token) };
 }

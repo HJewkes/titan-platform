@@ -1,4 +1,5 @@
 import type {
+  ButtonRow,
   MessageTransport,
   SendError,
   SendInput,
@@ -9,6 +10,7 @@ import { sendFailed } from "./contract.js";
 export interface RecordedSend {
   handle: string;
   text: string;
+  buttons?: ButtonRow[];
   at: number;
 }
 
@@ -33,8 +35,8 @@ export class MockTransport implements MessageTransport {
   }
 
   /** An attempt is recorded even when it is scripted to fail. */
-  async send({ handle, text }: SendInput): Promise<SendResult> {
-    this.sent.push({ handle, text, at: this.now() });
+  async send({ handle, text, buttons }: SendInput): Promise<SendResult> {
+    this.sent.push({ handle, text, ...(buttons ? { buttons } : {}), at: this.now() });
     const failure = this.scripted.shift();
     if (failure) return sendFailed(failure);
     return { ok: true, messageGuid: `mock-${this.sent.length}` };

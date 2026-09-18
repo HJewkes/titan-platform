@@ -1,4 +1,6 @@
 export type {
+  Button,
+  ButtonRow,
   MessageTransport,
   SendError,
   SendInput,
@@ -36,15 +38,20 @@ export type { TelegramConfig, TelegramEnvelope } from "./telegram.js";
 export {
   createTelegramTransport,
   redactToken,
+  TELEGRAM_MAX_CALLBACK_DATA_BYTES,
   TELEGRAM_MAX_TEXT_LENGTH,
   TelegramTransport,
 } from "./telegram.js";
 
 export type {
+  AnswerCallbackResult,
   PollUpdatesOptions,
+  TelegramCallback,
+  TelegramInbound,
   TelegramTextUpdate,
 } from "./telegram-updates.js";
 export {
+  answerCallbackQuery,
   pollUpdates,
   readChatIds,
   telegramUpdateEvent,
