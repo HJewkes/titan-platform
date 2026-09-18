@@ -104,8 +104,9 @@ complexity.cyclomatic 2 line 3 {"functionName":"loadUser"}
 - `extractFromConfig` returns `[]` on any error, including a missing file or bad JSON.
 - `NamingExtractor` only handles the languages `typescript`, `tsx` and `python`. Any other
   `ParsedFile.language` yields no naming observations.
-- The file filter maps `.tsx` to `typescript`, but a `.tsx` file only parses cleanly with
-  the `tsx` grammar. Pass `"tsx"` to `parseFile` yourself (see code-parser's gotchas).
+- A `.tsx` file parses with the `tsx` grammar even when passed as `typescript` (code-parser
+  0.1.0, TP-166). codewatch parsed it with the `typescript` grammar, so extractor output for
+  `.tsx` files can differ from the original's. Output for `.ts` and `.py` files is identical.
 - Review-voice observations carry `file: "_reviews"` and `line: 0`, not a real location.
 
 ## Where it came from
