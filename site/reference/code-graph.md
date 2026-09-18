@@ -22,7 +22,8 @@ time, in one SQLite file, refreshed incrementally.
 You are writing a tool that reasons about code structure: a layering check, a dead-code
 report, an impact analysis, a code-aware retrieval index. TypeScript, TSX, and Python.
 
-This repo's own `pnpm dag:check` runs on it, through codewatch's CLI.
+This repo's own `pnpm dag:check` runs on its graph, through codewatch's CLI.
+`scripts/dag-check-self.mjs` runs the same check on this package's own rules engine.
 
 ## Example
 
@@ -50,6 +51,59 @@ listEdges(store, snapshotId);
 
 `paths` are resolved against the process working directory; pass absolute paths if you run
 from elsewhere. There is no `cwd` option.
+
+## Checking a snapshot
+
+The rules engine turns a snapshot into pass/fail against a `check.json`. Verified against
+this release, checking `packages/code-graph/src` at `head` against itself at `main`, with one
+tightened rule:
+
+```ts
+import { checkSnapshot, loadCheckRules, validateRules } from "@titan-design/code-graph";
+
+const rules = await loadCheckRules(".codewatch/check.json", { onWarn: console.warn });
+checkSnapshot(store, { snapshot: "head", baseline: "main", rules }).result;
+// { rulesEvaluated: 4, nodesEvaluated: 144, newErrors: 0, carryoverErrors: 0, passed: true, … }
+
+const tight = validateRules({
+  rules: [{ id: "max-loc", type: "metric-max", metric: "loc", kind: "file", max: 200, excludeRoles: ["test"] }],
+});
+checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).result.violations;
+// [ { nodeId: 'packages/code-graph/src/check/validate.ts', message: 'loc=222 > 200' },
+//   { nodeId: 'packages/code-graph/src/extractors/ts-morph-extractor.ts', message: 'loc=275 > 200', isCarryover: true }, … ]
+// newErrors: 1, carryoverErrors: 4, passed: false
+```
+
+Six rule types, as codewatch had them: `metric-max`, `metric-min`, `metric-product-max`,
+`forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
+own layer or a lower one), and `no-internal-only-barrels`. Severity defaults to `error`.
+
+`snapshot` and `baseline` take a numeric id or a ref name, and a ref resolves to its newest
+snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same engine on
+ids.
+
+**The baseline is a ratchet.** A violation whose key (rule id, node id, and destination id
+for edge rules) also fires on the baseline is marked `isCarryover`. Only new errors set
+`passed: false`, so existing debt never blocks a change and new debt always does.
+
+## Diffing two snapshots
+
+```ts
+import { diffCheckResults, diffSnapshots } from "@titan-design/code-graph";
+
+diffSnapshots(store, { fromSnapshotId: 1, toSnapshotId: 2 }).summary;
+// { addedNodes: 36, removedNodes: 0, renamedNodes: 0, unchangedNodes: 108,
+//   addedEdges: 77, removedEdges: 0, metricChanges: 20, … }
+
+diffCheckResults(store, { fromSnapshotId: 1, toSnapshotId: 2, rules: tight }).newViolations;
+// [ { nodeId: 'packages/code-graph/src/check/validate.ts', … } ]
+```
+
+`diffSnapshots` reports metric deltas only on nodes present in both snapshots. The
+to-snapshot's `id_alias` rows carry a renamed file across, so a move is a rename rather than
+a delete plus an add, and its edges do not churn. `diffCheckResults` buckets violations as
+new, resolved, or unchanged, and splits unchanged metric violations into worsened and
+improved by value.
 
 ## The id scheme
 
@@ -96,16 +150,21 @@ structure does not have one import of thirty names read as thirty dependencies.
 is the wrong time model for a population re-indexed all at once. See
 [Architecture](/guides/architecture#two-time-models-on-purpose).
 
+**Deprecated names in a rules file heal, they do not fail.** A metric spelled `lines` or a
+role spelled `tests` loads as `loc` or `test` and reports through `onWarn`. An unknown role
+still throws.
+
 **Python support is narrower than TypeScript.** It is new here rather than ported: no type
 checker, so imports resolve by dotted path against the tree, and symbols come from the same
 tree-sitter declaration walk that feeds complexity.
 
 ## What was deliberately left in codewatch
 
-All of it follow-up work *on* this package rather than changes *to* it: the rules engine that
-turns a snapshot into pass/fail, git-history mining (churn, ownership, change coupling, test
-linking), and every graph analysis over a finished snapshot (communities, pagerank, partition
-quality, relevance, dead code, growth risk, diff, embeddings).
+All of it follow-up work *on* this package rather than changes *to* it: git-history mining
+(churn, ownership, change coupling, test linking), and every graph analysis over a finished
+snapshot (communities, pagerank, partition quality, relevance, dead code, growth risk,
+embeddings). The rules engine and the snapshot diff started here too and have since been
+ported.
 
 `buildIndexerMetrics` used to fold history into the same pass; here it computes only what a
 file's own bytes and the assembled graph determine.

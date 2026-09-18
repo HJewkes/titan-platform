@@ -54,3 +54,29 @@ export { buildIndexerMetrics } from "./index-metrics.js";
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";
+
+export type {
+  CheckResult,
+  CheckRule,
+  CheckRulesFile,
+  CheckViolation,
+  ForbidImportRule,
+  LayeredDepsRule,
+  MetricMaxRule,
+  MetricMinRule,
+  MetricProductMaxRule,
+  NoInternalOnlyBarrelsRule,
+  Severity,
+} from "./check/types.js";
+export type { RunChecksOptions } from "./check/check.js";
+export { runChecks } from "./check/check.js";
+export type { ValidateRulesOptions } from "./check/validate.js";
+export { validateRules } from "./check/validate.js";
+export type { CheckSnapshotOptions, CheckSnapshotResult, SnapshotSpec } from "./check/run.js";
+export { checkSnapshot, loadCheckRules, resolveSnapshot } from "./check/run.js";
+
+export type { GraphDiff, GraphDiffSummary, MetricDelta, NodeRename } from "./diff/types.js";
+export type { DiffSnapshotsOptions } from "./diff/diff.js";
+export { diffSnapshots } from "./diff/diff.js";
+export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
+export { diffCheckResults } from "./diff/check-diff.js";

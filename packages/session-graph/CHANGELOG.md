@@ -1,5 +1,12 @@
 # @titan-design/session-graph
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [1334f34]
+  - @titan-design/session-read@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

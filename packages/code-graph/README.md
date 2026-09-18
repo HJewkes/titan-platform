@@ -32,16 +32,19 @@ complexity). `lcom.ts` came along despite being an analysis: `source-metrics.ts`
 directly and lcom4 is a pure function of a file's bytes, so it belongs with the metrics that
 carry forward under reuse.
 
+Ported later (TP-123, TP-124), strictly as codewatch had them: the rules engine
+(`check*.ts`, now `src/check/`) and the snapshot diff plus check diff (`diff.ts`,
+`check-diff.ts`, now `src/diff/`). See [Checks and diffs](#checks-and-diffs).
+
 Deferred, all of it still in codewatch, all of it a follow-up on this package rather than a
 change to it:
 
-- The rules engine (`check*.ts`) that turns a snapshot into pass/fail against a config.
 - Git-history mining: churn, ownership, change coupling, symbol coupling, test coverage
   linking. `buildIndexerMetrics` used to fold these into the same pass; here it computes only
   what a file's own bytes and the assembled graph determine.
 - Graph analyses over a finished snapshot: communities, pagerank, partition quality,
   relevance, conventions, coverage overlay, dead code, growth risk, patterns, prune,
-  test-linker, diff, reuse-delta reporting, embeddings.
+  test-linker, reuse-delta reporting, embeddings.
 
 Python support is new here rather than ported. codewatch walked TypeScript only; the parser
 already had the grammar. The Python extractor is deliberately narrower than the ts-morph one:
@@ -104,3 +107,41 @@ The symbol layer is hidden by default. `listNodes` drops `symbol` nodes and `lis
 `references` edges unless you ask for them, so a caller reasoning about module structure sees
 the graph it expects and does not have one import of thirty names read as thirty
 dependencies.
+
+## Checks and diffs
+
+The rules engine turns a snapshot into pass/fail against a `check.json`. Six rule types:
+`metric-max`, `metric-min`, `metric-product-max`, `forbid-import`, `layered-deps`, and
+`no-internal-only-barrels`. Severity defaults to `error`; only new errors fail a check.
+
+```ts
+import { checkSnapshot, loadCheckRules, openCodeGraph } from "@titan-design/code-graph";
+
+const store = openCodeGraph(".codewatch/graph.db");
+const rules = await loadCheckRules(".codewatch/check.json", { onWarn: console.warn });
+const { result } = checkSnapshot(store, { snapshot: "head", baseline: "main", rules });
+result.passed; // false only when a violation is an error and absent from the baseline
+```
+
+`snapshot` and `baseline` take a numeric snapshot id or a ref name; a ref resolves to its
+newest snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same
+engine on ids, and `validateRules(json)` validates an already-parsed rules object.
+
+The baseline is a ratchet. A violation whose key (rule id, node id, and destination id for
+edge rules) also fires on the baseline snapshot is marked `isCarryover` and counts as
+carryover, so existing debt does not block a change but new debt does. Deprecated metric and
+role spellings in a rules file (`lines`, `tests`) heal to their canonical names with a
+warning through `onWarn` instead of failing validation.
+
+`diffSnapshots(store, { fromSnapshotId, toSnapshotId })` reports added, removed and renamed
+nodes, added and removed edges, and metric deltas on nodes present in both. The
+to-snapshot's `id_alias` rows carry a renamed file across, so a move reads as a rename rather
+than a delete plus an add, and its edges do not churn. Metric and edge-kind spellings are
+canonicalised before comparing.
+
+`diffCheckResults(store, { fromSnapshotId, toSnapshotId, rules })` runs the rules on both
+snapshots and buckets each violation as new, resolved, or unchanged; unchanged metric
+violations are further split into worsened and improved by value.
+
+`scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
+instead of codewatch's CLI.

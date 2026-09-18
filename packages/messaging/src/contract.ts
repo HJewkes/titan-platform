@@ -23,9 +23,12 @@ export interface SendInput {
  * Why a send did not happen. `no-chat` is its own case because iMessage cannot
  * open a conversation from an API call: a human has to send the first message.
  * `too-long` is its own case so a composer can split rather than retry.
+ * `unreachable` means the request provably never left, so a retry cannot
+ * duplicate it; `indeterminate` means it may have been delivered, so a retry can.
  */
 export type SendError =
   | { kind: "unreachable"; message: string }
+  | { kind: "indeterminate"; message: string }
   | { kind: "unauthorized"; message: string }
   | { kind: "no-chat"; handle: string; message: string }
   | { kind: "too-long"; limit: number; length: number; message: string }
