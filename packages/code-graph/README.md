@@ -176,17 +176,17 @@ const { candidates, coverage } = await findSimilarCapability(store, snapshotId, 
   keyed by `embedder.model` and the SHA-256 of the text. They are not snapshot-scoped, so
   re-embedding unchanged text costs zero embed calls. `embedSnapshot` throws on a backend
   failure; `tryEmbedSnapshot` reports it.
-- **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`, which adds
-  `search_query: ` for nomic models. Pass `queryPrefix` to override.
+- **Query.** `vectorRetriever` over a `BruteForceVectorIndex` from `retrieval`. The query is
+  embedded with role `query` and the symbol texts with role `document`; the embedder applies
+  the matching prefix (`search_query: ` / `search_document: ` for nomic models).
 - **Results are candidates, not verdicts.** Each has a cosine score, and `coverage` says how
   many symbols were searchable and how many carry purpose text. There is deliberately no
   co-location filter.
 - **Python symbols are not in the corpus yet.** The Python extractor records no signature or
   docstring, so no Python symbol passes the corpus filter.
-- **One prefix per database.** `OllamaEmbedder` prepends its `prefix` (default
-  `search_document: `) to every text, queries included, and `model` does not encode it.
-  codewatch used no prefix; `new OllamaEmbedder({ prefix: "" })` with `queryPrefix: ""`
-  reproduces its rankings exactly.
+- **Prefixes are part of the cache key.** `embedder.model` includes a hash of the embedder's
+  prefix table, so two prefix configurations never share a vector. codewatch used no prefix;
+  `new OllamaEmbedder({ prefixes: { document: "", query: "" } })` reproduces its rankings.
 
 ## Graph analyses
 

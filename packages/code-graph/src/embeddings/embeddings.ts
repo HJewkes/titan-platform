@@ -71,7 +71,7 @@ export async function findSimilarCapability(
         `(model ${embedder.model}); run embedSnapshot first.`,
     );
   }
-  const retriever = vectorRetriever(embedder, index, { queryPrefix: opts.queryPrefix });
+  const retriever = vectorRetriever(embedder, index);
   const hits = await retriever.retrieve(query, { limit: opts.limit ?? 10 });
   const byId = new Map(symbols.map((s) => [s.id, s]));
   return {
