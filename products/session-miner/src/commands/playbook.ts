@@ -15,20 +15,10 @@ export interface BulletView {
   harmfulCount: number;
 }
 
-/**
- * The registry renders any non-boolean option as a single `<value>` flag, so an
- * array field has to accept the CLI's comma-separated form as well as the real
- * array that MCP and HTTP callers send.
- */
-const tagList = z
-  .union([z.array(z.string()), z.string()])
-  .default([])
-  .transform((v) => (Array.isArray(v) ? v : v.split(",")).map((t) => t.trim()).filter((t) => t.length > 0));
-
 const AddArgs = z.object({
   content: z.string().min(1),
   category: z.string().default("general"),
-  tags: tagList,
+  tags: z.array(z.string()).default([]),
   session: z.string().optional().describe("session id this rule was learned in"),
   negative: z.boolean().default(false),
 });
@@ -43,7 +33,7 @@ export const playbookAdd = defineCommand<z.infer<typeof AddArgs>, { report: Retu
     positional: ["content"],
     options: {
       category: { long: "--category", description: "grouping label" },
-      tags: { long: "--tag", description: "comma-separated tags" },
+      tags: { long: "--tag", description: "tag (repeatable)" },
       session: { long: "--session", description: "session id for provenance" },
       negative: { long: "--negative", description: "record as an anti-pattern" },
     },

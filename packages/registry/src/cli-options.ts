@@ -1,5 +1,5 @@
 import type { AnyCommand, CliMeta, CliOption } from "./types.js";
-import { fieldSchema, isOptionalField, schemaKind, type SchemaKind } from "./zod-introspect.js";
+import { arrayElementKind, fieldSchema, isOptionalField, schemaKind, type SchemaKind } from "./zod-introspect.js";
 
 /** `--ship-target` becomes `ship_target`, the snake_case key convention for args schemas. */
 export function flagToKey(long: string): string {
@@ -28,8 +28,11 @@ export function readCommanderOption(opts: Record<string, unknown>, long: string)
   return value === false ? undefined : value;
 }
 
-/** Coerce a raw commander value (string | boolean | undefined) to the type the schema implies. */
-export function coerceCliValue(value: unknown, kind: SchemaKind | undefined): unknown {
+/**
+ * Coerce a raw commander value to the type the schema implies. For an array field, `value` is
+ * the list of raw strings a repeatable flag collected; each element is coerced by `elementKind`.
+ */
+export function coerceCliValue(value: unknown, kind: SchemaKind | undefined, elementKind?: SchemaKind): unknown {
   if (value === undefined) return undefined;
   if (kind === "boolean") return value === true || value === "true";
   if (kind === "number") {
@@ -38,13 +41,24 @@ export function coerceCliValue(value: unknown, kind: SchemaKind | undefined): un
     return Number.isNaN(n) ? value : n;
   }
   if (kind === "array") {
-    if (Array.isArray(value)) return value;
-    return String(value)
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((v) => coerceCliValue(v, elementKind));
   }
   return value;
+}
+
+/** commander accumulator for a repeatable flag: each occurrence appends to the array. */
+function appendOccurrence(value: string, previous: string[] | undefined): string[] {
+  return previous ? [...previous, value] : [value];
+}
+
+/**
+ * Commander's parser argument for a field's option, or undefined for a plain single-value flag.
+ * An array-typed field needs this so repeated occurrences of its flag accumulate instead of
+ * each overwriting the last (commander's default behavior for a same-named option).
+ */
+export function collectOptionParser(cmd: AnyCommand, key: string): ((value: string, previous: string[] | undefined) => string[]) | undefined {
+  return schemaKind(fieldSchema(cmd.args, key)) === "array" ? appendOccurrence : undefined;
 }
 
 /** Assemble the raw args record from commander positionals and parsed opts, coerced per schema. */
@@ -61,7 +75,10 @@ export function collectCliArgs(
   });
   for (const [key, opt] of Object.entries(meta.options ?? {})) {
     const value = readCommanderOption(opts, opt.long);
-    if (value !== undefined) raw[key] = coerceCliValue(value, schemaKind(fieldSchema(cmd.args, key)));
+    if (value === undefined) continue;
+    const schema = fieldSchema(cmd.args, key);
+    const kind = schemaKind(schema);
+    raw[key] = coerceCliValue(value, kind, kind === "array" ? arrayElementKind(schema) : undefined);
   }
   return raw;
 }

@@ -55,9 +55,26 @@ Commander-free helpers so the product owns the commander wiring:
 - `commandPath("task.done")` gives the sub-command path.
 - `positionalSpec(cmd, "slug")` gives `<slug>` or `[slug]` depending on the schema.
 - `optionFlagSpec(cmd, "force", opt)` gives `--force` for booleans, `--x <value>` otherwise.
+- `collectOptionParser(cmd, "tags")` gives commander's accumulator function for an
+  array-typed field, or `undefined` for anything else. Pass it as the option's third
+  argument so repeated occurrences of the flag append instead of overwriting: commander
+  calls this per occurrence, `collectCliArgs` never sees a plain string for that field.
 - `collectCliArgs(cmd, positionals, opts)` reads commander's parsed values back into the
   args record, coerced by schema kind. It handles commander's `--no-*` negation, which
-  stores `false` under the stem and never defines the `no*` key.
+  stores `false` under the stem and never defines the `no*` key. An array field's elements
+  are each coerced by the array's element kind, so `z.array(z.number())` yields numbers.
+
+```ts
+for (const [key, opt] of Object.entries(cmd.cli?.options ?? {})) {
+  const parser = collectOptionParser(cmd, key);
+  const spec = optionFlagSpec(cmd, key, opt);
+  parser ? sub.option(spec, opt.description, parser) : sub.option(spec, opt.description);
+}
+```
+
+An array field's flag renders the same `--x <value>` as a scalar; only repeated
+occurrences differ from a single-value flag (`--tag a --tag b` yields `["a", "b"]`).
+Variadic (`<value...>`) is deliberately not used, since it swallows trailing positionals.
 
 ## MCP projection
 
