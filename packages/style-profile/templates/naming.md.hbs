@@ -1,0 +1,31 @@
+# Naming Conventions
+
+{{#each rules}}
+## {{label}}
+
+**Convention**: `{{convention}}`
+**Confidence**: {{confidencePercent}}%{{#if stability}} | **Stability**: {{stability}}{{/if}}{{#if fixability}} | **Fixability**: {{fixability}}{{/if}}
+
+{{#if description}}
+{{description}}
+{{/if}}
+
+{{#if examples}}
+### Examples
+{{#each examples}}
+{{#if good}}
+```typescript
+// Good
+{{good}}
+```
+{{/if}}
+{{#if bad}}
+```typescript
+// Avoid
+{{bad}}
+```
+{{/if}}
+{{/each}}
+{{/if}}
+
+{{/each}}

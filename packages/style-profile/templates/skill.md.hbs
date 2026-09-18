@@ -1,0 +1,53 @@
+---
+description: "Personal coding style for {{author}} -- enforces naming, structure, documentation, and pattern preferences detected from real code."
+triggers:
+  - writing new code
+  - reviewing code
+  - refactoring
+---
+
+# {{author}}'s Code Style
+
+{{#if criticalRules}}
+## Critical Rules (always follow)
+{{#each criticalRules}}
+- **{{name}}**: {{readableConvention}} ({{confidencePercent}}%)
+{{/each}}
+{{/if}}
+
+{{#if strongRules}}
+## Strong Conventions (follow when possible)
+{{#each strongRules}}
+- **{{name}}**: {{readableConvention}} ({{confidencePercent}}%)
+{{/each}}
+{{/if}}
+
+{{#if preferredRules}}
+## Preferred Style (when it fits)
+{{#each preferredRules}}
+- **{{name}}**: {{readableConvention}} ({{confidencePercent}}%)
+{{/each}}
+{{/if}}
+
+For full details see:
+- [references/naming.md](references/naming.md) -- naming conventions
+- [references/patterns.md](references/patterns.md) -- structural patterns and preferences
+{{#each languages}}
+- [references/per-language/{{this}}.md](references/per-language/{{this}}.md) -- {{this}}-specific rules
+{{/each}}
+
+{{#if idioms}}
+
+## Common Patterns
+{{#each idioms}}
+- **{{name}}**: {{description}}{{#if example}} — `{{example}}`{{/if}}
+{{/each}}
+{{/if}}
+
+{{#if antiPatterns}}
+
+## Avoid
+{{#each antiPatterns}}
+- **{{pattern}}**: {{reason}}
+{{/each}}
+{{/if}}
