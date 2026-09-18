@@ -47,13 +47,18 @@ It does not resolve imports or types; that is ts-morph's job in `code-graph`.
 
 ## Gotchas
 
-**A `.js` file passes the filter and then fails to parse.** The filter registers
-`javascript` for `.js` and `.jsx`, but `parseFile` has no JavaScript grammar and rejects
-with `Unsupported language: javascript`. This is inherited behaviour, pinned by a test.
+**`.tsx` is `typescript` to the filter and `tsx` to the grammar.** `getLanguageFromPath`
+returns `typescript` for `.tsx`, and `parseFile` picks the `tsx` grammar from the extension,
+so passing the filter's answer straight through parses JSX cleanly. `ParsedFile.language`
+stays `typescript`. codewatch and the first port parsed `.tsx` with the TypeScript grammar,
+which turned most JSX files into error trees (TP-166).
 
-**Filter language and parser language are different vocabularies.** `getLanguageFromPath`
-returns `typescript` for `.tsx`, but JSX parses without errors only under the `tsx`
-grammar. Pick the grammar from the extension, not from the filter's answer.
+**`.js` and `.jsx` are not source.** The filter used to accept them as `javascript`, and
+`parseFile` then rejected them. Now `getLanguageFromPath` returns `null` for them and
+`shouldIncludeFile` returns `false`, so a walk skips them without throwing.
+
+**Bare `&` in JSX text is still an error.** The tsx grammar rejects a bare `&` or a numeric
+entity like `&#128196;` in JSX text, so those files keep `hasError` set.
 
 **`web-tree-sitter` is a peer.** `ParsedFile.tree` is its `Tree`, and you will walk it with
 its `Node` type, so there must be exactly one copy. The grammar packages are regular

@@ -75,7 +75,10 @@ ts-morph resolves back onto `src/`. That remap needs the target package built, w
 
 Every run writes a fingerprint per file: a content hash and a comment/whitespace-insensitive
 hash of its parse structure. The next run diffs against the most recent snapshot carrying the
-same `INDEX_VERSION` and sorts each file into one tier.
+same `INDEX_VERSION` and sorts each file into one tier. `INDEX_VERSION` is bumped whenever a
+metric can change for the same bytes, not only when the node or edge shape changes: 0.12.0
+marks `.tsx` files moving to the tsx grammar, which changed their complexity metrics and
+symbol spans.
 
 | Tier | Trigger | Work skipped |
 |---|---|---|

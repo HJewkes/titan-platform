@@ -15,6 +15,24 @@ export function classify(n: number): string {
 }
 `;
 const INDEX_TS = 'export { classify } from "./b.js";\n';
+const TSX = `export function List({ items, loading }: { items: string[]; loading: boolean }) {
+  if (loading) return <span aria-busy="true" />;
+  return (
+    <>
+      {items.length === 0 && <p>empty</p>}
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item.length > 3 ? <b>{item}</b> : item}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function count(items: string[]): number {
+  return items.length;
+}
+`;
 const PY = `import json
 
 
@@ -111,6 +129,18 @@ describe("indexPaths", () => {
     const after = await index();
     expect(after.files).toBe(4);
     expect(store.listNodes(after.snapshotId).map((n) => n.id)).toContain("src/c.ts");
+  });
+
+  it("computes a JSX component's complexity from a clean .tsx parse", async () => {
+    await fs.writeFile(path.join(root, "src/List.tsx"), TSX);
+
+    const result = await index();
+
+    const metric = (nodeId: string, name: string) =>
+      store.listMetrics(result.snapshotId).find((m) => m.nodeId === nodeId && m.name === name)?.value;
+    expect(metric("src/List.tsx", "function_count")).toBe(2);
+    expect(metric("src/List.tsx#List", "symbol_cyclomatic")).toBe(4);
+    expect(metric("src/List.tsx#count", "symbol_cyclomatic")).toBe(1);
   });
 
   it("indexes a Python file into nodes and edges", async () => {

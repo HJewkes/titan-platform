@@ -1,5 +1,6 @@
 import { Parser, Language } from "web-tree-sitter";
 import { createRequire } from "node:module";
+import * as path from "node:path";
 import type { ParsedFile } from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -52,12 +53,17 @@ async function getParser(language: string): Promise<Parser> {
   return parser;
 }
 
+// The filter's `typescript` covers `.tsx`, but only the tsx grammar parses JSX.
+function grammarFor(language: string, filePath: string): string {
+  return language === "typescript" && path.extname(filePath) === ".tsx" ? "tsx" : language;
+}
+
 export async function parseFile(
   content: string,
   filePath: string,
   language: string,
 ): Promise<ParsedFile> {
-  const parser = await getParser(language);
+  const parser = await getParser(grammarFor(language, filePath));
   const tree = parser.parse(content);
   if (!tree) {
     throw new Error(`Failed to parse ${filePath}`);
