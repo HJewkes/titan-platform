@@ -20,6 +20,7 @@ export function snapshotPageRank(
   snapshotId: number,
   options: PageRankOptions = {},
 ): PageRankResult {
+  // The store reads rows unordered, so float-tied scores may order differently than in codewatch.
   return computePageRank(store.listNodes(snapshotId), store.listEdges(snapshotId), options);
 }
 

@@ -200,7 +200,8 @@ Every run writes a fingerprint per file: a content hash, and a comment/whitespac
 hash of its parse structure. The next run diffs against the most recent snapshot carrying the
 same `INDEX_VERSION`. That version is bumped whenever a metric can change for the same bytes,
 not only when the node or edge shape changes. 0.12.0 marks `.tsx` files moving to the tsx
-grammar (TP-166).
+grammar (TP-166); 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward
+set (TP-127).
 
 | Tier | Trigger | Work skipped |
 | --- | --- | --- |

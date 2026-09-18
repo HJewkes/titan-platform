@@ -78,7 +78,7 @@ hash of its parse structure. The next run diffs against the most recent snapshot
 same `INDEX_VERSION` and sorts each file into one tier. `INDEX_VERSION` is bumped whenever a
 metric can change for the same bytes, not only when the node or edge shape changes: 0.12.0
 marks `.tsx` files moving to the tsx grammar, which changed their complexity metrics and
-symbol spans.
+symbol spans; 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward set.
 
 | Tier | Trigger | Work skipped |
 |---|---|---|
