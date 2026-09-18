@@ -25,7 +25,8 @@ if [[ -n "${BASE_REF:-}" ]]; then
   git worktree add --detach "$BASELINE_DIR" "$BASE_REF" >/dev/null
   trap 'git worktree remove --force "$BASELINE_DIR" >/dev/null 2>&1 || true' EXIT
   node "$CLI" graph index "$BASELINE_DIR/packages" "$BASELINE_DIR/products" --db "$DB" --ref baseline --no-churn
-  exec node "$CLI" graph check --db "$DB" --config "$CONFIG" --snapshot head --baseline baseline
+  node "$CLI" graph check --db "$DB" --config "$CONFIG" --snapshot head --baseline baseline
+  exit $?
 fi
 
 exec node "$CLI" graph check --db "$DB" --config "$CONFIG" --snapshot head
