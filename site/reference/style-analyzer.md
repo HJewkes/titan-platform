@@ -151,12 +151,17 @@ README shows a ten-line adapter over `@titan-design/agent`.
   have no taxonomy rating and take `medium` on purpose: `control-flow.if-else`,
   `.promise-then` and `.else-after-return`. No emitted type is rated `low` today, so the
   0.7 weight is unused.
-- In Python, only a top-level `SCREAMING_SNAKE` assignment counts as `naming.constant`.
-  Plain (`MAX_RETRIES = 3`), annotated (`TIMEOUT_S: int = 30`) and chained
-  (`A_MAX = B_MAX = 5`) forms all qualify. Class-level, function-local and `if`-nested caps
-  names report as `naming.variable`. So do single-word caps names such as `DEBUG`, which
-  match `PascalCase` in both languages. Tuple targets and dunders such as `__all__` emit
-  nothing.
+- A constant name is `SCREAMING_SNAKE` or one capitalised word of two or more characters
+  (`DEBUG`, `VERSION`), in both languages. A single letter (`T = TypeVar("T")`,
+  `const K = 1`) is left out and reports as `naming.variable` `PascalCase`. A two-letter
+  TypeVar such as `KT = TypeVar("KT")` is not left out and counts as a constant.
+- In TypeScript, any `const` with a constant name counts, at any depth. In Python, only an
+  assignment at module scope counts. That means top level or inside a module-level `if`,
+  `elif`, `else`, `try`, `except`, `finally` or `with` block, so
+  `try: HAS_LZMA = True / except: HAS_LZMA = False` qualifies. Plain, annotated
+  (`TIMEOUT_S: int = 30`) and chained (`A_MAX = B_MAX = 5`) forms all count. Class, function
+  and loop bodies do not count, so their capitals report as `naming.variable`. Tuple targets
+  and dunders such as `__all__` emit nothing.
 - The enricher runs prompts one at a time and checks the budget only before each prompt,
   so the last prompt can overshoot `totalTokenBudget`.
 
@@ -175,4 +180,5 @@ keyed by taxonomy spellings such as `naming.variables` and `controlFlow.guardCla
 Those keys matched none of the emitted types, so 30 of 49 types fell back to `medium`.
 Fourteen of those 30 are now rated `high`, and their confidence is `consistency` instead
 of `consistency * 0.85`. Python module-level constants used to report as `naming.variable`
-because the check looked at the wrong tree-sitter parent.
+because the check looked at the wrong tree-sitter parent. Single-word capitals such as
+`DEBUG` used to report as `PascalCase` variables in both languages.

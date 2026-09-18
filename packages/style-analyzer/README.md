@@ -121,9 +121,14 @@ at the original's versions.
   never rated (`control-flow.if-else`, `.promise-then`, `.else-after-return`); they take
   `medium` on purpose. The original codewatch map used taxonomy spellings that matched
   none of 30 emitted types, so those types all fell back to `medium` (TP-172).
-- A Python assignment counts as `naming.constant` only at module top level, including
-  annotated and chained forms (TP-173). Class-level and function-local caps names, and
-  single-word caps names such as `DEBUG`, report as `naming.variable`.
+- A Python assignment counts as `naming.constant` only at module scope (TP-173). Module
+  scope means top level, or inside a module-level `if`, `elif`, `else`, `try`, `except`,
+  `finally` or `with` block. Annotated and chained forms count. Class, function and loop
+  bodies do not.
+- In both languages, a constant name is `SCREAMING_SNAKE` or one capitalised word of two
+  or more characters (`DEBUG`, `VERSION`). A single letter such as `T = TypeVar("T")` or
+  `const K = 1` stays `naming.variable` `PascalCase`. A two-letter TypeVar such as
+  `KT = TypeVar("KT")` counts as a constant.
 
 The worked example and the full observation list are in the site reference page,
 `site/reference/style-analyzer.md`.
