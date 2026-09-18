@@ -14,6 +14,10 @@ export type {
   CheckResult,
   OrchestratorOptions,
   OrchestratorResult,
+  SkippedRule,
+  ToolFailure,
+  ToolFailureKind,
+  ToolName,
 } from "./orchestrator/types.js";
 export { diffAgainstProfile } from "./profile-diff/diff-against-profile.js";
 export type { Deviation, DiffResult } from "./profile-diff/diff-against-profile.js";

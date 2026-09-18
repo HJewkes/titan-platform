@@ -23,6 +23,31 @@ export interface CheckResult {
   exitCode: number;
 }
 
+export type ToolName = "eslint" | "ruff";
+
+export type ToolFailureKind =
+  | "spawn-failed"
+  | "timeout"
+  | "signal"
+  | "exit-code"
+  | "unparseable-output"
+  | "file-not-checked"
+  | "missing-dependency";
+
+export interface ToolFailure {
+  tool: ToolName;
+  kind: ToolFailureKind;
+  message: string;
+  file?: string;
+}
+
+export interface SkippedRule {
+  tool: "eslint";
+  rule: string;
+  plugin: string;
+  reason: string;
+}
+
 export interface OrchestratorOptions {
   profile: Profile;
   files: string[];
@@ -32,6 +57,9 @@ export interface OrchestratorOptions {
 
 export interface OrchestratorResult {
   diagnostics: CheckDiagnostic[];
+  /** Empty only when every tool that ran checked every file it was given. */
+  failures: ToolFailure[];
+  skippedRules: SkippedRule[];
   summary: {
     total: number;
     errors: number;

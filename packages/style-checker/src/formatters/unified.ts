@@ -51,7 +51,7 @@ interface EslintJsonEntry {
 }
 
 interface RuffJsonEntry {
-  code: string;
+  code: string | null;
   message: string;
   filename: string;
   location: { row: number; column: number };
@@ -105,7 +105,7 @@ export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
       `Failed to parse Ruff JSON output. Raw output:\n${jsonStr.slice(0, 500)}`,
     );
   }
-  return entries.map((entry) => ({
+  return entries.flatMap((entry) => entry.code === null ? [] : [{
     file: entry.filename,
     line: entry.location.row,
     column: entry.location.column,
@@ -114,7 +114,7 @@ export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
     category: categorizeRuffCode(entry.code),
     rule: entry.code,
     fixable: entry.fix != null,
-  }));
+  }]);
 }
 
 export function formatDiagnostic(d: CheckDiagnostic): string {

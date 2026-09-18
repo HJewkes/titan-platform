@@ -1,9 +1,10 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runTool } from "./tool-runner.js";
+import { runAndClassify, parseOrFail } from "./failures.js";
 import { parseRuffJsonOutput } from "../formatters/unified.js";
-import type { CheckDiagnostic } from "../orchestrator/types.js";
+import type { CheckDiagnostic, ToolFailure } from "../orchestrator/types.js";
+import type { RunnerOptions, RunnerResult } from "./types.js";
 import type { RuffConfig } from "../generators/ruff.js";
 
 type RuffLint = NonNullable<RuffConfig["lint"]>;
@@ -56,11 +57,33 @@ function toToml(config: RuffConfig): string {
   return lines.join("\n") + "\n";
 }
 
+interface RuffJsonMessage {
+  code: string | null;
+  filename: string;
+  message: string;
+}
+
+// ruff reports a file it could not parse as a diagnostic with a null code.
+function unparsedFiles(stdout: string): ToolFailure[] {
+  const entries = JSON.parse(stdout) as RuffJsonMessage[];
+  return entries
+    .filter((e) => e.code === null)
+    .map((e) => ({ tool: "ruff" as const, kind: "file-not-checked" as const, file: e.filename, message: e.message }));
+}
+
+function readRuffOutput(stdout: string): { diagnostics: CheckDiagnostic[]; failures: ToolFailure[] } {
+  const parsed = parseOrFail("ruff", () => ({
+    diagnostics: parseRuffJsonOutput(stdout),
+    failures: unparsedFiles(stdout),
+  }));
+  return parsed.ok ? parsed.value : { diagnostics: [], failures: [parsed.failure] };
+}
+
 export async function runRuff(
   config: RuffConfig,
   files: string[],
-  options?: { fix?: boolean },
-): Promise<{ diagnostics: CheckDiagnostic[]; exitCode: number }> {
+  options?: RunnerOptions,
+): Promise<RunnerResult> {
   const tempDir = mkdtempSync(join(tmpdir(), "codewatch-ruff-"));
   const configPath = join(tempDir, "ruff.toml");
 
@@ -77,11 +100,9 @@ export async function runRuff(
       ...files,
     ];
 
-    const result = await runTool("ruff", args);
-    const diagnostics =
-      result.stdout.trim() ? parseRuffJsonOutput(result.stdout) : [];
-
-    return { diagnostics, exitCode: result.exitCode };
+    const run = await runAndClassify("ruff", "ruff", args, { cwd: options?.cwd, timeout: options?.timeout });
+    if (!run.ok) return { diagnostics: [], exitCode: run.exitCode, failures: [run.failure], skippedRules: [] };
+    return { ...readRuffOutput(run.stdout), exitCode: run.exitCode, skippedRules: [] };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
