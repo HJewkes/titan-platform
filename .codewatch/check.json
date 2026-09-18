@@ -29,7 +29,8 @@
           "packages/code-graph",
           "packages/workflow",
           "packages/memory",
-          "packages/style-profile"
+          "packages/style-profile",
+          "packages/style-analyzer"
         ],
         "ui": [],
         "product": [
@@ -62,11 +63,25 @@
           "packages/code-graph",
           "packages/workflow",
           "packages/memory",
-          "packages/style-profile"
+          "packages/style-profile",
+          "packages/style-analyzer"
         ],
         [
           "products/session-miner",
           "products/retrieval-eval"
+        ]
+      ]
+    },
+    {
+      "id": "code-graph-history-seam",
+      "type": "layered-deps",
+      "$comment": "packages/code-graph/src/history imports nothing from the rest of code-graph, so a later extraction into @titan-design/git-history is a directory move. The rest of code-graph may import history.",
+      "layers": [
+        [
+          "packages/code-graph/src/history"
+        ],
+        [
+          "packages/code-graph/src"
         ]
       ]
     },

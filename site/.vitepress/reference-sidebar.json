@@ -88,6 +88,10 @@
         "link": "/reference/session-read"
       },
       {
+        "text": "style-analyzer",
+        "link": "/reference/style-analyzer"
+      },
+      {
         "text": "style-profile",
         "link": "/reference/style-profile"
       },
