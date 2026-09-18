@@ -24,15 +24,15 @@ describe("Aggregator", () => {
   describe("frequency distribution", () => {
     it("computes dominant value from observations", () => {
       const observations: Observation[] = [
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "snake_case" }),
-        makeObservation({ type: "naming.variables", value: "snake_case" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "snake_case" }),
+        makeObservation({ type: "naming.variable", value: "snake_case" }),
       ];
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature).toBeDefined();
       expect(feature!.convention).toBe("camelCase");
@@ -58,56 +58,41 @@ describe("Aggregator", () => {
   });
 
   describe("confidence scoring", () => {
-    it("applies high stability weight (1.0) for naming.variables", () => {
+    it("applies high stability weight (1.0) for naming.variable", () => {
       const observations: Observation[] = Array.from({ length: 10 }, () =>
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
       );
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature!.confidence).toBeCloseTo(1.0, 2);
       expect(feature!.stability).toBe("high");
     });
 
-    it("applies medium stability weight (0.85) for naming.booleans", () => {
+    it("applies medium stability weight (0.85) for naming.boolean", () => {
       const observations: Observation[] = Array.from({ length: 10 }, () =>
-        makeObservation({ type: "naming.booleans", value: "is-prefix" }),
+        makeObservation({ type: "naming.boolean", value: "is-prefix" }),
       );
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.booleans");
+      const feature = result.features.get("naming.boolean");
 
       expect(feature!.confidence).toBeCloseTo(0.85, 2);
       expect(feature!.stability).toBe("medium");
     });
 
-    it("applies low stability weight (0.7) for formatting.defaultParams", () => {
-      const observations: Observation[] = Array.from({ length: 10 }, () =>
-        makeObservation({
-          type: "formatting.defaultParams",
-          value: "default-syntax",
-        }),
-      );
-
-      const result = aggregator.aggregate(observations);
-      const feature = result.features.get("formatting.defaultParams");
-
-      expect(feature!.confidence).toBeCloseTo(0.7, 2);
-      expect(feature!.stability).toBe("low");
-    });
-
     it("reduces confidence when consistency is low", () => {
       const observations: Observation[] = [
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "snake_case" }),
-        makeObservation({ type: "naming.variables", value: "PascalCase" }),
-        makeObservation({ type: "naming.variables", value: "kebab-case" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "snake_case" }),
+        makeObservation({ type: "naming.variable", value: "PascalCase" }),
+        makeObservation({ type: "naming.variable", value: "kebab-case" }),
       ];
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature!.confidence).toBeCloseTo(0.4, 2);
     });
@@ -116,50 +101,50 @@ describe("Aggregator", () => {
   describe("severity mapping", () => {
     it("maps high confidence to error severity", () => {
       const observations: Observation[] = Array.from({ length: 20 }, () =>
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
       );
 
       const result = aggregator.aggregate(observations);
-      expect(result.features.get("naming.variables")!.severity).toBe("error");
+      expect(result.features.get("naming.variable")!.severity).toBe("error");
     });
 
     it("maps medium confidence to warn severity", () => {
       const observations: Observation[] = [
         ...Array.from({ length: 7 }, () =>
-          makeObservation({ type: "naming.variables", value: "camelCase" }),
+          makeObservation({ type: "naming.variable", value: "camelCase" }),
         ),
         ...Array.from({ length: 3 }, () =>
-          makeObservation({ type: "naming.variables", value: "snake_case" }),
+          makeObservation({ type: "naming.variable", value: "snake_case" }),
         ),
       ];
 
       const result = aggregator.aggregate(observations);
-      expect(result.features.get("naming.variables")!.severity).toBe("warn");
+      expect(result.features.get("naming.variable")!.severity).toBe("warn");
     });
 
     it("maps low confidence to info severity", () => {
       const observations: Observation[] = [
         ...Array.from({ length: 5 }, () =>
-          makeObservation({ type: "naming.variables", value: "camelCase" }),
+          makeObservation({ type: "naming.variable", value: "camelCase" }),
         ),
         ...Array.from({ length: 5 }, () =>
-          makeObservation({ type: "naming.variables", value: "snake_case" }),
+          makeObservation({ type: "naming.variable", value: "snake_case" }),
         ),
       ];
 
       const result = aggregator.aggregate(observations);
-      expect(result.features.get("naming.variables")!.severity).toBe("info");
+      expect(result.features.get("naming.variable")!.severity).toBe("info");
     });
 
     it("maps very low confidence to off severity", () => {
       const observations: Observation[] = [
-        makeObservation({ type: "formatting.defaultParams", value: "a" }),
-        makeObservation({ type: "formatting.defaultParams", value: "b" }),
-        makeObservation({ type: "formatting.defaultParams", value: "c" }),
+        makeObservation({ type: "naming.parameter", value: "a" }),
+        makeObservation({ type: "naming.parameter", value: "b" }),
+        makeObservation({ type: "naming.parameter", value: "c" }),
       ];
 
       const result = aggregator.aggregate(observations);
-      expect(result.features.get("formatting.defaultParams")!.severity).toBe(
+      expect(result.features.get("naming.parameter")!.severity).toBe(
         "off",
       );
     });
@@ -169,43 +154,43 @@ describe("Aggregator", () => {
     it("flags low-confidence features for review", () => {
       const observations: Observation[] = [
         ...Array.from({ length: 5 }, () =>
-          makeObservation({ type: "naming.variables", value: "camelCase" }),
+          makeObservation({ type: "naming.variable", value: "camelCase" }),
         ),
         ...Array.from({ length: 5 }, () =>
-          makeObservation({ type: "naming.variables", value: "snake_case" }),
+          makeObservation({ type: "naming.variable", value: "snake_case" }),
         ),
       ];
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature!.needsReview).toBe(true);
       expect(result.reviewQueue).toContainEqual(
-        expect.objectContaining({ type: "naming.variables" }),
+        expect.objectContaining({ type: "naming.variable" }),
       );
     });
 
     it("does not flag high-confidence features for review", () => {
       const observations: Observation[] = Array.from({ length: 20 }, () =>
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
       );
 
       const result = aggregator.aggregate(observations);
-      expect(result.features.get("naming.variables")!.needsReview).toBe(false);
+      expect(result.features.get("naming.variable")!.needsReview).toBe(false);
     });
 
     it("sorts review queue by confidence ascending", () => {
       const observations: Observation[] = [
         ...Array.from({ length: 3 }, () =>
-          makeObservation({ type: "naming.variables", value: "camelCase" }),
+          makeObservation({ type: "naming.variable", value: "camelCase" }),
         ),
         ...Array.from({ length: 3 }, () =>
-          makeObservation({ type: "naming.variables", value: "snake_case" }),
+          makeObservation({ type: "naming.variable", value: "snake_case" }),
         ),
         ...Array.from({ length: 2 }, () =>
-          makeObservation({ type: "formatting.defaultParams", value: "x" }),
+          makeObservation({ type: "naming.parameter", value: "x" }),
         ),
-        makeObservation({ type: "formatting.defaultParams", value: "y" }),
+        makeObservation({ type: "naming.parameter", value: "y" }),
       ];
 
       const result = aggregator.aggregate(observations);
@@ -223,15 +208,15 @@ describe("Aggregator", () => {
   describe("grouping", () => {
     it("groups observations by type and extracts category", () => {
       const observations: Observation[] = [
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.functions", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.function", value: "camelCase" }),
         makeObservation({ type: "formatting.semicolons", value: true }),
       ];
 
       const result = aggregator.aggregate(observations);
 
       expect(result.features.size).toBe(3);
-      expect(result.features.get("naming.variables")!.category).toBe("naming");
+      expect(result.features.get("naming.variable")!.category).toBe("naming");
       expect(result.features.get("formatting.semicolons")!.category).toBe(
         "formatting",
       );
@@ -241,8 +226,8 @@ describe("Aggregator", () => {
   describe("summary statistics", () => {
     it("computes correct totals", () => {
       const observations: Observation[] = [
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
-        makeObservation({ type: "naming.variables", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
+        makeObservation({ type: "naming.variable", value: "camelCase" }),
         makeObservation({ type: "formatting.semicolons", value: true }),
       ];
 
@@ -260,7 +245,7 @@ describe("Aggregator", () => {
         { length: 10 },
         (_, i) =>
           makeObservation({
-            type: "naming.variables",
+            type: "naming.variable",
             value: "camelCase",
             file: `file${i}.ts`,
             line: i + 1,
@@ -268,7 +253,7 @@ describe("Aggregator", () => {
       );
 
       const result = aggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature!.examples.length).toBeLessThanOrEqual(5);
       expect(feature!.examples.length).toBeGreaterThan(0);
@@ -302,13 +287,13 @@ describe("Aggregator", () => {
 
       const observations: Observation[] = [
         ...Array.from({ length: 10 }, () =>
-          makeObservation({ type: "naming.variables", value: "camelCase" }),
+          makeObservation({ type: "naming.variable", value: "camelCase" }),
         ),
-        makeObservation({ type: "naming.variables", value: "snake_case" }),
+        makeObservation({ type: "naming.variable", value: "snake_case" }),
       ];
 
       const result = strictAggregator.aggregate(observations);
-      const feature = result.features.get("naming.variables");
+      const feature = result.features.get("naming.variable");
 
       expect(feature!.severity).toBe("warn");
     });
@@ -319,12 +304,12 @@ describe("Aggregator", () => {
       });
 
       const observations: Observation[] = Array.from({ length: 10 }, () =>
-        makeObservation({ type: "naming.booleans", value: "is-prefix" }),
+        makeObservation({ type: "naming.boolean", value: "is-prefix" }),
       );
 
       const result = customAggregator.aggregate(observations);
       expect(
-        result.features.get("naming.booleans")!.confidence,
+        result.features.get("naming.boolean")!.confidence,
       ).toBeCloseTo(0.9, 2);
     });
   });
