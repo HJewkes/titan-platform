@@ -26,11 +26,20 @@ function detectBooleanPrefix(name: string, language: string): string | null {
   return match ? match[1]! : null;
 }
 
-// tree-sitter-python wraps a top-level assignment in expression_statement; chained targets nest in assignment.
+// Blocks that do not open a new scope, so an assignment inside one still binds a module global.
+const MODULE_SCOPE_BLOCKS = new Set([
+  "block", "if_statement", "elif_clause", "else_clause",
+  "try_statement", "except_clause", "finally_clause", "with_statement",
+]);
+
+// tree-sitter-python wraps an assignment in expression_statement; chained targets nest in assignment.
 function isModuleLevelAssignment(node: Node): boolean {
-  let statement = node.parent;
-  while (statement?.type === "assignment") statement = statement.parent;
-  return statement?.type === "expression_statement" && statement.parent?.type === "module";
+  let scope = node.parent;
+  while (scope?.type === "assignment") scope = scope.parent;
+  if (scope?.type !== "expression_statement") return false;
+  scope = scope.parent;
+  while (scope && MODULE_SCOPE_BLOCKS.has(scope.type)) scope = scope.parent;
+  return scope?.type === "module";
 }
 
 export class NamingExtractor implements StyleExtractor {

@@ -162,21 +162,46 @@ describe("NamingExtractor", () => {
       ]);
     });
 
-    it("keeps class-level, function-local and block-nested caps names as variables", async () => {
+    it("classifies caps names in module-scope try, if and with blocks as constants", async () => {
+      const source = [
+        "try:",
+        "    import lzma",
+        "    HAS_LZMA = True",
+        "except ImportError:",
+        "    HAS_LZMA = False",
+        "if TYPE_CHECKING:",
+        "    CHECK_ONLY = 1",
+        "elif sys.platform == 'win32':",
+        "    PATH_SEP = ';'",
+        "else:",
+        "    PATH_SEP = ':'",
+        "with open('v') as f:",
+        "    RAW_VERSION = f.read()",
+        "",
+      ].join("\n");
+      expect(await namesOf(source)).toEqual(
+        [3, 5, 7, 9, 11, 13].map((line) => `${line} naming.constant SCREAMING_SNAKE`),
+      );
+    });
+
+    it("keeps class-body, function-local and loop-body caps names as variables", async () => {
       const source = [
         "class Config:",
         "    DEFAULT_PORT = 8080",
+        "    if DEBUG_MODE:",
+        "        TRACE_LEVEL = 2",
         "def run():",
-        "    LOCAL_MAX = 3",
-        "if True:",
-        "    GUARDED_FLAG = 1",
+        "    try:",
+        "        LOCAL_MAX = 3",
+        "    except ValueError:",
+        "        LOCAL_MAX = 0",
+        "for item in items:",
+        "    LAST_ITEM = item",
         "",
       ].join("\n");
-      expect(await namesOf(source)).toEqual([
-        "2 naming.variable SCREAMING_SNAKE",
-        "4 naming.variable SCREAMING_SNAKE",
-        "6 naming.variable SCREAMING_SNAKE",
-      ]);
+      expect(await namesOf(source)).toEqual(
+        [2, 4, 7, 9, 11].map((line) => `${line} naming.variable SCREAMING_SNAKE`),
+      );
     });
 
     it("leaves non-constant module-level names classified as before", async () => {
