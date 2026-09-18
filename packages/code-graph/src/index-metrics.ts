@@ -1,4 +1,4 @@
-import type { ParsedFile } from "./parser/index.js";
+import type { ParsedFile } from "@titan-design/code-parser";
 import { computeMetrics } from "./metrics.js";
 import { computeSourceMetrics } from "./source-metrics.js";
 import { fileId } from "./extractors/ids.js";

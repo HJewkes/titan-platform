@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { existsSync } from "node:fs";
 import type { Node } from "web-tree-sitter";
-import type { Extractor, ParsedFile } from "../parser/index.js";
+import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import { collectDeclaredSpans } from "../declared-names.js";
 import { buildFileModuleNodes } from "./file-nodes.js";
 import { externalId, fileId, symbolId } from "./ids.js";

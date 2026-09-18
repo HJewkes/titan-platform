@@ -1,4 +1,4 @@
-import type { ParsedFile } from "./parser/index.js";
+import type { ParsedFile } from "@titan-design/code-parser";
 import { buildFileModuleNodes } from "./extractors/file-nodes.js";
 import { collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 import type { ReuseBasis } from "./incremental.js";

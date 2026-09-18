@@ -1,2 +1,3 @@
-// Placeholder entry for @titan-design/code-parser (tier 0). Filled in by TP-125.
-export {};
+export type { Extractor, ParsedFile } from "./types.js";
+export { getSupportedLanguages, parseFile } from "./parser.js";
+export { getLanguageFromPath, isExcludedDir, shouldIncludeFile } from "./file-filter.js";

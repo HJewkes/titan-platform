@@ -19,8 +19,8 @@ export { DOMAIN_DDL, KIT, MIGRATIONS } from "./schema.js";
 export type { IndexOptions, IndexResult } from "./indexer.js";
 export { INDEX_VERSION, indexPaths } from "./indexer.js";
 
-export type { Extractor, ParsedFile } from "./parser/index.js";
-export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "./parser/index.js";
+export type { Extractor, ParsedFile } from "@titan-design/code-parser";
+export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";
 
 export type { LanguageExtractorOptions } from "./extractors/dispatch.js";
 export { LanguageExtractor } from "./extractors/dispatch.js";

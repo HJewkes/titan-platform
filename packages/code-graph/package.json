@@ -36,10 +36,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@titan-design/code-parser": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "ts-morph": "^25.0.0",
-    "tree-sitter-python": "^0.25.0",
-    "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.26.6"
   }
 }
