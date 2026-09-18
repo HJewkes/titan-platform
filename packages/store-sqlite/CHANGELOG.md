@@ -1,5 +1,14 @@
 # @titan-design/store-sqlite
 
+## 0.3.0
+
+### Minor Changes
+
+- e204012: Add an opt-in forward-schema guard. `openDatabase(path, { schemaVersion })` and
+  `assertSchemaVersion(db, knownVersion)` throw `SchemaTooNewError`, naming both versions,
+  when a database is stamped past the highest migration the runtime knows, instead of
+  proceeding into a schema that has already moved on.
+
 ## 0.2.1
 
 ### Patch Changes

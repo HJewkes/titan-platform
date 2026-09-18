@@ -1,5 +1,14 @@
 # @titan-design/workflow
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [e204012]
+- Updated dependencies [cf764b6]
+  - @titan-design/store-sqlite@0.3.0
+  - @titan-design/hitl@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @titan-design/agent-lifecycle
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [e204012]
+  - @titan-design/store-sqlite@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes

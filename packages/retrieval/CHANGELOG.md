@@ -1,5 +1,25 @@
 # @titan-design/retrieval
 
+## 0.3.0
+
+### Minor Changes
+
+- 3fea2d3: `vectorRetriever` no longer prepends `search_query: ` to nomic queries (TP-168). It calls `embedder.embed([query], { role: "query" })` and leaves prefixes to the embedder. Before, the embedder added its own `search_document: ` on top, so a default nomic query was embedded as `search_document: search_query: <q>`.
+
+  - **Rankings change** for every nomic-backed vector retriever: query vectors now sit in the query region of nomic's space. Hash and other unprefixed embedders are unaffected.
+  - **Breaking:** the `queryPrefix` option is removed. Configure the embedder's `prefixes` instead.
+  - Needs `@titan-design/embed` 0.2 or later. A 0.1 embedder ignores the role and embeds the query as `search_document: <q>`. active-work pins 0.2.0 exactly and keeps the old behaviour until it upgrades both packages together.
+
+### Patch Changes
+
+- 3e6a4af: Make the rerank stage fail open. A cross-encoder (or a `textFor`) that throws now leaves
+  the RRF-fused ranking in place and reports itself in the same `degraded` array the
+  retrievers use, instead of failing the whole search.
+- Updated dependencies [e204012]
+- Updated dependencies [3fea2d3]
+  - @titan-design/store-sqlite@0.3.0
+  - @titan-design/embed@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

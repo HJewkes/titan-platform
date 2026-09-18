@@ -1,5 +1,22 @@
 # @titan-design/session-miner
 
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies [e204012]
+- Updated dependencies [3fea2d3]
+- Updated dependencies [3e6a4af]
+- Updated dependencies [18e3cf0]
+- Updated dependencies [3fea2d3]
+- Updated dependencies [e204012]
+  - @titan-design/store-sqlite@0.3.0
+  - @titan-design/embed@0.2.0
+  - @titan-design/retrieval@0.3.0
+  - @titan-design/daemon@0.1.4
+  - @titan-design/session-graph@0.5.0
+  - @titan-design/memory@0.1.2
+
 ## 0.2.5
 
 ### Patch Changes
