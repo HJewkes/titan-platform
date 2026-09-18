@@ -56,7 +56,7 @@ function noteDirs(activeRoot: string): { slug: string; dir: string }[] {
 
 export async function buildIndex(documents: NoteDocument[], embedder: Embedder): Promise<BruteForceVectorIndex> {
   const index = new BruteForceVectorIndex();
-  const vectors = await embedder.embed(documents.map((document) => document.text));
+  const vectors = await embedder.embed(documents.map((document) => document.text), { role: "document" });
   documents.forEach((document, i) => {
     const vector = vectors[i];
     if (vector) index.add(document.ref, vector);

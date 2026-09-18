@@ -122,8 +122,8 @@ await tryEmbedSnapshot(store, snapshotId, embedder);
 
 await findSimilarCapability(store, snapshotId, "fuse ranked lists with reciprocal rank fusion", embedder);
 // { coverage: { symbols: 1196, embedded: 1196, withPurpose: 429 },
-//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.864 },
-//                 { id: 'packages/retrieval/src/fusion.ts#RankedList', score: 0.714 }, … ] }
+//   candidates: [ { id: 'packages/retrieval/src/fusion.ts#fuseByRRF', score: 0.819 },
+//                 { id: 'packages/retrieval/src/engine.ts#createRetrievalEngine', score: 0.599 }, … ] }
 ```
 
 The embedded text per symbol is its signature plus its docstring, never its body. Vectors live
@@ -131,9 +131,11 @@ in `blob_cache`, keyed by model and text hash rather than snapshot, so unchanged
 re-embedded. `tryEmbedSnapshot` reports a down backend instead of throwing. Results are
 candidates with scores and a coverage figure, never verdicts.
 
-**Keep one prefix per database.** `OllamaEmbedder` prepends its `prefix` to every text,
-queries included, and its `model` does not record the prefix. Vectors made under two prefixes
-would share a cache key. Python symbols carry no signature yet, so they are not searchable.
+**Prefixes belong to the embedder and are part of the cache key.** Symbol texts are embedded
+with role `document` and the query with role `query`, so a default nomic embedder sends
+`search_document: ` and `search_query: `, one prefix per text. `embedder.model` includes a
+hash of the prefix table, so vectors made under two prefix configurations never share a
+`blob_cache` key. Python symbols carry no signature yet, so they are not searchable.
 
 ## Graph analyses
 

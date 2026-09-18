@@ -4,7 +4,7 @@ import { KIT } from "../schema.js";
 import type { CodeGraphStore } from "../store.js";
 import { hashEmbedText } from "./corpus.js";
 
-/** The blob_cache namespace for symbol vectors; the model column keys the vector space. */
+/** The blob_cache namespace for symbol vectors; the model column holds `embedder.model`, which names the vector space including its prefixes. */
 export const SYMBOL_EMBEDDING_NAMESPACE = "code-graph/symbol-embedding";
 
 const EMBED_BATCH_SIZE = 64;
@@ -77,7 +77,7 @@ async function embedBatch(
   embedder: Embedder,
   batch: ReadonlyArray<[string, string]>,
 ): Promise<Array<{ textHash: string; vector: number[] }>> {
-  const vectors = await embedder.embed(batch.map(([, text]) => text));
+  const vectors = await embedder.embed(batch.map(([, text]) => text), { role: "document" });
   if (vectors.length !== batch.length) {
     throw new Error(`Embedder returned ${vectors.length} vectors for ${batch.length} texts`);
   }

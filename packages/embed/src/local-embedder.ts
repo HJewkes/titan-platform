@@ -1,10 +1,13 @@
-import type { Embedder } from "./types.js";
+import { applyPrefix, resolvePrefixes, vectorSpaceId, type RolePrefixes } from "./prefixes.js";
+import type { EmbedOptions, Embedder } from "./types.js";
 
 export interface LocalEmbedderOptions {
   /** A Hugging Face model id with ONNX weights, e.g. `Xenova/bge-small-en-v1.5`. */
   model?: string;
   dimensions?: number;
   dtype?: "fp32" | "fp16" | "q8" | "q4";
+  /** Per-role prefixes; none by default except for nomic models. bge v1.5 takes an optional query instruction here. */
+  prefixes?: Partial<RolePrefixes>;
   /** Injectable for tests; defaults to importing `@huggingface/transformers`. */
   loadPipeline?: () => Promise<PipelineFactory>;
 }
@@ -37,22 +40,26 @@ async function defaultLoadPipeline(): Promise<PipelineFactory> {
 /** In-process ONNX embeddings. Downloads the model on first use; weights are cached by the runtime. */
 export class LocalEmbedder implements Embedder {
   readonly model: string;
+  readonly modelName: string;
   readonly dimensions: number;
+  readonly prefixes: RolePrefixes;
   private readonly dtype: string;
   private readonly loadPipeline: () => Promise<PipelineFactory>;
   private extractor: FeatureExtractor | null = null;
 
   constructor(options: LocalEmbedderOptions = {}) {
-    this.model = options.model ?? "Xenova/bge-small-en-v1.5";
+    this.modelName = options.model ?? "Xenova/bge-small-en-v1.5";
+    this.prefixes = resolvePrefixes(this.modelName, options.prefixes);
+    this.model = vectorSpaceId(this.modelName, this.prefixes);
     this.dimensions = options.dimensions ?? 384;
     this.dtype = options.dtype ?? "q8";
     this.loadPipeline = options.loadPipeline ?? defaultLoadPipeline;
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], options: EmbedOptions = {}): Promise<number[][]> {
     if (texts.length === 0) return [];
-    this.extractor ??= await (await this.loadPipeline())("feature-extraction", this.model, { dtype: this.dtype });
-    const output = await this.extractor(texts, { pooling: "mean", normalize: true });
+    this.extractor ??= await (await this.loadPipeline())("feature-extraction", this.modelName, { dtype: this.dtype });
+    const output = await this.extractor(applyPrefix(texts, this.prefixes, options.role), { pooling: "mean", normalize: true });
     return output.tolist();
   }
 

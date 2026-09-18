@@ -20,6 +20,7 @@ not mean retrieval surfaced everything the agent should have known.
 ```sh
 retrieval-eval mine --out pairs.jsonl            # query/label pairs, both arms, to JSONL
 retrieval-eval run pairs.jsonl                   # score every candidate and query variant
+retrieval-eval run pairs.jsonl --embedder ollama # hybrid over Ollama nomic-embed-text instead of hash
 retrieval-eval uptake --since 2026-09-01         # recall-tool calls vs filesystem search
 ```
 
@@ -49,8 +50,8 @@ pre-date transcript ids and cannot be resolved at all.
 | `notes-fts` | The notes-only span search the bootstrap runs, mirroring `rank-notes.ts` |
 | `hybrid-fts-vector` | `notes-fts` fused by RRF with a `HashEmbedder` vector index |
 
-`hybrid-fts-vector` runs with no model and no network by default. A local embedder is a
-swap behind `Embedder`, off unless asked for.
+`hybrid-fts-vector` runs with no model and no network by default. `--embedder ollama` swaps
+in Ollama's `nomic-embed-text` at `127.0.0.1:11434`; it fails if Ollama is not running.
 
 ## Query derivation
 
