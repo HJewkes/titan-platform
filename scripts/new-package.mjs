@@ -38,7 +38,7 @@ function substitute(dir, vars) {
 // codewatch rejects empty layers, so `$tiers` holds the full tier list and `layers` drops empties.
 export function registerLayer(checkJsonText, prefix, tier) {
   const config = JSON.parse(checkJsonText);
-  const rule = config.rules.find((r) => r.type === "layered-deps");
+  const rule = config.rules.find((r) => r.type === "layered-deps" && r.$tiers);
   if (!rule?.$tiers) throw new Error("check.json needs a layered-deps rule with $tiers");
   const tierPackages = (rule.$tiers[tier] ??= []);
   if (!tierPackages.includes(prefix)) tierPackages.push(prefix);
