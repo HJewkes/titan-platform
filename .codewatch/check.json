@@ -71,6 +71,19 @@
       ]
     },
     {
+      "id": "code-graph-history-seam",
+      "type": "layered-deps",
+      "$comment": "packages/code-graph/src/history imports nothing from the rest of code-graph, so a later extraction into @titan-design/git-history is a directory move. The rest of code-graph may import history. Keep this rule after package-layers: scripts/new-package.mjs edits the first layered-deps rule.",
+      "layers": [
+        [
+          "packages/code-graph/src/history"
+        ],
+        [
+          "packages/code-graph/src"
+        ]
+      ]
+    },
+    {
       "id": "max-file-loc",
       "type": "metric-max",
       "metric": "loc",
