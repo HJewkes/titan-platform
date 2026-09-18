@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/hitl",
-  "version": "0.1.2",
-  "description": "Human-in-the-loop gate()/resolve() primitive",
+  "name": "@titan-design/style-profile",
+  "version": "0.0.0",
+  "description": "Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,14 +9,11 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./sqlite": {
-      "types": "./dist/sqlite.d.ts",
-      "import": "./dist/sqlite.js"
     }
   },
   "files": [
     "dist",
+    "templates",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -25,7 +22,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "packages/hitl"
+    "directory": "packages/style-profile"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
@@ -40,7 +37,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@titan-design/store-sqlite": "workspace:*"
+    "handlebars": "^4.7.8"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

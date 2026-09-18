@@ -4,8 +4,20 @@ Pause work on a human, and let a different process resume it. The primitive is
 "the same work, paused": `openGate()` from inside a task hands back something to
 await, and `resolveGate()` from anywhere else lets it continue.
 
-Tier 1 of the titan-platform DAG (TP-11). Depends on
-`@titan-design/store-sqlite`; `zod` is a peer (v4).
+Tier 1 of the titan-platform DAG (TP-11). `zod` is a peer (v4).
+
+## Two entries
+
+The root entry (`@titan-design/hitl`) is runtime-neutral: the gate state machine,
+`GateStore`, and `MemoryGateStore`, with no `node:*` import and no native addon, so it
+loads in a Cloudflare Workers isolate. `SqliteGateStore` and its migration helpers moved to
+a subpath, `@titan-design/hitl/sqlite`, which is the only part of the package that pulls in
+`better-sqlite3` (via `@titan-design/store-sqlite`).
+
+**Migrating from before 0.2.0:** change `import { SqliteGateStore, gateMigration } from
+"@titan-design/hitl"` to `import { SqliteGateStore, gateMigration } from
+"@titan-design/hitl/sqlite"`. Everything else (`openGate`, `resolveGate`, `GateStore`,
+`MemoryGateStore`, the error classes) still comes from the root.
 
 ## A gate is a row, not a promise
 
@@ -18,7 +30,8 @@ the same SQLite file.
 
 ```ts
 import { openDatabase } from "@titan-design/store-sqlite";
-import { SqliteGateStore, openGate } from "@titan-design/hitl";
+import { SqliteGateStore } from "@titan-design/hitl/sqlite";
+import { openGate } from "@titan-design/hitl";
 import { z } from "zod";
 
 const store = new SqliteGateStore(openDatabase("~/.local/state/thing/gates.sqlite3"));

@@ -1,4 +1,4 @@
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { inlineRunner } from "./runners.js";

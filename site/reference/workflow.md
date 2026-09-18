@@ -31,7 +31,7 @@ Verified against 0.1.0 with `inlineRunner`.
 
 ```ts
 import { WorkflowRuntime, inlineRunner, workflowMigration } from "@titan-design/workflow";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 
 const db = openDatabase("state.sqlite3");
