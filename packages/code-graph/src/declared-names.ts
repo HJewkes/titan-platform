@@ -1,4 +1,4 @@
-import type { ParsedFile } from "./parser/index.js";
+import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 
 const TS_DECL_TYPES = new Set([

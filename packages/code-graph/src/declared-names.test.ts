@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFile } from "./parser/index.js";
+import { parseFile } from "@titan-design/code-parser";
 import { collectDeclaredNames, collectDeclaredSpans } from "./declared-names.js";
 
 const TS = `// a comment

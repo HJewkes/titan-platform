@@ -1,4 +1,4 @@
-import type { Extractor, ParsedFile } from "../parser/index.js";
+import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import { TsMorphGraphExtractor } from "./ts-morph-extractor.js";
 import { PythonGraphExtractor } from "./python-extractor.js";
 import type { GraphFragment } from "../types.js";

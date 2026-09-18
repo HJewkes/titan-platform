@@ -85,18 +85,28 @@ importers:
 
   packages/code-graph:
     dependencies:
+      '@titan-design/code-parser':
+        specifier: workspace:^
+        version: link:../code-parser
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      ts-morph:
+        specifier: ^25.0.0
+        version: 25.0.1
+      web-tree-sitter:
+        specifier: ^0.26.6
+        version: 0.26.13
+
+  packages/code-parser:
+    dependencies:
       tree-sitter-python:
         specifier: ^0.25.0
         version: 0.25.0
       tree-sitter-typescript:
         specifier: ^0.23.2
         version: 0.23.2
-      ts-morph:
-        specifier: ^25.0.0
-        version: 25.0.1
+    devDependencies:
       web-tree-sitter:
         specifier: ^0.26.6
         version: 0.26.13

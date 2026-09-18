@@ -1,5 +1,12 @@
 # @titan-design/daemon
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [4ce40d1]
+  - @titan-design/registry@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes

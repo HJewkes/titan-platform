@@ -6,6 +6,7 @@ import type {
   SendResult,
 } from "./contract.js";
 import { sendFailed } from "./contract.js";
+import { attemptFetch, unreadableSuccess } from "./send-failure.js";
 
 export interface TelegramConfig {
   /** Bot token from BotFather. It sits in the URL path, so it is redacted everywhere. */
@@ -55,6 +56,13 @@ export interface TelegramEnvelope {
 export async function readEnvelope(
   response: Response,
 ): Promise<TelegramEnvelope> {
+  return (await tryReadEnvelope(response)) ?? { ok: false };
+}
+
+/** Undefined when the body is not JSON or the connection drops while it is read. */
+async function tryReadEnvelope(
+  response: Response,
+): Promise<TelegramEnvelope | undefined> {
   try {
     const body = (await response.json()) as {
       ok?: unknown;
@@ -68,7 +76,7 @@ export async function readEnvelope(
         typeof body.description === "string" ? body.description : undefined,
     };
   } catch {
-    return { ok: false };
+    return undefined;
   }
 }
 
@@ -149,30 +157,37 @@ export class TelegramTransport implements MessageTransport {
     const chatId = await this.resolveChatId(handle);
     if (chatId.kind !== "ok") return sendFailed(chatId.error);
 
-    let response: Response;
-    try {
-      response = await this.postMessage(messageBody(chatId.value, input));
-    } catch (cause) {
-      return sendFailed({
-        kind: "unreachable",
-        message: this.redact(describeCause(cause)),
-      });
+    const attempt = await attemptFetch(this.doFetch, () =>
+      this.sendMessageRequest(messageBody(chatId.value, input)),
+    );
+    if (!attempt.sent) {
+      return sendFailed({ kind: attempt.kind, message: this.redact(describeCause(attempt.cause)) });
     }
+    return await this.resultFor(attempt.response, handle);
+  }
 
-    const envelope = await readEnvelope(response);
-    const message = this.redact(envelope.description ?? response.statusText);
-    if (!response.ok || !envelope.ok) {
+  private async resultFor(response: Response, handle: string): Promise<SendResult> {
+    const envelope = await tryReadEnvelope(response);
+    if (response.ok && envelope === undefined) {
+      return sendFailed(unreadableSuccess(response.status));
+    }
+    const message = this.redact(envelope?.description ?? response.statusText);
+    if (!response.ok || !envelope?.ok) {
       return sendFailed(errorForStatus(response.status, message, handle));
     }
     return { ok: true, messageGuid: readMessageId(envelope.result) };
   }
 
-  private async postMessage(body: Record<string, unknown>): Promise<Response> {
-    return await this.doFetch(methodUrl(this.config, "sendMessage"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  /** Parsing the URL here, not inside fetch, is what lets a malformed base URL count as never sent. */
+  private sendMessageRequest(body: Record<string, unknown>): Parameters<typeof fetch> {
+    return [
+      new URL(methodUrl(this.config, "sendMessage")),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ];
   }
 
   private async resolveChatId(handle: string): Promise<

@@ -16,6 +16,10 @@
         "link": "/reference/cluster"
       },
       {
+        "text": "code-parser",
+        "link": "/reference/code-parser"
+      },
+      {
         "text": "embed",
         "link": "/reference/embed"
       },

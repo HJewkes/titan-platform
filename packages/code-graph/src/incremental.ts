@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import type { Node } from "web-tree-sitter";
-import { getLanguageFromPath, type ParsedFile } from "./parser/index.js";
+import { getLanguageFromPath, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
 import { fileId } from "./extractors/ids.js";
 import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
 import { reconstructCosmetic, reconstructFragment } from "./reconstruct.js";
-import type { Extractor } from "./parser/index.js";
+import type { Extractor } from "@titan-design/code-parser";
 import type {
   FileFingerprint,
   GraphEdge,
