@@ -85,7 +85,7 @@ discriminant, so `data` is typed as present once `status` is `success`.
 It has no components, styling, or tokens. Those belong to titan-design, and a check.json
 rule stops any library here from importing `@titan-design/react-ui`. It has no mutations,
 optimistic updates, retries, Suspense mode, `enabled` flag, or router. It has no cache
-library. The store is about 160 lines, and the package README says why it is not TanStack
+library. The store is about 170 lines, and the package README says why it is not TanStack
 Query. It does not resume missed events. The daemon sends no event ids, so
 `useInvalidateOn` refetches after a reconnect instead.
 

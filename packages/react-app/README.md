@@ -121,7 +121,7 @@ existing titan apps (active-work, agent-chat, and brain) hand-roll `fetch` plus
 `useState`, and none uses a cache library. agent-chat's design note argues for "refetch the
 read model on any frame" rather than patching state, and `useInvalidateOn` is that policy.
 
-The built-in store and event bus together are about 160 lines on `useSyncExternalStore`.
+The built-in store and event bus together are about 170 lines on `useSyncExternalStore`.
 The main entry ships in a single-file export, so every kilobyte is in every report.
 TanStack Query would also add a second runtime dependency for the owner's batch publish to
 vet. If mutations or pagination arrive, TanStack Query can replace the store behind these
