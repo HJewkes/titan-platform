@@ -1,6 +1,14 @@
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 import {
+  prepareTargetedStatements,
+  readEdgesTouching,
+  readMetricAggregates,
+  readMetricsForNode,
+  type MetricAggregate,
+  type TargetedStatements,
+} from "./store-reads.js";
+import {
   rowToAlias,
   rowToEdge,
   rowToFingerprint,
@@ -40,9 +48,11 @@ const NODE_COLS = "id, kind, name, parent_id, language, role, attrs";
  */
 export class CodeGraphStore {
   private readonly statements;
+  private readonly targeted: TargetedStatements;
 
   constructor(readonly db: Db) {
     this.statements = prepareStatements(db);
+    this.targeted = prepareTargetedStatements(db);
   }
 
   createSnapshot(input: SnapshotInsert): number {
@@ -162,6 +172,22 @@ export class CodeGraphStore {
 
   listMetrics(snapshotId: number): GraphMetric[] {
     return (this.statements.listMetrics.all(snapshotId) as MetricDbRow[]).map(rowToMetric);
+  }
+
+  /** Every metric on one node, from the primary key instead of a whole-snapshot read. */
+  listMetricsForNode(snapshotId: number, nodeId: string): GraphMetric[] {
+    return readMetricsForNode(this.targeted, snapshotId, nodeId);
+  }
+
+  /** Edges into or out of one node; `references` edges are excluded unless asked, as in {@link listEdges}. */
+  listEdgesTouching(snapshotId: number, nodeId: string, opts?: { includeReferences?: boolean }): GraphEdge[] {
+    const edges = readEdgesTouching(this.targeted, snapshotId, nodeId);
+    return opts?.includeReferences ? edges : edges.filter((e) => e.kind !== "references");
+  }
+
+  /** Count, sum, min, and max per metric name and node kind; pass `name` for one metric. */
+  aggregateMetrics(snapshotId: number, opts?: { name?: string }): MetricAggregate[] {
+    return readMetricAggregates(this.targeted, snapshotId, opts?.name);
   }
 
   listAliases(snapshotId: number): IdAlias[] {
