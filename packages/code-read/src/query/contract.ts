@@ -28,6 +28,7 @@ const snapshotListArgs = z.object({
 });
 const snapshotListResult = z.object({ snapshots: z.array(SnapshotInfo) });
 
+// The lock sees JSON Schema only: a .refine(), .superRefine(), or .transform() here changes behaviour without a lock diff.
 /** The single source of command names, argument schemas, and result schemas for every surface. */
 export const CONTRACT = {
   "api.describe": {
