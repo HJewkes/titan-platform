@@ -13,7 +13,7 @@ are all parameters.
 ## Run a daemon
 
 ```ts
-import { startDaemon } from "@titan-design/daemon";
+import { mountStaticApp, startDaemon } from "@titan-design/daemon";
 
 const handle = await startDaemon({
   registry,                                   // CommandRegistry<Ctx>
@@ -24,7 +24,7 @@ const handle = await startDaemon({
   toolPrefix: "my__",                         // omit to skip the /mcp route
   watchRoot: "~/my-product/data",             // omit to skip live reload
   health: () => ({ index: indexer.status() }),
-  mountRoutes: (app) => app.get("/ui/*", serveDashboard),
+  mountRoutes: (app) => mountStaticApp(app, { root: "dist/ui", base: "/ui" }),
 });
 
 await handle.close(); // stops the watcher, closes the socket, releases the pid file
@@ -81,6 +81,33 @@ names are `${toolPrefix}${command.replaceAll(".", "__")}`.
 
 `/mcp` is spliced in ahead of hono on the raw Node server because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.
+
+## Serving a built front end
+
+`mountStaticApp(app, { root, base?, immutableDir? })` serves a built app through
+`mountRoutes`:
+
+```ts
+mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"), base: "/ui" }),
+```
+
+- `root` is a build directory holding `index.html`, or a single-file build's HTML file.
+  Without it, every page answers 503 "not built", so a daemon can start before its front
+  end exists.
+- `GET <base>/<file>` serves the file with its content type and `nosniff`. Files under
+  `immutableDir` (default `assets`, where Vite writes hashed names) get
+  `public, max-age=31536000, immutable`. Everything else, `index.html` included, gets
+  `no-cache`.
+- A path with no extension is a client route and gets `index.html`. A missing file with an
+  extension gets 404, because HTML in place of a script hides the real error. `<base>`
+  redirects (308) to `<base>/`.
+- Traversal is refused. Each segment is decoded once. `.`, `..`, an encoded `/` or `\`,
+  NUL, a drive letter, or a bad escape gets 403. The resolved real path must stay inside
+  the root's real path, so a symlink leading out also gets 403. Dotfiles are never served.
+- Only `GET` is registered, after the core routes and behind the same guards. It cannot
+  shadow `/rpc`, `/events`, or `/health`, and the Host check applies to every file.
+- Range requests are not honoured: every file comes back whole, with no `Accept-Ranges`,
+  so byte-range use such as large source maps or media is out of scope.
 
 ## The seams
 

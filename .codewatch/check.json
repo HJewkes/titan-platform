@@ -36,7 +36,9 @@
           "packages/style-checker",
           "packages/code-read"
         ],
-        "ui": [],
+        "ui": [
+          "packages/react-app"
+        ],
         "product": [
           "products/session-miner",
           "products/retrieval-eval"
@@ -73,6 +75,9 @@
           "packages/style-analyzer",
           "packages/style-checker",
           "packages/code-read"
+        ],
+        [
+          "packages/react-app"
         ],
         [
           "products/session-miner",
@@ -120,6 +125,27 @@
       "$comment": "rpc-client's main entry ships to browsers; only src/node (exportSnapshot) may use Node builtins.",
       "from": "packages/rpc-client/src/client/**",
       "to": "node:**"
+    },
+    {
+      "id": "react-app-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "react-app's main entry ships to browsers; only src/vite (the build preset) may use Node builtins.",
+      "from": "packages/react-app/src/hooks/**",
+      "to": "node:**"
+    },
+    {
+      "id": "react-app-browser-no-vite",
+      "type": "forbid-import",
+      "$comment": "Vite is an optional peer for the ./vite entry; the hooks must load without it. The leading ** anchors the match so npm:vitest in tests stays allowed.",
+      "from": "packages/react-app/src/hooks/**",
+      "to": "**npm:vite"
+    },
+    {
+      "id": "no-titan-design-library-imports",
+      "type": "forbid-import",
+      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products may import @titan-design/react-ui.",
+      "from": "packages/**",
+      "to": "npm:@titan-design/react-ui"
     },
     {
       "id": "code-read-query-pure",
