@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { silentLogger, startDaemon, type DaemonHandle, type Surface } from "@titan-design/daemon";
+import type { CheckRule } from "@titan-design/code-graph";
 import { createRegistry, invokeCommand, type BaseContext } from "@titan-design/registry";
 import type { JsonEnvelope } from "@titan-design/rpc-protocol";
 import { COMMAND_NAMES, type CommandName } from "./query/contract.js";
@@ -23,6 +24,17 @@ const CALLS: [CommandName, Record<string, unknown>][] = [
   ["node.get", { id: "src/math.ts#add", baseline: 1 }],
   ["node.resolve", { query: "src/util/strings.ts:3" }],
   ["node.resolve", { query: "sh", limit: 5 }],
+  ["findings.list", { facets: true, sort: "path", order: "asc" }],
+  ["findings.list", { scope: "src/util/", baseline: "main" }],
+  ["finding.get", { id: "no-math|src/index.ts|src/math.ts" }],
+  ["finding.get", { id: "max-loc|src/math.ts", context_lines: 0 }],
+  ["node.neighbors", { id: "src/math.ts" }],
+  ["node.neighbors", { id: "src/math.ts#add", direction: "in", metrics: ["utilization"] }],
+];
+
+const RULES: CheckRule[] = [
+  { id: "max-loc", type: "metric-max", metric: "loc", kind: "file", max: 2 },
+  { id: "no-math", type: "forbid-import", from: "src/index.ts", to: "src/math.ts", severity: "warning" },
 ];
 
 let repo: FixtureRepo;
@@ -34,7 +46,7 @@ beforeAll(async () => {
   repo = await makeFixtureRepo();
   repo.commit("init");
   await repo.index("main");
-  registerCodeReadCommands(registry, { openStore: () => repo.store });
+  registerCodeReadCommands(registry, { openStore: () => repo.store, rules: () => RULES, repoRoot: repo.dir });
   stateDir = await mkdtemp(path.join(os.tmpdir(), "code-read-daemon-"));
   daemon = await startDaemon({
     registry,
