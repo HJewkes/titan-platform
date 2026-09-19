@@ -1,4 +1,4 @@
-export type { CallArgs, RpcClient } from "./client/client.js";
+export type { CallArgs, CommandName, RpcClient } from "./client/client.js";
 export { RpcError, createRpcClient } from "./client/client.js";
 export type { CallOptions, DataSource, EventHandlers, LiveStatus, Subscription } from "./client/data-source.js";
 export type { LiveSourceOptions } from "./client/live-source.js";

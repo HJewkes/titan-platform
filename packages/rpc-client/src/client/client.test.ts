@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/rpc-protocol";
-import { RpcError, createRpcClient } from "./client.js";
+import { EXIT, errorEnvelope, successEnvelope, type CommandMap } from "@titan-design/rpc-protocol";
+import { RpcError, createRpcClient, type CommandName } from "./client.js";
 import { snapshotKey } from "./canonical-key.js";
 import { SNAPSHOT_FORMAT } from "./snapshot.js";
 import { staticSource } from "./static-source.js";
@@ -52,6 +52,23 @@ describe("createRpcClient types", () => {
     // @ts-expect-error slugs are strings
     const first: number = listed.slugs[0]!;
     expect(first).toBe("a");
+  });
+});
+
+describe("createRpcClient with an interface map", () => {
+  interface Declared extends CommandMap {
+    "task.get": { args: { slug: string }; result: { title: string } };
+  }
+
+  it("still rejects names the interface does not declare, despite CommandMap's index signature", async () => {
+    const declared = createRpcClient<Declared>(client.source);
+    // @ts-expect-error no such command, even though CommandMap is Record<string, ...>
+    await declared.call("task.delete", {}).catch(() => undefined);
+    expectTypeOf<CommandName<Declared>>().toEqualTypeOf<"task.get">();
+  });
+
+  it("falls back to any name for the bare CommandMap", () => {
+    expectTypeOf<CommandName<CommandMap>>().toEqualTypeOf<string>();
   });
 });
 
