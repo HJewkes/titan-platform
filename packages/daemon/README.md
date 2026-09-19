@@ -106,6 +106,8 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
   the root's real path, so a symlink leading out also gets 403. Dotfiles are never served.
 - Only `GET` is registered, after the core routes and behind the same guards. It cannot
   shadow `/rpc`, `/events`, or `/health`, and the Host check applies to every file.
+- Range requests are not honoured: every file comes back whole, with no `Accept-Ranges`,
+  so byte-range use such as large source maps or media is out of scope.
 
 ## The seams
 

@@ -56,6 +56,7 @@ export function mountStaticApp(app: Hono, options: StaticAppOptions): void {
   const immutableDir = options.immutableDir ?? "assets";
   if (base) app.get(base, (c) => c.redirect(`${base}/${new URL(c.req.url).search}`, 308));
   app.get(`${base}/*`, async (c) => {
+    // Load-bearing: new URL folds . and .. (even single-encoded %2e) first; requestSegments then stops ..%2f, ..%5c, and NUL.
     const segments = requestSegments(new URL(c.req.url).pathname.slice(base.length));
     const found = segments ? await resolveRequest(options.root, segments, immutableDir) : ({ kind: "refused" } as const);
     return respond(c, found);
