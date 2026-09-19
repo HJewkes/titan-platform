@@ -44,6 +44,9 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `POST /rpc/:name` | Runs the command: 403 bad Host/Origin, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
+The paths, the `/rpc` failure statuses, and the SSE event names come from
+`@titan-design/rpc-protocol`, which a browser client can import on its own.
+
 ## Request guards
 
 Every route is behind three checks, because an unauthenticated daemon on loopback is

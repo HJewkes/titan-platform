@@ -1,7 +1,6 @@
-export interface SseMessage {
-  event: string;
-  data: string;
-}
+import type { SseMessage } from "@titan-design/rpc-protocol";
+
+export type { SseMessage };
 
 export type Subscriber = (message: SseMessage) => void | Promise<void>;
 
