@@ -1,5 +1,15 @@
 # @titan-design/session-miner
 
+## 0.2.7
+
+### Patch Changes
+
+- Updated dependencies [cb3b7e2]
+- Updated dependencies [e3128f0]
+- Updated dependencies [f2c70e0]
+  - @titan-design/registry@0.3.0
+  - @titan-design/daemon@0.2.0
+
 ## 0.2.6
 
 ### Patch Changes
