@@ -77,6 +77,11 @@ open a daemon; `daemon` does.
 - A directory gets no value for a metric whose catalogue rollup is `none`, which covers
   commit and author counts, bus factor, recency, fan-in, and linked tests. The row says
   `missing: "no-rollup"`. Directory-level history is TP-233.
+- `node.get`'s `siblingRank` and `percentile` ignore direction: rank 1 is the largest value
+  and percentile is the share of same-kind nodes at or below it. For `loc`
+  (`direction: "higher-worse"`), rank 1 is the file with the most lines, the worst offender,
+  not the best. For `bus_factor_30d` (`direction: "lower-worse"`), rank 1 is the safest file.
+  Read `direction` on the same metric before labelling anything "top" or "best".
 - Baseline deltas match nodes by id, so a moved file reads as removed plus added until alias
   following lands (TP-187).
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,

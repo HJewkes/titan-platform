@@ -59,7 +59,16 @@ code-graph stores files and symbols only, so `./query` synthesizes the rest per 
 
 `node.get` percentiles are the share of same-kind nodes whose value is at most the node's,
 0 to 100. Siblings are the same-kind children of the same parent, the node included; rank 1
-is the largest value. Direction lives on each metric, so a consumer decides what is worse.
+is the largest value. Neither number knows which way is worse. Read `direction` on the same
+metric before labelling anything "top" or "best".
+
+Worked example. A file with `loc: 3` among sibling files with 0, 1, 2, and 2 lines gets
+`siblingRank: 1`, and 7 of the snapshot's 10 files have at most 3 lines, so `percentile: 70`.
+`loc` is `direction: "higher-worse"`, so rank 1 is the file with the most lines. It is the
+worst offender in its directory, not the best file. For `bus_factor_30d`
+(`direction: "lower-worse"`), rank 1 is the file with the most authors covering its churn,
+which is the safest file. For a `neutral` metric such as `churn_30d`, rank 1 only means
+"largest".
 
 `node.resolve` ports codewatch's `rankSearch` cascade over directories, files, and symbols,
 case-insensitive: exact id or name 100, id suffix after `/` or `#` 80, name prefix 60, id
