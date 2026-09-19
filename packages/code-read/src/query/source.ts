@@ -37,3 +37,12 @@ export class ReadError extends Error {
 export function snapshotNotFound(snapshotId: number): ReadError {
   return new ReadError(`No snapshot with id ${snapshotId}`, EXIT.NOINPUT);
 }
+
+export function nodeNotFound(id: string, snapshotId: number): ReadError {
+  return new ReadError(`No node "${id}" in snapshot ${snapshotId}`, EXIT.NOINPUT);
+}
+
+/** Bad arguments the schema cannot express, such as "exactly one of"; same code as a schema failure. */
+export function invalidArgs(message: string): ReadError {
+  return new ReadError(`Invalid arguments: ${message}`, EXIT.DATAERR);
+}

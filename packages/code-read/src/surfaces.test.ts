@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { silentLogger, startDaemon, type DaemonHandle, type Surface } from "@titan-design/daemon";
 import { createRegistry, invokeCommand, type BaseContext } from "@titan-design/registry";
 import type { JsonEnvelope } from "@titan-design/rpc-protocol";
-import type { CommandName } from "./query/contract.js";
+import { COMMAND_NAMES, type CommandName } from "./query/contract.js";
 import { registerCodeReadCommands } from "./register.js";
 import { makeFixtureRepo, type FixtureRepo } from "./test-fixtures.js";
 
@@ -18,6 +18,11 @@ interface SurfaceContext extends BaseContext {
 const CALLS: [CommandName, Record<string, unknown>][] = [
   ["api.describe", {}],
   ["snapshot.list", { ref: "main", limit: 5 }],
+  ["hierarchy.get", { depth: 3, metrics: ["loc", "cognitive_max", "churn_30d_commits"], baseline: "main" }],
+  ["node.get", { id: "src/util/" }],
+  ["node.get", { id: "src/math.ts#add", baseline: 1 }],
+  ["node.resolve", { query: "src/util/strings.ts:3" }],
+  ["node.resolve", { query: "sh", limit: 5 }],
 ];
 
 let repo: FixtureRepo;
@@ -63,14 +68,14 @@ async function overRpc(name: CommandName, args: unknown): Promise<JsonEnvelope<u
 }
 
 describe("the same commands on every surface", () => {
-  it.each(CALLS)("%s answers identically in process and over the daemon's /rpc", async (name, args) => {
+  it.each(CALLS)("%s %j answers identically in process and over the daemon's /rpc", async (name, args) => {
     const local = await inProcess(name, args);
 
     expect(local.ok).toBe(true);
     expect(await overRpc(name, args)).toEqual(local);
   });
 
-  it.each(CALLS)("%s answers identically as an MCP tool", async (name, args) => {
+  it.each(CALLS)("%s %j answers identically as an MCP tool", async (name, args) => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`)));
     const tool = `codewatch__${name.replaceAll(".", "__")}`;
@@ -82,14 +87,14 @@ describe("the same commands on every surface", () => {
     expect(JSON.parse(content!.text)).toEqual(await inProcess(name, args));
   });
 
-  it("lists both commands as MCP tools", async () => {
+  it("lists every command as an MCP tool until the registry can filter surfaces", async () => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`)));
 
     const { tools } = await client.listTools();
     await client.close();
 
-    expect(tools.map((t) => t.name)).toEqual(["codewatch__api__describe", "codewatch__snapshot__list"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(COMMAND_NAMES.map((n) => `codewatch__${n.replaceAll(".", "__")}`));
   });
 
   it("answers bad arguments over /rpc with HTTP 400 and DATAERR", async () => {

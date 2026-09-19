@@ -30,7 +30,7 @@ checks) still uses [`code-graph`](/reference/code-graph) directly.
 
 ## Example
 
-Verified against the contract at 0.1.0.
+Verified against the contract at 0.1.1.
 
 ```ts
 import { openCodeGraph } from "@titan-design/code-graph";
@@ -40,8 +40,15 @@ import { createRegistry, invokeCommand } from "@titan-design/registry";
 const registry = createRegistry();
 registerCodeReadCommands(registry, { openStore: () => openCodeGraph(".codewatch/graph.db") });
 
-const { envelope } = await invokeCommand(registry.get("snapshot.list")!, { limit: 5 }, { warnings: [], format: "json" });
+const ctx = { warnings: [], format: "json" as const };
+const { envelope } = await invokeCommand(registry.get("snapshot.list")!, { limit: 5 }, ctx);
 // { ok: true, data: { snapshots: [{ id: 1, ref: "main", commit: "4da1b09…", takenAt: "…", indexVersion: "0.14.0" }] } }
+
+const found = await invokeCommand(registry.get("node.resolve")!, { query: "packages/code-read/src/query/tree.ts:120" }, ctx);
+// candidates: [{ node: { id: "packages/code-read/src/query/tree.ts#attachSymbols", kind: "symbol", span: { startLine: 109, endLine: 123 }, … }, score: 100, match: "span" }]
+
+const tree = await invokeCommand(registry.get("hierarchy.get")!, { depth: 1, metrics: ["loc", "churn_30d_commits"] }, ctx);
+// nodes[0]: { id: "", kind: "repo", values: { loc: 57797, churn_30d_commits: null }, missing: { churn_30d_commits: "no-rollup" }, … }
 ```
 
 Without a daemon, `createQueryResolver(source)("api.describe", {})` returns the same
@@ -65,6 +72,18 @@ open a daemon; `daemon` does.
   lifetime. Close the store yourself when the product shuts down.
 - The daemon lists every registered command as an MCP tool. To expose only some, register
   `defineCodeReadCommands(source)` selectively on a second registry.
+- A directory's id ends in `/` and the repo's id is `""`. Pass those, not bare paths, as
+  `root` or `id`; `node.resolve` turns a bare path into the id.
+- A directory gets no value for a metric whose catalogue rollup is `none`, which covers
+  commit and author counts, bus factor, recency, fan-in, and linked tests. The row says
+  `missing: "no-rollup"`. Directory-level history is TP-233.
+- `node.get`'s `siblingRank` and `percentile` ignore direction: rank 1 is the largest value
+  and percentile is the share of same-kind nodes at or below it. For `loc`
+  (`direction: "higher-worse"`), rank 1 is the file with the most lines, the worst offender,
+  not the best. For `bus_factor_30d` (`direction: "lower-worse"`), rank 1 is the safest file.
+  Read `direction` on the same metric before labelling anything "top" or "best".
+- Baseline deltas match nodes by id, so a moved file reads as removed plus added until alias
+  following lands (TP-187).
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 

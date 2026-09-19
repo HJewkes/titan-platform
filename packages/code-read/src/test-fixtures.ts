@@ -46,3 +46,38 @@ export async function makeFixtureRepo(): Promise<FixtureRepo> {
   };
   return { dir, store, write, commit, index, cleanup };
 }
+
+/** Nested directories, two `run` methods in different classes, an empty file, and a test file, for hierarchy tests. */
+export const HIERARCHY_FILES: Record<string, string> = {
+  "src/jobs/runner.ts": [
+    "export class Job {",
+    "  run(n: number): number {",
+    "    if (n > 1) return n * 2;",
+    "    return n;",
+    "  }",
+    "}",
+    "",
+    "export class Task {",
+    "  run(items: number[]): number {",
+    "    let total = 0;",
+    "    for (const i of items) {",
+    "      if (i > 0) total += i;",
+    "    }",
+    "    return total;",
+    "  }",
+    "}",
+    "",
+  ].join("\n"),
+  "src/deep/a/b/leaf.ts": "export function leaf(x: number): number {\n  return x > 0 ? x : -x;\n}\n",
+  "src/deep/a/sibling.ts": "export const one = 1;\nexport const two = 2;\n",
+  "src/types.ts": "export type Id = string;\n",
+  // Empty: the indexer writes no complexity, nesting, or bus-factor row for it.
+  "src/empty.ts": "",
+  "src/math.test.ts": 'import { add } from "./math.js";\n\nif (add(1, 1) !== 2) throw new Error("add");\n',
+};
+
+export async function makeHierarchyRepo(): Promise<FixtureRepo> {
+  const repo = await makeFixtureRepo();
+  for (const [relPath, contents] of Object.entries(HIERARCHY_FILES)) await repo.write(relPath, contents);
+  return repo;
+}
