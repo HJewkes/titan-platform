@@ -42,7 +42,9 @@ describe("api.describe through the registry, over a real index", () => {
     const result = await call("api.describe", {});
 
     expect(result).toMatchObject({ api: CODE_READ_API_VERSION, dataset: "live", indexVersions: [INDEX_VERSION] });
-    expect(result.commands).toEqual(["api.describe", "hierarchy.get", "node.get", "node.resolve", "snapshot.list"]);
+    expect(result.commands).toEqual([
+      "api.describe", "finding.get", "findings.list", "hierarchy.get", "node.get", "node.neighbors", "node.resolve", "snapshot.list",
+    ]);
     expect(result.newest).toMatchObject({ id: snapshotIds.at(-1), ref: "main", commit: head });
   });
 

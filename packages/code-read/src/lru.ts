@@ -28,6 +28,10 @@ export class LruCache<K, V> {
     return value;
   }
 
+  clear(): void {
+    this.entries.clear();
+  }
+
   keys(): K[] {
     return [...this.entries.keys()];
   }

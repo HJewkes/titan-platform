@@ -1,4 +1,4 @@
-import type { MetricDescriptor, SnapshotInfo } from "./schemas.js";
+import type { MetricDescriptor, SnapshotInfo, Span } from "./schemas.js";
 
 /** A graph node as the read API holds it; mirrors code-graph's `GraphNode` without importing it. */
 export interface ModelNode {
@@ -31,6 +31,28 @@ export interface ModelMetric {
   unit?: string;
 }
 
+/** A rule as findings cite it: `text` is a plain-language statement of what the rule demands. */
+export interface ModelRule {
+  id: string;
+  type: string;
+  severity: string;
+  text: string;
+}
+
+/** One check-rule violation, keyed by the ratchet's `violationKey`; `ranges` are the flagged lines, absent for a whole-node finding. */
+export interface ModelFinding {
+  id: string;
+  rule: string;
+  severity: string;
+  nodeId: string;
+  destinationId?: string;
+  metric?: string;
+  value?: number;
+  threshold?: number;
+  message: string;
+  ranges?: readonly Span[];
+}
+
 /** A catalogue entry as code-graph's `describeMetric` returns it; provenance is added here. */
 export interface CatalogueEntry {
   name: string;
@@ -55,6 +77,9 @@ export interface ReadModel {
   metrics: ReadonlyMap<string, ReadonlyMap<string, number | null>>;
   /** One descriptor per metric name present in the snapshot, sorted by name. */
   metricCatalogue: readonly MetricDescriptor[];
+  /** Derived on load from the product's rules; a changed rule set means a different model. */
+  findings: readonly ModelFinding[];
+  rules: readonly ModelRule[];
 }
 
 export interface ReadModelParts {
@@ -65,6 +90,8 @@ export interface ReadModelParts {
   metrics: readonly ModelMetric[];
   /** The catalogue lookup, injected so this module never imports code-graph's Node-only root. */
   describe: (name: string) => CatalogueEntry | null;
+  findings?: readonly ModelFinding[];
+  rules?: readonly ModelRule[];
 }
 
 export function buildReadModel(parts: ReadModelParts): ReadModel {
@@ -77,6 +104,8 @@ export function buildReadModel(parts: ReadModelParts): ReadModel {
     aliases: parts.aliases,
     metrics: indexMetrics(parts.metrics),
     metricCatalogue: buildCatalogue(parts, nodeById),
+    findings: parts.findings ?? [],
+    rules: parts.rules ?? [],
   };
 }
 
