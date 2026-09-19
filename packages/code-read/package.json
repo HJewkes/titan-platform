@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./query": {
+      "types": "./dist/query/index.d.ts",
+      "import": "./dist/query/index.js"
     }
   },
   "files": [
@@ -34,5 +38,18 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "@titan-design/code-graph": "workspace:^",
+    "@titan-design/registry": "workspace:^",
+    "@titan-design/rpc-protocol": "workspace:^"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@titan-design/daemon": "workspace:^",
+    "esbuild": "^0.27.0",
+    "zod": "^4.4.3"
   }
 }
