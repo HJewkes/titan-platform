@@ -80,6 +80,18 @@ export {
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";
+export type { MetricAggregate } from "./store-reads.js";
+export { aggregateMetrics, listEdgesTouching, listMetricsForNode } from "./read.js";
+export type {
+  MetricAbsence,
+  MetricDescriptor,
+  MetricDirection,
+  MetricRollup,
+  MetricSource,
+  MetricUnit,
+} from "./catalogue/types.js";
+export { METRIC_CATALOGUE } from "./catalogue/entries.js";
+export { describeMetric, describeMetrics } from "./catalogue/describe.js";
 
 export type {
   CheckResult,
