@@ -1,6 +1,7 @@
 import { EXIT, errorEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
-import { snapshotKey, wireArgs } from "./canonical-key.js";
+import { checkedWireArgs, snapshotKey } from "./canonical-key.js";
 import type { DataSource, EventHandlers, Subscription } from "./data-source.js";
+import { isEnvelope } from "./envelope-shape.js";
 import type { Snapshot, SnapshotResolver } from "./snapshot.js";
 
 export interface StaticSourceOptions {
@@ -29,10 +30,23 @@ async function answer(
   name: string,
   args: unknown,
 ): Promise<JsonEnvelope<unknown>> {
-  const recorded = snapshot.calls[snapshotKey(name, args)];
+  const wire = checkedWireArgs(args);
+  if (!wire.ok) return wire;
+  const recorded = snapshot.calls[snapshotKey(name, wire.data)];
   if (recorded) return recorded;
-  if (resolve && snapshot.dataset !== undefined) return resolve(name, wireArgs(args), snapshot.dataset);
+  if (resolve && snapshot.dataset !== undefined) return askResolver(resolve, name, wire.data, snapshot.dataset);
   return errorEnvelope(`${name} with these args is not in this snapshot`, EXIT.UNAVAILABLE);
+}
+
+/** The resolver lives in another package, so its contract is enforced here: `call` must reject only on abort. */
+async function askResolver(resolve: SnapshotResolver, name: string, args: unknown, dataset: unknown): Promise<JsonEnvelope<unknown>> {
+  try {
+    const envelope: unknown = await resolve(name, args, dataset);
+    if (isEnvelope(envelope)) return envelope;
+    return errorEnvelope(`Snapshot resolver returned no envelope for ${name}`, EXIT.SOFTWARE);
+  } catch (err) {
+    return errorEnvelope(`Snapshot resolver failed for ${name}: ${err instanceof Error ? err.message : String(err)}`, EXIT.SOFTWARE);
+  }
 }
 
 /** A snapshot never changes, so its subscription opens and then stays quiet until closed. */

@@ -1,5 +1,5 @@
 import { EVENTS_PATH, EXIT, RPC_PREFIX, errorEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
-import { wireArgs } from "./canonical-key.js";
+import { checkedWireArgs } from "./canonical-key.js";
 import type { DataSource } from "./data-source.js";
 import { isEnvelope } from "./envelope-shape.js";
 import { openEventStream } from "./event-stream.js";
@@ -40,8 +40,10 @@ async function postRpc(
   args: unknown,
   signal: AbortSignal | undefined,
 ): Promise<JsonEnvelope<unknown>> {
+  const wire = checkedWireArgs(args);
+  if (!wire.ok) return wire;
   // The daemon's guards refuse a state-changing request without a JSON content type (415).
-  const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireArgs(args)), signal };
+  const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wire.data), signal };
   try {
     const response = await doFetch(url, init);
     const body: unknown = await response.json().catch(() => undefined);

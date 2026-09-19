@@ -91,6 +91,11 @@ schema at runtime, because that would put zod in the browser bundle. It has no
 - **`call` rejects; `DataSource.call` does not.** A source resolves to an envelope for every
   outcome, including an unreachable daemon (`EXIT.UNAVAILABLE`), and rejects only on abort.
   The client turns failure envelopes into `RpcError`.
+- **Args must be JSON-serialisable.** A BigInt or a cyclic object answers `EXIT.DATAERR`
+  ("Args must be JSON-serialisable: ...") from both sources, before any request is sent.
+- **A resolver cannot break the abort-only rejection rule.** If it throws, rejects, or
+  returns something that is not an envelope, `staticSource` answers `EXIT.SOFTWARE` (70)
+  carrying the thrown message.
 - **A page opened from `file://` cannot use `liveSource`.** Its `Origin` is `null`, which the
   daemon's guard refuses. That is what `staticSource` is for.
 - **`staticSource.subscribe` reports `open` and then stays quiet.** A snapshot never changes.

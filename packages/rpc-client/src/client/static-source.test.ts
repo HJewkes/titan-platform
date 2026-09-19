@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EXIT, successEnvelope } from "@titan-design/rpc-protocol";
 import { snapshotKey } from "./canonical-key.js";
 import type { LiveStatus } from "./data-source.js";
-import { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot, type Snapshot } from "./snapshot.js";
+import { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot, type Snapshot, type SnapshotResolver } from "./snapshot.js";
 import { staticSource } from "./static-source.js";
 
 const snapshot: Snapshot = {
@@ -88,5 +88,30 @@ describe("snapshots", () => {
 
   it("accepts its own output after a JSON round trip", () => {
     expect(parseSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(snapshot);
+  });
+});
+
+describe("staticSource with a misbehaving resolver", () => {
+  it.each([
+    ["throws", () => {
+      throw new Error("index missing");
+    }, "Snapshot resolver failed for n.other: index missing"],
+    ["rejects", async () => Promise.reject(new Error("decode failed")), "Snapshot resolver failed for n.other: decode failed"],
+    ["returns undefined", () => undefined, "Snapshot resolver returned no envelope for n.other"],
+  ])("answers a SOFTWARE envelope when the resolver %s", async (_label, resolve, error) => {
+    const source = staticSource({ snapshot, resolve: resolve as unknown as SnapshotResolver });
+    expect(await source.call("n.other", {})).toEqual({ ok: false, error, code: EXIT.SOFTWARE });
+  });
+});
+
+describe("args JSON cannot carry", () => {
+  it("answers DATAERR instead of throwing for a BigInt or a cycle", async () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const source = staticSource({ snapshot, resolve: () => successEnvelope("unreached") });
+    const big = await source.call("n.get", { n: 1n });
+    expect(big).toMatchObject({ ok: false, code: EXIT.DATAERR });
+    expect(big.ok ? "" : big.error).toMatch(/^Args must be JSON-serialisable: .*BigInt/);
+    expect(await source.call("n.get", cyclic)).toMatchObject({ ok: false, code: EXIT.DATAERR });
   });
 });

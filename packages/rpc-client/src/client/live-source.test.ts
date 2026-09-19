@@ -21,6 +21,17 @@ describe("liveSource with a foreign server in the way", () => {
     expect(envelope).toMatchObject({ ok: false, code: EXIT.UNAVAILABLE });
   });
 
+  it("answers DATAERR without dialling when the args hold a BigInt", async () => {
+    let dialled = false;
+    const fetch: typeof globalThis.fetch = async () => {
+      dialled = true;
+      return new Response("{}");
+    };
+    const envelope = await liveSource({ fetch }).call("task.list", { n: 1n });
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.DATAERR });
+    expect(dialled).toBe(false);
+  });
+
   it("posts wire-shaped JSON to the command's route under the origin", async () => {
     const seen: Array<[string, RequestInit | undefined]> = [];
     const fetch: typeof globalThis.fetch = async (input, init) => {
