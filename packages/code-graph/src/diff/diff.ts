@@ -1,18 +1,14 @@
 import { canonicalEdgeKind, canonicalMetricName } from "../aliases.js";
+import type { AliasChain } from "../identity/alias-chain.js";
+import { aliasChain } from "../identity/store-identity.js";
 import type { CodeGraphStore } from "../store.js";
-import type { GraphEdge, GraphMetric, GraphNode, IdAlias } from "../types.js";
+import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
 import type { GraphDiff, GraphDiffSummary, MetricDelta, NodeRename } from "./types.js";
 
-type AliasMap = Map<string, IdAlias>;
-
-function aliasMap(aliases: readonly IdAlias[]): AliasMap {
-  const m = new Map<string, IdAlias>();
-  for (const a of aliases) m.set(a.oldId, a);
-  return m;
-}
+type AliasMap = Pick<AliasChain, "resolve" | "trace">;
 
 function resolveId(id: string, aliases: AliasMap): string {
-  return aliases.get(id)?.newId ?? id;
+  return aliases.resolve(id);
 }
 
 function edgeKey(srcId: string, dstId: string, kind: string): string {
@@ -50,7 +46,7 @@ function diffNodes(fromNodes: readonly GraphNode[], toNodes: readonly GraphNode[
     }
     matchedToIds.add(newId);
     if (newId !== fromNode.id) {
-      renamed.push({ oldId: fromNode.id, newId, reason: aliases.get(fromNode.id)!.reason, node: toNode });
+      renamed.push({ oldId: fromNode.id, newId, reason: aliases.trace(fromNode.id).reason!, node: toNode });
     }
   }
   const added = toNodes.filter((toNode) => !matchedToIds.has(toNode.id));
@@ -125,10 +121,13 @@ export interface DiffSnapshotsOptions {
   toSnapshotId: number;
 }
 
-/** Structural diff of two snapshots; the to-snapshot's id aliases carry renamed nodes across so a move is not a delete plus an add. */
+/**
+ * Structural diff of two snapshots. Ids follow the alias chain between them, across
+ * every rename in between, so a move is not a delete plus an add.
+ */
 export function diffSnapshots(store: CodeGraphStore, options: DiffSnapshotsOptions): GraphDiff {
   const { fromSnapshotId, toSnapshotId } = options;
-  const aliases = aliasMap(store.listAliases(toSnapshotId));
+  const aliases = aliasChain(store, fromSnapshotId, toSnapshotId);
   const nodeDiff = diffNodes(store.listNodes(fromSnapshotId), store.listNodes(toSnapshotId), aliases);
   const edgeDiff = diffEdges(store.listEdges(fromSnapshotId), store.listEdges(toSnapshotId), aliases);
   const metricDeltas = diffMetrics(

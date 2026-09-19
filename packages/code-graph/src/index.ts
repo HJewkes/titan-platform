@@ -48,6 +48,12 @@ export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints } from "./role
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
 export { buildAliases, detectGitHead, detectGitToplevel, detectRenames, isInsideGitRepo } from "./git-renames.js";
+export type { AliasChain, AliasChainInput, AliasLoader, AliasResolution } from "./identity/alias-chain.js";
+export { createAliasChain } from "./identity/alias-chain.js";
+export type { Lineage, LineageSnapshot, LineageStep } from "./identity/lineage.js";
+export { ALIAS_BASE_ATTR, buildLineage, lineagePath } from "./identity/lineage.js";
+export type { AliasChainOptions, PriorSnapshotOptions, ResolveAliasOptions } from "./identity/store-identity.js";
+export { aliasChain, loadLineage, priorSnapshotForRef, resolveAlias } from "./identity/store-identity.js";
 export { computeMetrics } from "./metrics.js";
 export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
 export { buildIndexerMetrics } from "./index-metrics.js";
@@ -107,7 +113,7 @@ export type {
   Severity,
 } from "./check/types.js";
 export type { RunChecksOptions } from "./check/check.js";
-export { runChecks } from "./check/check.js";
+export { rebasedViolationKey, runChecks, violationKey } from "./check/check.js";
 export type { ValidateRulesOptions } from "./check/validate.js";
 export { validateRules } from "./check/validate.js";
 export type { CheckSnapshotOptions, CheckSnapshotResult, SnapshotSpec } from "./check/run.js";

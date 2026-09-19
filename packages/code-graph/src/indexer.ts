@@ -3,13 +3,9 @@ import * as path from "node:path";
 import { parseFile, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
 import { LanguageExtractor } from "./extractors/dispatch.js";
-import {
-  buildAliases,
-  detectGitHead,
-  detectGitToplevel,
-  detectRenames,
-  isInsideGitRepo,
-} from "./git-renames.js";
+import { detectGitHead, detectGitToplevel } from "./git-renames.js";
+import { computeAliasBridge } from "./identity/index-aliases.js";
+import { ALIAS_BASE_ATTR } from "./identity/lineage.js";
 import { annotateRoles, computeRoleHints } from "./roles.js";
 import { walkSourceFiles } from "./file-walk.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
@@ -34,7 +30,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.14.0";
+export const INDEX_VERSION = "0.15.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -102,38 +98,19 @@ function countByKind<T extends { kind: string }>(items: Iterable<T>): Record<str
 
 function persist(
   store: CodeGraphStore,
-  ref: string,
-  commitHash: string | undefined,
+  snapshot: { ref: string; commitHash?: string; aliasBase: number | null },
   accumulator: ExtractAccumulator,
   aliases: readonly IdAlias[],
   metrics: readonly GraphMetric[],
 ): number {
-  const snapshotId = store.createSnapshot({ ref, commitHash, indexVersion: INDEX_VERSION });
+  const { ref, commitHash, aliasBase } = snapshot;
+  const attrs = { [ALIAS_BASE_ATTR]: aliasBase };
+  const snapshotId = store.createSnapshot({ ref, commitHash, indexVersion: INDEX_VERSION, attrs });
   store.insertNodes(snapshotId, [...accumulator.nodes.values()]);
   store.insertEdges(snapshotId, [...accumulator.edges.values()]);
   if (aliases.length > 0) store.insertAliases(snapshotId, aliases);
   if (metrics.length > 0) store.insertMetrics(snapshotId, metrics);
   return snapshotId;
-}
-
-function findPriorCommit(store: CodeGraphStore): string | null {
-  return store.listSnapshots({ limit: 50 }).find((s) => s.commitHash)?.commitHash ?? null;
-}
-
-/** Id aliases bridging a rename between the prior snapshot's commit and this one. */
-function resolveAliases(
-  rootDir: string,
-  idRoot: string,
-  options: IndexOptions,
-  store: CodeGraphStore,
-): IdAlias[] {
-  if (options.detectRenames === false) return [];
-  if (!isInsideGitRepo(rootDir)) return [];
-  const priorCommit = findPriorCommit(store);
-  if (!priorCommit) return [];
-  const target = options.commitHash ?? detectGitHead(rootDir) ?? undefined;
-  if (target === priorCommit) return [];
-  return buildAliases(idRoot, detectRenames({ repoRoot: rootDir, fromCommit: priorCommit, toCommit: target }));
 }
 
 /** Aliases from bare-name symbol ids to qualified ones, when the newest prior snapshot predates them. */
@@ -228,12 +205,15 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
         });
 
   const rootDir = rootDirs[0]!;
+  const ref = options.ref ?? "wd";
+  const bridge = computeAliasBridge(store, { ...options, rootDir, idRoot, ref, nodes: accumulator.nodes });
   const aliases = [
-    ...resolveAliases(rootDir, idRoot, options, store),
+    ...bridge.aliases,
     ...resolveSymbolAliases(store, idRoot, parsedByPath, new Set(accumulator.nodes.keys())),
   ];
   const commitHash = options.commitHash ?? detectGitHead(rootDir) ?? undefined;
-  const snapshotId = persist(store, options.ref ?? "wd", commitHash, accumulator, aliases, metrics);
+  const snapshot = { ref, commitHash, aliasBase: bridge.baseSnapshotId };
+  const snapshotId = persist(store, snapshot, accumulator, aliases, metrics);
   store.insertFingerprints(snapshotId, buildFingerprints(readFiles, idRoot, classified.structuralByFileId));
 
   return {
