@@ -1,8 +1,9 @@
 import { toJSONSchema, z, type ZodType } from "zod";
 import { Capabilities, MetricDescriptor, RuleSummary, SnapshotInfo } from "./schemas.js";
+import { HIERARCHY_GET, NODE_GET, NODE_RESOLVE } from "./contract-nodes.js";
 
 /** The read API's semver. Bump it whenever `CONTRACT` changes; `contract.lock.json` records the last one. */
-export const CODE_READ_API_VERSION = "0.1.0";
+export const CODE_READ_API_VERSION = "0.1.1";
 
 export interface CommandContract<Args extends ZodType = ZodType, Result extends ZodType = ZodType> {
   description: string;
@@ -42,6 +43,9 @@ export const CONTRACT = {
     args: snapshotListArgs,
     result: snapshotListResult,
   },
+  "hierarchy.get": HIERARCHY_GET,
+  "node.get": NODE_GET,
+  "node.resolve": NODE_RESOLVE,
 } as const satisfies Record<string, CommandContract>;
 
 export type CommandName = keyof typeof CONTRACT;
@@ -53,6 +57,9 @@ export type CommandResult<N extends CommandName> = z.output<(typeof CONTRACT)[N]
 export type CodeReadCommandMap = { [N in CommandName]: { args: CommandInput<N>; result: CommandResult<N> } };
 
 export const COMMAND_NAMES = Object.keys(CONTRACT).sort() as CommandName[];
+
+/** The agent-shaped commands the design puts on MCP; `hierarchy.get` is UI-shaped. A product filters with this until the registry can (P3). */
+export const AGENT_COMMANDS: readonly CommandName[] = ["api.describe", "node.get", "node.resolve"];
 
 export interface SerializedContract {
   api: string;

@@ -1,4 +1,7 @@
 import { CODE_READ_API_VERSION, type CommandArgs, type CommandName, type CommandResult } from "./contract.js";
+import { getHierarchy } from "./hierarchy.js";
+import { getNode } from "./node-get.js";
+import { resolveNode } from "./resolve.js";
 import type { ReadSource } from "./source.js";
 
 export type QueryFn<N extends CommandName> = (source: ReadSource, args: CommandArgs<N>) => CommandResult<N>;
@@ -28,4 +31,7 @@ export function listSnapshots(source: ReadSource, args: CommandArgs<"snapshot.li
 export const QUERIES: { [N in CommandName]: QueryFn<N> } = {
   "api.describe": describeApi,
   "snapshot.list": listSnapshots,
+  "hierarchy.get": getHierarchy,
+  "node.get": getNode,
+  "node.resolve": resolveNode,
 };
