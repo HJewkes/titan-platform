@@ -25,8 +25,8 @@ function model(snapshot: SnapshotInfo): ReadModel {
     edges: [],
     aliases: [],
     metrics: [
-      { nodeId: "a.ts", name: "loc", value: 10, unit: "lines" },
       { nodeId: "a.ts#f", name: "mystery_score", value: 0.5 },
+      { nodeId: "a.ts", name: "loc", value: 10, unit: "lines" },
     ],
     describe: (name) => (name === "loc" ? LOC : null),
   });
@@ -69,7 +69,7 @@ describe("api.describe", () => {
     });
   });
 
-  it("describes catalogued metrics with engine provenance and serves unknown ones without judgement", () => {
+  it("describes catalogued metrics sorted by name, with engine provenance, and serves unknown ones without judgement", () => {
     const envelope = createQueryResolver(memorySource(SNAPSHOTS))("api.describe", {});
     const metrics = envelope.ok ? (envelope.data as { metrics: unknown[] }).metrics : [];
 

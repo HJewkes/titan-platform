@@ -55,6 +55,12 @@ describe("api.describe through the registry, over a real index", () => {
     expect(metrics.map((m) => m.name)).toEqual([...metrics.map((m) => m.name)].sort());
   });
 
+  it("resolves windowed history metrics to their window", async () => {
+    const { metrics } = await call("api.describe", {});
+
+    expect(metrics.find((m) => m.name === "churn_30d")).toMatchObject({ window: "30d", unit: "lines", rollup: "sum" });
+  });
+
   it("lists the product's rules with the engine's default severity", async () => {
     const { rules } = await call("api.describe", {});
 
@@ -136,6 +142,22 @@ describe("the live source's model cache", () => {
 
     expect(model.nodeById.get("src/math.ts#add")).toMatchObject({ kind: "symbol", parentId: "src/math.ts" });
     expect(model.metrics.get("loc")?.get("src/math.ts")).toBe(3);
+  });
+
+  it("holds the symbol layer's reference edges alongside imports", () => {
+    const { edges } = createLiveSource({ openStore: () => repo.store }).model(snapshotIds[0]!);
+
+    expect(edges).toContainEqual(expect.objectContaining({ kind: "references", srcId: "src/index.ts", dstId: "src/math.ts#add" }));
+    expect(edges).toContainEqual(expect.objectContaining({ kind: "imports", srcId: "src/index.ts", dstId: "src/math.ts" }));
+  });
+
+  it("sees every snapshot, not just the store's default page of 50", () => {
+    const rows = Array.from({ length: 60 }, (_, i) => ({
+      id: 60 - i, ref: "main", commitHash: null, takenAt: "2026-01-01T00:00:00Z", indexVersion: INDEX_VERSION, attrs: {},
+    }));
+    const store = { listSnapshots: ({ limit = 50 } = {}) => rows.slice(0, limit) } as unknown as SnapshotStore;
+
+    expect(createLiveSource({ openStore: () => store }).snapshots()).toHaveLength(60);
   });
 
   it("opens the store once, lazily", () => {

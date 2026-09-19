@@ -15,13 +15,8 @@ export interface FixtureRepo {
   cleanup(): Promise<void>;
 }
 
-const GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: os.devNull,
-  GIT_AUTHOR_DATE: "2026-01-01T12:00:00Z",
-  GIT_COMMITTER_DATE: "2026-01-01T12:00:00Z",
-};
+// Real commit times, so the default churn windows see the fixture's history.
+const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull };
 
 export const FIXTURE_FILES: Record<string, string> = {
   "src/math.ts": "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
