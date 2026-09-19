@@ -1,6 +1,6 @@
 import { aliasChain } from "../identity/store-identity.js";
 import type { CodeGraphStore } from "../store.js";
-import { buildRuleContext } from "./context.js";
+import { buildRuleContext, type RuleStore } from "./context.js";
 import { runRule } from "./rules.js";
 import type { CheckResult, CheckRule, CheckViolation } from "./types.js";
 
@@ -32,6 +32,12 @@ export function runChecks(store: CodeGraphStore, options: RunChecksOptions): Che
     ...counts,
     passed: counts.newErrors === 0,
   };
+}
+
+/** Every rule's violations in one snapshot with no baseline; needs only the three whole-snapshot reads. */
+export function snapshotViolations(store: RuleStore, snapshotId: number, rules: readonly CheckRule[]): CheckViolation[] {
+  const ctx = buildRuleContext(store, snapshotId);
+  return rules.flatMap((rule) => runRule(rule, ctx));
 }
 
 /** Baseline violation keys in the checked snapshot's id space, so a moved file's violations carry over. */

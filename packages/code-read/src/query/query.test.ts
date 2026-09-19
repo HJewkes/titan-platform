@@ -117,8 +117,8 @@ describe("the query resolver's envelopes", () => {
   });
 
   it("rejects an unknown command with USAGE", () => {
-    expect(createQueryResolver(memorySource(SNAPSHOTS))("findings.list", {})).toEqual({
-      ok: false, error: "Unknown command: findings.list", code: EXIT.USAGE,
+    expect(createQueryResolver(memorySource(SNAPSHOTS))("timeline.get", {})).toEqual({
+      ok: false, error: "Unknown command: timeline.get", code: EXIT.USAGE,
     });
   });
 

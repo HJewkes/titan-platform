@@ -1,5 +1,8 @@
 import { CODE_READ_API_VERSION, type CommandArgs, type CommandName, type CommandResult } from "./contract.js";
+import { getFinding } from "./finding-get.js";
+import { listFindings } from "./findings-list.js";
 import { getHierarchy } from "./hierarchy.js";
+import { getNeighbors } from "./neighbors.js";
 import { getNode } from "./node-get.js";
 import { resolveNode } from "./resolve.js";
 import type { ReadSource } from "./source.js";
@@ -34,4 +37,7 @@ export const QUERIES: { [N in CommandName]: QueryFn<N> } = {
   "hierarchy.get": getHierarchy,
   "node.get": getNode,
   "node.resolve": resolveNode,
+  "findings.list": listFindings,
+  "finding.get": getFinding,
+  "node.neighbors": getNeighbors,
 };
