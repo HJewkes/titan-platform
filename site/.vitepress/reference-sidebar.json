@@ -122,6 +122,10 @@
     "collapsed": false,
     "items": [
       {
+        "text": "react-app",
+        "link": "/reference/react-app"
+      },
+      {
         "text": "react-ui",
         "link": "/reference/react-ui"
       }

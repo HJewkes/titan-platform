@@ -36,7 +36,9 @@
           "packages/style-checker",
           "packages/code-read"
         ],
-        "ui": [],
+        "ui": [
+          "packages/react-app"
+        ],
         "product": [
           "products/session-miner",
           "products/retrieval-eval"
@@ -73,6 +75,9 @@
           "packages/style-analyzer",
           "packages/style-checker",
           "packages/code-read"
+        ],
+        [
+          "packages/react-app"
         ],
         [
           "products/session-miner",
