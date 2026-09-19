@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStepVars, mustacheRenderer } from "./prompt.js";
+import { buildStepVars, mustacheRenderer, unfilledVariables } from "./prompt.js";
 
 describe("buildStepVars", () => {
   it("exposes params in both spellings, the run identity, and step outputs", () => {
@@ -15,5 +15,22 @@ describe("buildStepVars", () => {
 
   it("renders mustache placeholders and leaves unknown ones visible", () => {
     expect(mustacheRenderer("Hi {{ NAME }}, {{missing}}", { NAME: "x" })).toBe("Hi x, {{missing}}");
+  });
+});
+
+describe("unfilledVariables", () => {
+  it("lists each missing placeholder once, sorted", () => {
+    expect(unfilledVariables("{{TASK_ID}} and {{ TITLE }} and {{TASK_ID}} for {{brief}}", { brief: "x" })).toEqual(["TASK_ID", "TITLE"]);
+  });
+
+  it("returns nothing when every placeholder is supplied or there are none", () => {
+    expect(unfilledVariables("Hi {{NAME}}", { NAME: "x" })).toEqual([]);
+    expect(unfilledVariables("no placeholders here, {single} braces ignored", {})).toEqual([]);
+  });
+
+  it("ignores placeholders that only appear inside a supplied value", () => {
+    const vars = { STEP_OUTPUT_PLAN: "the plan mentions {{LATER}}" };
+    expect(unfilledVariables("Review:\n{{STEP_OUTPUT_PLAN}}", vars)).toEqual([]);
+    expect(mustacheRenderer("Review:\n{{STEP_OUTPUT_PLAN}}", vars)).toContain("{{LATER}}");
   });
 });

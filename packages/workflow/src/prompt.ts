@@ -27,6 +27,13 @@ export function buildStepVars(run: { id: string; workflowName: string; params: R
   return { ...vars, ...extra };
 }
 
+const PLACEHOLDER = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
+
 /** `{{NAME}}` substitution; unknown names are left in place so a missing variable is visible in the prompt. */
-export const mustacheRenderer: TemplateRenderer = (template, vars) =>
-  template.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (whole, name: string) => vars[name] ?? whole);
+export const mustacheRenderer: TemplateRenderer = (template, vars) => template.replace(PLACEHOLDER, (whole, name: string) => vars[name] ?? whole);
+
+/** Read from the template, not the rendered prompt, so a `{{NAME}}` inside a substituted value never counts as unfilled. */
+export function unfilledVariables(template: string, vars: Record<string, string>): string[] {
+  const names = new Set([...template.matchAll(PLACEHOLDER)].map((match) => match[1]!));
+  return [...names].filter((name) => !Object.hasOwn(vars, name)).sort();
+}

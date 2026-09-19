@@ -103,6 +103,11 @@ Precedence, highest first:
 parsers over a custom pattern record; its key order is the precedence. Pass a
 custom `parseSignal` to the runtime to change the conventions `dispatch` uses.
 
+`unfilledVariables(template, vars)` lists the `{{NAME}}` placeholders in a
+template that `vars` does not supply, sorted. It reads the template before
+substitution, so a `{{NAME}}` inside a substituted step output is not reported.
+The renderer itself still leaves unknown placeholders in place.
+
 ## Execution recovery
 
 `RecoverableStepRunner` is the durable runner contract. `dispatch` receives a
