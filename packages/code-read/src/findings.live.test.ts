@@ -71,8 +71,8 @@ describe("findings.list over a real index", () => {
   it("finds planted violations of five rules across two directories", async () => {
     const { facets } = await call("findings.list", { snapshot: first, limit: 0, facets: true });
 
-    expect(Object.keys(facets!.rule)).toEqual(["layers", "max-cyclo", "max-loc", "no-lib-to-src", "no-node-in-lib"]);
-    expect(Object.keys(facets!.child)).toEqual(["lib/", "src/"]);
+    expect(Object.keys(facets!.rule!)).toEqual(["layers", "max-cyclo", "max-loc", "no-lib-to-src", "no-node-in-lib"]);
+    expect(Object.keys(facets!.child!)).toEqual(["lib/", "src/"]);
   });
 
   it("gives each finding a status against the baseline, with the fixed one back as resolved", async () => {

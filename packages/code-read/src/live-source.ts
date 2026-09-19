@@ -89,6 +89,26 @@ export interface LiveSource extends ReadSource {
 /** A `ReadSource` over a code-graph store; snapshots are immutable, so models are cached by id alone. */
 const NO_RULES: readonly CheckRule[] = [];
 
+interface RuleTrackedModels {
+  models: LruCache<number, ReadModel>;
+  /** The product's current rules; a different array than last time empties the model cache. */
+  rules(): readonly CheckRule[];
+}
+
+function ruleTrackedModels(deps: CodeReadDeps): RuleTrackedModels {
+  const models = new LruCache<number, ReadModel>(deps.cacheSize ?? DEFAULT_MODEL_CACHE_SIZE);
+  let seen = NO_RULES;
+  const rules = (): readonly CheckRule[] => {
+    const current = deps.rules?.() ?? NO_RULES;
+    if (current !== seen) {
+      models.clear();
+      seen = current;
+    }
+    return current;
+  };
+  return { models, rules };
+}
+
 /** A `ReadSource` over a code-graph store; snapshots are immutable, so models are cached by id until the rules change. */
 export function createLiveSource(deps: CodeReadDeps): LiveSource {
   let store: SnapshotStore | undefined;
@@ -97,28 +117,19 @@ export function createLiveSource(deps: CodeReadDeps): LiveSource {
   const root = deps.repoRoot ?? null;
   const read: SourceReader | undefined =
     root === null ? undefined : (id, file) => (reader ??= createWorktreeReader(openOnce(), root))(id, file);
-  const models = new LruCache<number, ReadModel>(deps.cacheSize ?? DEFAULT_MODEL_CACHE_SIZE);
-  let modelRules = NO_RULES;
-  const currentRules = (): readonly CheckRule[] => {
-    const rules = deps.rules?.() ?? NO_RULES;
-    if (rules !== modelRules) {
-      models.clear();
-      modelRules = rules;
-    }
-    return rules;
-  };
+  const { models, rules } = ruleTrackedModels(deps);
   const facts = (): SourceFacts => ({
     dataset: "live",
     commands: COMMAND_NAMES,
     capabilities: liveCapabilities(read !== undefined),
-    rules: currentRules().map((r) => ({ id: r.id, type: r.type, severity: r.severity ?? "error" })),
+    rules: rules().map((r) => ({ id: r.id, type: r.type, severity: r.severity ?? "error" })),
   });
   return {
     facts,
     snapshots: () => openOnce().listSnapshots({ limit: ALL_SNAPSHOTS }).map(toSnapshotInfo),
     model: (snapshotId) => {
-      const rules = currentRules();
-      return models.getOrLoad(snapshotId, () => loadReadModel(openOnce(), snapshotId, { rules, read }));
+      const current = rules();
+      return models.getOrLoad(snapshotId, () => loadReadModel(openOnce(), snapshotId, { rules: current, read }));
     },
     ...(read ? { readSource: read } : {}),
     cachedSnapshots: () => models.keys(),
