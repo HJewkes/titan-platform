@@ -36,12 +36,13 @@ function firstPaintCalls(snapshot: number, resolve: QueryResolver): PlannedCall[
   ];
 }
 
-/** Fields that differ by design between a live daemon and a static export. */
+/** Fields that differ by design: the export says "static", serves flagged files only, and carries the newest snapshot alone. */
 function comparable(command: string, envelope: unknown): string {
   const value = structuredClone(envelope) as { data?: Record<string, unknown> };
   if (command === "api.describe" && value.data) {
     delete value.data.dataset;
     delete value.data.capabilities;
+    delete value.data.indexVersions;
   }
   const excerpt = value.data?.excerpt as { origin?: string } | null | undefined;
   if (excerpt) delete excerpt.origin;

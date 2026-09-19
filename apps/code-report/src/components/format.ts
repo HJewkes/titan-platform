@@ -25,16 +25,16 @@ export function directionText(direction: Direction): string {
   return "neither way is worse";
 }
 
-/** siblingRank 1 is always the largest value; only `direction` says whether that is the worst or the best. */
+/**
+ * siblingRank 1 is the largest value whichever way is worse, and ties share a rank without saying how many tie,
+ * so the text names the direction instead of claiming a best or worst.
+ */
 export function rankText(metric: Pick<NodeMetric, "siblingRank" | "siblingCount" | "direction">): string {
   const { siblingRank: rank, siblingCount: count, direction } = metric;
   if (rank === null) return "not ranked";
-  const place = `${ordinal(rank)} largest of ${count} siblings`;
-  if (direction === "neutral") return place;
-  const worst = direction === "higher-worse" ? rank === 1 : rank === count;
-  const best = direction === "higher-worse" ? rank === count : rank === 1;
-  if (worst && count > 1) return `${place}: the worst here`;
-  if (best && count > 1) return `${place}: the best here`;
+  const place = `${ordinal(rank)} largest of ${count}`;
+  if (direction === "higher-worse") return `${place}; larger is worse`;
+  if (direction === "lower-worse") return `${place}; larger is better`;
   return place;
 }
 

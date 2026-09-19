@@ -11,9 +11,9 @@ export function SeverityBadge({ severity }: { severity: string }): ReactNode {
   );
 }
 
-const PROVENANCE_TEXT: Record<string, string> = { measured: "measured", derived: "derived from a rule", model: "model judgement" };
+const PROVENANCE_TEXT: Record<string, string> = { measured: "measured", derived: "derived", model: "model" };
 
-/** Every datum says where it came from: measured by a tool, derived by a rule, or judged by a model. */
+/** Every datum says where it came from: measured by a tool, derived by a rule, or judged by a model; the source names which. */
 export function ProvenanceBadge({ kind, source }: { kind: string; source?: string }): ReactNode {
   return (
     <Badge color={kind === "model" ? "secondary" : "default"} variant="outline" size="sm">

@@ -17,6 +17,6 @@ export const RULES_PATH = path.resolve(REPO_ROOT, process.env.CODE_REPORT_RULES 
 export const DIST_DIR = path.join(APP_DIR, "dist");
 
 /** Off the daemon package's default 7400 so the report can run beside other titan daemons. */
-export const DAEMON_PORT = Number(process.env.CODE_REPORT_PORT ?? 7411);
+export const DAEMON_PORT = Number(process.env.CODE_REPORT_PORT ?? 7433);
 
 export const INDEXED_DIRS = ["packages", "products", "apps"];

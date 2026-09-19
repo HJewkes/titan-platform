@@ -2,7 +2,7 @@ import react from "@vitejs/plugin-react";
 import { titanApp } from "@titan-design/react-app/vite";
 import { defineConfig } from "vite";
 
-const daemonPort = process.env.CODE_REPORT_PORT ?? "7411";
+const daemonPort = process.env.CODE_REPORT_PORT ?? "7433";
 
 export default defineConfig({
   plugins: [react(), ...titanApp({ daemonUrl: `http://127.0.0.1:${daemonPort}` })],

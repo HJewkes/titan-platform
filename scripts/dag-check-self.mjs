@@ -11,7 +11,8 @@ const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 
 async function indexTree(graph, store, dir, ref) {
-  const paths = [path.join(dir, "packages"), path.join(dir, "products")];
+  // apps/ is absent from baselines taken before the first app landed.
+  const paths = ["packages", "products", "apps"].map((sub) => path.join(dir, sub)).filter((p) => existsSync(p));
   const r = await graph.indexPaths(store, { paths, ref, computeChurn: false });
   console.error(`indexed ${ref}: ${r.files} files, ${r.nodes} nodes, ${r.edges} edges -> snapshot ${r.snapshotId}`);
 }

@@ -75,11 +75,19 @@ function MetricsSection({ metrics }: { metrics: readonly NodeMetric[] }): ReactN
       <SectionHeader title="Metrics" subtitle="Measured by code-graph; ranks count the largest value first, whichever way is worse" />
       <SectionContent>
         {shown.length === 0 ? <Note>No metric has a value at this level.</Note> : <DataTable caption="Metrics" columns={METRIC_COLUMNS} rows={shown} rowKey={(m) => m.name} />}
-        {hidden.length > 0 && <Note>{`Without a value here: ${hidden.map((m) => `${m.name} (${missingText(m.missing)})`).join(", ")}.`}</Note>}
+        {groupByReason(hidden).map(([reason, names]) => <Note key={reason}>{`${capitalise(missingText(reason))}: ${names.join(", ")}.`}</Note>)}
       </SectionContent>
     </Section>
   );
 }
+
+function groupByReason(metrics: readonly NodeMetric[]): Array<[string, string[]]> {
+  const groups = new Map<string, string[]>();
+  for (const m of metrics) groups.set(m.missing ?? "", [...(groups.get(m.missing ?? "") ?? []), m.name]);
+  return [...groups];
+}
+
+const capitalise = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
 type Row = CodeReadCommandMap["hierarchy.get"]["result"]["nodes"][number];
 
