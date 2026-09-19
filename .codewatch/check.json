@@ -90,6 +90,27 @@
       ]
     },
     {
+      "id": "code-graph-catalogue-pure",
+      "type": "layered-deps",
+      "$comment": "The metric catalogue imports only its own directory and types.ts, so a browser-safe subpath can re-export it without pulling in ts-morph, tree-sitter, or SQLite.",
+      "layers": [
+        [
+          "packages/code-graph/src/catalogue",
+          "packages/code-graph/src/types.ts"
+        ],
+        [
+          "packages/code-graph/src"
+        ]
+      ]
+    },
+    {
+      "id": "code-graph-catalogue-no-node",
+      "type": "forbid-import",
+      "$comment": "Node builtins would break the catalogue in a browser.",
+      "from": "packages/code-graph/src/catalogue/**",
+      "to": "node:**"
+    },
+    {
       "id": "max-file-loc",
       "type": "metric-max",
       "metric": "loc",

@@ -127,6 +127,47 @@ The symbol layer is hidden by default. `listNodes` drops `symbol` nodes and `lis
 the graph it expects and does not have one import of thirty names read as thirty
 dependencies.
 
+## Targeted reads and the metric catalogue
+
+Added for the read API (TP-183). Three store reads answer one node or one metric without
+loading a snapshot, and a catalogue describes every metric name the package writes.
+
+```ts
+import { aggregateMetrics, describeMetric, listEdgesTouching, listMetricsForNode } from "@titan-design/code-graph";
+
+listMetricsForNode(store, snapshotId, "packages/registry/src/invoke.ts"); // every metric on one node
+listEdgesTouching(store, snapshotId, "packages/registry/src/invoke.ts"); // edges in and out; references on request
+aggregateMetrics(store, snapshotId, { name: "loc" }); // [{ name: "loc", nodeKind: "file", count, sum, min, max }]
+describeMetric("churn_90d"); // { unit: "lines", rollup: "sum", direction: "neutral", absent: "zero", window: "90d", … }
+```
+
+- **Reads.** `listMetricsForNode` searches the metric primary key, `listEdgesTouching` the edge
+  primary key plus `idx_edge_dst`, and `aggregateMetrics` `idx_metric_name`. None scans a
+  table, and no index or migration was added, so any existing store serves them. A self-loop
+  comes back once. `aggregateMetrics` groups by metric name and node kind, because
+  `utilization` and the degree metrics sit on several kinds; `count` skips null values.
+- **Catalogue.** `METRIC_CATALOGUE` holds one `MetricDescriptor` per name: `unit`,
+  `appliesTo` (node kinds), `rollup` (`sum`, `max`, `mean`, or `none`), `direction`
+  (`higher-worse`, `lower-worse`, or `neutral`), `absent`, `source`, and `description`.
+  Windowed names are templates such as `churn_{w}`; `describeMetric` resolves a stored name
+  such as `churn_90d` or `test_bus_factor_lifetime` to a concrete descriptor, and returns
+  null for a name nothing writes.
+- **`rollup: "none"`** means no rollup reproduces the group's own value. Summing fan-in counts
+  a directory's internal edges, and summing per-file commit counts counts a shared commit
+  more than once. A reader must not synthesize those.
+- **`absent`** says what a missing row means. `zero`: the writer is sparse, so count the node
+  as zero (dead code, growth risk, churn, `linked_test_count`). `exclude`: the metric does not
+  apply or was not measured (a max over no functions, `coverage_pct` before ingest), so leave
+  the node out of means, percentiles, and ranks.
+- **Completeness is tested.** `catalogue-completeness.test.ts` indexes a fixture repo with
+  history and a coverage overlay, and fails, naming the metric, when a stored name has no
+  descriptor, when a descriptor's unit or node kinds disagree with the rows, or when a
+  descriptor matches nothing.
+- **Browser-safe.** The catalogue imports only `types.ts`. The `code-graph-catalogue-pure`
+  and `code-graph-catalogue-no-node` rules in `.codewatch/check.json` hold it there, so a
+  later browser subpath can re-export it. It ships from the root export today, which does
+  pull in Node.
+
 ## Checks and diffs
 
 The rules engine turns a snapshot into pass/fail against a `check.json`. Six rule types:

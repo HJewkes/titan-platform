@@ -294,6 +294,41 @@ containment to the innermost symbol. Coverage depends on which tests ran, not on
 so the index never writes or carries it. The caller stores it on the snapshot it measured,
 as codewatch's `graph coverage` command does.
 
+## Reading one node or one metric
+
+Added for the read API (TP-183). Verified against this repo's `packages/` tree (547 files,
+27,103 metric rows):
+
+```ts
+import { aggregateMetrics, describeMetric, listEdgesTouching, listMetricsForNode } from "@titan-design/code-graph";
+
+listMetricsForNode(store, snapshotId, "packages/registry/src/invoke.ts");
+// [ { name: 'churn_30d', value: 44, unit: 'lines' }, { name: 'fan_in', value: 2, … }, { name: 'loc', value: 38, … }, … ]
+
+listEdgesTouching(store, snapshotId, "packages/registry/src/invoke.ts");
+// 5 edges, in and out: [ { srcId: '…/invoke.ts', dstId: 'npm:zod', kind: 'imports' }, … ]
+
+aggregateMetrics(store, snapshotId, { name: "loc" });
+// [ { name: 'loc', nodeKind: 'file', count: 547, sum: 50136, min: 1, max: 1038 } ]
+
+describeMetric("churn_90d");
+// { name: 'churn_90d', unit: 'lines', appliesTo: ['file'], rollup: 'sum', direction: 'neutral',
+//   absent: 'zero', source: 'history', window: '90d', description: 'Lines added plus deleted in the 90d window.' }
+```
+
+The three reads are index searches, with no new index or migration. On that tree,
+`listMetricsForNode` takes 0.014 ms against 9.7 ms for `listMetrics` filtered to the node,
+and `listEdgesTouching` takes 0.03 to 0.08 ms against 2.0 ms for `listEdges` filtered.
+`listEdgesTouching` hides `references` edges unless you pass `includeReferences`, as
+`listEdges` does.
+
+`METRIC_CATALOGUE` describes every metric name the package writes: unit, node kinds, rollup
+rule, direction, what a missing row means, and the writing module. Windowed names such as
+`churn_{w}` are templates, and `describeMetric` resolves a stored name to a concrete
+descriptor. A `rollup` of `none` means no rollup reproduces the group's own value, so a
+reader must not synthesize one. A test indexes a fixture repo and fails on any stored metric
+name without a descriptor.
+
 ## Gotchas
 
 **A database from a newer build is refused.** `openCodeGraph` throws `SchemaTooNewError`

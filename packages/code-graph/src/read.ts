@@ -1,4 +1,5 @@
 import type { CodeGraphStore } from "./store.js";
+import type { MetricAggregate } from "./store-reads.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "./types.js";
 
 /**
@@ -24,4 +25,25 @@ export function listEdges(
 
 export function listMetrics(store: CodeGraphStore, snapshotId: number): GraphMetric[] {
   return store.listMetrics(snapshotId);
+}
+
+export function listMetricsForNode(store: CodeGraphStore, snapshotId: number, nodeId: string): GraphMetric[] {
+  return store.listMetricsForNode(snapshotId, nodeId);
+}
+
+export function listEdgesTouching(
+  store: CodeGraphStore,
+  snapshotId: number,
+  nodeId: string,
+  opts?: { includeReferences?: boolean },
+): GraphEdge[] {
+  return store.listEdgesTouching(snapshotId, nodeId, opts);
+}
+
+export function aggregateMetrics(
+  store: CodeGraphStore,
+  snapshotId: number,
+  opts?: { name?: string },
+): MetricAggregate[] {
+  return store.aggregateMetrics(snapshotId, opts);
 }
