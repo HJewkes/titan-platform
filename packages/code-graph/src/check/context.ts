@@ -1,6 +1,9 @@
 import type { CodeGraphStore } from "../store.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
 
+/** The three whole-snapshot reads rule evaluation needs; any store with them can be checked. */
+export type RuleStore = Pick<CodeGraphStore, "listNodes" | "listEdges" | "listMetrics">;
+
 export interface RuleContext {
   nodes: readonly GraphNode[];
   nodesById: Map<string, GraphNode>;
@@ -9,7 +12,7 @@ export interface RuleContext {
 }
 
 /** The snapshot's file-level graph (no symbol layer, no references edges) and its non-null metrics. */
-export function buildRuleContext(store: CodeGraphStore, snapshotId: number): RuleContext {
+export function buildRuleContext(store: RuleStore, snapshotId: number): RuleContext {
   const nodes = store.listNodes(snapshotId);
   const edges = store.listEdges(snapshotId);
   const nodesById = new Map<string, GraphNode>();

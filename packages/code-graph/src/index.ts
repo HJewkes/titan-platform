@@ -113,7 +113,8 @@ export type {
   Severity,
 } from "./check/types.js";
 export type { RunChecksOptions } from "./check/check.js";
-export { rebasedViolationKey, runChecks, violationKey } from "./check/check.js";
+export { rebasedViolationKey, runChecks, snapshotViolations, violationKey } from "./check/check.js";
+export type { RuleStore } from "./check/context.js";
 export type { ValidateRulesOptions } from "./check/validate.js";
 export { validateRules } from "./check/validate.js";
 export type { CheckSnapshotOptions, CheckSnapshotResult, SnapshotSpec } from "./check/run.js";
