@@ -10,8 +10,6 @@ import {
 /** The element an exported page carries its snapshot in. */
 export const SNAPSHOT_ELEMENT_ID = "titan-snapshot";
 
-const EMBEDDED = new RegExp(`<script type="application/json" id="${SNAPSHOT_ELEMENT_ID}">[\\s\\S]*?</script>\\s*`, "g");
-
 /**
  * Writes a snapshot into a built page so it opens from disk with no server. Replaces any
  * snapshot already there. Pure string work, so an exporter can run it in Node.
@@ -20,7 +18,8 @@ export function embedSnapshot(html: string, snapshot: Snapshot): string {
   // Escaping "<" keeps "</script>" or "<!--" inside a string value from ending the element early.
   const json = JSON.stringify(snapshot).replace(/</g, "\\u003c");
   const element = `<script type="application/json" id="${SNAPSHOT_ELEMENT_ID}">${json}</script>\n`;
-  const page = html.replace(EMBEDDED, "");
+  const embedded = new RegExp(`<script type="application/json" id="${SNAPSHOT_ELEMENT_ID}">[\\s\\S]*?</script>\\s*`, "g");
+  const page = html.replace(embedded, "");
   const at = page.search(/<\/head>/i);
   return at === -1 ? `${element}${page}` : `${page.slice(0, at)}${element}${page.slice(at)}`;
 }

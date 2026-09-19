@@ -53,11 +53,11 @@ Modules that know about a subject: transcripts, code, rules.
 
 ## UI
 
-The design system. Published from a separate repository.
+React bindings for the daemon wire. The design system, react-ui, is listed here but published from a separate repository.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`react-app`](/reference/react-app) | React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps | none |
+| [`react-app`](/reference/react-app) | React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps | `rpc-client`, `rpc-protocol` |
 | [`react-ui`](/reference/react-ui) | Cross-platform design system built on React Native primitives with NativeWind | none |
 
 ## Products
