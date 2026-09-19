@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Alert } from "@titan-design/react-ui";
 import { Layout } from "./components/Layout.js";
 import { QueryView } from "./components/QueryView.js";
+import { CALLS } from "./data/calls.js";
 import { useQuery } from "./data/rpc.js";
 import { ComparePage } from "./pages/ComparePage.js";
 import { FindingPage } from "./pages/FindingPage.js";
@@ -13,7 +14,7 @@ import { useRoute, type Route } from "./router.js";
 
 /** Pins the newest snapshot once, so every page reads the same one even if the index moves underneath. */
 export function App(): ReactNode {
-  const describe = useQuery("api.describe");
+  const describe = useQuery("api.describe", CALLS.describe());
   return (
     <QueryView result={describe} label="the read API description">
       {(data) =>

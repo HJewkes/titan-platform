@@ -7,7 +7,12 @@
   "license": "MIT",
   "author": "Henry Jewkes",
   "scripts": {
+    "index": "tsx server/index-repo.ts",
+    "dev": "tsx server/dev.ts",
     "build": "vite build",
+    "serve": "tsx server/serve.ts",
+    "export": "tsx server/export.ts",
+    "call": "tsx server/call.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src server vite.config.ts"
   },
