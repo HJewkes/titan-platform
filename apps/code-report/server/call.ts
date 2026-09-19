@@ -9,13 +9,18 @@ async function main(): Promise<void> {
   const command = registry.get(name);
   if (!command) throw new Error(`Unknown command: ${name}`);
   const args: unknown = JSON.parse(argsJson ?? "{}");
-  await invokeCommand(command, args, createContext()); // warms the snapshot model so the timing is the query alone
-  const started = performance.now();
-  const { envelope } = await invokeCommand(command, args, createContext());
-  const ms = (performance.now() - started).toFixed(1);
-  const json = JSON.stringify(envelope);
-  console.error(`${name} ${JSON.stringify(args)}: ${json.length} bytes, ${ms} ms (model already loaded)`);
+  const cold = await timed(() => invokeCommand(command, args, createContext()));
+  const warm = await timed(() => invokeCommand(command, args, createContext()));
+  const json = JSON.stringify(warm.value.envelope);
+  // The first call loads the snapshot's model and derives its findings; later calls reuse it.
+  console.error(`${name} ${JSON.stringify(args)}: ${json.length} bytes, first call ${cold.ms} ms, repeat ${warm.ms} ms`);
   console.log(json);
+}
+
+async function timed<T>(run: () => Promise<T>): Promise<{ value: T; ms: string }> {
+  const started = performance.now();
+  const value = await run();
+  return { value, ms: (performance.now() - started).toFixed(1) };
 }
 
 await main();

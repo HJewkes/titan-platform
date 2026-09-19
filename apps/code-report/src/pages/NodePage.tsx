@@ -49,13 +49,18 @@ function NodeHeader({ data }: { data: NodeResult }): ReactNode {
         <BreadcrumbItem isCurrentPage>{node.id === "" ? "repo" : node.name}</BreadcrumbItem>
       </Breadcrumbs>
       <HStack gap={2} align="center" className="mt-2">
-        <h2 className="m-0 text-lg font-semibold">{node.id === "" ? "Repository" : node.path || node.name}</h2>
+        <h2 className="m-0 text-lg font-semibold">{headingOf(node)}</h2>
         <Badge size="sm" variant="outline"><BadgeText>{node.kind}</BadgeText></Badge>
         {node.role && <Badge size="sm" variant="subtle"><BadgeText>{node.role}</BadgeText></Badge>}
       </HStack>
       {node.signature && <pre className="mt-2 font-mono text-xs text-text-secondary">{node.signature}</pre>}
     </header>
   );
+}
+
+function headingOf(node: NodeResult["node"]): string {
+  if (node.id === "") return "Repository";
+  return node.kind === "symbol" ? `${node.name} in ${node.path}` : node.path || node.name;
 }
 
 const METRIC_COLUMNS: Column<NodeMetric>[] = [

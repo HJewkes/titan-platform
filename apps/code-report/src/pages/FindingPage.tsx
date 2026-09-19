@@ -12,7 +12,7 @@ import { useReport } from "../report-context.js";
 
 type FindingResult = CodeReadCommandMap["finding.get"]["result"];
 
-/** Evidence before prose: the excerpt and the measured value come ahead of the rule's explanation. */
+/** Evidence before prose: the measured value and the excerpt come ahead of the rule's explanation. */
 export function FindingPage({ id }: { id: string }): ReactNode {
   const { snapshotId } = useReport();
   const finding = useQuery("finding.get", CALLS.finding(snapshotId, id));
@@ -21,13 +21,13 @@ export function FindingPage({ id }: { id: string }): ReactNode {
       {(data) => (
         <div className="flex flex-col gap-6">
           <FindingHeader data={data} />
+          <Measured data={data} />
           <Section>
-            <SectionHeader title="Evidence" />
+            <SectionHeader title="Source" subtitle={data.finding.range ? "Flagged lines highlighted" : "The rule measures the whole file, so no lines are flagged"} />
             <SectionContent>
               <Evidence data={data} />
             </SectionContent>
           </Section>
-          <Measured data={data} />
           <Section>
             <SectionHeader title="Why it was flagged" subtitle={`Rule ${data.rule.id} (${data.rule.type})`} />
             <SectionContent>
