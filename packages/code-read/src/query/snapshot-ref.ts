@@ -1,7 +1,7 @@
+import { EXIT } from "@titan-design/rpc-protocol";
 import type { ReadModel } from "./model.js";
 import type { SnapshotInfo, SnapshotRef } from "./schemas.js";
 import { ReadError, snapshotNotFound, type ReadSource } from "./source.js";
-import { EXIT } from "@titan-design/rpc-protocol";
 
 const DIGITS = /^\d+$/;
 
