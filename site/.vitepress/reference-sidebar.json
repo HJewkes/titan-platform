@@ -28,6 +28,10 @@
         "link": "/reference/locator"
       },
       {
+        "text": "rpc-protocol",
+        "link": "/reference/rpc-protocol"
+      },
+      {
         "text": "store-sqlite",
         "link": "/reference/store-sqlite"
       }

@@ -12,7 +12,8 @@
           "packages/embed",
           "packages/agent-protocol",
           "packages/chat-protocol",
-          "packages/code-parser"
+          "packages/code-parser",
+          "packages/rpc-protocol"
         ],
         "1": [
           "packages/retrieval",
@@ -47,7 +48,8 @@
           "packages/embed",
           "packages/agent-protocol",
           "packages/chat-protocol",
-          "packages/code-parser"
+          "packages/code-parser",
+          "packages/rpc-protocol"
         ],
         [
           "packages/retrieval",
