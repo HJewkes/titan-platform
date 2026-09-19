@@ -1,0 +1,47 @@
+{
+  "name": "code-report",
+  "version": "0.0.0",
+  "private": true,
+  "description": "codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read",
+  "type": "module",
+  "license": "MIT",
+  "author": "Henry Jewkes",
+  "scripts": {
+    "index": "tsx server/index-repo.ts",
+    "dev": "tsx server/dev.ts",
+    "build": "vite build",
+    "serve": "tsx server/serve.ts",
+    "export": "tsx server/export.ts",
+    "call": "tsx server/call.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src server vite.config.ts"
+  },
+  "dependencies": {
+    "@titan-design/code-read": "workspace:*",
+    "@titan-design/react-app": "workspace:*",
+    "@titan-design/react-ui": "^0.20.0",
+    "@titan-design/rpc-client": "workspace:*",
+    "@titan-design/rpc-protocol": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-native-web": "^0.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@titan-design/code-graph": "workspace:^",
+    "@titan-design/daemon": "workspace:^",
+    "@titan-design/registry": "workspace:^",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.6.1",
+    "jsdom": "^30.1.0",
+    "nativewind": "^4.2.1",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.13",
+    "vite": "^8.0.3"
+  }
+}

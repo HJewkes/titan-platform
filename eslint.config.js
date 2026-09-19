@@ -7,6 +7,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { languageOptions: { globals: globals.node } },
+  { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },
   {
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",

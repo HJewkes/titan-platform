@@ -41,7 +41,8 @@
         ],
         "product": [
           "products/session-miner",
-          "products/retrieval-eval"
+          "products/retrieval-eval",
+          "apps/code-report"
         ]
       },
       "layers": [
@@ -81,7 +82,8 @@
         ],
         [
           "products/session-miner",
-          "products/retrieval-eval"
+          "products/retrieval-eval",
+          "apps/code-report"
         ]
       ]
     },
@@ -143,9 +145,23 @@
     {
       "id": "no-titan-design-library-imports",
       "type": "forbid-import",
-      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products may import @titan-design/react-ui.",
+      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products and apps may import @titan-design/react-ui.",
       "from": "packages/**",
       "to": "npm:@titan-design/react-ui"
+    },
+    {
+      "id": "code-report-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "apps/code-report/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
+      "from": "apps/code-report/src/**",
+      "to": "node:**"
+    },
+    {
+      "id": "code-report-browser-no-code-graph",
+      "type": "forbid-import",
+      "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; the browser reads code-read's ./query and the exported dataset instead.",
+      "from": "apps/code-report/src/**",
+      "to": "packages/code-graph/**"
     },
     {
       "id": "code-read-query-pure",
