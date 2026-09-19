@@ -17,7 +17,7 @@ const TIER_LABELS = {
   0: { title: "Tier 0 — primitives", blurb: "Domain-free building blocks. No titan dependencies." },
   1: { title: "Tier 1 — engines", blurb: "Reusable machinery over the primitives." },
   2: { title: "Tier 2 — domain", blurb: "Modules that know about a subject: transcripts, code, rules." },
-  ui: { title: "UI", blurb: "The design system. Published from a separate repository." },
+  ui: { title: "UI", blurb: "React bindings for the daemon wire. The design system, react-ui, is listed here but published from a separate repository." },
   product: { title: "Products", blurb: "Thin compositions of the tiers. Private, not published." },
 };
 

@@ -27,10 +27,10 @@ higher tier, never upward.
 
 | Tier | Packages | Role |
 |---|---|---|
-| 0 | store-sqlite, locator, cluster, embed, agent-protocol | primitives and shared wire contracts |
-| 1 | retrieval, agent, agent-lifecycle, registry, daemon, hitl | engines |
-| 2 | session-read, session-graph, code-graph, memory, workflow | domain modules |
-| ui | ui | generic dashboard kit |
+| 0 | store-sqlite, locator, cluster, embed, agent-protocol, chat-protocol, code-parser, rpc-protocol | primitives and shared wire contracts |
+| 1 | retrieval, agent, agent-lifecycle, registry, daemon, hitl, messaging, rpc-client | engines |
+| 2 | session-read, session-graph, code-graph, memory, workflow, style-profile, style-analyzer, style-checker, code-read | domain modules |
+| ui | react-app | React bindings for the daemon wire (data hooks, the Vite preset). No components or styling: those live in titan-design's `@titan-design/react-ui`, which no library here may import. |
 | product | products/* | thin compositions |
 
 `.codewatch/check.json` is the source of truth. Its `package-layers` rule lists every
