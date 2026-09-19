@@ -1,4 +1,4 @@
-export type { AnyCommand, BaseContext, CliMeta, CliOption, Command } from "./types.js";
+export type { AnyCommand, BaseContext, CliMeta, CliOption, Command, CommandMapOf } from "./types.js";
 export { defineCommand } from "./types.js";
 export type { CommandRegistry } from "./registry.js";
 export { createRegistry } from "./registry.js";

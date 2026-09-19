@@ -36,3 +36,13 @@ export function defineCommand<Args, Result, Ctx extends BaseContext = BaseContex
 ): Command<Args, Result, Ctx> {
   return cmd;
 }
+
+/**
+ * The `CommandMap` a typed client is generic over, derived from commands keyed by their
+ * names. Type-only: browser code imports the result with `import type`, so neither zod
+ * nor this package reaches its bundle. Keys are not checked against `name`, which
+ * `defineCommand` widens to `string`.
+ */
+export type CommandMapOf<T extends Record<string, AnyCommand<never>>> = {
+  [K in keyof T & string]: T[K] extends Command<infer Args, infer Result, never> ? { args: Args; result: Result } : never;
+};
