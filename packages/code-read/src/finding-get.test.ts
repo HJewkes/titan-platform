@@ -31,6 +31,7 @@ const SNAPSHOT: MemorySnapshot = {
   findings: [
     importAt("src/a.ts", 3), importAt("src/b.ts", 28), importAt("src/c.ts", 12, 13),
     maxLoc("lib/f.ts", 30), maxLoc("lib/g.ts", 12), maxLoc("lib/long.ts", 200),
+    { ...importAt("src/a.ts", 10), id: "no-up|lib/long.ts|src/a.ts", nodeId: "lib/long.ts", ranges: [{ startLine: 10, endLine: 10 }, { startLine: 150, endLine: 150 }] },
   ],
   rules: [
     { id: "no-up", type: "forbid-import", severity: "error", text: "Files matching lib/** must not import src/**." },
@@ -63,6 +64,12 @@ describe("finding.get excerpts", () => {
   it("shows a whole-node finding from the top with no highlight, capped and marked truncated", () => {
     expect(get("max-loc|lib/f.ts").excerpt).toMatchObject({ startLine: 1, endLine: 30, highlights: [], truncated: false });
     expect(get("max-loc|lib/long.ts").excerpt).toMatchObject({ startLine: 1, endLine: EXCERPT_LINE_CAP, truncated: true });
+  });
+
+  it("drops highlights the capped window cannot show", () => {
+    expect(get("no-up|lib/long.ts|src/a.ts").excerpt).toMatchObject({
+      startLine: 5, endLine: 4 + EXCERPT_LINE_CAP, truncated: true, highlights: [{ startLine: 10, endLine: 10 }],
+    });
   });
 
   it("says why when the source cannot cover the window", () => {

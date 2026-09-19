@@ -137,6 +137,13 @@ describe("findings.list ordering", () => {
     }
   });
 
+  it("flips only the primary key with order, so tied rows keep one order both ways", () => {
+    const tied = (order: string): string[] => ids(list({ sort: "rule", order, limit: 500 }).rows.filter((r) => r.rule === "max-loc"));
+
+    expect(tied("asc")).toEqual(tied("desc"));
+    expect(tied("asc")[0]).toBe("max-loc|lib/deep/h.ts");
+  });
+
   it("scores a minimum rule's excess as threshold over value, so lower coverage ranks worse", () => {
     const { rows } = list({ rule: ["min-cov"], sort: "excess", limit: 500 });
 

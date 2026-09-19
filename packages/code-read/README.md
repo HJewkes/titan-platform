@@ -20,7 +20,7 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.1)
+## Commands (contract 0.1.2)
 
 | Command | Args | Result |
 | --- | --- | --- |
@@ -29,6 +29,9 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `hierarchy.get` | `snapshot?`, `root?`, `depth` (1 to 8, default 2), `metrics` (default `["loc"]`), `baseline?`, `include_symbols`, `exclude_roles` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `nodes` (flat, shallowest first, with `parentId`, `depth`, `childCount`, `values`, `missing?`, `deltas?`), `truncated` |
 | `node.get` | `snapshot?`, `id`, `baseline?`, `metrics` (default: every one that applies) | `node`, `ancestors` (repo first), `childCounts`, `metrics` (value, `direction`, `rollup`, `percentile`, `siblingMedian`, `siblingRank`, `siblingCount`, `baseline?`, `delta?`, `missing?`) |
 | `node.resolve` | exactly one of `query` or `path`, plus `line?` with `path`, `limit` (1 to 50, default 10) | `candidates`: `node`, `score`, `match` |
+| `findings.list` | `snapshot?`, `baseline?`, `scope?`, filters `rule`, `severity`, `tool`, `provenance`, `kind`, `status` (arrays, empty means all), `sort` (`severity` default, `excess`, `value`, `path`, `rule`), `order` (`desc` default), `offset`, `limit` (0 to 500, default 20), `facets` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`Finding`), `total`, `facets?` |
+| `finding.get` | `snapshot?`, `id`, `baseline?`, `context_lines` (0 to 20, default 5) | `finding`, `rule` (with `text`), `measured`, `why`, `excerpt` (or null with `excerptMissing`), `related` (at most 10) |
+| `node.neighbors` | `snapshot?`, `id` (a stored node), `direction` (`both` default), `edge_kinds`, `metrics` (default `loc`, `utilization`), `offset`, `limit` (1 to 100, default 20) | `snapshotId`, `node`, `inbound`, `outbound` (each `node`, `kind`, `weight`, `specifier?`, `values`), `total` per side |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -77,6 +80,58 @@ last segment equals the query, such as `run` for `Task.run`, scores as a suffix.
 with a `line`, or a `query` of the form `path:line`, maps each matching file to the innermost
 symbol whose span holds the line.
 
+## Findings
+
+Until the findings store exists (design gap G11), every finding is a check-rule violation
+**derived on read**. The live source runs the product's rules through code-graph's own
+`runChecks` when it loads a snapshot, so `findings.list` returns exactly what
+`graph check` reports. Each row says `provenance: { kind: "derived", source: "check/<rule>" }`
+and `tool: "check"`. Stored findings, verdicts, and themes will arrive behind the same
+`Finding` schema.
+
+- **Ids.** A finding's id is code-graph's `violationKey`: `rule|node` or
+  `rule|node|destination`. Treat it as opaque. It stays the same across snapshots while
+  the rule id, the node id, and the destination are unchanged. A moved file gets a new id
+  until rename-aware keys land (TP-187).
+- **Order.** `sort` picks the primary key and `order` flips only that key. Ties always break
+  the same way: severity (error, warning, info, then unknown), then larger `excess`, then
+  node path, rule, and id. The id is unique, so the order is total and `offset` pages never
+  repeat or skip a row. Rows with no `excess` or `value` sort last in either direction.
+- **Excess.** `value / threshold` for a maximum rule and `threshold / value` for a minimum
+  rule, so larger is always worse. Import rules have no threshold, so `excess` is null.
+- **Facets.** With `facets: true`, counts per `rule`, `severity`, `tool`, `provenance`,
+  `kind`, and `child`, plus `status` with a baseline. They count every row that passed the
+  filters, so each facet sums to `total`. `child` is the scope's child (a directory id or a
+  file) that holds the finding, which is what a drill-down view shows next. `limit: 0` with
+  `facets: true` gives headline counts in one call.
+- **Scope.** A directory scope holds everything under it, a file scope holds the file and
+  its symbols, and the repo (`""`, the default) holds everything.
+- **Status.** With `baseline`, each row is `new`, `carryover`, `worsened`, or `improved`
+  (by `excess`), and findings that no longer occur come back from the baseline as
+  `resolved`, with the baseline's `snapshotId`. A `status` filter without a baseline is
+  DATAERR.
+- **Excerpts.** `finding.get` shows the flagged lines plus `context_lines` either side,
+  clipped to the file and capped at `EXCERPT_LINE_CAP` (80) lines with `truncated: true`.
+  Edges carry no line numbers, so an import finding's flagged line is the one that names
+  the import's specifier in quotes; the live source finds it when it loads the snapshot. A
+  metric finding covers its whole file: no `range`, no highlight, and the excerpt starts at
+  line 1. The live source reads the working tree under `repoRoot` and serves a file only
+  when its hash equals the snapshot's fingerprint. Otherwise `excerpt` is null and
+  `excerptMissing` says `changed-since-snapshot`. A static source serves the windows it
+  exported and says `not-in-export` for the rest.
+- **Neighbours.** `node.neighbors` needs a stored node: a file, symbol, module, or
+  external. A synthesized directory is DATAERR. Each side is ranked by edge `weight`
+  (code-graph's reference count), heaviest first, then by neighbour id and edge kind, and
+  paged on its own. Empty `edge_kinds` means every kind except `references` for a
+  non-symbol node, because `references` edges are the symbol layer.
+
+**Trap: a derived finding is not a record.** It exists only while its rule, at its
+current threshold, still fires. Change a rule's threshold, rename a rule, or remove it,
+and its findings vanish from every snapshot, old ones included, and their ids never come
+back. A finding's `status` also depends on the baseline you pass: the same row is
+`carryover` against one snapshot and `new` against another. Do not persist a derived id
+as if it were durable until the findings store lands.
+
 ## Serving the commands
 
 ```ts
@@ -87,9 +142,19 @@ import { createRegistry } from "@titan-design/registry";
 
 const registry = createRegistry();
 const rules = await loadCheckRules(".codewatch/check.json");
-registerCodeReadCommands(registry, { openStore: () => openCodeGraph(".codewatch/graph.db"), rules: () => rules });
+registerCodeReadCommands(registry, {
+  openStore: () => openCodeGraph(".codewatch/graph.db"),
+  rules: () => rules,
+  repoRoot: gitToplevel,
+});
 await startDaemon({ registry, createContext: () => ({ warnings: [], format: "json" }), version, stateDir, toolPrefix: "codewatch__" });
 ```
+
+`rules` must return the same array while the rules are unchanged: the live source compares
+arrays by identity and drops every cached model when a different one comes back.
+`repoRoot` is the git toplevel the snapshots were indexed from; leave it out and
+`finding.get` returns no excerpts. Deriving findings adds a `runChecks` pass to each model
+load, about 25 ms on titan-platform's own index.
 
 The daemon then answers `POST /rpc/api.describe` and the MCP tool `codewatch__api__describe`
 with the same envelope as an in-process `invokeCommand`. The daemon lists every registered
