@@ -84,7 +84,7 @@ symbol whose span holds the line.
 
 Until the findings store exists (design gap G11), every finding is a check-rule violation
 **derived on read**. The live source runs the product's rules through code-graph's own
-`runChecks` when it loads a snapshot, so `findings.list` returns exactly what
+`snapshotViolations` when it loads a snapshot, so `findings.list` returns exactly what
 `graph check` reports. Each row says `provenance: { kind: "derived", source: "check/<rule>" }`
 and `tool: "check"`. Stored findings, verdicts, and themes will arrive behind the same
 `Finding` schema.
@@ -153,7 +153,7 @@ await startDaemon({ registry, createContext: () => ({ warnings: [], format: "jso
 `rules` must return the same array while the rules are unchanged: the live source compares
 arrays by identity and drops every cached model when a different one comes back.
 `repoRoot` is the git toplevel the snapshots were indexed from; leave it out and
-`finding.get` returns no excerpts. Deriving findings adds a `runChecks` pass to each model
+`finding.get` returns no excerpts. Deriving findings adds a rule-evaluation pass to each model
 load, about 25 ms on titan-platform's own index.
 
 The daemon then answers `POST /rpc/api.describe` and the MCP tool `codewatch__api__describe`

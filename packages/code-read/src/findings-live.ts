@@ -1,4 +1,4 @@
-import { runChecks, violationKey, type CheckRule, type CheckViolation, type RuleStore } from "@titan-design/code-graph";
+import { snapshotViolations, violationKey, type CheckRule, type CheckViolation, type RuleStore } from "@titan-design/code-graph";
 import type { ModelEdge, ModelFinding, ModelRule } from "./query/model.js";
 import type { Span } from "./query/schemas.js";
 import { describeRule } from "./rule-text.js";
@@ -66,7 +66,7 @@ function toModelFinding(v: CheckViolation, inputs: Located): ModelFinding {
 /** The snapshot's check-rule violations as findings, computed by the same engine and keyed as the ratchet keys them. */
 export function deriveFindings(store: RuleStore, rules: readonly CheckRule[], inputs: FindingInputs): ModelFinding[] {
   if (rules.length === 0) return [];
-  const { violations } = runChecks(store, { snapshotId: inputs.snapshotId, rules });
+  const violations = snapshotViolations(store, inputs.snapshotId, rules);
   const located: Located = { ...inputs, specifiers: specifiersOf(inputs.edges) };
   return violations.map((v) => toModelFinding(v, located));
 }
