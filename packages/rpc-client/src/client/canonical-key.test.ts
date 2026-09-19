@@ -46,5 +46,6 @@ describe("wireArgs", () => {
   it("gives what a daemon would parse from the request body", () => {
     expect(wireArgs({ a: undefined, b: [undefined], c: Number.NaN })).toEqual({ b: [null], c: null });
     expect(wireArgs(undefined)).toEqual({});
+    expect(wireArgs(Number.NaN)).toEqual({});
   });
 });

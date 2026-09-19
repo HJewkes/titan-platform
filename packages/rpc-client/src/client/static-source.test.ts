@@ -23,7 +23,7 @@ describe("staticSource", () => {
     const source = staticSource({ snapshot, resolve });
     await source.call("n.get", { f: { a: 1, b: 2 } });
     expect(await source.call("n.other", { x: undefined, y: 1 })).toEqual({ ok: true, data: { n: 7 } });
-    expect(resolve.mock.calls).toEqual([["n.other", { y: 1 }, { n: 7 }]]);
+    expect(resolve.mock.calls).toStrictEqual([["n.other", { y: 1 }, { n: 7 }]]);
   });
 
   it("answers UNAVAILABLE when nothing recorded or resolvable matches", async () => {
@@ -81,6 +81,7 @@ describe("snapshots", () => {
     ["a missing createdAt", { ...snapshot, createdAt: undefined }, "createdAt must be a string"],
     ["calls as an array", { ...snapshot, calls: [] }, "calls must be an object"],
     ["a call that is not an envelope", { ...snapshot, calls: { k: { ok: "yes" } } }, "Snapshot call k is not an envelope"],
+    ["a success envelope with no data", { ...snapshot, calls: { k: { ok: true } } }, "Snapshot call k is not an envelope"],
   ])("refuses %s", (_label, value, message) => {
     expect(() => parseSnapshot(value)).toThrow(message);
   });
