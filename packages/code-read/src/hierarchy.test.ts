@@ -19,8 +19,9 @@ const current: MemorySnapshot = {
   info: snapshotInfo(3, "main"),
   nodes: [
     file("src/a.ts"), file("src/b.ts"), file("src/bare.ts"), file("src/sub/c.ts"), file("src/sub/c.test.ts", "test"),
-    symbol("src/sub/c.ts", "Klass", 1, 20), symbol("src/sub/c.ts", "method", 4, 8),
-    symbol("src/a.ts", "outer", 1, 9), symbol("src/a.ts", "outer.<anonymous>.cb", 3, 5),
+    symbol("src/sub/c.ts", "Klass", 1, 20), symbol("src/sub/c.ts", "method", 4, 8), symbol("src/sub/c.ts", "inner", 5, 6),
+    symbol("src/a.ts", "outer", 1, 9), symbol("src/a.ts", "outer.<anonymous>.cb"), symbol("src/a.ts", "Config"), symbol("src/a.ts", "Config.defaults"),
+    symbol("src/b.ts", "zeta", 1, 3), symbol("src/b.ts", "alpha", 5, 9),
   ],
   metrics: [
     metric("src/a.ts", "loc", 10), metric("src/b.ts", "loc", 4), metric("src/sub/c.ts", "loc", 30), metric("src/sub/c.test.ts", "loc", 7),
@@ -31,7 +32,8 @@ const current: MemorySnapshot = {
   describe: (name) => (name === "score" ? SCORE : describeMetric(name)),
 };
 const prior: MemorySnapshot = { info: snapshotInfo(2, "feature", "0.13.0"), nodes: [file("src/a.ts")], metrics: [metric("src/a.ts", "loc", 8)] };
-const resolve = createQueryResolver(memorySource([current, prior]));
+const oldest: MemorySnapshot = { info: snapshotInfo(1, "main"), nodes: [], metrics: [] };
+const resolve = createQueryResolver(memorySource([current, prior, oldest]));
 const get = answer(resolve);
 
 const row = (result: Hierarchy, id: string) => result.nodes.find((n) => n.id === id)!;
@@ -57,18 +59,38 @@ describe("hierarchy.get over an in-memory model", () => {
     expect(row(result, "src/a.ts#outer").missing).toEqual({ loc: "not-applicable", nonsense: "not-in-snapshot" });
   });
 
-  it("drops excluded roles from the rows and from the rollups", () => {
-    const result = get<Hierarchy>("hierarchy.get", { depth: 3, exclude_roles: ["test"] });
+  it("drops excluded roles from the rows, the rollups, and the baseline", () => {
+    const result = get<Hierarchy>("hierarchy.get", { depth: 3, exclude_roles: ["test"], baseline: 3 });
 
     expect(result.nodes.map((n) => n.id)).not.toContain("src/sub/c.test.ts");
-    expect(row(result, "src/sub/").values.loc).toBe(30);
+    expect(row(result, "src/sub/")).toMatchObject({ values: { loc: 30 }, deltas: { loc: 0 } });
   });
 
-  it("hangs a bare-name method under the class whose span encloses it, and skips an anonymous scope", () => {
-    const result = get<Hierarchy>("hierarchy.get", { depth: 6, include_symbols: true, metrics: [] });
+  it("stops at files unless symbols are asked for", () => {
+    const result = get<Hierarchy>("hierarchy.get", { depth: 8 });
+
+    expect(result.nodes.filter((n) => n.kind === "symbol")).toEqual([]);
+    expect(row(result, "src/b.ts").childCount).toBe(2);
+  });
+
+  it("hangs a bare-name symbol under the smallest span that encloses it", () => {
+    const result = get<Hierarchy>("hierarchy.get", { depth: 8, include_symbols: true, metrics: [] });
 
     expect(row(result, "src/sub/c.ts#method").parentId).toBe("src/sub/c.ts#Klass");
+    expect(row(result, "src/sub/c.ts#inner").parentId).toBe("src/sub/c.ts#method");
+  });
+
+  it("hangs a qualified symbol under its nearest existing scope, span or not", () => {
+    const result = get<Hierarchy>("hierarchy.get", { depth: 8, include_symbols: true, metrics: [] });
+
+    expect(row(result, "src/a.ts#Config.defaults").parentId).toBe("src/a.ts#Config");
     expect(row(result, "src/a.ts#outer.<anonymous>.cb").parentId).toBe("src/a.ts#outer");
+  });
+
+  it("orders symbols by line, not by name", () => {
+    const result = get<Hierarchy>("hierarchy.get", { root: "src/b.ts", depth: 1, include_symbols: true, metrics: [] });
+
+    expect(result.nodes.map((n) => n.id)).toEqual(["src/b.ts", "src/b.ts#zeta", "src/b.ts#alpha"]);
   });
 
   it("marks deltas against another index version as not comparable", () => {
@@ -93,6 +115,7 @@ describe("hierarchy.get over an in-memory model", () => {
   it("resolves a snapshot by digit string or ref, and answers NOINPUT for an unknown one or an unknown root", () => {
     expect(get<Hierarchy>("hierarchy.get", { snapshot: "2" }).snapshotId).toBe(2);
     expect(get<Hierarchy>("hierarchy.get", { snapshot: "feature" }).snapshotId).toBe(2);
+    expect(get<Hierarchy>("hierarchy.get", { snapshot: "main" }).snapshotId).toBe(3);
     expect(resolve("hierarchy.get", { snapshot: "nope" })).toMatchObject({ ok: false, code: EXIT.NOINPUT });
     expect(resolve("hierarchy.get", { root: "src" })).toMatchObject({ ok: false, code: EXIT.NOINPUT, error: 'No node "src" in snapshot 3' });
   });
