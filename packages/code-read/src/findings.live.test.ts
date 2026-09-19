@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runChecks, violationKey, type CheckRule } from "@titan-design/code-graph";
-import { createRegistry, invokeCommand } from "@titan-design/registry";
+import { EXIT, createRegistry, invokeCommand } from "@titan-design/registry";
 import { createLiveSource, type CodeReadDeps } from "./live-source.js";
 import { answer } from "./memory-source.js";
 import { CONTRACT, type CommandName, type CommandResult } from "./query/contract.js";
@@ -165,5 +165,32 @@ describe("derived findings follow the rules and the working tree", () => {
 
     expect(resolve<CommandResult<"finding.get">>("finding.get", { id: "max-loc|src/big.ts" }).excerptMissing).toBe("no-source");
     expect(resolve<CommandResult<"api.describe">>("api.describe", {}).capabilities).toMatchObject({ findings: "check-rules", excerpts: "none" });
+  });
+});
+
+describe("a snapshot with no findings", () => {
+  const NOTHING_MATCHES: CheckRule[] = [
+    { id: "max-loc", type: "metric-max", metric: "loc", kind: "file", max: 10_000 },
+    { id: "no-vendor", type: "forbid-import", from: "vendor/**", to: "src/**" },
+  ];
+
+  it.each([
+    ["no rules", [] as CheckRule[]],
+    ["rules that match nothing", NOTHING_MATCHES],
+  ])("with %s, lists total 0 with every facet empty, and finding.get fails NOINPUT", (_label, rules) => {
+    const resolve = createQueryResolver(createLiveSource(deps({ rules: () => rules })));
+
+    const listed = resolve("findings.list", { facets: true, baseline: first });
+
+    expect(listed).toEqual({
+      ok: true,
+      data: {
+        snapshotId: second, baselineSnapshotId: first, comparable: true, rows: [], total: 0,
+        facets: { rule: {}, severity: {}, tool: {}, provenance: {}, kind: {}, child: {}, status: {} },
+      },
+    });
+    expect(resolve("finding.get", { id: "max-loc|src/big.ts" })).toEqual({
+      ok: false, error: `No finding "max-loc|src/big.ts" in snapshot ${second}`, code: EXIT.NOINPUT,
+    });
   });
 });
