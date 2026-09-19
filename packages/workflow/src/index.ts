@@ -24,10 +24,10 @@ export type {
   WorkflowStatus,
 } from "./types.js";
 export { StepFailedError, WorkflowCancelledError, WorkflowRecoveryRequiredError, workflowStepRequestKey } from "./types.js";
-export type { SignalMatcher, SignalParser } from "./signals.js";
-export { DEFAULT_SIGNAL_PATTERNS, createSignalParser, parseSignal } from "./signals.js";
+export type { SignalMatcher, SignalParser, SignalSetParser } from "./signals.js";
+export { DEFAULT_SIGNAL_PATTERNS, EMPTY_OUTPUT_SIGNAL, createSignalParser, createSignalSetParser, parseSignal, parseSignals } from "./signals.js";
 export type { TemplateRenderer } from "./prompt.js";
-export { buildStepVars, mustacheRenderer } from "./prompt.js";
+export { buildStepVars, mustacheRenderer, unfilledVariables } from "./prompt.js";
 export {
   DEFAULT_RUN_TABLE,
   WorkflowOwnershipLostError,

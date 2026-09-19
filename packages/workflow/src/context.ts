@@ -43,6 +43,20 @@ export function gateIdFor(runId: string, stepId: string): string {
   return `${runId}/${stepId}`;
 }
 
+/** The first call keeps the bare key earlier releases persisted, so their paused runs still resume; repeats use `stepId:iteration`. */
+export function assistedKey(stepId: string, iteration: number): string {
+  return iteration === 0 ? stepId : `${stepId}:${iteration}`;
+}
+
+/** Every recorded result for `stepId` is one earlier call, so the count is the iteration of the gate now waiting. */
+export function pendingGateId(run: WorkflowRun, stepId: string): string {
+  const repeat = `${stepId}:`;
+  const calls = Object.keys(run.stepResults).filter(
+    (key) => key === stepId || (key.startsWith(repeat) && /^\d+$/.test(key.slice(repeat.length))),
+  ).length;
+  return gateIdFor(run.id, assistedKey(stepId, calls));
+}
+
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
 export class RunContext implements WorkflowContext {
   readonly runId: string;
@@ -118,18 +132,20 @@ export class RunContext implements WorkflowContext {
 
   async assisted(stepId: string, prompt: string, options: AssistedOptions = {}): Promise<StepResult> {
     this.throwIfCancelled();
-    const cached = this.run.stepResults[stepId];
-    if (cached) return cached;
-    const gateId = gateIdFor(this.runId, stepId);
+    const iteration = this.iteration(stepId);
+    const key = assistedKey(stepId, iteration);
+    const cached = this.run.stepResults[key];
+    if (cached) return this.bump(stepId, cached);
+    const gateId = gateIdFor(this.runId, key);
     this.setCurrent(stepId, "paused");
     this.openGateOnce(gateId, prompt, options, stepId);
     const payload = (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
     const signal = typeof payload?.signal === "string" ? payload.signal : null;
-    const result: StepResult = { stepId, iteration: 0, agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
+    const result: StepResult = { stepId, iteration, agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
     this.run.status = "running";
-    this.record(stepId, result);
-    this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration: 0, signal });
-    return result;
+    this.record(key, result);
+    this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal });
+    return this.bump(stepId, result);
   }
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {

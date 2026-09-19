@@ -74,12 +74,49 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   execution ID and request key.
 - `seed(stepId, fn)` runs deterministic work once and merges its data into the
   workflow parameters.
-- `assisted(stepId, prompt)` opens the durable gate `<runId>/<stepId>` and waits
-  for `runtime.signal` to resolve it.
+- `assisted(stepId, prompt)` opens a durable gate and waits for
+  `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
+  and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
+  each time. The first call uses the key `stepId` and the gate
+  `<runId>/<stepId>`, as earlier releases did. Iteration `n` of a repeated call
+  uses the key `stepId:n` and the gate `<runId>/<stepId>:n`.
+  `runtime.signal(runId, stepId, payload)` resolves the gate of the call that is
+  waiting. Replay returns the recorded answers in call order and opens no gate
+  for them.
 
-`<!-- signal: needs_revision -->` in runner output is authoritative. The default
-parser also recognizes common verdict text. Pass a custom `parseSignal` to
-change those conventions.
+`dispatch` and `assisted` share one call counter per `stepId`, so their keys
+never collide. `seed` keys by `stepId` alone, so give seeds their own step IDs.
+
+## Signals
+
+`parseSignals(output)` returns every signal an output carries, highest
+precedence first. `parseSignal(output)` returns the first entry of that list, or
+`null` when it is empty; `dispatch` records it as `StepResult.signal`. Read the
+full set with `parseSignals(result.output)`.
+
+Precedence, highest first:
+
+1. Empty or whitespace-only output yields only `EMPTY_OUTPUT_SIGNAL`
+   (`"empty_output"`). Treat it as a reason to ask a human: a reviewer that
+   produced nothing has not approved anything.
+2. A canonical marker such as `<!-- signal: needs_revision -->` is
+   authoritative. When the output carries markers that name known signals, the
+   result is those markers and the prose is ignored. Unknown marker names fall
+   through to the prose.
+3. Otherwise every matching verdict pattern is reported, in the key order of
+   `DEFAULT_SIGNAL_PATTERNS`: `high_risk`, `needs_revision`,
+   `has_open_questions`, `approved`, `needs_fixes`, `changes_requested`,
+   `needs_clarification`, `needs_changes`. A risk score of 4 or more therefore
+   wins over a PASS verdict.
+
+`createSignalSetParser(patterns)` and `createSignalParser(patterns)` build
+parsers over a custom pattern record; its key order is the precedence. Pass a
+custom `parseSignal` to the runtime to change the conventions `dispatch` uses.
+
+`unfilledVariables(template, vars)` lists the `{{NAME}}` placeholders in a
+template that `vars` does not supply, sorted. It reads the template before
+substitution, so a `{{NAME}}` inside a substituted step output is not reported.
+The renderer itself still leaves unknown placeholders in place.
 
 ## Execution recovery
 

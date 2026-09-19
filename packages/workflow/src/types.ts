@@ -52,7 +52,7 @@ export interface WorkflowRun {
   params: Record<string, string>;
   status: WorkflowStatus;
   currentStep: string | null;
-  /** Keyed by `stepId:iteration` for dispatches and by `stepId` for seeds and gates. */
+  /** Keyed by `stepId:iteration` for dispatches, `stepId` for seeds, and `stepId` then `stepId:iteration` for repeated gates. */
   stepResults: Record<string, StepResult>;
   activeSteps: Record<string, ActiveStep>;
   revision: number;
