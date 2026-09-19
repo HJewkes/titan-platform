@@ -1,3 +1,4 @@
+import { aliasChain } from "../identity/store-identity.js";
 import type { CodeGraphStore } from "../store.js";
 import { buildRuleContext } from "./context.js";
 import { runRule } from "./rules.js";
@@ -16,7 +17,7 @@ export function runChecks(store: CodeGraphStore, options: RunChecksOptions): Che
     violations.push(...runRule(rule, ctx));
   }
   if (options.baselineSnapshotId) {
-    const baselineKeys = collectBaselineKeys(store, options.baselineSnapshotId, options.rules);
+    const baselineKeys = collectBaselineKeys(store, options.baselineSnapshotId, options.snapshotId, options.rules);
     for (const v of violations) {
       if (baselineKeys.has(violationKey(v))) v.isCarryover = true;
     }
@@ -33,15 +34,18 @@ export function runChecks(store: CodeGraphStore, options: RunChecksOptions): Che
   };
 }
 
+/** Baseline violation keys in the checked snapshot's id space, so a moved file's violations carry over. */
 function collectBaselineKeys(
   store: CodeGraphStore,
   baselineSnapshotId: number,
+  snapshotId: number,
   rules: readonly CheckRule[],
 ): Set<string> {
   const ctx = buildRuleContext(store, baselineSnapshotId);
+  const chain = aliasChain(store, baselineSnapshotId, snapshotId);
   const keys = new Set<string>();
   for (const rule of rules) {
-    for (const v of runRule(rule, ctx)) keys.add(violationKey(v));
+    for (const v of runRule(rule, ctx)) keys.add(rebasedViolationKey(v, chain.resolve));
   }
   return keys;
 }
@@ -49,6 +53,12 @@ function collectBaselineKeys(
 /** Identity of a violation across snapshots: severity, value and message may change, the key does not. */
 export function violationKey(v: CheckViolation): string {
   return v.destinationId ? `${v.ruleId}|${v.nodeId}|${v.destinationId}` : `${v.ruleId}|${v.nodeId}`;
+}
+
+/** {@link violationKey} with both node ids carried into another snapshot's id space; unmoved ids key as before. */
+export function rebasedViolationKey(v: CheckViolation, resolve: (id: string) => string): string {
+  const destinationId = v.destinationId ? resolve(v.destinationId) : v.destinationId;
+  return violationKey({ ...v, nodeId: resolve(v.nodeId), destinationId });
 }
 
 interface Counts {

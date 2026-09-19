@@ -1,5 +1,6 @@
-import { runChecks, violationKey } from "../check/check.js";
+import { rebasedViolationKey, runChecks, violationKey } from "../check/check.js";
 import type { CheckRule, CheckViolation } from "../check/types.js";
+import { aliasChain } from "../identity/store-identity.js";
 import type { CodeGraphStore } from "../store.js";
 
 export interface UnchangedViolation {
@@ -27,15 +28,20 @@ export interface DiffCheckResultsOptions {
 
 type Buckets = Pick<CheckDiff, "newViolations" | "resolvedViolations" | "unchanged" | "worsened" | "improved">;
 
-/** Run the rules on both snapshots and bucket each violation as new, resolved, or unchanged (worsened or improved by value). */
+/**
+ * Run the rules on both snapshots and bucket each violation as new, resolved, or
+ * unchanged (worsened or improved by value). From-side ids follow the alias chain
+ * into the to-snapshot, so a moved file's violations stay unchanged.
+ */
 export function diffCheckResults(store: CodeGraphStore, options: DiffCheckResultsOptions): CheckDiff {
   const from = runChecks(store, { snapshotId: options.fromSnapshotId, rules: options.rules });
   const to = runChecks(store, { snapshotId: options.toSnapshotId, rules: options.rules });
+  const chain = aliasChain(store, options.fromSnapshotId, options.toSnapshotId);
   return {
     fromSnapshotId: options.fromSnapshotId,
     toSnapshotId: options.toSnapshotId,
     rulesEvaluated: options.rules.length,
-    ...bucketViolations(indexByKey(from.violations), indexByKey(to.violations)),
+    ...bucketViolations(indexByKey(from.violations, chain.resolve), indexByKey(to.violations)),
   };
 }
 
@@ -62,9 +68,12 @@ function bucketViolations(
   return buckets;
 }
 
-function indexByKey(violations: readonly CheckViolation[]): Map<string, CheckViolation> {
+function indexByKey(
+  violations: readonly CheckViolation[],
+  resolve?: (id: string) => string,
+): Map<string, CheckViolation> {
   const out = new Map<string, CheckViolation>();
-  for (const v of violations) out.set(violationKey(v), v);
+  for (const v of violations) out.set(resolve ? rebasedViolationKey(v, resolve) : violationKey(v), v);
   return out;
 }
 

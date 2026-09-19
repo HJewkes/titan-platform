@@ -85,7 +85,10 @@ ids.
 
 **The baseline is a ratchet.** A violation whose key (rule id, node id, and destination id
 for edge rules) also fires on the baseline is marked `isCarryover`. Only new errors set
-`passed: false`, so existing debt never blocks a change and new debt always does.
+`passed: false`, so existing debt never blocks a change and new debt always does. The
+baseline's node ids are carried through the alias chain into the checked snapshot first, so a
+moved file's violations carry over instead of reading as one resolved plus one new. Unmoved
+ids key exactly as before, so baselines from older builds still match.
 
 ## Diffing two snapshots
 
@@ -100,9 +103,9 @@ diffCheckResults(store, { fromSnapshotId: 1, toSnapshotId: 2, rules: tight }).ne
 // [ { nodeId: 'packages/code-graph/src/check/validate.ts', … } ]
 ```
 
-`diffSnapshots` reports metric deltas only on nodes present in both snapshots. The
-to-snapshot's `id_alias` rows carry a renamed file across, so a move is a rename rather than
-a delete plus an add, and its edges do not churn. `diffCheckResults` buckets violations as
+`diffSnapshots` reports metric deltas only on nodes present in both snapshots. Ids follow the
+alias chain between the two snapshots, across every rename in between, so a move is a rename
+rather than a delete plus an add, and its edges do not churn. `diffCheckResults` buckets violations as
 new, resolved, or unchanged, and splits unchanged metric violations into worsened and
 improved by value.
 
@@ -204,6 +207,41 @@ File, module and external ids are preserved exactly from codewatch, because this
   bare name, so same-named methods in one file collapsed into one node (TP-182).
 - An **external** id is `npm:<package>` (scope-aware) or the `node:` builtin verbatim.
 
+## Identity across renames
+
+Added in index version 0.15.0 (TP-187). Git rename detection writes `id_alias` rows mapping a
+file's and its module's old id to the new one. A file rename also writes an alias for every
+symbol present on both sides, so `a.ts#Job.run` follows `a.ts` to `b.ts#Job.run`. A symbol
+renamed inside a file is not followed.
+
+Each snapshot records its alias base in `attrs.aliasBase`: the snapshot whose commit its
+aliases were computed against. A new index of a ref diffs against that ref's newest committed
+snapshot, falling back to the newest committed snapshot of any ref. The bases form a tree, so
+ids can be carried between any two snapshots that share an ancestor, forward or backward.
+
+```ts
+import { aliasChain, priorSnapshotForRef, resolveAlias } from "@titan-design/code-graph";
+
+resolveAlias(store, "src/job.ts", 4, { fromSnapshotId: 1 });
+// { id: 'core/worker.ts', reason: 'move',
+//   hops: [ src/job.ts -> src/task.ts, src/task.ts -> src/worker.ts, src/worker.ts -> core/worker.ts ] }
+resolveAlias(store, "src/job.ts#Job.run", 4, { fromSnapshotId: 1 }).id; // 'core/worker.ts#Job.run'
+aliasChain(store, 1, 4).resolve; // one resolver for many ids
+priorSnapshotForRef(store, "main", { before: 7, repoRoot: "." }); // the snapshot main denotes
+```
+
+Without `fromSnapshotId`, `resolveAlias` walks from the root of the target's lineage, so an id
+from any ancestor resolves. Each snapshot's aliases are applied once, in order: they come from
+one git diff, so `a.ts` to `b.ts` plus `b.ts` to `a.ts` in one snapshot is a swap, not a
+cycle. Walks stop after 10,000 snapshots. Two snapshots with no common base fall back to the
+to-snapshot's own aliases, which is what `diffSnapshots` did before 0.15.0.
+
+`priorSnapshotForRef` prefers the snapshot of the commit git resolves the ref to, and
+otherwise the newest snapshot labelled with that ref. A snapshot written before 0.15.0 records
+no base; its base is inferred as the newest earlier snapshot with a commit, which is the one
+the 0.14.0 indexer diffed against. Nothing is written on read, so a 0.14.0 store opened
+read-only diffs and checks across renames too.
+
 ## The three reuse tiers
 
 Every run writes a fingerprint per file: a content hash, and a comment/whitespace-insensitive
@@ -211,8 +249,9 @@ hash of its parse structure. The next run diffs against the most recent snapshot
 same `INDEX_VERSION`. That version is bumped whenever a metric can change for the same bytes,
 not only when the node or edge shape changes. 0.12.0 marks `.tsx` files moving to the tsx
 grammar (TP-166); 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward
-set (TP-127); 0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182). A snapshot
-from before 0.14.0 is never reused, so re-index. The first 0.14.0 run after an older snapshot
+set (TP-127); 0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182); 0.15.0
+marks symbol aliases on a file rename and the recorded alias base (TP-187). A snapshot from an
+older version is never reused, so the first run after an upgrade is a full index. The first 0.14.0 run after an older snapshot
 writes `requalify` id aliases from each bare-name id to its qualified successor, only where
 exactly one declaration in the file carries that name.
 
