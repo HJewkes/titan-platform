@@ -127,6 +127,27 @@
       "to": "node:**"
     },
     {
+      "id": "react-app-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "react-app's main entry ships to browsers; only src/vite (the build preset) may use Node builtins.",
+      "from": "packages/react-app/src/hooks/**",
+      "to": "node:**"
+    },
+    {
+      "id": "react-app-browser-no-vite",
+      "type": "forbid-import",
+      "$comment": "Vite is an optional peer for the ./vite entry; the hooks must load without it. The leading ** anchors the match so npm:vitest in tests stays allowed.",
+      "from": "packages/react-app/src/hooks/**",
+      "to": "**npm:vite"
+    },
+    {
+      "id": "no-titan-design-library-imports",
+      "type": "forbid-import",
+      "$comment": "Libraries never import across the repo line: titan-design may use titan-platform packages, not the reverse. Only products may import @titan-design/react-ui.",
+      "from": "packages/**",
+      "to": "npm:@titan-design/react-ui"
+    },
+    {
       "id": "code-read-query-pure",
       "type": "layered-deps",
       "$comment": "code-read's ./query subpath imports only its own directory, so the browser bundle never reaches the SQLite loader or the registry wiring.",
