@@ -1,2 +1,10 @@
-// Placeholder entry for @titan-design/rpc-client (tier 1). Filled in by TP-139.
-export {};
+export type { CallArgs, RpcClient } from "./client/client.js";
+export { RpcError, createRpcClient } from "./client/client.js";
+export type { CallOptions, DataSource, EventHandlers, LiveStatus, Subscription } from "./client/data-source.js";
+export type { LiveSourceOptions } from "./client/live-source.js";
+export { liveSource } from "./client/live-source.js";
+export type { StaticSourceOptions } from "./client/static-source.js";
+export { staticSource } from "./client/static-source.js";
+export type { Snapshot, SnapshotPlan, SnapshotResolver } from "./client/snapshot.js";
+export { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot } from "./client/snapshot.js";
+export { canonicalArgs, snapshotKey, wireArgs } from "./client/canonical-key.js";

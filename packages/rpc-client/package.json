@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "files": [
@@ -34,5 +38,13 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@titan-design/daemon": "workspace:*",
+    "@titan-design/registry": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

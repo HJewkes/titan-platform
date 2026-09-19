@@ -113,6 +113,13 @@
       "to": "node:**"
     },
     {
+      "id": "rpc-client-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "rpc-client's main entry ships to browsers; only src/node (exportSnapshot) may use Node builtins.",
+      "from": "packages/rpc-client/src/client/**",
+      "to": "node:**"
+    },
+    {
       "id": "max-file-loc",
       "type": "metric-max",
       "metric": "loc",
