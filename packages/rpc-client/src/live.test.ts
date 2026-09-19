@@ -83,7 +83,7 @@ describe("liveSource against a real daemon", () => {
     const controller = new AbortController();
     const statuses: LiveStatus[] = [];
     client.subscribe({ onEvent: () => undefined, onStatus: (s) => statuses.push(s) }, { signal: controller.signal });
-    await waitFor(() => daemon.handle.hub.size === 1);
+    await waitFor(() => statuses.includes("open") && daemon.handle.hub.size === 1);
     controller.abort();
     await waitFor(() => statuses.at(-1) === "closed" && daemon.handle.hub.size === 0);
     expect(statuses).toEqual(["connecting", "open", "closed"]);
