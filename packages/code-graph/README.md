@@ -79,6 +79,41 @@ package's source file, not to an `npm:` external, by remapping the `dist/*.d.ts`
 ts-morph resolves back onto `src/`. That remap needs the target package built, which is why
 `pnpm build` precedes both `pnpm test` and `dag:check`.
 
+## Identity across renames
+
+Added in index version 0.15.0 (TP-187). Git rename detection writes `id_alias` rows mapping a
+file's and its module's old id to the new one. A file rename also writes an alias for every
+symbol present on both sides, so `a.ts#Job.run` follows `a.ts` to `b.ts#Job.run`. A symbol
+renamed inside a file is not followed.
+
+Each snapshot records its alias base in `attrs.aliasBase`: the snapshot whose commit its
+aliases were computed against. A new index of a ref diffs against that ref's newest committed
+snapshot, falling back to the newest committed snapshot of any ref. The bases form a tree, so
+ids can be carried between any two snapshots that share an ancestor, forward or backward.
+
+```ts
+import { aliasChain, priorSnapshotForRef, resolveAlias } from "@titan-design/code-graph";
+
+resolveAlias(store, "src/job.ts", 4, { fromSnapshotId: 1 });
+// { id: 'core/worker.ts', reason: 'move',
+//   hops: [ src/job.ts -> src/task.ts, src/task.ts -> src/worker.ts, src/worker.ts -> core/worker.ts ] }
+resolveAlias(store, "src/job.ts#Job.run", 4, { fromSnapshotId: 1 }).id; // 'core/worker.ts#Job.run'
+aliasChain(store, 1, 4).resolve; // one resolver for many ids
+priorSnapshotForRef(store, "main", { before: 7, repoRoot: "." }); // the snapshot main denotes
+```
+
+Without `fromSnapshotId`, `resolveAlias` walks from the root of the target's lineage, so an id
+from any ancestor resolves. Each snapshot's aliases are applied once, in order: they come from
+one git diff, so `a.ts` to `b.ts` plus `b.ts` to `a.ts` in one snapshot is a swap, not a
+cycle. Walks stop after 10,000 snapshots. Two snapshots with no common base fall back to the
+to-snapshot's own aliases, which is what `diffSnapshots` did before 0.15.0.
+
+`priorSnapshotForRef` prefers the snapshot of the commit git resolves the ref to, and
+otherwise the newest snapshot labelled with that ref. A snapshot written before 0.15.0 records
+no base; its base is inferred as the newest earlier snapshot with a commit, which is the one
+the 0.14.0 indexer diffed against. Nothing is written on read, so a 0.14.0 store opened
+read-only diffs and checks across renames too.
+
 ## The three reuse tiers
 
 Every run writes a fingerprint per file: a content hash and a comment/whitespace-insensitive
@@ -87,10 +122,11 @@ same `INDEX_VERSION` and sorts each file into one tier. `INDEX_VERSION` is bumpe
 metric can change for the same bytes, not only when the node or edge shape changes: 0.12.0
 marks `.tsx` files moving to the tsx grammar, which changed their complexity metrics and
 symbol spans; 0.13.0 marks the dead-code and growth-risk metrics joining the carry-forward set;
-0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182). A snapshot from before
-0.14.0 is never reused, so re-index. The first 0.14.0 run after an older snapshot writes
-`requalify` id aliases from each bare-name id to its qualified successor, only where exactly one
-declaration in the file carries that name.
+0.14.0 marks symbol ids qualified by their enclosing scopes (TP-182); 0.15.0 marks symbol
+aliases on a file rename and the recorded alias base (TP-187). A snapshot from an older version
+is never reused, so the first run after an upgrade is a full index. The first 0.14.0 run after
+an older snapshot writes `requalify` id aliases from each bare-name id to its qualified
+successor, only where exactly one declaration in the file carries that name.
 
 | Tier | Trigger | Work skipped |
 |---|---|---|
@@ -189,19 +225,23 @@ engine on ids, and `validateRules(json)` validates an already-parsed rules objec
 
 The baseline is a ratchet. A violation whose key (rule id, node id, and destination id for
 edge rules) also fires on the baseline snapshot is marked `isCarryover` and counts as
-carryover, so existing debt does not block a change but new debt does. Deprecated metric and
+carryover, so existing debt does not block a change but new debt does. The baseline's node ids
+are first carried through the alias chain into the checked snapshot (`rebasedViolationKey`),
+so a moved file's violations carry over instead of reading as one resolved plus one new.
+Unmoved ids key exactly as `violationKey` always did. Deprecated metric and
 role spellings in a rules file (`lines`, `tests`) heal to their canonical names with a
 warning through `onWarn` instead of failing validation.
 
 `diffSnapshots(store, { fromSnapshotId, toSnapshotId })` reports added, removed and renamed
-nodes, added and removed edges, and metric deltas on nodes present in both. The
-to-snapshot's `id_alias` rows carry a renamed file across, so a move reads as a rename rather
-than a delete plus an add, and its edges do not churn. Metric and edge-kind spellings are
+nodes, added and removed edges, and metric deltas on nodes present in both. Ids follow the
+alias chain between the two snapshots, across every rename in between, so a move reads as a
+rename rather than a delete plus an add, and its edges do not churn. Metric and edge-kind spellings are
 canonicalised before comparing.
 
 `diffCheckResults(store, { fromSnapshotId, toSnapshotId, rules })` runs the rules on both
 snapshots and buckets each violation as new, resolved, or unchanged; unchanged metric
-violations are further split into worsened and improved by value.
+violations are further split into worsened and improved by value. From-side ids follow the
+alias chain, as in the ratchet.
 
 `scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
 instead of codewatch's CLI.

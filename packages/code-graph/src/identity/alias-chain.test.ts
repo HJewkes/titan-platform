@@ -67,6 +67,12 @@ describe("createAliasChain", () => {
     expect(trace.reason).toBe("move");
   });
 
+  it("reports a move even when a later hop was a plain rename", () => {
+    const aliases = { 2: [alias("a.ts", "sub/a.ts", "move")], 3: [alias("sub/a.ts", "sub/b.ts")] };
+
+    expect(chainOver(aliases, line, 1, 4).trace("a.ts").reason).toBe("move");
+  });
+
   it("undoes the chain when the target is the older snapshot", () => {
     const aliases = { 2: [alias("a.ts", "b.ts")], 3: [alias("b.ts", "c.ts")] };
 

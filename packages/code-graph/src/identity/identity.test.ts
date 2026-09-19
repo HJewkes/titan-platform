@@ -38,6 +38,7 @@ export function other(): number {
 const RULES: CheckRule[] = [
   { type: "metric-max", id: "nesting", metric: "max_nesting_depth", kind: "file", max: 2 },
   { type: "forbid-import", id: "no-node", from: "**", to: "node:**" },
+  { type: "forbid-import", id: "no-util", from: "**", to: "**/util.ts" },
 ];
 
 interface Fixture {
@@ -113,14 +114,17 @@ describe("identity across renames, on a real git history", () => {
   it("carries a moved file's violation over instead of reporting it new", () => {
     const run = checkSnapshot(f.store, { snapshot: f.snaps["move-dir"]!, baseline: f.snaps.create!, rules: RULES });
 
-    expect(run.result).toMatchObject({ newErrors: 0, newWarnings: 0, carryoverErrors: 1 });
-    expect(run.result.violations[0]).toMatchObject({ ruleId: "nesting", nodeId: "core/worker.ts", isCarryover: true });
+    expect(run.result).toMatchObject({ newErrors: 0, newWarnings: 0, carryoverErrors: 2 });
+    expect(run.result.violations.map((v) => [v.ruleId, v.nodeId, v.destinationId, v.isCarryover])).toEqual([
+      ["nesting", "core/worker.ts", undefined, true],
+      ["no-util", "core/worker.ts", "core/util.ts", true],
+    ]);
   });
 
   it("buckets the pure move as unchanged in the check diff", () => {
     const diff = diffCheckResults(f.store, { fromSnapshotId: f.snaps.create!, toSnapshotId: f.snaps["move-dir"]!, rules: RULES });
 
-    expect([diff.newViolations.length, diff.resolvedViolations.length, diff.unchanged.length]).toEqual([0, 0, 1]);
+    expect([diff.newViolations.length, diff.resolvedViolations.length, diff.unchanged.length]).toEqual([0, 0, 2]);
   });
 
   it("still reports a real new violation in the moved file", () => {
@@ -128,13 +132,13 @@ describe("identity across renames, on a real git history", () => {
 
     const fresh = run.result.violations.filter((v) => !v.isCarryover);
     expect(fresh.map((v) => [v.ruleId, v.nodeId, v.destinationId])).toEqual([["no-node", "core/worker.ts", "node:fs"]]);
-    expect(run.result.carryoverErrors).toBe(1);
+    expect(run.result.carryoverErrors).toBe(2);
   });
 
   it("matches the baseline when the baseline was indexed after the checked snapshot", () => {
     const run = checkSnapshot(f.store, { snapshot: f.snaps.create!, baseline: f.snaps["move-dir"]!, rules: RULES });
 
-    expect(run.result).toMatchObject({ newErrors: 0, carryoverErrors: 1 });
+    expect(run.result).toMatchObject({ newErrors: 0, carryoverErrors: 2 });
   });
 });
 
@@ -216,6 +220,7 @@ describe("stores written before index version 0.15.0", () => {
     const run = checkSnapshot(store, { ...snaps, rules: RULES });
     store.close();
 
-    expect(run.result.violations.filter((v) => v.isCarryover).map((v) => v.nodeId)).toEqual(["core/worker.ts"]);
+    const carried = run.result.violations.filter((v) => v.isCarryover);
+    expect(carried.map((v) => `${v.ruleId} ${v.nodeId}`)).toEqual(["nesting core/worker.ts", "no-util core/worker.ts"]);
   });
 });
