@@ -171,6 +171,15 @@ describe("ref-scoped alias bases", () => {
     expect(prior?.id).toBe(f.snaps["feature-rename"]);
   });
 
+  it("finds a snapshot by the commit an annotated tag points at, with no snapshot labelled by the tag", () => {
+    const tagger = ["-c", "user.name=t", "-c", "user.email=t@example.com"];
+    f.repo.git([...tagger, "tag", "-a", "v0.1", "-m", "v0.1", "main~3"]);
+
+    const prior = priorSnapshotForRef(f.store, "v0.1", { repoRoot: f.repo.dir });
+
+    expect(prior?.id).toBe(f.snaps["rename-again"]);
+  });
+
   it("falls back to the ref label without a checkout", () => {
     expect(priorSnapshotForRef(f.store, "main", { before: f.snaps["main-edit"] })?.id).toBe(f.snaps["new-violation"]);
   });

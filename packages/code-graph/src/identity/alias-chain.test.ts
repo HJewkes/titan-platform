@@ -52,6 +52,12 @@ describe("lineagePath", () => {
 
     expect(ancestry(lineage, 5, 2)).toEqual([5, 4, 3]);
   });
+
+  it("terminates on a hand-built lineage with a cycle", () => {
+    const cyclic = new Map([[1, 2], [2, 1]]);
+
+    expect(ancestry(cyclic, 1, 3)).toEqual([1, 2, 1, 2]);
+  });
 });
 
 describe("createAliasChain", () => {
@@ -84,6 +90,12 @@ describe("createAliasChain", () => {
     const chain = chainOver(aliases, line, 1, 2);
 
     expect([chain.resolve("a.ts"), chain.resolve("b.ts")]).toEqual(["b.ts", "a.ts"]);
+  });
+
+  it("undoes a merge to the same old id whatever order the aliases were stored in", () => {
+    const merged = [alias("z.ts", "m.ts", "merge"), alias("a.ts", "m.ts", "merge")];
+
+    expect(chainOver({ 2: merged }, line, 2, 1).resolve("m.ts")).toBe("a.ts");
   });
 
   it("returns to the original id when a file is renamed and renamed back", () => {

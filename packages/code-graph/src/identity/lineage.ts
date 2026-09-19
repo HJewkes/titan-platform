@@ -39,14 +39,12 @@ export function buildLineage(snapshots: readonly LineageSnapshot[]): Lineage {
   return out;
 }
 
-/** The snapshot followed by its bases up to the root, newest first. */
+/** The snapshot followed by its bases up to the root, newest first; `maxHops` bounds a hand-built lineage with a cycle. */
 export function ancestry(lineage: Lineage, snapshotId: number, maxHops = DEFAULT_MAX_HOPS): number[] {
   const out: number[] = [];
-  const seen = new Set<number>();
   let current: number | null | undefined = snapshotId;
-  while (current !== null && current !== undefined && !seen.has(current) && out.length <= maxHops) {
+  while (current !== null && current !== undefined && out.length <= maxHops) {
     out.push(current);
-    seen.add(current);
     current = lineage.get(current);
   }
   return out;

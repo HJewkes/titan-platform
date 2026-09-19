@@ -44,7 +44,7 @@ export function movedSymbolAliases(
     if (nodes.get(alias.newId)?.kind !== "file") continue;
     for (const oldId of symbolIdsOf(store, baseSnapshotId, alias.oldId)) {
       const newId = alias.newId + SYMBOL_ID_SEP + oldId.slice(alias.oldId.length + 1);
-      if (nodes.get(newId)?.kind === "symbol" && !nodes.has(oldId)) out.push({ oldId, newId, reason: alias.reason });
+      if (nodes.get(newId)?.kind === "symbol") out.push({ oldId, newId, reason: alias.reason });
     }
   }
   return out;
