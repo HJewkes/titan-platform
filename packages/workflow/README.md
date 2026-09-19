@@ -74,8 +74,18 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   execution ID and request key.
 - `seed(stepId, fn)` runs deterministic work once and merges its data into the
   workflow parameters.
-- `assisted(stepId, prompt)` opens the durable gate `<runId>/<stepId>` and waits
-  for `runtime.signal` to resolve it.
+- `assisted(stepId, prompt)` opens a durable gate and waits for
+  `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
+  and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
+  each time. The first call uses the key `stepId` and the gate
+  `<runId>/<stepId>`, as earlier releases did. Iteration `n` of a repeated call
+  uses the key `stepId:n` and the gate `<runId>/<stepId>:n`.
+  `runtime.signal(runId, stepId, payload)` resolves the gate of the call that is
+  waiting. Replay returns the recorded answers in call order and opens no gate
+  for them.
+
+`dispatch` and `assisted` share one call counter per `stepId`, so their keys
+never collide. `seed` keys by `stepId` alone, so give seeds their own step IDs.
 
 ## Signals
 
