@@ -159,7 +159,7 @@ describeMetric("churn_90d"); // { unit: "lines", rollup: "sum", direction: "neut
   as zero (dead code, growth risk, churn, `linked_test_count`). `exclude`: the metric does not
   apply or was not measured (a max over no functions, `coverage_pct` before ingest), so leave
   the node out of means, percentiles, and ranks.
-- **Completeness is tested.** `catalogue/completeness.test.ts` indexes a fixture repo with
+- **Completeness is tested.** `catalogue-completeness.test.ts` indexes a fixture repo with
   history and a coverage overlay, and fails, naming the metric, when a stored name has no
   descriptor, when a descriptor's unit or node kinds disagree with the rows, or when a
   descriptor matches nothing.

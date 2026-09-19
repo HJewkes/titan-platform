@@ -1,14 +1,14 @@
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { attributeCoverage } from "../analysis/coverage.js";
-import { DEAD_CODE_METRIC_NAMES } from "../analysis/dead-code.js";
-import { GROWTH_RISK_METRIC_NAMES } from "../analysis/growth-risk.js";
-import { daysAgo, makeTestRepo, type TestRepo } from "../history/test-repo.js";
-import { indexPaths } from "../indexer.js";
-import { SOURCE_METRIC_NAMES } from "../source-metrics.js";
-import { openCodeGraph, type CodeGraphStore } from "../store.js";
-import { describeMetric } from "./describe.js";
-import { METRIC_CATALOGUE } from "./entries.js";
+import { attributeCoverage } from "./analysis/coverage.js";
+import { DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
+import { GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
+import { daysAgo, makeTestRepo, type TestRepo } from "./history/test-repo.js";
+import { indexPaths } from "./indexer.js";
+import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
+import { openCodeGraph, type CodeGraphStore } from "./store.js";
+import { describeMetric } from "./catalogue/describe.js";
+import { METRIC_CATALOGUE } from "./catalogue/entries.js";
 
 const CORE = `import { helper } from "./util";
 import { z } from "zod";
