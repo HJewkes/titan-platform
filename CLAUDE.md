@@ -85,20 +85,22 @@ Merging that PR publishes via npm trusted publishing. Never add a token secret t
 `release.yml`.
 
 A brand-new package cannot use that path yet: npm only accepts a trusted publisher for a
-package that already exists. Its first publish runs through `bootstrap-publish.yml`:
+package that already exists, and it has no pending-publisher feature that would let one be
+added ahead of time (npm/cli#8544). So the package's first version is published once, by
+hand, from the owner's own terminal:
 
-1. On npmjs.com create a granular access token — `@titan-design` scope only, organizations
-   "No access", "Read and write (publish and stage)", Bypass 2FA on, expiry 1 day (the
-   floor; 90 days is the cap for a write token). Store it as `NPM_BOOTSTRAP_TOKEN` on the
-   `npm-bootstrap` GitHub environment, never as a repo secret.
-2. Dispatch **Bootstrap publish** (optionally with a `package` input) and approve the
-   environment review. It publishes only packages npm answers 404 for.
-3. Add the trusted publisher on the new package's npmjs.com settings page. This needs an
-   interactive 2FA challenge and cannot be automated.
-4. Delete the token or let it expire. Every later release is token-free.
+1. `npm login --auth-type=web`, then `pnpm publish --access public --no-git-checks` from the
+   built package's directory. Always pnpm, never `npm publish`: only pnpm rewrites
+   `workspace:` ranges into real version ranges.
+2. A new package sits at `0.0.0` on main until its "Version Packages" pull request merges;
+   publishing `0.0.0` by hand as a placeholder is fine.
+3. Add the trusted publisher on the new package's npmjs.com settings page: GitHub Actions,
+   user HJewkes, repository titan-platform, workflow `release.yml`, no environment, "Allow
+   npm publish" checked.
+4. From then on `release.yml` publishes the package. No token is created at any point.
 
-Around January 2027 npm removes direct publishing from bypass-2FA tokens; step 2 then has
-to become `npm stage publish` plus a human 2FA approval.
+Ordering trap: hold the "Version Packages" pull request until every new package it depends
+on already exists on npm.
 
 Do not bump the `packageManager` pin (`pnpm@9.15.0`) without testing a real publish. pnpm
 implements `publish` natively from v11 instead of delegating to the npm CLI, and that

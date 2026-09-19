@@ -5,8 +5,8 @@ name: Release
 # packages to npm. Publishing authenticates through npm trusted publishing (OIDC),
 # so no NPM_TOKEN secret exists; each package needs a trusted publisher on
 # npmjs.com pointing at this repo and this workflow file. npm will not accept one for a
-# package it has never seen, so a brand-new package's first version comes from
-# bootstrap-publish.yml instead. Keep this workflow token-free.
+# package it has never seen, so a brand-new package's first version is published once
+# by hand from the owner's own terminal (see CLAUDE.md). Keep this workflow token-free.
 on:
   push:
     branches: [main]

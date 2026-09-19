@@ -98,39 +98,29 @@ runs them first.
 
 ### The first publish of a brand-new package
 
-npm accepts a trusted publisher only for a package that already exists on the registry, so
-a package's very first version cannot come from `release.yml`. It comes from
-`.github/workflows/bootstrap-publish.yml`, the one workflow that carries a token. Land the
-package on main first, then:
+npm accepts a trusted publisher only for a package that already exists on the registry, and
+it has no pending-publisher feature that would let one be added ahead of time
+(npm/cli#8544). So a package's very first version is published once, by hand, from the
+owner's own terminal. Land the package on main first, then:
 
-1. **Create a short-lived token.** On npmjs.com, *Access Tokens → Generate New Token →
-   Granular*. Packages and scopes: "Only select packages and scopes", the `@titan-design`
-   scope, permission "Read and write (publish and stage)". Organizations: "No access".
-   Check **Bypass 2FA**, which an unattended publish needs. Set the expiry to **1 day** —
-   npm's floor is one day and its cap for a write token is 90.
-2. **Store it on the environment, not the repo.** Add it as `NPM_BOOTSTRAP_TOKEN` under
-   *Settings → Environments → `npm-bootstrap` → Environment secrets*. Create that
-   environment once with **required reviewers**; the review is what stops an ordinary push
-   from reaching a publish token.
-3. **Dispatch the workflow.** *Actions → Bootstrap publish → Run workflow*, optionally
-   naming one `package`. Approve the environment review. The job runs
-   `scripts/bootstrap-publish-candidates.mjs`, which asks `npm view <name> version` about
-   every public package under `packages/*` and publishes only the ones npm answers 404
-   for. A package that already exists is never republished.
-4. **Add the trusted publisher.** On the new package's npmjs.com settings page, point it at
-   `HJewkes/titan-platform` and `release.yml`. This step needs an interactive 2FA challenge
-   and cannot be automated: since 2026-07-31, npm blocks bypass-2FA tokens from changing
-   trusted-publishing configuration.
-5. **Delete the token,** or let the one-day expiry do it.
+1. **Log in interactively.** `npm login --auth-type=web` from the owner's terminal. This
+   needs a human present for the browser challenge and cannot run in CI.
+2. **Publish from the built package.** From the package's directory, `pnpm publish --access
+   public --no-git-checks`. Always pnpm, never `npm publish`: only pnpm rewrites
+   `workspace:^` dependency ranges into real version ranges, so an `npm pack` tarball for an
+   unreleased package is uninstallable.
+3. **A new package sits at `0.0.0` on main until its "Version Packages" pull request
+   merges.** Publishing `0.0.0` by hand as a placeholder version is fine; the changeset
+   release bumps it from there.
+4. **Add the trusted publisher.** On the new package's npmjs.com settings page: GitHub
+   Actions, user `HJewkes`, repository `titan-platform`, workflow `release.yml`, no
+   environment, "Allow npm publish" checked.
+5. **Every later release of that package goes through `release.yml`.** No token is created
+   at any point in this procedure.
 
-Every later release of that package then goes through `release.yml` with no token at all.
-
-Two dates worth knowing. Around **January 2027** npm removes direct publishing from
-bypass-2FA tokens, leaving them able to stage a publish that a human approves with 2FA;
-step 3 has to move to `npm stage publish` then. And the bootstrap job publishes with
-`pnpm publish`, not `npm publish`, because only pnpm rewrites `workspace:^` dependency
-ranges into real version ranges — `npm pack` leaves them literal and produces an
-uninstallable tarball.
+One ordering trap: hold the "Version Packages" pull request until every new package it
+depends on already exists on npm, or the dependent package's publish fails looking for a
+version that isn't there yet.
 
 ::: warning Do not bump the pnpm pin casually
 `packageManager` pins `pnpm@9.15.0`. From v11, `pnpm publish` is implemented natively and
