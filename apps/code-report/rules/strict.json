@@ -1,0 +1,48 @@
+{
+  "$comment": "Demo thresholds, stricter than .codewatch/check.json, so the report has findings on a repo whose CI keeps its own rules at zero. Run with CODE_REPORT_RULES=apps/code-report/rules/strict.json.",
+  "rules": [
+    {
+      "id": "report-file-loc",
+      "type": "metric-max",
+      "metric": "loc",
+      "kind": "file",
+      "max": 250,
+      "severity": "warning",
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
+    },
+    {
+      "id": "report-fan-out",
+      "type": "metric-max",
+      "metric": "fan_out",
+      "kind": "file",
+      "max": 12,
+      "severity": "warning",
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
+    },
+    {
+      "id": "report-nesting",
+      "type": "metric-max",
+      "metric": "max_nesting_depth",
+      "kind": "file",
+      "max": 4,
+      "severity": "error",
+      "excludeRoles": [
+        "test",
+        "fixture"
+      ]
+    },
+    {
+      "id": "report-no-child-process",
+      "type": "forbid-import",
+      "from": "packages/**",
+      "to": "node:child_process",
+      "severity": "warning"
+    }
+  ]
+}
