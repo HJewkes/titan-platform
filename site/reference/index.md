@@ -17,7 +17,7 @@ Domain-free building blocks. No titan dependencies.
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
-| [`rpc-protocol`](/reference/rpc-protocol) |  | none |
+| [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |
 
 ## Tier 1 — engines
@@ -28,10 +28,10 @@ Reusable machinery over the primitives.
 | --- | --- | --- |
 | [`agent`](/reference/agent) | Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets | `agent-protocol`, `agent-lifecycle` |
 | [`agent-lifecycle`](/reference/agent-lifecycle) | Durable agent execution state and fenced ownership | `agent-protocol`, `store-sqlite` |
-| [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry` |
+| [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `store-sqlite` |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |
-| [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | none |
+| [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |
 
 ## Tier 2 — domain

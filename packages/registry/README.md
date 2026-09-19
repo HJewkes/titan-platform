@@ -47,6 +47,8 @@ const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, ctx, {
 JSON envelope (`{ ok: true, data, warnings? }` or `{ ok: false, error, code }`). It never
 throws. Thrown errors map to a code through their numeric `code` property by default;
 pass `formatError` to use your own error hierarchy.
+The envelope type, its constructors, and `EXIT` are defined in
+`@titan-design/rpc-protocol` and re-exported here; browser code should import them from there.
 
 ## CLI projection
 

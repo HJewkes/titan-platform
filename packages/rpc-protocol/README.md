@@ -1,8 +1,35 @@
 # @titan-design/rpc-protocol
 
+The wire contract between a titan daemon and any client of it: the JSON envelope every
+command returns, the `EXIT` codes inside it, the HTTP routes, the statuses `POST /rpc/:name`
+answers with, the SSE vocabulary on `/events`, and the `CommandMap` type a typed client is
+generic over.
 
+Tier 0 of the titan-platform DAG (TP-138). No runtime dependencies, no zod, no Node
+imports, so a browser bundle can import it. `src/browser-safe.test.ts` enforces that the
+runtime source imports only its own files and touches no Node global.
 
-Tier 0 of the titan-platform DAG. May import only packages in the same tier or
-below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
+```ts
+import { RPC_PREFIX, SSE_EVENTS, type JsonEnvelope } from "@titan-design/rpc-protocol";
 
-Status: placeholder. Tracked by an untracked task.
+const res = await fetch(`${origin}${RPC_PREFIX}task.list`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ status: "open" }),
+});
+const envelope = (await res.json()) as JsonEnvelope<Task[]>;
+```
+
+## Contents
+
+| Export | What it pins |
+| --- | --- |
+| `JsonEnvelope<T>`, `successEnvelope`, `errorEnvelope` | `{ ok: true, data, warnings? }` or `{ ok: false, error, code }`; `warnings` is omitted when empty |
+| `EXIT` | BSD sysexits codes carried in `code` |
+| `RPC_PREFIX`, `EVENTS_PATH`, `HEALTH_PATH`, `VERSION_PATH` | `/rpc/`, `/events`, `/health`, `/version` |
+| `RPC_STATUS`, `rpcFailureStatus(code)` | 404 unknown command; 400 invalid JSON or a `DATAERR` failure; 500 any other failure |
+| `SseMessage`, `SSE_EVENTS`, `SSE_READY_DATA`, `SSE_HEARTBEAT_MS` | `ready` with data `connected` on connect, `ping` every 25 s, anything else is a product broadcast |
+| `CommandMap` | `Record<string, { args: unknown; result: unknown }>` |
+
+`@titan-design/registry` re-exports the envelope and `EXIT`, and `@titan-design/daemon`
+re-exports `SseMessage`, so code that imports them from there keeps working.
