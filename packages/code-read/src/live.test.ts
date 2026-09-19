@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { INDEX_VERSION, type CheckRule } from "@titan-design/code-graph";
 import { EXIT, collectCliArgs, createRegistry, invokeCommand, type BaseContext } from "@titan-design/registry";
 import { createLiveSource, type SnapshotStore } from "./live-source.js";
-import { CODE_READ_API_VERSION, CONTRACT, type CommandName } from "./query/contract.js";
+import { CODE_READ_API_VERSION, CONTRACT, type CommandName, type CommandResult } from "./query/contract.js";
 import { registerCodeReadCommands } from "./register.js";
 import { makeFixtureRepo, type FixtureRepo } from "./test-fixtures.js";
 
@@ -29,12 +29,12 @@ beforeAll(async () => {
 
 afterAll(() => repo.cleanup());
 
-async function call(name: CommandName, args: unknown, rules: readonly CheckRule[] = RULES) {
+async function call<N extends CommandName>(name: N, args: unknown, rules: readonly CheckRule[] = RULES): Promise<CommandResult<N>> {
   const registry = createRegistry();
   registerCodeReadCommands(registry, { openStore: () => repo.store, rules: () => rules });
   const { envelope } = await invokeCommand(registry.get(name)!, args, ctx());
   if (!envelope.ok) throw new Error(`${name} failed: ${envelope.error}`);
-  return CONTRACT[name].result.parse(envelope.data);
+  return CONTRACT[name].result.parse(envelope.data) as CommandResult<N>;
 }
 
 describe("api.describe through the registry, over a real index", () => {
