@@ -22,7 +22,8 @@
           "packages/daemon",
           "packages/hitl",
           "packages/agent-lifecycle",
-          "packages/messaging"
+          "packages/messaging",
+          "packages/rpc-client"
         ],
         "2": [
           "packages/session-read",
@@ -58,7 +59,8 @@
           "packages/daemon",
           "packages/hitl",
           "packages/agent-lifecycle",
-          "packages/messaging"
+          "packages/messaging",
+          "packages/rpc-client"
         ],
         [
           "packages/session-read",

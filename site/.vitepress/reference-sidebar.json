@@ -68,6 +68,10 @@
       {
         "text": "retrieval",
         "link": "/reference/retrieval"
+      },
+      {
+        "text": "rpc-client",
+        "link": "/reference/rpc-client"
       }
     ]
   },
