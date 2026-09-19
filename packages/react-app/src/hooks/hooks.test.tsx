@@ -51,14 +51,14 @@ describe("useQuery", () => {
   it("shares one call between components asking for the same args in a different key order", async () => {
     const source = recordingSource(testLiveSource(daemon));
     function Twice() {
-      const a = useQuery("note.get", { id: "n1" });
-      const b = useQuery("note.get", JSON.parse('{"id":"n1"}') as { id: string });
-      return <p aria-label="both">{a.data?.text === b.data?.text ? a.data?.text : "differ"}</p>;
+      const a = useQuery("note.list", { tag: "ui", limit: 5 });
+      const b = useQuery("note.list", { limit: 5, tag: "ui" });
+      return <p aria-label="both">{a.data?.ids.join(",") === b.data?.ids.join(",") ? a.data?.ids.join(",") : "differ"}</p>;
     }
     withSource(source, <><Twice /><Twice /></>);
 
-    await waitFor(() => expect(screen.getAllByLabelText("both")[0]).toHaveProperty("textContent", "Wire the hooks"));
-    expect(source.calls.filter((c) => c.name === "note.get")).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByLabelText("both")[0]).toHaveProperty("textContent", "n1,n3"));
+    expect(source.calls).toHaveLength(1);
   });
 
   it("makes one call under StrictMode's mount, unmount, and remount", async () => {
@@ -96,6 +96,45 @@ describe("useQuery", () => {
     expect(screen.getByLabelText("ids").dataset.fetching).toBe("true");
     await waitFor(() => expect(text("ids")).toBe("n1,n2"));
     expect(source.calls).toHaveLength(2);
+  });
+
+  it("keeps the last good data beside the error when a refetch fails", async () => {
+    function Note() {
+      const note = useQuery("note.get", { id: "n2" });
+      return (
+        <p aria-label="note">
+          {`${note.status}|${note.data?.text ?? ""}|${note.error?.code ?? ""}`}
+          <button onClick={note.refetch}>refetch</button>
+        </p>
+      );
+    }
+    withSource(testLiveSource(daemon), <Note />);
+    await waitFor(() => expect(text("note")).toBe("success|Serve the build|"));
+    notes.splice(1, 1);
+
+    act(() => screen.getByRole("button").click());
+
+    await waitFor(() => expect(text("note")).toBe("error|Serve the build|66"));
+  });
+
+  it("ignores a superseded answer that arrives after the fresh one", async () => {
+    const pending: Array<(data: unknown) => void> = [];
+    const source: DataSource = {
+      call: () => new Promise((resolve) => pending.push((data) => resolve({ ok: true, data }))),
+      subscribe: () => ({ close: () => undefined }),
+    };
+    withSource(source, <Ids />);
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await act(async () => pending[0]!({ ids: ["first"] }));
+    act(() => screen.getByRole("button").click());
+    act(() => screen.getByRole("button").click());
+
+    await act(async () => {
+      pending[2]!({ ids: ["fresh"] });
+      pending[1]!({ ids: ["stale"] });
+    });
+
+    expect(text("ids")).toBe("fresh");
   });
 
   it("reports a failed command as an RpcError with the daemon's exit code", async () => {

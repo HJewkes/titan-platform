@@ -87,8 +87,8 @@ function adopt(entries: Map<string, Entry>, key: string, command: string, args: 
 }
 
 function settle(entry: Entry, controller: AbortController, envelope: JsonEnvelope<unknown>): void {
-  // A newer call or a drop superseded this one; its answer must not overwrite fresher state.
-  if (entry.controller !== controller || controller.signal.aborted) return;
+  // Every newer call and every drop aborts this controller first, so an aborted answer is a stale one.
+  if (controller.signal.aborted) return;
   entry.controller = undefined;
   if (envelope.ok) {
     update(entry, { status: "success", data: envelope.data, error: undefined, isFetching: false });

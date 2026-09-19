@@ -35,15 +35,15 @@ export function resetNotes(): void {
   notes.splice(0, notes.length, ...structuredClone(INITIAL));
 }
 
-const ListArgs = z.object({ tag: z.string().optional() });
+const ListArgs = z.object({ tag: z.string().optional(), limit: z.number().optional() });
 
 export const commands = {
   "note.list": defineCommand<z.infer<typeof ListArgs>, { ids: string[] }>({
     name: "note.list",
-    description: "Note ids, optionally by tag",
+    description: "Note ids, optionally by tag and capped",
     args: ListArgs,
     result: z.object({ ids: z.array(z.string()) }),
-    run: async ({ tag }) => ({ ids: notes.filter((n) => !tag || n.tags.includes(tag)).map((n) => n.id) }),
+    run: async ({ tag, limit }) => ({ ids: notes.filter((n) => !tag || n.tags.includes(tag)).map((n) => n.id).slice(0, limit) }),
   }),
   "note.get": defineCommand<{ id: string }, Note>({
     name: "note.get",
