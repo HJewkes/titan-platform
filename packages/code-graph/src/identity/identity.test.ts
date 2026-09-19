@@ -47,7 +47,7 @@ interface Fixture {
   snaps: Record<string, number>;
 }
 
-async function commitAndIndex(f: Fixture, name: string, ref: string, change: () => Promise<void> | void) {
+async function commitAndIndex(f: Fixture, name: string, ref: string, change: () => unknown) {
   await change();
   f.repo.commit(name);
   const result = await indexPaths(f.store, { paths: [f.repo.dir], ref, computeChurn: false });
