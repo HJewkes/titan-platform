@@ -1,0 +1,340 @@
+{
+  "api": "0.1.0",
+  "commands": {
+    "api.describe": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {}
+      },
+      "result": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "dataset": {
+            "type": "string",
+            "enum": [
+              "live",
+              "static"
+            ]
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "newest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "takenAt": {
+                    "type": "string"
+                  },
+                  "indexVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "ref",
+                  "commit",
+                  "takenAt",
+                  "indexVersion"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indexVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "findings": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "check-rules",
+                  "store"
+                ]
+              },
+              "verdicts": {
+                "type": "boolean"
+              },
+              "themes": {
+                "type": "boolean"
+              },
+              "feedback": {
+                "type": "boolean"
+              },
+              "embeddings": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string"
+                      },
+                      "embedded": {
+                        "type": "number"
+                      },
+                      "symbols": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "embedded",
+                      "symbols"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cochange": {
+                "type": "boolean"
+              },
+              "sourceAtCommit": {
+                "type": "boolean"
+              },
+              "excerpts": {
+                "type": "string",
+                "enum": [
+                  "any",
+                  "flagged",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "findings",
+              "verdicts",
+              "themes",
+              "feedback",
+              "embeddings",
+              "cochange",
+              "sourceAtCommit",
+              "excerpts"
+            ],
+            "additionalProperties": false
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "appliesTo": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rollup": {
+                  "type": "string",
+                  "enum": [
+                    "sum",
+                    "max",
+                    "mean",
+                    "none"
+                  ]
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "higher-worse",
+                    "lower-worse",
+                    "neutral"
+                  ]
+                },
+                "absent": {
+                  "type": "string",
+                  "enum": [
+                    "zero",
+                    "exclude"
+                  ]
+                },
+                "window": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "measured",
+                        "derived",
+                        "model"
+                      ]
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "name",
+                "unit",
+                "appliesTo",
+                "rollup",
+                "direction",
+                "absent",
+                "description",
+                "provenance"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type",
+                "severity"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "api",
+          "dataset",
+          "commands",
+          "newest",
+          "indexVersions",
+          "capabilities",
+          "metrics",
+          "rules"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "snapshot.list": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        }
+      },
+      "result": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "takenAt": {
+                  "type": "string"
+                },
+                "indexVersion": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "ref",
+                "commit",
+                "takenAt",
+                "indexVersion"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "snapshots"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

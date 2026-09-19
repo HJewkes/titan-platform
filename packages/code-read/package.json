@@ -48,6 +48,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@titan-design/daemon": "workspace:^",
     "esbuild": "^0.27.0",
     "zod": "^4.4.3"
