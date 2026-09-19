@@ -22,6 +22,7 @@ interface AggregateDbRow {
 }
 
 interface AllStatement<P extends unknown[]> {
+  readonly source: string;
   all(...params: P): unknown[];
 }
 
