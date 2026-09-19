@@ -84,6 +84,10 @@
         "link": "/reference/code-graph"
       },
       {
+        "text": "code-read",
+        "link": "/reference/code-read"
+      },
+      {
         "text": "memory",
         "link": "/reference/memory"
       },

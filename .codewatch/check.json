@@ -33,7 +33,8 @@
           "packages/memory",
           "packages/style-profile",
           "packages/style-analyzer",
-          "packages/style-checker"
+          "packages/style-checker",
+          "packages/code-read"
         ],
         "ui": [],
         "product": [
@@ -70,7 +71,8 @@
           "packages/memory",
           "packages/style-profile",
           "packages/style-analyzer",
-          "packages/style-checker"
+          "packages/style-checker",
+          "packages/code-read"
         ],
         [
           "products/session-miner",
@@ -118,6 +120,33 @@
       "$comment": "rpc-client's main entry ships to browsers; only src/node (exportSnapshot) may use Node builtins.",
       "from": "packages/rpc-client/src/client/**",
       "to": "node:**"
+    },
+    {
+      "id": "code-read-query-pure",
+      "type": "layered-deps",
+      "$comment": "code-read's ./query subpath imports only its own directory, so the browser bundle never reaches the SQLite loader or the registry wiring.",
+      "layers": [
+        [
+          "packages/code-read/src/query"
+        ],
+        [
+          "packages/code-read/src"
+        ]
+      ]
+    },
+    {
+      "id": "code-read-query-no-node",
+      "type": "forbid-import",
+      "$comment": "Node builtins would break ./query in a browser.",
+      "from": "packages/code-read/src/query/**",
+      "to": "node:**"
+    },
+    {
+      "id": "code-read-query-no-code-graph",
+      "type": "forbid-import",
+      "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; ./query receives the catalogue through buildReadModel instead.",
+      "from": "packages/code-read/src/query/**",
+      "to": "packages/code-graph/**"
     },
     {
       "id": "max-file-loc",
