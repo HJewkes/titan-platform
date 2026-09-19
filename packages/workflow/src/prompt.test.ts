@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { buildStepVars, mustacheRenderer } from "./prompt.js";
-import { createSignalParser, parseSignal } from "./signals.js";
 
 describe("buildStepVars", () => {
   it("exposes params in both spellings, the run identity, and step outputs", () => {
@@ -16,22 +15,5 @@ describe("buildStepVars", () => {
 
   it("renders mustache placeholders and leaves unknown ones visible", () => {
     expect(mustacheRenderer("Hi {{ NAME }}, {{missing}}", { NAME: "x" })).toBe("Hi x, {{missing}}");
-  });
-});
-
-describe("signals", () => {
-  it("prefers the canonical marker and falls back to verdict prose", () => {
-    expect(parseSignal("## Verdict: PASS\n<!-- signal: needs_revision -->")).toBe("needs_revision");
-    expect(parseSignal("## Verdict: PASS")).toBe("approved");
-    expect(parseSignal("Risk Score: 5")).toBe("high_risk");
-    expect(parseSignal("nothing here")).toBeNull();
-    expect(parseSignal(undefined)).toBeNull();
-  });
-
-  it("accepts custom pattern sets", () => {
-    const parse = createSignalParser({ done: (c) => /DONE/.test(c) });
-    expect(parse("all DONE")).toBe("done");
-    expect(parse("## Verdict: PASS")).toBeNull();
-    expect(parse("<!-- signal: done -->")).toBe("done");
   });
 });

@@ -77,9 +77,31 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
 - `assisted(stepId, prompt)` opens the durable gate `<runId>/<stepId>` and waits
   for `runtime.signal` to resolve it.
 
-`<!-- signal: needs_revision -->` in runner output is authoritative. The default
-parser also recognizes common verdict text. Pass a custom `parseSignal` to
-change those conventions.
+## Signals
+
+`parseSignals(output)` returns every signal an output carries, highest
+precedence first. `parseSignal(output)` returns the first entry of that list, or
+`null` when it is empty; `dispatch` records it as `StepResult.signal`. Read the
+full set with `parseSignals(result.output)`.
+
+Precedence, highest first:
+
+1. Empty or whitespace-only output yields only `EMPTY_OUTPUT_SIGNAL`
+   (`"empty_output"`). Treat it as a reason to ask a human: a reviewer that
+   produced nothing has not approved anything.
+2. A canonical marker such as `<!-- signal: needs_revision -->` is
+   authoritative. When the output carries markers that name known signals, the
+   result is those markers and the prose is ignored. Unknown marker names fall
+   through to the prose.
+3. Otherwise every matching verdict pattern is reported, in the key order of
+   `DEFAULT_SIGNAL_PATTERNS`: `high_risk`, `needs_revision`,
+   `has_open_questions`, `approved`, `needs_fixes`, `changes_requested`,
+   `needs_clarification`, `needs_changes`. A risk score of 4 or more therefore
+   wins over a PASS verdict.
+
+`createSignalSetParser(patterns)` and `createSignalParser(patterns)` build
+parsers over a custom pattern record; its key order is the precedence. Pass a
+custom `parseSignal` to the runtime to change the conventions `dispatch` uses.
 
 ## Execution recovery
 
