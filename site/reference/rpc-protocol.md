@@ -53,10 +53,10 @@ events.addEventListener(SSE_EVENTS.READY, () => setLive(true));
 ## What it deliberately does not do
 
 It makes no requests. The typed client with live and static data sources is
-`rpc-client` (TP-139). It carries no runtime validation, so there is no zod; commands
+[`rpc-client`](/reference/rpc-client). It carries no runtime validation, so there is no zod; commands
 validate their own args in `registry`. It does not describe the `/health` payload, the
-request guards' 403 and 415 refusals, or `/mcp`; those stay with `daemon`. It does not yet
-define a static snapshot format.
+request guards' 403 and 415 refusals, or `/mcp`; those stay with `daemon`. The static
+snapshot format, `titan-snapshot@1`, is defined in [`rpc-client`](/reference/rpc-client), next to its only reader and writer.
 
 ## Gotchas
 
