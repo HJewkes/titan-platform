@@ -50,6 +50,11 @@ pass `formatError` to use your own error hierarchy.
 The envelope type, its constructors, and `EXIT` are defined in
 `@titan-design/rpc-protocol` and re-exported here; browser code should import them from there.
 
+`CommandMapOf<{ "task.list": typeof taskList }>` derives the `CommandMap` that
+`@titan-design/rpc-client` is generic over. It is type-only: browser code imports it with
+`import type`, so zod and this package stay out of the bundle. Keys must equal each
+command's `name`; the type cannot check that, because `defineCommand` widens `name` to `string`.
+
 ## CLI projection
 
 Commander-free helpers so the product owns the commander wiring:

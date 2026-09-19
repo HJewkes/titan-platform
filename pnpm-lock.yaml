@@ -201,6 +201,22 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
+  packages/rpc-client:
+    dependencies:
+      '@titan-design/rpc-protocol':
+        specifier: workspace:*
+        version: link:../rpc-protocol
+    devDependencies:
+      '@titan-design/daemon':
+        specifier: workspace:*
+        version: link:../daemon
+      '@titan-design/registry':
+        specifier: workspace:*
+        version: link:../registry
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/rpc-protocol: {}
 
   packages/session-graph:

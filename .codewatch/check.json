@@ -22,7 +22,8 @@
           "packages/daemon",
           "packages/hitl",
           "packages/agent-lifecycle",
-          "packages/messaging"
+          "packages/messaging",
+          "packages/rpc-client"
         ],
         "2": [
           "packages/session-read",
@@ -58,7 +59,8 @@
           "packages/daemon",
           "packages/hitl",
           "packages/agent-lifecycle",
-          "packages/messaging"
+          "packages/messaging",
+          "packages/rpc-client"
         ],
         [
           "packages/session-read",
@@ -108,6 +110,13 @@
       "type": "forbid-import",
       "$comment": "Node builtins would break the catalogue in a browser.",
       "from": "packages/code-graph/src/catalogue/**",
+      "to": "node:**"
+    },
+    {
+      "id": "rpc-client-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "rpc-client's main entry ships to browsers; only src/node (exportSnapshot) may use Node builtins.",
+      "from": "packages/rpc-client/src/client/**",
       "to": "node:**"
     },
     {

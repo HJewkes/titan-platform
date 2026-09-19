@@ -92,6 +92,12 @@ them at the root. Tool names are `${prefix}${command.replaceAll(".", "__")}`.
 **HTTP.** [`daemon`](/reference/daemon) mounts `POST /rpc/:name` over the same
 `invokeCommand`, so the envelope and exit codes are identical on every surface.
 
+**Browser.** `CommandMapOf<typeof commands>` turns commands keyed by name into the
+`CommandMap` that [`rpc-client`](/reference/rpc-client) is generic over. It is type-only, so
+a front end imports it with `import type` and neither zod nor this package reaches the
+bundle. The key is the command name: `defineCommand` widens `name` to `string`, so the type
+cannot check that the two agree.
+
 ## Gotchas
 
 **`createRegistry()` returns an instance, not a module singleton.** Each product owns its
