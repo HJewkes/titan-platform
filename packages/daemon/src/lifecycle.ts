@@ -9,6 +9,7 @@
 import { promises as fs } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { HEALTH_PATH } from "@titan-design/rpc-protocol";
 
 export interface DaemonPaths {
   pidFile: string;
@@ -150,7 +151,7 @@ export async function probeHealth(port: number, options: ProbeHealthOptions = {}
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS);
   try {
-    const res = await fetch(`http://${options.host ?? "127.0.0.1"}:${port}/health`, { signal: controller.signal });
+    const res = await fetch(`http://${options.host ?? "127.0.0.1"}:${port}${HEALTH_PATH}`, { signal: controller.signal });
     if (!res.ok) return null;
     return (await res.json()) as Record<string, unknown>;
   } catch {

@@ -35,6 +35,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
   },
+  "dependencies": {
+    "@titan-design/rpc-protocol": "workspace:*"
+  },
   "peerDependencies": {
     "zod": "^4.0.0"
   },

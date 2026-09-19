@@ -7,6 +7,17 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EXIT, errorEnvelope, invokeCommand, type BaseContext } from "@titan-design/registry";
+import {
+  EVENTS_PATH,
+  HEALTH_PATH,
+  RPC_PREFIX,
+  RPC_STATUS,
+  SSE_EVENTS,
+  SSE_HEARTBEAT_MS,
+  SSE_READY_DATA,
+  VERSION_PATH,
+  rpcFailureStatus,
+} from "@titan-design/rpc-protocol";
 import type { EventHub } from "./events.js";
 import { createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
@@ -35,15 +46,12 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
   guards?: RequestGuardOptions;
 }
 
-/** Interval between SSE keep-alive comments (ms). */
-const HEARTBEAT_MS = 25_000;
-
 export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ctx>): Hono {
   const app = new Hono();
   const startedAt = options.startedAt ?? Date.now();
   registerGuards(app, options);
 
-  app.get("/health", (c) => {
+  app.get(HEALTH_PATH, (c) => {
     if (options.ready && !options.ready()) return c.json({ ok: false, starting: true }, 503);
     const payload = buildHealthPayload({
       port: options.port(),
@@ -54,7 +62,7 @@ export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ct
     return c.json(payload);
   });
 
-  app.get("/version", (c) => c.json({ version: options.version }));
+  app.get(VERSION_PATH, (c) => c.json({ version: options.version }));
   registerEvents(app, options);
   registerRpc(app, options);
   options.mountRoutes?.(app);
@@ -78,17 +86,17 @@ function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
 }
 
 function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
-  app.get("/events", (c) =>
+  app.get(EVENTS_PATH, (c) =>
     streamSSE(c, async (stream) => {
-      await stream.writeSSE({ event: "ready", data: "connected" });
+      await stream.writeSSE({ event: SSE_EVENTS.READY, data: SSE_READY_DATA });
       const unsubscribe = options.hub?.subscribe((message) => stream.writeSSE(message));
       stream.onAbort(() => unsubscribe?.());
       // Hold the connection open, emitting periodic heartbeats so proxies and dead-peer
       // detection keep the stream healthy until the client aborts.
       while (!stream.aborted) {
-        await stream.sleep(HEARTBEAT_MS);
+        await stream.sleep(SSE_HEARTBEAT_MS);
         if (stream.aborted) break;
-        await stream.writeSSE({ event: "ping", data: String(Date.now()) });
+        await stream.writeSSE({ event: SSE_EVENTS.PING, data: String(Date.now()) });
       }
       unsubscribe?.();
     }),
@@ -98,21 +106,20 @@ function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
 const INVALID_JSON = Symbol("invalid-json");
 
 function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
-  app.post("/rpc/:name", async (c) => {
+  app.post(`${RPC_PREFIX}:name`, async (c) => {
     const name = c.req.param("name");
     const cmd = options.registry.get(name);
-    if (!cmd) return c.json(errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE), 404);
+    if (!cmd) return c.json(errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE), RPC_STATUS.NOT_FOUND);
 
     const rawArgs = await readJsonBody(c);
-    if (rawArgs === INVALID_JSON) return c.json(errorEnvelope("Invalid JSON body", EXIT.USAGE), 400);
+    if (rawArgs === INVALID_JSON) return c.json(errorEnvelope("Invalid JSON body", EXIT.USAGE), RPC_STATUS.BAD_REQUEST);
 
     const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, options.createContext("http"), {
       invalidArgsCode: EXIT.DATAERR,
       formatError: options.formatError,
     });
     if (envelope.ok) return c.json(envelope);
-    // DATAERR is the caller's fault whether it came from schema validation or the command.
-    return c.json(envelope, exitCode === EXIT.DATAERR ? 400 : 500);
+    return c.json(envelope, rpcFailureStatus(exitCode));
   });
 }
 
