@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
+import type { GateStore } from "@titan-design/hitl";
 import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { RunContext, type ContextDeps } from "./context.js";
+import { mustacheRenderer } from "./prompt.js";
 import { inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
-import { WorkflowRunStore, workflowMigration, workflowOwnershipMigration } from "./store.js";
+import { parseSignal } from "./signals.js";
+import { WorkflowRunStore, newRun, workflowMigration, workflowOwnershipMigration } from "./store.js";
 import type {
   DurableStepOutcome,
   RecoverableStepRunner,
@@ -12,6 +17,7 @@ import type {
   StepRunner,
   WorkflowEvent,
   WorkflowFn,
+  WorkflowRun,
 } from "./types.js";
 
 function makeDb(): Db {
@@ -30,6 +36,42 @@ const twoSteps: WorkflowFn = async (ctx) => {
   await ctx.dispatch("review", "Review:\n{{STEP_OUTPUT_PLAN}}", { model: "haiku" });
   if (plan.signal === "needs_revision") await ctx.dispatch("plan", "Revise");
 };
+
+const mixedStep: WorkflowFn = async (ctx) => {
+  await ctx.dispatch("x", "draft");
+  await ctx.assisted("x", "Approve?");
+};
+
+const interview: WorkflowFn = async (ctx) => {
+  for (let round = 1; round <= 2; round += 1) await ctx.assisted("ask", `Question ${round}?`);
+};
+
+function gatesOpened(events: WorkflowEvent[]): Extract<WorkflowEvent, { type: "gate_opened" }>[] {
+  return events.filter((e): e is Extract<WorkflowEvent, { type: "gate_opened" }> => e.type === "gate_opened");
+}
+
+async function answerInterview(rt: WorkflowRuntime, runId: string, events: WorkflowEvent[], answers: string[]): Promise<WorkflowRun> {
+  for (const [index, answer] of answers.entries()) {
+    await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(index + 1));
+    rt.signal(runId, "ask", { signal: answer });
+  }
+  return rt.wait(runId);
+}
+
+function replayDeps(gates: GateStore): ContextDeps {
+  return {
+    gates,
+    runner: inlineRunner(() => "unused"),
+    render: mustacheRenderer,
+    parseSignal,
+    emit: () => undefined,
+    maxRetries: 1,
+    gatePollMs: 10,
+    executionId: () => "unused",
+    save: () => undefined,
+    recovered: new Map(),
+  };
+}
 
 describe("WorkflowRuntime", () => {
   it("runs dispatch steps through the runner with rendered prompts and parses signals", async () => {
@@ -136,6 +178,105 @@ describe("WorkflowRuntime", () => {
     expect(run.status).toBe("completed");
     expect(dispatched).toEqual(["ship"]);
     expect(run.stepResults["draft:0"]?.output).toBe("drafted");
+  });
+
+  it("opens a fresh gate for every assisted call that repeats a step id", async () => {
+    const db = makeDb();
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "ok"), events);
+    rt.register("interview", interview);
+    const runId = rt.start("interview");
+    const run = await answerInterview(rt, runId, events, ["first", "second"]);
+
+    expect(run.status).toBe("completed");
+    expect(gatesOpened(events).map((e) => [e.gateId, e.prompt])).toEqual([[`${runId}/ask`, "Question 1?"], [`${runId}/ask:1`, "Question 2?"]]);
+    expect(run.stepResults.ask).toMatchObject({ iteration: 0, signal: "first" });
+    expect(run.stepResults["ask:1"]).toMatchObject({ iteration: 1, signal: "second" });
+  });
+
+  it("replays answered gates after a restart without reopening them", async () => {
+    const db = makeDb();
+    const first = runtime(db, inlineRunner(() => "ok"));
+    first.register("interview", interview);
+    const runId = first.start("interview");
+    await vi.waitFor(() => expect(first.status(runId)?.status).toBe("paused"));
+    first.signal(runId, "ask", { signal: "first" });
+    await vi.waitFor(() => expect(first.status(runId)).toMatchObject({ status: "paused", stepResults: { ask: { signal: "first" } } }));
+    first.shutdown();
+
+    const events: WorkflowEvent[] = [];
+    const second = runtime(db, inlineRunner(() => "ok"), events);
+    second.register("interview", interview);
+    expect(await second.hydrate()).toEqual([runId]);
+    second.signal(runId, "ask", { signal: "second" });
+    const run = await second.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(gatesOpened(events)).toEqual([]);
+    expect(run.stepResults["ask:1"]).toMatchObject({ iteration: 1, signal: "second" });
+  });
+
+  it("gives a gate its own key when the step id is also a dispatch step", async () => {
+    const db = makeDb();
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "drafted"), events);
+    rt.register("mixed", mixedStep);
+    const runId = rt.start("mixed");
+    await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(1));
+    rt.signal(runId, "x", { signal: "approved" });
+    const run = await rt.wait(runId);
+
+    expect(gatesOpened(events).map((e) => e.gateId)).toEqual([`${runId}/x:1`]);
+    expect(run.stepResults["x:0"]).toMatchObject({ iteration: 0, output: "drafted" });
+    expect(run.stepResults["x:1"]).toMatchObject({ iteration: 1, signal: "approved" });
+
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const create = vi.spyOn(gates, "create");
+    const replayed = new RunContext(structuredClone(run), replayDeps(gates), new AbortController());
+    await mixedStep(replayed);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("adopts a gate a 0.2 run left pending under the bare step id", async () => {
+    const db = makeDb();
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const store = new WorkflowRunStore(db);
+    const legacy = newRun(randomUUID(), "mixed", {});
+    legacy.status = "paused";
+    legacy.currentStep = "x";
+    legacy.stepResults["x:0"] = { stepId: "x", iteration: 0, agentId: null, signal: null, completedAt: "2026-09-18T00:00:00.000Z", output: "drafted" };
+    store.create(legacy);
+    gates.create({ id: `${legacy.id}/x`, prompt: "Approve?" });
+
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "drafted"), events);
+    rt.register("mixed", mixedStep);
+    expect(await rt.hydrate()).toEqual([legacy.id]);
+    rt.signal(legacy.id, "x", { signal: "approved" });
+    const run = await rt.wait(legacy.id);
+
+    expect(run.status).toBe("completed");
+    expect(gatesOpened(events)).toEqual([]);
+    expect(gates.listPending()).toEqual([]);
+    expect(run.stepResults["x:1"]).toMatchObject({ iteration: 1, signal: "approved" });
+  });
+
+  it("replays a completed run from its memoized answers without opening a gate", async () => {
+    const db = makeDb();
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "ok"), events);
+    rt.register("interview", interview);
+    const runId = rt.start("interview");
+    const completed = await answerInterview(rt, runId, events, ["first", "second"]);
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const create = vi.spyOn(gates, "create");
+
+    const answers: (string | null)[] = [];
+    const ctx = new RunContext(structuredClone(completed), replayDeps(gates), new AbortController());
+    for (let round = 0; round < 2; round += 1) answers.push((await ctx.assisted("ask", "unused")).signal);
+
+    expect(answers).toEqual(["first", "second"]);
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("cancels a running workflow: the runner's signal fires and the run is marked cancelled", async () => {

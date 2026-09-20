@@ -82,9 +82,13 @@ active steps. Legacy agent runs without confirmed attachment remain
   once (`maxRetries`); anything else fails the run.
 - **`seed(stepId, fn)`** runs a deterministic function once; its `data` merges into the
   params for later prompts.
-- **`assisted(stepId, prompt)`** opens a gate with id `<runId>/<stepId>` and waits. The row
-  survives restarts; `runtime.signal(runId, stepId, payload)` resolves it from anywhere. A
-  `signal` field in the payload becomes the step's signal.
+- **`assisted(stepId, prompt)`** opens a gate and waits. The row survives restarts;
+  `runtime.signal(runId, stepId, payload)` resolves it from anywhere. A `signal` field in
+  the payload becomes the step's signal. Like `dispatch` it advances
+  `ctx.iteration(stepId)`, so each call in a loop opens a new gate: the first is keyed
+  `stepId` with gate `<runId>/<stepId>`, iteration `n` is keyed `stepId:n` with gate
+  `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
+  returns recorded answers without reopening their gates.
 
 ## Runners
 
@@ -120,9 +124,22 @@ runtime generation, unexpired lease, and expected row revision.
 
 ## Signals
 
-`<!-- signal: needs_revision -->` in the output is authoritative. Without a marker, the
-default patterns recognise verdict conventions like `Verdict: PASS`, `NEEDS REVISION`, and
-`Risk Score: 5`. Pass `parseSignal: createSignalParser(patterns)` to use your own.
+`parseSignals(output)` returns every signal an output carries, highest precedence first;
+`parseSignal(output)` returns the first of them or `null`, and is what `dispatch` stores.
+
+- Empty or whitespace-only output yields only `empty_output` (`EMPTY_OUTPUT_SIGNAL`). A
+  reviewer that said nothing has not approved; escalate to a human.
+- `<!-- signal: needs_revision -->` in the output is authoritative. Markers that name a
+  known signal replace the prose patterns; unknown names fall through to them.
+- Otherwise the default patterns apply in this order: `high_risk` (a risk score of 4 or
+  more), `needs_revision`, `has_open_questions`, `approved`, `needs_fixes`,
+  `changes_requested`, `needs_clarification`, `needs_changes`. A high risk score beats
+  `Verdict: PASS`.
+
+Pass `parseSignal: createSignalParser(patterns)` to use your own; the key order of
+`patterns` is the precedence. `unfilledVariables(template, vars)` lists the `{{VAR}}`
+placeholders a template needs that `vars` does not supply, read from the template before
+substitution.
 
 ## Lifecycle
 
