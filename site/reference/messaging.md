@@ -87,6 +87,15 @@ including the ones `fetch` itself raises with the URL inside them — are redact
 leave the transport, so the server password never reaches a log line, a thrown error, or a
 result object.
 
+## Message identity
+
+A successful send carries a `MessageRef`: `{ channel, chat, messageId, threadId? }`. It is
+plain JSON a product stores as is and hands back to address a later edit or reaction. The
+pair (`chat`, `messageId`) is the identity, because a Telegram `message_id` is unique only
+within one chat, and the ref holds the **resolved** chat, so an edit cannot land elsewhere if
+the handle map changed. This package stores nothing itself; the ref is the key a product's own
+message store should use. `refOfInbound(update)` builds the same ref for an inbound update.
+
 ## Inbound
 
 BlueBubbles publishes no request-signature scheme. The boundary is therefore a secret path
@@ -180,7 +189,10 @@ Inbound arrives either way Telegram offers. `pollUpdates` is the long poll a dae
 tracks the offset (`last update_id + 1`), acknowledges every update it saw, yields text
 messages and button taps from an allowed chat, and returns when the signal aborts. Each item
 is a `TelegramInbound`, discriminated on `kind`: `"text"` carries `text`, and `"callback"`
-carries `data`, `callbackQueryId` and the `messageId` the button sat on.
+carries `data`, `callbackQueryId` and the `messageId` the button sat on. Both kinds carry
+`messageId` and an optional `threadId`; a typed update adds `replyToMessageId`, and a tap adds
+`messageText` and `buttons` — the tapped prompt's own keyboard, minus any button without
+`callback_data`, so a receipt needs no store of what was sent.
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";

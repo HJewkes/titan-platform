@@ -98,10 +98,14 @@ export class BlueBubblesTransport implements MessageTransport {
     if (!attempt.sent) {
       return sendFailed({ kind: attempt.kind, message: this.redact(describeCause(attempt.cause)) });
     }
-    return await this.resultFor(attempt.response, handle);
+    return await this.resultFor(attempt.response, handle, chatGuid.value);
   }
 
-  private async resultFor(response: Response, handle: string): Promise<SendResult> {
+  private async resultFor(
+    response: Response,
+    handle: string,
+    chatGuid: string,
+  ): Promise<SendResult> {
     const envelope = await readEnvelope(response);
     if (response.ok && envelope === undefined) {
       return sendFailed(unreadableSuccess(response.status));
@@ -110,7 +114,13 @@ export class BlueBubblesTransport implements MessageTransport {
     if (!response.ok) {
       return sendFailed(errorForStatus(response.status, message, handle));
     }
-    return { ok: true, messageGuid: envelope?.guid };
+    const guid = envelope?.guid;
+    if (guid === undefined) return { ok: true };
+    return {
+      ok: true,
+      messageGuid: guid,
+      ref: { channel: "imessage", chat: chatGuid, messageId: guid },
+    };
   }
 
   /** The server forgets a tempGuid once its send settles, so a fresh one per call costs no safety. */

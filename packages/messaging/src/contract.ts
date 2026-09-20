@@ -40,12 +40,33 @@ export type SendError =
   | { kind: "bad-buttons"; message: string }
   | { kind: "unknown"; message: string };
 
+export type ChannelId = "telegram" | "imessage" | "mock";
+
+/**
+ * Plain JSON. A product stores it as is and hands it back for an edit or a
+ * reaction. It holds the resolved chat because a Telegram `messageId` is only
+ * unique within one chat, so the pair is the identity and the key a message
+ * store should use.
+ */
+export interface MessageRef {
+  channel: ChannelId;
+  chat: string;
+  messageId: string;
+  threadId?: string;
+}
+
 /**
  * `ok: true` means the server accepted the message for sending. There is no
  * delivered or read signal: those need the Private API, which is out of scope.
+ * `ref` is absent when the server accepted the message without naming it.
  */
 export type SendResult =
-  | { ok: true; messageGuid?: string }
+  | {
+      ok: true;
+      /** @deprecated Use `ref`. A bare id cannot address a Telegram message. */
+      messageGuid?: string;
+      ref?: MessageRef;
+    }
   | { ok: false; error: SendError };
 
 export interface MessageTransport {

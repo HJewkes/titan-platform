@@ -243,7 +243,13 @@ export class TelegramTransport implements MessageTransport {
       handle,
     );
     if (!call.ok) return sendFailed(call.error);
-    return { ok: true, messageGuid: readMessageId(call.result) };
+    const messageId = readMessageId(call.result);
+    if (messageId === undefined) return { ok: true };
+    return {
+      ok: true,
+      messageGuid: messageId,
+      ref: { channel: "telegram", chat: String(chatId.value), messageId },
+    };
   }
 
   private async resolveChatId(handle: string): Promise<

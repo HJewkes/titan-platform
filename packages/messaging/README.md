@@ -43,6 +43,24 @@ there is no delivered or read signal (see below). Errors, including the ones
 raised by `fetch` itself, are redacted before they leave the transport, so the
 server password never reaches a log line, a thrown error, or a result object.
 
+### Message identity
+
+A successful send also carries a `MessageRef`: `{ channel, chat, messageId }`,
+plus `threadId` when the channel has one. It is plain JSON, so a product stores
+it as is and hands it back to address a later edit or reaction. The pair
+(`chat`, `messageId`) is the identity, because a Telegram `message_id` is only
+unique within one chat, and the ref holds the **resolved** chat, so an edit
+never re-runs `chatIdFor` and cannot land somewhere else if the handle map
+changed. That pair is the key a message store should use; this package stores
+nothing itself and a store should record at least the ref, the text, the
+buttons sent and who the message was for.
+
+`ref` is absent when the server accepted the message without naming it, so
+treat it as optional. `messageGuid` still carries the bare id and is deprecated.
+
+`refOfInbound(update)` gives the same ref for something that arrived: the
+person's own message for a typed update, and the tapped prompt for a tap.
+
 ### Retry semantics
 
 A failed send is either "not sent" or "maybe sent", and only the first is safe
@@ -198,7 +216,15 @@ update it saw, yields only text messages and button taps from an allowed chat,
 and stops when the signal aborts. Each item is a `TelegramInbound`, told apart
 by `kind`: `"text"` carries `text`; `"callback"` carries `data`,
 `callbackQueryId` and the `messageId` the button sat on. A tap with no `data`
-or no `message` is acknowledged and skipped:
+or no `message` is acknowledged and skipped.
+
+Both kinds carry `messageId`, so anything read here can be reacted to or
+edited, and `threadId` when the chat has topics on. A typed update adds
+`replyToMessageId`. A tap adds `messageText` and `buttons`: the tapped prompt's
+own inline keyboard, read back as the same channel-neutral rows that were sent.
+Only buttons with `callback_data` survive that read, because a URL or Web App
+button cannot be answered. That is what lets a receipt be built from the tap
+alone, with no lookup of what was sent.
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";

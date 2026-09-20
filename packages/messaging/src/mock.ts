@@ -39,6 +39,11 @@ export class MockTransport implements MessageTransport {
     this.sent.push({ handle, text, ...(buttons ? { buttons } : {}), at: this.now() });
     const failure = this.scripted.shift();
     if (failure) return sendFailed(failure);
-    return { ok: true, messageGuid: `mock-${this.sent.length}` };
+    const messageId = `mock-${this.sent.length}`;
+    return {
+      ok: true,
+      messageGuid: messageId,
+      ref: { channel: "mock", chat: handle, messageId },
+    };
   }
 }

@@ -28,7 +28,7 @@ function callbackUpdate(
 function textUpdate(updateId: number, text: string): unknown {
   return {
     update_id: updateId,
-    message: { date: 1757808000, text, from: { id: 99 }, chat: { id: CHAT } },
+    message: { message_id: updateId * 10, date: 1757808000, text, from: { id: 99 }, chat: { id: CHAT } },
   };
 }
 

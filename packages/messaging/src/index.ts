@@ -1,6 +1,8 @@
 export type {
   Button,
   ButtonRow,
+  ChannelId,
+  MessageRef,
   MessageTransport,
   SendError,
   SendInput,
@@ -54,6 +56,7 @@ export {
   answerCallbackQuery,
   pollUpdates,
   readChatIds,
+  refOfInbound,
   telegramUpdateEvent,
 } from "./telegram-updates.js";
 
