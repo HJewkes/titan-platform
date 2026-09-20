@@ -35,7 +35,7 @@ beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-session-graph-usage-dedupe-"));
   const absolutePath = path.join(dir, "s1.jsonl");
   writeFileSync(absolutePath, render(LINES));
-  transcript = { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null };
+  transcript = { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null, account: null };
   graph = openSessionGraph(":memory:");
 });
 afterEach(() => {
