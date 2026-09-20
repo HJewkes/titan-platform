@@ -52,6 +52,14 @@ await transport.send({ handle: "+15550000000", text: "two" });
 transport.sent.length; // 2 — a scripted failure is still a recorded attempt
 ```
 
+It implements `InteractiveTransport` as well: `log` is every call in order with the time it
+happened, `messageAt(ref)` is what the person would see now, `typingVisible(handle)` is true
+for five seconds on the injected clock or until the next send, and `capabilities` takes a
+partial override so each degrade path is testable. `failNext(error, on?)` scopes a scripted
+failure to one method. `ManualClock` is a `Scheduler` whose time moves only on `advance(ms)`,
+and `fakeTextUpdate` / `fakeCallbackUpdate` build raw Bot API JSON so a door under test still
+runs the real parser.
+
 ## Send
 
 `BlueBubblesTransport` talks to a [BlueBubbles Server](https://bluebubbles.app) over its

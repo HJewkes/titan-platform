@@ -110,6 +110,35 @@ await transport.send({ handle: "+15550000000", text: "one" }); // recorded, fail
 await transport.send({ handle: "+15550000000", text: "two" }); // recorded, maybe sent, do not
 ```
 
+### Testing an acknowledgement
+
+`MockTransport` implements `InteractiveTransport` too. `log` is every call in
+order with the time it happened, `messageAt(ref)` is what the person would see
+now, and `typingVisible(handle)` is true for five seconds on the injected clock
+or until the next send to that handle. `capabilities` takes a partial override,
+so each degrade path is testable:
+
+```ts
+import { fakeTextUpdate, ManualClock, MockTransport } from "@titan-design/messaging";
+
+const clock = new ManualClock(0);
+const transport = new MockTransport({
+  now: () => clock.now(),
+  capabilities: { reactions: false },     // the channel that cannot ack
+});
+
+await door(fakeTextUpdate({ text: "ate it" }), transport);
+transport.log[0];                          // { type: "send", at: 0, ... }
+```
+
+`failNext(error, on?)` scopes a scripted failure to one method, so a
+rate-limited reaction can be tested without failing the reply that follows it.
+A capability that is off answers `unsupported` before the queue is touched.
+`fakeTextUpdate` and `fakeCallbackUpdate` build raw Bot API JSON, so a test
+feeds a door the same bytes Telegram would and the real parser still runs.
+`ManualClock` is a `Scheduler` whose time only moves when `advance(ms)` is
+called.
+
 ## Acknowledging a message
 
 `MessageTransport` is still one method wide. Everything that acts on a message
