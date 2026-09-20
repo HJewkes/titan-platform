@@ -41,7 +41,11 @@ describe("MockTransport", () => {
       ok: false,
       error: { kind: "rejected", status: 400, message: "nope" },
     });
-    expect(third).toEqual({ ok: true, messageGuid: "mock-3" });
+    expect(third).toEqual({
+      ok: true,
+      messageGuid: "mock-3",
+      ref: { channel: "mock", chat: "+1", messageId: "mock-3" },
+    });
   });
 
   it("records an attempt that was scripted to fail", async () => {
@@ -75,6 +79,10 @@ describe("MockTransport", () => {
     const after = await transport.send({ handle: "+1", text: "b" });
 
     expect(transport.sent).toHaveLength(1);
-    expect(after).toEqual({ ok: true, messageGuid: "mock-1" });
+    expect(after).toEqual({
+      ok: true,
+      messageGuid: "mock-1",
+      ref: { channel: "mock", chat: "+1", messageId: "mock-1" },
+    });
   });
 });

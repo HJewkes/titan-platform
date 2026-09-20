@@ -40,7 +40,11 @@ describe("TelegramTransport.send with buttons", () => {
       ]),
     );
 
-    expect(result).toEqual({ ok: true, messageGuid: "5" });
+    expect(result).toEqual({
+      ok: true,
+      messageGuid: "5",
+      ref: { channel: "telegram", chat: "4242", messageId: "5" },
+    });
     expect(bodies[0]).toEqual({
       chat_id: 4242,
       text: "Did you eat lunch?",

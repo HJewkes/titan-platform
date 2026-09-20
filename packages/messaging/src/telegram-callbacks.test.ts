@@ -28,7 +28,7 @@ function callbackUpdate(
 function textUpdate(updateId: number, text: string): unknown {
   return {
     update_id: updateId,
-    message: { date: 1757808000, text, from: { id: 99 }, chat: { id: CHAT } },
+    message: { message_id: updateId * 10, date: 1757808000, text, from: { id: 99 }, chat: { id: CHAT } },
   };
 }
 
@@ -145,7 +145,12 @@ describe("answerCallbackQuery", () => {
 
     expect(result).toEqual({
       ok: false,
-      reason: "answerCallbackQuery failed (400): Bad Request: query is too old ***",
+      reason: "answerCallbackQuery failed: Bad Request: query is too old ***",
+      error: {
+        kind: "rejected",
+        status: 400,
+        message: "Bad Request: query is too old ***",
+      },
     });
   });
 

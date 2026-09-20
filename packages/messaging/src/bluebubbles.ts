@@ -1,5 +1,7 @@
 import type {
-  MessageTransport,
+  ChannelCapabilities,
+  InteractionResult,
+  InteractiveTransport,
   SendError,
   SendInput,
   SendResult,
@@ -70,6 +72,8 @@ function errorForStatus(
 ): SendError {
   if (status === 401 || status === 403) return { kind: "unauthorized", message };
   if (status === 404) return { kind: "no-chat", handle, message };
+  // BlueBubbles names no wait, so the consumer picks its own; the package never invents one.
+  if (status === 429) return { kind: "rate-limited", message };
   if (status >= 400 && status < 500) return { kind: "rejected", status, message };
   return { kind: "unknown", message: `HTTP ${status}: ${message}` };
 }
@@ -78,11 +82,58 @@ function errorForStatus(
  * Sends over the BlueBubbles Server REST API with `fetch` only, so the same
  * code runs in a Worker, a daemon, and a test.
  */
-export class BlueBubblesTransport implements MessageTransport {
+/** Tapbacks, typing and edits all need the Private API, which the contract rules out of scope. */
+const BLUEBUBBLES_CAPABILITIES: ChannelCapabilities = {
+  channel: "imessage",
+  canInitiate: false,
+  deliveryCeiling: "accepted",
+  buttons: false,
+  buttonStates: false,
+  edits: false,
+  reactions: false,
+  chatActions: false,
+  drafts: false,
+  draftStreaming: false,
+  threads: false,
+};
+
+function unsupported(
+  capability: keyof ChannelCapabilities,
+  what: string,
+): InteractionResult {
+  return {
+    ok: false,
+    error: {
+      kind: "unsupported",
+      capability,
+      message: `iMessage over BlueBubbles cannot ${what} without the Private API`,
+    },
+  };
+}
+
+export class BlueBubblesTransport implements InteractiveTransport {
+  readonly capabilities = BLUEBUBBLES_CAPABILITIES;
   private readonly doFetch: typeof fetch;
 
   constructor(private readonly config: BlueBubblesConfig) {
     this.doFetch = config.fetch ?? globalThis.fetch;
+  }
+
+  /** Every interaction answers without a request, so a caller can degrade before it calls. */
+  async react(): Promise<InteractionResult> {
+    return unsupported("reactions", "set a tapback");
+  }
+
+  async chatAction(): Promise<InteractionResult> {
+    return unsupported("chatActions", "show a typing indicator");
+  }
+
+  async edit(): Promise<InteractionResult> {
+    return unsupported("edits", "edit a sent message");
+  }
+
+  async answerAction(): Promise<InteractionResult> {
+    return unsupported("buttons", "answer a button tap");
   }
 
   /** `buttons` is ignored: iMessage has no inline keyboards, so only the text goes. */
@@ -96,10 +147,14 @@ export class BlueBubblesTransport implements MessageTransport {
     if (!attempt.sent) {
       return sendFailed({ kind: attempt.kind, message: this.redact(describeCause(attempt.cause)) });
     }
-    return await this.resultFor(attempt.response, handle);
+    return await this.resultFor(attempt.response, handle, chatGuid.value);
   }
 
-  private async resultFor(response: Response, handle: string): Promise<SendResult> {
+  private async resultFor(
+    response: Response,
+    handle: string,
+    chatGuid: string,
+  ): Promise<SendResult> {
     const envelope = await readEnvelope(response);
     if (response.ok && envelope === undefined) {
       return sendFailed(unreadableSuccess(response.status));
@@ -108,7 +163,13 @@ export class BlueBubblesTransport implements MessageTransport {
     if (!response.ok) {
       return sendFailed(errorForStatus(response.status, message, handle));
     }
-    return { ok: true, messageGuid: envelope?.guid };
+    const guid = envelope?.guid;
+    if (guid === undefined) return { ok: true };
+    return {
+      ok: true,
+      messageGuid: guid,
+      ref: { channel: "imessage", chat: chatGuid, messageId: guid },
+    };
   }
 
   /** The server forgets a tempGuid once its send settles, so a fresh one per call costs no safety. */
@@ -158,6 +219,6 @@ export class BlueBubblesTransport implements MessageTransport {
 
 export function createBlueBubblesTransport(
   config: BlueBubblesConfig,
-): MessageTransport {
+): InteractiveTransport {
   return new BlueBubblesTransport(config);
 }

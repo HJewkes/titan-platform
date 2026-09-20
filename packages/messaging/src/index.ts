@@ -1,7 +1,16 @@
 export type {
   Button,
   ButtonRow,
+  ChannelCapabilities,
+  ChannelId,
+  DeliveryCeiling,
+  EditInput,
+  InteractionError,
+  InteractionResult,
+  InteractiveTransport,
+  MessageRef,
   MessageTransport,
+  Scheduler,
   SendError,
   SendInput,
   SendResult,
@@ -15,8 +24,10 @@ export {
   redactPassword,
 } from "./bluebubbles.js";
 
-export type { RecordedSend } from "./mock.js";
-export { MockTransport } from "./mock.js";
+export type { MockEvent, MockMessage, MockOptions, RecordedSend } from "./mock.js";
+export { ManualClock, MOCK_TYPING_VISIBLE_MS, MockTransport } from "./mock.js";
+
+export { fakeCallbackUpdate, fakeTextUpdate } from "./telegram-fakes.js";
 
 export type {
   InboundRejection,
@@ -54,6 +65,7 @@ export {
   answerCallbackQuery,
   pollUpdates,
   readChatIds,
+  refOfInbound,
   telegramUpdateEvent,
 } from "./telegram-updates.js";
 

@@ -52,6 +52,14 @@ await transport.send({ handle: "+15550000000", text: "two" });
 transport.sent.length; // 2 — a scripted failure is still a recorded attempt
 ```
 
+It implements `InteractiveTransport` as well: `log` is every call in order with the time it
+happened, `messageAt(ref)` is what the person would see now, `typingVisible(handle)` is true
+for five seconds on the injected clock or until the next send, and `capabilities` takes a
+partial override so each degrade path is testable. `failNext(error, on?)` scopes a scripted
+failure to one method. `ManualClock` is a `Scheduler` whose time moves only on `advance(ms)`,
+and `fakeTextUpdate` / `fakeCallbackUpdate` build raw Bot API JSON so a door under test still
+runs the real parser.
+
 ## Send
 
 `BlueBubblesTransport` talks to a [BlueBubbles Server](https://bluebubbles.app) over its
@@ -76,6 +84,7 @@ if (!result.ok) {
     case "unauthorized":  // wrong server password
     case "too-long":      // carries limit and length, so a composer can split
     case "rejected":      // 4xx, result.error.message is the server's own text
+    case "rate-limited":  // 429; retryAfterSeconds when the server named a wait
     case "unknown":       // 5xx, or a chatGuidFor that threw
   }
 }
@@ -85,6 +94,38 @@ if (!result.ok) {
 including the ones `fetch` itself raises with the URL inside them — are redacted before they
 leave the transport, so the server password never reaches a log line, a thrown error, or a
 result object.
+
+## Message identity
+
+A successful send carries a `MessageRef`: `{ channel, chat, messageId, threadId? }`. It is
+plain JSON a product stores as is and hands back to address a later edit or reaction. The
+pair (`chat`, `messageId`) is the identity, because a Telegram `message_id` is unique only
+within one chat, and the ref holds the **resolved** chat, so an edit cannot land elsewhere if
+the handle map changed. This package stores nothing itself; the ref is the key a product's own
+message store should use. `refOfInbound(update)` builds the same ref for an inbound update.
+
+## Acknowledging a message
+
+`MessageTransport` stays one method wide. Everything that acts on a message that already
+exists lives on `InteractiveTransport`, which extends it, so a consumer's own one-method fake
+still satisfies the send contract. Both adapters implement it.
+
+```ts
+if (transport.capabilities.reactions) {
+  await transport.react({ to: ref, emoji: "👀" });   // null clears the mark
+}
+await transport.edit({ ref, text: "Logged", buttons: "remove" });
+```
+
+No method throws. Each answers `{ ok: true, changed }` or `{ ok: false, error }`, where
+`error` is a `SendError` plus `unsupported` (naming the capability the channel lacks) and
+`message-gone`. `capabilities` is a static descriptor: `channel`, `maxTextLength`,
+`canInitiate`, `deliveryCeiling`, `buttons`, `buttonStates`, `edits`, `reactions`,
+`chatActions`, `drafts`, `draftStreaming` and `threads`. A flag is true only where the shipped
+adapter implements the thing today, so it is safe to branch on before a call.
+
+An `edit` with neither `text` nor `buttons` names nothing to change, so it fails
+`bad-buttons` before any call; the Mock adapter answers the same way.
 
 ## Inbound
 
@@ -179,7 +220,10 @@ Inbound arrives either way Telegram offers. `pollUpdates` is the long poll a dae
 tracks the offset (`last update_id + 1`), acknowledges every update it saw, yields text
 messages and button taps from an allowed chat, and returns when the signal aborts. Each item
 is a `TelegramInbound`, discriminated on `kind`: `"text"` carries `text`, and `"callback"`
-carries `data`, `callbackQueryId` and the `messageId` the button sat on.
+carries `data`, `callbackQueryId` and the `messageId` the button sat on. Both kinds carry
+`messageId` and an optional `threadId`; a typed update adds `replyToMessageId`, and a tap adds
+`messageText` and `buttons` — the tapped prompt's own keyboard, minus any button without
+`callback_data`, so a receipt needs no store of what was sent.
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";
@@ -237,6 +281,21 @@ delivered message, so resending can deliver it twice. Only `unreachable` (and a 
 backoff) is safe to resend automatically. Neither backend has a dedupe key that changes this:
 BlueBubbles forgets a `tempGuid` once its send settles, and Telegram has none. The package
 README's "Retry semantics" section has the full table.
+
+**A 429 is `rate-limited`, not `rejected`.** It carries `retryAfterSeconds` when the server named
+a wait: `parameters.retry_after` on Telegram, or the "retry after N" text of the description when
+the envelope omits it. A `retry_after` of zero, negative, non-numeric, `NaN` or infinite is treated
+as absent, so the description fallback applies; a fraction rounds up to a whole second, and a large
+value is passed through uncapped. When neither names a wait the field is absent and the consumer
+picks its own backoff, because the package never invents a number. BlueBubbles never names one.
+
+**An unchanged edit is a success, not an error.** Telegram answers 400 "message is not
+modified" when an edit changes nothing, and `edit` maps that to `{ ok: true, changed: false }`.
+That is what makes a repeat tap or an at-least-once retry a quiet no-op.
+
+**Button `state` and `style` are off on Telegram by default.** The Bot API added `style` in 9.4
+and `disabled` in 10.3, but neither wire shape has been confirmed against a live bot. The types
+and the rendering ship behind `buttonStates`, which a spike turns on through `TelegramConfig`.
 
 **`no-chat` is not an error to retry.** It means no conversation exists yet, and no number of
 retries will create one. A human has to send the first message. Both adapters return it:

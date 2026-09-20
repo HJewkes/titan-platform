@@ -66,6 +66,7 @@ describe("validateTelegramWebhook", () => {
       updateId: 870123456,
       chatId: CHAT,
       fromId: 99,
+      messageId: 1414,
       text: "ready for sunday",
       date: 1757808000,
     });
@@ -118,10 +119,10 @@ describe("validateTelegramWebhook", () => {
       input({ body: { update_id: 1, edited_message: UPDATE.message } }),
     );
     const noText = await validateTelegramWebhook(
-      input({ body: updateWith({ date: 1, chat: { id: CHAT }, from: { id: 99 } }) }),
+      input({ body: updateWith({ message_id: 1, date: 1, chat: { id: CHAT }, from: { id: 99 } }) }),
     );
     const noSender = await validateTelegramWebhook(
-      input({ body: updateWith({ date: 1, chat: { id: CHAT }, text: "hi" }) }),
+      input({ body: updateWith({ message_id: 1, date: 1, chat: { id: CHAT }, text: "hi" }) }),
     );
 
     for (const result of [noMessage, noText, noSender]) {

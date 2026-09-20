@@ -32,6 +32,7 @@ if (!result.ok) {
     case "indeterminate": // may have been delivered; never resend automatically
     case "unauthorized":  // wrong server password
     case "rejected":      // 4xx, result.error.message is the server's own text
+    case "rate-limited":  // 429; retryAfterSeconds when the server named a wait
     case "unknown":       // 5xx or a thrown chatGuidFor
   }
 }
@@ -42,6 +43,24 @@ there is no delivered or read signal (see below). Errors, including the ones
 raised by `fetch` itself, are redacted before they leave the transport, so the
 server password never reaches a log line, a thrown error, or a result object.
 
+### Message identity
+
+A successful send also carries a `MessageRef`: `{ channel, chat, messageId }`,
+plus `threadId` when the channel has one. It is plain JSON, so a product stores
+it as is and hands it back to address a later edit or reaction. The pair
+(`chat`, `messageId`) is the identity, because a Telegram `message_id` is only
+unique within one chat, and the ref holds the **resolved** chat, so an edit
+never re-runs `chatIdFor` and cannot land somewhere else if the handle map
+changed. That pair is the key a message store should use; this package stores
+nothing itself and a store should record at least the ref, the text, the
+buttons sent and who the message was for.
+
+`ref` is absent when the server accepted the message without naming it, so
+treat it as optional. `messageGuid` still carries the bare id and is deprecated.
+
+`refOfInbound(update)` gives the same ref for something that arrived: the
+person's own message for a typed update, and the tapped prompt for a tap.
+
 ### Retry semantics
 
 A failed send is either "not sent" or "maybe sent", and only the first is safe
@@ -50,10 +69,19 @@ to resend without asking anyone. The kinds split like this:
 | Kind | Safe to auto-retry | Why |
 |---|---|---|
 | `unreachable` | **Yes** | The request provably never left: DNS failure, refused connection, connect timeout, or a request that could not be built (a malformed base URL) |
-| `rejected` with `status: 429` | **Yes**, after the server's backoff | Rate limiting refuses the request before acting on it |
+| `rate-limited` | **Yes**, after the server's backoff | Rate limiting refuses the request before acting on it |
 | `indeterminate` | **No** | The request may have reached the server: a reset or closed socket, a timeout or abort while awaiting the response, an error shape the classifier does not recognise, or a 2xx whose body could not be read |
 | `unknown` | **No** | A 5xx can follow work the server already did; a thrown `chatGuidFor` or `chatIdFor` also lands here and needs a fix, not a retry |
-| `rejected` (other statuses), `unauthorized`, `no-chat`, `too-long`, `bad-buttons` | **No** | The same request fails the same way; fix the input or the configuration |
+| `rejected`, `unauthorized`, `no-chat`, `too-long`, `bad-buttons` | **No** | The same request fails the same way; fix the input or the configuration |
+
+A 429 from either backend is `rate-limited`, never `rejected`. On Telegram
+`retryAfterSeconds` comes from `parameters.retry_after`, or from the "retry
+after N" text of the description when the envelope omits it. A `retry_after`
+of zero, negative, non-numeric, `NaN` or infinite is treated as absent, so the
+description fallback applies; a fraction rounds up to a whole second, and a
+large value is passed through uncapped. When neither names a wait the field
+is absent and the consumer picks its own backoff: the package never invents a
+number. BlueBubbles names no wait, so its 429 always arrives without seconds.
 
 On `indeterminate`, record the message as "maybe sent" and stop: tell a human,
 or let a later message supersede it. Resending is what delivers it twice.
@@ -83,6 +111,92 @@ transport.failNext({ kind: "indeterminate", message: "reset after write" });
 await transport.send({ handle: "+15550000000", text: "one" }); // recorded, failed, retry it
 await transport.send({ handle: "+15550000000", text: "two" }); // recorded, maybe sent, do not
 ```
+
+### Testing an acknowledgement
+
+`MockTransport` implements `InteractiveTransport` too. `log` is every call in
+order with the time it happened, `messageAt(ref)` is what the person would see
+now, and `typingVisible(handle)` is true for five seconds on the injected clock
+or until the next send to that handle. `capabilities` takes a partial override,
+so each degrade path is testable:
+
+```ts
+import { fakeTextUpdate, ManualClock, MockTransport } from "@titan-design/messaging";
+
+const clock = new ManualClock(0);
+const transport = new MockTransport({
+  now: () => clock.now(),
+  capabilities: { reactions: false },     // the channel that cannot ack
+});
+
+await door(fakeTextUpdate({ text: "ate it" }), transport);
+transport.log[0];                          // { type: "send", at: 0, ... }
+```
+
+`failNext(error, on?)` scopes a scripted failure to one method, so a
+rate-limited reaction can be tested without failing the reply that follows it.
+A capability that is off answers `unsupported` before the queue is touched.
+`fakeTextUpdate` and `fakeCallbackUpdate` build raw Bot API JSON, so a test
+feeds a door the same bytes Telegram would and the real parser still runs.
+`ManualClock` is a `Scheduler` whose time only moves when `advance(ms)` is
+called.
+
+## Acknowledging a message
+
+`MessageTransport` is still one method wide. Everything that acts on a message
+that already exists lives on `InteractiveTransport`, which extends it, so a
+consumer's own one-method fake still satisfies the send contract. Both shipped
+adapters implement it, and both factory functions return it.
+
+```ts
+import { createTelegramTransport } from "@titan-design/messaging";
+
+const transport = createTelegramTransport({ token, chatIdFor });
+
+if (transport.capabilities.reactions) {
+  await transport.react({ to: ref, emoji: "👀" });   // null clears the mark
+}
+await transport.chatAction({ handle: "lifter", action: "typing" });
+await transport.edit({ ref, text: "Logged", buttons: "remove" });
+await transport.answerAction({ actionId: tap.callbackQueryId, toast: "Logged" });
+```
+
+No method throws. Each answers `{ ok: true, changed }` or
+`{ ok: false, error }`, where `error` is a `SendError` plus two cases of its
+own: `unsupported`, naming the capability the channel lacks, and
+`message-gone`, for an edit of a message that is no longer there. `changed`
+matters for `edit`: Telegram answers "message is not modified" when an edit
+changes nothing, and that maps to `{ ok: true, changed: false }`, so a repeat
+tap or an at-least-once retry is a quiet no-op rather than an error. An edit
+with neither `text` nor `buttons` names nothing to change, so it fails
+`bad-buttons` before any call; `MockTransport` answers the same way.
+
+`capabilities` is a static, readonly descriptor. It answers "can this channel
+do this" so a caller can pick a degrade path before it calls; it never promises
+one call will succeed. A flag is true only where the shipped adapter implements
+the thing today:
+
+| Field | Telegram | BlueBubbles | Mock default |
+|---|---|---|---|
+| `maxTextLength` | 4096 | undefined | undefined |
+| `canInitiate` | false | false | true |
+| `deliveryCeiling` | `accepted` | `accepted` | `accepted` |
+| `buttons` | true | false | true |
+| `buttonStates` | false, pending a spike | false | true |
+| `edits`, `reactions`, `chatActions` | true | false | true |
+| `drafts`, `draftStreaming`, `threads` | false | false | false |
+
+BlueBubbles answers `unsupported` for all four methods and makes no request:
+tapbacks, typing and edits there all need the Private API, which this package
+rules out of scope.
+
+`state: "disabled"` and `style` on a `Button` are rendered only by a channel
+whose `buttonStates` is true, the same way BlueBubbles ignores `buttons`
+altogether. Telegram defaults to false: the Bot API added `style` in 9.4 and
+`disabled` in 10.3, but neither wire shape has been confirmed against a live
+bot, so `buttonStates: true` in `TelegramConfig` turns them on for a spike and
+the default costs nobody a surprise. `drafts` and `threads` are false because
+this adapter has no `draft` method and ignores `threadId` on send.
 
 ## Inbound
 
@@ -190,7 +304,15 @@ update it saw, yields only text messages and button taps from an allowed chat,
 and stops when the signal aborts. Each item is a `TelegramInbound`, told apart
 by `kind`: `"text"` carries `text`; `"callback"` carries `data`,
 `callbackQueryId` and the `messageId` the button sat on. A tap with no `data`
-or no `message` is acknowledged and skipped:
+or no `message` is acknowledged and skipped.
+
+Both kinds carry `messageId`, so anything read here can be reacted to or
+edited, and `threadId` when the chat has topics on. A typed update adds
+`replyToMessageId`. A tap adds `messageText` and `buttons`: the tapped prompt's
+own inline keyboard, read back as the same channel-neutral rows that were sent.
+Only buttons with `callback_data` survive that read, because a URL or Web App
+button cannot be answered. That is what lets a receipt be built from the tap
+alone, with no lookup of what was sent.
 
 ```ts
 import { pollUpdates, readChatIds } from "@titan-design/messaging";
@@ -213,8 +335,9 @@ for await (const update of pollUpdates(config, {
 
 Answer every tap with `answerCallbackQuery(config, callbackQueryId, text?)`, or
 the button keeps spinning on the phone. `text` shows as a brief toast. It never
-throws: it returns `{ ok: true }` or `{ ok: false, reason }`, with the token
-redacted from `reason`.
+throws: it returns `{ ok: true }` or `{ ok: false, reason, error }`, with the
+token redacted from both. `error` is the same `SendError` union a send reports,
+so a 429 on a toast is `rate-limited` and is backed off rather than re-parsed.
 
 `validateTelegramWebhook` is the push equivalent: same shape as
 `validateInbound`, over the `X-Telegram-Bot-Api-Secret-Token` header that

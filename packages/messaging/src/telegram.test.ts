@@ -44,7 +44,11 @@ describe("TelegramTransport.send", () => {
 
     const result = await transport.send({ handle: "lifter", text: "sunday?" });
 
-    expect(result).toEqual({ ok: true, messageGuid: "77" });
+    expect(result).toEqual({
+      ok: true,
+      messageGuid: "77",
+      ref: { channel: "telegram", chat: "4242", messageId: "77" },
+    });
     const call = calls[0];
     expect(call?.url).toBe(SEND_URL);
     expect(call?.init?.method).toBe("POST");
@@ -93,7 +97,11 @@ describe("TelegramTransport.send", () => {
       envelope({ ok: true, result: { message_id: 5 } }),
     ).send({ handle: "lifter", text: "x".repeat(4096) });
 
-    expect(result).toEqual({ ok: true, messageGuid: "5" });
+    expect(result).toEqual({
+      ok: true,
+      messageGuid: "5",
+      ref: { channel: "telegram", chat: "4242", messageId: "5" },
+    });
   });
 
   it("reports no-chat when the handle has no known chat id", async () => {
@@ -258,7 +266,7 @@ describe("TelegramTransport.send", () => {
     });
 
     it("HTTP error statuses unchanged, even with a body that cannot be parsed", async () => {
-      const statuses = { 400: "rejected", 401: "unauthorized", 403: "rejected", 429: "rejected", 500: "unknown", 502: "unknown" };
+      const statuses = { 400: "rejected", 401: "unauthorized", 403: "rejected", 429: "rate-limited", 500: "unknown", 502: "unknown" };
 
       const kinds = await Promise.all(
         Object.keys(statuses).map(async (status) => {
