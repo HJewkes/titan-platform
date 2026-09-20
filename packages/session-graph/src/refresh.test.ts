@@ -41,7 +41,7 @@ beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-session-graph-"));
   const absolutePath = path.join(dir, "s1.jsonl");
   writeFileSync(absolutePath, render(LINES_A));
-  transcript = { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null };
+  transcript = { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null, account: null };
   graph = openSessionGraph(":memory:");
 });
 afterEach(() => {

@@ -11,8 +11,8 @@ export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
 export { IGNORED_PATH, TASK_ID, commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
-export type { DiscoveredTranscript } from "./discover.js";
-export { discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
+export type { DiscoveredTranscript, TranscriptRoot } from "./discover.js";
+export { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
 export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";
 export type { DiscoverCodexSourcesOptions } from "./codex-discover.js";
 export { CODEX_ROLLOUT_FORMAT, CodexSourceCollisionError, codexHome, codexSourceId, discoverCodexSources } from "./codex-discover.js";
@@ -72,3 +72,4 @@ export { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-ses
 export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionReadError, RecentSessionTurn,
   RecentSessionTurns, RecentSessionUnknown, RecentTurnKind, RecentTurnProjection, RecentTurnRepresentation, RecentTurnRole,
   RecentUnknownReason } from "./recent-session-turns.js";
+export { EXTRACT_VERSION, type AuditEvent, type AuditEventBase, type AuditEventKind, type ContextSource, type QueueOperation, type SignalKind, type ToolFamily, type WakeCause } from "./audit-events.js";

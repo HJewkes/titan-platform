@@ -1,4 +1,5 @@
 import { readAssistantLine } from "./assistant-line.js";
+import { emitCompaction, emitCostState, emitQueueOp } from "./audit-line.js";
 import type { EventBase, LineSpan, SessionEvent, SessionPatch, SpanField } from "./events.js";
 import { RELATIONS, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, toRepoRelative } from "./refs.js";
 import { asObject, int, searchText, str, type Json } from "./text.js";
@@ -132,7 +133,13 @@ export class LineReader {
       case "file-history-snapshot":
         return this.fileHistorySnapshot(ctx);
       case "system":
-        return this.fact(ctx, `system_${str(ctx.line, "subtype") ?? "event"}`);
+        return this.system(ctx);
+      case "queue-operation":
+        this.fact(ctx, type);
+        return emitQueueOp(this, ctx);
+      case "cost-state":
+        this.fact(ctx, type);
+        return emitCostState(this, ctx);
       case "user":
         return readUserLine(this, ctx);
       case "assistant":
@@ -140,6 +147,12 @@ export class LineReader {
       default:
         this.fact(ctx, type);
     }
+  }
+
+  private system(ctx: LineContext): void {
+    const subtype = str(ctx.line, "subtype") ?? "event";
+    this.fact(ctx, `system_${subtype}`);
+    if (subtype === "compact_boundary") emitCompaction(this, ctx);
   }
 
   private typedField(ctx: LineContext, eventType: string, key: "aiTitle" | "lastPrompt"): void {

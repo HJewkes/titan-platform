@@ -1,3 +1,4 @@
+import type { AuditEventKind } from "./audit-events.js";
 import type { EventOf, SessionEvent } from "./events.js";
 
 export interface SessionRow {
@@ -55,6 +56,14 @@ export interface TranscriptDelta {
   subagentTranscripts: EventOf<"subagent_transcript">[];
   artifacts: EventOf<"artifact">[];
   edges: EventOf<"edge">[];
+  requests: EventOf<"request">[];
+  toolCalls: EventOf<"tool_call">[];
+  inbound: EventOf<"inbound">[];
+  contextBlocks: EventOf<"context_block">[];
+  compactions: EventOf<"compaction">[];
+  queueOps: EventOf<"queue_op">[];
+  signals: EventOf<"signal">[];
+  costStates: EventOf<"cost_state">[];
 }
 
 function emptySession(sessionId: string): SessionRow {
@@ -129,6 +138,14 @@ export class EventFolder {
       fileCheckpoints: list("fileCheckpoints"),
       prMerges: list("prMerges"),
       prCreates: list("prCreates"),
+      requests: list("requests"),
+      toolCalls: list("toolCalls"),
+      inbound: list("inbound"),
+      contextBlocks: list("contextBlocks"),
+      compactions: list("compactions"),
+      queueOps: list("queueOps"),
+      signals: list("signals"),
+      costStates: list("costStates"),
     };
   }
 
@@ -232,7 +249,10 @@ export class EventFolder {
   }
 }
 
-const LIST_OF: Record<"fact" | "span" | "phase" | "human_edit" | "file_checkpoint" | "pr_merge" | "pr_create", string> = {
+const LIST_OF: Record<
+  "fact" | "span" | "phase" | "human_edit" | "file_checkpoint" | "pr_merge" | "pr_create" | AuditEventKind,
+  string
+> = {
   fact: "facts",
   span: "spans",
   phase: "phases",
@@ -240,6 +260,14 @@ const LIST_OF: Record<"fact" | "span" | "phase" | "human_edit" | "file_checkpoin
   file_checkpoint: "fileCheckpoints",
   pr_merge: "prMerges",
   pr_create: "prCreates",
+  request: "requests",
+  tool_call: "toolCalls",
+  inbound: "inbound",
+  context_block: "contextBlocks",
+  compaction: "compactions",
+  queue_op: "queueOps",
+  signal: "signals",
+  cost_state: "costStates",
 };
 
 function earliest(a: string | null | undefined, b: string | null): string | null {
