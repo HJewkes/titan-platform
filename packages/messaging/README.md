@@ -110,6 +110,61 @@ await transport.send({ handle: "+15550000000", text: "one" }); // recorded, fail
 await transport.send({ handle: "+15550000000", text: "two" }); // recorded, maybe sent, do not
 ```
 
+## Acknowledging a message
+
+`MessageTransport` is still one method wide. Everything that acts on a message
+that already exists lives on `InteractiveTransport`, which extends it, so a
+consumer's own one-method fake still satisfies the send contract. Both shipped
+adapters implement it, and both factory functions return it.
+
+```ts
+import { createTelegramTransport } from "@titan-design/messaging";
+
+const transport = createTelegramTransport({ token, chatIdFor });
+
+if (transport.capabilities.reactions) {
+  await transport.react({ to: ref, emoji: "👀" });   // null clears the mark
+}
+await transport.chatAction({ handle: "lifter", action: "typing" });
+await transport.edit({ ref, text: "Logged", buttons: "remove" });
+await transport.answerAction({ actionId: tap.callbackQueryId, toast: "Logged" });
+```
+
+No method throws. Each answers `{ ok: true, changed }` or
+`{ ok: false, error }`, where `error` is a `SendError` plus two cases of its
+own: `unsupported`, naming the capability the channel lacks, and
+`message-gone`, for an edit of a message that is no longer there. `changed`
+matters for `edit`: Telegram answers "message is not modified" when an edit
+changes nothing, and that maps to `{ ok: true, changed: false }`, so a repeat
+tap or an at-least-once retry is a quiet no-op rather than an error.
+
+`capabilities` is a static, readonly descriptor. It answers "can this channel
+do this" so a caller can pick a degrade path before it calls; it never promises
+one call will succeed. A flag is true only where the shipped adapter implements
+the thing today:
+
+| Field | Telegram | BlueBubbles | Mock default |
+|---|---|---|---|
+| `maxTextLength` | 4096 | undefined | undefined |
+| `canInitiate` | false | false | true |
+| `deliveryCeiling` | `accepted` | `accepted` | `accepted` |
+| `buttons` | true | false | true |
+| `buttonStates` | false, pending a spike | false | true |
+| `edits`, `reactions`, `chatActions` | true | false | true |
+| `drafts`, `draftStreaming`, `threads` | false | false | false |
+
+BlueBubbles answers `unsupported` for all four methods and makes no request:
+tapbacks, typing and edits there all need the Private API, which this package
+rules out of scope.
+
+`state: "disabled"` and `style` on a `Button` are rendered only by a channel
+whose `buttonStates` is true, the same way BlueBubbles ignores `buttons`
+altogether. Telegram defaults to false: the Bot API added `style` in 9.4 and
+`disabled` in 10.3, but neither wire shape has been confirmed against a live
+bot, so `buttonStates: true` in `TelegramConfig` turns them on for a spike and
+the default costs nobody a surprise. `drafts` and `threads` are false because
+this adapter has no `draft` method and ignores `threadId` on send.
+
 ## Inbound
 
 BlueBubbles publishes no request-signature scheme. The boundary is therefore a

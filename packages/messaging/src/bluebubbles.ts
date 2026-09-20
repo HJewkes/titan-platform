@@ -1,5 +1,7 @@
 import type {
-  MessageTransport,
+  ChannelCapabilities,
+  InteractionResult,
+  InteractiveTransport,
   SendError,
   SendInput,
   SendResult,
@@ -80,11 +82,58 @@ function errorForStatus(
  * Sends over the BlueBubbles Server REST API with `fetch` only, so the same
  * code runs in a Worker, a daemon, and a test.
  */
-export class BlueBubblesTransport implements MessageTransport {
+/** Tapbacks, typing and edits all need the Private API, which the contract rules out of scope. */
+const BLUEBUBBLES_CAPABILITIES: ChannelCapabilities = {
+  channel: "imessage",
+  canInitiate: false,
+  deliveryCeiling: "accepted",
+  buttons: false,
+  buttonStates: false,
+  edits: false,
+  reactions: false,
+  chatActions: false,
+  drafts: false,
+  draftStreaming: false,
+  threads: false,
+};
+
+function unsupported(
+  capability: keyof ChannelCapabilities,
+  what: string,
+): InteractionResult {
+  return {
+    ok: false,
+    error: {
+      kind: "unsupported",
+      capability,
+      message: `iMessage over BlueBubbles cannot ${what} without the Private API`,
+    },
+  };
+}
+
+export class BlueBubblesTransport implements InteractiveTransport {
+  readonly capabilities = BLUEBUBBLES_CAPABILITIES;
   private readonly doFetch: typeof fetch;
 
   constructor(private readonly config: BlueBubblesConfig) {
     this.doFetch = config.fetch ?? globalThis.fetch;
+  }
+
+  /** Every interaction answers without a request, so a caller can degrade before it calls. */
+  async react(): Promise<InteractionResult> {
+    return unsupported("reactions", "set a tapback");
+  }
+
+  async chatAction(): Promise<InteractionResult> {
+    return unsupported("chatActions", "show a typing indicator");
+  }
+
+  async edit(): Promise<InteractionResult> {
+    return unsupported("edits", "edit a sent message");
+  }
+
+  async answerAction(): Promise<InteractionResult> {
+    return unsupported("buttons", "answer a button tap");
   }
 
   /** `buttons` is ignored: iMessage has no inline keyboards, so only the text goes. */
@@ -170,6 +219,6 @@ export class BlueBubblesTransport implements MessageTransport {
 
 export function createBlueBubblesTransport(
   config: BlueBubblesConfig,
-): MessageTransport {
+): InteractiveTransport {
   return new BlueBubblesTransport(config);
 }

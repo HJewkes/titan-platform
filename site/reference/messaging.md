@@ -96,6 +96,26 @@ within one chat, and the ref holds the **resolved** chat, so an edit cannot land
 the handle map changed. This package stores nothing itself; the ref is the key a product's own
 message store should use. `refOfInbound(update)` builds the same ref for an inbound update.
 
+## Acknowledging a message
+
+`MessageTransport` stays one method wide. Everything that acts on a message that already
+exists lives on `InteractiveTransport`, which extends it, so a consumer's own one-method fake
+still satisfies the send contract. Both adapters implement it.
+
+```ts
+if (transport.capabilities.reactions) {
+  await transport.react({ to: ref, emoji: "👀" });   // null clears the mark
+}
+await transport.edit({ ref, text: "Logged", buttons: "remove" });
+```
+
+No method throws. Each answers `{ ok: true, changed }` or `{ ok: false, error }`, where
+`error` is a `SendError` plus `unsupported` (naming the capability the channel lacks) and
+`message-gone`. `capabilities` is a static descriptor: `channel`, `maxTextLength`,
+`canInitiate`, `deliveryCeiling`, `buttons`, `buttonStates`, `edits`, `reactions`,
+`chatActions`, `drafts`, `draftStreaming` and `threads`. A flag is true only where the shipped
+adapter implements the thing today, so it is safe to branch on before a call.
+
 ## Inbound
 
 BlueBubbles publishes no request-signature scheme. The boundary is therefore a secret path
@@ -255,6 +275,14 @@ README's "Retry semantics" section has the full table.
 a wait: `parameters.retry_after` on Telegram, or the "retry after N" text of the description when
 the envelope omits it. When neither names a wait the field is absent and the consumer picks its own
 backoff, because the package never invents a number. BlueBubbles never names one.
+
+**An unchanged edit is a success, not an error.** Telegram answers 400 "message is not
+modified" when an edit changes nothing, and `edit` maps that to `{ ok: true, changed: false }`.
+That is what makes a repeat tap or an at-least-once retry a quiet no-op.
+
+**Button `state` and `style` are off on Telegram by default.** The Bot API added `style` in 9.4
+and `disabled` in 10.3, but neither wire shape has been confirmed against a live bot. The types
+and the rendering ship behind `buttonStates`, which a spike turns on through `TelegramConfig`.
 
 **`no-chat` is not an error to retry.** It means no conversation exists yet, and no number of
 retries will create one. A human has to send the first message. Both adapters return it:
