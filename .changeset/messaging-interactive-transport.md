@@ -20,3 +20,7 @@ request.
 "danger"`. Both render only where `capabilities.buttonStates` is true, which
 Telegram leaves false until a spike confirms the Bot API 9.4 `style` and 10.3
 `disabled` wire shapes; `TelegramConfig.buttonStates` turns them on.
+
+An `edit` with neither `text` nor `buttons` now fails `bad-buttons` before any
+call, on Telegram and on `MockTransport` alike, instead of Telegram sending an
+`editMessageReplyMarkup` with no `reply_markup`.

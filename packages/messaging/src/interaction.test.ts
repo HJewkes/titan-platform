@@ -96,6 +96,21 @@ describe("Telegram interactions", () => {
     });
   });
 
+  it("an edit with neither text nor buttons is rejected and makes no request", async () => {
+    const { transport, calls } = recording();
+
+    const result = await transport.edit({ ref: REF });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: "bad-buttons",
+        message: "An edit needs text or buttons to change; this one had neither",
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
   it("an unchanged edit is ok and unchanged", async () => {
     const { transport } = recording(() =>
       badRequest("Bad Request: message is not modified"),

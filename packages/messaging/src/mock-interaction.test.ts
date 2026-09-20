@@ -87,6 +87,22 @@ describe("MockTransport interactions", () => {
     expect(transport.messageAt(ref)).toEqual({ text: "Logged" });
   });
 
+  it("the mock rejects an empty edit the same way", async () => {
+    const transport = new MockTransport();
+    const ref = refOf(await transport.send({ handle: "+1", text: "lunch?" }));
+
+    const result = await transport.edit({ ref });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: "bad-buttons",
+        message: "An edit needs text or buttons to change; this one had neither",
+      },
+    });
+    expect(transport.log.map((event) => event.type)).toEqual(["send"]);
+  });
+
   it("an unknown ref is message-gone", async () => {
     const transport = new MockTransport();
 

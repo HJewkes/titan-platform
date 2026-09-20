@@ -165,7 +165,9 @@ own: `unsupported`, naming the capability the channel lacks, and
 `message-gone`, for an edit of a message that is no longer there. `changed`
 matters for `edit`: Telegram answers "message is not modified" when an edit
 changes nothing, and that maps to `{ ok: true, changed: false }`, so a repeat
-tap or an at-least-once retry is a quiet no-op rather than an error.
+tap or an at-least-once retry is a quiet no-op rather than an error. An edit
+with neither `text` nor `buttons` names nothing to change, so it fails
+`bad-buttons` before any call; `MockTransport` answers the same way.
 
 `capabilities` is a static, readonly descriptor. It answers "can this channel
 do this" so a caller can pick a degrade path before it calls; it never promises

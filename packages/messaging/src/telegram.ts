@@ -10,7 +10,7 @@ import type {
   SendInput,
   SendResult,
 } from "./contract.js";
-import { sendFailed } from "./contract.js";
+import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
 import {
   callBotApi,
@@ -177,6 +177,9 @@ export class TelegramTransport implements InteractiveTransport {
   }
 
   async edit(input: EditInput): Promise<InteractionResult> {
+    const invalid = emptyEditError(input);
+    if (invalid) return { ok: false, error: invalid };
+
     const { method, body } = editBody(input, this.capabilities.buttonStates);
     const call = await callBotApi(this.config, method, body);
     return call.ok ? { ok: true, changed: true } : editOutcome(call.error);

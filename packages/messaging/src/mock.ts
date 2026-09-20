@@ -11,7 +11,7 @@ import type {
   SendInput,
   SendResult,
 } from "./contract.js";
-import { sendFailed } from "./contract.js";
+import { emptyEditError, sendFailed } from "./contract.js";
 
 export interface RecordedSend {
   handle: string;
@@ -156,6 +156,9 @@ export class MockTransport implements InteractiveTransport {
   }
 
   async edit({ ref, text, buttons }: EditInput): Promise<InteractionResult> {
+    const invalid = emptyEditError({ text, buttons });
+    if (invalid) return { ok: false, error: invalid };
+
     const refused = this.refuse("edit", "edits");
     if (refused) return refused;
 

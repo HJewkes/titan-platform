@@ -124,6 +124,9 @@ No method throws. Each answers `{ ok: true, changed }` or `{ ok: false, error }`
 `chatActions`, `drafts`, `draftStreaming` and `threads`. A flag is true only where the shipped
 adapter implements the thing today, so it is safe to branch on before a call.
 
+An `edit` with neither `text` nor `buttons` names nothing to change, so it fails
+`bad-buttons` before any call; the Mock adapter answers the same way.
+
 ## Inbound
 
 BlueBubbles publishes no request-signature scheme. The boundary is therefore a secret path
