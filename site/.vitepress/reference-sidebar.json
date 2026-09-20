@@ -92,6 +92,10 @@
         "link": "/reference/memory"
       },
       {
+        "text": "session-analytics",
+        "link": "/reference/session-analytics"
+      },
+      {
         "text": "session-graph",
         "link": "/reference/session-graph"
       },

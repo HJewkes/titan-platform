@@ -34,7 +34,8 @@
           "packages/style-profile",
           "packages/style-analyzer",
           "packages/style-checker",
-          "packages/code-read"
+          "packages/code-read",
+          "packages/session-analytics"
         ],
         "ui": [
           "packages/react-app"
@@ -75,7 +76,8 @@
           "packages/style-profile",
           "packages/style-analyzer",
           "packages/style-checker",
-          "packages/code-read"
+          "packages/code-read",
+          "packages/session-analytics"
         ],
         [
           "packages/react-app"

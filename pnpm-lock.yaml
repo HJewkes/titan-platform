@@ -366,6 +366,8 @@ importers:
 
   packages/rpc-protocol: {}
 
+  packages/session-analytics: {}
+
   packages/session-graph:
     dependencies:
       '@titan-design/agent-protocol':
