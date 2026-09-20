@@ -1,3 +1,5 @@
+import type { AuditEvent } from "./audit-events.js";
+
 /** Where in the transcript file the line that produced an event lives. */
 export interface LineSpan {
   byteOffset: number;
@@ -48,7 +50,8 @@ export type SessionEvent =
   | (EventBase & { kind: "subagent"; agentRef: string; agentType: string | null; label: string | null })
   | (EventBase & { kind: "subagent_transcript"; agentRef: string; childSessionId: string })
   | (EventBase & { kind: "artifact"; artifactRef: string; artifactKind: string; title: string | null; url: string | null; path: string | null })
-  | (EventBase & { kind: "edge"; sourceRef: string; relation: string; targetRef: string });
+  | (EventBase & { kind: "edge"; sourceRef: string; relation: string; targetRef: string })
+  | AuditEvent;
 
 export type SessionEventKind = SessionEvent["kind"];
 export type EventOf<K extends SessionEventKind> = Extract<SessionEvent, { kind: K }>;

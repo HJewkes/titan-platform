@@ -72,3 +72,4 @@ export { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-ses
 export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionReadError, RecentSessionTurn,
   RecentSessionTurns, RecentSessionUnknown, RecentTurnKind, RecentTurnProjection, RecentTurnRepresentation, RecentTurnRole,
   RecentUnknownReason } from "./recent-session-turns.js";
+export { EXTRACT_VERSION, type AuditEvent, type AuditEventBase, type AuditEventKind, type ContextSource, type QueueOperation, type SignalKind, type ToolFamily, type WakeCause } from "./audit-events.js";
