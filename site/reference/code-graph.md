@@ -187,6 +187,62 @@ The index-time metrics, all sparse (a row only when above zero):
 Growth-risk metrics are smells, not complexity bounds: `.includes` on a `Set` is O(1), and
 two nested loops over different collections are linear.
 
+## Partition quality
+
+Scores a package partition of the file graph. Verified against this release, over this
+repo's `packages/` (26 packages, 659 files, 1,706 package-to-package edges):
+
+```ts
+import { computePartitionQuality, invertBuckets } from "@titan-design/code-graph";
+
+const { modularityQ, perPackage, pairCoupling, flagsCount } = computePartitionQuality({
+  packages, // [{ id: "packages/code-graph" }, …]
+  fileByPackage, // Map { "packages/code-graph" => ["packages/code-graph/src/store.ts", …] }
+  nodes,
+  edges,
+});
+
+modularityQ; // 0.774 — Newman-Girvan Q over the package partition
+perPackage.find((p) => p.pkgId === "packages/store-sqlite");
+// { fileCount: 20, cohesion: 1, instability: 0, abstractness: 0, layer: 'foundation', flags: [] }
+perPackage.find((p) => p.pkgId === "packages/code-read");
+// { fileCount: 44, cohesion: 0.87, instability: 1, abstractness: 0, layer: 'top', flags: [] }
+pairCoupling.filter((p) => p.flag === "tight");
+// [ { from: 'packages/rpc-client', to: 'packages/rpc-protocol', edges: 14, intensity: 0.67, … }, … ]
+flagsCount; // 3
+```
+
+`cohesion` is internal over internal-plus-outgoing edges, `instability` is Martin's I, and
+`abstractness` is the share of the package's files with `role: "types"` — a file-level proxy
+for Martin's A, since there are no symbol-level abstract counts. `layer` is read off
+instability: `foundation` at 0.3 or below, `top` at 0.9 or above, `middle` between.
+`weak-boundary` flags a non-top package whose cohesion is under 0.5. Pair `intensity` is
+`edges / files(from)`: `tight` at 0.6 or above, `moderate` at 0.3.
+
+`resolveBarrels: true` rewrites an edge landing on a `role: "barrel"` file onto the files it
+re-exports, transitively. It over-attributes — one import of one name becomes one edge per
+re-export target — so it is off by default. On this repo it takes Q from 0.774 to 0.292.
+
+`invertBuckets(fileByPackage)` is the file-id-to-package-id lookup the same callers need,
+skipping the `""` unassigned bucket.
+
+## Pruning snapshots
+
+```ts
+import { planPrune, runPrune } from "@titan-design/code-graph";
+
+planPrune(store, { keep: 10, keepRefs: ["main"] });
+// { keep: [ …10 newest plus every snapshot on main… ], remove: [ … ] }
+
+runPrune(store, { keep: 2, vacuum: true });
+// { plan, rowsBefore: { snapshot: 5, node: 25615, edge: 25115, metric: 90955, id_alias: 0 },
+//   rowsAfter:  { snapshot: 2, node: 10246, edge: 10046, metric: 36382, id_alias: 0 }, vacuumed: true }
+```
+
+The domain tables declare no foreign key, so `CodeGraphStore.deleteSnapshots` clears every
+table in `SNAPSHOT_SCOPED_TABLES` itself instead of relying on a cascade. `blob_cache` is
+content-addressed rather than snapshot-scoped, so a prune never drops a cached embedding.
+
 ## The id scheme
 
 File, module and external ids are preserved exactly from codewatch, because this repo's
@@ -290,6 +346,24 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
 
+**The adapter is a root export, not a `./history` one.** A product that runs its own indexing
+pass needs the same `GraphMetric` rows `indexPaths` writes, and `./history` may not speak
+graph types:
+
+```ts
+import { DEFAULT_CHURN_WINDOWS, loadHistoryMetrics, windowSuffix } from "@titan-design/code-graph";
+
+const loaded = loadHistoryMetrics(nodes, repoRoot, { churnWindowDays: 30, includeLifetime: true });
+// null outside git; otherwise { metrics: GraphMetric[], primaryEntries: ChurnEntry[] }
+loaded?.metrics.filter((m) => m.name === `churn_${windowSuffix(30)}`); // churn_30d
+DEFAULT_CHURN_WINDOWS; // [30, 90, 180]
+```
+
+`primaryEntries` are the churn entries inside the primary window, which is what
+`computeTestCoverageOwnership` needs and what saves a caller a second git pass.
+`resolveChurnWindows` and `computeRecencyWindows` are exported beside them. Node ids are the
+history engine's repo-relative paths, so `nodes` and `repoRoot` must share a root.
+
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.
 
@@ -361,6 +435,23 @@ and `listEdgesTouching` takes 0.03 to 0.08 ms against 2.0 ms for `listEdges` fil
 `listEdgesTouching` hides `references` edges unless you pass `includeReferences`, as
 `listEdges` does.
 
+Three more reads answer a report's questions on the same indexes, over this repo's
+`packages/` snapshot:
+
+```ts
+store.listMetricNames(snapshotId);
+// 20 names: [ 'class_count', 'cognitive_max', 'cognitive_sum', 'cyclomatic_max', … ]
+
+store.topByMetric({ snapshotId, metric: "loc", kind: "file", limit: 3 });
+// [ { nodeId: 'packages/code-graph/src/check/check.test.ts', name: 'check.test.ts',
+//     kind: 'file', role: 'test', value: 1038, unit: 'lines' }, … ]
+
+store.replaceMetricsByName(snapshotId, "coverage_pct", metrics); // one transaction, no stale rows
+```
+
+`replaceMetricsByName` is the write an overlay needs: coverage is re-ingested wholesale, and
+inserting without deleting would leave rows for symbols that no longer exist.
+
 `METRIC_CATALOGUE` describes every metric name the package writes: unit, node kinds, rollup
 rule, direction, what a missing row means, and the writing module. Windowed names such as
 `churn_{w}` are templates, and `describeMetric` resolves a stored name to a concrete
@@ -400,10 +491,10 @@ tree-sitter declaration walk that feeds complexity.
 ## What was deliberately left in codewatch
 
 All of it follow-up work *on* this package rather than changes *to* it: the remaining graph
-analyses over a finished snapshot (communities, partition quality). The rules engine, the
+analyses over a finished snapshot (communities, conventions). The rules engine, the
 snapshot diff, git history (churn, ownership, change coupling), symbol embeddings, dead code,
-growth risk, PageRank, relevance, symbol coupling, test linking, and the coverage overlay
-started here too and have since been ported.
+growth risk, PageRank, relevance, symbol coupling, test linking, the coverage overlay,
+partition quality, and snapshot pruning started here too and have since been ported.
 
 ## Where it came from
 
