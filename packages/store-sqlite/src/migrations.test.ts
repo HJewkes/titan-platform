@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appliedVersions, runMigrations, type Migration } from "./migrations.js";
+import { MigrationIdentityError, appliedVersions, runMigrations, type Migration } from "./migrations.js";
 import { MIGRATION_TABLE_NAME, SchemaTooNewError, assertSchemaVersion, hasColumn, hasTable, openDatabase } from "./open.js";
 
 const v1: Migration = { version: 1, name: "create t", up: (db) => db.exec("CREATE TABLE t (a INTEGER)") };
@@ -36,6 +36,32 @@ describe("runMigrations", () => {
     expect(() => runMigrations(db, [v1, bad])).toThrow("boom");
     expect(appliedVersions(db)).toEqual([1]);
     expect(hasTable(db, "half")).toBe(false);
+  });
+
+  it("throws MigrationIdentityError when an applied version carries a different name", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [v1]);
+    const renamed: Migration = { ...v1, name: "create thing" };
+
+    expect(() => runMigrations(db, [renamed])).toThrow(MigrationIdentityError);
+    expect(() => runMigrations(db, [renamed])).toThrow(/version 1 .*"create t".*"create thing"/);
+    expect(appliedVersions(db)).toEqual([1]);
+  });
+
+  it("ignores a null recorded name", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [v1, v2]);
+    const named: Migration = { ...v2, name: "add b" };
+
+    expect(runMigrations(db, [v1, named])).toEqual([]);
+  });
+
+  it("never compares a migration that declares no name", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [v1]);
+    const anonymous: Migration = { version: 1, up: v1.up };
+
+    expect(runMigrations(db, [anonymous])).toEqual([]);
   });
 
   it("rejects duplicate or non-positive versions before touching the database", () => {
