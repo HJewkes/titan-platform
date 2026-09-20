@@ -25,6 +25,9 @@ export interface SendInput {
  * `too-long` is its own case so a composer can split rather than retry.
  * `unreachable` means the request provably never left, so a retry cannot
  * duplicate it; `indeterminate` means it may have been delivered, so a retry can.
+ * `rate-limited` is its own case so a consumer backs off instead of re-deriving
+ * "status 429 means retry"; `retryAfterSeconds` is absent when the server named
+ * no wait, and the package never invents one.
  */
 export type SendError =
   | { kind: "unreachable"; message: string }
@@ -33,6 +36,7 @@ export type SendError =
   | { kind: "no-chat"; handle: string; message: string }
   | { kind: "too-long"; limit: number; length: number; message: string }
   | { kind: "rejected"; status: number; message: string }
+  | { kind: "rate-limited"; retryAfterSeconds?: number; message: string }
   | { kind: "bad-buttons"; message: string }
   | { kind: "unknown"; message: string };
 

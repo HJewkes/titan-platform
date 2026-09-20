@@ -70,6 +70,8 @@ function errorForStatus(
 ): SendError {
   if (status === 401 || status === 403) return { kind: "unauthorized", message };
   if (status === 404) return { kind: "no-chat", handle, message };
+  // BlueBubbles names no wait, so the consumer picks its own; the package never invents one.
+  if (status === 429) return { kind: "rate-limited", message };
   if (status >= 400 && status < 500) return { kind: "rejected", status, message };
   return { kind: "unknown", message: `HTTP ${status}: ${message}` };
 }

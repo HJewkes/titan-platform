@@ -1,6 +1,7 @@
 import { z } from "zod";
+import type { SendError } from "./contract.js";
 import type { TelegramConfig } from "./telegram.js";
-import { describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
+import { callBotApi, describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
 
 /** The Update shapes this package reads: a text message, or a tapped inline button. */
 export const telegramUpdateEvent = z.object({
@@ -208,7 +209,10 @@ export async function readChatIds(config: TelegramConfig): Promise<number[]> {
   return [...ids];
 }
 
-export type AnswerCallbackResult = { ok: true } | { ok: false; reason: string };
+/** `error` carries the same typed failure a send would report, so a 429 here is backed off, not parsed. */
+export type AnswerCallbackResult =
+  | { ok: true }
+  | { ok: false; reason: string; error: SendError };
 
 /**
  * Stops the tapped button's loading spinner; Telegram expects this for every
@@ -219,25 +223,10 @@ export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,
 ): Promise<AnswerCallbackResult> {
-  const doFetch = config.fetch ?? globalThis.fetch;
   const body = text === undefined
     ? { callback_query_id: callbackQueryId }
     : { callback_query_id: callbackQueryId, text };
-  try {
-    const response = await doFetch(methodUrl(config, "answerCallbackQuery"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const envelope = await readEnvelope(response);
-    if (response.ok && envelope.ok) return { ok: true };
-    const description = envelope.description ?? response.statusText;
-    return failedAnswer(config, `answerCallbackQuery failed (${response.status}): ${description}`);
-  } catch (cause) {
-    return failedAnswer(config, describeCause(cause));
-  }
-}
-
-function failedAnswer(config: TelegramConfig, reason: string): AnswerCallbackResult {
-  return { ok: false, reason: redactToken(reason, config.token) };
+  const call = await callBotApi(config, "answerCallbackQuery", body);
+  if (call.ok) return { ok: true };
+  return { ok: false, reason: `answerCallbackQuery failed: ${call.error.message}`, error: call.error };
 }

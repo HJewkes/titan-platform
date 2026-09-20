@@ -76,6 +76,7 @@ if (!result.ok) {
     case "unauthorized":  // wrong server password
     case "too-long":      // carries limit and length, so a composer can split
     case "rejected":      // 4xx, result.error.message is the server's own text
+    case "rate-limited":  // 429; retryAfterSeconds when the server named a wait
     case "unknown":       // 5xx, or a chatGuidFor that threw
   }
 }
@@ -237,6 +238,11 @@ delivered message, so resending can deliver it twice. Only `unreachable` (and a 
 backoff) is safe to resend automatically. Neither backend has a dedupe key that changes this:
 BlueBubbles forgets a `tempGuid` once its send settles, and Telegram has none. The package
 README's "Retry semantics" section has the full table.
+
+**A 429 is `rate-limited`, not `rejected`.** It carries `retryAfterSeconds` when the server named
+a wait: `parameters.retry_after` on Telegram, or the "retry after N" text of the description when
+the envelope omits it. When neither names a wait the field is absent and the consumer picks its own
+backoff, because the package never invents a number. BlueBubbles never names one.
 
 **`no-chat` is not an error to retry.** It means no conversation exists yet, and no number of
 retries will create one. A human has to send the first message. Both adapters return it:

@@ -145,7 +145,12 @@ describe("answerCallbackQuery", () => {
 
     expect(result).toEqual({
       ok: false,
-      reason: "answerCallbackQuery failed (400): Bad Request: query is too old ***",
+      reason: "answerCallbackQuery failed: Bad Request: query is too old ***",
+      error: {
+        kind: "rejected",
+        status: 400,
+        message: "Bad Request: query is too old ***",
+      },
     });
   });
 

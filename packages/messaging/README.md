@@ -32,6 +32,7 @@ if (!result.ok) {
     case "indeterminate": // may have been delivered; never resend automatically
     case "unauthorized":  // wrong server password
     case "rejected":      // 4xx, result.error.message is the server's own text
+    case "rate-limited":  // 429; retryAfterSeconds when the server named a wait
     case "unknown":       // 5xx or a thrown chatGuidFor
   }
 }
@@ -50,10 +51,17 @@ to resend without asking anyone. The kinds split like this:
 | Kind | Safe to auto-retry | Why |
 |---|---|---|
 | `unreachable` | **Yes** | The request provably never left: DNS failure, refused connection, connect timeout, or a request that could not be built (a malformed base URL) |
-| `rejected` with `status: 429` | **Yes**, after the server's backoff | Rate limiting refuses the request before acting on it |
+| `rate-limited` | **Yes**, after the server's backoff | Rate limiting refuses the request before acting on it |
 | `indeterminate` | **No** | The request may have reached the server: a reset or closed socket, a timeout or abort while awaiting the response, an error shape the classifier does not recognise, or a 2xx whose body could not be read |
 | `unknown` | **No** | A 5xx can follow work the server already did; a thrown `chatGuidFor` or `chatIdFor` also lands here and needs a fix, not a retry |
-| `rejected` (other statuses), `unauthorized`, `no-chat`, `too-long`, `bad-buttons` | **No** | The same request fails the same way; fix the input or the configuration |
+| `rejected`, `unauthorized`, `no-chat`, `too-long`, `bad-buttons` | **No** | The same request fails the same way; fix the input or the configuration |
+
+A 429 from either backend is `rate-limited`, never `rejected`. On Telegram
+`retryAfterSeconds` comes from `parameters.retry_after`, or from the "retry
+after N" text of the description when the envelope omits it. When neither names
+a wait the field is absent and the consumer picks its own backoff: the package
+never invents a number. BlueBubbles names no wait, so its 429 always arrives
+without seconds.
 
 On `indeterminate`, record the message as "maybe sent" and stop: tell a human,
 or let a later message supersede it. Resending is what delivers it twice.
@@ -213,8 +221,9 @@ for await (const update of pollUpdates(config, {
 
 Answer every tap with `answerCallbackQuery(config, callbackQueryId, text?)`, or
 the button keeps spinning on the phone. `text` shows as a brief toast. It never
-throws: it returns `{ ok: true }` or `{ ok: false, reason }`, with the token
-redacted from `reason`.
+throws: it returns `{ ok: true }` or `{ ok: false, reason, error }`, with the
+token redacted from both. `error` is the same `SendError` union a send reports,
+so a 429 on a toast is `rate-limited` and is backed off rather than re-parsed.
 
 `validateTelegramWebhook` is the push equivalent: same shape as
 `validateInbound`, over the `X-Telegram-Bot-Api-Secret-Token` header that

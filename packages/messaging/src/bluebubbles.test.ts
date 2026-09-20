@@ -213,7 +213,7 @@ describe("BlueBubblesTransport.send", () => {
     });
 
     it("HTTP error statuses unchanged, even with a body that cannot be parsed", async () => {
-      const statuses = { 400: "rejected", 401: "unauthorized", 403: "unauthorized", 404: "no-chat", 429: "rejected", 500: "unknown", 502: "unknown" };
+      const statuses = { 400: "rejected", 401: "unauthorized", 403: "unauthorized", 404: "no-chat", 429: "rate-limited", 500: "unknown", 502: "unknown" };
 
       const kinds = await Promise.all(
         Object.keys(statuses).map(async (status) => {
