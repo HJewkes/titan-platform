@@ -9,8 +9,10 @@ export const EMPTY_OUTPUT_SIGNAL = "empty_output";
 /**
  * Verdict conventions brain's review and planning prompts converged on. They
  * are a fallback for prose; a canonical marker always wins. Key order is the
- * precedence order: `high_risk` escalates to a human, so it outranks every
- * verdict, and a risk score of 4 or more beats a PASS.
+ * precedence order, and it is part of the contract: a caller's own record
+ * decides its own precedence, and spreading these defaults keeps theirs.
+ * `high_risk` escalates to a human, so it outranks every verdict, and a risk
+ * score of 4 or more beats a PASS.
  */
 export const DEFAULT_SIGNAL_PATTERNS: Record<string, SignalMatcher> = {
   high_risk: (c) => {

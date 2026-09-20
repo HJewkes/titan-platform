@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_OUTPUT_SIGNAL, createSignalParser, createSignalSetParser, parseSignal, parseSignals } from "./signals.js";
+import { DEFAULT_SIGNAL_PATTERNS, EMPTY_OUTPUT_SIGNAL, createSignalParser, createSignalSetParser, parseSignal, parseSignals } from "./signals.js";
 
 describe("an output carrying several signals", () => {
   const review = "## Verdict: PASS\nRisk Score: 5\n## Open Questions\nShould we widen scope?\n";
@@ -103,5 +103,10 @@ describe("custom pattern sets", () => {
 
   it("honor a canonical marker for one of their own names", () => {
     expect(createSignalParser(patterns)("BLOCKED <!-- signal: done -->")).toBe("done");
+  });
+
+  it("rank an extra pattern where the caller inserted its key", () => {
+    const parse = createSignalSetParser({ ...DEFAULT_SIGNAL_PATTERNS, blocked: (c: string) => /BLOCKED/.test(c) });
+    expect(parse("## Verdict: PASS\nBLOCKED on infra")).toEqual(["approved", "blocked"]);
   });
 });

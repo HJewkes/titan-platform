@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { cancelGate } from "@titan-design/hitl";
-import { RunContext, gateIdFor, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
+import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
 import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions } from "./runtime-options.js";
@@ -220,7 +220,8 @@ export class WorkflowRuntime {
 
   signal(runId: string, stepId: string, payload: Record<string, unknown> = {}): void {
     const run = this.status(runId);
-    this.options.gates.resolve(run ? pendingGateId(run, stepId) : gateIdFor(runId, stepId), payload);
+    const isPending = (gateId: string): boolean => gateIsPending(this.options.gates, gateId);
+    this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload);
   }
   cancel(runId: string, reason: string): void {
     const live = this.live.get(runId);

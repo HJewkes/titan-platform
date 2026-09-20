@@ -85,7 +85,11 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   for them.
 
 `dispatch` and `assisted` share one call counter per `stepId`, so their keys
-never collide. `seed` keys by `stepId` alone, so give seeds their own step IDs.
+never collide: `dispatch("x")` followed by `assisted("x")` gates on
+`<runId>/x:1`. A run that an earlier release paused inside that shape is still
+waiting on `<runId>/x`, so `assisted` adopts a gate that is still pending there
+when the bare key holds no result. `seed` keys by `stepId` alone, so give seeds
+their own step IDs.
 
 ## Signals
 

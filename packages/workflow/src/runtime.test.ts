@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { GateStore } from "@titan-design/hitl";
 import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
@@ -7,7 +8,7 @@ import { mustacheRenderer } from "./prompt.js";
 import { inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { parseSignal } from "./signals.js";
-import { WorkflowRunStore, workflowMigration, workflowOwnershipMigration } from "./store.js";
+import { WorkflowRunStore, newRun, workflowMigration, workflowOwnershipMigration } from "./store.js";
 import type {
   DurableStepOutcome,
   RecoverableStepRunner,
@@ -34,6 +35,11 @@ const twoSteps: WorkflowFn = async (ctx) => {
   const plan = await ctx.dispatch("plan", "Plan {{brief}} for {{WORKFLOW_NAME}}");
   await ctx.dispatch("review", "Review:\n{{STEP_OUTPUT_PLAN}}", { model: "haiku" });
   if (plan.signal === "needs_revision") await ctx.dispatch("plan", "Revise");
+};
+
+const mixedStep: WorkflowFn = async (ctx) => {
+  await ctx.dispatch("x", "draft");
+  await ctx.assisted("x", "Approve?");
 };
 
 const interview: WorkflowFn = async (ctx) => {
@@ -208,6 +214,51 @@ describe("WorkflowRuntime", () => {
     expect(run.status).toBe("completed");
     expect(gatesOpened(events)).toEqual([]);
     expect(run.stepResults["ask:1"]).toMatchObject({ iteration: 1, signal: "second" });
+  });
+
+  it("gives a gate its own key when the step id is also a dispatch step", async () => {
+    const db = makeDb();
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "drafted"), events);
+    rt.register("mixed", mixedStep);
+    const runId = rt.start("mixed");
+    await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(1));
+    rt.signal(runId, "x", { signal: "approved" });
+    const run = await rt.wait(runId);
+
+    expect(gatesOpened(events).map((e) => e.gateId)).toEqual([`${runId}/x:1`]);
+    expect(run.stepResults["x:0"]).toMatchObject({ iteration: 0, output: "drafted" });
+    expect(run.stepResults["x:1"]).toMatchObject({ iteration: 1, signal: "approved" });
+
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const create = vi.spyOn(gates, "create");
+    const replayed = new RunContext(structuredClone(run), replayDeps(gates), new AbortController());
+    await mixedStep(replayed);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("adopts a gate a 0.2 run left pending under the bare step id", async () => {
+    const db = makeDb();
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const store = new WorkflowRunStore(db);
+    const legacy = newRun(randomUUID(), "mixed", {});
+    legacy.status = "paused";
+    legacy.currentStep = "x";
+    legacy.stepResults["x:0"] = { stepId: "x", iteration: 0, agentId: null, signal: null, completedAt: "2026-09-18T00:00:00.000Z", output: "drafted" };
+    store.create(legacy);
+    gates.create({ id: `${legacy.id}/x`, prompt: "Approve?" });
+
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, inlineRunner(() => "drafted"), events);
+    rt.register("mixed", mixedStep);
+    expect(await rt.hydrate()).toEqual([legacy.id]);
+    rt.signal(legacy.id, "x", { signal: "approved" });
+    const run = await rt.wait(legacy.id);
+
+    expect(run.status).toBe("completed");
+    expect(gatesOpened(events)).toEqual([]);
+    expect(gates.listPending()).toEqual([]);
+    expect(run.stepResults["x:1"]).toMatchObject({ iteration: 1, signal: "approved" });
   });
 
   it("replays a completed run from its memoized answers without opening a gate", async () => {
