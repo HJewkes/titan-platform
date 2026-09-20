@@ -27,7 +27,7 @@ describe("a 429 from the Bot API", () => {
   it("a 429 with parameters.retry_after is rate-limited with those seconds", async () => {
     const result = await sendInto(() =>
       tooManyRequests({
-        description: "Too Many Requests: retry after 12",
+        description: "Too Many Requests: retry after 99",
         parameters: { retry_after: 12 },
       }),
     );
@@ -37,7 +37,7 @@ describe("a 429 from the Bot API", () => {
       error: {
         kind: "rate-limited",
         retryAfterSeconds: 12,
-        message: "Too Many Requests: retry after 12",
+        message: "Too Many Requests: retry after 99",
       },
     });
   });
