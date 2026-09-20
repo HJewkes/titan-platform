@@ -20,3 +20,8 @@ so the break is opt-in.
 Also adds a single private `callBotApi` path for every Telegram method, so the
 token cannot reach a string by a new route, and widens
 `AnswerCallbackResult`'s failure with the same typed `error`.
+
+`parameters.retry_after` is now validated: zero, negative, non-numeric, `NaN`
+or infinite is treated as absent, so the description-text fallback applies
+instead, and a fraction rounds up to a whole second. A large value still
+passes through uncapped; the package never invents a number.

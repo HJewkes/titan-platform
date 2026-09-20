@@ -117,4 +117,62 @@ describe("a 429 from the Bot API", () => {
       error: { kind: "rate-limited", retryAfterSeconds: 30, message: "Too Many Requests" },
     });
   });
+
+  it("a fractional retry_after rounds up to a whole second", async () => {
+    const result = await sendInto(() =>
+      tooManyRequests({ description: "Too Many Requests", parameters: { retry_after: 2.1 } }),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", retryAfterSeconds: 3, message: "Too Many Requests" },
+    });
+  });
+
+  it("a zero or negative retry_after is treated as absent", async () => {
+    const zero = await sendInto(() =>
+      tooManyRequests({ description: "Too Many Requests", parameters: { retry_after: 0 } }),
+    );
+    const negative = await sendInto(() =>
+      tooManyRequests({ description: "Too Many Requests", parameters: { retry_after: -5 } }),
+    );
+
+    expect(zero).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", message: "Too Many Requests" },
+    });
+    expect(negative).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", message: "Too Many Requests" },
+    });
+  });
+
+  it("a non-numeric retry_after falls back to the description", async () => {
+    const result = await sendInto(() =>
+      tooManyRequests({
+        description: "Too Many Requests: retry after 11",
+        parameters: { retry_after: "soon" },
+      }),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: "rate-limited",
+        retryAfterSeconds: 11,
+        message: "Too Many Requests: retry after 11",
+      },
+    });
+  });
+
+  it("a very large retry_after is passed through unchanged", async () => {
+    const result = await sendInto(() =>
+      tooManyRequests({ description: "Too Many Requests", parameters: { retry_after: 86_400_000 } }),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", retryAfterSeconds: 86_400_000, message: "Too Many Requests" },
+    });
+  });
 });

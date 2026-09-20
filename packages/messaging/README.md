@@ -76,10 +76,12 @@ to resend without asking anyone. The kinds split like this:
 
 A 429 from either backend is `rate-limited`, never `rejected`. On Telegram
 `retryAfterSeconds` comes from `parameters.retry_after`, or from the "retry
-after N" text of the description when the envelope omits it. When neither names
-a wait the field is absent and the consumer picks its own backoff: the package
-never invents a number. BlueBubbles names no wait, so its 429 always arrives
-without seconds.
+after N" text of the description when the envelope omits it. A `retry_after`
+of zero, negative, non-numeric, `NaN` or infinite is treated as absent, so the
+description fallback applies; a fraction rounds up to a whole second, and a
+large value is passed through uncapped. When neither names a wait the field
+is absent and the consumer picks its own backoff: the package never invents a
+number. BlueBubbles names no wait, so its 429 always arrives without seconds.
 
 On `indeterminate`, record the message as "maybe sent" and stop: tell a human,
 or let a later message supersede it. Resending is what delivers it twice.

@@ -56,11 +56,18 @@ export async function readEnvelope(
   return (await tryReadEnvelope(response)) ?? { ok: false };
 }
 
+/** Zero, negative, NaN, Infinity or a non-number is treated as absent; a fraction rounds up. */
+function validRetryAfter(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.ceil(value);
+}
+
 function readParameters(raw: unknown): TelegramEnvelope["parameters"] {
   const { retry_after: retry, migrate_to_chat_id: migrate } =
     (raw as { retry_after?: unknown; migrate_to_chat_id?: unknown } | null) ?? {};
+  const retryAfterSeconds = validRetryAfter(retry);
   const parameters = {
-    ...(typeof retry === "number" ? { retryAfterSeconds: retry } : {}),
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
     ...(typeof migrate === "number" ? { migrateToChatId: migrate } : {}),
   };
   return Object.keys(parameters).length > 0 ? parameters : undefined;
