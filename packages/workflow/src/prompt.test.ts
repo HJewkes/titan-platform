@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStepVars, mustacheRenderer } from "./prompt.js";
-import { createSignalParser, parseSignal } from "./signals.js";
+import { buildStepVars, mustacheRenderer, unfilledVariables } from "./prompt.js";
 
 describe("buildStepVars", () => {
   it("exposes params in both spellings, the run identity, and step outputs", () => {
@@ -19,19 +18,19 @@ describe("buildStepVars", () => {
   });
 });
 
-describe("signals", () => {
-  it("prefers the canonical marker and falls back to verdict prose", () => {
-    expect(parseSignal("## Verdict: PASS\n<!-- signal: needs_revision -->")).toBe("needs_revision");
-    expect(parseSignal("## Verdict: PASS")).toBe("approved");
-    expect(parseSignal("Risk Score: 5")).toBe("high_risk");
-    expect(parseSignal("nothing here")).toBeNull();
-    expect(parseSignal(undefined)).toBeNull();
+describe("unfilledVariables", () => {
+  it("lists each missing placeholder once, sorted", () => {
+    expect(unfilledVariables("{{TASK_ID}} and {{ TITLE }} and {{TASK_ID}} for {{brief}}", { brief: "x" })).toEqual(["TASK_ID", "TITLE"]);
   });
 
-  it("accepts custom pattern sets", () => {
-    const parse = createSignalParser({ done: (c) => /DONE/.test(c) });
-    expect(parse("all DONE")).toBe("done");
-    expect(parse("## Verdict: PASS")).toBeNull();
-    expect(parse("<!-- signal: done -->")).toBe("done");
+  it("returns nothing when every placeholder is supplied or there are none", () => {
+    expect(unfilledVariables("Hi {{NAME}}", { NAME: "x" })).toEqual([]);
+    expect(unfilledVariables("no placeholders here, {single} braces ignored", {})).toEqual([]);
+  });
+
+  it("ignores placeholders that only appear inside a supplied value", () => {
+    const vars = { STEP_OUTPUT_PLAN: "the plan mentions {{LATER}}" };
+    expect(unfilledVariables("Review:\n{{STEP_OUTPUT_PLAN}}", vars)).toEqual([]);
+    expect(mustacheRenderer("Review:\n{{STEP_OUTPUT_PLAN}}", vars)).toContain("{{LATER}}");
   });
 });

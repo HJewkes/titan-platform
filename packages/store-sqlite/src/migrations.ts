@@ -15,6 +15,20 @@ const MIGRATION_TABLE = `
     applied_at TEXT NOT NULL
   )`;
 
+export class MigrationIdentityError extends Error {
+  constructor(
+    readonly version: number,
+    readonly recordedName: string,
+    readonly declaredName: string,
+  ) {
+    super(
+      `migration version ${version} was applied as "${recordedName}", but this runtime declares it as "${declaredName}"; ` +
+        "two migration lists have collided on that version and the database matches neither",
+    );
+    this.name = "MigrationIdentityError";
+  }
+}
+
 export function appliedVersions(db: Db): number[] {
   db.exec(MIGRATION_TABLE);
   const rows = db.prepare("SELECT version FROM _migration ORDER BY version").all() as { version: number }[];
@@ -28,7 +42,7 @@ export function appliedVersions(db: Db): number[] {
  */
 export function runMigrations(db: Db, migrations: readonly Migration[]): number[] {
   assertWellFormed(migrations);
-  const applied = new Set(appliedVersions(db));
+  const applied = appliedNames(db);
   const record = db.prepare("INSERT INTO _migration (version, name, applied_at) VALUES (?, ?, ?)");
   const applyOne = db.transaction((m: Migration) => {
     m.up(db);
@@ -36,11 +50,30 @@ export function runMigrations(db: Db, migrations: readonly Migration[]): number[
   });
   const done: number[] = [];
   for (const m of [...migrations].sort((a, b) => a.version - b.version)) {
-    if (applied.has(m.version)) continue;
+    if (applied.has(m.version)) {
+      assertSameIdentity(m, applied.get(m.version) ?? null);
+      continue;
+    }
     applyOne(m);
     done.push(m.version);
   }
   return done;
+}
+
+/**
+ * A version already applied under a different name means two migration lists
+ * have collided on that number, so the database is not the shape either expects.
+ */
+function assertSameIdentity(m: Migration, recordedName: string | null): void {
+  if (m.name === undefined || recordedName === null) return;
+  if (m.name === recordedName) return;
+  throw new MigrationIdentityError(m.version, recordedName, m.name);
+}
+
+function appliedNames(db: Db): Map<number, string | null> {
+  db.exec(MIGRATION_TABLE);
+  const rows = db.prepare("SELECT version, name FROM _migration").all() as { version: number; name: string | null }[];
+  return new Map(rows.map((r) => [r.version, r.name]));
 }
 
 function assertWellFormed(migrations: readonly Migration[]): void {

@@ -1,4 +1,4 @@
-import { promises as fs, type Dirent } from 'node:fs';
+import { promises as fs, readdirSync, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -20,7 +20,18 @@ export interface DiscoveredTranscript {
    * 557 files in the corpus omit it on some lines. The path never lies.
    */
   subagentId: string | null;
+  /** `"default"` for `~/.claude`, the profile directory name otherwise; `null` from `discoverTranscripts(root)` called directly. */
+  account: string | null;
 }
+
+export interface TranscriptRoot {
+  root: string;
+  account: string;
+}
+
+const DEFAULT_ACCOUNT = 'default';
+const PROFILES_DIR_NAME = '.claude-profiles';
+const CONFIG_DIRS_ENV = 'CLAUDE_CONFIG_DIRS';
 
 const SUBAGENT_DIR = 'subagents';
 const SUBAGENT_PREFIX = 'agent-';
@@ -32,7 +43,7 @@ function subagentIdFrom(entry: string): string | null {
   return id.length > 0 ? id : null;
 }
 
-/** Root of Claude Code's per-project transcript store. */
+/** Root of Claude Code's per-project transcript store for the default account. */
 export function transcriptsRoot(): string {
   return path.join(os.homedir(), '.claude', 'projects');
 }
@@ -78,6 +89,7 @@ async function discoverSubagents(
       absolutePath,
       displayPath: toDisplayPath(absolutePath),
       subagentId,
+      account: null,
     });
   }
   return found;
@@ -119,8 +131,71 @@ export async function discoverTranscripts(
         absolutePath,
         displayPath: toDisplayPath(absolutePath),
         subagentId: null,
+        account: null,
       });
     }
+  }
+  return found;
+}
+
+function accountFor(configDir: string): string {
+  const name = path.basename(configDir);
+  return name === '.claude' ? DEFAULT_ACCOUNT : name;
+}
+
+function rootFor(configDir: string): TranscriptRoot {
+  return { root: path.join(configDir, 'projects'), account: accountFor(configDir) };
+}
+
+function hasProjectsDir(configDir: string): boolean {
+  try {
+    return statSync(path.join(configDir, 'projects')).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides. */
+export function claudeTranscriptRoots(env: NodeJS.ProcessEnv = process.env): TranscriptRoot[] {
+  const override = env[CONFIG_DIRS_ENV];
+  if (override) {
+    return override
+      .split(path.delimiter)
+      .filter((dir) => dir.length > 0)
+      .map(rootFor);
+  }
+
+  const home = os.homedir();
+  const roots: TranscriptRoot[] = [{ root: transcriptsRoot(), account: DEFAULT_ACCOUNT }];
+
+  let profiles: string[];
+  try {
+    profiles = readdirSync(path.join(home, PROFILES_DIR_NAME), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return roots;
+  }
+
+  for (const profile of profiles) {
+    const configDir = path.join(home, PROFILES_DIR_NAME, profile);
+    if (hasProjectsDir(configDir)) roots.push(rootFor(configDir));
+  }
+  return roots;
+}
+
+/**
+ * Discover transcripts across every root `claudeTranscriptRoots` finds,
+ * stamping each with the account it came from.
+ */
+export async function discoverAllTranscripts(
+  roots: TranscriptRoot[] = claudeTranscriptRoots(),
+): Promise<DiscoveredTranscript[]> {
+  const found: DiscoveredTranscript[] = [];
+  for (const { root, account } of roots) {
+    const transcripts = await discoverTranscripts(root);
+    found.push(...transcripts.map((transcript) => ({ ...transcript, account })));
   }
   return found;
 }

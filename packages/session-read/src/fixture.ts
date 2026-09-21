@@ -23,17 +23,33 @@ function userPrompt(uuid: string, ts: string, text: string): Record<string, unkn
   return line({ type: "user", uuid, timestamp: ts, message: { role: "user", content: text } });
 }
 
-function assistant(ts: string, content: unknown[]): Record<string, unknown> {
+interface AssistantOverrides {
+  requestId?: string;
+  usage?: Record<string, unknown>;
+}
+
+function assistant(ts: string, content: unknown[], overrides: AssistantOverrides = {}): Record<string, unknown> {
   return line({
     type: "assistant",
     timestamp: ts,
+    ...(overrides.requestId ? { requestId: overrides.requestId } : {}),
     message: {
       role: "assistant",
+      id: `msg-${ts}`,
       model: "claude-opus-5",
-      usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 5, cache_creation_input_tokens: 2 },
+      usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 5, cache_creation_input_tokens: 2, ...overrides.usage },
       content,
     },
   });
+}
+
+/** One API response the harness wrote as two lines: same `requestId`, usage repeated verbatim. */
+const TWO_BLOCK = { requestId: "req_two_block", usage: { cache_creation: { ephemeral_5m_input_tokens: 1, ephemeral_1h_input_tokens: 1 } } };
+
+export const QUEUED_CHANNEL_TEXT = '<channel source="plugin:demo:demo" from="peer-1" msg_id="q1">ping</channel>';
+
+function queueOperation(ts: string, operation: string, content: string | null): Record<string, unknown> {
+  return { type: "queue-operation", operation, timestamp: ts, sessionId: SESSION, ...(content ? { content } : {}) };
 }
 
 function toolUse(id: string, name: string, input: unknown): Record<string, unknown> {
@@ -49,8 +65,8 @@ export const FIXTURE_LINES: Record<string, unknown>[] = [
   assistant("2026-07-01T00:00:05Z", [
     { type: "thinking", thinking: "hmm" },
     { type: "text", text: "on it" },
-  ]),
-  assistant("2026-07-01T00:00:06Z", [toolUse("t1", "Edit", { file_path: `${CWD}/src/app.ts`, old_string: "a", new_string: "ab" })]),
+  ], TWO_BLOCK),
+  assistant("2026-07-01T00:00:06Z", [toolUse("t1", "Edit", { file_path: `${CWD}/src/app.ts`, old_string: "a", new_string: "ab" })], TWO_BLOCK),
   assistant("2026-07-01T00:00:07Z", [toolUse("t2", "Read", { file_path: `${CWD}/node_modules/x.js` })]),
   line({
     type: "user",
@@ -81,7 +97,23 @@ export const FIXTURE_LINES: Record<string, unknown>[] = [
   { sessionId: SESSION, type: "pr-link", timestamp: "2026-07-01T00:00:15Z", prNumber: 42, prRepository: "acme/demo", prUrl: "https://github.com/acme/demo/pull/42" },
   assistant("2026-07-01T00:00:16Z", [toolUse("t8", "Bash", { command: "gh pr merge 42 --squash" })]),
   line({ type: "frame-link", timestamp: "2026-07-01T00:00:17Z", frameUrl: "https://frames/1", title: "F" }),
-  line({ type: "system", subtype: "compact_boundary", timestamp: "2026-07-01T00:00:18Z" }),
+  line({
+    type: "system",
+    subtype: "compact_boundary",
+    timestamp: "2026-07-01T00:00:18Z",
+    compactMetadata: { trigger: "manual", preTokens: 596595, postTokens: 13907, cumulativeDroppedTokens: 582688, durationMs: 119243 },
+  }),
+  queueOperation("2026-07-01T00:00:18.100Z", "enqueue", QUEUED_CHANNEL_TEXT),
+  queueOperation("2026-07-01T00:00:18.200Z", "remove", QUEUED_CHANNEL_TEXT),
+  queueOperation("2026-07-01T00:00:18.300Z", "dequeue", null),
+  queueOperation("2026-07-01T00:00:18.400Z", "popAll", "a queued note"),
+  // A real `cost-state` record carries no timestamp, cwd or gitBranch.
+  {
+    type: "cost-state",
+    sessionId: SESSION,
+    totalCostUSD: 25.5,
+    modelUsage: { "claude-opus-5": { inputTokens: 90, outputTokens: 180, costUSD: 25.5 } },
+  },
   userPrompt("p2", "2026-07-01T00:00:19Z", "ship it"),
 ];
 

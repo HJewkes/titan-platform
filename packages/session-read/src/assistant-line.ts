@@ -1,3 +1,4 @@
+import { emitRequest, emitToolCalls } from "./audit-line.js";
 import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
@@ -12,11 +13,14 @@ export function readAssistantLine(reader: LineReader, ctx: LineContext): void {
   reader.fact(ctx, toolUses.length > 0 ? "tool_decision" : "assistant_response", str(toolUses[0] ?? null, "id"));
   reader.session(ctx, {}, { turn: 1 });
   recordUsage(reader, ctx, message);
+  emitRequest(reader, ctx, message);
+  emitToolCalls(reader, ctx, content);
   if (content.some((b) => b.type === "text")) reader.span(ctx, "assistant_response");
   if (toolUses.length > 0) reader.span(ctx, "tool_input");
   for (const block of toolUses) readToolUse(reader, ctx, block);
 }
 
+/** @deprecated Superseded by the `request` event, which dedupes on `requestId`. Removed after one minor version. */
 function recordUsage(reader: LineReader, ctx: LineContext, message: Json | null): void {
   const usage = asObject(message?.usage);
   const model = str(message, "model");
