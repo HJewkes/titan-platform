@@ -67,6 +67,9 @@ export const DOMAIN_DDL = `
   );
 `;
 
+/** Every table keyed by `snapshot_id`. No DDL above declares a foreign key, so dropping a snapshot walks this list. */
+export const SNAPSHOT_SCOPED_TABLES = ["node", "edge", "metric", "id_alias", "file_fingerprint"] as const;
+
 export const MIGRATIONS: Migration[] = [
   kitMigration(1, { snapshot: KIT.snapshot, entitySnap: KIT.entitySnap, cacheBlob: KIT.cacheBlob }),
   { version: 2, name: "code graph columns", up: (db) => db.exec(KIT_EXTENSIONS) },

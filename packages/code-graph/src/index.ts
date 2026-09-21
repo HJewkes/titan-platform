@@ -14,7 +14,9 @@ export type {
 
 export type { SnapshotInsert } from "./store.js";
 export { CodeGraphStore, openCodeGraph } from "./store.js";
-export { DOMAIN_DDL, KIT, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
+export { DOMAIN_DDL, KIT, MIGRATIONS, SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES } from "./schema.js";
+export type { PruneOptions, PrunePlan, PruneResult } from "./prune.js";
+export { planPrune, runPrune } from "./prune.js";
 
 export type { IndexOptions, IndexResult } from "./indexer.js";
 export { INDEX_VERSION, indexPaths } from "./indexer.js";
@@ -28,6 +30,8 @@ export { PythonGraphExtractor } from "./extractors/python-extractor.js";
 export type { TsMorphGraphExtractorOptions } from "./extractors/ts-morph-extractor.js";
 export { TsMorphGraphExtractor } from "./extractors/ts-morph-extractor.js";
 export { buildFileModuleNodes } from "./extractors/file-nodes.js";
+export type { DeepAst, DeepAstInput, MemberInfo, ParamInfo } from "./extractors/deep-ast.js";
+export { computeDeepAst } from "./extractors/deep-ast.js";
 export {
   externalId,
   fileId,
@@ -47,7 +51,14 @@ export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barre
 export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints } from "./roles.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
-export { buildAliases, detectGitHead, detectGitToplevel, detectRenames, isInsideGitRepo } from "./git-renames.js";
+export {
+  buildAliases,
+  detectGitHead,
+  detectGitToplevel,
+  detectRenames,
+  isInsideGitRepo,
+  resolveGitRef,
+} from "./git-renames.js";
 export type { AliasChain, AliasChainInput, AliasLoader, AliasResolution } from "./identity/alias-chain.js";
 export { createAliasChain } from "./identity/alias-chain.js";
 export type { Lineage, LineageSnapshot, LineageStep } from "./identity/lineage.js";
@@ -63,8 +74,18 @@ export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/te
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
 export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME } from "./analysis/coverage.js";
-export type { TestCoverageOwnershipOptions } from "./history-metrics.js";
-export { computeTestCoverageOwnership } from "./history-metrics.js";
+/**
+ * The history adapter: it turns `./history`'s primitives into `GraphMetric` rows, so it
+ * lives at the root rather than behind the `./history` seam, which speaks no graph types.
+ */
+export type { HistoryMetricsOptions, LoadedHistory, TestCoverageOwnershipOptions } from "./history-metrics.js";
+export {
+  computeTestCoverageOwnership,
+  DEFAULT_CHURN_WINDOWS,
+  loadHistoryMetrics,
+  resolveChurnWindows,
+} from "./history-metrics.js";
+export { computeRecencyWindows, windowSuffix } from "./history-recency.js";
 export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pagerank.js";
 export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
 export type { RelevanceOptions } from "./analysis/relevance.js";
@@ -76,6 +97,16 @@ export type {
   SymbolCouplingPair,
 } from "./analysis/symbol-coupling.js";
 export { computeSymbolConsumers, computeSymbolCoupling } from "./analysis/symbol-coupling.js";
+export type {
+  PackageFlag,
+  PackageLayer,
+  PackageStats,
+  PairCoupling,
+  PairFlag,
+  PartitionQualityInput,
+  PartitionQualityResult,
+} from "./analysis/partition-quality.js";
+export { computePartitionQuality, invertBuckets } from "./analysis/partition-quality.js";
 export {
   snapshotPageRank,
   snapshotReferenceEdges,
@@ -86,7 +117,7 @@ export {
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";
-export type { MetricAggregate } from "./store-reads.js";
+export type { MetricAggregate, TopMetricRow } from "./store-reads.js";
 export { aggregateMetrics, listEdgesTouching, listMetricsForNode } from "./read.js";
 export type {
   MetricAbsence,
@@ -115,6 +146,7 @@ export type {
 export type { RunChecksOptions } from "./check/check.js";
 export { rebasedViolationKey, runChecks, snapshotViolations, violationKey } from "./check/check.js";
 export type { RuleStore } from "./check/context.js";
+export { compilePatterns, matchesAny, patternToRegex } from "./check/patterns.js";
 export type { ValidateRulesOptions } from "./check/validate.js";
 export { validateRules } from "./check/validate.js";
 export type { CheckSnapshotOptions, CheckSnapshotResult, SnapshotSpec } from "./check/run.js";

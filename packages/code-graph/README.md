@@ -40,11 +40,14 @@ coupling, now `src/analysis/`. See [Graph analyses](#graph-analyses).
 Ported with TP-133: the test linker and the Istanbul coverage overlay, also in `src/analysis/`,
 and test-coverage ownership. See [Test linking and coverage](#test-linking-and-coverage).
 
+Ported with TP-250: package partition quality (`src/analysis/partition-quality.ts`) and
+snapshot pruning (`src/prune.ts`). See [Partition quality](#partition-quality) and
+[Pruning snapshots](#pruning-snapshots).
+
 Deferred, all of it still in codewatch, all of it a follow-up on this package rather than a
 change to it:
 
-- Graph analyses over a finished snapshot: communities, partition quality, conventions,
-  patterns, prune, reuse-delta reporting.
+- Graph analyses over a finished snapshot: communities, conventions, reuse-delta reporting.
 
 Python support is new here rather than ported. codewatch walked TypeScript only; the parser
 already had the grammar. The Python extractor is deliberately narrower than the ts-morph one:
@@ -177,6 +180,16 @@ aggregateMetrics(store, snapshotId, { name: "loc" }); // [{ name: "loc", nodeKin
 describeMetric("churn_90d"); // { unit: "lines", rollup: "sum", direction: "neutral", absent: "zero", window: "90d", … }
 ```
 
+Three more store reads answer a report's questions without loading a snapshot:
+`listMetricNames(snapshotId)` for the distinct names stored, `topByMetric({ snapshotId,
+metric, limit, kind })` for the highest-valued nodes joined to their kind and role, and
+`replaceMetricsByName(snapshotId, name, metrics)`, which swaps one metric's whole row set in
+a single transaction so a re-ingested overlay such as coverage never accumulates stale rows.
+
+`computeDeepAst({ filePath, absPath, symbolName })` reads structure too heavy to persist
+(params, return type, class members) from the working tree on demand, and returns null when
+the file is unreadable.
+
 - **Reads.** `listMetricsForNode` searches the metric primary key, `listEdgesTouching` the edge
   primary key plus `idx_edge_dst`, and `aggregateMetrics` `idx_metric_name`. None scans a
   table, and no index or migration was added, so any existing store serves them. A self-loop
@@ -246,6 +259,10 @@ alias chain, as in the ratchet.
 `scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
 instead of codewatch's CLI.
 
+The glob matching the rules use is exported too, because a CLI filters its own `--include`
+and `--exclude` flags with the same semantics: `patternToRegex` (a `*` glob when the pattern
+holds one, a case-sensitive substring otherwise), `compilePatterns`, and `matchesAny`.
+
 ## Similar symbols
 
 Ported from codewatch's `embeddings.ts` (TP-129). It answers "does something like this
@@ -312,6 +329,41 @@ snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ fil
 The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 `computeSymbolCoupling` take node and edge arrays instead of a store.
 
+### Partition quality
+
+`computePartitionQuality` scores a package partition of the file graph: per-package cohesion,
+Martin instability, an abstractness proxy (the share of `role: "types"` files), a layer label
+(`top`, `middle`, `foundation`), pair coupling by intensity (`edges / files(from)`), and a
+Newman-Girvan modularity Q over the whole partition.
+
+```ts
+import { computePartitionQuality, invertBuckets } from "@titan-design/code-graph";
+
+const result = computePartitionQuality({ packages, fileByPackage, nodes, edges });
+result.modularityQ; // 0.77 on titan-platform's packages/*
+invertBuckets(fileByPackage); // file id -> package id, skipping the "" unassigned bucket
+```
+
+`resolveBarrels: true` rewrites an edge landing on a `role: "barrel"` file to the files it
+re-exports, transitively. It over-attributes: one import of one name through a barrel becomes
+one edge per re-export target, which is why it is off by default.
+
+### Pruning snapshots
+
+`planPrune` keeps the most recent `keep` snapshots (default 10) plus every snapshot whose ref
+is in `keepRefs`; `runPrune` deletes the rest and reports row counts before and after.
+
+```ts
+import { planPrune, runPrune } from "@titan-design/code-graph";
+
+planPrune(store, { keep: 10, keepRefs: ["main"] }); // { keep, remove }
+runPrune(store, { keep: 10, vacuum: true }); // { plan, rowsBefore, rowsAfter, vacuumed }
+```
+
+The domain tables declare no foreign key, so `CodeGraphStore.deleteSnapshots` clears each of
+`SNAPSHOT_SCOPED_TABLES` itself rather than relying on a cascade. `blob_cache` is
+content-addressed and not snapshot-scoped, so a prune never drops a cached embedding.
+
 ## Git history
 
 Ported in TP-126, strictly as codewatch had it: churn over rolling windows, first-seen dates,
@@ -335,6 +387,14 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
+
+The adapter is exported from the package root, not from `./history`, because it speaks
+`GraphMetric` and the seam below does not. A product that indexes on its own terms calls
+`loadHistoryMetrics(nodes, idRoot, options)` for both the metric rows and the primary-window
+churn entries they were built from (`LoadedHistory`), with `HistoryMetricsOptions`,
+`DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
+`lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
+repo-relative paths, so both must be rooted at the same `idRoot`.
 
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.

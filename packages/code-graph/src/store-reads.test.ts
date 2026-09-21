@@ -90,6 +90,9 @@ describe("targeted statement plans", () => {
     listEdgesTouching: [{ snapshotId: 1, nodeId: "b.ts" }],
     aggregateMetric: [1, "loc"],
     aggregateMetrics: [1],
+    listMetricNames: [1],
+    topByMetric: [1, "loc", 20],
+    topByMetricOfKind: [1, "loc", "file", 20],
   };
 
   it.each(Object.entries(params))("%s searches an index and never scans a table", (name, args) => {
