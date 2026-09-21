@@ -99,6 +99,18 @@ ref, so neither working tree is touched. `--full` indexes all 59 tags instead of
 fourth plus the newest three; `--reuse` skips indexing when the scratch store is already
 there; `--only platform` or `--only design` builds one of the two.
 
+A clone carries commits only, so the script runs `git status --porcelain` on each source
+first. Local changes print a warning with the path count and are recorded in the fixture's
+top-level `provenance` (`commit`, `dirty`, `dirtyFiles`); `--require-clean` refuses instead.
+
+The output is byte-stable: two runs over the same refs write the same files. code-graph
+stamps each snapshot's `takenAt` with the wall clock and cannot be told otherwise, so the
+exporter rewrites it to the indexed commit's date and sets `createdAt` to the newest one.
+The history fixture is indexed without git churn, recency, and ownership, because code-graph
+measures those against today rather than the tag's date, which is wrong for an old tag and
+changes daily. The titan-design fixture keeps them, so its churn columns move if it is
+rebuilt on another day.
+
 Both fixtures use this repository's own `.codewatch/check.json`, which is why the
 titan-platform one has no findings at all: CI keeps those rules at zero. Set
 `CODE_REPORT_RULES=apps/code-report/rules/strict.json` to rebuild with the demo thresholds

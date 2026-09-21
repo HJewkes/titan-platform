@@ -8,10 +8,20 @@ import { CALLS, NO_FILTERS } from "../src/data/calls.js";
 
 /** Printed by `pnpm --filter code-report fixtures`; these move only when the fixtures are rebuilt. */
 const PLATFORM = { snapshots: 17, newest: 17, calls: 64, gaps: 10, firstLoc: 14551, lastLoc: 60490 };
-const DESIGN = { snapshot: 1, calls: 88, findings: 61, pageRows: 25, ruleFacets: { "max-cyclomatic-per-function": 3, "max-file-loc": 58 } };
+const DESIGN = {
+  snapshot: 1, calls: 87, findings: 60, pageRows: 25, ruleFacets: { "max-cyclomatic-per-function": 3, "max-file-loc": 57 },
+  commit: "028e30b1495ba5f61cf1500415fa5a02a62640bb", dirtyFiles: 4,
+};
 
-function load(name: string): Snapshot {
-  return parseSnapshot(JSON.parse(readFileSync(path.join(import.meta.dirname, "../fixtures", name), "utf8")));
+interface Provenance {
+  repo: string;
+  commit: string;
+  dirty: boolean;
+  dirtyFiles: number;
+}
+
+function load(name: string): Snapshot & { provenance: Provenance } {
+  return parseSnapshot(JSON.parse(readFileSync(path.join(import.meta.dirname, "../fixtures", name), "utf8"))) as Snapshot & { provenance: Provenance };
 }
 
 function answer(snapshot: Snapshot, command: string, args: unknown): Promise<JsonEnvelope<unknown>> {
@@ -29,7 +39,15 @@ interface NodeData {
 }
 
 interface SnapshotList {
-  snapshots: Array<{ id: number; indexVersion: string }>;
+  snapshots: Array<{ id: number; indexVersion: string; takenAt: string; commit: string }>;
+}
+
+/** takenAt is the commit's date, not the indexing clock, and the newest one is the file's createdAt. */
+async function expectPinnedDates(snapshot: Snapshot): Promise<void> {
+  const { snapshots } = await data<SnapshotList>(snapshot, "snapshot.list", { limit: 500 });
+  const times = snapshots.map((s) => Date.parse(s.takenAt));
+  expect(times).toEqual([...times].sort((a, b) => b - a));
+  expect(times[0]).toBe(Date.parse(snapshot.createdAt));
 }
 
 /** The series a line chart draws: one node's metric at each snapshot, oldest first, null where the node is absent. */
@@ -87,6 +105,11 @@ describe("titan-platform history fixture", () => {
   it("answers every call it recorded", async () => {
     expect(await replay(snapshot)).toEqual({ calls: PLATFORM.calls, gaps: PLATFORM.gaps });
   });
+
+  it("dates each snapshot by its tag's commit and records where it came from", async () => {
+    await expectPinnedDates(snapshot);
+    expect(snapshot.provenance.commit).toMatch(/^[0-9a-f]{40}$/);
+  });
 });
 
 describe("titan-design fixture", () => {
@@ -110,5 +133,10 @@ describe("titan-design fixture", () => {
 
   it("answers every call it recorded", async () => {
     expect(await replay(snapshot)).toEqual({ calls: DESIGN.calls, gaps: 0 });
+  });
+
+  it("dates its snapshot by the commit and says the source checkout was dirty", async () => {
+    await expectPinnedDates(snapshot);
+    expect(snapshot.provenance).toMatchObject({ commit: DESIGN.commit, dirty: true, dirtyFiles: DESIGN.dirtyFiles });
   });
 });

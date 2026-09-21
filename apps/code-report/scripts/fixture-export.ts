@@ -1,13 +1,17 @@
 // Turns one multi-snapshot store into the titan-snapshot@1 fixture the report app is tested against.
-import { stat } from "node:fs/promises";
+// code-graph stamps each snapshot's takenAt with the wall clock at indexing, and IndexOptions cannot
+// override it, so the export rewrites takenAt to the indexed commit's date and createdAt to the newest
+// one. Two runs over the same refs then write the same bytes.
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { loadCheckRules, openCodeGraph } from "@titan-design/code-graph";
 import { createLiveSource, createQueryResolver, type QueryResolver, type SnapshotInfo } from "@titan-design/code-read";
-import { snapshotKey } from "@titan-design/rpc-client";
-import { exportSnapshot } from "@titan-design/rpc-client/node";
+import { buildSnapshot, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { encodeDataset } from "../server/dataset-export.js";
 import { firstPaintCalls, type PlannedCall } from "../server/plan.js";
 import { CALLS, NO_FILTERS } from "../src/data/calls.js";
 import { drillCalls, read, tableCalls, timelineCalls, type FindingsPage } from "./fixture-plan.js";
+import { commitDate, type SourceState } from "./history.js";
 
 export interface FixtureOptions {
   dbPath: string;
@@ -17,6 +21,8 @@ export interface FixtureOptions {
   outFile: string;
   /** Nodes whose metrics are recorded at every snapshot: the growth timeline's series. */
   timelineNodes: readonly string[];
+  /** The checkout the clone was taken from, written beside the calls so a dirty source is on record. */
+  provenance: SourceState;
   /** Also embed the whole read model, so calls nobody recorded answer too. Megabytes; not for a committed fixture. */
   withDataset?: boolean;
 }
@@ -53,6 +59,26 @@ function planCalls(resolve: QueryResolver, snapshots: readonly SnapshotInfo[], n
   });
 }
 
+/** Replaces every snapshot's indexing time with its commit's date, wherever an answer carries one. */
+function pinTakenAt(value: unknown, dates: ReadonlyMap<string, string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => pinTakenAt(item, dates));
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) out[key] = pinTakenAt(item, dates);
+  const commit = out.commit;
+  if (typeof out.takenAt === "string" && typeof commit === "string" && dates.has(commit)) out.takenAt = dates.get(commit);
+  return out;
+}
+
+export interface FixtureFile extends Snapshot {
+  provenance: SourceState;
+}
+
+async function writeFixture(file: string, snapshot: FixtureFile): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(snapshot));
+}
+
 /** Records the app's own calls over a real index, and reports what a test can assert about them. */
 export async function buildFixture(options: FixtureOptions): Promise<FixtureReport> {
   const rules = await loadCheckRules(options.rulesPath);
@@ -62,7 +88,11 @@ export async function buildFixture(options: FixtureOptions): Promise<FixtureRepo
   const resolve = createQueryResolver(source);
   const calls = planCalls(resolve, snapshots, options.timelineNodes);
   const dataset = options.withDataset ? encodeDataset(source, snapshots) : undefined;
-  const written = await exportSnapshot(options.outFile, { call: (name, args) => Promise.resolve(resolve(name, args)) }, { calls, dataset });
+  const dates = new Map(snapshots.flatMap((s) => (s.commit ? [[s.commit, commitDate(options.repoRoot, s.commit)] as const] : [])));
+  const createdAt = new Date(dates.get(snapshots[0]!.commit ?? "") ?? 0);
+  const recorded = await buildSnapshot({ call: (name, args) => Promise.resolve(resolve(name, args)) }, { calls, dataset, createdAt });
+  const written = { ...(pinTakenAt(recorded, dates) as Snapshot), provenance: options.provenance };
+  await writeFixture(options.outFile, written);
   const counts = read<FindingsPage>(resolve("findings.list", CALLS.findingCounts(snapshots[0]!.id)));
   const page = read<FindingsPage>(resolve("findings.list", CALLS.findingsPage(snapshots[0]!.id, NO_FILTERS, "severity", 0)));
   return {
