@@ -91,8 +91,8 @@ test. Pass `--with-dataset` for a self-answering export instead, which costs meg
 
 | Fixture | Holds | Bytes |
 | --- | --- | --- |
-| `titan-platform-history.snapshot.json` | This repository at 17 of its 59 tags, 2026-09-08 to 2026-09-19, in one store: a real growth timeline | 308,925 |
-| `titan-design.snapshot.json` | `~/projects/titan-design` at its current main, one snapshot, 61 findings | 501,435 |
+| `titan-platform-history.snapshot.json` | This repository at 17 of its 59 tags, 2026-09-08 to 2026-09-19, in one store: a real growth timeline | 179,023 |
+| `titan-design.snapshot.json` | `~/projects/titan-design` at its current main (`028e30b`), one snapshot, 60 findings | 497,149 |
 
 The script clones each repository into a scratch directory and checks the clone out at each
 ref, so neither working tree is touched. `--full` indexes all 59 tags instead of every
