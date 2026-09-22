@@ -1,5 +1,6 @@
 import { sessionRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
+import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
 import { KIT } from "./schema.js";
 
 /** Derived tables keyed by `session_id`, reachable from a transcript through `session`. */
@@ -22,6 +23,9 @@ const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoi
  * inserts are insert-if-absent; a single transcript cannot know whether it was
  * the only source. The two observation tables are left for the same reason —
  * `reconcile` folds them, and re-reading re-asserts the same rows.
+ *
+ * Audit rows and facet state carry `transcript_id` themselves, so they go by it
+ * directly rather than through `session`.
  */
 export function purgeTranscript(graph: SessionGraph, transcriptId: number): void {
   graph.db.transaction(() => {
@@ -33,6 +37,9 @@ export function purgeTranscript(graph: SessionGraph, transcriptId: number): void
       graph.db.prepare(`DELETE FROM "${table}" WHERE session_id IN (SELECT session_id FROM session WHERE transcript_id = ?)`).run(transcriptId);
     }
     graph.db.prepare(`DELETE FROM "${KIT.edge}" WHERE fact_id IN (SELECT fact_id FROM fact WHERE transcript_id = ?)`).run(transcriptId);
+    for (const table of [...AUDIT_TABLES, FACET_TABLE]) {
+      graph.db.prepare(`DELETE FROM "${table}" WHERE transcript_id = ?`).run(transcriptId);
+    }
     graph.db.prepare("DELETE FROM fact WHERE transcript_id = ?").run(transcriptId);
     graph.db.prepare("DELETE FROM session WHERE transcript_id = ?").run(transcriptId);
   })();

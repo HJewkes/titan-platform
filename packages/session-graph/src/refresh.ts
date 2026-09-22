@@ -60,7 +60,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     // After extraction, never before: a parse failure quarantines the transcript,
     // and purging first would destroy rows we could then no longer rebuild.
     if (rewound) purgeTranscript(graph, row.sourceId);
-    applyDelta(graph, row.sourceId, delta);
+    applyDelta(graph, row.sourceId, delta, { account: transcript.account });
     const stat = await fs.stat(transcript.absolutePath);
     graph.transcripts.advance(transcript.displayPath, {
       lastOffset: delta.lastByteOffset,
