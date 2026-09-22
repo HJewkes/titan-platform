@@ -7,9 +7,10 @@ import type { SessionGraph } from "./graph.js";
 /**
  * Apply one transcript chunk's delta in a single transaction, so a crash can
  * never leave rows committed behind a stale watermark or ahead of their rows.
- * Append-only tables are idempotent through unique indexes; session and usage
- * rows accumulate; ref-keyed assets insert-if-absent with COALESCE merges that
- * mirror `EventFolder`'s rules.
+ * Append-only tables are idempotent through unique indexes; session rows
+ * accumulate; usage is left to the rollup, which recomputes it from `request`;
+ * ref-keyed assets insert-if-absent with COALESCE merges that mirror
+ * `EventFolder`'s rules.
  */
 export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource = {}): void {
   graph.db.transaction(() => {
@@ -65,20 +66,9 @@ const UPSERT_SESSION = `
     commit_count = commit_count + excluded.commit_count,
     push_count   = push_count + excluded.push_count`;
 
-const UPSERT_USAGE = `
-  INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, thinking_tokens, request_count)
-  VALUES (@sessionId, @model, @inputTokens, @outputTokens, @cacheReadTokens, @cacheCreationTokens, @thinkingTokens, @requestCount)
-  ON CONFLICT (session_id, model) DO UPDATE SET
-    input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens,
-    cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
-    cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens,
-    thinking_tokens = thinking_tokens + excluded.thinking_tokens, request_count = request_count + excluded.request_count`;
-
 function applySessions(db: Db, transcriptId: number, delta: TranscriptDelta, account: string | null): void {
   const upsertSession = db.prepare(UPSERT_SESSION);
   for (const s of delta.sessions) upsertSession.run({ ...s, transcriptId, account });
-  const upsertUsage = db.prepare(UPSERT_USAGE);
-  for (const u of delta.usage) upsertUsage.run(u);
 }
 
 const ASSET_UPSERTS = {
