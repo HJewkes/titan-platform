@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SessionEvent } from "./events.js";
 import { FIXTURE_LINES, QUEUED_CHANNEL_TEXT, SESSION, offsetAfterLine, renderTranscript } from "./fixture.js";
-import type { TranscriptDelta } from "./fold.js";
 import { LineReader } from "./line-reader.js";
 import { extractTranscript } from "./read.js";
 import type { Json } from "./text.js";
@@ -119,9 +118,6 @@ describe("audit emitters", () => {
     const keys = ["requests", "toolCalls", "inbound", "contextBlocks", "compactions", "queueOps", "signals", "costStates"] as const;
     for (const kind of keys) {
       expect([...first[kind], ...second[kind]], kind).toEqual(full[kind]);
-    }
-    for (const kind of ["inbound", "contextBlocks", "signals"] as const satisfies readonly (keyof TranscriptDelta)[]) {
-      expect(full[kind], kind).toEqual([]);
     }
   });
 });

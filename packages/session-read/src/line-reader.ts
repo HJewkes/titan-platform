@@ -1,4 +1,6 @@
 import { readAssistantLine } from "./assistant-line.js";
+import { emitAttachmentContextBlock } from "./audit-context.js";
+import { emitInbound } from "./audit-inbound.js";
 import { emitCompaction, emitCostState, emitQueueOp } from "./audit-line.js";
 import type { EventBase, LineSpan, SessionEvent, SessionPatch, SpanField } from "./events.js";
 import { RELATIONS, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, toRepoRelative } from "./refs.js";
@@ -188,6 +190,8 @@ export class LineReader {
   private attachment(ctx: LineContext): void {
     this.fact(ctx, "attachment");
     const attachment = asObject(ctx.line.attachment);
+    const queued = str(attachment, "type") === "queued_command" ? emitInbound(this, ctx) : null;
+    emitAttachmentContextBlock(this, ctx, attachment, queued?.cause ?? null);
     const filename = str(attachment, "filename");
     if (str(attachment, "type") !== "edited_text_file" || !filename) return;
     const file = this.recordFile(ctx, filename, RELATIONS.EDITED_BY_HUMAN);

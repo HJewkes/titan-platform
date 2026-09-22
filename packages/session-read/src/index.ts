@@ -73,3 +73,8 @@ export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionR
   RecentSessionTurns, RecentSessionUnknown, RecentTurnKind, RecentTurnProjection, RecentTurnRepresentation, RecentTurnRole,
   RecentUnknownReason } from "./recent-session-turns.js";
 export { EXTRACT_VERSION, type AuditEvent, type AuditEventBase, type AuditEventKind, type ContextSource, type QueueOperation, type SignalKind, type ToolFamily, type WakeCause } from "./audit-events.js";
+export { classifyInbound, contentHash, HASH_PREFIX_CHARS, type Inbound, type InboundDelivery } from "./wake-cause.js";
+export { toolFamily, type ToolFamilyResult } from "./tool-family.js";
+export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, parseChannelTag, type ChannelTag, type InjectedMarker, type InjectedMarkerName } from "./injected-markers.js";
+export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
+export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";

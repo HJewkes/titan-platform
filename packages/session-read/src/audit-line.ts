@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-import type { QueueOperation, ToolFamily } from "./audit-events.js";
+import type { QueueOperation } from "./audit-events.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { asObject, int, str, thinkingTokens, type Json } from "./text.js";
+import { toolFamily } from "./tool-family.js";
+import { contentHash } from "./wake-cause.js";
 
 const CHANNEL_SOURCE = /<channel\s+source="([^"]+)"/;
 const QUEUE_OPERATIONS = new Set<string>(["enqueue", "dequeue", "remove", "popAll"]);
@@ -85,31 +86,6 @@ export function emitCostState(reader: LineReader, ctx: LineContext): void {
     modelUsageJson: JSON.stringify(asObject(ctx.line.modelUsage) ?? {}),
   });
 }
-
-/** Pairing key with the matching `inbound` record, whose content the harness repeats verbatim. */
-export function contentHash(content: string): string {
-  return createHash("sha1").update(content.slice(0, 512)).digest("hex");
-}
-
-// Private copy until TP-260 lands `src/tool-family.ts`; TP-264 replaces it with that import.
-function toolFamily(name: string): { family: ToolFamily; mcpServer: string | null } {
-  if (name.startsWith("mcp__")) {
-    const mcpServer = name.slice("mcp__".length).split("__")[0] || null;
-    return { family: name.includes("agent-chat") ? "mcp_agentchat" : "mcp_other", mcpServer };
-  }
-  return { family: NATIVE_FAMILY[name] ?? "other_tool", mcpServer: null };
-}
-
-const NATIVE_FAMILY: Record<string, ToolFamily> = {
-  Read: "fs_read", Grep: "fs_read", Glob: "fs_read", NotebookEdit: "fs_read",
-  Edit: "fs_write", Write: "fs_write",
-  Bash: "bash",
-  AskUserQuestion: "ask_user",
-  Task: "subagent", Agent: "subagent",
-  WebFetch: "web", WebSearch: "web",
-  Monitor: "scheduling", ScheduleWakeup: "scheduling", CronCreate: "scheduling", CronList: "scheduling", CronDelete: "scheduling", TaskStop: "scheduling",
-  Skill: "skill_toolsearch", ToolSearch: "skill_toolsearch",
-};
 
 function numberOrNull(source: Json | null, key: string): number | null {
   const value = source?.[key];
