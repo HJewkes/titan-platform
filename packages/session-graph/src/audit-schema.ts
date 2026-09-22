@@ -99,7 +99,8 @@ export const AUDIT_DDL = `
   CREATE TABLE IF NOT EXISTS session_signal (
     transcript_id INTEGER NOT NULL, byte_offset INTEGER NOT NULL, block_index INTEGER NOT NULL,
     session_id TEXT NOT NULL, ts TEXT NOT NULL, signal TEXT NOT NULL, detail TEXT, tool_use_id TEXT,
-    PRIMARY KEY (transcript_id, byte_offset, block_index)
+    -- one Bash block can emit up to three signals (commit, push, pr_create); the signal name disambiguates them
+    PRIMARY KEY (transcript_id, byte_offset, block_index, signal)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS idx_signal_session ON session_signal(session_id, ts);
 

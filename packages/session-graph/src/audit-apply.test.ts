@@ -5,6 +5,7 @@ import { extractTranscript, foldEvents, type DiscoveredTranscript, type SessionE
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyDelta } from "./apply.js";
+import { applyAudit } from "./audit-apply.js";
 import { AUDIT_COLUMNS, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { purgeTranscript } from "./purge.js";
@@ -195,6 +196,21 @@ describe("audit apply, purge and reset", () => {
     resetIndex(graph);
 
     expect(Object.values(countsOf())).toEqual(EVERY_AUDIT_TABLE.map(() => 0));
+  });
+
+  it("two signals from one tool block both survive applyAudit", async () => {
+    const transcript = writeTranscript("s-signals", [prompt("s-signals", "2026-09-01T00:00:00Z")]);
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    const base = { sessionId: "s-signals", ts: "2026-09-01T00:00:05Z", byteOffset: 100, byteLength: 1, blockIndex: 0 };
+    const events: SessionEvent[] = [
+      { ...base, kind: "signal", signal: "commit", detail: null, toolUseId: "tu-1" },
+      { ...base, kind: "signal", signal: "push", detail: null, toolUseId: "tu-1" },
+    ];
+
+    applyAudit(graph.db, transcriptId, foldEvents(events));
+
+    const rows = graph.db.prepare("SELECT signal FROM session_signal WHERE transcript_id = ? ORDER BY signal").all(transcriptId) as { signal: string }[];
+    expect(rows.map((r) => r.signal)).toEqual(["commit", "push"]);
   });
 
   it("session.account is written from discovery", async () => {
