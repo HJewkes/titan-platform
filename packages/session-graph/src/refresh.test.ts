@@ -13,7 +13,7 @@ writeFileSync(path.join(REPO, ".git", "config"), '[remote "origin"]\n\turl = git
 const base = (fields: Record<string, unknown>) => ({ sessionId: "s1", cwd: REPO, gitBranch: "main", ...fields });
 const prompt = (uuid: string, ts: string, text: string) => base({ type: "user", uuid, timestamp: ts, message: { role: "user", content: text } });
 const assistant = (ts: string, content: unknown[]) =>
-  base({ type: "assistant", timestamp: ts, message: { role: "assistant", model: "m", usage: { input_tokens: 1, output_tokens: 2 }, content } });
+  base({ type: "assistant", timestamp: ts, requestId: `req-${ts}`, message: { role: "assistant", model: "m", usage: { input_tokens: 1, output_tokens: 2 }, content } });
 const tool = (id: string, name: string, input: unknown) => ({ type: "tool_use", id, name, input });
 
 const LINES_A = [
