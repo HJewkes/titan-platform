@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Input } from "@titan-design/react-ui";
+import { CALLS } from "../data/calls.js";
 import { useQuery } from "../data/rpc.js";
 import { nodeHref } from "../router.js";
 import { useReport } from "../report-context.js";
@@ -26,7 +27,7 @@ export function SearchBox(): ReactNode {
 
 function SearchResults({ query, onPick }: { query: string; onPick: () => void }): ReactNode {
   const { snapshotId } = useReport();
-  const result = useQuery("node.resolve", { snapshot: snapshotId, query, limit: 8 });
+  const result = useQuery("node.resolve", CALLS.search(snapshotId, query));
   return (
     <div className="absolute z-10 mt-1 w-full rounded border border-hairline bg-surface-overlay p-2 shadow-lg" role="listbox" aria-label="Search results">
       <QueryView result={result} label="matches" isEmpty={(d) => d.candidates.length === 0}>
