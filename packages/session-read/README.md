@@ -31,6 +31,37 @@ Every rule in `LineReader` is stateless across lines. That is what makes reading
 incrementally from a watermark and rebuilding the whole file produce the same events, so
 an index can resume without ever re-deriving history.
 
+## Audit events
+
+Eight more kinds feed cost and context audits. Each extends the event base with
+`blockIndex`: the position of the block within the line's content, or 0 for a whole-line
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 2) is bumped
+whenever a classification rule changes, so a store can tell stale rows apart and re-index.
+
+| kind | list | emitted for |
+|---|---|---|
+| `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Supersedes the deprecated `usage`. |
+| `tool_call` | `toolCalls` | each `tool_use` block, with `family` and `mcpServer` from `toolFamily`, and `inputChars` |
+| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName` and `msgId`. A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. |
+| `context_block` | `contextBlocks` | the characters that entered context, by `ContextSource`. A user record gives one row for its text, labelled by its wake cause (`human`, `channel`, `compaction_summary`, or `system_reminder` for other injected text). It also gives one `tool_result` row per `tool_result` block, and one `image` row per image block. An assistant line gives one row per `text`, `thinking` and `tool_use` block. An attachment gives one row (`skill_listing`, or `attachment` with `attachmentType`) only when its string content is 256 characters or more (`MIN_ATTACHMENT_CHARS`). `isMedia` marks base64 images, whose `chars` is the encoded length. |
+| `compaction` | `compactions` | a `compact_boundary` system line: trigger, tokens before and after, dropped tokens, duration |
+| `queue_op` | `queueOps` | a `queue-operation` line. `enqueue` is when a message arrived during a busy turn; rollup pairs it with the matching `inbound` by `contentHash`. |
+| `signal` | `signals` | a recognisable act in one `tool_use` block (provisional vocabulary, below) |
+| `cost_state` | `costStates` | a `cost-state` line: `totalCostUsd` and the raw model usage |
+
+`SignalKind` values, each read from a single block:
+
+- `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
+- `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
+- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
+- `task_done` is `active-work task done`, with the task id as `detail`.
+- `doc_written` is a `Write` to a `.md` path.
+- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+
+The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
+`bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
+
 ## Folding
 
 `EventFolder` merges a chunk's events into a `TranscriptDelta` with rules chosen so chunk
