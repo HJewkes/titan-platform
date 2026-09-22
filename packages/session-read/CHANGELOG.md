@@ -1,5 +1,23 @@
 # @titan-design/session-read
 
+## 0.5.0
+
+### Minor Changes
+
+- 38903dd: Emit the `inbound`, `context_block` and `signal` audit events. User lines and `queued_command` attachments give an `inbound` with its wake cause. User text, tool results, images, assistant blocks and attachments of 256 characters or more give `context_block` rows. Tool calls give signals, including `pr_merge` and an active-work `Skill` call as `task_wrap`. `EXTRACT_VERSION` is now 2. The wake-cause, tool-family and injected-marker classifiers are exported, and the audit types now come from them rather than from duplicate copies.
+- 283d7e1: Add the audit event kinds and the structural emitters. `src/audit-events.ts` defines all eight
+  kinds (`request`, `tool_call`, `inbound`, `context_block`, `compaction`, `queue_op`, `signal`,
+  `cost_state`) plus `EXTRACT_VERSION`, and `TranscriptDelta` gains a list per kind. Emitters are
+  wired for `request`, `tool_call`, `compaction`, `queue_op` and `cost_state`; the `inbound`,
+  `context_block` and `signal` lists stay empty for now. A `request` carries `requestId`, falling
+  back to `message.id`, so a response split across lines is counted once downstream. The `usage`
+  event is deprecated and unchanged.
+- 1035eb1: Add `claudeTranscriptRoots` and `discoverAllTranscripts` for discovery across `~/.claude` and every `~/.claude-profiles/<name>` that has a `projects` dir, overridable with `CLAUDE_CONFIG_DIRS` (TP-259). `DiscoveredTranscript` gains an `account` field, `"default"` for the default root and the profile directory name otherwise, `null` when returned by `discoverTranscripts(root)` directly. `transcriptsRoot()` and `discoverTranscripts(root)` behavior is unchanged.
+- a49eb2d: Add pure classifiers for the session cost audit: `toolFamily` (tool name to
+  family and MCP server), `classifyInbound` (what woke the session, from one
+  `user` record or a `queued_command` attachment), and the shared
+  `injected-markers` list. Not exported from the package entry point yet.
+
 ## 0.4.0
 
 ### Minor Changes

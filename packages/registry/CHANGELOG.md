@@ -1,5 +1,17 @@
 # @titan-design/registry
 
+## 0.3.0
+
+### Minor Changes
+
+- e3128f0: Add `CommandMapOf<T>`, a type-only helper that derives the `CommandMap` a typed client is generic over from commands keyed by name (TP-139). Browser code imports the result with `import type`, so neither zod nor registry reaches its bundle.
+
+### Patch Changes
+
+- cb3b7e2: The wire contract now comes from `@titan-design/rpc-protocol`. `registry` re-exports `JsonEnvelope`, `EXIT`, `successEnvelope`, and `errorEnvelope`, and `daemon` re-exports `SseMessage`, so existing imports keep working. The bytes on the wire are unchanged (TP-138).
+- Updated dependencies [cb3b7e2]
+  - @titan-design/rpc-protocol@0.1.0
+
 ## 0.2.0
 
 ### Minor Changes

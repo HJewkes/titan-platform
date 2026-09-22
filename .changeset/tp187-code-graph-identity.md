@@ -1,7 +1,0 @@
----
-"@titan-design/code-graph": minor
----
-
-Identity that survives renames (TP-187). Id aliases now chain across snapshots: `resolveAlias(store, id, toSnapshotId, { fromSnapshotId })` carries `a.ts` renamed to `b.ts` renamed to `c.ts` from the first snapshot to the last, in either direction, with a bounded walk. `aliasChain` returns the reusable resolver, and `priorSnapshotForRef` finds the snapshot a git ref or ref label denotes before a given snapshot. A file rename now also writes symbol aliases, so `a.ts#Job.run` follows its file. The ratchet is rename-aware: carryover (`runChecks`, `checkSnapshot`) and `diffCheckResults` key a violation after carrying its baseline ids through the alias chain, so a moved file's violations carry over instead of reading as one resolved plus one new. Unmoved ids key exactly as before (`violationKey`, now exported with `rebasedViolationKey`). `diffSnapshots` follows the whole chain instead of the to-snapshot's aliases alone.
-
-`INDEX_VERSION` is now 0.15.0. Each snapshot records its alias base in `attrs.aliasBase`, and a new index of a ref computes its aliases against that ref's newest committed snapshot, falling back to the newest committed snapshot of any ref. No schema migration: stores written by 0.14.0 open and read unchanged, including read-only ones, and their lineage is inferred the way the 0.14.0 indexer chose its prior snapshot. As with every bump, a 0.14.0 snapshot is never a reuse basis, so the first 0.15.0 index is a full one.
