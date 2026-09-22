@@ -5,6 +5,7 @@ import { SeverityBadge } from "../components/badges.js";
 import { DataTable, type Column } from "../components/DataTable.js";
 import { Note, QueryView } from "../components/QueryView.js";
 import { directionText, formatNumber, missingText, rankText } from "../components/format.js";
+import { CALLS, childMetrics, isStoredKind } from "../data/calls.js";
 import { useQuery } from "../data/rpc.js";
 import { findingHref, nodeHref } from "../router.js";
 import { useReport } from "../report-context.js";
@@ -14,14 +15,10 @@ type NodeResult = CodeReadCommandMap["node.get"]["result"];
 type NodeMetric = NodeResult["metrics"][number];
 type Neighbor = CodeReadCommandMap["node.neighbors"]["result"]["inbound"][number];
 
-/** Kinds code-graph stores; directories and the repo are synthesized, so they have no edges of their own. */
-const STORED_KINDS = new Set(["file", "symbol", "module", "external"]);
-const LIST_LIMIT = 10;
-
 /** One template for every level: repo, directory, file, and symbol. */
 export function NodePage({ id }: { id: string }): ReactNode {
   const { snapshotId } = useReport();
-  const node = useQuery("node.get", { snapshot: snapshotId, id });
+  const node = useQuery("node.get", CALLS.node(snapshotId, id));
   return (
     <QueryView result={node} label={`node ${id || "(repo)"}`}>
       {(data) => (
@@ -30,7 +27,7 @@ export function NodePage({ id }: { id: string }): ReactNode {
           <MetricsSection metrics={data.metrics} />
           <ChildrenSection id={id} kind={data.node.kind} />
           <FindingsSection id={id} />
-          {STORED_KINDS.has(data.node.kind) ? <NeighborsSection id={id} /> : <Note>Dependencies between directories arrive with the package matrix (TD-35).</Note>}
+          {isStoredKind(data.node.kind) ? <NeighborsSection id={id} /> : <Note>Dependencies between directories arrive with the package matrix (TD-35).</Note>}
           <SimilarNote />
         </div>
       )}
@@ -98,8 +95,8 @@ type Row = CodeReadCommandMap["hierarchy.get"]["result"]["nodes"][number];
 
 function ChildrenSection({ id, kind }: { id: string; kind: string }): ReactNode {
   const { snapshotId } = useReport();
-  const metrics = kind === "file" || kind === "symbol" ? ["symbol_cognitive", "symbol_cyclomatic"] : ["loc", "cognitive_sum"];
-  const tree = useQuery("hierarchy.get", { snapshot: snapshotId, root: id, depth: 1, metrics, include_symbols: true });
+  const metrics = childMetrics(kind);
+  const tree = useQuery("hierarchy.get", CALLS.nodeTree(snapshotId, id, metrics));
   const columns: Column<Row>[] = [
     { header: "Name", render: (r) => <a className="text-text-link" href={nodeHref(r.id)}>{r.name}</a> },
     { header: "Kind", render: (r) => r.kind },
@@ -119,7 +116,7 @@ function ChildrenSection({ id, kind }: { id: string; kind: string }): ReactNode 
 
 function FindingsSection({ id }: { id: string }): ReactNode {
   const { snapshotId } = useReport();
-  const findings = useQuery("findings.list", { snapshot: snapshotId, scope: id, limit: LIST_LIMIT });
+  const findings = useQuery("findings.list", CALLS.nodeFindings(snapshotId, id));
   return (
     <Section>
       <SectionHeader title="Findings here and below" />
@@ -144,7 +141,7 @@ function FindingsSection({ id }: { id: string }): ReactNode {
 
 function NeighborsSection({ id }: { id: string }): ReactNode {
   const { snapshotId } = useReport();
-  const neighbors = useQuery("node.neighbors", { snapshot: snapshotId, id, limit: LIST_LIMIT });
+  const neighbors = useQuery("node.neighbors", CALLS.nodeNeighbors(snapshotId, id));
   return (
     <Section>
       <SectionHeader title="Neighbours" subtitle="Heaviest edges first; the ego-graph drawing waits on a graph component" />
