@@ -14,7 +14,8 @@ import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
 
 const graph = openSessionGraph("~/.local/state/miner/index.sqlite3");
 const summary = await refreshCorpus(graph, await discoverTranscripts());
-// summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing
+// summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing,
+// summary.facetsBackfilled, summary.facetBacklog
 ```
 
 `openSessionGraph` takes an optional `schemaVersion`: the highest migration version the
@@ -29,15 +30,23 @@ passes 1002.
    checks the file (`unchanged`, `appended`, `rewritten`, `missing`), reads the delta with
    `extractTranscript`, applies it in one transaction, and advances the watermark with the
    new prefix hash. A malformed line quarantines that transcript only.
-2. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
-   time) for the sessions that changed. Recompute, never accumulate, so incremental and
+2. `backfillFacets` re-extracts the audit facet of already-indexed transcripts whose
+   `transcript_facet` version is below session-read's `EXTRACT_VERSION`: up to
+   `facetLimit` of them per pass (default 40), newest `file_mtime` first, each read from
+   byte 0 to its watermark. It replaces that transcript's rows in the eight audit tables
+   and never writes the legacy tables, so their accumulating counts cannot double.
+   Transcripts that are `missing` or `quarantined` are skipped. `summary.facetsBackfilled`
+   and `summary.facetBacklog` report progress; pass `facetLimit: Infinity` to clear the
+   backlog in one pass. A classifier change is a version bump, not a `resetIndex`.
+3. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
+   time) for the sessions that changed, including those the backfill touched. Recompute, never accumulate, so incremental and
    full passes converge.
-3. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
+4. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage
    from child sessions.
-4. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
+5. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
    task table. See below.
-5. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
+6. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex` clears every derived table and rewinds watermarks; the next refresh rebuilds
@@ -105,7 +114,7 @@ Migration 4, `audit tables`, adds one table per session-read audit event kind
 `session_signal`, `cost_state_observation`) plus `transcript_facet`, and adds
 `session.account` and five rollup or outcome columns. It creates only empty tables and
 nullable columns, so existing rows are untouched; transcripts indexed before it gain
-audit rows only when re-read. `request` holds one row per `(transcript_id, request_id)`:
+audit rows through `backfillFacets` on later refreshes. `request` holds one row per `(transcript_id, request_id)`:
 the several assistant lines of one API response collapse to the first line's offset and
 the largest value of each token column. `session.account` comes from discovery, not the
 transcript. `purgeTranscript` and `resetIndex` clear all nine tables.
