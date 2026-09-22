@@ -1,9 +1,13 @@
+import { emitContextBlocks } from "./audit-context.js";
+import { emitInbound } from "./audit-inbound.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, sessionRef } from "./refs.js";
 import { asObject, blocks, int, str, type Json } from "./text.js";
 
 /** A `user` line is either a prompt or the tool results for the previous assistant turn. */
 export function readUserLine(reader: LineReader, ctx: LineContext): void {
+  const inbound = emitInbound(reader, ctx);
+  emitContextBlocks(reader, ctx, inbound.cause);
   const message = asObject(ctx.line.message);
   const content = message?.content;
   const isPrompt = typeof content === "string" || blocks(message).some((b) => b.type === "text");

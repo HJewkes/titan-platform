@@ -1,4 +1,6 @@
+import { emitAssistantContextBlocks } from "./audit-context.js";
 import { emitRequest, emitToolCalls } from "./audit-line.js";
+import { bashSignals, emitSignals, toolUseSignals } from "./audit-signal.js";
 import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
@@ -15,9 +17,12 @@ export function readAssistantLine(reader: LineReader, ctx: LineContext): void {
   recordUsage(reader, ctx, message);
   emitRequest(reader, ctx, message);
   emitToolCalls(reader, ctx, content);
+  emitAssistantContextBlocks(reader, ctx, content);
   if (content.some((b) => b.type === "text")) reader.span(ctx, "assistant_response");
   if (toolUses.length > 0) reader.span(ctx, "tool_input");
-  for (const block of toolUses) readToolUse(reader, ctx, block);
+  content.forEach((block, blockIndex) => {
+    if (block.type === "tool_use") readToolUse(reader, ctx, block, blockIndex);
+  });
 }
 
 /** @deprecated Superseded by the `request` event, which dedupes on `requestId`. Removed after one minor version. */
@@ -38,10 +43,11 @@ function recordUsage(reader: LineReader, ctx: LineContext, message: Json | null)
   });
 }
 
-function readToolUse(reader: LineReader, ctx: LineContext, block: Json): void {
+function readToolUse(reader: LineReader, ctx: LineContext, block: Json, blockIndex: number): void {
   const name = str(block, "name");
   const input = asObject(block.input);
   if (!name) return;
+  emitSignals(reader, ctx, block, blockIndex, toolUseSignals(name, input));
   if (FILE_TOOLS.has(name)) {
     const raw = str(input, "file_path") ?? str(input, "notebook_path");
     if (raw) reader.recordFile(ctx, raw, RELATIONS.TOUCHED);
@@ -49,7 +55,7 @@ function readToolUse(reader: LineReader, ctx: LineContext, block: Json): void {
   }
   if (name === "Agent") return readAgent(reader, ctx, block, input);
   if (name === "Artifact") return readArtifact(reader, ctx, block, input);
-  if (name === "Bash") return readBash(reader, ctx, block, input);
+  if (name === "Bash") return readBash(reader, ctx, block, input, blockIndex);
 }
 
 function readAgent(reader: LineReader, ctx: LineContext, block: Json, input: Json | null): void {
@@ -66,12 +72,13 @@ function readArtifact(reader: LineReader, ctx: LineContext, block: Json, input: 
   reader.recordArtifact(ctx, toolUseId, "artifact", { title: str(input, "description"), url: null, path: str(input, "file_path") });
 }
 
-function readBash(reader: LineReader, ctx: LineContext, block: Json, input: Json | null): void {
+function readBash(reader: LineReader, ctx: LineContext, block: Json, input: Json | null, blockIndex: number): void {
   const raw = str(input, "command");
   if (!raw) return;
   const git = parseGitIntent(raw);
   // A git verb is attributed to the directory it runs in, which `cd` or `git -C` can move.
   if (git) recordGitIntent(reader, ctx, git, repoForCwd(commandCwd(raw, ctx.cwd)));
+  emitSignals(reader, ctx, block, blockIndex, bashSignals(raw, git));
   const title = parsePrCreateTitle(raw);
   const toolUseId = str(block, "id");
   if (title && toolUseId) reader.emit({ ...reader.base(ctx), kind: "pr_create", toolUseId, title, number: null, repo: null, url: null });
