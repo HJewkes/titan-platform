@@ -100,6 +100,16 @@ files are not needed to migrate. Back up the database before upgrading; restorin
 that backup is the rollback path for an older binary. Explicit `resetIndex` remains a
 destructive rebuild and requires the original sources; it is never run by migration.
 
+Migration 4, `audit tables`, adds one table per session-read audit event kind
+(`request`, `tool_call`, `inbound`, `context_block`, `compaction`, `queue_op`,
+`session_signal`, `cost_state_observation`) plus `transcript_facet`, and adds
+`session.account` and five rollup or outcome columns. It creates only empty tables and
+nullable columns, so existing rows are untouched; transcripts indexed before it gain
+audit rows only when re-read. `request` holds one row per `(transcript_id, request_id)`:
+the several assistant lines of one API response collapse to the first line's offset and
+the largest value of each token column. `session.account` comes from discovery, not the
+transcript. `purgeTranscript` and `resetIndex` clear all nine tables.
+
 For snapshot-only usage across multiple physical sources, queries select one source
 by latest native usage timestamp, then greatest usage-record coverage and stable
 source ID. Source-local reset epochs cannot safely be summed across copies. This is
