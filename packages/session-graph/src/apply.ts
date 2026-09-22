@@ -1,3 +1,4 @@
+import { applyAudit } from "./audit-apply.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
 import { sessionRef, type TranscriptDelta } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
@@ -10,15 +11,22 @@ import type { SessionGraph } from "./graph.js";
  * rows accumulate; ref-keyed assets insert-if-absent with COALESCE merges that
  * mirror `EventFolder`'s rules.
  */
-export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta): void {
+export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource = {}): void {
   graph.db.transaction(() => {
     applyFacts(graph.db, transcriptId, delta);
-    applySessions(graph.db, transcriptId, delta);
+    applySessions(graph.db, transcriptId, delta, source.account ?? null);
     backfillClaudeAliases(graph.db, delta.sessions.map(s => s.sessionId));
     applyAssets(graph.db, delta);
     applyPhases(graph.db, transcriptId, delta);
     applyLinkedRows(graph, transcriptId, delta);
+    applyAudit(graph.db, transcriptId, delta);
   })();
+}
+
+/** What discovery knows about the file that the lines themselves do not carry. */
+export interface DeltaSource {
+  /** The Claude config dir the transcript was found under; `null` when discovery did not say. */
+  account?: string | null;
 }
 
 const INSERT_FACT = `
@@ -37,8 +45,8 @@ function applyFacts(db: Db, transcriptId: number, delta: TranscriptDelta): void 
 }
 
 const UPSERT_SESSION = `
-  INSERT INTO session (session_id, transcript_id, started_at, ended_at, start_type, cwd, git_branch, ai_title, seed_prompt, cli_version, turn_count, commit_count, push_count)
-  VALUES (@sessionId, @transcriptId, @startedAt, @endedAt, @startType, @cwd, @gitBranch, @aiTitle, @seedPrompt, @cliVersion, @turnDelta, @commitDelta, @pushDelta)
+  INSERT INTO session (session_id, transcript_id, started_at, ended_at, start_type, cwd, git_branch, ai_title, seed_prompt, cli_version, account, turn_count, commit_count, push_count)
+  VALUES (@sessionId, @transcriptId, @startedAt, @endedAt, @startType, @cwd, @gitBranch, @aiTitle, @seedPrompt, @cliVersion, @account, @turnDelta, @commitDelta, @pushDelta)
   ON CONFLICT (session_id) DO UPDATE SET
     started_at  = MIN(COALESCE(started_at, excluded.started_at), COALESCE(excluded.started_at, started_at)),
     ended_at    = MAX(COALESCE(ended_at, excluded.ended_at), COALESCE(excluded.ended_at, ended_at)),
@@ -52,6 +60,7 @@ const UPSERT_SESSION = `
     ai_title    = COALESCE(excluded.ai_title, ai_title),
     seed_prompt = COALESCE(seed_prompt, excluded.seed_prompt),
     cli_version = COALESCE(excluded.cli_version, cli_version),
+    account     = COALESCE(excluded.account, account),
     turn_count   = turn_count + excluded.turn_count,
     commit_count = commit_count + excluded.commit_count,
     push_count   = push_count + excluded.push_count`;
@@ -65,9 +74,9 @@ const UPSERT_USAGE = `
     cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens,
     thinking_tokens = thinking_tokens + excluded.thinking_tokens, request_count = request_count + excluded.request_count`;
 
-function applySessions(db: Db, transcriptId: number, delta: TranscriptDelta): void {
+function applySessions(db: Db, transcriptId: number, delta: TranscriptDelta, account: string | null): void {
   const upsertSession = db.prepare(UPSERT_SESSION);
-  for (const s of delta.sessions) upsertSession.run({ ...s, transcriptId });
+  for (const s of delta.sessions) upsertSession.run({ ...s, transcriptId, account });
   const upsertUsage = db.prepare(UPSERT_USAGE);
   for (const u of delta.usage) upsertUsage.run(u);
 }
