@@ -7,6 +7,7 @@ import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
 import { backfillFacets } from "./facet.js";
 import { openSessionGraph, type SessionGraph } from "./graph.js";
 import { refreshCorpus } from "./refresh.js";
+import { rollupSessions } from "./rollup.js";
 
 const EVERY_AUDIT_TABLE = [...AUDIT_TABLES, FACET_TABLE] as const;
 const LEGACY_TABLES = ["fact", "turn", "session", "session_model_usage"] as const;
@@ -120,6 +121,8 @@ describe("backfillFacets", () => {
     graph.db.prepare("INSERT INTO tool_call (transcript_id, byte_offset, block_index, session_id, ts, tool_use_id, name, family, input_chars) VALUES (?, 1, 9, 's1', 't', 'stale', 'Old', 'builtin', 0)").run(transcriptId);
 
     const summary = await backfillFacets(graph, [transcript], { version: EXTRACT_VERSION + 1 });
+    // Rollup-owned columns are refilled by the caller's rollup over the returned sessions, as refreshCorpus does.
+    rollupSessions(graph, summary.sessionIds);
 
     expect(summary).toEqual({ backfilled: 1, backlog: 0, sessionIds: ["s1"] });
     expect(dump(graph, AUDIT_TABLES)).toEqual(before);
