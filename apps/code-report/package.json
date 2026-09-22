@@ -12,9 +12,10 @@
     "build": "vite build",
     "serve": "tsx server/serve.ts",
     "export": "tsx server/export.ts",
+    "fixtures": "tsx scripts/build-fixtures.ts",
     "call": "tsx server/call.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src server vite.config.ts"
+    "lint": "eslint src server scripts vite.config.ts"
   },
   "dependencies": {
     "@titan-design/code-read": "workspace:*",

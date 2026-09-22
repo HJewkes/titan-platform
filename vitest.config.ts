@@ -10,6 +10,7 @@ export default defineConfig({
       "packages/*/src/**/*.test.{ts,tsx}",
       "products/*/src/**/*.test.{ts,tsx}",
       "apps/*/src/**/*.test.{ts,tsx}",
+      "apps/*/scripts/**/*.test.ts",
       "scripts/**/*.test.mjs",
     ],
     coverage: {
