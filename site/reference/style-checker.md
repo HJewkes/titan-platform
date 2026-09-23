@@ -33,6 +33,8 @@ rules and docs for other tools lives in `style-profile`.
 | Export | What it does |
 |---|---|
 | `generateRuffConfig(profile)`, `RuffConfig` | ruff `select` codes (`N`, `I`, `D`, `C90`), isort section order, pydocstyle convention, mccabe max complexity, `line-length` |
+| `AUDIT_RUFF_RULES`, `generateRuffAuditConfig()` | the audit's pinned ruff selection (`C901`, `PLR09xx`, `PLR1702`, `ARG`, `FBT`, `ERA001`, `BLE001`, `S110`, `TRY203`, `SIM105`, `F401`, `F841`, `PIE790`, `RUF100`) with `preview = true`, which ruff 0.16.8 needs for `PLR0904`, `PLR0914`, `PLR0916` and `PLR1702` |
+| `runRuffAudit(files, { cwd, timeout })`, `RunnerOptions`, `RunnerResult` | run the audit selection; diagnostics carry the ruff code as `rule`, a path relative to `cwd`, and `endLine` |
 | `generateEslintConfig(profile)`, `EslintFlatConfigEntry` | one flat-config entry for `**/*.ts` and `**/*.tsx` with style-profile's rules (the `info` tier as `warn`), or `[]`; rule data only, plugins are loaded at run time |
 | `orchestrate(options)`, `OrchestratorOptions`, `OrchestratorResult` | generate configs, run ESLint on JS/TS files and ruff on Python files, merge diagnostics, count by severity, and return `failures` and `skippedRules` |
 | `ToolFailure`, `ToolFailureKind`, `ToolName`, `SkippedRule` | a run that could not check its files, and an ESLint rule left out because its plugin is not installed |

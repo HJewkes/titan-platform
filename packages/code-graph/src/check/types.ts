@@ -82,6 +82,14 @@ export interface CheckViolation {
   threshold?: number;
   destinationId?: string;
   isCarryover?: boolean;
+  /** Repo-relative file the violation sits in; a symbol's parent file. */
+  path?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  symbol?: string;
+  /** One line a reader can check without re-running the rule, such as `loc=412 (max 350)`. */
+  evidence?: string;
+  tool?: string;
 }
 
 export interface CheckResult {

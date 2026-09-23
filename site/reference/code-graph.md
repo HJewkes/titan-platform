@@ -90,6 +90,18 @@ baseline's node ids are carried through the alias chain into the checked snapsho
 moved file's violations carry over instead of reading as one resolved plus one new. Unmoved
 ids key exactly as before, so baselines from older builds still match.
 
+**Symbol rules.** A metric rule with `kind: "symbol"` evaluates the symbol layer, so
+`symbol_cyclomatic` and `symbol_cognitive` rules fire per function. A rule without `kind`
+stays on the file graph, so existing baselines do not change. Before this release symbol
+rules never fired (TP-251): the rule context read `listNodes` without `includeSymbols`.
+
+**Findings.** Metric violations carry `path` (a symbol's parent file), `lineStart`,
+`lineEnd`, `symbol`, `evidence` (`symbol_cyclomatic=14 (max 10)`) and `tool`.
+`toFindings(result)` turns a `CheckResult` into tool-neutral `Finding` records whose `id`
+keys on the node id, so an id survives code moving above it. `externalToFinding({ tool,
+rule, file, line, endLine, message, severity })` maps another linter's diagnostic, such as
+style-checker's ruff output, onto the same shape without importing that linter.
+
 ## Diffing two snapshots
 
 ```ts

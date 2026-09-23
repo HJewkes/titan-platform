@@ -3,6 +3,9 @@ export { generateEslintConfig } from "./generators/eslint.js";
 export type { EslintFlatConfigEntry } from "./generators/eslint.js";
 export { generateRuffConfig } from "./generators/ruff.js";
 export type { RuffConfig } from "./generators/ruff.js";
+export { AUDIT_RUFF_RULES, generateRuffAuditConfig } from "./generators/ruff-audit.js";
+export { runRuffAudit } from "./runners/ruff-audit.js";
+export type { RunnerOptions, RunnerResult } from "./runners/types.js";
 export {
   formatDiagnostic,
   parseEslintJsonOutput,

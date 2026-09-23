@@ -146,6 +146,8 @@ export type {
 export type { RunChecksOptions } from "./check/check.js";
 export { rebasedViolationKey, runChecks, snapshotViolations, violationKey } from "./check/check.js";
 export type { RuleStore } from "./check/context.js";
+export type { ExternalDiagnostic, Finding } from "./check/findings.js";
+export { externalToFinding, toFindings } from "./check/findings.js";
 export { compilePatterns, matchesAny, patternToRegex } from "./check/patterns.js";
 export type { ValidateRulesOptions } from "./check/validate.js";
 export { validateRules } from "./check/validate.js";
