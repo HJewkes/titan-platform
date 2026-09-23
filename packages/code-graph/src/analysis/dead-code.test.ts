@@ -63,9 +63,9 @@ describe("computeDeadCodeMetrics — unreachable statements (C-65)", () => {
     expect(computeDeadCodeMetrics([f], idOf)).toEqual([]);
   });
 
-  it("skips non-TypeScript files", async () => {
-    const f = await parseFile(`def a():\n    return 1\n    x = 2\n`, "f.py", "python");
-    expect(computeDeadCodeMetrics([f], idOf)).toEqual([]);
+  it("skips languages other than TypeScript and Python", async () => {
+    const py = await parseFile(`def a():\n    return 1\n    x = 2\n`, "f.rb", "python");
+    expect(computeDeadCodeMetrics([{ ...py, language: "ruby" }], idOf)).toEqual([]);
   });
 });
 

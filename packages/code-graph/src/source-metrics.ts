@@ -2,8 +2,8 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
-import { symbolId } from "./extractors/ids.js";
 import { qualify, walkScopes } from "./scope-path.js";
+import { SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
 
 const TS_FUNCTION_TYPES = new Set([
@@ -50,14 +50,6 @@ const PY_BRANCH_TYPES = new Set([
   "conditional_expression",
 ]);
 
-interface FunctionStats {
-  /** Scope-qualified declared name (`Job.run`), or null for an anonymous function (e.g. `export default () => {}`). */
-  name: string | null;
-  cyclomatic: number;
-  cognitive: number;
-  nestingDepth: number;
-}
-
 /**
  * Names of every metric `computeSourceMetrics` can emit. These are pure
  * functions of a file's content, so the incremental indexer can carry them
@@ -75,12 +67,11 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "max_nesting_depth",
   "class_count",
   "lcom4_max",
-  // Per-symbol complexity (C-58; C-64 extends it to non-exported symbols), keyed
+  // Per-symbol complexity, loc and nesting (C-58, C-64, TP-317), keyed
   // to `symbol` node ids. Source-local like the file-level metrics above, so an
   // unchanged file carries them forward — but their nodeId is `<fileId>#<name>`,
   // so the reuse basis buckets them under the symbol's parent file (incremental.ts).
-  "symbol_cognitive",
-  "symbol_cyclomatic",
+  ...SYMBOL_METRIC_NAMES,
 ]);
 
 const EMPTY_NAMES: ReadonlySet<string> = new Set();
@@ -154,41 +145,8 @@ function metricsForFile(
       unit: "count",
     });
   }
-  out.push(...symbolComplexityMetrics(nodeId, stats, symbolNames));
+  out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
-  return out;
-}
-
-/**
- * Per-symbol complexity (C-58, C-64): for each named function whose qualified
- * name has a `symbol` node on this file, emit `symbol_cognitive`/`symbol_cyclomatic`
- * on that node (`<fileId>#<qualifiedName>`). Model B (C-64) gives non-exported
- * helpers a node too, so internal functions get their own complexity here, not
- * just exports. A qualified name shared by several functions (a getter/setter
- * pair) takes the max; a declared name with no complexity (a bare class) emits nothing.
- */
-function symbolComplexityMetrics(
-  fileId: string,
-  stats: readonly FunctionStats[],
-  symbolNames: ReadonlySet<string>,
-): GraphMetric[] {
-  if (symbolNames.size === 0) return [];
-  const byName = new Map<string, { cognitive: number; cyclomatic: number }>();
-  for (const s of stats) {
-    if (!s.name || !symbolNames.has(s.name)) continue;
-    const prev = byName.get(s.name);
-    if (!prev) byName.set(s.name, { cognitive: s.cognitive, cyclomatic: s.cyclomatic });
-    else {
-      prev.cognitive = Math.max(prev.cognitive, s.cognitive);
-      prev.cyclomatic = Math.max(prev.cyclomatic, s.cyclomatic);
-    }
-  }
-  const out: GraphMetric[] = [];
-  for (const [name, m] of byName) {
-    const sid = symbolId(fileId, name);
-    out.push({ nodeId: sid, name: "symbol_cognitive", value: m.cognitive, unit: "count" });
-    out.push({ nodeId: sid, name: "symbol_cyclomatic", value: m.cyclomatic, unit: "count" });
-  }
   return out;
 }
 
@@ -208,6 +166,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       cyclomatic: cyclomaticOf(fn.body, file.language),
       cognitive: cognitiveComplexityOf(fn.body, file.language),
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
+      loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
     });
   });
   return stats;
@@ -226,10 +185,10 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
 function functionAt(
   node: Node,
   fnTypes: ReadonlySet<string>,
-): { name: string | null; body: Node } | null {
+): { name: string | null; body: Node; node: Node } | null {
   if (fnTypes.has(node.type)) {
     const body = node.childForFieldName("body");
-    return body ? { name: node.childForFieldName("name")?.text ?? null, body } : null;
+    return body ? { name: node.childForFieldName("name")?.text ?? null, body, node } : null;
   }
   if (
     (node.type === "arrow_function" || node.type === "function_expression") &&
@@ -237,7 +196,7 @@ function functionAt(
   ) {
     const body = node.childForFieldName("body");
     if (!body) return null;
-    return { name: node.parent.childForFieldName("name")?.text ?? null, body };
+    return { name: node.parent.childForFieldName("name")?.text ?? null, body, node };
   }
   return null;
 }
