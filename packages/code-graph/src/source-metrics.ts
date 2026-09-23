@@ -1,9 +1,10 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
+import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { qualify, walkScopes } from "./scope-path.js";
-import { SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
+import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
 
 const TS_FUNCTION_TYPES = new Set([
@@ -67,7 +68,8 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "max_nesting_depth",
   "class_count",
   "lcom4_max",
-  // Per-symbol complexity, loc and nesting (C-58, C-64, TP-317), keyed
+  ...EXCEPTION_METRIC_NAMES,
+  // Per-symbol complexity, size, comments and shape (C-58, C-64, TP-317, TP-322), keyed
   // to `symbol` node ids. Source-local like the file-level metrics above, so an
   // unchanged file carries them forward — but their nodeId is `<fileId>#<name>`,
   // so the reuse basis buckets them under the symbol's parent file (incremental.ts).
@@ -147,6 +149,7 @@ function metricsForFile(
   }
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
+  out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
   return out;
 }
 
@@ -158,6 +161,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   const stats: FunctionStats[] = [];
   const fnTypes =
     file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
+  const lines = file.content.split("\n");
   walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
     if (!fn) return;
@@ -167,6 +171,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       cognitive: cognitiveComplexityOf(fn.body, file.language),
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
+      ...functionShapeStats(fn.node, fn.body, lines),
     });
   });
   return stats;

@@ -1,7 +1,7 @@
 import type { NodeKind } from "../types.js";
 
 /** The `unit` a metric row is stored with; every row of one metric name carries the same unit. */
-export type MetricUnit = "count" | "lines" | "ratio" | "days" | "percent";
+export type MetricUnit = "count" | "lines" | "ratio" | "days" | "percent" | "per100loc";
 
 /** How file values combine into a directory; `none` means no rollup reproduces the group's true value. */
 export type MetricRollup = "sum" | "max" | "mean" | "none";
@@ -17,6 +17,7 @@ export type MetricSource =
   | "degree"
   | "source-metrics"
   | "lcom"
+  | "exception-handling"
   | "dead-code"
   | "growth-risk"
   | "history"

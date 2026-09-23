@@ -80,6 +80,49 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Deepest block nesting inside the function a symbol names; the max when several share the name.",
   },
   {
+    name: "symbol_comment_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
+    absent: "exclude", source: "source-metrics",
+    description: "Rows holding a comment inside the function a symbol names, the docstring excluded; the max when several share the name.",
+  },
+  {
+    name: "symbol_docstring_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
+    absent: "exclude", source: "source-metrics",
+    description: "Rows of the function's docstring: the Python docstring, or the JSDoc block attached to a TypeScript declaration.",
+  },
+  {
+    name: "symbol_body_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Non-blank rows of the function's body that hold code, comments and the docstring excluded.",
+  },
+  {
+    name: "symbol_comment_ratio", unit: "ratio", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
+    absent: "exclude", source: "source-metrics",
+    description: "symbol_comment_lines / max(symbol_body_lines, 1). High values suggest narration; zero is not a defect.",
+  },
+  {
+    name: "symbol_narrating_comments", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Comments in the body whose words overlap the next statement's identifiers by 2 tokens or half the comment. A candidate signal.",
+  },
+  {
+    name: "symbol_pass_through", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "1 when the function's body is one call forwarding every parameter, in order, as a bare argument; else 0.",
+  },
+  {
+    name: "except_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
+    absent: "zero", source: "exception-handling", description: "Python except clauses and TypeScript catch clauses in the file.",
+  },
+  {
+    name: "except_density", unit: "per100loc", appliesTo: FILE, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "exception-handling", description: "except_count per 100 non-blank lines. Recompute from the sums for a group.",
+  },
+  {
+    name: "swallowed_except", unit: "count", appliesTo: FILE, rollup: "sum", direction: "higher-worse",
+    absent: "zero", source: "exception-handling",
+    description: "Handlers whose body is empty, pass, ..., continue, a bare or empty return, or a single logging call.",
+  },
+  {
     name: "class_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
     absent: "zero", source: "lcom", description: "Classes declared in the file; written only when there is one.",
   },

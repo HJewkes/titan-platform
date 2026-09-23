@@ -1,7 +1,17 @@
+import type { Node } from "web-tree-sitter";
+import { commentLineStats, type CommentLineStats } from "./analysis/comment-lines.js";
+import { countNarratingComments } from "./analysis/narrating-comments.js";
+import { isPassThrough } from "./analysis/pass-through.js";
 import { symbolId } from "./extractors/ids.js";
 import type { GraphMetric } from "./types.js";
 
-export interface FunctionStats {
+/** Comment and shape counts of one function (TP-322); `passThrough` is 1 or 0. */
+export interface FunctionShapeStats extends CommentLineStats {
+  narratingComments: number;
+  passThrough: number;
+}
+
+export interface FunctionStats extends FunctionShapeStats {
   /** Scope-qualified declared name (`Job.run`), or null for an anonymous function (e.g. `export default () => {}`). */
   name: string | null;
   cyclomatic: number;
@@ -11,7 +21,7 @@ export interface FunctionStats {
   loc: number;
 }
 
-type NumericStat = "cyclomatic" | "cognitive" | "nestingDepth" | "loc";
+type NumericStat = "cyclomatic" | "cognitive" | "nestingDepth" | "loc" | keyof FunctionShapeStats;
 
 /** Per-symbol metric name and the unit and function stat it reports. */
 const SYMBOL_METRICS: readonly { name: string; stat: NumericStat; unit: string }[] = [
@@ -19,6 +29,12 @@ const SYMBOL_METRICS: readonly { name: string; stat: NumericStat; unit: string }
   { name: "symbol_cyclomatic", stat: "cyclomatic", unit: "count" },
   { name: "symbol_loc", stat: "loc", unit: "lines" },
   { name: "symbol_max_nesting", stat: "nestingDepth", unit: "count" },
+  { name: "symbol_comment_lines", stat: "commentLines", unit: "lines" },
+  { name: "symbol_docstring_lines", stat: "docstringLines", unit: "lines" },
+  { name: "symbol_body_lines", stat: "bodyLines", unit: "lines" },
+  { name: "symbol_comment_ratio", stat: "commentRatio", unit: "ratio" },
+  { name: "symbol_narrating_comments", stat: "narratingComments", unit: "count" },
+  { name: "symbol_pass_through", stat: "passThrough", unit: "count" },
 ];
 
 export const SYMBOL_METRIC_NAMES: readonly string[] = SYMBOL_METRICS.map((m) => m.name);
@@ -55,4 +71,13 @@ export function symbolMetrics(
     }
   }
   return out;
+}
+
+/** `fn` is the function node, `body` its body, `lines` the file's content split on newlines. */
+export function functionShapeStats(fn: Node, body: Node, lines: readonly string[]): FunctionShapeStats {
+  return {
+    ...commentLineStats(fn, body, lines),
+    narratingComments: countNarratingComments(fn, body),
+    passThrough: isPassThrough(fn, body) ? 1 : 0,
+  };
 }
