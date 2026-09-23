@@ -1,5 +1,11 @@
 # @titan-design/session-graph
 
+## 0.8.1
+
+### Patch Changes
+
+- 6cfbe00: `RECONCILE_PR_MERGES` no longer overwrites `merged_at` once a PR's outcome has been forge-checked (TP-310); a transcript sighting time can no longer clobber a forge-accurate merge time on a later rollup pass.
+
 ## 0.8.0
 
 ### Minor Changes

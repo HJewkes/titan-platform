@@ -1,5 +1,12 @@
 # code-report
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [6623be9]
+  - @titan-design/code-read@0.1.4
+
 ## 0.0.4
 
 ### Patch Changes
