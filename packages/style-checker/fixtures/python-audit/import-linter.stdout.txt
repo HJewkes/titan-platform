@@ -1,0 +1,25 @@
+
+---------
+Contracts
+---------
+
+Analyzed 3 files, 2 dependencies.
+---------------------------------
+
+Helpers must not import core BROKEN
+
+Contracts: 0 kept, 1 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+Helpers must not import core
+----------------------------
+
+pkg.helpers is not allowed to import pkg.core:
+
+-   pkg.helpers -> pkg.core (l.1)
+
+
