@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { DiscoveredTranscript } from "@titan-design/session-read";
@@ -13,6 +13,10 @@ const prLink = line({ type: "pr-link", timestamp: "2026-09-01T00:00:01Z", prNumb
 const mergeCommand = line({
   type: "assistant", timestamp: "2026-09-01T00:00:05Z", requestId: "req-merge",
   message: { role: "assistant", model: "m", usage: { input_tokens: 1, output_tokens: 2 }, content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "gh pr merge 7 --squash" } }] },
+});
+const laterSighting = line({
+  type: "assistant", timestamp: "2026-09-03T00:00:00Z", requestId: "req-merge-2",
+  message: { role: "assistant", model: "m", usage: { input_tokens: 1, output_tokens: 2 }, content: [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "gh pr merge 7 --squash" } }] },
 });
 
 let dir: string;
@@ -70,6 +74,19 @@ describe("PR outcome resolver", () => {
     await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map(), asked) });
 
     expect(asked.map((prs) => prs.length)).toEqual([1, 1]);
+  });
+
+  it("a forge merged_at survives a later reconcile pass", async () => {
+    const transcript = transcriptOf([prLink, mergeCommand]);
+    const forgeMergedAt = "2026-09-02T10:00:00Z";
+    await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "merged", mergedAt: forgeMergedAt }]])) });
+    expect(prRow()).toMatchObject({ merged_at: forgeMergedAt, checked: 1 });
+
+    appendFileSync(transcript.absolutePath, JSON.stringify(laterSighting) + "\n");
+    await refreshCorpus(graph, [transcript], {});
+    await refreshCorpus(graph, [transcript], {});
+
+    expect(prRow()).toMatchObject({ merged_at: forgeMergedAt, checked: 1 });
   });
 
   it("survives a resolver that throws, reporting the failure instead of losing the pass", async () => {
