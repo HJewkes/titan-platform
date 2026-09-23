@@ -253,6 +253,32 @@ describe("runMirror", () => {
     await running;
   });
 
+  it("posts an item opened between tail() and reconcile's open() exactly once", async () => {
+    const source = new MemoryQueueSource();
+    const hub = new FakeHub();
+    const controller = new AbortController();
+    const open = source.open.bind(source);
+    let release!: () => void;
+    const openCalled = new Promise<void>((called) => {
+      vi.spyOn(source, "open").mockImplementation(async () => {
+        const snapshot = await open();
+        called();
+        await new Promise<void>((resume) => (release = resume));
+        return snapshot;
+      });
+    });
+    const running = runMirror(source, hub, new MemoryMirrorState(), { ownerUserId: OWNER, roomId: ROOM, signal: controller.signal, sweepIntervalMs: 5 });
+
+    await openCalled;
+    source.add(approval("gap"));
+    release();
+
+    await vi.waitFor(() => expect(msgIds(hub)).toEqual(["gap"]));
+    controller.abort();
+    await running;
+    expect(msgIds(hub)).toEqual(["gap"]);
+  });
+
   it("posts an item added while running, and stops on abort", async () => {
     const source = new MemoryQueueSource();
     const hub = new FakeHub();
