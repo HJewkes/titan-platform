@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyDelta } from "./apply.js";
 import { applyAudit } from "./audit-apply.js";
 import { AUDIT_COLUMNS, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
+import { ORIGIN_MIGRATION_NAME } from "./audit-schema-v5.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { purgeTranscript } from "./purge.js";
 import { refreshCorpus } from "./refresh.js";
@@ -107,7 +108,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [1001, "active-work tables"], [1002, "active-work follow-up"],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
     expect(afterSecond).toEqual(afterFirst);

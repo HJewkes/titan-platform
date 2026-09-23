@@ -1,10 +1,11 @@
 import { sessionRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
+import { EPISODE_TABLE } from "./audit-schema-v5.js";
 import { KIT } from "./schema.js";
 
 /** Derived tables keyed by `session_id`, reachable from a transcript through `session`. */
-const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "session_model_usage"] as const;
+const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "session_model_usage", EPISODE_TABLE] as const;
 
 /**
  * Drop every derived row one transcript produced, so re-reading it from byte 0

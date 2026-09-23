@@ -3,6 +3,7 @@ export type { OpenSessionGraphOptions } from "./graph.js";
 export { allSessionIds, openSessionGraph, resetIndex } from "./graph.js";
 export { DERIVED_TABLES, DOMAIN_DDL, KIT, MIGRATIONS } from "./schema.js";
 export { AUDIT_DDL, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
+export { EPISODE_TABLE, ORIGIN_DDL, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_VIEWS } from "./audit-schema-v5.js";
 export { applyAudit } from "./audit-apply.js";
 export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions, type BackfillSummary } from "./facet.js";
 export { applyDelta, type DeltaSource } from "./apply.js";
@@ -13,6 +14,8 @@ export type { IndexOptions, RefreshOptions, RefreshSummary, TranscriptOutcome } 
 export { indexTranscript, refreshCorpus } from "./refresh.js";
 export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from "./tasks.js";
 export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
+export type { ExternalEvent, OriginEnrichment, OriginResolution, OriginResolver, ResolvedOrigin } from "./origin.js";
+export { NO_ORIGINS, resolveOrigins, sessionsNeedingOrigin } from "./origin.js";
 
 export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
 export { normalizedSessions, normalizedUsage, readIndexedText, type ConversationSummary, type IndexedSpan, type NormalizedUsageSummary } from "./normalized-query.js";
