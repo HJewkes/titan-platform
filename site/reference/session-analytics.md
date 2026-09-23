@@ -65,7 +65,7 @@ process.stdout.write(renderCostReportText(report));
 
 `since` is inclusive and `until` exclusive, both compared against request `ts`. `days`
 counts back from `until`, or from now. The report groups cost by token class, account, model,
-session class, role, initiative, context band and wake cause. It also crosses wake cause
+session class, role, episode count, initiative, context band and wake cause. It also crosses wake cause
 with gap band and lists cold rebuilds, compactions, top sessions, unpriced models and
 coverage.
 
@@ -107,8 +107,27 @@ attributed them to the surrounding tool result.
 **The report prices from the graph's `price` table, not `PRICE_TABLE`.** A graph with no price
 rows reports every request as unpriced, and the footer says which table version priced it.
 
-**Roles are provisional.** A human session is `coordinator` or `adhoc`; a worker is
-`worker:<profile>` until the profile-to-role map lands.
+**Roles and episodes are heuristic version 1, and provisional.** A human session is
+`coordinator` or `adhoc`. A worker is `worker:<role>`, its spawn profile mapped by the worker
+forensics report's table (`PROFILE_ROLES`), with one overlay: a worker living 12 hours or more
+that served 2 or more assignments is `worker:standing_peer`. An unmapped profile is
+`worker:unknown`; the report's behaviour fallback is not ported.
+
+**Two episode heuristics, on purpose.** `buildEpisodes(input, heuristic)` is pure.
+`worker-v1` segments by assignment: it opens at the brief, at a `channel_message` arriving
+after a `status_report` in the current episode (channel messages within 10 minutes of the
+previous one cluster), and after an idle gap of 30 minutes. It records the first deliverable
+and the first status report separately, because a commit fires early in an implementer's
+life. `coordinator-v1` segments by work phase: idle gap, PR merge (one per 15 requests),
+spawn wave complete, wrap or task done, and a context drop over 20k, with no episode shorter
+than 8 requests. `writeEpisodes(graph, sessionIds)` picks the heuristic by session class
+(headless sessions get none) and writes through session-graph's `replaceEpisodes`.
+
+**Only assignment episodes count toward standing peer.** An idle-gap episode is the same
+assignment resumed, so a worker idle for 13 hours with one brief stays what it was spawned as.
+
+**The report reads stored episodes.** `byEpisodeCount` and the standing-peer overlay read the
+`episode` table, so run `writeEpisodes` first; a session never segmented lands under `none`.
 
 **`bandOf` returns `null`, not a fallback label**, for a value no band covers. A negative
 gap means clock skew upstream and should be reported rather than bucketed.
@@ -119,4 +138,5 @@ New for TP-263, under the session-mining audit epic TP-256. The price table, the
 classification rule order and the band edges are ports of `cf_analyze.py` from the
 2026-09-20 cost forensics run, with that script's two inferred-spawn rules dropped (they
 fired on zero sessions) and its sonnet default price removed. It also absorbs the package
-scaffold TP-239 asked for. The cost report and its renderer are TP-272.
+scaffold TP-239 asked for. The cost report and its renderer are TP-272. Roles and both episode heuristics are TP-273, moved
+in from the worker and coordinator forensics reports and `wf_analyze.py` / `co_analyze.py`.

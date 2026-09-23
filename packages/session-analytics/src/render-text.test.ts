@@ -18,6 +18,7 @@ const SECTIONS = [
   "By model",
   "By class",
   "By role",
+  "By episode count",
   "By initiative",
   "By context band",
   "By wake cause",

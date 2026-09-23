@@ -15,6 +15,7 @@ export function renderCostReportText(report: CostReport): string {
     bucketTable("By model", report.byModel, report.totals.costUsd),
     bucketTable("By class", report.byClass, report.totals.costUsd),
     bucketTable("By role", report.byRole, report.totals.costUsd),
+    bucketTable("By episode count", report.byEpisodeCount, report.totals.costUsd),
     bucketTable("By initiative", report.byInitiative, report.totals.costUsd),
     bucketTable("By context band", report.byContextBand, report.totals.costUsd),
     wakeCauseTable(report),

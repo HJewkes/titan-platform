@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport, costReportSchema, type CostReport } from "./cost-report.js";
-import { SCENARIO_WINDOW, createFixtureGraph, seedCostScenario, type FixtureGraph } from "./fixture.js";
+import { writeEpisodes } from "./episodes.js";
+import { SCENARIO_WINDOW, createFixtureGraph, insertInbound, insertRequest, insertSignal, seedCostScenario, type FixtureGraph } from "./fixture.js";
 import { priceRequest } from "./price-request.js";
 
 let fixture: FixtureGraph;
@@ -87,6 +88,22 @@ describe("costReport", () => {
 
     expect(top.map((row) => row.sessionId)).toEqual(["coord", "worker"]);
     expect(top[1]).toMatchObject({ sessionClass: "agent_spawned", role: "worker:implementer", initiative: "repo:titan-platform", account: "work" });
+  });
+
+  it("buckets sessions by stored episode count and names a worker that outlived its brief a standing peer", () => {
+    const db = fixture.graph.db;
+    insertSignal(db, { sessionId: "worker", ts: "2026-09-20T13:05:00Z", signal: "status_report" });
+    insertInbound(db, { sessionId: "worker", ts: "2026-09-21T02:00:00Z", cause: "channel_message" });
+    insertRequest(db, { sessionId: "worker", ts: "2026-09-21T02:00:00Z" });
+    writeEpisodes(fixture.graph, ["coord", "worker", "miner"]);
+
+    const segmented = costReport(fixture.openReadOnly(), SCENARIO_WINDOW);
+
+    expect(keys(report.byEpisodeCount)).toEqual(["none"]);
+    expect(keys(segmented.byEpisodeCount)).toEqual(["1", "2", "none"]);
+    expect(find(segmented.byEpisodeCount, "1")).toMatchObject({ sessions: 1, requests: 4 });
+    expect(find(segmented.byEpisodeCount, "2")).toMatchObject({ sessions: 1, requests: 1 });
+    expect(keys(segmented.byRole)).toEqual(["coordinator", "headless_sdk", "worker:standing_peer"]);
   });
 
   it("JSON output validates against the exported zod schema", () => {
