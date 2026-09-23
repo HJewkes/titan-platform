@@ -248,3 +248,74 @@ describe("collectDeclaredNames + internal-symbol complexity (C-64)", () => {
     expect([...collectDeclaredNames(file)].sort()).toEqual(["B", "B.m", "a"]);
   });
 });
+
+describe("computeSourceMetrics — per-symbol loc and nesting (TP-317)", () => {
+  const sym = (file: string, name: string): string => `${file}#${name}`;
+
+  it("reports each TypeScript function's line span and nesting on its own symbol", async () => {
+    const file = await parseTs(
+      [
+        "export function flat(x: number) {",
+        "  return x;",
+        "}",
+        "export function deep(xs: number[]) {",
+        "  for (const x of xs) {",
+        "    if (x > 0) {",
+        "      while (x) {",
+        "        return x;",
+        "      }",
+        "    }",
+        "  }",
+        "  return 0;",
+        "}",
+      ].join("\n"),
+    );
+    const names = new Map([["f.ts", new Set(["flat", "deep"])]]);
+    const metrics = computeSourceMetrics([file], idOf, names);
+    expect(metric(metrics, sym("f.ts", "flat"), "symbol_loc")).toBe(3);
+    expect(metric(metrics, sym("f.ts", "flat"), "symbol_max_nesting")).toBe(0);
+    expect(metric(metrics, sym("f.ts", "deep"), "symbol_loc")).toBe(10);
+    expect(metric(metrics, sym("f.ts", "deep"), "symbol_max_nesting")).toBe(3);
+  });
+
+  it("reports each Python function's line span and nesting on its own symbol", async () => {
+    const file = await parsePy(
+      [
+        "def short(x):",
+        "    return x",
+        "",
+        "class Job:",
+        "    def run(self, xs):",
+        "        for x in xs:",
+        "            if x:",
+        "                return x",
+        "        return None",
+      ].join("\n"),
+    );
+    const names = new Map([["f.py", new Set(["short", "Job", "Job.run"])]]);
+    const metrics = computeSourceMetrics([file], idOf, names);
+    expect(metric(metrics, sym("f.py", "short"), "symbol_loc")).toBe(2);
+    expect(metric(metrics, sym("f.py", "short"), "symbol_max_nesting")).toBe(0);
+    expect(metric(metrics, sym("f.py", "Job.run"), "symbol_loc")).toBe(5);
+    expect(metric(metrics, sym("f.py", "Job.run"), "symbol_max_nesting")).toBe(2);
+    expect(metric(metrics, sym("f.py", "Job"), "symbol_loc")).toBeUndefined();
+  });
+
+  it("takes the max of loc and nesting independently when a name maps to several functions", async () => {
+    const file = await parseTs(
+      [
+        "class A {",
+        "  set v(x: number) { if (x) { if (x > 1) return; } }",
+        "  get v(): number {",
+        "    const a = 1;",
+        "    return a;",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    const names = new Map([["f.ts", new Set(["A.v"])]]);
+    const metrics = computeSourceMetrics([file], idOf, names);
+    expect(metric(metrics, sym("f.ts", "A.v"), "symbol_loc")).toBe(4);
+    expect(metric(metrics, sym("f.ts", "A.v"), "symbol_max_nesting")).toBe(2);
+  });
+});
