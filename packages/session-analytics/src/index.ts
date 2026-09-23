@@ -6,3 +6,9 @@ export type { HumanRole, SessionClass, SessionClassification, SessionFacts, Sess
 export { classifySession } from "./classify-session.js";
 export type { Band } from "./bands.js";
 export { CONTEXT_BANDS, GAP_BANDS, bandOf, contextBand, gapBand } from "./bands.js";
+export type { CostBucket, CostReport, CostReportOptions, TokenClass, WakeCauseBucket, WakeGapCell } from "./cost-report.js";
+export { TOKEN_CLASSES, costReport, costReportSchema } from "./cost-report.js";
+export type { ReportWindow } from "./cost-report-queries.js";
+export type { TaskInitiative } from "./initiative.js";
+export { initiativeFromCwd, sessionInitiative } from "./initiative.js";
+export { LIST_PRICE_CAVEAT, renderCostReportText } from "./render-text.js";
