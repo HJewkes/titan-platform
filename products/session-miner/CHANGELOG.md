@@ -1,5 +1,13 @@
 # @titan-design/session-miner
 
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies [527b81e]
+- Updated dependencies [da2f8d9]
+  - @titan-design/session-graph@0.8.0
+
 ## 0.2.8
 
 ### Patch Changes

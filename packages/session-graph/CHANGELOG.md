@@ -1,5 +1,12 @@
 # @titan-design/session-graph
 
+## 0.8.0
+
+### Minor Changes
+
+- 527b81e: Add a `resolvePrs` option to `refreshCorpus` that fills PR state, merged_at, closed_at and review_rounds from a caller's forge after reconcile, never downgrading a merged PR. `ResolvedTask` gains `estimate`, stored in `task.estimate`. Add `replaceEpisodes`, the writer of the `episode` table, which replaces one heuristic's rows for one session. Document migration 5 and `syncPrices`.
+- da2f8d9: Add `syncPrices(graph, rows, { tableVersion, source })`, which replaces every `price` row in one transaction so `request_cost` never reads a half-written table. `PriceInput` matches session-analytics' `PriceRow`, so `PRICE_TABLE` passes straight through without session-graph depending on session-analytics.
+
 ## 0.7.0
 
 ### Minor Changes
