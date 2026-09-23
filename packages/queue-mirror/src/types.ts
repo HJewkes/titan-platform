@@ -71,3 +71,8 @@ export interface MirrorState {
   hasApplied(resolutionEventId: string): boolean;
   commit(change: StateChange): void;
 }
+
+export interface MirrorLogger {
+  info(msg: string, data?: object): void;
+  warn(msg: string, data?: object): void;
+}
