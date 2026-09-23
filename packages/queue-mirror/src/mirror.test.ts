@@ -117,7 +117,21 @@ describe("folding owner resolutions", () => {
     ]);
   });
 
-  it("persists since only after the batch succeeds, and the same reaction twice resolves once", async () => {
+  it("labels a phone verdict 'resolved: allow' even when the source's own close event lands mid-resolve", async () => {
+    const resolve = r.source.resolve.bind(r.source);
+    vi.spyOn(r.source, "resolve").mockImplementation(async (id, verdict) => {
+      const result = await resolve(id, verdict);
+      await r.mirror.applySourceEvent({ type: "closed", id, outcome: "resolved", label: verdict.verdict, cursor: "2" });
+      return result;
+    });
+
+    await r.mirror.applySyncBatch(r.hub.deliver(reaction(eventIdOf(r.state, "a"))));
+
+    expect(JSON.stringify(r.hub.edits().map((edit) => edit.content["m.new_content"]))).toContain("resolved: allow");
+    expect(r.hub.edits()).toHaveLength(1);
+  });
+
+    it("persists since only after the batch succeeds, and the same reaction twice resolves once", async () => {
     const event = reaction(eventIdOf(r.state, "a"));
     const resolve = vi.spyOn(r.source, "resolve").mockRejectedValueOnce(new Error("source down"));
 

@@ -2,7 +2,7 @@ import { ITEM_KEY, encodeItem, foldResolution, type AppserviceClient, type ItemK
 import { encodeEdit } from "./edit.js";
 import { toItemInput } from "./render.js";
 import type { Backoff } from "./supervise.js";
-import type { MirrorLogger, MirrorState, PostedItem, QueueItem, QueueSource, SourceEvent } from "./types.js";
+import type { MirrorLogger, MirrorState, PostedItem, QueueItem, QueueSource, ResolveResult, SourceEvent, VerdictInput } from "./types.js";
 
 /** The slice of AppserviceClient the mirror drives; tests pass a fake hub. */
 export type MirrorBus = Pick<AppserviceClient, "send" | "syncLoop" | "userId">;
@@ -43,6 +43,8 @@ function closedStatus(event: Extract<SourceEvent, { type: "closed" }>): string {
 class QueueMirror implements Mirror {
   private readonly log: MirrorLogger;
   private readonly now: () => number;
+  /** Source ids with a phone verdict in flight; their echoed source close must not win the edit. */
+  private readonly resolving = new Set<string>();
 
   constructor(
     private readonly source: QueueSource,
@@ -70,7 +72,7 @@ class QueueMirror implements Mirror {
       return this.post(event.item, cursor);
     }
     const item = this.state.bySourceId(event.id);
-    if (item?.status !== "open") return this.state.commit({ sourceCursor: cursor });
+    if (item?.status !== "open" || this.resolving.has(event.id)) return this.state.commit({ sourceCursor: cursor });
     await this.close(item, closedStatus(event), { sourceCursor: cursor });
   }
 
@@ -142,11 +144,20 @@ class QueueMirror implements Mirror {
   private async applyResolution(event: MatrixEvent, { itemEventId, verdict, text }: Resolution): Promise<void> {
     const item = this.state.byEventId(itemEventId) as PostedItem;
     const applied = [event.event_id];
-    const result = await this.source.resolve(item.sourceId, { verdict, text, resolutionEventId: event.event_id });
+    const result = await this.resolveAtSource(item.sourceId, { verdict, text, resolutionEventId: event.event_id });
     if (result.ok) return this.close(item, `resolved: ${verdict}`, { applied });
     if (result.reason === "closed") return this.close(item, "already resolved", { applied });
     this.state.commit({ applied });
     this.log.warn("rejected", { sourceId: item.sourceId, verdict, detail: result.detail });
+  }
+
+  private async resolveAtSource(sourceId: string, verdict: VerdictInput): Promise<ResolveResult> {
+    this.resolving.add(sourceId);
+    try {
+      return await this.source.resolve(sourceId, verdict);
+    } finally {
+      this.resolving.delete(sourceId);
+    }
   }
 }
 
