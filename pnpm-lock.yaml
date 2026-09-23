@@ -366,7 +366,18 @@ importers:
 
   packages/rpc-protocol: {}
 
-  packages/session-analytics: {}
+  packages/session-analytics:
+    dependencies:
+      '@titan-design/session-graph':
+        specifier: workspace:^
+        version: link:../session-graph
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/session-graph:
     dependencies:

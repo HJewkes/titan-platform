@@ -1,10 +1,11 @@
 # @titan-design/session-analytics
 
-Pricing, session classification and banding for mined Claude Code sessions. Pure functions
-over plain objects: no database, no filesystem, no network.
+Pricing, session classification, banding and the standing cost report for mined Claude Code
+sessions. The pricing, classification and band functions are pure. `costReport` reads a
+session graph through a read-only connection and never writes it.
 
-Tier 2 of the titan-platform DAG. It imports no other titan package; a caller composes it
-with `@titan-design/session-read` and `@titan-design/session-graph`.
+Tier 2 of the titan-platform DAG. It depends on `@titan-design/session-graph` for table
+names and on `@titan-design/store-sqlite` for the `Db` type. `zod` is a peer dependency.
 
 ```ts
 import { classifySession, contextBand, priceRequest } from "@titan-design/session-analytics";
@@ -25,13 +26,31 @@ priceRequest(
 - `classifySession(facts)` — `agent_spawned`, `human_interactive`, `headless_sdk` or
   `other_headless`, plus `coordinator` or `adhoc` for human sessions.
 - `CONTEXT_BANDS`, `GAP_BANDS`, `bandOf`, `contextBand`, `gapBand`.
+- `costReport(db, { since, until, days, top, transcriptsDiscovered, facetVersion })` — the
+  standing cost report as one JSON object, and `costReportSchema`, its zod schema.
+- `renderCostReportText(report)` — the same report as plain-text tables, ending with
+  `LIST_PRICE_CAVEAT` and the price-table and coverage footer.
+- `initiativeFromCwd(cwd)`, `sessionInitiative(tasks, cwd)` — a session's initiative from its
+  task edges, falling back to the `cf_analyze.py` cwd rule.
 
-## Two things that will bite you
+```ts
+import { openDatabase } from "@titan-design/store-sqlite";
+import { costReport, renderCostReportText } from "@titan-design/session-analytics";
+
+const report = costReport(openDatabase(graphPath, { readonly: true }), { days: 7 });
+process.stdout.write(renderCostReportText(report));
+```
+
+## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.
 Misreading it overstated the 2026-09-20 audit by about $1,700.
 
 An unknown model is **unpriced**: `priced: false` and zero cost. There is no default row,
-because defaulting bills a new model at an old model's rate without saying so.
+because defaulting bills a new model at an old model's rate without saying so. The cost
+report lists such models under `unpricedModels`.
+
+The cost report prices through the graph's `price` table, not through `PRICE_TABLE`. A graph
+whose price rows were never synced reports every request as unpriced.
 
 Full reference: `site/reference/session-analytics.md`.
