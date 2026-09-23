@@ -30,6 +30,7 @@ Reusable machinery over the primitives.
 | [`agent-lifecycle`](/reference/agent-lifecycle) | Durable agent execution state and fenced ownership | `agent-protocol`, `store-sqlite` |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `store-sqlite` |
+| [`matrix-bus`](/reference/matrix-bus) | Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap | none |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |

@@ -23,7 +23,8 @@
           "packages/hitl",
           "packages/agent-lifecycle",
           "packages/messaging",
-          "packages/rpc-client"
+          "packages/rpc-client",
+          "packages/matrix-bus"
         ],
         "2": [
           "packages/session-read",
@@ -65,7 +66,8 @@
           "packages/hitl",
           "packages/agent-lifecycle",
           "packages/messaging",
-          "packages/rpc-client"
+          "packages/rpc-client",
+          "packages/matrix-bus"
         ],
         [
           "packages/session-read",

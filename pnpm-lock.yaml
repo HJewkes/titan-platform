@@ -264,6 +264,8 @@ importers:
 
   packages/locator: {}
 
+  packages/matrix-bus: {}
+
   packages/memory:
     dependencies:
       '@titan-design/embed':
