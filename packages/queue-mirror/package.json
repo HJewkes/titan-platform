@@ -13,6 +13,10 @@
     "./hitl": {
       "types": "./dist/hitl.d.ts",
       "import": "./dist/hitl.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
     }
   },
   "files": [
@@ -41,6 +45,7 @@
   },
   "dependencies": {
     "@titan-design/hitl": "workspace:^",
-    "@titan-design/matrix-bus": "workspace:^"
+    "@titan-design/matrix-bus": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^"
   }
 }
