@@ -288,6 +288,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/queue-mirror:
+    dependencies:
+      '@titan-design/matrix-bus':
+        specifier: workspace:^
+        version: link:../matrix-bus
+
   packages/react-app:
     dependencies:
       '@titan-design/rpc-client':
