@@ -66,3 +66,30 @@ describe("classifyForReuse", () => {
     expect(toParse).toHaveLength(1);
   });
 });
+
+describe("structuralSignature (C-18)", () => {
+  const sig = async (src: string): Promise<string> =>
+    structuralSignature(await parseFile(src, "/x.ts", "typescript"));
+
+  it("is identical across comment and whitespace changes", async () => {
+    const base = await sig(`export function f(n: number) { return n + 1; }\n`);
+    const commented = await sig(
+      `// header\nexport function f(n: number) {\n  return n + 1; // note\n}\n`,
+    );
+    expect(commented).toBe(base);
+  });
+
+  it("differs when a token changes", async () => {
+    const plus = await sig(`export const x = a + b;\n`);
+    const minus = await sig(`export const x = a - b;\n`);
+    const renamed = await sig(`export const x = a + c;\n`);
+    expect(minus).not.toBe(plus);
+    expect(renamed).not.toBe(plus);
+  });
+
+  it("differs when a string literal (a dynamic-import specifier) changes", async () => {
+    const a = await sig(`const m = await import("./a.js");\n`);
+    const b = await sig(`const m = await import("./b.js");\n`);
+    expect(b).not.toBe(a);
+  });
+});
