@@ -8,6 +8,9 @@ import type {
   MetricMinRule,
   MetricProductMaxRule,
 } from "./types.js";
+import { CODE_GRAPH_TOOL, locateNode } from "./violation-location.js";
+
+type MetricRule = MetricMaxRule | MetricMinRule | MetricProductMaxRule;
 
 interface NodeFilter {
   kind?: NodeKind;
@@ -15,7 +18,7 @@ interface NodeFilter {
   excludedRoles: Set<NodeRole>;
 }
 
-function nodeFilter(rule: MetricMaxRule | MetricMinRule | MetricProductMaxRule): NodeFilter {
+function nodeFilter(rule: MetricRule): NodeFilter {
   return {
     kind: rule.kind,
     excluders: compilePatterns(rule.exclude),
@@ -30,79 +33,97 @@ function passesFilter(node: GraphNode, filter: NodeFilter): boolean {
   return true;
 }
 
-export function runMetricMaxRule(rule: MetricMaxRule, ctx: RuleContext): CheckViolation[] {
+/** Symbol nodes only when the rule asks for them, so file rules and their baselines stay as they were. */
+function candidateNodes(rule: MetricRule, ctx: RuleContext): GraphNode[] {
   const filter = nodeFilter(rule);
+  const pool = rule.kind === "symbol" ? ctx.symbolNodes : ctx.nodes;
+  return pool.filter((node) => passesFilter(node, filter));
+}
+
+interface Breach {
+  node: GraphNode;
+  metric: string;
+  value: number;
+  threshold: number;
+  message: string;
+  evidence: string;
+}
+
+function toViolation(rule: MetricRule, breach: Breach): CheckViolation {
+  return {
+    ruleId: rule.id,
+    severity: severityOf(rule),
+    nodeId: breach.node.id,
+    metric: breach.metric,
+    value: breach.value,
+    threshold: breach.threshold,
+    message: breach.message,
+    ...locateNode(breach.node),
+    evidence: breach.evidence,
+    tool: CODE_GRAPH_TOOL,
+  };
+}
+
+function thresholdBreach(node: GraphNode, metric: string, value: number, bound: "max" | "min", threshold: number): Breach {
+  const op = bound === "max" ? ">" : "<";
+  return {
+    node,
+    metric,
+    value,
+    threshold,
+    message: `${metric}=${formatNumber(value)} ${op} ${formatNumber(threshold)}`,
+    evidence: `${metric}=${formatNumber(value)} (${bound} ${formatNumber(threshold)})`,
+  };
+}
+
+export function runMetricMaxRule(rule: MetricMaxRule, ctx: RuleContext): CheckViolation[] {
   const out: CheckViolation[] = [];
-  for (const node of ctx.nodes) {
-    if (!passesFilter(node, filter)) continue;
+  for (const node of candidateNodes(rule, ctx)) {
     const value = ctx.metricsByNode.get(node.id)?.get(rule.metric);
-    if (value === undefined) continue;
-    if (value <= rule.max) continue;
-    out.push({
-      ruleId: rule.id,
-      severity: severityOf(rule),
-      nodeId: node.id,
-      metric: rule.metric,
-      value,
-      threshold: rule.max,
-      message: `${rule.metric}=${formatNumber(value)} > ${formatNumber(rule.max)}`,
-    });
+    if (value === undefined || value <= rule.max) continue;
+    out.push(toViolation(rule, thresholdBreach(node, rule.metric, value, "max", rule.max)));
   }
   return out;
 }
 
 export function runMetricMinRule(rule: MetricMinRule, ctx: RuleContext): CheckViolation[] {
-  const filter = nodeFilter(rule);
   const out: CheckViolation[] = [];
-  for (const node of ctx.nodes) {
-    if (!passesFilter(node, filter)) continue;
+  for (const node of candidateNodes(rule, ctx)) {
     const value = ctx.metricsByNode.get(node.id)?.get(rule.metric);
-    if (value === undefined) continue;
-    if (value >= rule.min) continue;
-    out.push({
-      ruleId: rule.id,
-      severity: severityOf(rule),
-      nodeId: node.id,
-      metric: rule.metric,
-      value,
-      threshold: rule.min,
-      message: `${rule.metric}=${formatNumber(value)} < ${formatNumber(rule.min)}`,
-    });
+    if (value === undefined || value >= rule.min) continue;
+    out.push(toViolation(rule, thresholdBreach(node, rule.metric, value, "min", rule.min)));
   }
   return out;
 }
 
 export function runMetricProductMaxRule(rule: MetricProductMaxRule, ctx: RuleContext): CheckViolation[] {
-  const filter = nodeFilter(rule);
   const out: CheckViolation[] = [];
-  for (const node of ctx.nodes) {
-    if (!passesFilter(node, filter)) continue;
+  for (const node of candidateNodes(rule, ctx)) {
     const inner = ctx.metricsByNode.get(node.id);
     if (!inner) continue;
     const components = collectComponents(rule.metrics, inner);
     if (!components) continue;
     const product = components.reduce((a, b) => a * b, 1);
     if (product <= rule.max) continue;
-    out.push(productViolation(rule, node.id, components, product));
+    out.push(toViolation(rule, productBreach(rule, node, components, product)));
   }
   return out;
 }
 
-function productViolation(
+function productBreach(
   rule: MetricProductMaxRule,
-  nodeId: string,
+  node: GraphNode,
   components: readonly number[],
   product: number,
-): CheckViolation {
+): Breach {
   const detail = rule.metrics.map((m, i) => `${m}=${formatNumber(components[i]!)}`).join(" * ");
   return {
-    ruleId: rule.id,
-    severity: severityOf(rule),
-    nodeId,
+    node,
     metric: rule.metrics.join(" * "),
     value: product,
     threshold: rule.max,
     message: `${detail} = ${formatNumber(product)} > ${formatNumber(rule.max)}`,
+    evidence: `${detail} = ${formatNumber(product)} (max ${formatNumber(rule.max)})`,
   };
 }
 
