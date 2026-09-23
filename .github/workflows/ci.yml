@@ -30,8 +30,9 @@ jobs:
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
+      # The Version Packages PR consumes the changesets, so this step can never pass there.
       - name: Require a changeset for package changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
   dag-check:
