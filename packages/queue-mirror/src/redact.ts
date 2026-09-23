@@ -3,7 +3,8 @@ const PLACEHOLDER = "[REDACTED]";
 const AUTH_HEADER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi;
 // The optional quote after the name lets a JSON key such as "password": "x" match.
 const KEY_VALUE = /\b([A-Za-z0-9_-]*(?:token|key|password))(["']?\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s&"',;]+)/gi;
-const HEX_RUN = /\b[0-9a-fA-F]{32,}\b/g;
+// Exactly 40 hex characters is a git commit SHA, which the owner exempted so git previews stay approvable.
+const HEX_RUN = /\b(?:[0-9a-fA-F]{32,39}|[0-9a-fA-F]{41,})\b/g;
 const B64_RUN = /(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{32,}={0,2}(?![A-Za-z0-9+/_=-])/g;
 
 const PLAIN_WORD = /^(?:[a-z]{3,}|[A-Z]{3,})$/;

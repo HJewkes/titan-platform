@@ -17,11 +17,16 @@ describe("redactPreview", () => {
     expect(redactPreview("GET /api?access_token=x&y=1").text).toBe("GET /api?access_token=[REDACTED]&y=1");
   });
 
-  it("masks a 40-character hex run and a mixed 44-character base64 key", () => {
-    const sha = "0123456789abcdef0123456789abcdef01234567";
+  it("masks 32- and 64-character hex runs and a mixed 44-character base64 key", () => {
     const b64 = "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9d=";
-    expect(redactPreview(`git checkout ${sha}`).text).toBe("git checkout [REDACTED]");
+    expect(redactPreview(`sha256 ${"ab12".repeat(16)}`).text).toBe("sha256 [REDACTED]");
+    expect(redactPreview(`id ${"0f".repeat(16)}`).text).toBe("id [REDACTED]");
     expect(redactPreview(`secret ${b64} end`)).toEqual({ text: "secret [REDACTED] end", redacted: true });
+  });
+
+  it("leaves a 40-character git SHA alone", () => {
+    const text = "git checkout 0123456789abcdef0123456789abcdef01234567";
+    expect(redactPreview(text)).toEqual({ text, redacted: false });
   });
 
   it("leaves paths, URLs, kebab names and a 31-character hex run alone", () => {
