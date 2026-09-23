@@ -1,0 +1,24 @@
+{
+  "name": "@titan-design/hub-deploy",
+  "description": "The shared Matrix hub: Tuwunel and Caddy compose, config templates, appservice registrations and owner-side scripts",
+  "type": "module",
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "deploy/hub"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "./scripts/setup.sh",
+    "bootstrap": "node src/bootstrap.mjs",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "matrix-js-sdk": "^42.4.0"
+  },
+  "private": true
+}
