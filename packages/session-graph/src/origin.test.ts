@@ -203,3 +203,21 @@ describe("request_dedup", () => {
     ]);
   });
 });
+
+describe("context_contribution", () => {
+  it("attributes a request's whole ctx_delta to the tool_result block, not the assistant text before it", () => {
+    const request = graph.db.prepare("INSERT INTO request (transcript_id, request_id, byte_offset, session_id, ts, model, ctx_delta) VALUES (1, ?, ?, 's', ?, 'm', ?)");
+    request.run("req-prev", 100, "2026-09-01T00:00:01Z", null);
+    request.run("req-next", 300, "2026-09-01T00:00:03Z", 500);
+    const block = graph.db.prepare("INSERT INTO context_block (transcript_id, byte_offset, block_index, session_id, ts, source, chars) VALUES (1, ?, 0, 's', 't', ?, ?)");
+    block.run(100, "assistant_text", 400);
+    block.run(200, "tool_result", 100);
+
+    const shares = rows("SELECT source, request_id, est_tokens FROM context_contribution ORDER BY byte_offset");
+
+    expect(shares).toEqual([
+      { source: "assistant_text", request_id: "req-next", est_tokens: null },
+      { source: "tool_result", request_id: "req-next", est_tokens: 500 },
+    ]);
+  });
+});

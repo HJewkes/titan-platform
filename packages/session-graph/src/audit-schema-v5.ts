@@ -97,10 +97,13 @@ const REQUEST_COST = `
   FROM component;
 `;
 
+const ASSISTANT_OUTPUT = "'assistant_text', 'assistant_thinking', 'assistant_tool_input'";
+
 /**
  * A block belongs to the first request after it in its transcript; a block on the request's own
  * line is that request's output and so feeds the next one. Blocks whose request is a fan-out copy
- * drop out with it, keeping estimates aligned with `request_dedup`.
+ * drop out with it, keeping estimates aligned with `request_dedup`. Assistant output is already
+ * subtracted from `ctx_delta`, so those rows stay visible with a NULL `est_tokens` and no share.
  */
 const CONTEXT_CONTRIBUTION = `
   CREATE VIEW IF NOT EXISTS context_contribution AS
@@ -122,7 +125,9 @@ const CONTEXT_CONTRIBUTION = `
   )
   SELECT cb.transcript_id, cb.byte_offset, cb.block_index, cb.session_id, cb.ts, cb.source,
     cb.tool_use_id, cb.attachment_type, cb.chars, cb.is_media, o.request_id, d.ctx_delta,
-    d.ctx_delta * cb.chars * 1.0 / NULLIF(SUM(cb.chars) OVER (PARTITION BY o.transcript_id, o.request_id), 0) AS est_tokens,
+    CASE WHEN cb.source IN (${ASSISTANT_OUTPUT}) THEN NULL
+      ELSE d.ctx_delta * cb.chars * 1.0 / NULLIF(SUM(CASE WHEN cb.source IN (${ASSISTANT_OUTPUT}) THEN 0 ELSE cb.chars END)
+        OVER (PARTITION BY o.transcript_id, o.request_id), 0) END AS est_tokens,
     t.name AS tool_name, t.family AS tool_family, t.mcp_server
   FROM context_block cb
   JOIN owner o USING (transcript_id, byte_offset, block_index)
