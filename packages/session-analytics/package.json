@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-analytics",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Pure pricing, session classification and banding over mined session data",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,3 +1,4 @@
+import { prepareAuditRollup } from "./audit-rollup.js";
 import type { SessionGraph } from "./graph.js";
 
 const BATCH = 400;
@@ -39,18 +40,20 @@ const RENUMBER_TURNS = `
   )
   UPDATE turn SET turn_index = ordered.idx FROM ordered WHERE turn.prompt_id = ordered.prompt_id`;
 
-/** Recompute turn aggregates for the given sessions in one transaction. */
+/** Recompute turn aggregates and the audit rollup for the given sessions in one transaction. */
 export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[]): number {
   const unique = [...new Set(sessionIds)];
   if (unique.length === 0) return 0;
   const aggregate = graph.db.prepare(ROLLUP);
   const renumber = graph.db.prepare(RENUMBER_TURNS);
+  const audit = prepareAuditRollup(graph.db);
   return graph.db.transaction(() => {
     let updated = 0;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = JSON.stringify(unique.slice(i, i + BATCH));
       renumber.run({ sessionIds: batch });
       updated += aggregate.run({ sessionIds: batch }).changes;
+      audit(batch);
     }
     return updated;
   })();

@@ -39,7 +39,7 @@ const summary = await refreshCorpus(graph, await discoverTranscripts());
 //   facts: 1899, turnsRolledUp: 10,
 //   reconciled: { prCreates: 0, prMerges: 0, subagents: 0 },
 //   tasks: { requested: 0, applied: 0, failed: false },
-//   markedMissing: 0
+//   markedMissing: 0, facetsBackfilled: 0, facetBacklog: 0
 // }
 
 graph.spans.search("daemon", 5);   // [{ ownerRef: 'session:…', byteOffset, byteLength, … }]
@@ -54,14 +54,20 @@ Run it again with nothing changed and the same call reports `indexed: 0, unchang
    (`unchanged`, `appended`, `rewritten`, `missing`), reads the delta with
    `extractTranscript`, applies it in one transaction, and advances the watermark with the
    new prefix hash. A malformed line quarantines *that transcript only*.
-2. **`rollupSessions`** recomputes turn aggregates — index, end, duration, tool calls,
-   thinking time — for the sessions that changed. Recompute, never accumulate, so incremental
+2. **`backfillFacets`** re-extracts the audit facet of already-indexed transcripts whose
+   `transcript_facet` version is below session-read's `EXTRACT_VERSION`: up to `facetLimit`
+   per pass (default 40), newest `file_mtime` first, each read from byte 0 to its watermark.
+   It replaces only that transcript's audit rows, so legacy counts cannot double, and skips
+   `missing` and `quarantined` transcripts. Pass `facetLimit: Infinity` to clear the backlog
+   in one pass. A classifier change is a version bump, not a `resetIndex`.
+3. **`rollupSessions`** recomputes turn aggregates — index, end, duration, tool calls,
+   thinking time — for the sessions that changed, including those the backfill touched. Recompute, never accumulate, so incremental
    and full passes converge.
-3. **`reconcile`** folds cross-transcript observations: `gh pr merge` sightings onto PRs,
+4. **`reconcile`** folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage from
    child sessions.
-4. **`enrichTasks`** runs if you passed a `resolveTasks` resolver (below).
-5. Rows whose source file has vanished are marked `missing`. **Their facts stay** — surviving
+5. **`enrichTasks`** runs if you passed a `resolveTasks` resolver (below).
+6. Rows whose source file has vanished are marked `missing`. **Their facts stay** — surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex(graph)` clears every derived table and rewinds watermarks; the next refresh

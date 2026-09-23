@@ -1,5 +1,30 @@
 # @titan-design/code-graph
 
+## 0.3.0
+
+### Minor Changes
+
+- ee43933: Add a metric catalogue and targeted store reads for the read API (TP-183). `METRIC_CATALOGUE`, `describeMetric`, and `describeMetrics` describe every metric name code-graph writes: unit, node kinds, rollup rule, direction, what a missing row means, and the writing module, with windowed names as `{w}` templates. `listMetricsForNode`, `listEdgesTouching`, and `aggregateMetrics` (also on `CodeGraphStore`) read one node or one metric through existing indexes. Additive: no schema migration, no new index, no `INDEX_VERSION` change.
+- c893e50: Add `snapshotViolations(store, snapshotId, rules)`: every rule's violations in one snapshot, with no baseline. It takes any `RuleStore`, meaning a store with `listNodes`, `listEdges`, and `listMetrics`, instead of the concrete `CodeGraphStore`. code-read derives its findings with it and keys them with `violationKey`, the same key the ratchet uses.
+- d4b563f: Identity that survives renames (TP-187). Id aliases now chain across snapshots: `resolveAlias(store, id, toSnapshotId, { fromSnapshotId })` carries `a.ts` renamed to `b.ts` renamed to `c.ts` from the first snapshot to the last, in either direction, with a bounded walk. `aliasChain` returns the reusable resolver, and `priorSnapshotForRef` finds the snapshot a git ref or ref label denotes before a given snapshot. A file rename now also writes symbol aliases, so `a.ts#Job.run` follows its file. The ratchet is rename-aware: carryover (`runChecks`, `checkSnapshot`) and `diffCheckResults` key a violation after carrying its baseline ids through the alias chain, so a moved file's violations carry over instead of reading as one resolved plus one new. Unmoved ids key exactly as before (`violationKey`, now exported with `rebasedViolationKey`). `diffSnapshots` follows the whole chain instead of the to-snapshot's aliases alone.
+
+  `INDEX_VERSION` is now 0.15.0. Each snapshot records its alias base in `attrs.aliasBase`, and a new index of a ref computes its aliases against that ref's newest committed snapshot, falling back to the newest committed snapshot of any ref. No schema migration: stores written by 0.14.0 open and read unchanged, including read-only ones, and their lineage is inferred the way the 0.14.0 indexer chose its prior snapshot. As with every bump, a 0.14.0 snapshot is never a reuse basis, so the first 0.15.0 index is a full one.
+
+- 64ffc43: Export the batch the final codewatch swap needs, and port partition quality and prune (TP-250).
+
+  New root exports, all already implemented internally: the history adapter (`loadHistoryMetrics`, `LoadedHistory`, `HistoryMetricsOptions`, `DEFAULT_CHURN_WINDOWS`, `resolveChurnWindows`, `windowSuffix`, `computeRecencyWindows`), which stays outside the `./history` seam because it speaks `GraphMetric`; the rules engine's glob matching (`patternToRegex`, `compilePatterns`, `matchesAny`); `computeDeepAst` with `DeepAst`, `DeepAstInput`, `MemberInfo`, and `ParamInfo`; and `resolveGitRef`.
+
+  New `CodeGraphStore` methods: `listMetricNames`, `topByMetric`, and `replaceMetricsByName` (the wholesale swap a re-ingested overlay such as coverage needs), plus `deleteSnapshots`, `vacuum`, and `countRowsByTable`.
+
+  Ported from codewatch's `packages/graph` unchanged, with their tests: `computePartitionQuality` and `invertBuckets` (`src/analysis/partition-quality.ts`), and `planPrune` and `runPrune` (`src/prune.ts`). The domain tables declare no foreign key, so `deleteSnapshots` clears each of `SNAPSHOT_SCOPED_TABLES` itself instead of relying on codewatch's cascade; `boundary` and `entry_point`, which this schema never created, leave the list.
+
+  Additive: no schema migration, no new index, no `INDEX_VERSION` change (still 0.15.0). When this releases, codewatch deletes its `packages/graph/src/history-adapter.ts` copy and consumes these exports instead.
+
+### Patch Changes
+
+- Updated dependencies [825b8b2]
+  - @titan-design/store-sqlite@0.3.1
+
 ## 0.2.0
 
 ### Minor Changes
