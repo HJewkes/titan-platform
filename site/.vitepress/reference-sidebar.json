@@ -58,6 +58,10 @@
         "link": "/reference/hitl"
       },
       {
+        "text": "matrix-bus",
+        "link": "/reference/matrix-bus"
+      },
+      {
         "text": "messaging",
         "link": "/reference/messaging"
       },

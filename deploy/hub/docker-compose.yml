@@ -1,0 +1,72 @@
+# The shared Matrix hub, ported from the TP-301 spike. Run ./scripts/setup.sh first; it writes .env and data/run (both gitignored).
+# Local: `docker compose up -d --build` (tuwunel). Remote: `docker compose --profile remote up -d --build` (adds caddy).
+services:
+  tuwunel:
+    image: ghcr.io/matrix-construct/tuwunel:latest
+    environment:
+      # setup.sh renders the config into data/run; the env var also lets the image's --health-check find it.
+      TUWUNEL_CONFIG: /run/tuwunel/tuwunel.toml
+    stop_grace_period: 30m
+    ports:
+      # Local phase binds loopback only; the remote phase puts Caddy in front instead.
+      - "127.0.0.1:8008:8008"
+    volumes:
+      - ./data/db:/var/lib/tuwunel
+      - ./data/backup:/var/lib/tuwunel-backup
+      - ./data/run:/run/tuwunel:ro
+    restart: unless-stopped
+
+  # broker-core appservice. Tuwunel pushes transactions to http://core:9009 on the compose network; no port is published.
+  # Stage 2 only: stage 1 runs Tuwunel and Caddy, so the core starts only with `--profile core`.
+  core:
+    profiles: ["core"]
+    build:
+      context: .
+      dockerfile: core.Dockerfile
+    environment:
+      HS_URL: http://tuwunel:8008
+      CORE_BIND: 0.0.0.0
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./data/core:/app/data/core
+    depends_on:
+      - tuwunel
+    restart: unless-stopped
+
+  # Remote phase only: `docker compose --profile remote up -d --build` adds Caddy in front of tuwunel and core.
+  # Needs SERVER_NAME and PUBLIC_BASE_URL in .env before the first setup.sh. Layout per the Caddy image docs.
+  caddy:
+    image: caddy:2
+    profiles: ["remote"]
+    environment:
+      SERVER_NAME: ${SERVER_NAME}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./config/caddy:/etc/caddy:ro
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+    depends_on:
+      - tuwunel
+    restart: unless-stopped
+
+  # Remote phase: Go (bridgev2) mautrix-telegram with a bot login, one test group. Runbook step 6 has the full procedure.
+  # 1. Generate config: docker run --rm -v "$PWD/data/mautrix-telegram:/data" dock.mau.dev/mautrix/telegram:latest
+  # 2. Edit data/mautrix-telegram/config.yaml in place (key names verified against the bridgev2 example config):
+  #      homeserver.address: http://tuwunel:8008   homeserver.domain: <SERVER_NAME>   homeserver.software: standard
+  #      appservice.address: http://mautrix-telegram:29317   appservice.hostname: 0.0.0.0   appservice.port: 29317
+  #      encryption.allow: false   network.api_id / network.api_hash: from https://my.telegram.org/apps
+  #      bridge.permissions: {"@owner:<SERVER_NAME>": admin}
+  #    Not verified: the exact nesting of permissions and api_id/api_hash, and the SQLite database.uri form; keep the generated layout.
+  # 3. Run the image again to write registration.yaml, copy it to data/run/appservices/mautrix-telegram.yaml, restart tuwunel.
+  # 4. There is no bot_token config key. DM the bridge bot (expected @telegrambot:<SERVER_NAME>, read appservice.bot.username)
+  #    and send "login bot <token>", then redact that message.
+  # mautrix-telegram:
+  #   image: dock.mau.dev/mautrix/telegram:latest
+  #   volumes:
+  #     - ./data/mautrix-telegram:/data
+  #   depends_on:
+  #     - tuwunel
+  #   restart: unless-stopped

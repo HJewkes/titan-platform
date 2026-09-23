@@ -52,3 +52,15 @@ jobs:
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm dag:check
+
+  hub-compose:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/hub
+    steps:
+      - uses: actions/checkout@v4
+      # setup.sh writes the sample .env and data/run that the compose file interpolates and mounts.
+      - run: printf 'SERVER_NAME=tp301.local\nPUBLIC_BASE_URL=https://tp301.local\n' > .env && ./scripts/setup.sh
+      - run: docker compose config --quiet
+      - run: docker compose --profile remote --profile core config --quiet

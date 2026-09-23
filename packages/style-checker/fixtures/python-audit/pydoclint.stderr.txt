@@ -1,0 +1,9 @@
+
+pkg/core.py
+    23: DOC106: Function `unused_function`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+    23: DOC107: Function `unused_function`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+    23: DOC103: Function `unused_function`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: ]. Arguments in the docstring but not in the function signature: [other: int].
+    23: DOC201: Function `unused_function` does not have a return section in docstring
+
+broken.py
+    0: DOC002: Syntax errors; cannot parse this Python file. Error message: invalid syntax (<unknown>, line 1)

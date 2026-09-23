@@ -59,11 +59,16 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
   })();
 }
 
-/** A merge sighting and the `pr-link` naming the same PR routinely live in different transcripts; fold at pass end. */
+/**
+ * A merge sighting and the `pr-link` naming the same PR routinely live in different transcripts; fold at pass end.
+ * Once the forge has checked a PR (`outcome_checked_at` set), its `merged_at` is forge-accurate and must not be
+ * overwritten by a transcript sighting time on a later pass.
+ */
 const RECONCILE_PR_MERGES = `
   UPDATE pr SET state = 'merged',
     merged_at = (SELECT MIN(o.merged_at) FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))
-  WHERE EXISTS (SELECT 1 FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))`;
+  WHERE pr.outcome_checked_at IS NULL
+    AND EXISTS (SELECT 1 FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))`;
 
 /** Both halves of a `gh pr create` make a real PR whether or not a `pr-link` ever mentioned it. */
 const RECONCILE_PR_CREATES = `

@@ -25,7 +25,7 @@ export interface CheckResult {
   exitCode: number;
 }
 
-export type ToolName = "eslint" | "ruff";
+export type ToolName = "eslint" | "ruff" | "vulture" | "pydoclint" | "pyright" | "import-linter" | "suppressions";
 
 export type ToolFailureKind =
   | "spawn-failed"
