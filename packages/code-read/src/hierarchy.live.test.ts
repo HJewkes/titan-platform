@@ -126,7 +126,8 @@ describe("node.get over a real index", () => {
     expect(result.node).toMatchObject({ kind: "symbol", name: "Task.run", path: "src/jobs/runner.ts", span: { startLine: 9, endLine: 15 }, exported: false });
     expect(result.ancestors.map((a) => a.id)).toEqual(["", "src/", "src/jobs/", "src/jobs/runner.ts", "src/jobs/runner.ts#Task"]);
     expect(cognitive).toMatchObject({ value: 3, direction: "higher-worse", percentile: 100, siblingCount: 1, siblingRank: 1, siblingMedian: 3 });
-    expect(result.metrics.map((m) => m.name)).toEqual(["symbol_cognitive", "symbol_cyclomatic", "utilization"]);
+    expect(result.metrics.map((m) => m.name)).toEqual(["symbol_cognitive", "symbol_cyclomatic", "symbol_loc", "symbol_max_nesting", "utilization"]);
+    expect(result.metrics.find((m) => m.name === "symbol_loc")?.value).toBe(7);
   });
 
   it("places a file among the files of the snapshot and of its directory", async () => {

@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseFile } from "@titan-design/code-parser";
+import { computeSourceMetrics } from "../source-metrics.js";
 import { openCodeGraph, type CodeGraphStore } from "../store.js";
 import type { GraphMetric, GraphNode } from "../types.js";
 import { runChecks } from "./check.js";
@@ -50,12 +52,12 @@ describe("metric rules over the symbol layer", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function open(): void {
+  function open(nodes: GraphNode[] = NODES, metrics: GraphMetric[] = METRICS): void {
     dir = fs.mkdtempSync(path.join(tmpdir(), "code-graph-symbol-rules-"));
     store = openCodeGraph(path.join(dir, "graph.db"));
     snapshotId = store.createSnapshot({ ref: "main", indexVersion: "0.1.0" });
-    store.insertNodes(snapshotId, NODES);
-    store.insertMetrics(snapshotId, METRICS);
+    store.insertNodes(snapshotId, nodes);
+    store.insertMetrics(snapshotId, metrics);
   }
 
   it("reports exactly the symbols over a kind symbol max, with their file and line span", () => {
@@ -80,5 +82,20 @@ describe("metric rules over the symbol layer", () => {
     expect(result.violations[0]).toMatchObject({ path: "src/a.py", evidence: "loc=120 (max 100)" });
     expect(result.violations[0]!.lineStart).toBeUndefined();
     expect(result.nodesEvaluated).toBe(1);
+  });
+
+  it("fires a kind symbol max on symbol_loc for exactly the oversized function", async () => {
+    const body = Array.from({ length: 8 }, (_, i) => `    x${i} = ${i}`).join("\n");
+    const source = `def small():\n    return 1\n\ndef big():\n${body}\n    return x0\n`;
+    const file = await parseFile(source, "src/a.py", "python");
+    const metrics = computeSourceMetrics([file], (p) => p, new Map([["src/a.py", new Set(["small", "big"])]]));
+    open([NODES[0]!, symbol("small", 1, 2), symbol("big", 4, 13)], metrics);
+    const rule: CheckRule = { id: "max-symbol-loc", type: "metric-max", metric: "symbol_loc", kind: "symbol", max: 5 };
+
+    const result = runChecks(store, { snapshotId, rules: [rule] });
+
+    expect(result.violations.map((v) => [v.nodeId, v.evidence])).toEqual([
+      ["src/a.py#big", "symbol_loc=10 (max 5)"],
+    ]);
   });
 });

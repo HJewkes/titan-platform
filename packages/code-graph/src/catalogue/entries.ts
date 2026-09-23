@@ -70,6 +70,16 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Cyclomatic complexity of the function a symbol names; the max when several functions share the name.",
   },
   {
+    name: "symbol_loc", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Lines spanned by the function a symbol names, signature included; the max when several share the name.",
+  },
+  {
+    name: "symbol_max_nesting", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Deepest block nesting inside the function a symbol names; the max when several share the name.",
+  },
+  {
     name: "class_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
     absent: "zero", source: "lcom", description: "Classes declared in the file; written only when there is one.",
   },

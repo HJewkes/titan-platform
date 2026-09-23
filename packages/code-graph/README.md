@@ -27,8 +27,8 @@ In: the parser (tree-sitter WASM for TypeScript, TSX and Python, since moved to
 `@titan-design/code-parser` and still re-exported here), the walk, the ts-morph
 extractor and its symbol layer, role classification, generated-file detection, id aliasing
 across git renames, the three-tier incremental reuse, and the metrics computed at index time
-(degree, utilization, loc, cyclomatic, cognitive, nesting, class count, lcom4, per-symbol
-complexity). `lcom.ts` came along despite being an analysis: `source-metrics.ts` calls it
+(degree, utilization, loc, cyclomatic, cognitive, nesting, class count, lcom4, and per
+symbol `symbol_cognitive`, `symbol_cyclomatic`, `symbol_loc` and `symbol_max_nesting`). `lcom.ts` came along despite being an analysis: `source-metrics.ts` calls it
 directly and lcom4 is a pure function of a file's bytes, so it belongs with the metrics that
 carry forward under reuse.
 
