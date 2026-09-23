@@ -16,6 +16,7 @@ export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from 
 export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
 export type { ExternalEvent, OriginEnrichment, OriginResolution, OriginResolver, ResolvedOrigin } from "./origin.js";
 export { NO_ORIGINS, resolveOrigins, sessionsNeedingOrigin } from "./origin.js";
+export { syncPrices, type PriceInput, type SyncPricesOptions } from "./prices.js";
 
 export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
 export { normalizedSessions, normalizedUsage, readIndexedText, type ConversationSummary, type IndexedSpan, type NormalizedUsageSummary } from "./normalized-query.js";
