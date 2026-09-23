@@ -75,9 +75,11 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 // newErrors: 1, carryoverErrors: 4, passed: false
 ```
 
-Six rule types, as codewatch had them: `metric-max`, `metric-min`, `metric-product-max`,
+Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one), and `no-internal-only-barrels`. Severity defaults to `error`.
+own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
+nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
+snapshot, once `minSample` nodes (default 20) carry it. Severity defaults to `error`.
 
 `snapshot` and `baseline` take a numeric id or a ref name, and a ref resolves to its newest
 snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same engine on

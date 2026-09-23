@@ -129,6 +129,35 @@ describe("validateRules", () => {
       exclude: ["__tests__"],
     });
   });
+
+  it("normalizes a metric-outlier rule", () => {
+    const [rule] = validateRules({
+      rules: [{ id: "long", type: "metric-outlier", metric: "symbol_loc", kind: "symbol", percentile: 95, minSample: 30, severity: "warning" }],
+    });
+    expect(rule).toEqual({
+      type: "metric-outlier",
+      id: "long",
+      metric: "symbol_loc",
+      kind: "symbol",
+      percentile: 95,
+      minSample: 30,
+      severity: "warning",
+    });
+  });
+
+  it("rejects a metric-outlier rule with a bad metric, kind, percentile or minSample", () => {
+    const base = { id: "r", type: "metric-outlier", metric: "loc", kind: "file", percentile: 90 };
+    const bad = (patch: Record<string, unknown>) => () => validateRules({ rules: [{ ...base, ...patch }] });
+    expect(bad({})).not.toThrow();
+    expect(bad({ metric: 3 })).toThrow(/metric must be a string/);
+    expect(bad({ kind: undefined })).toThrow(/kind must be one of/);
+    expect(bad({ kind: "directory" })).toThrow(/kind must be one of/);
+    expect(bad({ percentile: 49 })).toThrow(/percentile must be a number from 50 to 100/);
+    expect(bad({ percentile: 101 })).toThrow(/percentile/);
+    expect(bad({ percentile: "90" })).toThrow(/percentile/);
+    expect(bad({ minSample: 0 })).toThrow(/minSample must be a positive integer/);
+    expect(bad({ minSample: 2.5 })).toThrow(/minSample/);
+  });
 });
 
 describe("validateRules — schema healing", () => {

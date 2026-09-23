@@ -35,6 +35,19 @@ export interface MetricProductMaxRule {
   excludeRoles?: NodeRole[];
 }
 
+/** Flags nodes whose value sits strictly above the given percentile of the metric over every node of the kind. */
+export interface MetricOutlierRule {
+  type: "metric-outlier";
+  id: string;
+  metric: string;
+  kind: NodeKind;
+  /** 50 to 100; the threshold interpolates linearly between the two nearest ranked values. */
+  percentile: number;
+  /** Fewest nodes that must carry the metric before any is judged; defaults to 20. */
+  minSample?: number;
+  severity?: Severity;
+}
+
 export interface ForbidImportRule {
   type: "forbid-import";
   id: string;
@@ -64,6 +77,7 @@ export type CheckRule =
   | MetricMaxRule
   | MetricMinRule
   | MetricProductMaxRule
+  | MetricOutlierRule
   | ForbidImportRule
   | LayeredDepsRule
   | NoInternalOnlyBarrelsRule;

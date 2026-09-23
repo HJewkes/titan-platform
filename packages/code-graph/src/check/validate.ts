@@ -5,11 +5,12 @@ import type {
   LayeredDepsRule,
   MetricMaxRule,
   MetricMinRule,
+  MetricOutlierRule,
   MetricProductMaxRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./types.js";
-import type { NodeRole } from "../types.js";
+import type { NodeKind, NodeRole } from "../types.js";
 
 export interface ValidateRulesOptions {
   /** Called with a human-readable message when a deprecated alias is healed. */
@@ -61,6 +62,8 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
       return assertMetricMin(r, warn);
     case "metric-product-max":
       return assertMetricProductMax(r, warn);
+    case "metric-outlier":
+      return assertMetricOutlier(r, warn);
     case "forbid-import":
       return assertForbidImport(r);
     case "layered-deps":
@@ -178,6 +181,31 @@ function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule 
     severity: r.severity as Severity | undefined,
     exclude: parseStringArray(r.exclude),
     excludeRoles: parseRoleArray(ruleId, r.excludeRoles, warn),
+  };
+}
+
+const NODE_KINDS: ReadonlySet<NodeKind> = new Set(["package", "module", "file", "symbol", "external"]);
+
+function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutlierRule {
+  if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
+  if (typeof r.kind !== "string" || !NODE_KINDS.has(r.kind as NodeKind)) {
+    throw new Error(`${r.id}: kind must be one of ${[...NODE_KINDS].join(", ")}`);
+  }
+  if (typeof r.percentile !== "number" || r.percentile < 50 || r.percentile > 100) {
+    throw new Error(`${r.id}: percentile must be a number from 50 to 100`);
+  }
+  if (r.minSample !== undefined && (!Number.isInteger(r.minSample) || (r.minSample as number) < 1)) {
+    throw new Error(`${r.id}: minSample must be a positive integer`);
+  }
+  const ruleId = r.id as string;
+  return {
+    type: "metric-outlier",
+    id: ruleId,
+    metric: healMetricName(r.metric, ruleId, warn),
+    kind: r.kind as NodeKind,
+    percentile: r.percentile,
+    minSample: r.minSample as number | undefined,
+    severity: r.severity as Severity | undefined,
   };
 }
 
