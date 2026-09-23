@@ -96,6 +96,10 @@
         "link": "/reference/memory"
       },
       {
+        "text": "queue-mirror",
+        "link": "/reference/queue-mirror"
+      },
+      {
         "text": "session-analytics",
         "link": "/reference/session-analytics"
       },
