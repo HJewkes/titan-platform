@@ -4,6 +4,7 @@ import { TranscriptParseError, extractTranscript, type DiscoveredTranscript } fr
 import { applyDelta } from "./apply.js";
 import { advanceFacet, backfillFacets } from "./facet.js";
 import { allSessionIds, type SessionGraph } from "./graph.js";
+import { enrichPrs, type PrEnrichment, type PrResolver } from "./outcomes.js";
 import { resolveOrigins, type OriginEnrichment, type OriginResolver } from "./origin.js";
 import { purgeTranscript } from "./purge.js";
 import { reconcile, rollupSessions, type ReconcileCounts } from "./rollup.js";
@@ -18,6 +19,8 @@ export interface IndexOptions {
   resolveTasks?: TaskResolver;
   /** Record who launched each session. Runs once per `refreshCorpus` pass, never per transcript. Absent means no origin rows. */
   resolveOrigins?: OriginResolver;
+  /** Fill PR state, merge, close and review rounds from the caller's forge. Runs once per `refreshCorpus` pass. Absent means transcripts alone. */
+  resolvePrs?: PrResolver;
 }
 
 export interface RefreshOptions extends IndexOptions {
@@ -104,6 +107,7 @@ export interface RefreshSummary {
   reconciled: ReconcileCounts;
   tasks: TaskEnrichment;
   origins: OriginEnrichment;
+  prs: PrEnrichment;
   markedMissing: number;
   facetsBackfilled: number;
   /** Transcripts whose audit facet is still stale after this pass. */
@@ -113,8 +117,8 @@ export interface RefreshSummary {
 /**
  * One pass over a corpus: index every transcript, re-extract a bounded batch of
  * stale audit facets, roll up the sessions that changed, resolve session
- * origins, reconcile cross-transcript observations, enrich tasks, and mark
- * rows whose source file is gone. Idempotent: a second pass over unchanged
+ * origins, reconcile cross-transcript observations, resolve PR outcomes,
+ * enrich tasks, and mark rows whose source file is gone. Idempotent: a second pass over unchanged
  * files changes nothing.
  *
  * The resolver is hoisted out of the per-transcript loop and run once over the
@@ -123,7 +127,7 @@ export interface RefreshSummary {
  * did. That bounds staleness to one pass.
  */
 export async function refreshCorpus(graph: SessionGraph, transcripts: readonly DiscoveredTranscript[], options: RefreshOptions = {}): Promise<RefreshSummary> {
-  const { resolveTasks, resolveOrigins: originResolver, full, facetLimit, ...perTranscript } = options;
+  const { resolveTasks, resolveOrigins: originResolver, resolvePrs, full, facetLimit, ...perTranscript } = options;
   const counts = { indexed: 0, unchanged: 0, rewound: 0, missing: 0, quarantined: 0 };
   const touched: string[] = [];
   let facts = 0;
@@ -139,10 +143,12 @@ export async function refreshCorpus(graph: SessionGraph, transcripts: readonly D
   // Before reconcile, so a worker's subagent row gets its ended_at in the same pass.
   const origins = await resolveOrigins(graph, originResolver);
   const reconciled = reconcile(graph);
+  // After reconcile, so a merge a transcript witnessed is already sticky when the forge answers.
+  const prs = await enrichPrs(graph, resolvePrs);
   const tasks = await enrichTasks(graph, resolveTasks, allTaskIds(graph));
   const markedMissing = await markMissing(graph, transcripts);
   const facetSummary = { facetsBackfilled: facets.backfilled, facetBacklog: facets.backlog };
-  return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, tasks, origins, markedMissing, ...facetSummary };
+  return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, tasks, origins, prs, markedMissing, ...facetSummary };
 }
 
 /** Rows absent from discovery are only nominated; an `fs.stat` decides, so an empty scan cannot condemn the corpus. */

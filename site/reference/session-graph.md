@@ -63,11 +63,13 @@ Run it again with nothing changed and the same call reports `indexed: 0, unchang
 3. **`rollupSessions`** recomputes turn aggregates — index, end, duration, tool calls,
    thinking time — for the sessions that changed, including those the backfill touched. Recompute, never accumulate, so incremental
    and full passes converge.
-4. **`reconcile`** folds cross-transcript observations: `gh pr merge` sightings onto PRs,
+4. **`resolveOrigins`** runs if you passed a `resolveOrigins` resolver (see migration 5).
+5. **`reconcile`** folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage from
    child sessions.
-5. **`enrichTasks`** runs if you passed a `resolveTasks` resolver (below).
-6. Rows whose source file has vanished are marked `missing`. **Their facts stay** — surviving
+6. **`enrichPrs`** runs if you passed a `resolvePrs` resolver (below).
+7. **`enrichTasks`** runs if you passed a `resolveTasks` resolver (below).
+8. Rows whose source file has vanished are marked `missing`. **Their facts stay** — surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex(graph)` clears every derived table and rewinds watermarks; the next refresh
@@ -88,11 +90,38 @@ await refreshCorpus(graph, transcripts, {
 - **Precedence.** Every field the resolver states wins; every field it omits or nulls keeps
   what the transcripts derived. The store is the system of record for a task's present
   status; a transcript only witnesses a command that was observed to run.
+- **Estimate.** `estimate` fills `task.estimate`, in whatever unit the store keeps.
 - **Batching.** One call per refresh, holding every task id in the graph, because a real
   resolver reads a database. Returning an id no transcript mentioned inserts that task.
 - **Failure.** A resolver that throws costs that pass its enrichment and nothing else. The
   rows stand as the transcripts left them, and `summary.tasks` carries `failed` plus the
   `error` message for you to log.
+
+## The PR outcome resolver
+
+A transcript sees a merge only when that session ran `gh pr merge`. A merge done by another
+session or in the browser, a close, and the review history exist nowhere in the corpus. Pass
+`resolvePrs` and a product fills `state`, `merged_at`, `closed_at` and `review_rounds`.
+
+```ts
+await refreshCorpus(graph, transcripts, {
+  resolvePrs: async (prs) => new Map(prs.map((pr) => [pr.prRef, myForge.outcome(pr.repo, pr.number)])),
+});
+```
+
+- **Order.** It runs after `reconcile`, so it sees every merge the transcripts witnessed.
+- **Merged is sticky.** A resolver's `open` or `closed` never replaces a `merged` state, so a
+  stale forge cache cannot reopen a PR. States are stored lower-case.
+- **Batching.** One call per refresh with every PR that has a repo and number and whose
+  outcome may still change: never checked, or not yet merged. A merged PR is asked about
+  once. The resolver only updates rows; a PR enters the graph from a transcript.
+- **`review_rounds`** is stored as the resolver counts it. What counts as a round is an open
+  question in the TP-256 design (Q6).
+- **Failure.** Same as the task resolver: the pass completes, the rows stand, and
+  `summary.prs` carries `failed` plus `error`.
+
+`reconcile` rewrites `merged_at` from merge sightings on every pass, so for a PR a transcript
+saw merged, `merged_at` holds the sighting's time rather than the forge's.
 
 ## Tables
 
@@ -144,3 +173,24 @@ transcript sessions without rewriting existing rows or requiring original files.
 existing Claude APIs continue to operate. Back up the database before upgrading;
 restore that backup when rolling back to an older binary. Migration never resets
 or rebuilds the corpus.
+
+Migration 5, `origin, episodes, prices`, adds four tables and three views. It creates only
+empty tables, so existing rows are untouched.
+
+- `session_origin` and `session_external_event` hold who launched a session and the
+  lifecycle events the launcher saw outside the transcript. `refreshCorpus` fills them
+  through the `resolveOrigins` option, once per pass, for sessions with no origin row or one
+  older than the session's last line. Each origin with a parent projects into a `spawned`
+  edge and a `subagent` row. `resetIndex` clears them and the next pass refills them.
+- `episode` holds each segmentation heuristic's cut of a session.
+  `replaceEpisodes(graph, sessionId, heuristic, rows)` is its only writer. It replaces one
+  heuristic's rows for one session in a transaction and leaves every other heuristic's rows
+  alone, so `worker-v1` and `coordinator-v1` coexist. The rule itself lives in
+  session-analytics. A rewritten transcript purges its sessions' episodes.
+- `price` holds USD per million tokens by model prefix and effective date.
+  `syncPrices(graph, rows, { tableVersion, source })` replaces the whole table in one
+  transaction.
+- `request_dedup` collapses fan-out copies of a request to the earliest one. Every cost
+  query reads it, never `request`. `request_cost` prices each row by longest model prefix
+  and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.
+  `context_contribution` attributes each request's context growth to the blocks before it.
