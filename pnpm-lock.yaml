@@ -290,6 +290,9 @@ importers:
 
   packages/queue-mirror:
     dependencies:
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../hitl
       '@titan-design/matrix-bus':
         specifier: workspace:^
         version: link:../matrix-bus
