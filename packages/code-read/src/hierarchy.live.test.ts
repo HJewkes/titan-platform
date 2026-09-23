@@ -29,6 +29,19 @@ async function call<N extends CommandName>(name: N, args: unknown): Promise<Comm
   return CONTRACT[name].result.parse(envelope.data) as CommandResult<N>;
 }
 
+/** One hierarchy.get per 40 names, the contract's cap, merged into one value map per directory. */
+async function directoryValues(names: readonly string[], exclude: string[]) {
+  const merged = new Map<string, { id: string; path: string; values: Record<string, number | null> }>();
+  for (let i = 0; i < names.length; i += 40) {
+    const { nodes } = await call("hierarchy.get", { depth: 8, metrics: names.slice(i, i + 40), exclude_roles: exclude });
+    for (const n of nodes.filter((n) => n.kind === "repo" || n.kind === "directory")) {
+      const prev = merged.get(n.id);
+      merged.set(n.id, { id: n.id, path: n.path, values: { ...prev?.values, ...n.values } });
+    }
+  }
+  return [...merged.values()];
+}
+
 /** Recompute a directory's value from raw rows by id prefix, independent of the tree the queries build. */
 function bruteForce(snapshotId: number, dirPath: string, name: string, excludeRoles: string[]): number | null {
   const d = describeMetric(name)!;
@@ -68,8 +81,7 @@ describe("hierarchy.get over a real index", () => {
 
   it.each([[[]], [["test"]]])("rolls every catalogued metric up exactly as a brute-force recomputation does (excluding %j)", async (exclude) => {
     const names = [...new Set(repo.store.listMetrics(after).map((m) => m.name))].sort();
-    const { nodes } = await call("hierarchy.get", { depth: 8, metrics: names, exclude_roles: exclude });
-    const dirs = nodes.filter((n) => n.kind === "repo" || n.kind === "directory");
+    const dirs = await directoryValues(names, exclude);
 
     expect(dirs.length).toBe(7);
     for (const dir of dirs) {
@@ -126,7 +138,11 @@ describe("node.get over a real index", () => {
     expect(result.node).toMatchObject({ kind: "symbol", name: "Task.run", path: "src/jobs/runner.ts", span: { startLine: 9, endLine: 15 }, exported: false });
     expect(result.ancestors.map((a) => a.id)).toEqual(["", "src/", "src/jobs/", "src/jobs/runner.ts", "src/jobs/runner.ts#Task"]);
     expect(cognitive).toMatchObject({ value: 3, direction: "higher-worse", percentile: 100, siblingCount: 1, siblingRank: 1, siblingMedian: 3 });
-    expect(result.metrics.map((m) => m.name)).toEqual(["symbol_cognitive", "symbol_cyclomatic", "symbol_loc", "symbol_max_nesting", "utilization"]);
+    expect(result.metrics.map((m) => m.name)).toEqual([
+      "symbol_body_lines", "symbol_cognitive", "symbol_comment_lines", "symbol_comment_ratio", "symbol_cyclomatic",
+      "symbol_docstring_lines", "symbol_loc", "symbol_max_nesting", "symbol_narrating_comments", "symbol_pass_through",
+      "utilization",
+    ]);
     expect(result.metrics.find((m) => m.name === "symbol_loc")?.value).toBe(7);
   });
 

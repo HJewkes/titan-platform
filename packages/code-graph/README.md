@@ -28,7 +28,8 @@ In: the parser (tree-sitter WASM for TypeScript, TSX and Python, since moved to
 extractor and its symbol layer, role classification, generated-file detection, id aliasing
 across git renames, the three-tier incremental reuse, and the metrics computed at index time
 (degree, utilization, loc, cyclomatic, cognitive, nesting, class count, lcom4, and per
-symbol `symbol_cognitive`, `symbol_cyclomatic`, `symbol_loc` and `symbol_max_nesting`). `lcom.ts` came along despite being an analysis: `source-metrics.ts` calls it
+symbol `symbol_cognitive`, `symbol_cyclomatic`, `symbol_loc`, `symbol_max_nesting`, and the
+comment and shape metrics below). `lcom.ts` came along despite being an analysis: `source-metrics.ts` calls it
 directly and lcom4 is a pure function of a file's bytes, so it belongs with the metrics that
 carry forward under reuse.
 
@@ -222,9 +223,17 @@ the file is unreadable.
 
 ## Checks and diffs
 
-The rules engine turns a snapshot into pass/fail against a `check.json`. Six rule types:
-`metric-max`, `metric-min`, `metric-product-max`, `forbid-import`, `layered-deps`, and
-`no-internal-only-barrels`. Severity defaults to `error`; only new errors fail a check.
+The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
+`metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
+`layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
+fail a check.
+
+`metric-outlier` takes its threshold from the snapshot instead of the rule:
+`{ "type": "metric-outlier", "id": "long-fn", "metric": "symbol_body_lines", "kind": "symbol", "percentile": 95 }`
+flags every symbol strictly above the 95th percentile of `symbol_body_lines` over all symbols
+that carry it, interpolated linearly between ranks. `percentile` runs from 50 to 100. The rule
+stays silent until `minSample` nodes (default 20) carry the metric. Each violation's
+`threshold` is the computed percentile value.
 
 ```ts
 import { checkSnapshot, loadCheckRules, openCodeGraph } from "@titan-design/code-graph";
@@ -316,6 +325,22 @@ above zero.
   and `search_in_loop` (`.includes`, `.find` and similar inside a loop). These are smells,
   not complexity bounds. Recursion and search match TypeScript call nodes only, so Python
   files get `loop_depth` alone, as in codewatch.
+
+Comment, shape, and exception-handling metrics (TP-322) are also source-local, TypeScript and
+Python, and are written on every function or file, zeros included:
+
+- Per symbol: `symbol_comment_lines` (rows holding a comment inside the function, docstring
+  excluded), `symbol_docstring_lines` (the Python docstring, or a JSDoc block ending on the row
+  above the declaration), `symbol_body_lines` (rows holding code), `symbol_comment_ratio`
+  (comment lines over `max(body lines, 1)`), `symbol_narrating_comments` (comments whose words
+  share at least 2 tokens, or half their tokens, with the identifiers of the statement they sit
+  above or trail), and `symbol_pass_through` (1 when the body is one call that forwards every
+  parameter, in order, as a bare argument, skipping a `self` or `cls` receiver; a function
+  with no parameters is never one).
+- Per file: `except_count` (Python `except` and TypeScript `catch` clauses), `except_density`
+  (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
+  `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
+  `print`, `warn` or `console`).
 
 PageRank, relevance, and symbol coupling run at query time over one snapshot:
 
