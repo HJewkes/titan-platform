@@ -12,7 +12,9 @@ import {
   type ReportWindow,
   type SessionContext,
 } from "./cost-report-queries.js";
+import { assignmentCount, heuristicFor } from "./episodes.js";
 import { sessionInitiative } from "./initiative.js";
+import { sessionRole } from "./roles.js";
 
 const count = z.number().int().nonnegative();
 const bucketSchema = z.object({ key: z.string(), requests: count, sessions: count, costUsd: z.number() });
@@ -31,6 +33,8 @@ export const costReportSchema = z.object({
   byModel: z.array(bucketSchema),
   byClass: z.array(bucketSchema),
   byRole: z.array(bucketSchema),
+  /** Sessions by how many episodes their class's heuristic cut them into; `none` when not yet segmented. */
+  byEpisodeCount: z.array(bucketSchema),
   byInitiative: z.array(bucketSchema),
   byContextBand: z.array(bucketSchema),
   byWakeCause: z.array(wakePartSchema.extend({ parts: z.array(wakePartSchema) })),
@@ -77,11 +81,13 @@ export interface CostReportOptions {
 const HUMAN_CAUSES: readonly string[] = ["human_typed", "ask_user_answer"];
 const NONE = "none";
 const DEFAULT_TOP = 10;
+const EPISODE_COUNT_CAP = 5;
 const DAY_MS = 86_400_000;
 
 interface SessionTags {
   sessionClass: SessionClass;
   role: string;
+  episodeCount: string;
   initiative: string;
   account: string;
 }
@@ -122,15 +128,24 @@ export function resolveWindow(options: CostReportOptions): ReportWindow {
 function tagSessions(contexts: Map<string, SessionContext>): Map<string, SessionTags> {
   const tags = new Map<string, SessionTags>();
   for (const [sessionId, context] of contexts) {
-    const { sessionClass, humanRole } = classifySession(context.facts);
+    const classification = classifySession(context.facts);
+    const episodes = context.episodes.filter((episode) => episode.heuristic === heuristicFor(classification.sessionClass));
+    const worker = { profile: context.facts.origin?.profile, lifetimeMs: context.lifetimeMs, assignments: assignmentCount(episodes) };
     tags.set(sessionId, {
-      sessionClass,
-      role: humanRole ?? (sessionClass === "agent_spawned" ? `worker:${context.facts.origin?.profile ?? "unknown"}` : sessionClass),
+      sessionClass: classification.sessionClass,
+      role: sessionRole(classification, worker),
+      episodeCount: episodeCountKey(episodes.length),
       initiative: sessionInitiative(context.tasks, context.cwd),
       account: context.account ?? "unknown",
     });
   }
   return tags;
+}
+
+/** The worker report's assignment buckets: 1, 2, 3, 4, 5+. */
+function episodeCountKey(episodes: number): string {
+  if (episodes === 0) return NONE;
+  return episodes >= EPISODE_COUNT_CAP ? `${EPISODE_COUNT_CAP}+` : String(episodes);
 }
 
 function sumOf(rows: readonly CostRow[]): { requests: number; costUsd: number } {
@@ -157,6 +172,7 @@ function dimensionBuckets(rows: readonly TaggedRow[]) {
     byModel: bucketsBy(rows, (row) => row.model),
     byClass: bucketsBy(rows, (row) => row.sessionClass),
     byRole: bucketsBy(rows, (row) => row.role),
+    byEpisodeCount: bucketsBy(rows, (row) => row.episodeCount),
     byInitiative: bucketsBy(rows, (row) => row.initiative),
     byContextBand: bucketsBy(rows, (row) => row.contextBand),
   };

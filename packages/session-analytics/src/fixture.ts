@@ -98,6 +98,14 @@ export function insertInbound(db: Db, inbound: { sessionId: string; ts: string; 
   ).run({ delivery: "turn_start", ...inbound, offset: nextOffset });
 }
 
+export function insertSignal(db: Db, signal: { sessionId: string; ts: string; signal: string }): void {
+  nextOffset += 1;
+  db.prepare(
+    `INSERT INTO session_signal (transcript_id, byte_offset, block_index, session_id, ts, signal)
+     VALUES (1, @offset, 0, @sessionId, @ts, @signal)`,
+  ).run({ ...signal, offset: nextOffset });
+}
+
 export function insertCompaction(db: Db, compaction: { sessionId: string; ts: string; trigger: "manual" | "auto"; midLoop?: boolean; droppedTokens?: number }): void {
   nextOffset += 1;
   db.prepare(

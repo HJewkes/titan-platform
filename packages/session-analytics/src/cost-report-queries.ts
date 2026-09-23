@@ -1,4 +1,4 @@
-import { AUDIT_FACET, FACET_TABLE, KIT } from "@titan-design/session-graph";
+import { AUDIT_FACET, EPISODE_TABLE, FACET_TABLE, KIT } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import type { SessionFacts } from "./classify-session.js";
 import type { TaskInitiative } from "./initiative.js";
@@ -38,6 +38,15 @@ export interface SessionContext {
   cwd: string | null;
   account: string | null;
   tasks: TaskInitiative[];
+  /** First to last main-thread request over the whole session, not just the window. */
+  lifetimeMs: number;
+  /** Stored episode rows of every heuristic, in episode order. */
+  episodes: StoredEpisode[];
+}
+
+export interface StoredEpisode {
+  heuristic: string;
+  openedBy: string;
 }
 
 export interface CompactionRow {
@@ -99,11 +108,13 @@ export function readSessionContexts(db: Db, sessionIds: readonly string[]): Map<
   addInbounds(db, ids, contexts);
   addSignals(db, ids, contexts);
   addTaskInitiatives(db, ids, contexts);
+  addLifetimes(db, ids, contexts);
+  addEpisodes(db, ids, contexts);
   return contexts;
 }
 
 function emptyContext(): SessionContext {
-  return { facts: { inboundKinds: [], signalKinds: [], humanTurnCount: 0 }, cwd: null, account: null, tasks: [] };
+  return { facts: { inboundKinds: [], signalKinds: [], humanTurnCount: 0 }, cwd: null, account: null, tasks: [], lifetimeMs: 0, episodes: [] };
 }
 
 function addSessionRows(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
@@ -152,5 +163,19 @@ function addTaskInitiatives(db: Db, ids: string, contexts: Map<string, SessionCo
     GROUP BY e.source_ref, t.initiative`;
   for (const row of db.prepare(sql).all({ ids }) as ({ sessionId: string } & TaskInitiative)[]) {
     contexts.get(row.sessionId)!.tasks.push({ initiative: row.initiative, edges: row.edges });
+  }
+}
+
+function addLifetimes(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
+  const sql = `SELECT session_id AS sessionId, MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE ${IN_SESSIONS} AND is_sidechain = 0 GROUP BY session_id`;
+  for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; first: string; last: string }[]) {
+    contexts.get(row.sessionId)!.lifetimeMs = Date.parse(row.last) - Date.parse(row.first);
+  }
+}
+
+function addEpisodes(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
+  const sql = `SELECT session_id AS sessionId, heuristic, opened_by AS openedBy FROM "${EPISODE_TABLE}" WHERE ${IN_SESSIONS} ORDER BY session_id, heuristic, episode_index`;
+  for (const { sessionId, ...episode } of db.prepare(sql).all({ ids }) as ({ sessionId: string } & StoredEpisode)[]) {
+    contexts.get(sessionId)!.episodes.push(episode);
   }
 }

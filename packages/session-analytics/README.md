@@ -1,8 +1,9 @@
 # @titan-design/session-analytics
 
-Pricing, session classification, banding and the standing cost report for mined Claude Code
-sessions. The pricing, classification and band functions are pure. `costReport` reads a
-session graph through a read-only connection and never writes it.
+Pricing, session classification, roles, episodes, banding and the standing cost report for
+mined Claude Code sessions. The pricing, classification, role, episode and band functions are pure. `costReport`
+reads a session graph through a read-only connection and never writes it; `writeEpisodes` is
+the one function here that writes.
 
 Tier 2 of the titan-platform DAG. It depends on `@titan-design/session-graph` for table
 names and on `@titan-design/store-sqlite` for the `Db` type. `zod` is a peer dependency.
@@ -30,6 +31,11 @@ priceRequest(
   standing cost report as one JSON object, and `costReportSchema`, its zod schema.
 - `renderCostReportText(report)` — the same report as plain-text tables, ending with
   `LIST_PRICE_CAVEAT` and the price-table and coverage footer.
+- `roleFromProfile`, `workerRole(facts)`, `sessionRole(classification, facts)` — worker-v1
+  roles, including the standing-peer overlay.
+- `buildEpisodes(input, "worker-v1" | "coordinator-v1")` (pure), `readEpisodeInput`,
+  `writeEpisodes(graph, sessionIds)` and `assignmentCount(rows)` — provisional episode
+  segmentation, written through session-graph's `replaceEpisodes`.
 - `initiativeFromCwd(cwd)`, `sessionInitiative(tasks, cwd)` — a session's initiative from its
   task edges, falling back to the `cf_analyze.py` cwd rule.
 
