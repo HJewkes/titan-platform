@@ -31,8 +31,13 @@ export class MemoryQueueSource implements QueueSource {
     return { ok: true };
   }
 
-  async *tail(cursor: string | undefined, signal: AbortSignal): AsyncIterable<SourceEvent> {
-    let next = cursor === undefined ? this.log.length : Number(cursor);
+  /** "Now" is fixed when tail is called, not at the first next(), so nothing added in between is missed. */
+  tail(cursor: string | undefined, signal: AbortSignal): AsyncIterable<SourceEvent> {
+    return this.stream(cursor === undefined ? this.log.length : Number(cursor), signal);
+  }
+
+  private async *stream(start: number, signal: AbortSignal): AsyncGenerator<SourceEvent> {
+    let next = start;
     while (!signal.aborted) {
       while (next < this.log.length) yield this.log[next++] as SourceEvent;
       await this.nextAppend(signal);

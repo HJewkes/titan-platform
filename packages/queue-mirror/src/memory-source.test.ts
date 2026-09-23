@@ -41,6 +41,15 @@ describe("MemoryQueueSource", () => {
     expect((await pending).map((event) => event.type === "opened" && event.item.id)).toEqual(["new"]);
   });
 
+  it("fixes 'now' when tail is called, before iteration starts", async () => {
+    const source = new MemoryQueueSource();
+    const events = source.tail(undefined, new AbortController().signal);
+
+    source.add(item("between"));
+
+    expect((await take(events, 1)).map((event) => event.cursor)).toEqual(["1"]);
+  });
+
   it("resolves an open item once and reports a closed one", async () => {
     const source = new MemoryQueueSource();
     source.add(item("a"));
