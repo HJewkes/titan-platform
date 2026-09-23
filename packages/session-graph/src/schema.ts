@@ -1,4 +1,5 @@
 import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
+import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./audit-schema-v5.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, kitMigration, type Migration } from "@titan-design/store-sqlite";
 
@@ -154,6 +155,8 @@ export const DERIVED_TABLES = [
   "subagent",
   ...AUDIT_TABLES,
   FACET_TABLE,
+  ...ORIGIN_TABLES,
+  EPISODE_TABLE,
   "session_model_usage",
   "session",
   "fact",
@@ -171,4 +174,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 2, name: "session graph tables", up: (db) => db.exec(DOMAIN_DDL) },
   { version: 3, name: "normalized conversations and source evidence", up: (db) => { db.exec(NORMALIZED_DDL); backfillClaudeAliases(db); } },
   { version: 4, name: AUDIT_MIGRATION_NAME, up: applyAuditSchema },
+  { version: 5, name: ORIGIN_MIGRATION_NAME, up: applyOriginSchema },
 ];
