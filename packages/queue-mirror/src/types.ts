@@ -20,7 +20,9 @@ export type CloseOutcome = "resolved" | "cancelled" | "expired";
 
 export type SourceEvent =
   | { type: "opened"; item: QueueItem; cursor: string }
-  | { type: "closed"; id: string; outcome: CloseOutcome; label?: string; cursor: string };
+  | { type: "closed"; id: string; outcome: CloseOutcome; label?: string; cursor: string }
+  /** The source lost its place (e.g. a gap too large to replay); the mirror re-reconciles against open(). */
+  | { type: "resync"; cursor: string };
 
 export interface VerdictInput {
   verdict: Verdict;
