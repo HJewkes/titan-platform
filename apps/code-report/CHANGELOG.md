@@ -1,5 +1,11 @@
 # code-report
 
+## 0.0.2
+
+### Patch Changes
+
+- @titan-design/code-read@0.1.1
+
 ## 0.0.1
 
 ### Patch Changes
