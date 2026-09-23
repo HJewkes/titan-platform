@@ -1,0 +1,13 @@
+# TP-301: plain HTTP behind loopback locally; Caddy terminates TLS in the remote profile.
+# setup.sh renders this into data/run/tuwunel.toml. server_name cannot change on an existing data/db.
+[global]
+server_name = "${SERVER_NAME}"
+database_path = "/var/lib/tuwunel"
+address = ["0.0.0.0"]
+port = 8008
+allow_federation = false
+allow_registration = false
+registration_shared_secret_file = "/run/tuwunel/reg_shared_secret"
+appservice_dir = "/run/tuwunel/appservices"
+allow_encryption = false
+log = "info"
