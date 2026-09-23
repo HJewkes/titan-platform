@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/matrix-bus",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap",
   "type": "module",
   "main": "./dist/index.js",

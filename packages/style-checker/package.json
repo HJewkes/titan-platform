@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/style-checker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile",
   "type": "module",
   "main": "./dist/index.js",
