@@ -13,7 +13,7 @@ afterEach(() => fixture.close());
 describe("initiative", () => {
   it("initiative prefers a task edge over the cwd rule", () => {
     const db = fixture.graph.db;
-    insertPrices(db);
+    insertPrices(fixture.graph);
     insertSession(db, { sessionId: "tasked", cwd: "/Users/h/projects/titan-platform" });
     insertSession(db, { sessionId: "untasked", cwd: "/Users/h/projects/titan-platform" });
     insertTaskEdge(fixture.graph, "tasked", "TP-272", "session-mining-audit");

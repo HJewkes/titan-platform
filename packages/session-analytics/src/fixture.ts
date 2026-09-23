@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AUDIT_FACET, openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
+import { AUDIT_FACET, openSessionGraph, syncPrices, type SessionGraph } from "@titan-design/session-graph";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { PRICE_TABLE, PRICE_TABLE_VERSION, type PriceRow } from "./prices.js";
 
@@ -33,12 +33,8 @@ export function createFixtureGraph(): FixtureGraph {
   };
 }
 
-/** Stands in for session-graph's price sync, which lands separately. */
-export function insertPrices(db: Db, rows: readonly PriceRow[] = PRICE_TABLE, version = PRICE_TABLE_VERSION): void {
-  const insert = db.prepare(`INSERT INTO price (model, effective_from, table_version, input_usd_mtok, cache_read_usd_mtok,
-    cache_write_5m_usd_mtok, cache_write_1h_usd_mtok, output_usd_mtok, source)
-    VALUES (@modelPrefix, @effectiveFrom, @version, @input, @cacheRead, @cacheWrite5m, @cacheWrite1h, @output, 'fixture')`);
-  for (const row of rows) insert.run({ ...row, version });
+export function insertPrices(graph: SessionGraph, rows: readonly PriceRow[] = PRICE_TABLE, tableVersion = PRICE_TABLE_VERSION): void {
+  syncPrices(graph, rows, { tableVersion, source: "fixture" });
 }
 
 export interface RequestFixture {
@@ -131,7 +127,7 @@ export const SCENARIO_WINDOW = { since: "2026-09-20", until: "2026-09-21" } as c
  */
 export function seedCostScenario(fixture: FixtureGraph): void {
   const db = fixture.graph.db;
-  insertPrices(db);
+  insertPrices(fixture.graph);
   insertSession(db, { sessionId: "coord", cwd: "/Users/h/projects/titan-platform", account: "default" });
   insertSession(db, { sessionId: "worker", cwd: "/Users/h/projects/titan-platform/.worktrees/t1", startType: "sdk-cli", account: "work" });
   insertSession(db, { sessionId: "miner", cwd: "/tmp/miner", startType: "sdk-cli", account: "default" });
