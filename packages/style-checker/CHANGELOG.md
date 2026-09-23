@@ -1,5 +1,11 @@
 # @titan-design/style-checker
 
+## 0.2.0
+
+### Minor Changes
+
+- 1963d4e: Add `AUDIT_RUFF_RULES`, `generateRuffAuditConfig` and `runRuffAudit`, a pinned ruff rule set run with preview on and repo-relative paths. `CheckDiagnostic` gains `endLine`, filled from ruff's `end_location`.
+
 ## 0.1.0
 
 ### Minor Changes

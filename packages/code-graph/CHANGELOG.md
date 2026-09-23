@@ -1,5 +1,11 @@
 # @titan-design/code-graph
 
+## 0.5.0
+
+### Minor Changes
+
+- 1963d4e: Metric rules with `kind: "symbol"` now evaluate symbol nodes (TP-251); rules without `kind` keep the file graph. Metric violations carry `path`, `lineStart`, `lineEnd`, `symbol`, `evidence` and `tool`. New `Finding` type with `toFindings` and `externalToFinding`.
+
 ## 0.4.0
 
 ### Minor Changes
