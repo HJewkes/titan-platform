@@ -171,3 +171,21 @@ export { buildEmbedText, hashEmbedText, listEmbeddableSymbols } from "./embeddin
 export type { CachedEmbedResult } from "./embeddings/cache.js";
 export { embedTextsCached, SYMBOL_EMBEDDING_NAMESPACE } from "./embeddings/cache.js";
 export { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings/embeddings.js";
+
+export type {
+  ConventionArea,
+  ConventionCorpus,
+  ConventionCoverage,
+  ConventionMap,
+  ConventionMatch,
+  ConventionOptions,
+  ConventionQueryResult,
+  ConventionSymbol,
+  FindConventionsOptions,
+  SummarizeConventionsResult,
+  Summarizer,
+} from "./conventions/types.js";
+export { detectCommunities } from "./conventions/communities.js";
+export { buildConventionAreas, defaultTargetCount } from "./conventions/areas.js";
+export { COMMUNITY_SUMMARY_NAMESPACE, getConventionMap, summarizeConventions } from "./conventions/summaries.js";
+export { findConventions } from "./conventions/query.js";

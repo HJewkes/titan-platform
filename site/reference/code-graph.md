@@ -243,6 +243,43 @@ The domain tables declare no foreign key, so `CodeGraphStore.deleteSnapshots` cl
 table in `SNAPSHOT_SCOPED_TABLES` itself instead of relying on a cascade. `blob_cache` is
 content-addressed rather than snapshot-scoped, so a prune never drops a cached embedding.
 
+## Conventions
+
+"How does this repo do X, and where does code like this belong?" Ported from codewatch's
+unmerged C-88 branch (TP-130). The layer cuts the barrel-resolved file graph into a few coarse
+areas, has an injected summarizer describe each one, and ranks areas against a question by
+embedding similarity. Verified against this release on this repo's `packages/`, with a fake
+summarizer:
+
+```ts
+import { findConventions, getConventionMap, summarizeConventions } from "@titan-design/code-graph";
+
+const summarizer = { model: "claude:sonnet", summarize: (prompt: string) => callYourLlm(prompt) };
+await summarizeConventions(store, snapshotId, summarizer);
+// { coverage: { files: 713, grouped: 513, areas: 24, summarized: 24 }, newlySummarized: 24, reused: 0, … }
+// a second run: { newlySummarized: 0, reused: 24 }
+
+getConventionMap(store, snapshotId, "claude:sonnet"); // the same areas, stored summaries only
+await findConventions(store, snapshotId, "how are CLI commands registered?", embedder, "claude:sonnet");
+// { matches: [ { label, summary, files: [ …up to 5 ], size, score }, … up to 3 ] }
+```
+
+- **The cut.** `detectCommunities` is greedy modularity (Clauset-Newman-Moore), not Leiden. It
+  is deterministic without a seed: ties resolve by sorted id. `targetCount` keeps merging past
+  the natural modularity stop until that many communities remain, and a size cap of twice the
+  ideal share keeps a dense repo from collapsing into one area. The default target is one area
+  per 25 files, clamped to 6..40. Areas under `minSize` (default 3) files are left unsummarized.
+  Disconnected components never merge, so the component count is the floor.
+- **Only the coarse level is summarized.** LLM cost is one call per area, and each summary is
+  stored in `blob_cache` under `code-graph/community-summary`, keyed by `summarizer.model` and a
+  hash of the prompt. The prompt carries the member files and their key exported signatures, so
+  an area whose membership and signatures did not change is a cache hit in any snapshot. On
+  this repo a finer cut (`targetCount: 60`) still reused 8 of its 35 areas.
+- **The package ships no LLM client.** `Summarizer` is `{ model, summarize(prompt) }`; the
+  product supplies it. `getConventionMap` and `findConventions` never call it. `findConventions`
+  throws when no summary is stored for the model, and returns candidates with scores, not
+  verdicts. Summary vectors go through the same embedding cache as similar symbols.
+
 ## The id scheme
 
 File, module and external ids are preserved exactly from codewatch, because this repo's
@@ -490,11 +527,11 @@ tree-sitter declaration walk that feeds complexity.
 
 ## What was deliberately left in codewatch
 
-All of it follow-up work *on* this package rather than changes *to* it: the remaining graph
-analyses over a finished snapshot (communities, conventions). The rules engine, the
-snapshot diff, git history (churn, ownership, change coupling), symbol embeddings, dead code,
-growth risk, PageRank, relevance, symbol coupling, test linking, the coverage overlay,
-partition quality, and snapshot pruning started here too and have since been ported.
+The product surfaces: the CLI commands, the `claude -p` summarizer that `summarizeConventions`
+is handed, and the MCP and read-API wiring. The rules engine, the snapshot diff, git history
+(churn, ownership, change coupling), symbol embeddings, dead code, growth risk, PageRank,
+relevance, symbol coupling, test linking, the coverage overlay, partition quality, snapshot
+pruning, communities, and conventions started there and have since been ported.
 
 ## Where it came from
 
