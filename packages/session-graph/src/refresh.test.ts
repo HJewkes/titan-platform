@@ -158,6 +158,15 @@ describe("task resolver (TP-22)", () => {
     ]);
   });
 
+  it("stores a task estimate", async () => {
+    const estimate = () => graph.db.prepare("SELECT estimate FROM task WHERE task_id = 'AW-23'").get();
+    await refreshCorpus(graph, [transcript], { resolveTasks: () => new Map([["AW-23", { estimate: 2.5 }]]) });
+    expect(estimate()).toEqual({ estimate: 2.5 });
+
+    await refreshCorpus(graph, [transcript], { resolveTasks: () => new Map([["AW-23", { title: "Ship the seam" }]]) });
+    expect(estimate()).toEqual({ estimate: 2.5 });
+  });
+
   it("survives a resolver that throws, reporting the failure instead of losing the pass", async () => {
     const summary = await refreshCorpus(graph, [transcript], {
       resolveTasks: () => {
