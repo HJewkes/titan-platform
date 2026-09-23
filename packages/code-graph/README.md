@@ -307,8 +307,11 @@ Dead-code and growth-risk metrics are computed at index time, like the source me
 carry forward for unchanged files. Both are sparse: a file gets a row only when a count is
 above zero.
 
-- Dead code, TypeScript only: `unreachable_statements` (after a `return`, `throw`, `break`
-  or `continue` in the same block), `unused_locals`, and `unused_params` (trailing run only).
+- Dead code, TypeScript and Python: `unreachable_statements` (after a `return`, `throw` or
+  `raise`, `break` or `continue` in the same block), `unused_locals`, and `unused_params`
+  (trailing run only). Python skips `self`, `cls`, `_`-prefixed names, `global` and
+  `nonlocal` names, and the parameters of stub bodies such as `@overload` signatures; a
+  `*args` or `**kwargs` ends the trailing run.
 - Growth risk, TypeScript and Python: `loop_depth` (at 2 or more), `recursive_functions`,
   and `search_in_loop` (`.includes`, `.find` and similar inside a loop). These are smells,
   not complexity bounds. Recursion and search match TypeScript call nodes only, so Python
