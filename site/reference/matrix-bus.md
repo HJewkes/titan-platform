@@ -43,11 +43,11 @@ const { event_id } = await mirror.send(queueRoomId, "m.room.message", content);
 const open = new Map([[event_id, "approval_request" as const]]);
 
 for await (const { since, events } of mirror.syncLoop({ since: saved, signal })) {
-  await persist(since);
   for (const event of events) {
     const verdict = foldResolution(event, { ownerUserId: "@owner:hub.example", itemEventIds: open });
     if (verdict) apply(verdict); // { itemEventId, verdict: "allow" }
   }
+  await persist(since);
 }
 ```
 
@@ -63,10 +63,11 @@ when content exceeds 60,000 bytes. Failures reject with `MatrixError` (`status`,
 `errcode`, `body`).
 
 **`syncLoop({ since, filter, timeoutMs, signal })`.** An async iterator yielding
-`{ since, events }` per `/sync` response, with `room_id` added to each timeline event.
-Persist `since` before handling the batch, so a crash replays at most one batch. The
-loop ends quietly on abort and rethrows anything else; retry and backoff belong to the
-caller.
+`{ since, events, limited, prev_batch }` per `/sync` response, with `room_id` added to
+each timeline event. Handle every event in the batch first, then persist `since`; a
+crash between handling and persisting replays the batch, so the caller dedupes by
+applied event id. The loop ends quietly on abort and rethrows anything else; retry and
+backoff belong to the caller.
 
 **Items.** `encodeItem(item, formattedBody?)` returns `m.room.message` content with
 `msgtype: "m.text"`, a `body` rendered as kind and session on line 1, the full preview or
