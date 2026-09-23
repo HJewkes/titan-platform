@@ -19,7 +19,13 @@ function withStderr(message: string, stderr: string): string {
   return detail ? `${message}: ${detail}` : message;
 }
 
-export function classifyRun(tool: ToolName, run: ToolRunResult): ToolRun {
+/** What counts as a successful run; vulture exits 3 on findings, and a clean vulture or pydoclint run prints nothing. */
+export interface RunExpectations {
+  successCodes?: ReadonlySet<number>;
+  allowEmptyStdout?: boolean;
+}
+
+export function classifyRun(tool: ToolName, run: ToolRunResult, expect: RunExpectations = {}): ToolRun {
   const fail = (kind: ToolFailure["kind"], message: string): ToolRun => ({
     ok: false,
     failure: { tool, kind, message: withStderr(message, run.stderr) },
@@ -29,10 +35,10 @@ export function classifyRun(tool: ToolName, run: ToolRunResult): ToolRun {
   if (run.exitCode === null) {
     return fail("signal", `${tool} was killed by ${run.signal ?? "a signal"}`);
   }
-  if (!SUCCESS_EXIT_CODES.has(run.exitCode)) {
+  if (!(expect.successCodes ?? SUCCESS_EXIT_CODES).has(run.exitCode)) {
     return fail("exit-code", `${tool} exited with code ${run.exitCode}`);
   }
-  if (!run.stdout.trim()) {
+  if (!expect.allowEmptyStdout && !run.stdout.trim()) {
     return fail("unparseable-output", `${tool} exited ${run.exitCode} with no output`);
   }
   return { ok: true, stdout: run.stdout, stderr: run.stderr, exitCode: run.exitCode };
@@ -43,9 +49,10 @@ export async function runAndClassify(
   command: string,
   args: string[],
   options?: { cwd?: string; timeout?: number },
+  expect?: RunExpectations,
 ): Promise<ToolRun> {
   try {
-    return classifyRun(tool, await runTool(command, args, options));
+    return classifyRun(tool, await runTool(command, args, options), expect);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, failure: { tool, kind: "spawn-failed", message }, exitCode: null };

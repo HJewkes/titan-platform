@@ -1,0 +1,14 @@
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+id = "leaf-isolated"
+name = "Leaf must not reach top"
+type = "forbidden"
+source_modules = ["app.leaf"]
+forbidden_modules = ["app.top"]
+
+[[tool.importlinter.contracts]]
+name = "App layers"
+type = "layers"
+layers = ["app.top", "app.mid", "app.leaf"]
