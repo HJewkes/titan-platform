@@ -67,13 +67,61 @@ export const DOMAIN_DDL = `
   );
 `;
 
+/**
+ * Stored audit findings and model verdicts. `key` is a `findingKey`, not `Finding.id`,
+ * because an external tool's id embeds its line number and can repeat within one audit.
+ * The whole `Finding` and a verdict's citations live in `attrs`.
+ */
+export const FINDING_DDL = `
+  CREATE TABLE IF NOT EXISTS finding (
+    snapshot_id  INTEGER NOT NULL,
+    key          TEXT NOT NULL,
+    finding_id   TEXT NOT NULL,
+    tool         TEXT NOT NULL,
+    signal       TEXT NOT NULL,
+    path         TEXT NOT NULL,
+    line_start   INTEGER,
+    line_end     INTEGER,
+    severity     TEXT NOT NULL,
+    excerpt_hash TEXT,
+    attrs        TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_finding_path ON finding(snapshot_id, path);
+
+  CREATE TABLE IF NOT EXISTS verdict (
+    snapshot_id  INTEGER NOT NULL,
+    key          TEXT NOT NULL,
+    verdict      TEXT NOT NULL CHECK (verdict IN ('confirmed', 'justified', 'unclear')),
+    rationale    TEXT NOT NULL,
+    excerpt_hash TEXT NOT NULL,
+    model        TEXT,
+    run_id       TEXT,
+    cost_usd     REAL,
+    provenance   TEXT,
+    control_run  TEXT,
+    carried_from INTEGER,
+    attrs        TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, key)
+  );
+`;
+
 /** Every table keyed by `snapshot_id`. No DDL above declares a foreign key, so dropping a snapshot walks this list. */
-export const SNAPSHOT_SCOPED_TABLES = ["node", "edge", "metric", "id_alias", "file_fingerprint"] as const;
+export const SNAPSHOT_SCOPED_TABLES = [
+  "node",
+  "edge",
+  "metric",
+  "id_alias",
+  "file_fingerprint",
+  "finding",
+  "verdict",
+] as const;
 
 export const MIGRATIONS: Migration[] = [
   kitMigration(1, { snapshot: KIT.snapshot, entitySnap: KIT.entitySnap, cacheBlob: KIT.cacheBlob }),
   { version: 2, name: "code graph columns", up: (db) => db.exec(KIT_EXTENSIONS) },
   { version: 3, name: "code graph tables", up: (db) => db.exec(DOMAIN_DDL) },
+  { version: 4, name: "findings and verdicts", up: (db) => db.exec(FINDING_DDL) },
 ];
 
 /** The top of this package's schema. A code graph database is never shared, so this is the top of one. */

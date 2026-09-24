@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/matrix-bus",
-  "version": "0.2.0",
-  "description": "Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap",
+  "name": "@titan-design/evidence",
+  "version": "0.0.0",
+  "description": "Citation verification, overlap grouping and planted-control scoring for model-judged evidence",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "packages/matrix-bus"
+    "directory": "packages/evidence"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
