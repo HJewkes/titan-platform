@@ -15,6 +15,8 @@ const HANDLER_TYPES = ["except_clause", "except_group_clause", "catch_clause"];
 const SILENT_STATEMENTS = new Set(["pass_statement", "continue_statement", "empty_statement"]);
 const EMPTY_VALUES = new Set(["None", "null", "undefined"]);
 const LOGGING_TOKENS = new Set(["log", "logger", "logging", "warn", "warning", "warnings", "print", "console"]);
+const EXCEPT_CLAUSE_TYPES = new Set(["except_clause", "except_group_clause"]);
+const OPTIONAL_IMPORT_EXCEPT_TYPES = new Set(["ImportError", "ModuleNotFoundError"]);
 
 export function exceptionMetrics(nodeId: string, root: Node, loc: number): GraphMetric[] {
   const handlers = HANDLER_TYPES.flatMap((type) => descendantsOfType(root, type));
@@ -27,11 +29,29 @@ export function exceptionMetrics(nodeId: string, root: Node, loc: number): Graph
 }
 
 function isSwallowed(handler: Node): boolean {
+  if (isOptionalImportExcept(handler)) return false;
   const body = handler.childForFieldName("body") ?? handler.namedChildren.find((c) => c?.type === "block");
   if (!body) return false;
   const statements = bodyStatements(body, null);
   if (statements.length === 0) return true;
   return statements.length === 1 && isSilent(statements[0]!);
+}
+
+/**
+ * True for `except ImportError`, `except ModuleNotFoundError`, or a tuple of only
+ * those two (with an optional `as name`) — the standard optional-dependency idiom,
+ * never counted as swallowed regardless of what the body does.
+ */
+function isOptionalImportExcept(handler: Node): boolean {
+  if (!EXCEPT_CLAUSE_TYPES.has(handler.type)) return false;
+  const value = handler.childForFieldName("value");
+  if (!value) return false;
+  const typeExpr = value.type === "as_pattern" ? value.namedChild(0) : value;
+  if (!typeExpr) return false;
+  if (typeExpr.type === "identifier") return OPTIONAL_IMPORT_EXCEPT_TYPES.has(typeExpr.text);
+  if (typeExpr.type !== "tuple") return false;
+  const names = typeExpr.namedChildren.filter((c): c is Node => c !== null);
+  return names.length > 0 && names.every((n) => n.type === "identifier" && OPTIONAL_IMPORT_EXCEPT_TYPES.has(n.text));
 }
 
 function isSilent(statement: Node): boolean {
