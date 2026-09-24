@@ -71,6 +71,19 @@ describe("runAgent options", () => {
     await runAgent(config({ agents, allowedTools: ["Read"], disallowedTools: ["Bash"] }), deps(fake.run));
     expect(fake.lastOptions).toMatchObject({ agents, allowedTools: ["Read"], disallowedTools: ["Bash"] });
   });
+
+  it("runs with no tools and a caller-supplied system prompt when asked", async () => {
+    const fake = fakeQuery([initMessage(), successResult()]);
+    await runAgent(config({ tools: [], systemPrompt: "Answer in JSON." }), deps(fake.run));
+    expect(fake.lastOptions).toMatchObject({ tools: [], systemPrompt: "Answer in JSON." });
+  });
+
+  it("leaves the SDK's default tools and system prompt alone when unset", async () => {
+    const fake = fakeQuery([initMessage(), successResult()]);
+    await runAgent(config(), deps(fake.run));
+    expect(fake.lastOptions).not.toHaveProperty("tools");
+    expect(fake.lastOptions).not.toHaveProperty("systemPrompt");
+  });
 });
 
 describe("runAgent success", () => {

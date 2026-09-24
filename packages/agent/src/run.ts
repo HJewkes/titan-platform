@@ -132,6 +132,8 @@ class Session<T> {
       settingSources: c.settingSources ?? [],
     };
     if (c.model) options.model = c.model;
+    if (c.tools) options.tools = c.tools;
+    if (c.systemPrompt !== undefined) options.systemPrompt = c.systemPrompt;
     if (c.allowedTools) options.allowedTools = c.allowedTools;
     if (c.disallowedTools) options.disallowedTools = c.disallowedTools;
     if (c.resumeSessionId) options.resume = c.resumeSessionId;

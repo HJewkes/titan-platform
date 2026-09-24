@@ -104,8 +104,10 @@ with the total zeroed.
 ## Subagents and permissions
 
 `agents`, `mcpServers`, `hooks`, `allowedTools`, `disallowedTools`, `model`,
-`resumeSessionId` and `settingSources` pass straight through. Two defaults are
-chosen for headless safety:
+`resumeSessionId` and `settingSources` pass straight through. So do `tools`,
+the built-in tool set (`[]` runs with no tools, for a pure judgement call), and
+`systemPrompt`, which replaces the Claude Code default prompt. Leaving either
+unset keeps the SDK default. Two defaults are chosen for headless safety:
 
 - `permissionMode` defaults to `"dontAsk"`, so nothing runs that was not
   pre-approved.
