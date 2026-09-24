@@ -54,8 +54,12 @@ export interface AgentRunConfig<T = string> {
   model?: string;
   /** Turns on the SDK's `json_schema` output format, which retries on its own until the answer validates. */
   outputSchema?: ZodType<T>;
+  /** The built-in tool set; `[]` runs with no tools at all. Omitted keeps the SDK default. */
+  tools?: string[];
   allowedTools?: string[];
   disallowedTools?: string[];
+  /** Replaces the SDK's default Claude Code system prompt. */
+  systemPrompt?: string;
   /** Defaults to `dontAsk`: nothing is pre-approved, so nothing runs unprompted. */
   permissionMode?: PermissionMode;
   resumeSessionId?: string;
