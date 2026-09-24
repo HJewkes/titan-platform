@@ -163,6 +163,8 @@ const result = await runAgent({
 `claudePrintCapabilities()` reports the same limits in the shared capability
 vocabulary: fresh runs, structured output, external cancellation and token
 reporting are supported; resume, tools and every interactive capability are not.
+There is no `HarnessAdapter<"claude-print">` yet, so `dispatchHarnessRun` and the
+durable dispatcher cannot use it; claude-print is selectable only through `runAgent`.
 Without `systemPrompt` the default Claude Code prompt costs about 7,600 input
 tokens per call. A short `systemPrompt` brings that down to about 1,000.
 
