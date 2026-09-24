@@ -11,6 +11,13 @@ export interface WorkflowOwnerLease extends WorkflowOwnerFence {
   leaseUntil: string;
 }
 
+/** What one step cost, as the runner reported it. */
+export interface StepUsage {
+  costUsd: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
 export interface StepResult {
   stepId: string;
   iteration: number;
@@ -22,6 +29,8 @@ export interface StepResult {
   output?: string;
   /** Structured payload: a seed's data or a gate's resolution. */
   data?: Record<string, unknown>;
+  /** Present when the runner reported cost; `mapItems` sums it against its budget. */
+  usage?: StepUsage;
 }
 
 export interface ActiveStepBase {
@@ -111,7 +120,7 @@ export interface StepRunInput {
 }
 
 export type DurableStepOutcome =
-  | { kind: "succeeded"; output: string }
+  | { kind: "succeeded"; output: string; usage?: StepUsage }
   | { kind: "failed"; error: string; retryable: boolean }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string };
@@ -137,7 +146,7 @@ export type StepReconcileOutcome =
   | { kind: "unknown"; evidence: string };
 
 export type StepRunOutcome =
-  | { ok: true; output: string; runnerRef?: string }
+  | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
   | { ok: false; error: string; retryable: boolean };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */

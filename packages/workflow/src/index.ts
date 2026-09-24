@@ -15,6 +15,7 @@ export type {
   StepRunInput,
   StepRunOutcome,
   StepRunner,
+  StepUsage,
   WorkflowContext,
   WorkflowEvent,
   WorkflowFn,
@@ -37,7 +38,9 @@ export {
   workflowRunTableDdl,
 } from "./store.js";
 export type { AgentRunnerOptions } from "./runners.js";
-export { agentRunner, inlineRunner } from "./runners.js";
+export { agentRunner, idempotentRunner, inlineRunner } from "./runners.js";
+export type { MapItemFailure, MapItemFn, MapItemResult, MapOptions, MapResult } from "./fan-out.js";
+export { mapItems } from "./fan-out.js";
 export type { WorkflowRuntimeOptions } from "./runtime-options.js";
 export { WorkflowRuntime } from "./runtime.js";
 export type { DurableHarnessRunnerOptions } from "./durable-harness-runner.js";
