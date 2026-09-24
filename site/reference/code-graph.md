@@ -104,6 +104,26 @@ keys on the node id, so an id survives code moving above it. `externalToFinding(
 rule, file, line, endLine, message, severity })` maps another linter's diagnostic, such as
 style-checker's ruff output, onto the same shape without importing that linter.
 
+**Stored findings and verdicts.** `Finding.id` is not unique: an external tool's id embeds
+its line number, and two diagnostics on one line share it. Stored findings key on
+`findingKey` instead: tool, signal, the innermost symbol node id (or the path), a hash of
+the whitespace-normalized flagged text, and a collision ordinal. An inserted line above the
+finding keeps its key. `keyFindings(inputs)` numbers collisions in source order, so input
+order does not change a key.
+
+```ts
+const stored = keyFindings(findings.map((finding) => ({ finding, anchor, flaggedText, excerptHash })));
+saveFindings(store, snapshotId, stored);
+saveVerdicts(store, snapshotId, verdicts); // { key, verdict, rationale, citations, excerptHash, model?, ... }
+carryForwardVerdicts(store, previousSnapshotId, snapshotId); // count copied
+```
+
+`carryForwardVerdicts` copies a verdict only when the target snapshot has a finding with the
+same key and the same excerpt hash as the one the verdict judged, so a change anywhere in
+the shown excerpt forces a fresh judgement. Both tables are snapshot-scoped and pruned with
+their snapshot. The schema moved to version 4 with no `INDEX_VERSION` bump; an older build
+refuses a database this build opened.
+
 ## Diffing two snapshots
 
 ```ts
