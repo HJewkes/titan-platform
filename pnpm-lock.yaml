@@ -123,6 +123,9 @@ importers:
 
   deploy/hub:
     dependencies:
+      '@titan-design/matrix-bus':
+        specifier: workspace:^
+        version: link:../../packages/matrix-bus
       matrix-js-sdk:
         specifier: ^42.4.0
         version: 42.4.0
