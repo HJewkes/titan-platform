@@ -148,10 +148,10 @@ describe("folding owner resolutions", () => {
     const event = reaction(eventIdOf(r.state, "a"));
     const resolve = vi.spyOn(r.source, "resolve").mockRejectedValueOnce(new Error("source down"));
 
-    await expect(r.mirror.applySyncBatch({ since: "s1", events: [event] })).rejects.toThrow("source down");
+    await expect(r.mirror.applySyncBatch({ since: "s1", events: [event], limited: false })).rejects.toThrow("source down");
     expect(r.state.syncToken()).toBeUndefined();
-    await r.mirror.applySyncBatch({ since: "s1", events: [event] });
-    await r.mirror.applySyncBatch({ since: "s2", events: [event] });
+    await r.mirror.applySyncBatch({ since: "s1", events: [event], limited: false });
+    await r.mirror.applySyncBatch({ since: "s2", events: [event], limited: false });
 
     expect(resolve).toHaveBeenCalledTimes(2);
     expect(r.source.resolutions).toHaveLength(1);

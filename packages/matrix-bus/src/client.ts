@@ -96,7 +96,7 @@ export class AppserviceClient {
     return toSession(res);
   }
 
-  /** Yields one batch per /sync response; persist `since` from each batch before handling its events. */
+  /** Yields one batch per /sync response; the caller handles every event before persisting `since`, and dedupes by applied event id on replay. */
   syncLoop(options: SyncOptions = {}): AsyncGenerator<SyncBatch> {
     const request = (query: Record<string, string | undefined>, signal?: AbortSignal) =>
       this.request<SyncResponse>("GET", `${CLIENT}/sync`, { query, signal });

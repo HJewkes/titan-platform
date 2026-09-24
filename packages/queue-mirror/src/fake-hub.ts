@@ -4,6 +4,7 @@ import type { MirrorBus } from "./mirror.js";
 interface Batch {
   since: string;
   events: MatrixEvent[];
+  limited: boolean;
 }
 
 /** A test-only in-memory homeserver: dedupes txnIds, records every send, and serves injected /sync batches. */
@@ -46,7 +47,7 @@ export class FakeHub implements MirrorBus {
 
   /** Queues one /sync batch; its `since` is "s<n>". */
   deliver(...events: MatrixEvent[]): SyncBatch {
-    const batch = { since: `s${this.batches.length + 1}`, events };
+    const batch = { since: `s${this.batches.length + 1}`, events, limited: false };
     this.batches.push(batch);
     for (const wake of [...this.waiters]) wake();
     return batch;

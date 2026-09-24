@@ -7,9 +7,15 @@ export interface SyncOptions {
   signal?: AbortSignal;
 }
 
+interface JoinedTimeline {
+  events?: MatrixEvent[];
+  limited?: boolean;
+  prev_batch?: string;
+}
+
 export interface SyncResponse {
   next_batch: string;
-  rooms?: { join?: Record<string, { timeline?: { events?: MatrixEvent[] } }> };
+  rooms?: { join?: Record<string, { timeline?: JoinedTimeline }> };
 }
 
 export type SyncRequest = (query: Record<string, string | undefined>, signal?: AbortSignal) => Promise<SyncResponse>;
@@ -18,6 +24,14 @@ export function timelineEvents(res: SyncResponse): MatrixEvent[] {
   return Object.entries(res.rooms?.join ?? {}).flatMap(([roomId, room]) =>
     (room.timeline?.events ?? []).map((event) => ({ ...event, room_id: roomId })),
   );
+}
+
+// A batch spans every joined room, so limited is true if any room's timeline is limited.
+function timelineGap(res: SyncResponse): { limited: boolean; prev_batch?: string } {
+  const timelines = Object.values(res.rooms?.join ?? {}).map((room) => room.timeline ?? {});
+  const limited = timelines.some((timeline) => timeline.limited === true);
+  const prev_batch = timelines.find((timeline) => timeline.limited === true)?.prev_batch;
+  return { limited, prev_batch };
 }
 
 function syncQuery(since: string | undefined, options: SyncOptions): Record<string, string | undefined> {
@@ -42,6 +56,6 @@ export async function* syncBatches(request: SyncRequest, options: SyncOptions = 
       throw err;
     }
     since = res.next_batch;
-    yield { since, events: timelineEvents(res) };
+    yield { since, events: timelineEvents(res), ...timelineGap(res) };
   }
 }

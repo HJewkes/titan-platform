@@ -88,6 +88,37 @@ describe("AppserviceClient.syncLoop", () => {
     expect(JSON.parse(urlOf(fetch).searchParams.get("filter")!)).toEqual({ room: { rooms: ["!q:hub.test"] } });
   });
 
+  it("carries limited and prev_batch from a room's timeline", async () => {
+    const fetch = mockFetch(() => ({
+      body: {
+        next_batch: "s1",
+        rooms: { join: { "!q:hub.test": { timeline: { events: [], limited: true, prev_batch: "p1" } } } },
+      },
+    }));
+    const client = new AppserviceClient({ baseUrl: BASE, asToken: "as", fetch });
+
+    const batches = [];
+    for await (const batch of client.syncLoop({ since: "s0", timeoutMs: 5 })) {
+      batches.push(batch);
+      break;
+    }
+
+    expect(batches).toEqual([{ since: "s1", events: [], limited: true, prev_batch: "p1" }]);
+  });
+
+  it("defaults limited to false and prev_batch to undefined when the response omits them", async () => {
+    const fetch = mockFetch(() => ({ body: batch("s1", []) }));
+    const client = new AppserviceClient({ baseUrl: BASE, asToken: "as", fetch });
+
+    const batches = [];
+    for await (const b of client.syncLoop({ since: "s0", timeoutMs: 5 })) {
+      batches.push(b);
+      break;
+    }
+
+    expect(batches).toEqual([{ since: "s1", events: [], limited: false, prev_batch: undefined }]);
+  });
+
   it("ends without error when aborted mid-poll", async () => {
     const controller = new AbortController();
     const fetch = vi.fn(async (_input: string, init: RequestInit = {}) => {
