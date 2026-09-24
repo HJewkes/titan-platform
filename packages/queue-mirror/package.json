@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/queue-mirror",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./hitl": {
+      "types": "./dist/hitl.d.ts",
+      "import": "./dist/hitl.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
     }
   },
   "files": [
@@ -36,6 +44,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@titan-design/matrix-bus": "workspace:^"
+    "@titan-design/hitl": "workspace:^",
+    "@titan-design/matrix-bus": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^"
   }
 }

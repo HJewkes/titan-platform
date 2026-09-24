@@ -290,9 +290,15 @@ importers:
 
   packages/queue-mirror:
     dependencies:
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../hitl
       '@titan-design/matrix-bus':
         specifier: workspace:^
         version: link:../matrix-bus
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
 
   packages/react-app:
     dependencies:

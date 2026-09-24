@@ -20,7 +20,9 @@ export type CloseOutcome = "resolved" | "cancelled" | "expired";
 
 export type SourceEvent =
   | { type: "opened"; item: QueueItem; cursor: string }
-  | { type: "closed"; id: string; outcome: CloseOutcome; label?: string; cursor: string };
+  | { type: "closed"; id: string; outcome: CloseOutcome; label?: string; cursor: string }
+  /** The source lost its place (e.g. a gap too large to replay); the mirror re-reconciles against open(). */
+  | { type: "resync"; cursor: string };
 
 export interface VerdictInput {
   verdict: Verdict;
@@ -70,4 +72,9 @@ export interface MirrorState {
   openItems(): PostedItem[];
   hasApplied(resolutionEventId: string): boolean;
   commit(change: StateChange): void;
+}
+
+export interface MirrorLogger {
+  info(msg: string, data?: object): void;
+  warn(msg: string, data?: object): void;
 }
