@@ -1,5 +1,5 @@
 ---
-"@titan-design/matrix-bus": patch
+"@titan-design/matrix-bus": minor
 ---
 
 Fix the `syncLoop` docstring, which said to persist `since` before handling a batch's
