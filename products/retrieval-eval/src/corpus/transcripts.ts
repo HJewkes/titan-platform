@@ -72,24 +72,35 @@ export async function* streamToolUses(file: string): AsyncGenerator<ToolUse> {
   for await (const line of lines(file)) {
     if (!line.includes('"tool_use"')) continue;
     const record = parseLine(line);
-    const content = (record?.message as { content?: unknown })?.content;
-    if (!Array.isArray(content)) continue;
-    for (const item of content) {
-      if (!isToolUse(item)) continue;
-      yield {
-        name: item.name,
-        input: (item.input ?? {}) as Record<string, unknown>,
-        timestamp: typeof record?.timestamp === "string" ? record.timestamp : undefined,
-        sessionId: typeof record?.sessionId === "string" ? record.sessionId : undefined,
-        cwd: typeof record?.cwd === "string" ? record.cwd : undefined,
-      };
-    }
+    if (record !== undefined) yield* toolUsesIn(record);
   }
+}
+
+/** Every parseable record in a transcript, in order, with the same torn-tail tolerance. */
+export async function* streamRecords(file: string): AsyncGenerator<Record<string, unknown>> {
+  for await (const line of lines(file)) {
+    const record = parseLine(line);
+    if (record !== undefined) yield record;
+  }
+}
+
+/** The `tool_use` blocks one record carries, stamped with that record's metadata. */
+export function toolUsesIn(record: Record<string, unknown>): ToolUse[] {
+  const content = (record.message as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return [];
+  return content.filter(isToolUse).map((item) => ({
+    name: item.name,
+    input: (item.input ?? {}) as Record<string, unknown>,
+    timestamp: typeof record.timestamp === "string" ? record.timestamp : undefined,
+    sessionId: typeof record.sessionId === "string" ? record.sessionId : undefined,
+    cwd: typeof record.cwd === "string" ? record.cwd : undefined,
+  }));
 }
 
 function parseLine(line: string): Record<string, unknown> | undefined {
   try {
-    return JSON.parse(line) as Record<string, unknown>;
+    const record: unknown = JSON.parse(line);
+    return typeof record === "object" && record !== null ? (record as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
   }

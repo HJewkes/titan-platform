@@ -258,6 +258,56 @@ Snapshot for this section:
 }
 ```
 
+## 2026-09-24: the served arm (TP-330)
+
+`retrieval-eval served --since 2026-09-16T00:00:00Z --until 2026-09-23T18:50:00Z`
+
+The window is the one design-sources §1.2 measured. Its scripts had no date filter and
+ran at 2026-09-23 12:50 MDT (18:50Z), so `--until` is that instant. No block exists
+before 2026-09-16: the first bootstrap block is at 11:57Z that day and the first spawn block
+at 14:15Z. Any `--since` on or before that date, including a trailing 14 or 30 days, gives
+the same table.
+
+| Trigger | Class | Served | Opened | Rate | Cited | Unserved base rate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| bootstrap | source | 64 | 12 | **18.8%** | 4 | 5.0% (112 of 2,235) |
+| bootstrap | note | 215 | 6 | 2.8% | 0 | 0.42% (24 of 5,657) |
+| bootstrap | task | 25 | 11 | 44% | 7 | not computed |
+| spawn | source | 66 | 21 | **31.8%** | 0 | 0.74% (33 of 4,459) |
+| spawn | note | 151 | 8 | 5.3% | 0 | 0.10% (9 of 9,350) |
+| spawn | task | 41 | 19 | 46% | 11 | not computed |
+| spawn | session | 2 | 0 | 0% | 0 | not computed |
+
+**Every served and opened cell matches §1.2 exactly.** The base-rate denominators differ
+(2,235 against 2,213, 5,657 against 5,523) because the control lists the corpus on disk
+today, which has grown by a day of notes and sources. §1.2 did not render the two `session`
+refs as a row.
+
+The transcript counts differ, and the difference is in §1.2's counting, not in the data.
+§1.2's "99 bootstrap transcripts" was `grep -rl "    see: "` over the transcript roots,
+which also matched `tool-results/*.txt` sidecars and transcripts whose see-lines came from
+a tool result rather than the first user turn. **54** transcripts carry a parsed bootstrap
+block. The spawn count, 85, matches exactly.
+
+`opened-section` is `n/a` for every row. Rendered refs have no span anchor until B4, so no
+`Read` offset can be matched to a served section. The arm reports that as a reason, not as
+a zero.
+
+`cited` is new. It is near zero for notes (0 of 366), which fits §1.2's reading that a note
+is used through its title: the long slug filename is almost never repeated in prose. The
+label only sees the filename, so a paraphrased title does not count. That makes `cited` a
+floor, like `opened`.
+
+The caveat from [The caveat, first](#the-caveat-first) applies, and more strongly. "Opened"
+counts what the agent went looking for. It also counts coincidence: a session working on the
+loop would often open that doc anyway, and at spawn the coordinator often names the same doc
+in the brief. The unserved base rate bounds coincidence only loosely, because served files
+are the topical ones by construction.
+
+Not built yet: the previous-bootstrap control from §1.3, and a `--hit-log` input that joins
+`retrieval-hits.jsonl` rows on `(slug, ts)`. The hit log has no spawn rows until active-work
+0.14.0 ships, so the transcript parse is the only source that covers both triggers today.
+
 ## Reproducing
 
 ```sh
@@ -266,6 +316,7 @@ node products/retrieval-eval/dist/bin.js mine --out pairs.jsonl   # stats to std
 node products/retrieval-eval/dist/bin.js run pairs.jsonl
 node products/retrieval-eval/dist/bin.js run pairs.jsonl --candidates notes-fts,hybrid-fts-vector --embedder ollama
 node products/retrieval-eval/dist/bin.js uptake --since 2026-09-01
+node products/retrieval-eval/dist/bin.js served --since 2026-09-16T00:00:00Z --until 2026-09-23T18:50:00Z
 ```
 
 ## Corpus
