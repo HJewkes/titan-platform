@@ -91,6 +91,29 @@ waiting on `<runId>/x`, so `assisted` adopts a gate that is still pending there
 when the bare key holds no result. `seed` keys by `stepId` alone, so give seeds
 their own step IDs.
 
+## Fan-out
+
+`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd? })` runs `fn`
+over a list with a concurrency cap (default 1). Each item runs as step
+`${stepId}/${key}`, and `fn` receives that id to pass to `ctx.dispatch`, so each
+item memoizes on its own. After a restart, replay reuses the finished items and
+runs only the rest. Matching is by key, not position, so the input may be
+reordered between runs. Duplicate keys throw before anything launches.
+
+`budgetUsd` is checked before each launch against the cost that finished items
+reported in `StepResult.usage`. Items still in flight are not counted, so a run
+can overshoot by up to `concurrency - 1` items. A `StepFailedError` also stops
+new launches. The result reports `results` in input order, plus `failed`,
+`skipped`, `spentUsd` and `stoppedBy` (`"budget"`, `"failure"` or `null`). Any
+other error is rethrown once the items in flight settle.
+
+`agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
+every successful step. A run with an `outputSchema` stores its output as JSON
+text. Wrap it in `idempotentRunner` when its steps are safe to repeat, such as
+read-only judgements. Then a step that was in flight at a crash is dispatched
+again on `hydrate` instead of parking the run as `recovery_required`. With that
+wrapper, a step's `agentId` is its request key, not the agent session id.
+
 ## Signals
 
 `parseSignals(output)` returns every signal an output carries, highest
@@ -139,8 +162,9 @@ reconciliation again, which allows a temporarily unavailable ledger to recover
 without redispatching unknown work.
 
 `durableHarnessRunner` adapts a durable harness dispatcher from
-`@titan-design/agent` to this handshake. `agentRunner` and `inlineRunner` remain
-legacy live runners. The deprecated optional `LegacyStepRunner.attach` can
+`@titan-design/agent` to this handshake. `idempotentRunner` adapts a live
+runner whose steps are safe to repeat (see Fan-out). `agentRunner` and
+`inlineRunner` remain legacy live runners. The deprecated optional `LegacyStepRunner.attach` can
 return a confirmed terminal result after restart; missing or failed attachment
 requires recovery. Legacy work is never automatically redispatched after an
 unsafe restart.

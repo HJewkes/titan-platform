@@ -17,6 +17,7 @@ import {
   type StepResult,
   type StepRunInput,
   type StepRunner,
+  type StepUsage,
   type WorkflowContext,
   type WorkflowEvent,
   type WorkflowRun,
@@ -127,6 +128,7 @@ export class RunContext implements WorkflowContext {
       signal: this.deps.parseSignal(completed.output),
       completedAt: nowIso(),
       output: completed.output,
+      ...(completed.usage ? { usage: completed.usage } : {}),
     };
     delete this.run.activeSteps[stepId];
     this.record(iterKey, result);
@@ -181,7 +183,7 @@ export class RunContext implements WorkflowContext {
     prompt: string,
     model: string | undefined,
     recovered?: RecoveredStep,
-  ): Promise<{ output: string; runnerRef: string | null }> {
+  ): Promise<{ output: string; runnerRef: string | null; usage?: StepUsage }> {
     let attempt = recovered?.step.attempt ?? 0;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
@@ -194,7 +196,7 @@ export class RunContext implements WorkflowContext {
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: outcome.usage };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
@@ -239,7 +241,7 @@ export class RunContext implements WorkflowContext {
       const outcome = await this.deps.runner.run(input);
       if (outcome.ok) {
         if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
-        return { kind: "succeeded", output: outcome.output };
+        return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
       }
       return { kind: "failed", error: outcome.error, retryable: outcome.retryable };
     }
