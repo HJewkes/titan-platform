@@ -13,16 +13,16 @@ function transcript() {
   let offset = 0;
   const api = {
     input,
-    request(minute: number, extra: { contextTokens?: number; wakeCause?: string } = {}) {
-      input.requests.push({ offset: ++offset, ts: at(minute), contextTokens: extra.contextTokens ?? 1_000, wakeCause: extra.wakeCause ?? null });
+    request(minute: number, extra: { contextTokens?: number; wakeCause?: string; transcriptId?: number } = {}) {
+      input.requests.push({ offset: ++offset, ts: at(minute), transcriptId: extra.transcriptId ?? 1, contextTokens: extra.contextTokens ?? 1_000, wakeCause: extra.wakeCause ?? null });
       return offset;
     },
-    inbound(minute: number, cause: string) {
-      input.inbounds.push({ offset: ++offset, ts: at(minute), cause });
+    inbound(minute: number, cause: string, transcriptId = 1) {
+      input.inbounds.push({ offset: ++offset, ts: at(minute), transcriptId, cause });
       return offset;
     },
-    signal(minute: number, signal: string) {
-      input.signals.push({ offset: ++offset, ts: at(minute), signal });
+    signal(minute: number, signal: string, transcriptId = 1) {
+      input.signals.push({ offset: ++offset, ts: at(minute), transcriptId, signal });
       return offset;
     },
     /** A request per minute from `from` up to, not including, `to`. */
@@ -111,6 +111,29 @@ describe("worker-v1", () => {
     t.request(0);
 
     expect(buildEpisodes(t.input, "worker-v1")).toMatchObject([{ openedBy: "session_start", assignmentOffset: null }]);
+  });
+
+  it("episode boundaries stay ordered for a session resumed across two transcripts", () => {
+    const input: EpisodeInput = {
+      spawned: true,
+      requests: [
+        { offset: 500, ts: at(0), transcriptId: 1, contextTokens: 1_000, wakeCause: null },
+        { offset: 900, ts: at(5), transcriptId: 1, contextTokens: 1_000, wakeCause: null },
+        // the resumed transcript's byte offsets restart from a fresh file, well below transcript 1's
+        { offset: 20, ts: at(40), transcriptId: 2, contextTokens: 1_000, wakeCause: null },
+        { offset: 150, ts: at(45), transcriptId: 2, contextTokens: 1_000, wakeCause: null },
+      ],
+      inbounds: [{ offset: 10, ts: at(0), transcriptId: 1, cause: "human_typed" }],
+      signals: [],
+    };
+
+    const rows = buildEpisodes(input, "worker-v1");
+
+    expect(rows.map((row) => row.openedBy)).toEqual(["brief", "idle_gap"]);
+    expect(rows.map((row) => row.startOffset)).toEqual([10, 20]);
+    expect(rows.map((row) => row.endOffset)).toEqual([900, 150]);
+    expect(rows.map((row) => row.startTranscriptId)).toEqual([1, 2]);
+    expect(rows.map((row) => row.endTranscriptId)).toEqual([1, 2]);
   });
 });
 

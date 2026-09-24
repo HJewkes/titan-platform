@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyDelta } from "./apply.js";
 import { applyAudit } from "./audit-apply.js";
 import { AUDIT_COLUMNS, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
-import { ORIGIN_MIGRATION_NAME } from "./audit-schema-v5.js";
+import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME } from "./audit-schema-v5.js";
+import { EPISODE_TRANSCRIPT_MIGRATION_NAME } from "./audit-schema-v6.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { purgeTranscript } from "./purge.js";
 import { refreshCorpus } from "./refresh.js";
@@ -108,7 +109,8 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [1001, "active-work tables"], [1002, "active-work follow-up"],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME],
+      [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
     expect(afterSecond).toEqual(afterFirst);
@@ -128,6 +130,36 @@ describe("migration 4", () => {
     expect(columnsOf(repaired.db, "session").filter((c) => c === "account")).toHaveLength(1);
     expect(columnsOf(repaired.db, "pr")).toEqual(expect.arrayContaining(["review_rounds", "closed_at", "outcome_checked_at"]));
     repaired.db.close();
+  });
+});
+
+describe("migration 6", () => {
+  function versionFiveDatabase(file: string): void {
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.filter((m) => m.version <= 5));
+    db.prepare("INSERT INTO session (session_id, cwd) VALUES ('kept', '/before')").run();
+    db.prepare(
+      `INSERT INTO ${EPISODE_TABLE} (session_id, episode_index, heuristic, heuristic_version, started_at, ended_at, start_offset, end_offset, opened_by)
+       VALUES ('kept', 0, 'worker-v1', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:30:00Z', 0, 999, 'brief')`,
+    ).run();
+    db.close();
+  }
+
+  it("migration 6 adds transcript id columns to episode rows written under version 5", () => {
+    const file = path.join(dir, "v5-graph.sqlite3");
+    versionFiveDatabase(file);
+
+    const migrated = openSessionGraph(file);
+    const fresh = openSessionGraph(":memory:");
+
+    expect(EPISODE_TRANSCRIPT_MIGRATION_NAME).toBe("episode transcript ids");
+    expect(columnsOf(migrated.db, EPISODE_TABLE)).toEqual(expect.arrayContaining(["start_transcript_id", "end_transcript_id"]));
+    expect(columnsOf(migrated.db, EPISODE_TABLE)).toEqual(columnsOf(fresh.db, EPISODE_TABLE));
+    expect(migrated.db.prepare(`SELECT session_id, start_transcript_id, end_transcript_id FROM ${EPISODE_TABLE}`).all()).toEqual([
+      { session_id: "kept", start_transcript_id: null, end_transcript_id: null },
+    ]);
+    migrated.db.close();
+    fresh.db.close();
   });
 });
 

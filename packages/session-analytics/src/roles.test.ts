@@ -39,7 +39,15 @@ describe("worker roles", () => {
   it("counts only episodes an assignment opened, so an idle worker is not a standing peer", () => {
     const day = (hour: number) => `2026-09-20T${String(hour).padStart(2, "0")}:00:00Z`;
     const idle = buildEpisodes(
-      { requests: [{ offset: 2, ts: day(0), contextTokens: 0, wakeCause: null }, { offset: 3, ts: day(13), contextTokens: 0, wakeCause: null }], inbounds: [{ offset: 1, ts: day(0), cause: "human_typed" }], signals: [], spawned: true },
+      {
+        requests: [
+          { offset: 2, ts: day(0), transcriptId: 1, contextTokens: 0, wakeCause: null },
+          { offset: 3, ts: day(13), transcriptId: 1, contextTokens: 0, wakeCause: null },
+        ],
+        inbounds: [{ offset: 1, ts: day(0), transcriptId: 1, cause: "human_typed" }],
+        signals: [],
+        spawned: true,
+      },
       "worker-v1",
     );
 
