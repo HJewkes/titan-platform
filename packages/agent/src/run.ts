@@ -1,6 +1,7 @@
 import { query, type Options, type Query, type SDKMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toJSONSchema } from "zod";
 import { AuthMisconfiguredError, assertApiKeySourceAllowed, assertAuthEnvOk, prepareEnv } from "./env.js";
+import { assertClaudePrintConfig, runClaudePrint } from "./claude-print.js";
 import { classifyResult, usageFromResult } from "./failures.js";
 import type { AgentFailure, AgentInit, AgentRunConfig, AgentRunResult } from "./types.js";
 
@@ -24,15 +25,18 @@ export async function runAgent<T = string>(
   deps: AgentRunDeps = {},
 ): Promise<AgentRunResult<T>> {
   assertBudgets(config);
+  if (config.harness === "claude-print") assertClaudePrintConfig(config);
   const now = deps.now ?? Date.now;
   const startedAt = now();
 
+  const print = config.harness === "claude-print";
   const env = prepareEnv(deps.env ?? process.env, { allowApiKeyBilling: config.allowApiKeyBilling });
   try {
-    assertAuthEnvOk(env, { allowApiKeyBilling: config.allowApiKeyBilling });
+    assertAuthEnvOk(env, { allowApiKeyBilling: config.allowApiKeyBilling, requireOAuthToken: !print });
   } catch (error) {
     return { ok: false, failure: authFailure(error) };
   }
+  if (print) return runClaudePrint(config, env, { now, startedAt });
 
   const session = new Session(config, env, deps);
   try {

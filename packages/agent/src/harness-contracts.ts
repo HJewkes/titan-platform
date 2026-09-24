@@ -11,6 +11,20 @@ import type { ZodType } from "zod";
 
 export type Harness = "claude-code" | "codex";
 
+/** Harnesses `runAgent` can drive. `claude-print` is headless `claude -p` on the CLI's own login. */
+export type AgentRunHarness = "claude-code" | "claude-print";
+
+/** `AgentRunConfig` fields claude-print cannot honour: it runs one turn with no tools, hooks, MCP or resume. */
+export const CLAUDE_PRINT_UNSUPPORTED_OPTIONS = [
+  "allowedTools",
+  "disallowedTools",
+  "permissionMode",
+  "resumeSessionId",
+  "agents",
+  "mcpServers",
+  "hooks",
+] as const;
+
 export const CODEX_SANDBOXES = ["read-only", "workspace-write", "danger-full-access"] as const;
 export const CODEX_APPROVAL_POLICIES = ["untrusted", "on-failure", "on-request", "never"] as const;
 export type CodexSandbox = (typeof CODEX_SANDBOXES)[number];
@@ -56,7 +70,7 @@ export interface LimitCapability {
 }
 
 /** A factual report supplied by an adapter implementation, not a promise made by the core. */
-export interface HarnessCapabilityDescriptor<H extends Harness = Harness> {
+export interface HarnessCapabilityDescriptor<H extends string = Harness> {
   harness: H;
   adapter: { name: string; version: string };
   capabilities: Record<ExecutionCapability, CapabilityAssessment>;
