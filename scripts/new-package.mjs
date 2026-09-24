@@ -70,7 +70,8 @@ function main() {
   writeFileSync(CHECK_JSON, registerLayer(readFileSync(CHECK_JSON, "utf8"), `${dir}/${opts.name}`, opts.tier));
   const page = stampReferencePage(ROOT, opts);
   execFileSync(process.execPath, [join(ROOT, "scripts", "gen-docs-reference.mjs")], { stdio: "inherit" });
-  console.log(`created ${dir}/${opts.name} (tier ${opts.tier})${page ? ` and site/reference/${opts.name}.md` : ""}`);
+  execFileSync(process.execPath, [join(ROOT, "scripts", "gen-capabilities.mjs")], { stdio: "inherit" });
+  console.log(`created ${dir}/${opts.name} (tier ${opts.tier})${page ? ` and site/reference/${opts.name}.md` : ""}; fill in its CAPABILITY.md`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

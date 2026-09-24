@@ -2,6 +2,10 @@
 
 ## Understanding the platform
 
+- **[Capability catalog](/guides/capabilities)** — generated. Every package, product and
+  app with a "use this when" line and key exports, the proven runtime paths and their
+  credentials, and the known gaps. The first stop before you build anything.
+
 - **[Architecture](/guides/architecture)** — the tiers, the real dependency graph, why the
   DAG is enforced by CI, and the two time models `store-sqlite` offers.
 - **[The binding pattern](/guides/binding-pattern)** — how a product fixes a package's type
