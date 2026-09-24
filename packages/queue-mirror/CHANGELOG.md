@@ -1,5 +1,12 @@
 # @titan-design/queue-mirror
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [9bc4dce]
+  - @titan-design/matrix-bus@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes
