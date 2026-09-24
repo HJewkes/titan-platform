@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/retrieval-eval",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers",
   "type": "module",
   "main": "./dist/index.js",

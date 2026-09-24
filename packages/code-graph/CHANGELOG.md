@@ -1,5 +1,12 @@
 # @titan-design/code-graph
 
+## 0.8.0
+
+### Minor Changes
+
+- 3871f36: Emit `calls` edges between symbols (TP-323). TypeScript resolves each call and `new` through the type checker; Python resolves same-file module-level names, `from <in-repo module> import` names, and `self.<name>()` on the enclosing class or a same-file base. Unresolved calls are dropped. Each edge carries its call sites' literal arguments in `attrs.sites`, and function and method symbol nodes carry `params`. New per-symbol metrics: `symbol_caller_count`, `symbol_single_caller_helper` and `symbol_constant_params`. `listEdges` and `listEdgesTouching` hide `calls` edges by default, like `references`. `INDEX_VERSION` moves to 0.18.0, so the first index after upgrading is a full one.
+- 5cdc896: Add `floor` and `rankNonZero` to the `metric-outlier` check rule so a sparse metric whose percentile sits at or near zero no longer flags every non-zero node. Exempt Python's `except ImportError`/`ModuleNotFoundError` handlers (alone or paired, `pass` or a None-assignment fallback) from `swallowed_except`, since that is the standard optional-dependency idiom rather than a hidden error.
+
 ## 0.7.0
 
 ### Minor Changes
