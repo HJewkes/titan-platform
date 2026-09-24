@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { createClient, RoomEvent, ClientEvent } from "matrix-js-sdk";
+import { createClient } from "matrix-js-sdk";
+import { AppserviceClient } from "@titan-design/matrix-bus";
 
 const quiet = { trace() {}, debug() {}, info() {}, warn() {}, error: console.error, getChild: () => quiet };
 
@@ -20,9 +21,6 @@ export const SERVER = env.SERVER_NAME;
 export const mxid = (localpart) => `@${localpart}:${SERVER}`;
 export const CORE_BOT = mxid("core-bot");
 export const OWNER = mxid("owner");
-// edge1's appservice namespace is @ac-edge1-.*, so its token cannot act as another machine's agents.
-export const EDGE1_A = "ac-edge1-a";
-export const EDGE1_B = "ac-edge1-b";
 
 export const loadState = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {});
 export const saveState = (s) => writeFileSync(STATE, JSON.stringify(s, null, 2));
@@ -52,15 +50,6 @@ export async function rawRequest(method, path, { token, body, query } = {}) {
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-export async function registerAppserviceUser(asToken, localpart) {
-  const res = await rawRequest("POST", "/_matrix/client/v3/register", {
-    token: asToken,
-    body: { type: "m.login.application_service", username: localpart, inhibit_login: true },
-  });
-  if (res.status !== 200 && res.body?.errcode !== "M_USER_IN_USE") throw new Error(JSON.stringify(res));
-  return res;
-}
-
 // Synapse-style shared-secret registration: the admin path, so public registration stays closed.
 export async function registerWithSharedSecret(username, password) {
   const path = "/_synapse/admin/v1/register";
@@ -75,35 +64,7 @@ export async function registerWithSharedSecret(username, password) {
   return res;
 }
 
-export async function passwordClient(localpart, password) {
-  const login = await rawRequest("POST", "/_matrix/client/v3/login", {
-    body: { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password },
-  });
-  if (login.status !== 200) throw new Error(JSON.stringify(login));
-  return createClient({ baseUrl: env.HS_URL, accessToken: login.body.access_token, userId: login.body.user_id, logger: quiet });
-}
-
-export async function startSynced(client) {
-  const ready = new Promise((resolve) =>
-    client.on(ClientEvent.Sync, (state) => state === "PREPARED" && resolve()),
-  );
-  await client.startClient({ initialSyncLimit: 0 });
-  await ready;
-  return client;
-}
-
-export function waitForEvent(client, predicate, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      client.off(RoomEvent.Timeline, onEvent);
-      reject(new Error(`timeout waiting on ${client.getUserId()}`));
-    }, timeoutMs);
-    function onEvent(event, _room, toStart) {
-      if (toStart || !predicate(event)) return;
-      clearTimeout(timer);
-      client.off(RoomEvent.Timeline, onEvent);
-      resolve(event);
-    }
-    client.on(RoomEvent.Timeline, onEvent);
-  });
+// Over @titan-design/matrix-bus, for the appservice's own sender_localpart (no masquerade query param).
+export function appserviceClient(asToken, userId) {
+  return new AppserviceClient({ baseUrl: env.HS_URL, asToken, userId, sender: userId });
 }

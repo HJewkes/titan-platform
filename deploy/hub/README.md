@@ -8,8 +8,8 @@ in that spike's `RESULTS.md`.
 **Stage 1 runs Tuwunel and Caddy only.** The `core` service (broker-core, `src/core.mjs`, built
 from `core.Dockerfile`) exists for stage 2 and is not started: it sits under the compose profile
 `core`, so neither command below brings it up. Its appservice registration is still rendered, so
-Tuwunel knows the `@core-.*` and `#coord.*` namespaces, and `src/bootstrap.mjs` acts through the
-core's token without the core process running.
+Tuwunel knows the `@core-.*` and `#coord.*` namespaces even though nothing uses them yet;
+`src/bootstrap.mjs` only creates the owner's `#queue`, over the edge1 mirror user.
 
 ## Layout
 
@@ -22,8 +22,9 @@ core's token without the core process running.
   under the profile `core`, and a commented `mautrix-telegram` block (not used in stage 1).
 - `config/caddy/Caddyfile`: TLS for `SERVER_NAME`; proxies `/_matrix/*`, `/_tuwunel/*` and
   `/.well-known/matrix/client`.
-- `src/lib.mjs`, `src/bootstrap.mjs`, `src/core.mjs`: owner-side scripts over `matrix-js-sdk`.
-  `pnpm install` at the repo root installs their dependencies.
+- `src/lib.mjs`, `src/bootstrap.mjs`: owner-side scripts over `@titan-design/matrix-bus`.
+  `src/core.mjs` is the stage-2 core service and stays on `matrix-js-sdk`. `pnpm install` at the
+  repo root installs their dependencies.
 
 ## Local run
 
@@ -32,7 +33,7 @@ Needs Docker, plus Node 22 for the owner-side scripts.
     ./scripts/setup.sh
     docker compose up -d --build
     curl localhost:8008/_matrix/client/versions
-    pnpm run bootstrap   # owner account, the edge1 agents and #coord
+    pnpm run bootstrap   # owner account, the ac-edge1 mirror user and #queue
 
 ## Remote run
 
