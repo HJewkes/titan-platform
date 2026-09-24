@@ -13,7 +13,8 @@
           "packages/agent-protocol",
           "packages/chat-protocol",
           "packages/code-parser",
-          "packages/rpc-protocol"
+          "packages/rpc-protocol",
+          "packages/evidence"
         ],
         "1": [
           "packages/retrieval",
@@ -57,7 +58,8 @@
           "packages/agent-protocol",
           "packages/chat-protocol",
           "packages/code-parser",
-          "packages/rpc-protocol"
+          "packages/rpc-protocol",
+          "packages/evidence"
         ],
         [
           "packages/retrieval",
