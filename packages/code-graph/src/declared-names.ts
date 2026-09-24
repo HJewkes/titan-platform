@@ -34,19 +34,28 @@ export interface Declaration {
  * Anonymous declarations (a default-exported arrow, inline callbacks) are skipped.
  */
 export function collectDeclarations(file: ParsedFile): Declaration[] {
-  const python = file.language === "python";
-  const declTypes = python ? PY_DECL_TYPES : TS_DECL_TYPES;
   const out: Declaration[] = [];
-  walkScopes(file.tree.rootNode, python, (node, scope) => {
-    const named = declaredNodeAt(node, declTypes);
-    if (!named) return;
+  forEachDeclaration(file, (name, qualifiedName, node) => {
     out.push({
-      name: named.name,
-      qualifiedName: qualify(scope, named.name),
-      span: { startLine: named.node.startPosition.row + 1, endLine: named.node.endPosition.row + 1 },
+      name,
+      qualifiedName,
+      span: { startLine: node.startPosition.row + 1, endLine: node.endPosition.row + 1 },
     });
   });
   return out;
+}
+
+/** Visit each declaration's name, scope-qualified name and the node its span and parameters come from. */
+export function forEachDeclaration(
+  file: ParsedFile,
+  visit: (name: string, qualifiedName: string, node: Node) => void,
+): void {
+  const python = file.language === "python";
+  const declTypes = python ? PY_DECL_TYPES : TS_DECL_TYPES;
+  walkScopes(file.tree.rootNode, python, (node, scope) => {
+    const named = declaredNodeAt(node, declTypes);
+    if (named) visit(named.name, qualify(scope, named.name), named.node);
+  });
 }
 
 /**

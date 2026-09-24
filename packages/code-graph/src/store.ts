@@ -43,6 +43,11 @@ export interface SnapshotInsert {
 
 const NODE_COLS = "id, kind, name, parent_id, language, role, attrs";
 
+/** Per-symbol `references` and `calls` edges sit below the file-level graph the default reads return. */
+function isStructuralLayer(edge: GraphEdge): boolean {
+  return edge.kind !== "references" && edge.kind !== "calls";
+}
+
 /**
  * The code graph's query surface over store-sqlite's snapshot-scoped kit tables
  * plus this package's domain tables. Replaces codewatch's `GraphDatabase`: the
@@ -183,10 +188,10 @@ export class CodeGraphStore {
     return opts?.includeSymbols ? nodes : nodes.filter((n) => n.kind !== "symbol");
   }
 
-  /** See {@link listNodes}: `references` edges are the symbol layer, excluded by default. */
+  /** See {@link listNodes}: `references` and `calls` edges are the symbol layer, excluded by default. */
   listEdges(snapshotId: number, opts?: { includeReferences?: boolean }): GraphEdge[] {
     const edges = (this.statements.listEdges.all(snapshotId) as EdgeDbRow[]).map(rowToEdge);
-    return opts?.includeReferences ? edges : edges.filter((e) => e.kind !== "references");
+    return opts?.includeReferences ? edges : edges.filter(isStructuralLayer);
   }
 
   listMetrics(snapshotId: number): GraphMetric[] {
@@ -208,10 +213,10 @@ export class CodeGraphStore {
     return readTopByMetric(this.targeted, opts);
   }
 
-  /** Edges into or out of one node; `references` edges are excluded unless asked, as in {@link listEdges}. */
+  /** Edges into or out of one node; symbol-layer edges are excluded unless asked, as in {@link listEdges}. */
   listEdgesTouching(snapshotId: number, nodeId: string, opts?: { includeReferences?: boolean }): GraphEdge[] {
     const edges = readEdgesTouching(this.targeted, snapshotId, nodeId);
-    return opts?.includeReferences ? edges : edges.filter((e) => e.kind !== "references");
+    return opts?.includeReferences ? edges : edges.filter(isStructuralLayer);
   }
 
   /** Count, sum, min, and max per metric name and node kind; pass `name` for one metric. */

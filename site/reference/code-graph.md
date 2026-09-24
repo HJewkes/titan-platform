@@ -483,7 +483,7 @@ describeMetric("churn_90d");
 The three reads are index searches, with no new index or migration. On that tree,
 `listMetricsForNode` takes 0.014 ms against 9.7 ms for `listMetrics` filtered to the node,
 and `listEdgesTouching` takes 0.03 to 0.08 ms against 2.0 ms for `listEdges` filtered.
-`listEdgesTouching` hides `references` edges unless you pass `includeReferences`, as
+`listEdgesTouching` hides `references` and `calls` edges unless you pass `includeReferences`, as
 `listEdges` does.
 
 Three more reads answer a report's questions on the same indexes, over this repo's
@@ -523,7 +523,7 @@ remapping the `dist/*.d.ts` entry ts-morph resolves back onto `src/`. That remap
 dist to exist, which is why `pnpm build` precedes both `pnpm test` and `dag:check` here.
 
 **The symbol layer is hidden by default.** `listNodes` drops `symbol` nodes and `listEdges`
-drops `references` edges unless you ask for them, so a caller reasoning about module
+drops `references` and `calls` edges unless you ask for them, so a caller reasoning about module
 structure does not have one import of thirty names read as thirty dependencies.
 
 **Snapshots, not intervals.** The domain `edge` table here is snapshot-scoped, keyed

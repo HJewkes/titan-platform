@@ -139,9 +139,9 @@ describe("node.get over a real index", () => {
     expect(result.ancestors.map((a) => a.id)).toEqual(["", "src/", "src/jobs/", "src/jobs/runner.ts", "src/jobs/runner.ts#Task"]);
     expect(cognitive).toMatchObject({ value: 3, direction: "higher-worse", percentile: 100, siblingCount: 1, siblingRank: 1, siblingMedian: 3 });
     expect(result.metrics.map((m) => m.name)).toEqual([
-      "symbol_body_lines", "symbol_cognitive", "symbol_comment_lines", "symbol_comment_ratio", "symbol_cyclomatic",
-      "symbol_docstring_lines", "symbol_loc", "symbol_max_nesting", "symbol_narrating_comments", "symbol_pass_through",
-      "utilization",
+      "symbol_body_lines", "symbol_caller_count", "symbol_cognitive", "symbol_comment_lines", "symbol_comment_ratio",
+      "symbol_constant_params", "symbol_cyclomatic", "symbol_docstring_lines", "symbol_loc", "symbol_max_nesting",
+      "symbol_narrating_comments", "symbol_pass_through", "symbol_single_caller_helper", "utilization",
     ]);
     expect(result.metrics.find((m) => m.name === "symbol_loc")?.value).toBe(7);
   });

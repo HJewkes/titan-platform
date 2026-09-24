@@ -2,6 +2,8 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { SourceFile } from "ts-morph";
 import { collectDeclaredSpans, type LineSpan } from "../declared-names.js";
 import { fileId, symbolId } from "./ids.js";
+import { paramAttrs, type ParamShape } from "./call-sites.js";
+import { collectParamShapes } from "./callable-params.js";
 import { declarationText, lookupDeclaration, type SymbolText } from "./symbol-signature.js";
 import type { GraphNode } from "../types.js";
 
@@ -20,8 +22,9 @@ function makeSymbolNode(
   exported: boolean,
   span: LineSpan | undefined,
   text: SymbolText,
+  shape: ParamShape | undefined,
 ): GraphNode {
-  const attrs: Record<string, unknown> = { exported };
+  const attrs: Record<string, unknown> = { exported, ...paramAttrs(shape) };
   if (span) {
     attrs.startLine = span.startLine;
     attrs.endLine = span.endLine;
@@ -63,18 +66,19 @@ export function buildSymbolNodes(
 ): GraphNode[] {
   const fId = fileId(repoRoot, sourceFile.getFilePath());
   const spans = collectDeclaredSpans(file);
+  const shapes = collectParamShapes(file);
   const out: GraphNode[] = [];
   const exported = new Set<string>();
   for (const [name, decls] of sourceFile.getExportedDeclarations()) {
     const own = decls.find((d) => d.getSourceFile() === sourceFile);
     if (!own) continue;
     exported.add(name);
-    out.push(makeSymbolNode(fId, name, true, spans.get(name), declarationText(own)));
+    out.push(makeSymbolNode(fId, name, true, spans.get(name), declarationText(own), shapes.get(name)));
   }
   for (const [name, span] of spans) {
     if (exported.has(name)) continue;
     const decl = lookupDeclaration(sourceFile, name);
-    out.push(makeSymbolNode(fId, name, false, span, decl ? declarationText(decl) : {}));
+    out.push(makeSymbolNode(fId, name, false, span, decl ? declarationText(decl) : {}, shapes.get(name)));
   }
   return out;
 }

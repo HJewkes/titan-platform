@@ -4,6 +4,9 @@ import type { Node } from "web-tree-sitter";
 import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import { collectDeclaredSpans } from "../declared-names.js";
 import { buildFileModuleNodes } from "./file-nodes.js";
+import { paramAttrs } from "./call-sites.js";
+import { collectParamShapes } from "./callable-params.js";
+import { collectPythonCallEdges } from "./python-calls.js";
 import { externalId, fileId, symbolId } from "./ids.js";
 import { inRepoFileId } from "./module-resolution.js";
 import type { GraphEdge, GraphFragment, GraphNode } from "../types.js";
@@ -32,7 +35,8 @@ export class PythonGraphExtractor implements Extractor<GraphFragment> {
     const nodes = buildFileModuleNodes(this.repoRoot, file.filePath);
     nodes.push(...symbolNodes(fId, file));
     const { edges, externals } = this.collectImports(fId, file);
-    return [{ nodes: [...nodes, ...externals], edges }];
+    const calls = collectPythonCallEdges(file, fId, (specifier) => this.resolveDotted(file.filePath, specifier));
+    return [{ nodes: [...nodes, ...externals], edges: [...edges, ...calls] }];
   }
 
   private collectImports(
@@ -78,13 +82,19 @@ function isPublicName(qualifiedName: string): boolean {
 }
 
 function symbolNodes(fId: string, file: ParsedFile): GraphNode[] {
+  const shapes = collectParamShapes(file);
   return [...collectDeclaredSpans(file)].map(([name, span]) => ({
     id: symbolId(fId, name),
     kind: "symbol" as const,
     name,
     parentId: fId,
     language: "python",
-    attrs: { exported: isPublicName(name), startLine: span.startLine, endLine: span.endLine },
+    attrs: {
+      exported: isPublicName(name),
+      startLine: span.startLine,
+      endLine: span.endLine,
+      ...paramAttrs(shapes.get(name)),
+    },
   }));
 }
 

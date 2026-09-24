@@ -1,5 +1,3 @@
-import * as path from "node:path";
-import { existsSync } from "node:fs";
 import {
   Project,
   ScriptTarget,
@@ -30,8 +28,10 @@ import { resolveReExportOrigin } from "./reexport-resolve.js";
 import {
   inRepoFileId,
   isRelativeSpecifier,
+  remapDistToSrc,
   resolveRelativeAbs,
 } from "./module-resolution.js";
+import { collectTsCallEdges } from "./ts-calls.js";
 
 /** Mutable accumulator threaded through one file's edge collection. */
 interface EdgeCollector {
@@ -69,7 +69,12 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
     const nodes = this.buildFileAndModuleNodes(sourceFile);
     const symbolNodes = buildSymbolNodes(this.repoRoot, sourceFile, file);
     const { edges, externalNodes } = this.collectEdges(sourceFile);
-    return [{ nodes: [...nodes, ...symbolNodes, ...externalNodes], edges }];
+    const calls = collectTsCallEdges(sourceFile, {
+      repoRoot: this.repoRoot,
+      srcFileId: fileId(this.repoRoot, sourceFile.getFilePath()),
+      localSymbols: new Set(symbolNodes.map((n) => n.name)),
+    });
+    return [{ nodes: [...nodes, ...symbolNodes, ...externalNodes], edges: [...edges, ...calls] }];
   }
 
   private ensureProject(): Project {
@@ -272,22 +277,6 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
   private inRepoFileId(abs: string): string | null {
     return inRepoFileId(this.repoRoot, abs);
   }
-}
-
-// ts-morph resolves workspace imports like `@codewatch/analyzer` to the
-// package's `types` entry (`<pkg>/dist/index.d.ts`), but the indexer's file
-// walker excludes `dist/` and `.d.ts`. Without remapping, every cross-package
-// edge points to a nonexistent node and the rendered graph fails to construct.
-function remapDistToSrc(abs: string): string {
-  const m = /^(.*)[\\/]dist[\\/](.+)\.d\.ts$/.exec(abs);
-  if (!m) return abs;
-  const base = m[1]!;
-  const sub = m[2]!;
-  for (const ext of [".ts", ".tsx"]) {
-    const candidate = path.join(base, "src", sub + ext);
-    if (existsSync(candidate)) return candidate;
-  }
-  return abs;
 }
 
 function isTypeScriptFile(file: ParsedFile): boolean {

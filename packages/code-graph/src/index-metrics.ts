@@ -2,6 +2,7 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import { computeMetrics } from "./metrics.js";
 import { computeSourceMetrics } from "./source-metrics.js";
 import { computeDeadCodeMetrics } from "./analysis/dead-code.js";
+import { computeCallMetrics } from "./analysis/call-metrics.js";
 import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
 import { linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
@@ -58,6 +59,7 @@ export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
   const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
   return [
     ...computeMetrics(nodeList, [...input.edges.values()]),
+    ...computeCallMetrics(nodeList, input.edges.values()),
     ...computeSourceMetrics(
       input.parsedFiles,
       (p) => fileId(input.idRoot, p),

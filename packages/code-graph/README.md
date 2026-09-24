@@ -18,7 +18,7 @@ const { snapshotId, files, nodes, edges, reused } = await indexPaths(store, {
   ref: "head",
 });
 listNodes(store, snapshotId); // file / module / external nodes, symbols on request
-listEdges(store, snapshotId); // imports / re-exports, references on request
+listEdges(store, snapshotId); // imports / re-exports, references and calls on request
 ```
 
 ## What was extracted, and what was not
@@ -166,7 +166,7 @@ wrong time model for a population re-indexed all at once), `metric`, `id_alias`,
 `file_fingerprint`.
 
 The symbol layer is hidden by default. `listNodes` drops `symbol` nodes and `listEdges` drops
-`references` edges unless you ask for them, so a caller reasoning about module structure sees
+`references` and `calls` edges unless you ask for them (`includeReferences` covers both), so a caller reasoning about module structure sees
 the graph it expects and does not have one import of thirty names read as thirty
 dependencies.
 
@@ -341,6 +341,23 @@ Python, and are written on every function or file, zeros included:
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
   `print`, `warn` or `console`).
+
+Call-graph metrics (TP-323) come from `calls` edges, one per caller and callee symbol, each
+carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
+call or `new` through the type checker to one in-repo declaration. Python resolves only a
+bare name declared at module level in the same file, a bare name bound by `from <in-repo
+module> import`, and `self.<name>()` to a method of the enclosing class or a base class
+declared in the same file. Anything else is dropped, never guessed, and an edge whose target
+has no symbol node is pruned. The caller is the enclosing function, method or class, or the
+file for a module-level call. Each function, method and class gets `symbol_caller_count`
+(distinct callers, recursion excluded) and `symbol_single_caller_helper` (1 when a
+non-exported, non-dunder symbol has exactly one caller and it is a symbol). A callable with 2
+or more resolved call sites also gets `symbol_constant_params`: parameters every site passes
+the same literal, or none passes. Callers found only through unresolved calls are missing, so
+a private method that tests call on an instance can read as a single-caller helper. These
+metrics need edges from every file, so they are recomputed on each index. Under reuse, an
+unchanged caller's edge to a callee that moved behind a re-export stays pruned until the
+caller changes, as `references` edges do.
 
 PageRank, relevance, and symbol coupling run at query time over one snapshot:
 
