@@ -13,8 +13,11 @@ Requirements that apply to all of them:
 
 - **Node 20 or newer**, and **ESM only**. There is no CommonJS build; `require()` will not
   work.
-- **`zod` v4 is a peer dependency** of `registry`, `daemon`, `agent`, `hitl`, `memory`, and
-  `workflow`. Install it yourself so one copy is shared: `npm install zod`.
+- **`zod` v4 is a peer dependency** of `registry`, `daemon`, `agent`, `hitl`, `memory`,
+  `workflow`, `chat-protocol`, `messaging`, `code-read`, `session-analytics`, and the three
+  `style-*` packages. Install it yourself so one copy is shared: `npm install zod`.
+- **`web-tree-sitter` is a peer** of `code-parser` and `style-analyzer`.
+- **React 18 or 19 is a peer** of `react-app`, with Vite optional for its `./vite` entry.
 - **`@huggingface/transformers` is an optional peer** of `embed` and `retrieval`. Without
   it, `embed`'s local backend and `retrieval`'s cross-encoder reranker are unavailable and
   every other path still works.
@@ -97,12 +100,29 @@ Pick by problem:
 | I need to group thousands of error blobs into a handful of templates | [`cluster`](/reference/cluster) |
 | I need embeddings, but not a mandatory model download | [`embed`](/reference/embed) |
 | I need search that keeps working when a retriever is down | [`retrieval`](/reference/retrieval) |
-| I need to run a headless Claude Code session with a hard budget | [`agent`](/reference/agent) |
+| I need to run a headless Claude Code or Codex session with a hard budget | [`agent`](/reference/agent) |
 | I need one command definition to serve a CLI, MCP, and HTTP | [`registry`](/reference/registry) |
 | I need to host that on a loopback port with health, SSE, and a pid file | [`daemon`](/reference/daemon) |
 | I need to pause work on a human and resume it from another process | [`hitl`](/reference/hitl) |
-| I need to read Claude Code transcripts | [`session-read`](/reference/session-read) |
+| I need to read Claude Code or Codex transcripts | [`session-read`](/reference/session-read) |
 | I need those transcripts as a queryable, incrementally maintained graph | [`session-graph`](/reference/session-graph) |
-| I need the import graph of a TypeScript or Python tree | [`code-graph`](/reference/code-graph) |
+| I need the import and call graph of a TypeScript or Python tree, with metrics and checks | [`code-graph`](/reference/code-graph) |
 | I need a rule playbook whose confidence decays with evidence | [`memory`](/reference/memory) |
 | I need a long-running process that survives a restart mid-flight | [`workflow`](/reference/workflow) |
+| I need to run many agent steps under a concurrency and budget cap | [`workflow`](/reference/workflow) (`mapItems`) |
+| I need a durable record of which process owns a running agent | [`agent-lifecycle`](/reference/agent-lifecycle) |
+| I need identity and usage types that do not care which harness ran | [`agent-protocol`](/reference/agent-protocol) |
+| I need a cost report, roles, or episodes over mined sessions | [`session-analytics`](/reference/session-analytics) |
+| I need to parse TypeScript or Python with tree-sitter | [`code-parser`](/reference/code-parser) |
+| I need a read API over a code graph that a browser can call | [`code-read`](/reference/code-read) |
+| I need to learn a repo's code style and enforce it | [`style-analyzer`](/reference/style-analyzer), [`style-profile`](/reference/style-profile), [`style-checker`](/reference/style-checker) |
+| I need to check that a model's cited lines really say what it claims | [`evidence`](/reference/evidence) |
+| I need the envelope, routes, and SSE vocabulary a daemon and its clients share | [`rpc-protocol`](/reference/rpc-protocol) |
+| I need a typed daemon client in a browser, live or from a snapshot file | [`rpc-client`](/reference/rpc-client) |
+| I need React hooks and a Vite preset for a daemon-backed app | [`react-app`](/reference/react-app) |
+| I need one chat message shape across every agent-chat surface | [`chat-protocol`](/reference/chat-protocol) |
+| I need to send and receive over iMessage or Telegram | [`messaging`](/reference/messaging) |
+| I need to talk to a Matrix homeserver without an SDK | [`matrix-bus`](/reference/matrix-bus) |
+| I need human approvals and questions to show up in a Matrix room | [`queue-mirror`](/reference/queue-mirror) |
+
+The [package families](/guides/package-families) guide groups these by the job they share.

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: titan-platform
   text: Shared parts for agentic tools
-  tagline: Fourteen published packages in a strict acyclic DAG, and the products composed thinly on top of them.
+  tagline: Thirty published packages in a strict acyclic DAG, and the products composed thinly on top of them.
   actions:
     - theme: brand
       text: Get started
