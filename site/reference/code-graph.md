@@ -79,7 +79,10 @@ Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
 own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
 nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
-snapshot, once `minSample` nodes (default 20) carry it. Severity defaults to `error`.
+snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
+percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
+absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
+zero-valued node is never flagged. Severity defaults to `error`.
 
 `snapshot` and `baseline` take a numeric id or a ref name, and a ref resolves to its newest
 snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same engine on
@@ -207,19 +210,41 @@ snapshotSymbolConsumers(store, snapshotId)[0];
 does. `snapshotRelevance` is the seeded variant over symmetrized edges that `graph context`
 uses, so relevance reaches a target's importers as well as its imports.
 
-The index-time metrics, all sparse (a row only when above zero):
+The dead-code and growth-risk metrics are sparse (a row only when above zero):
 
 | Metric | Languages | Counts |
 | --- | --- | --- |
-| `unreachable_statements` | TypeScript | statements after a `return`, `throw`, `break` or `continue` in the same block |
-| `unused_locals` | TypeScript | plain-identifier locals never referenced in their function |
-| `unused_params` | TypeScript | the trailing run of unused plain parameters |
+| `unreachable_statements` | TypeScript, Python | statements after a `return`, `throw` or `raise`, `break` or `continue` in the same block |
+| `unused_locals` | TypeScript, Python | plain-identifier locals never referenced in their function |
+| `unused_params` | TypeScript, Python | the trailing run of unused plain parameters; Python skips `self`, `cls`, `_`-prefixed names and stub bodies |
 | `loop_depth` | TypeScript, Python | deepest lexical loop nesting, emitted at 2 or more |
 | `recursive_functions` | TypeScript | named functions that call themselves by name |
 | `search_in_loop` | TypeScript | `.includes`, `.find`, `.filter` and similar inside a loop |
 
 Growth-risk metrics are smells, not complexity bounds: `.includes` on a `Set` is O(1), and
 two nested loops over different collections are linear.
+
+Comment, shape, and exception-handling metrics are written on every function or file, zeros
+included, for TypeScript and Python. Per symbol: `symbol_comment_lines`,
+`symbol_docstring_lines`, `symbol_body_lines`, `symbol_comment_ratio`,
+`symbol_narrating_comments` (comments that restate the identifiers of the statement they
+sit beside), and `symbol_pass_through` (1 when the body is one call that forwards every
+parameter in order). Per file: `except_count`, `except_density` (per 100 non-blank lines),
+and `swallowed_except` (handlers whose body is empty, `pass`, a bare return, or one logger
+call; a Python `except ImportError` or `ModuleNotFoundError` is exempt).
+
+**Call-graph metrics** come from symbol `calls` edges, one per caller and callee, each
+carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
+call or `new` through the type checker to one in-repo declaration. Python resolves only a
+bare module-level name in the same file, a name bound by an in-repo `from … import`, and
+`self.<name>()` on a class in the same file; anything else is dropped, never guessed.
+Each function, method, and class gets `symbol_caller_count` (distinct callers, recursion
+excluded) and `symbol_single_caller_helper` (1 when a non-exported, non-dunder symbol has
+exactly one caller). A callable with 2 or more resolved call sites also gets
+`symbol_constant_params`: parameters every site passes the same literal, or none passes.
+These metrics need edges from every file, so they are recomputed on each index. `listEdges`
+and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
+`includeReferences`.
 
 ## Partition quality
 

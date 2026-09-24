@@ -1,6 +1,7 @@
 # queue-mirror
 
-**Tier 2.** Depends on `@titan-design/matrix-bus`; the `/hitl` subpath also uses `@titan-design/hitl`.
+**Tier 2.** Depends on `@titan-design/matrix-bus`; the `/hitl` subpath also uses
+`@titan-design/hitl`, and the `/sqlite` subpath uses `@titan-design/store-sqlite`.
 
 ```sh
 npm install @titan-design/queue-mirror
@@ -107,14 +108,24 @@ polls `listPending()` every `pollMs` (hitl has no change feed). allow and approv
 "denied from Matrix". Override this mapping with `toPayload`. hitl errors are matched by
 `name`, not `instanceof`.
 
+**`/sqlite`.** `new SqliteMirrorState(db, { tablePrefix?, migrate? })` is the durable
+`MirrorState` over [`store-sqlite`](/reference/store-sqlite). It keeps three tables,
+`<prefix>_item`, `<prefix>_applied` and `<prefix>_cursor` (prefix
+`DEFAULT_MIRROR_TABLE_PREFIX`, `queue_mirror`), and runs every `commit` in one
+transaction, so a failure partway leaves no partial rows. By default the constructor runs
+`mirrorMigration(1, prefix)`. A product that owns its migration list passes
+`migrate: false` and puts `mirrorMigration(version, prefix)` in that list instead.
+`mirrorTableDdl(prefix)` is the raw DDL.
+
 ## What it deliberately does not do
 
 - It does not redact `question`, `notice` or `message` text. Decision 3 scopes redaction
   to previews and endorsements.
 - It does not keep durable state on its own. `MemoryMirrorState` is lost with the
-  process; the `/sqlite` subpath (TP-316 slice D) is the durable one.
-- It does not backfill a limited `/sync` timeline. After a long sleep, reactions older
-  than the timeline limit are not folded (design R13).
+  process; the `/sqlite` subpath is the durable one.
+- It does not backfill a limited `/sync` timeline yet. matrix-bus now reports `limited`
+  and `prev_batch` on each `SyncBatch`, but the mirror ignores them, so after a long sleep
+  reactions older than the timeline limit are not folded (design R13).
 - It does not create the room or register the appservice. That is `matrix-bus`.
 
 ## Gotchas

@@ -123,6 +123,13 @@ spawn wave complete, wrap or task done, and a context drop over 20k, with no epi
 than 8 requests. `writeEpisodes(graph, sessionIds)` picks the heuristic by session class
 (headless sessions get none) and writes through session-graph's `replaceEpisodes`.
 
+**Episodes order by timestamp, transcript id, and byte offset.** `readEpisodeInput(db,
+sessionId, spawned)` returns main-thread requests with their `transcriptId`, because a
+session resumed into a second transcript restarts its byte offsets. Each episode row records
+`startTranscriptId` and `endTranscriptId` (session-graph migration 6). The query ranks only
+the copies of request ids that session holds, so reading one session no longer ranks the
+whole graph.
+
 **Only assignment episodes count toward standing peer.** An idle-gap episode is the same
 assignment resumed, so a worker idle for 13 hours with one brief stays what it was spawned as.
 

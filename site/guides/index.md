@@ -12,6 +12,10 @@
   titan-design, policy in products; how a product's own npm scope shrinks as its engine is
   ported; and what a port pull request must prove.
 
+- **[Package families](/guides/package-families)** — the packages grouped by the job they
+  share (storage, command surfaces, the front-end kit, agent execution, session mining, code
+  audit, messaging), with a line and a link for each.
+
 - **[Multi-harness contracts](/guides/multi-harness-contracts)** — the additive Claude/Codex
   contracts and the compatibility migration required before mixed-session ingestion.
 

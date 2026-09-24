@@ -5,8 +5,8 @@ typed failure. A thin wrapper over the Claude Agent SDK's `query()` that adds th
 three things a production caller always has to add itself: a scrubbed child
 environment, mandatory circuit breakers, and a failure taxonomy you can branch on.
 
-Tier 1 of the titan-platform DAG (TP-11). Depends on
-`@anthropic-ai/claude-agent-sdk`; `zod` is a peer (v4).
+Tier 1 of the titan-platform DAG (TP-11). Depends on `@titan-design/agent-protocol`,
+`@titan-design/agent-lifecycle`, and `@anthropic-ai/claude-agent-sdk`; `zod` is a peer (v4).
 
 ## Run an agent
 

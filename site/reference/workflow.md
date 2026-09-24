@@ -90,10 +90,41 @@ active steps. Legacy agent runs without confirmed attachment remain
   `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
   returns recorded answers without reopening their gates.
 
+## Fan-out
+
+`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd? })` runs `fn` over a list
+with a concurrency cap (default 1). Each item runs as step `${stepId}/${key}`, and `fn`
+receives that id to pass to `ctx.dispatch`, so each item memoizes on its own. After a
+restart, replay reuses finished items and runs only the rest. Matching is by key, not
+position, so the input may be reordered between runs. Duplicate keys throw before anything
+launches.
+
+```ts
+import { mapItems } from "@titan-design/workflow";
+
+const review = await mapItems(ctx, "review", files, (file, itemStepId, c) =>
+  c.dispatch(itemStepId, `Review ${file}.`), { key: (file) => file, concurrency: 4, budgetUsd: 2 });
+// review.results in input order; review.stoppedBy is "budget", "failure" or null
+```
+
+`budgetUsd` is checked before each launch against the cost finished items reported in
+`StepResult.usage` (a `StepUsage` of `costUsd` plus optional token counts). Items still in
+flight are not counted, so a run can overshoot by up to `concurrency - 1` items. A
+`StepFailedError` also stops new launches. The result carries `results`, `failed`,
+`skipped`, `spentUsd`, and `stoppedBy`. Any other error is rethrown once the items in flight
+settle.
+
 ## Runners
 
 `agentRunner` classifies [`agent`](/reference/agent) failures: rate limits, runtime errors,
-and inactivity are retryable; budget, auth, refusal, and schema failures are not.
+and inactivity are retryable; budget, auth, refusal, and schema failures are not. It reports
+`usage` (`costUsd`, `inputTokens`, `outputTokens`) on every successful step, and a run with
+an `outputSchema` stores its output as JSON text.
+
+`idempotentRunner(live)` wraps a live runner whose steps are safe to repeat, such as
+read-only judgements. A step that was in flight at a crash is dispatched again on `hydrate`
+instead of parking the run as `recovery_required`. With the wrapper, a step's `agentId` is
+its request key, not the agent session id.
 
 `inlineRunner(fn)` is for tests and for steps that are not agents. **Its function returns a
 plain string**, not a `StepRunOutcome` — the wrapper turns a thrown error into a

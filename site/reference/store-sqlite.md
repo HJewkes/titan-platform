@@ -82,6 +82,15 @@ store layering its own migrations onto a shared database sees one band of versio
 than the top of it: `products/session-miner` numbers its own from 1000 so it can sit above
 `@titan-design/session-graph`'s.
 
+### Refusing a renamed migration
+
+Migrations are `{ version, name?, up(db) }`, and the name is recorded beside the version.
+When an already-applied version's recorded name differs from the declared one,
+`runMigrations` throws `MigrationIdentityError` (carrying `version`, `recordedName`, and
+`declaredName`) instead of skipping it. That catches two migration lists that collided on a
+version number, so neither believes in a schema it never applied. A migration with no
+declared name, or a row recorded before names were kept, is never compared.
+
 ## The factories
 
 | Factory | Helper class | Use when |

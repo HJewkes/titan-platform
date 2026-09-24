@@ -23,15 +23,44 @@ site/         the documentation site (VitePress)
 ## The DAG
 
 A package may import only packages in its own tier or a lower one. Never sideways across a
-higher tier, never upward.
+higher tier, never upward. Tier 0 holds primitives and shared wire contracts, tier 1 engines,
+tier 2 domain modules, and `ui` React bindings for the daemon wire. Every package versions
+independently through changesets.
 
-| Tier | Packages | Role |
+| Tier | Package | What it does |
 |---|---|---|
-| 0 | store-sqlite, locator, cluster, embed, agent-protocol, chat-protocol, code-parser, rpc-protocol | primitives and shared wire contracts |
-| 1 | retrieval, agent, agent-lifecycle, registry, daemon, hitl, messaging, rpc-client | engines |
-| 2 | session-read, session-graph, code-graph, memory, workflow, style-profile, style-analyzer, style-checker, code-read | domain modules |
-| ui | react-app | React bindings for the daemon wire (data hooks, the Vite preset). No components or styling: those live in titan-design's `@titan-design/react-ui`, which no library here may import. |
-| product | products/* | thin compositions |
+| 0 | [`@titan-design/store-sqlite`](https://hjewkes.github.io/titan-platform/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, entities, contentless FTS5, watermarks, cache blobs, migrations |
+| 0 | [`@titan-design/locator`](https://hjewkes.github.io/titan-platform/reference/locator) | byte-offset provenance locators into JSONL files, and raw-mirror durability |
+| 0 | [`@titan-design/cluster`](https://hjewkes.github.io/titan-platform/reference/cluster) | deterministic Drain template mining with pluggable line masking |
+| 0 | [`@titan-design/embed`](https://hjewkes.github.io/titan-platform/reference/embed) | local, Ollama, or remote embeddings with a zero-download hash fallback |
+| 0 | [`@titan-design/agent-protocol`](https://hjewkes.github.io/titan-platform/reference/agent-protocol) | harness-neutral identity, execution-phase, and usage contracts |
+| 0 | [`@titan-design/chat-protocol`](https://hjewkes.github.io/titan-platform/reference/chat-protocol) | the canonical chat message document and envelope agent-chat surfaces speak |
+| 0 | [`@titan-design/code-parser`](https://hjewkes.github.io/titan-platform/reference/code-parser) | tree-sitter WASM parsing for TypeScript, TSX, and Python, and the `Extractor` contract |
+| 0 | [`@titan-design/rpc-protocol`](https://hjewkes.github.io/titan-platform/reference/rpc-protocol) | dependency-free daemon wire contract: envelope, exit codes, routes, SSE vocabulary |
+| 0 | [`@titan-design/evidence`](https://hjewkes.github.io/titan-platform/reference/evidence) | citation verification, overlap grouping, and planted-control scoring for model-judged evidence |
+| 1 | [`@titan-design/retrieval`](https://hjewkes.github.io/titan-platform/reference/retrieval) | FTS, vector, and graph retrieval fused with RRF, a rerank cascade, and fail-open |
+| 1 | [`@titan-design/agent`](https://hjewkes.github.io/titan-platform/reference/agent) | headless Claude Code and Codex runs with an env scrub, a failure taxonomy, and hard budgets |
+| 1 | [`@titan-design/agent-lifecycle`](https://hjewkes.github.io/titan-platform/reference/agent-lifecycle) | durable agent execution ledger with fenced ownership |
+| 1 | [`@titan-design/registry`](https://hjewkes.github.io/titan-platform/reference/registry) | one zod command definition projected to CLI, MCP, and HTTP |
+| 1 | [`@titan-design/daemon`](https://hjewkes.github.io/titan-platform/reference/daemon) | hono host: `/rpc`, `/mcp`, SSE events, file watch, and process lifecycle |
+| 1 | [`@titan-design/hitl`](https://hjewkes.github.io/titan-platform/reference/hitl) | the human-in-the-loop `gate()`/`resolve()` primitive |
+| 1 | [`@titan-design/messaging`](https://hjewkes.github.io/titan-platform/reference/messaging) | runtime-neutral messaging transport with BlueBubbles and Telegram adapters |
+| 1 | [`@titan-design/rpc-client`](https://hjewkes.github.io/titan-platform/reference/rpc-client) | browser-safe typed daemon client over live HTTP and SSE or a static snapshot |
+| 1 | [`@titan-design/matrix-bus`](https://hjewkes.github.io/titan-platform/reference/matrix-bus) | Matrix client-server API over `fetch`: appservice client, item codec, `#queue` bootstrap |
+| 2 | [`@titan-design/session-read`](https://hjewkes.github.io/titan-platform/reference/session-read) | Claude Code and Codex transcripts parsed into typed session events with locators |
+| 2 | [`@titan-design/session-graph`](https://hjewkes.github.io/titan-platform/reference/session-graph) | session events folded into an activity graph on store-sqlite |
+| 2 | [`@titan-design/session-analytics`](https://hjewkes.github.io/titan-platform/reference/session-analytics) | pricing, session classification, roles, episodes, and the cost report |
+| 2 | [`@titan-design/code-graph`](https://hjewkes.github.io/titan-platform/reference/code-graph) | TypeScript and Python code graph with metrics, checks, findings, and incremental reuse |
+| 2 | [`@titan-design/code-read`](https://hjewkes.github.io/titan-platform/reference/code-read) | versioned, browser-safe read API over code-graph snapshots |
+| 2 | [`@titan-design/memory`](https://hjewkes.github.io/titan-platform/reference/memory) | decaying rule playbook: bullets, feedback, curation, recall |
+| 2 | [`@titan-design/workflow`](https://hjewkes.github.io/titan-platform/reference/workflow) | durable imperative workflows: memoized steps, agent dispatch, fan-out, human gates |
+| 2 | [`@titan-design/style-profile`](https://hjewkes.github.io/titan-platform/reference/style-profile) | one code-style profile exported as ESLint, ruff, EditorConfig, and agent rules |
+| 2 | [`@titan-design/style-analyzer`](https://hjewkes.github.io/titan-platform/reference/style-analyzer) | tree-sitter style extractors and the aggregator that builds a profile |
+| 2 | [`@titan-design/style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker) | runs ruff, ESLint, and Python audit tools and normalizes their diagnostics |
+| 2 | [`@titan-design/queue-mirror`](https://hjewkes.github.io/titan-platform/reference/queue-mirror) | mirrors a local queue of human-actionable items into a Matrix room and folds verdicts back |
+| ui | [`@titan-design/react-app`](https://hjewkes.github.io/titan-platform/reference/react-app) | React hooks over rpc-client and a Vite preset for daemon-backed apps |
+| ui | `@titan-design/react-ui` | the design system, published from the separate titan-design repository; no library here may import it |
+| product | `products/*`, `apps/code-report` | private thin compositions, not published |
 
 `.codewatch/check.json` is the source of truth. Its `package-layers` rule lists every
 package by tier, and CI fails any pull request that adds an import against the order.

@@ -1,6 +1,7 @@
 # agent
 
-**Tier 1 · engines.** Depends on [`agent-protocol`](/reference/agent-protocol) and `@anthropic-ai/claude-agent-sdk`;
+**Tier 1 · engines.** Depends on [`agent-protocol`](/reference/agent-protocol),
+[`agent-lifecycle`](/reference/agent-lifecycle), and `@anthropic-ai/claude-agent-sdk`;
 `zod` v4 is a peer.
 
 ```sh
@@ -50,6 +51,13 @@ if (result.ok) {
   scheduleRetry(result.failure.retryAt);
 }
 ```
+
+## Pass-through options
+
+`agents`, `mcpServers`, `hooks`, `allowedTools`, `disallowedTools`, `model`,
+`resumeSessionId`, and `settingSources` go straight to the SDK. So do `tools`, the built-in
+tool set (`[]` runs with no tools, for a pure judgement call), and `systemPrompt`, which
+replaces the Claude Code default prompt. Leaving either unset keeps the SDK default.
 
 ## Budgets are required, not defaulted
 

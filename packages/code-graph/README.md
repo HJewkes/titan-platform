@@ -234,7 +234,9 @@ fail a check.
 flags every symbol strictly above the 95th percentile of `symbol_body_lines` over all symbols
 that carry it, interpolated linearly between ranks. `percentile` runs from 50 to 100. The rule
 stays silent until `minSample` nodes (default 20) carry the metric. Each violation's
-`threshold` is the computed percentile value.
+`threshold` is the computed percentile value. For sparse metrics whose percentile sits at or
+near zero, `floor` flags a node only if its value also exceeds that absolute number, and
+`rankNonZero: true` ranks and gates on non-zero carriers only.
 
 ```ts
 import { checkSnapshot, loadCheckRules, openCodeGraph } from "@titan-design/code-graph";

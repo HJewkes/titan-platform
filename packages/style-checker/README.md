@@ -52,6 +52,15 @@ const { diagnostics, failures, skippedRules, summary } = await orchestrate({
   (`"code": "invalid-syntax"` in ruff 0.16.8, a null `code` in 0.9.10) are not
   diagnostics; the runners report them as `file-not-checked` failures.
 - `formatDiagnostic(d)` prints `file:line:column severity message [category.rule]`.
+- Python audit runners, independent of any profile: `runRuffAudit` (the pinned
+  `AUDIT_RUFF_RULES` selection from `generateRuffAuditConfig()`), `runVultureAudit`
+  (dead code, rule `vulture/<kind>`), `runPydoclintAudit` (docstring drift, rule
+  `pydoclint/DOCnnn`), `runPyrightAudit` (four `reportUnnecessary*` checks under a
+  temporary config from `generatePyrightAuditConfig`), and `runImportLinter` (only when
+  the repo configures import-linter). `countSuppressions`, `findSuppressions` and
+  `suppressionTotals` count `# noqa` and `# type: ignore` markers by text scan. A runner
+  whose binary is absent returns an empty result with a warning naming its `pip install`
+  command, and never throws for it. The reference page lists each runner's options.
 - `diffAgainstProfile(profile, observations)` compares each observation's value with the
   profile's convention for its `type` and returns `{ deviations, summary }`. Observations
   whose type has no profile rule count toward `total` but neither match nor deviate.
