@@ -43,6 +43,11 @@ export interface PrepareEnvOptions {
   allowApiKeyBilling?: boolean;
 }
 
+export interface AuthEnvCheckOptions extends PrepareEnvOptions {
+  /** Defaults to true. The claude-print harness sets it false: the CLI's own keychain login is its credential. */
+  requireOAuthToken?: boolean;
+}
+
 export class AuthMisconfiguredError extends Error {
   readonly hint: string | undefined;
 
@@ -89,7 +94,7 @@ function isClaudeCodeVar(key: string): boolean {
  * Pre-flight the scrubbed env so a misrouted run fails before it spends
  * anything, rather than mid-stream with a surprise billing source.
  */
-export function assertAuthEnvOk(env: Record<string, string>, options: PrepareEnvOptions = {}): void {
+export function assertAuthEnvOk(env: Record<string, string>, options: AuthEnvCheckOptions = {}): void {
   if (options.allowApiKeyBilling) {
     if (!env.ANTHROPIC_API_KEY && !env.ANTHROPIC_AUTH_TOKEN) {
       throw new AuthMisconfiguredError(
@@ -106,7 +111,7 @@ export function assertAuthEnvOk(env: Record<string, string>, options: PrepareEnv
     );
   }
 
-  if (!env.CLAUDE_CODE_OAUTH_TOKEN) {
+  if (options.requireOAuthToken !== false && !env.CLAUDE_CODE_OAUTH_TOKEN) {
     throw new AuthMisconfiguredError(
       "CLAUDE_CODE_OAUTH_TOKEN is not set; subscription auth will fail",
       "run `claude setup-token` once and export the printed token",

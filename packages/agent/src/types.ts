@@ -9,6 +9,7 @@ import type {
   SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ZodError, ZodType } from "zod";
+import type { AgentRunHarness } from "./harness-contracts.js";
 
 /** Why a run ended without a usable answer. One kind per recovery strategy. */
 export type AgentFailure =
@@ -45,6 +46,8 @@ export interface AgentUsage {
 }
 
 export interface AgentRunConfig<T = string> {
+  /** Defaults to `claude-code` (the SDK). `claude-print` spawns `claude -p` and needs no `CLAUDE_CODE_OAUTH_TOKEN`. */
+  harness?: AgentRunHarness;
   prompt: string;
   cwd: string;
   /** Required: the SDK's own default is unlimited. Must be positive. */
