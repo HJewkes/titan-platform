@@ -1,5 +1,16 @@
 # @titan-design/workflow
 
+## 0.4.0
+
+### Minor Changes
+
+- c821985: Add `mapItems`, a fan-out with concurrency and budget caps that resumes by item key, and `idempotentRunner`, which redispatches interrupted repeat-safe steps after a restart. Step results carry `usage`. `agentRunner` reports cost and tokens, and stores `outputSchema` output as JSON instead of `[object Object]`.
+
+### Patch Changes
+
+- Updated dependencies [09690de]
+  - @titan-design/agent@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

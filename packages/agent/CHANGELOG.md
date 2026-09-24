@@ -1,5 +1,11 @@
 # @titan-design/agent
 
+## 0.3.0
+
+### Minor Changes
+
+- 09690de: `runAgent` accepts `tools` and `systemPrompt`, passed through to the SDK, so a call can run with no tools and a short system prompt.
+
 ## 0.2.0
 
 ### Minor Changes
