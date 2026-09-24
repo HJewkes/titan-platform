@@ -29,7 +29,7 @@ registration, and for `hitl` alone when nobody needs to answer away from the ter
 
 ## Example
 
-Verified against 0.1.0 (unreleased) and Tuwunel 1.9.2.
+Verified against 0.2.0 and Tuwunel 1.9.2.
 
 ```ts
 import { AppserviceClient } from "@titan-design/matrix-bus";
@@ -53,9 +53,13 @@ gates.create({ prompt: "draft Bijan Robinson?" }); // appears in #queue; the own
 ## The pieces
 
 **Ports.** A `QueueSource` has `kinds`, `open()`, `tail(cursor, signal)` and
-`resolve(id, verdict)`. `tail` yields `opened` and `closed` events, each with an opaque
-cursor. `resolve` returns `{ok: true}`, `{ok: false, reason: "closed"}` (already settled)
-or `{ok: false, reason: "rejected"}` (the source refused the payload; the item stays open).
+`resolve(id, verdict)`. `tail` yields `opened`, `closed` and `resync` events, each with an
+opaque cursor. A source yields `{type: "resync", cursor}` when it can no longer replay what
+it missed, for example after a gap too large for its change feed. The mirror then runs the
+same reconciliation as at startup against `open()` and commits the cursor. `resolve`
+returns `{ok: true}`, `{ok: false, reason: "closed"}` (already settled) or
+`{ok: false, reason: "rejected", detail?}` (the source refused the verdict). A rejected
+item stays open and approvable, and the mirror edits its status to `refused: <detail>`.
 A `MirrorState` is synchronous. It maps source ids to posted event ids, holds the source
 cursor, the /sync token and the applied resolution event ids, and applies each
 `commit(change)` atomically.
@@ -64,7 +68,9 @@ cursor, the /sync token and the applied resolution event ids, and applies each
 `options.signal` aborts. Each restarts after a throw with doubling backoff (1 s to 60 s)
 and resets after progress.
 
-- *Source.* Opens `tail(state.sourceCursor())`, then reconciles. It posts each `open()`
+- *Source.* Opens `tail(state.sourceCursor())` before it reconciles, so an item opened
+  during reconcile arrives through the tail. That only works if `tail` connects eagerly
+  (see Gotchas). Then it reconciles. It posts each `open()`
   item the state does not know and edits items that vanished while the mirror was down.
   Then it applies each tail event.
 - *Sync.* Reads `/sync` filtered to the room (`syncFilter`). For each batch it folds every
@@ -77,7 +83,8 @@ and resets after progress.
 `applySyncBatch`, `sweepExpired`) for deterministic tests.
 
 **Posting and edits.** An item is sent with txnId `qm-<sourceId>` and its close edit with
-`qm-edit-<sourceId>`. The homeserver dedupes a replay after a crash between send and
+`qm-edit-<sourceId>`. A `refused` status edit uses `qm-reject-<sourceId>-<resolutionEventId>`,
+so it never takes the txnId the final close edit needs. The homeserver dedupes a replay after a crash between send and
 commit. The edit is an `m.replace` with a short body (headline plus a status line) and
 the original `io.titan.item` record in `m.new_content`.
 
@@ -112,6 +119,11 @@ polls `listPending()` every `pollMs` (hitl has no change feed). allow and approv
 
 ## Gotchas
 
+- `QueueSource.tail` must connect eagerly. `runMirror` calls `tail()` before
+  `reconcile()`, so the connection (or the "from now" position) must exist when `tail()`
+  returns. A plain `async function*` runs nothing until the first `next()`, which comes
+  after reconcile, and items opened during reconcile are then missed. Open the connection
+  in `tail()` and return an iterable over it, as `MemoryQueueSource.tail` does.
 - `since` is persisted after a batch is handled, not before as the matrix-bus `syncLoop`
   docstring suggests. A crash replays the batch, and `hasApplied` drops what was
   already done.

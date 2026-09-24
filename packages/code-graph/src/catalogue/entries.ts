@@ -135,7 +135,7 @@ const SOURCE: readonly MetricDescriptor[] = [
   {
     name: "swallowed_except", unit: "count", appliesTo: FILE, rollup: "sum", direction: "higher-worse",
     absent: "zero", source: "exception-handling",
-    description: "Handlers whose body is empty, pass, ..., continue, a bare or empty return, or a single logging call.",
+    description: "Handlers whose body is empty, pass, ..., continue, a bare or empty return, or a single logging call. Exempts Python's `except ImportError`/`ModuleNotFoundError` (alone or paired), the standard optional-dependency idiom.",
   },
   {
     name: "class_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",

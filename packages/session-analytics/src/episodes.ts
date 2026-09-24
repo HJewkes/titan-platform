@@ -10,17 +10,20 @@ export const HEURISTIC_VERSIONS: Readonly<Record<Heuristic, number>> = { "worker
 export interface EpisodeRequest {
   offset: number;
   ts: string;
+  transcriptId: number;
   contextTokens: number;
   wakeCause: string | null;
 }
 export interface EpisodeInbound {
   offset: number;
   ts: string;
+  transcriptId: number;
   cause: string;
 }
 export interface EpisodeSignal {
   offset: number;
   ts: string;
+  transcriptId: number;
   signal: string;
 }
 export interface EpisodeInput {
@@ -61,9 +64,9 @@ export function assignmentCount(rows: readonly Pick<EpisodeRow, "openedBy">[]): 
 // ---------------------------------------------------------------- worker-v1
 
 type Event =
-  | { kind: "request"; offset: number; ts: string; ms: number }
-  | { kind: "inbound"; offset: number; ts: string; ms: number; cause: string }
-  | { kind: "signal"; offset: number; ts: string; ms: number; signal: string };
+  | { kind: "request"; offset: number; ts: string; ms: number; transcriptId: number }
+  | { kind: "inbound"; offset: number; ts: string; ms: number; transcriptId: number; cause: string }
+  | { kind: "signal"; offset: number; ts: string; ms: number; transcriptId: number; signal: string };
 
 interface Draft {
   row: EpisodeRow;
@@ -111,6 +114,8 @@ function openDraft(event: Event, openedBy: string, episodeIndex: number): Draft 
     startOffset: event.offset,
     endOffset: event.offset,
     openedBy,
+    startTranscriptId: event.transcriptId,
+    endTranscriptId: event.transcriptId,
     assignmentOffset: assignment,
     firstDeliverableOffset: null,
     firstDeliverableSignal: null,
@@ -123,6 +128,7 @@ function openDraft(event: Event, openedBy: string, episodeIndex: number): Draft 
 function absorb(draft: Draft, event: Event): void {
   draft.row.endedAt = event.ts;
   draft.row.endOffset = event.offset;
+  draft.row.endTranscriptId = event.transcriptId;
   if (event.kind === "request") draft.hasRequest = true;
   if (event.kind !== "signal") return;
   if (draft.row.firstDeliverableOffset == null && DELIVERABLE_SIGNALS.has(event.signal)) {
@@ -132,14 +138,17 @@ function absorb(draft: Draft, event: Event): void {
   if (draft.row.firstStatusOffset == null && event.signal === "status_report") draft.row.firstStatusOffset = event.offset;
 }
 
-/** Offsets only order events inside one transcript, so time orders first and the offset breaks ties. */
+/**
+ * Offsets only order events inside one transcript, so time orders first, then the transcript a
+ * session resumed into, then the offset breaks ties within it.
+ */
 function timeline(input: EpisodeInput): Event[] {
   const events: Event[] = [
-    ...input.requests.map((r) => ({ kind: "request" as const, offset: r.offset, ts: r.ts, ms: Date.parse(r.ts) })),
-    ...input.inbounds.map((i) => ({ kind: "inbound" as const, offset: i.offset, ts: i.ts, ms: Date.parse(i.ts), cause: i.cause })),
-    ...input.signals.map((s) => ({ kind: "signal" as const, offset: s.offset, ts: s.ts, ms: Date.parse(s.ts), signal: s.signal })),
+    ...input.requests.map((r) => ({ kind: "request" as const, offset: r.offset, ts: r.ts, ms: Date.parse(r.ts), transcriptId: r.transcriptId })),
+    ...input.inbounds.map((i) => ({ kind: "inbound" as const, offset: i.offset, ts: i.ts, ms: Date.parse(i.ts), transcriptId: i.transcriptId, cause: i.cause })),
+    ...input.signals.map((s) => ({ kind: "signal" as const, offset: s.offset, ts: s.ts, ms: Date.parse(s.ts), transcriptId: s.transcriptId, signal: s.signal })),
   ];
-  return events.sort((a, b) => a.ms - b.ms || a.offset - b.offset);
+  return events.sort((a, b) => a.ms - b.ms || a.transcriptId - b.transcriptId || a.offset - b.offset);
 }
 
 // ---------------------------------------------------------------- coordinator-v1
@@ -170,6 +179,8 @@ function coordinatorEpisodes(input: EpisodeInput): EpisodeRow[] {
       endedAt: last.ts,
       startOffset: first.offset,
       endOffset: last.offset,
+      startTranscriptId: first.transcriptId,
+      endTranscriptId: last.transcriptId,
       openedBy: open.reason,
     };
   });
@@ -227,7 +238,7 @@ function dropShort(bounds: readonly Boundary[], total: number): Boundary[] {
 function toTurns(input: EpisodeInput): Turn[] {
   const turns = input.requests
     .map((request) => ({ request, ms: Date.parse(request.ts), signals: new Set<string>() }))
-    .sort((a, b) => a.ms - b.ms || a.request.offset - b.request.offset);
+    .sort((a, b) => a.ms - b.ms || a.request.transcriptId - b.request.transcriptId || a.request.offset - b.request.offset);
   for (const signal of input.signals) ownerOf(turns, signal)?.signals.add(signal.signal);
   return turns;
 }
@@ -248,10 +259,17 @@ const IN_SESSION = "session_id = ?";
 /** Main-thread requests only: a sidechain's requests belong to its subagent, not to the session's episodes. */
 export function readEpisodeInput(db: Db, sessionId: string, spawned: boolean): EpisodeInput {
   const requests = db
-    .prepare(`SELECT byte_offset AS offset, ts, context_tokens AS contextTokens, wake_cause AS wakeCause FROM request_dedup WHERE ${IN_SESSION} AND is_sidechain = 0`)
+    .prepare(
+      `SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, context_tokens AS contextTokens, wake_cause AS wakeCause
+       FROM request_dedup WHERE ${IN_SESSION} AND is_sidechain = 0`,
+    )
     .all(sessionId) as EpisodeRequest[];
-  const inbounds = db.prepare(`SELECT byte_offset AS offset, ts, cause FROM inbound WHERE ${IN_SESSION}`).all(sessionId) as EpisodeInbound[];
-  const signals = db.prepare(`SELECT byte_offset AS offset, ts, signal FROM session_signal WHERE ${IN_SESSION}`).all(sessionId) as EpisodeSignal[];
+  const inbounds = db
+    .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, cause FROM inbound WHERE ${IN_SESSION}`)
+    .all(sessionId) as EpisodeInbound[];
+  const signals = db
+    .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, signal FROM session_signal WHERE ${IN_SESSION}`)
+    .all(sessionId) as EpisodeSignal[];
   return { requests, inbounds, signals, spawned };
 }
 

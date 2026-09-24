@@ -131,6 +131,19 @@ describe("folding owner resolutions", () => {
     expect(r.hub.edits()).toHaveLength(1);
   });
 
+  it("a resync landing mid-resolve leaves the phone verdict's label on the item", async () => {
+    const resolve = r.source.resolve.bind(r.source);
+    vi.spyOn(r.source, "resolve").mockImplementation(async (id, verdict) => {
+      const result = await resolve(id, verdict);
+      await r.mirror.applySourceEvent({ type: "resync", cursor: "9" });
+      return result;
+    });
+
+    await r.mirror.applySyncBatch(r.hub.deliver(reaction(eventIdOf(r.state, "a"))));
+
+    expect(r.hub.edits().map((edit) => (edit.content["m.new_content"] as { body: string }).body)).toEqual(["APPR from tp316 (edge1)\nresolved: allow"]);
+  });
+
     it("persists since only after the batch succeeds, and the same reaction twice resolves once", async () => {
     const event = reaction(eventIdOf(r.state, "a"));
     const resolve = vi.spyOn(r.source, "resolve").mockRejectedValueOnce(new Error("source down"));
@@ -165,6 +178,30 @@ describe("folding owner resolutions", () => {
     expect(r.state.hasApplied(event.event_id)).toBe(true);
     expect(r.state.bySourceId("a")?.status).toBe("open");
     expect(r.logs).toContain("rejected");
+  });
+
+  it("edits a rejected item with the source's detail, keeps it open, and a later verdict still resolves it", async () => {
+    vi.spyOn(r.source, "resolve").mockResolvedValueOnce({ ok: false, reason: "rejected", detail: "session no longer connected" });
+    const send = vi.spyOn(r.hub, "send");
+    const target = eventIdOf(r.state, "a");
+
+    await r.mirror.applySyncBatch(r.hub.deliver(reaction(target)));
+    expect(r.state.bySourceId("a")?.status).toBe("open");
+    await r.mirror.applySyncBatch(r.hub.deliver(reaction(target)));
+
+    const bodies = r.hub.edits().map((edit) => (edit.content["m.new_content"] as { body: string }).body);
+    expect(bodies).toEqual(["APPR from tp316 (edge1)\nrefused: session no longer connected", "APPR from tp316 (edge1)\nresolved: allow"]);
+    const [rejectTxn, closeTxn] = send.mock.calls.map((call) => call[3]);
+    expect(rejectTxn).not.toBe(closeTxn);
+    expect(r.source.resolutions.map((res) => res.verdict)).toEqual(["allow"]);
+  });
+
+  it("labels a rejection without detail 'refused: rejected'", async () => {
+    vi.spyOn(r.source, "resolve").mockResolvedValue({ ok: false, reason: "rejected" });
+
+    await r.mirror.applySyncBatch(r.hub.deliver(reaction(eventIdOf(r.state, "a"))));
+
+    expect(JSON.stringify(r.hub.edits()[0]?.content)).toContain("refused: rejected");
   });
 
   it("edits 'already resolved' when the source closed the item first", async () => {
@@ -224,6 +261,24 @@ describe("closing from the source and the clock", () => {
     expect(r.source.resolutions).toEqual([]);
     expect(r.hub.edits()).toHaveLength(1);
     expect(JSON.stringify(r.hub.edits()[0]?.content)).toContain("expired");
+  });
+
+  it("a resync event closes items gone from open(), posts new ones once, and commits its cursor", async () => {
+    const r = rig();
+    r.source.add(approval("done"));
+    r.source.add(approval("kept"));
+    await r.mirror.reconcile();
+    r.source.close("done", "resolved");
+    r.source.add(approval("outofband"));
+
+    await r.mirror.applySourceEvent({ type: "resync", cursor: "500" });
+    await r.mirror.applySourceEvent({ type: "resync", cursor: "501" });
+
+    expect(msgIds(r.hub)).toEqual(["done", "kept", "outofband"]);
+    expect(r.state.bySourceId("done")?.status).toBe("closed");
+    expect(JSON.stringify(r.hub.edits().map((edit) => edit.content))).toContain("resolved at the terminal");
+    expect(r.state.openItems().map((item) => item.sourceId)).toEqual(["kept", "outofband"]);
+    expect(r.state.sourceCursor()).toBe("501");
   });
 
   it("reconcile after downtime edits a vanished item, posts a new one and leaves an old open one", async () => {

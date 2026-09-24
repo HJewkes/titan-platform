@@ -90,3 +90,37 @@ describe("metric-outlier rule (TP-322)", () => {
     expect(check({ ...RULE, severity: "warning" }, ONE_TO_TWENTY)[0]!.severity).toBe("warning");
   });
 });
+
+describe("metric-outlier rule floor and rankNonZero (TP-340)", () => {
+  const SPARSE = [...Array.from({ length: 18 }, () => 0), 0.1, 0.2];
+
+  it("without a floor or rankNonZero, p90 of a sparse distribution flags every non-zero value", () => {
+    const violations = check(RULE, SPARSE);
+    expect(violations.map((v) => v.value)).toEqual([0.1, 0.2]);
+  });
+
+  it("a floor above every value flags nothing; a floor between values flags only those above both floor and percentile", () => {
+    expect(check({ ...RULE, floor: 0.5 }, SPARSE)).toEqual([]);
+    const violations = check({ ...RULE, floor: 0.15 }, SPARSE);
+    expect(violations.map((v) => v.value)).toEqual([0.2]);
+    expect(violations[0]!.evidence).toContain("floor 0.15");
+  });
+
+  it("a value exactly at the floor is not flagged — the floor is a strict lower bound", () => {
+    expect(check({ ...RULE, floor: 0.2 }, SPARSE)).toEqual([]);
+  });
+
+  it("rankNonZero ranks the percentile over non-zero carriers only and never flags a zero", () => {
+    const nonZero = Array.from({ length: 20 }, (_, i) => i + 1);
+    const values = [...Array.from({ length: 100 }, () => 0), ...nonZero];
+    const violations = check({ ...RULE, rankNonZero: true }, values);
+    const expectedThreshold = percentileOf(nonZero, 90);
+    expect(violations.every((v) => (v.value ?? 0) > 0)).toBe(true);
+    expect(violations[0]!.threshold).toBeCloseTo(expectedThreshold);
+  });
+
+  it("rankNonZero gates minSample on the non-zero pool, staying silent when it is too small even with many total carriers", () => {
+    const values = [...Array.from({ length: 100 }, () => 0), 1, 2, 3];
+    expect(check({ ...RULE, rankNonZero: true }, values)).toEqual([]);
+  });
+});

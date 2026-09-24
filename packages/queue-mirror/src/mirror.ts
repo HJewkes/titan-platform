@@ -34,6 +34,9 @@ export const SILENT: MirrorLogger = { info: () => {}, warn: () => {} };
 // Deterministic, so a re-send after a crash between send and commit is deduped by the homeserver.
 const itemTxnId = (sourceId: string) => `qm-${encodeURIComponent(sourceId)}`;
 const editTxnId = (sourceId: string) => `qm-edit-${encodeURIComponent(sourceId)}`;
+// Distinct from editTxnId, which the final close edit must still be free to use.
+const rejectTxnId = (sourceId: string, resolutionEventId: string) =>
+  `qm-reject-${encodeURIComponent(sourceId)}-${encodeURIComponent(resolutionEventId)}`;
 
 function closedStatus(event: Extract<SourceEvent, { type: "closed" }>): string {
   if (event.outcome === "resolved") return event.label ? `resolved at the terminal: ${event.label}` : "resolved at the terminal";
@@ -60,13 +63,17 @@ class QueueMirror implements Mirror {
     const pending = await this.source.open();
     const pendingIds = new Set(pending.map((item) => item.id));
     for (const item of this.state.openItems()) {
-      if (!pendingIds.has(item.sourceId)) await this.close(item, "resolved at the terminal");
+      if (!pendingIds.has(item.sourceId) && !this.resolving.has(item.sourceId)) await this.close(item, "resolved at the terminal");
     }
     for (const item of pending) if (!this.state.bySourceId(item.id)) await this.post(item);
   }
 
   async applySourceEvent(event: SourceEvent): Promise<void> {
     const cursor = event.cursor;
+    if (event.type === "resync") {
+      await this.reconcile();
+      return this.state.commit({ sourceCursor: cursor });
+    }
     if (event.type === "opened") {
       if (this.state.bySourceId(event.item.id)) return this.state.commit({ sourceCursor: cursor });
       return this.post(event.item, cursor);
@@ -147,8 +154,15 @@ class QueueMirror implements Mirror {
     const result = await this.resolveAtSource(item.sourceId, { verdict, text, resolutionEventId: event.event_id });
     if (result.ok) return this.close(item, `resolved: ${verdict}`, { applied });
     if (result.reason === "closed") return this.close(item, "already resolved", { applied });
-    this.state.commit({ applied });
+    await this.markRefused(item, event.event_id, result.detail);
     this.log.warn("rejected", { sourceId: item.sourceId, verdict, detail: result.detail });
+  }
+
+  /** Edits the status but leaves the item open, so the owner can still answer it. */
+  private async markRefused(item: PostedItem, resolutionEventId: string, detail = "rejected"): Promise<void> {
+    const edit = encodeEdit(item.eventId, item.record, `refused: ${detail}`);
+    await this.bus.send(this.options.roomId, "m.room.message", edit, rejectTxnId(item.sourceId, resolutionEventId));
+    this.state.commit({ applied: [resolutionEventId] });
   }
 
   private async resolveAtSource(sourceId: string, verdict: VerdictInput): Promise<ResolveResult> {
