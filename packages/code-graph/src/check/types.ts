@@ -45,6 +45,10 @@ export interface MetricOutlierRule {
   percentile: number;
   /** Fewest nodes that must carry the metric before any is judged; defaults to 20. */
   minSample?: number;
+  /** A node is flagged only if its value also exceeds this absolute floor, guarding sparse metrics whose percentile sits at or near zero. */
+  floor?: number;
+  /** When true, rank and gate on the pool of carriers with a non-zero value only; zero-valued nodes are never flagged. */
+  rankNonZero?: boolean;
   severity?: Severity;
 }
 
