@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildEpisodes, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, writeEpisodes, type EpisodeInput } from "./episodes.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
 const BASE_MS = Date.parse("2026-09-20T10:00:00Z");
@@ -215,5 +215,50 @@ describe("writeEpisodes", () => {
       { session_id: "human", heuristic: "coordinator-v1", heuristic_version: 1, opened_by: "session_start", first_status_offset: null },
       { session_id: "worker", heuristic: "worker-v1", heuristic_version: 1, opened_by: "brief", first_status_offset: expect.any(Number) },
     ]);
+  });
+});
+
+describe("readEpisodeInput", () => {
+  let fixture: FixtureGraph;
+  beforeEach(() => {
+    fixture = createFixtureGraph();
+  });
+  afterEach(() => fixture.close());
+
+  function viewRows(sessionId: string) {
+    return fixture.graph.db
+      .prepare(
+        `SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, context_tokens AS contextTokens, wake_cause AS wakeCause
+         FROM request_dedup WHERE session_id = ? AND is_sidechain = 0 ORDER BY transcript_id, offset`,
+      )
+      .all(sessionId);
+  }
+
+  function inputRows(sessionId: string) {
+    const rows = readEpisodeInput(fixture.graph.db, sessionId, false).requests;
+    return [...rows].sort((a, b) => a.transcriptId - b.transcriptId || a.offset - b.offset);
+  }
+
+  it("episode input returns the same requests as request_dedup when copies span sessions", () => {
+    const db = fixture.graph.db;
+    insertRequest(db, { sessionId: "resumed", transcriptId: 2, requestId: "shared", ts: at(5) });
+    insertRequest(db, { sessionId: "original", transcriptId: 1, requestId: "shared", ts: at(6) });
+    insertRequest(db, { sessionId: "original", transcriptId: 3, requestId: "tied", ts: at(7) });
+    insertRequest(db, { sessionId: "resumed", transcriptId: 4, requestId: "tied", ts: at(7) });
+    insertRequest(db, { sessionId: "original", transcriptId: 1, requestId: "own", ts: at(8) });
+    insertRequest(db, { sessionId: "original", transcriptId: 1, requestId: "side", ts: at(9) });
+    db.prepare("UPDATE request SET is_sidechain = 1 WHERE request_id = 'side'").run();
+
+    expect(inputRows("original")).toEqual(viewRows("original"));
+    expect(inputRows("resumed")).toEqual(viewRows("resumed"));
+    expect(inputRows("original").map((r) => r.transcriptId)).toEqual([1, 3]);
+  });
+
+  it("episode input for one session does not scan every request", () => {
+    const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
+    const details = plan.map((row) => row.detail);
+
+    expect(details.filter((detail) => /^SCAN (r|request)\b/.test(detail))).toEqual([]);
+    expect(details).toContainEqual(expect.stringMatching(/^SEARCH r USING INDEX idx_request_id/));
   });
 });

@@ -256,14 +256,24 @@ function ownerOf(turns: readonly Turn[], signal: EpisodeSignal): Turn | undefine
 
 const IN_SESSION = "session_id = ?";
 
+/**
+ * `request_dedup` for one session without ranking every request: SQLite cannot push the session filter
+ * through the view's window. Copies of a request can sit in other sessions, so the rank still covers
+ * every copy of each request id the session holds.
+ */
+const SESSION_REQUEST_DEDUP = `
+  SELECT * FROM (
+    SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.request_id ORDER BY r.ts, r.transcript_id) AS copy_rank
+    FROM request r WHERE r.request_id IN (SELECT request_id FROM request WHERE session_id = @sessionId)
+  ) WHERE copy_rank = 1 AND session_id = @sessionId`;
+
 /** Main-thread requests only: a sidechain's requests belong to its subagent, not to the session's episodes. */
+export const EPISODE_REQUESTS_SQL = `
+  SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, context_tokens AS contextTokens, wake_cause AS wakeCause
+  FROM (${SESSION_REQUEST_DEDUP}) WHERE is_sidechain = 0`;
+
 export function readEpisodeInput(db: Db, sessionId: string, spawned: boolean): EpisodeInput {
-  const requests = db
-    .prepare(
-      `SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, context_tokens AS contextTokens, wake_cause AS wakeCause
-       FROM request_dedup WHERE ${IN_SESSION} AND is_sidechain = 0`,
-    )
-    .all(sessionId) as EpisodeRequest[];
+  const requests = db.prepare(EPISODE_REQUESTS_SQL).all({ sessionId }) as EpisodeRequest[];
   const inbounds = db
     .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, cause FROM inbound WHERE ${IN_SESSION}`)
     .all(sessionId) as EpisodeInbound[];
