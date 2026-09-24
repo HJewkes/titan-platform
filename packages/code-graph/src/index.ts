@@ -14,7 +14,7 @@ export type {
 
 export type { SnapshotInsert } from "./store.js";
 export { CodeGraphStore, openCodeGraph } from "./store.js";
-export { DOMAIN_DDL, KIT, MIGRATIONS, SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES } from "./schema.js";
+export { DOMAIN_DDL, FINDING_DDL, KIT, MIGRATIONS, SCHEMA_VERSION, SNAPSHOT_SCOPED_TABLES } from "./schema.js";
 export type { PruneOptions, PrunePlan, PruneResult } from "./prune.js";
 export { planPrune, runPrune } from "./prune.js";
 
@@ -151,6 +151,24 @@ export { rebasedViolationKey, runChecks, snapshotViolations, violationKey } from
 export type { RuleStore } from "./check/context.js";
 export type { ExternalDiagnostic, Finding } from "./check/findings.js";
 export { externalToFinding, toFindings } from "./check/findings.js";
+export type {
+  FindingKeyInput,
+  StoredFinding,
+  StoredVerdict,
+  VerdictCitation,
+  VerdictLabel,
+} from "./check/finding-store.js";
+export {
+  carryForwardVerdicts,
+  findingKey,
+  hashText,
+  keyFindings,
+  listFindings,
+  listVerdicts,
+  normalizeFlaggedText,
+  saveFindings,
+  saveVerdicts,
+} from "./check/finding-store.js";
 export { compilePatterns, matchesAny, patternToRegex } from "./check/patterns.js";
 export type { ValidateRulesOptions } from "./check/validate.js";
 export { validateRules } from "./check/validate.js";
