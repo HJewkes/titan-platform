@@ -48,7 +48,7 @@ content, and it **withholds a trailing partial line** so a watermark never lands
 
 | Function | What it does |
 | --- | --- |
-| `readJsonLines(path, fromOffset)` | async iterator of `{ byteOffset, byteLength, ... }` raw lines |
+| `readJsonLines(path, fromOffset, { strictUtf8? })` | async iterator of `{ byteOffset, byteLength, text }` raw lines; `strictUtf8` throws on invalid UTF-8 instead of substituting U+FFFD |
 | `nextOffset(line)` | the offset to resume from after that line |
 | `readLocatorText` / `readLocatorBytes` | resolve a locator; throws if the file shrank past it |
 | `transcriptIndexFor(table, path)` | assigns each file a stable index on first sight |
@@ -63,9 +63,12 @@ content, and it **withholds a trailing partial line** so a watermark never lands
 **The transcript table is append-only** because every stored locator names an index into it.
 Persisting it is the caller's job; `atomicWrite` is here for that.
 
-**`rewritten` is detected two ways**: the file is shorter than the watermark, or (with
-`verifyHash`) the prefix hash of the already-indexed bytes no longer matches. Without
-`verifyHash`, a same-length rewrite is invisible.
+**`rewritten` is detected by prefix hash**: the file is shorter than the watermark, or the
+prefix hash of the already-indexed bytes no longer matches. The hash is checked when you
+pass `verifyHash`, and also, unasked, when the file is exactly as long as its watermark but
+its mtime differs from the entry's stored `mtime`. That catches an in-place rewrite of the
+same length without hashing every file on every pass. An entry with no stored `mtime` gets
+no such check.
 
 **Durability is opt-in.** A locator into a file the tool later deletes resolves to nothing
 unless you mirrored it.

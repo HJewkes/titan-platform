@@ -1,8 +1,8 @@
 # session-graph
 
 **Tier 2 · domain.** Depends on [`session-read`](/reference/session-read),
-[`store-sqlite`](/reference/store-sqlite), [`cluster`](/reference/cluster), and
-[`locator`](/reference/locator).
+[`store-sqlite`](/reference/store-sqlite), [`cluster`](/reference/cluster),
+[`locator`](/reference/locator), and [`agent-protocol`](/reference/agent-protocol).
 
 ```sh
 npm install @titan-design/session-graph
@@ -120,8 +120,9 @@ await refreshCorpus(graph, transcripts, {
 - **Failure.** Same as the task resolver: the pass completes, the rows stand, and
   `summary.prs` carries `failed` plus `error`.
 
-`reconcile` rewrites `merged_at` from merge sightings on every pass, so for a PR a transcript
-saw merged, `merged_at` holds the sighting's time rather than the forge's.
+`reconcile` sets `merged_at` from merge sightings only for a PR the resolver has not yet
+checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
+pass never overwrites it with a sighting time.
 
 ## Tables
 
@@ -194,3 +195,8 @@ empty tables, so existing rows are untouched.
   query reads it, never `request`. `request_cost` prices each row by longest model prefix
   and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.
   `context_contribution` attributes each request's context growth to the blocks before it.
+
+Migration 6, `episode transcript ids`, adds nullable `start_transcript_id` and
+`end_transcript_id` columns to `episode`, surfaced as `EpisodeRow.startTranscriptId` and
+`endTranscriptId`. A session resumed across two transcripts then orders by timestamp,
+transcript id, and byte offset, because byte offsets reset with the new file.

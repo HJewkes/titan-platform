@@ -1,6 +1,7 @@
 # daemon
 
-**Tier 1 · engines.** Depends on [`registry`](/reference/registry) (its own tier), plus
+**Tier 1 · engines.** Depends on [`registry`](/reference/registry) (its own tier) and
+[`rpc-protocol`](/reference/rpc-protocol), plus
 `hono`, `@hono/node-server`, and the MCP SDK. `zod` v4 is a peer.
 
 ```sh

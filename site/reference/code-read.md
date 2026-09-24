@@ -76,9 +76,8 @@ envelope from any `ReadSource`.
 ## What it deliberately does not do
 
 It writes nothing: indexing, embedding, and the findings store belong to `code-graph`. It
-stores no findings yet: every finding is a check-rule violation computed when a snapshot
-loads. It
-carries no product policy. The check rules, the MCP tool prefix, and which commands a surface
+does not read code-graph's stored findings and verdicts yet: every finding it serves is a
+check-rule violation computed when a snapshot loads. It carries no product policy. The check rules, the MCP tool prefix, and which commands a surface
 exposes all come from the product. It does not define the static file container. That is
 `rpc-client`'s, and a code-read dataset rides inside it as an opaque payload. It does not
 open a daemon; `daemon` does.

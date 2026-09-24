@@ -27,7 +27,9 @@ content, and withholds a trailing partial line so a watermark never lands mid-re
 `transcriptIndexFor(table, path)` assigns each file a stable index on first sight. Rows
 are append-only because every stored locator names one. `resumePoint(entry, path)`
 reports `unchanged`, `appended`, `rewritten` (file shorter than the watermark, or a
-prefix-hash mismatch with `verifyHash`), or `missing`, and the byte to resume from.
+prefix-hash mismatch), or `missing`, and the byte to resume from. The prefix hash is
+checked with `verifyHash`, and also when the file matches its watermark length but its
+mtime differs from the entry's stored `mtime`, so a same-length in-place rewrite is caught.
 Persisting the table is the caller's job; `atomicWrite` is here for that.
 
 ## Resolving a locator
