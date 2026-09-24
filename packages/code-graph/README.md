@@ -148,7 +148,7 @@ always recomputed over the whole assembled graph, so a heavily-reused run and a
 
 ## Store layout
 
-`openCodeGraph` opens the database with the kit's pragmas and runs three migrations.
+`openCodeGraph` opens the database with the kit's pragmas and runs four migrations.
 
 It refuses a database stamped past `SCHEMA_VERSION` with `SchemaTooNewError`: a code graph
 database belongs to one build, so a higher version means a newer build already moved the
@@ -163,7 +163,8 @@ every consumer reads directly: `node.language`, `node.role`, `snapshot.commit_ha
 Domain tables in `schema.ts`: `edge` (snapshot-scoped, keyed
 `(snapshot_id, src_id, dst_id, kind)` — the kit's own edge table is bi-temporal, which is the
 wrong time model for a population re-indexed all at once), `metric`, `id_alias`, and
-`file_fingerprint`.
+`file_fingerprint`. Migration 4 adds `finding` and `verdict`, both keyed
+`(snapshot_id, key)` on a `findingKey` and pruned with their snapshot.
 
 The symbol layer is hidden by default. `listNodes` drops `symbol` nodes and `listEdges` drops
 `references` and `calls` edges unless you ask for them (`includeReferences` covers both), so a caller reasoning about module structure sees
