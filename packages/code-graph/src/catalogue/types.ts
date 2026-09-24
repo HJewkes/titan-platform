@@ -17,6 +17,7 @@ export type MetricSource =
   | "degree"
   | "source-metrics"
   | "lcom"
+  | "call-graph"
   | "exception-handling"
   | "dead-code"
   | "growth-risk"

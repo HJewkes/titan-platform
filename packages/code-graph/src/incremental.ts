@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import type { Node } from "web-tree-sitter";
 import { getLanguageFromPath, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
-import { fileId } from "./extractors/ids.js";
+import { fileId, parseSymbolId } from "./extractors/ids.js";
 import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
 import { DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 import { GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
@@ -199,7 +199,7 @@ export function buildFingerprints(
  * Everything from a prior snapshot needed to rebuild an unchanged file's
  * contribution to the graph without re-parsing it: its content fingerprint,
  * the node table (to look up external-node names), outbound edges grouped by
- * source, and the source-content metrics (loc, complexity, lcom4, ...).
+ * source file (a symbol's `calls` edges under the file declaring it), and the source-content metrics (loc, complexity, lcom4, ...).
  */
 export interface ReuseBasis {
   snapshotId: number;
@@ -242,9 +242,11 @@ export function loadReuseBasis(
 
     const edgesBySrc = new Map<string, GraphEdge[]>();
     for (const e of db.listEdges(snap.id, { includeReferences: true })) {
-      const bucket = edgesBySrc.get(e.srcId);
+      // A `calls` edge leaves a symbol (TP-323); file it under the declaring file so reuse carries it.
+      const fileKey = parseSymbolId(e.srcId)?.fileId ?? e.srcId;
+      const bucket = edgesBySrc.get(fileKey);
       if (bucket) bucket.push(e);
-      else edgesBySrc.set(e.srcId, [e]);
+      else edgesBySrc.set(fileKey, [e]);
     }
 
     const sourceMetricsByFile = new Map<string, GraphMetric[]>();

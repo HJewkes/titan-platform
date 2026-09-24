@@ -43,7 +43,9 @@ const FIXTURE: Record<string, string> = {
   "src/util.ts": "export function helper(n: number): number {\n  return n * 2;\n}\n",
   "src/core.ts": CORE,
   "src/core.test.ts": 'import { busy } from "./core";\nexport const probe = busy([], [], []);\n',
-  "py/mod.py": "def walk(rows):\n    for r in rows:\n        for c in r:\n            print(c)\n",
+  "py/mod.py":
+    "def walk(rows):\n    for r in rows:\n        for c in r:\n            print(c)\n\n\n" +
+    "def main():\n    walk([])\n    walk([])\n",
 };
 
 async function buildFixture(repo: TestRepo): Promise<void> {

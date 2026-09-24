@@ -110,6 +110,21 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "1 when the function's body is one call forwarding every parameter, in order, as a bare argument; else 0.",
   },
   {
+    name: "symbol_caller_count", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
+    absent: "exclude", source: "call-graph",
+    description: "Distinct symbols, or files at module level, with a resolved call to this function, method or class. Unresolved calls are not counted.",
+  },
+  {
+    name: "symbol_single_caller_helper", unit: "count", appliesTo: SYMBOL, rollup: "sum", direction: "higher-worse",
+    absent: "exclude", source: "call-graph",
+    description: "1 when a non-exported symbol has exactly one resolved caller and that caller is a symbol; else 0.",
+  },
+  {
+    name: "symbol_constant_params", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "call-graph",
+    description: "Parameters that every one of at least 2 resolved call sites passes the same literal, or never passes. Rest and keyword-splat parameters are ignored.",
+  },
+  {
     name: "except_count", unit: "count", appliesTo: FILE, rollup: "sum", direction: "neutral",
     absent: "zero", source: "exception-handling", description: "Python except clauses and TypeScript catch clauses in the file.",
   },
