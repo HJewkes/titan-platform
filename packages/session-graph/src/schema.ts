@@ -1,5 +1,6 @@
 import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./audit-schema-v5.js";
+import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./audit-schema-v6.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, kitMigration, type Migration } from "@titan-design/store-sqlite";
 
@@ -175,4 +176,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 3, name: "normalized conversations and source evidence", up: (db) => { db.exec(NORMALIZED_DDL); backfillClaudeAliases(db); } },
   { version: 4, name: AUDIT_MIGRATION_NAME, up: applyAuditSchema },
   { version: 5, name: ORIGIN_MIGRATION_NAME, up: applyOriginSchema },
+  { version: 6, name: EPISODE_TRANSCRIPT_MIGRATION_NAME, up: applyEpisodeTranscriptSchema },
 ];

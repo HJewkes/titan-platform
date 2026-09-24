@@ -134,7 +134,7 @@ export function applyAuditSchema(db: Db): void {
 }
 
 /** SQLite's `ADD COLUMN` has no `IF NOT EXISTS`, and a repeat throws "duplicate column name". */
-function addColumnIfMissing(db: Db, table: string, column: string, type: string): void {
+export function addColumnIfMissing(db: Db, table: string, column: string, type: string): void {
   const present = db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
   if (!present) db.exec(`ALTER TABLE "${table}" ADD COLUMN "${column}" ${type}`);
 }
