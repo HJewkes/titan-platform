@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/evidence",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Citation verification, overlap grouping and planted-control scoring for model-judged evidence",
   "type": "module",
   "main": "./dist/index.js",

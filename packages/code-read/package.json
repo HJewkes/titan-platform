@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/code-read",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands",
   "type": "module",
   "main": "./dist/index.js",
