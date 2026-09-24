@@ -19,9 +19,12 @@ export function runMetricOutlierRule(rule: MetricOutlierRule, ctx: RuleContext):
     const value = ctx.metricsByNode.get(node.id)?.get(rule.metric);
     if (value !== undefined) carriers.push({ node, value });
   }
-  if (carriers.length < (rule.minSample ?? DEFAULT_OUTLIER_MIN_SAMPLE)) return [];
-  const threshold = percentileOf(carriers.map((c) => c.value), rule.percentile);
-  return carriers.filter((c) => c.value > threshold).map((c) => toViolation(rule, c.node, c.value, threshold));
+  const ranked = rule.rankNonZero ? carriers.filter((c) => c.value > 0) : carriers;
+  if (ranked.length < (rule.minSample ?? DEFAULT_OUTLIER_MIN_SAMPLE)) return [];
+  const threshold = percentileOf(ranked.map((c) => c.value), rule.percentile);
+  return ranked
+    .filter((c) => c.value > threshold && (rule.floor === undefined || c.value > rule.floor))
+    .map((c) => toViolation(rule, c.node, c.value, threshold));
 }
 
 /** Linear interpolation between closest ranks, the definition numpy and spreadsheets use by default. */
@@ -34,7 +37,8 @@ export function percentileOf(values: readonly number[], percentile: number): num
 }
 
 function toViolation(rule: MetricOutlierRule, node: GraphNode, value: number, threshold: number): CheckViolation {
-  const bound = `p${formatNumber(rule.percentile)} ${formatNumber(threshold)}`;
+  const floorSuffix = rule.floor === undefined ? "" : `, floor ${formatNumber(rule.floor)}`;
+  const bound = `p${formatNumber(rule.percentile)} ${formatNumber(threshold)}${floorSuffix}`;
   return {
     ruleId: rule.id,
     severity: severityOf(rule),

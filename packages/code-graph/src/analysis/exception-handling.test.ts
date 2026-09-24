@@ -54,6 +54,33 @@ describe("exception-handling metrics on Python (TP-322)", () => {
   });
 });
 
+describe("exception-handling exempts the optional-import idiom (TP-340)", () => {
+  it("except ImportError: pass is not swallowed", async () => {
+    const code = lines("try:", "    import foo", "except ImportError:", "    pass");
+    expect(await fileMetrics(code, "python")).toMatchObject({ count: 1, swallowed: 0 });
+  });
+
+  it("except (ImportError, ModuleNotFoundError): pass is not swallowed", async () => {
+    const code = lines("try:", "    import foo", "except (ImportError, ModuleNotFoundError):", "    pass");
+    expect(await fileMetrics(code, "python")).toMatchObject({ count: 1, swallowed: 0 });
+  });
+
+  it("except (ImportError, ValueError): pass is still swallowed — the tuple carries a non-import type", async () => {
+    const code = lines("try:", "    import foo", "except (ImportError, ValueError):", "    pass");
+    expect(await fileMetrics(code, "python")).toMatchObject({ count: 1, swallowed: 1 });
+  });
+
+  it("except Exception: pass is still swallowed — regression guard for unrelated types", async () => {
+    const code = lines("try:", "    risky()", "except Exception:", "    pass");
+    expect(await fileMetrics(code, "python")).toMatchObject({ count: 1, swallowed: 1 });
+  });
+
+  it("except ImportError: X = None is treated the same as except ImportError: pass", async () => {
+    const code = lines("try:", "    import foo", "except ImportError:", "    foo = None");
+    expect(await fileMetrics(code, "python")).toMatchObject({ count: 1, swallowed: 0 });
+  });
+});
+
 describe("exception-handling metrics on TypeScript (TP-322)", () => {
   it("counts catch clauses and treats empty, comment-only, bare-return and console-only bodies as swallowed", async () => {
     const code = lines(

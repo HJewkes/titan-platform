@@ -15,6 +15,9 @@ export interface EpisodeRow {
   endOffset: number;
   /** `session_start`, `brief`, `channel_followup`, `idle_gap`, `pr_merge`, `spawn_wave_complete`, `task_wrap`, `context_reset`, or a newer heuristic's term. */
   openedBy: string;
+  /** The transcript `startOffset`/`endOffset` fall in; a session resumed across transcripts can differ between the two. */
+  startTranscriptId?: number | null;
+  endTranscriptId?: number | null;
   assignmentOffset?: number | null;
   firstDeliverableOffset?: number | null;
   firstDeliverableSignal?: string | null;
@@ -25,9 +28,11 @@ const DELETE_EPISODES = `DELETE FROM ${EPISODE_TABLE} WHERE session_id = ? AND h
 
 const INSERT_EPISODE = `
   INSERT INTO ${EPISODE_TABLE} (session_id, episode_index, heuristic, heuristic_version, started_at, ended_at,
-    start_offset, end_offset, opened_by, assignment_offset, first_deliverable_offset, first_deliverable_signal, first_status_offset)
+    start_offset, end_offset, start_transcript_id, end_transcript_id, opened_by, assignment_offset,
+    first_deliverable_offset, first_deliverable_signal, first_status_offset)
   VALUES (@sessionId, @episodeIndex, @heuristic, @heuristicVersion, @startedAt, @endedAt,
-    @startOffset, @endOffset, @openedBy, @assignmentOffset, @firstDeliverableOffset, @firstDeliverableSignal, @firstStatusOffset)`;
+    @startOffset, @endOffset, @startTranscriptId, @endTranscriptId, @openedBy, @assignmentOffset,
+    @firstDeliverableOffset, @firstDeliverableSignal, @firstStatusOffset)`;
 
 /**
  * The only writer of `episode`. Replaces one heuristic's segmentation of one
@@ -49,6 +54,7 @@ function episodeParams(sessionId: string, heuristic: string, row: EpisodeRow): R
     sessionId, heuristic,
     episodeIndex: row.episodeIndex, heuristicVersion: row.heuristicVersion,
     startedAt: row.startedAt, endedAt: row.endedAt, startOffset: row.startOffset, endOffset: row.endOffset, openedBy: row.openedBy,
+    startTranscriptId: row.startTranscriptId ?? null, endTranscriptId: row.endTranscriptId ?? null,
     assignmentOffset: row.assignmentOffset ?? null, firstDeliverableOffset: row.firstDeliverableOffset ?? null,
     firstDeliverableSignal: row.firstDeliverableSignal ?? null, firstStatusOffset: row.firstStatusOffset ?? null,
   };

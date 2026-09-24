@@ -197,6 +197,12 @@ function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutl
   if (r.minSample !== undefined && (!Number.isInteger(r.minSample) || (r.minSample as number) < 1)) {
     throw new Error(`${r.id}: minSample must be a positive integer`);
   }
+  if (r.floor !== undefined && (typeof r.floor !== "number" || !Number.isFinite(r.floor) || r.floor < 0)) {
+    throw new Error(`${r.id}: floor must be a non-negative finite number`);
+  }
+  if (r.rankNonZero !== undefined && typeof r.rankNonZero !== "boolean") {
+    throw new Error(`${r.id}: rankNonZero must be a boolean`);
+  }
   const ruleId = r.id as string;
   return {
     type: "metric-outlier",
@@ -205,6 +211,8 @@ function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutl
     kind: r.kind as NodeKind,
     percentile: r.percentile,
     minSample: r.minSample as number | undefined,
+    floor: r.floor as number | undefined,
+    rankNonZero: r.rankNonZero as boolean | undefined,
     severity: r.severity as Severity | undefined,
   };
 }

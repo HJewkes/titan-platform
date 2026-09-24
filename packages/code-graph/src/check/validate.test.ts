@@ -157,6 +157,15 @@ describe("validateRules", () => {
     expect(bad({ percentile: "90" })).toThrow(/percentile/);
     expect(bad({ minSample: 0 })).toThrow(/minSample must be a positive integer/);
     expect(bad({ minSample: 2.5 })).toThrow(/minSample/);
+    expect(bad({ floor: -1 })).toThrow(/floor must be a non-negative finite number/);
+    expect(bad({ rankNonZero: "yes" })).toThrow(/rankNonZero must be a boolean/);
+  });
+
+  it("normalizes a metric-outlier rule with floor and rankNonZero", () => {
+    const [rule] = validateRules({
+      rules: [{ id: "long", type: "metric-outlier", metric: "symbol_loc", kind: "symbol", percentile: 90, floor: 0.5, rankNonZero: true }],
+    });
+    expect(rule).toMatchObject({ floor: 0.5, rankNonZero: true });
   });
 });
 
