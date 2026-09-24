@@ -1,5 +1,12 @@
 # @titan-design/queue-mirror
 
+## 0.2.0
+
+### Minor Changes
+
+- 8fe044d: `runMirror` and `createMirror` project a `QueueSource` into the `#queue` room: each item is posted once under a deterministic txnId, the source cursor and /sync token are committed only after handling, owner reactions and replies to open approvable items resolve through the source, redacted or truncated items refuse phone verdicts, and every close (source, phone verdict or expiry) edits the item with `m.replace`. The `/hitl` subpath adds `hitlQueueSource`, which mirrors a hitl `GateStore`'s pending gates as approvals or questions and resolves or cancels them from the owner's verdict.
+- e3ce048: Adds `@titan-design/queue-mirror/sqlite`: `SqliteMirrorState`, a durable `MirrorState` over `@titan-design/store-sqlite` whose `commit` runs in one transaction, plus `mirrorMigration` for products that own their own migration list.
+
 ## 0.1.0
 
 ### Minor Changes
