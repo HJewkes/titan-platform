@@ -7,6 +7,7 @@ import {
   type ExecutionTransition,
   type TerminalExecutionPhase,
 } from "./lifecycle.js";
+import { validateCorrelations } from "./lifecycle-correlations.js";
 import { cloneTarget, preparedExecution, requireTargetConversation } from "./lifecycle-targets.js";
 import {
   fail,
@@ -94,6 +95,7 @@ function prepare<TResult>(
     owner: { ...transition.owner },
     preparedAt: transition.occurredAt,
     lastObservedAt: transition.occurredAt,
+    ...(transition.correlations === undefined ? {} : { correlations: validateCorrelations(transition.correlations) }),
   };
 }
 
