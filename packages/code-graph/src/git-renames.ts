@@ -31,6 +31,11 @@ export function resolveGitRef(repoRoot: string, ref: string): string | null {
   return runGit(repoRoot, ["rev-parse", ref]);
 }
 
+/** Whether `ancestor` is reachable from `descendant`; false when either is unknown to the repo. */
+export function isGitAncestor(repoRoot: string, ancestor: string, descendant: string): boolean {
+  return runGit(repoRoot, ["merge-base", "--is-ancestor", ancestor, descendant]) !== null;
+}
+
 export function detectRenames(
   options: DetectRenamesOptions,
 ): RenamePair[] {
