@@ -1,4 +1,4 @@
-import { resolveGitRef } from "../git-renames.js";
+import { detectGitHead, isGitAncestor, resolveGitRef } from "../git-renames.js";
 import { rowToSnapshot, type SnapshotDbRow } from "../rows.js";
 import type { CodeGraphStore } from "../store.js";
 import type { SnapshotRow } from "../types.js";
@@ -73,8 +73,26 @@ export function priorSnapshotForRef(
   return byCommit ?? candidates.find((s) => s.ref === ref) ?? null;
 }
 
-/** The snapshot a new index of `ref` computes its aliases against: its own ref's newest committed snapshot, else any. */
-export function aliasBaseFor(store: CodeGraphStore, ref: string): SnapshotRow | null {
+/** The commit a new snapshot is indexed at (default HEAD), in the checkout that can verify its history. */
+export interface AliasTarget {
+  repoRoot: string;
+  commit?: string;
+}
+
+/** The commit an index of `target` records, or null outside a git checkout. */
+export function aliasTargetCommit(target: AliasTarget): string | null {
+  return target.commit ?? detectGitHead(target.repoRoot);
+}
+
+/**
+ * The snapshot a new index of `ref` computes its aliases against: its own ref's newest
+ * committed snapshot, else any, and only when that commit is an ancestor of `target`.
+ */
+export function aliasBaseFor(store: CodeGraphStore, ref: string, target: AliasTarget): SnapshotRow | null {
   const committed = allSnapshots(store).filter((s) => s.commitHash).reverse();
-  return committed.find((s) => s.ref === ref) ?? committed[0] ?? null;
+  const candidate = committed.find((s) => s.ref === ref) ?? committed[0];
+  if (!candidate?.commitHash) return null;
+  // A force-pushed ref can leave the candidate on an unrelated history, where a rename diff is noise.
+  const commit = aliasTargetCommit(target);
+  return commit && isGitAncestor(target.repoRoot, candidate.commitHash, commit) ? candidate : null;
 }

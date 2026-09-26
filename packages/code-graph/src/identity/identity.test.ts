@@ -233,3 +233,36 @@ describe("stores written before index version 0.15.0", () => {
     expect(carried.map((v) => `${v.ruleId} ${v.nodeId}`)).toEqual(["nesting core/worker.ts", "no-util core/worker.ts"]);
   });
 });
+
+describe("a ref force-pushed onto an unrelated history", () => {
+  let f: Fixture;
+
+  beforeAll(async () => {
+    f = await buildFixture();
+    f.repo.git(["checkout", "-q", "--orphan", "rewrite"]);
+    f.repo.git(["mv", "core/worker.ts", "core/runner.ts"]);
+    f.repo.commit("rewrite");
+    f.repo.git(["branch", "-f", "main", "rewrite"]);
+    f.repo.git(["checkout", "-q", "main"]);
+    const result = await indexPaths(f.store, { paths: [f.repo.dir], ref: "main", computeChurn: false });
+    f.snaps.rewrite = result.snapshotId;
+  }, 30_000);
+
+  afterAll(async () => {
+    f.store.close();
+    await f.repo.cleanup();
+  });
+
+  it("records no alias base and no aliases across the rewrite", () => {
+    const rewrite = f.snaps.rewrite!;
+
+    expect(f.store.getSnapshot(rewrite)?.attrs[ALIAS_BASE_ATTR]).toBeNull();
+    expect(f.store.listAliases(rewrite)).toEqual([]);
+  });
+
+  it("carries no violation over from the pre-rewrite snapshot", () => {
+    const run = checkSnapshot(f.store, { snapshot: f.snaps.rewrite!, baseline: f.snaps["new-violation"]!, rules: RULES });
+
+    expect(run.result.violations.filter((v) => v.isCarryover)).toEqual([]);
+  });
+});
