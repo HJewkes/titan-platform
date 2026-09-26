@@ -6,7 +6,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TEMPLATE = join(ROOT, "templates", "package");
 const CHECK_JSON = join(ROOT, ".codewatch", "check.json");
 const TIER_ORDER = ["0", "1", "2", "ui", "product"];
 
@@ -61,12 +60,18 @@ export function stampReferencePage(root, opts) {
   return page;
 }
 
+/** Copies templates/package into `<dir>/<name>` with the placeholders filled in, CAPABILITY.md included. */
+export function stampPackageDir(root, opts) {
+  const dir = opts.tier === "product" ? "products" : "packages";
+  const dest = join(root, dir, opts.name);
+  cpSync(join(root, "templates", "package"), dest, { recursive: true, errorOnExist: true, force: false });
+  substitute(dest, { NAME: opts.name, DIR: dir, TIER: String(opts.tier), DESCRIPTION: opts.description, TASK: opts.task });
+  return { dir, dest };
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const dir = opts.tier === "product" ? "products" : "packages";
-  const dest = join(ROOT, dir, opts.name);
-  cpSync(TEMPLATE, dest, { recursive: true, errorOnExist: true, force: false });
-  substitute(dest, { NAME: opts.name, DIR: dir, TIER: String(opts.tier), DESCRIPTION: opts.description, TASK: opts.task });
+  const { dir } = stampPackageDir(ROOT, opts);
   writeFileSync(CHECK_JSON, registerLayer(readFileSync(CHECK_JSON, "utf8"), `${dir}/${opts.name}`, opts.tier));
   const page = stampReferencePage(ROOT, opts);
   execFileSync(process.execPath, [join(ROOT, "scripts", "gen-docs-reference.mjs")], { stdio: "inherit" });

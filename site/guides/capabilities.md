@@ -26,7 +26,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
-| [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The Claude path needs `CLAUDE_CODE_OAUTH_TOKEN`; see Proven runtime paths before choosing it. For retries, fan-out or durability, use workflow. |
+| [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
@@ -59,10 +59,10 @@ around a path, and run its smoke check in the environment the job will really us
 
 | Path | Package | Credential it needs | Smoke check |
 | --- | --- | --- | --- |
-| Claude Agent SDK: `runAgent`, `createClaudeCodeAdapter` | `agent` | `CLAUDE_CODE_OAUTH_TOKEN` in the environment. `assertAuthEnvOk` refuses to start without it, and strips `ANTHROPIC_API_KEY` unless `allowApiKeyBilling` is set. | A one-turn `runAgent` call with `maxTurns: 1` and a small `maxBudgetUsd`; an `auth_misconfigured` failure means the token is missing. |
-| Headless `claude -p` (claude-print) | `agent (TP-361, in progress)` | The Claude Code CLI login in the keychain. No OAuth token and no API key. Until TP-361 ships, the proven implementation is the repo-review skill's `tools/lib/claude.mjs` (prompt on stdin, `--tools ""`, `--strict-mcp-config`, `--output-format json`). | `echo ok | claude -p --max-turns 1 --output-format json` from the shell the job will run in; resolve the `claude` binary on PATH, not a shell function. |
+| Claude Agent SDK: `runAgent`, `createClaudeCodeAdapter` | `agent` | `CLAUDE_CODE_OAUTH_TOKEN` in the environment. `assertAuthEnvOk` refuses to start without it, and strips `ANTHROPIC_API_KEY` unless `allowApiKeyBilling` is set. This is `runAgent`'s default harness. | A one-turn `runAgent` call with `maxTurns: 1` and a small `maxBudgetUsd`; an `auth_misconfigured` failure means the token is missing. |
+| Headless `claude -p`: `runAgent({ harness: "claude-print" })` | `agent` | The Claude Code CLI's own keychain login. No OAuth token; `ANTHROPIC_API_KEY` is stripped unless `allowApiKeyBilling` is set. One turn only: tools, MCP, hooks and resume throw a `TypeError` before spawn. Not yet a `HarnessAdapter`, so `dispatchHarnessRun` and the durable dispatcher cannot use it. | A one-turn `runAgent({ harness: "claude-print", model: "sonnet", prompt, outputSchema, maxTurns: 1, maxBudgetUsd: 0.5 })`; a logged-out CLI returns `auth_misconfigured`. |
 | Codex exec: `createCodexExecAdapter({ auth: "cached-cli" })` | `agent` | A cached `codex login` (ChatGPT). API-key variables are stripped from the child. The binary must match `SUPPORTED_CODEX_EXEC_VERSION`. | `TITAN_SMOKE_MODEL=<model> pnpm smoke:codex --run` |
-| Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
+| Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: "claude-print"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
 | Style tool runners: ESLint, ruff, and the Python audit tools | `style-checker` | No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw. | `ruff --version` and `npx eslint --version` in the target repo. |
 | Embedding backends: `local`, `ollama`, hash fallback | `embed` | No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither. | `createEmbedder({ backend: "ollama" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over. |
 
@@ -73,7 +73,6 @@ under its task instead of inside a product. Edit the list in `scripts/capabiliti
 
 | Task | Area | Gap |
 | --- | --- | --- |
-| TP-361 | `agent` | No claude-print adapter yet, so workflow `agentRunner` cannot run on a CLI login without an OAuth token |
 | TP-254 | `agent` | No auth-mode switch (oauth-token, cli-login, api-key) or `appendSystemPrompt` on agent runs |
 | TP-225 | `agent` | No config-dir auth source for headless Claude runs |
 | TP-226 | `agent` | No `claude -p` adapter with a pinned conversation id |
@@ -259,16 +258,16 @@ Reusable machinery over the primitives.
 
 Tier 1, `@titan-design/agent@0.3.0`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
-**Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The Claude path needs `CLAUDE_CODE_OAUTH_TOKEN`; see Proven runtime paths before choosing it. For retries, fan-out or durability, use workflow.
+**Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
 Key exports:
 
 - `run`: `runAgent`
+- `claude-print`: `buildClaudePrintArgs`, `claudePrintCapabilities`, `resolveClaudeBin`
 - `preflight`: `dispatchHarnessRun`, `preflightHarnessRun`
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
-- `failures`: `classifyResult`, `sumModelCost`, `usageFromResult`
-- `env`: `AuthMisconfiguredError`, `assertApiKeySourceAllowed`
-- +74 more in the [reference page](/reference/agent)
+- `failures`: `classifyResult`, `sumModelCost`
+- +81 more in the [reference page](/reference/agent)
 
 <a id="cap-agent-lifecycle"></a>
 
