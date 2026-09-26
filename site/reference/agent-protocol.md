@@ -40,3 +40,9 @@ The terminal outcomes are `succeeded`, `failed`, `cancelled`, `cancellation_unkn
 without a harness result, with nonempty `evidence` and an optional `exit` code and signal.
 `observe_launched` records a launch's `runnerRef` and `surface` without changing the phase;
 a later `observe_running` must match both.
+
+`LifecycleExecutionTarget` has four kinds: `fresh` (optionally with `pinnedNativeId`, which
+fixes the conversation at `prepare`), `resume`, `fork` (a new conversation that must differ
+from `parent`) and `handoff` (a `HandoffIdentity` whose successor agent and conversation must
+differ from the predecessor's, with a generation of at least 2 and the brief as a pointer and
+SHA-256 digest).
