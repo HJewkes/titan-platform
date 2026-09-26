@@ -1,5 +1,12 @@
 # @titan-design/registry
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+  - @titan-design/rpc-protocol@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes
