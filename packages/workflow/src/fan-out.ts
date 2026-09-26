@@ -1,4 +1,6 @@
-import { StepFailedError, type StepResult, type WorkflowContext } from "./types.js";
+import { StepFailedError, type StepResult, type StepUsage, type WorkflowContext } from "./types.js";
+
+const DEFAULT_MAX_FAILURES = 3;
 
 export interface MapOptions<T> {
   /** Stable identity per item. Resume matches finished items by key, so reordering the input is safe. */
@@ -10,6 +12,8 @@ export interface MapOptions<T> {
    * items are not counted, so a run can overshoot by up to `concurrency - 1` items.
    */
   budgetUsd?: number;
+  /** Retryable item failures tolerated before launches stop. Defaults to 3. A non-retryable failure always stops launches. */
+  maxFailures?: number;
 }
 
 /** Runs one item. Pass `itemStepId` to `ctx.dispatch` so each item memoizes on its own. */
@@ -25,14 +29,18 @@ export interface MapItemFailure<T> {
   key: string;
   item: T;
   error: string;
+  retryable: boolean;
+  /** Cost of the item's failed attempts, when the runner reported it; already counted in `spentUsd`. */
+  usage?: StepUsage;
 }
 
 export interface MapResult<T> {
   /** In input order. */
   results: MapItemResult<T>[];
   failed: MapItemFailure<T>[];
-  /** Items never launched because the budget ran out or an item failed. */
+  /** Items never launched because the budget ran out or failures stopped the run. */
   skipped: { key: string; item: T }[];
+  /** Cost reported by finished and failed items. */
   spentUsd: number;
   stoppedBy: "budget" | "failure" | null;
 }
@@ -54,7 +62,8 @@ interface FanOutState<T> {
 /**
  * Run `fn` over `items` with a concurrency cap and a budget cap. Each item runs
  * as step `${stepId}/${key}`, so a replay after restart reuses finished items
- * and runs only the rest. A `StepFailedError` stops new launches; any other
+ * and runs only the rest. A `StepFailedError` is recorded in `failed`; a
+ * non-retryable one, or one past `maxFailures`, stops new launches. Any other
  * error is rethrown once in-flight items settle.
  */
 export async function mapItems<T>(
@@ -91,13 +100,17 @@ async function runLane<T>(
       state.spentUsd += result.usage?.costUsd ?? 0;
       state.results.set(entry.key, result);
     } catch (error) {
-      if (!(error instanceof StepFailedError)) state.error ??= error;
-      else {
-        state.failed.push({ ...entry, error: error.reason });
-        state.stoppedBy = "failure";
-      }
+      if (error instanceof StepFailedError) recordFailure(entry, error, options, state);
+      else state.error ??= error;
     }
   }
+}
+
+function recordFailure<T>(entry: Keyed<T>, error: StepFailedError, options: MapOptions<T>, state: FanOutState<T>): void {
+  state.failed.push({ ...entry, error: error.reason, retryable: error.retryable, ...(error.usage ? { usage: error.usage } : {}) });
+  state.spentUsd += error.usage?.costUsd ?? 0;
+  const tooMany = state.failed.length > (options.maxFailures ?? DEFAULT_MAX_FAILURES);
+  if (!error.retryable || tooMany) state.stoppedBy ??= "failure";
 }
 
 function keyItems<T>(items: readonly T[], key: (item: T) => string): Keyed<T>[] {
