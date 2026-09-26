@@ -62,3 +62,12 @@ transition can change. The record stores a frozen copy.
 `RESERVED_CORRELATION_PREFIXES` lists the reserved prefixes. The reducer cannot know who
 wrote a key, so each reserved prefix's producer enforces that only it writes there.
 `correlationKey(prefix, name)` builds and checks a key.
+
+`reduceExecutionTransition(current, transition, options)` takes an optional
+`fencing` mode. The default, `{ kind: "execution" }`, fences each row by its own owner
+lease. `{ kind: "supervisor", lease }` fences by one supervisor-wide lease that the ledger
+reads inside its atomic operation. A fenced transition then needs its fence to equal the
+lease, the lease to outlive `occurredAt`, the row to belong to the same supervisor, and the
+row's generation to be no newer than the lease's. Each accepted write stamps the lease onto
+the row, so a restarted supervisor adopts its rows without per-row events. `prepare` must
+name the lease as owner, and `claim_owner`, `renew_owner` and `release_owner` are refused.
