@@ -36,6 +36,7 @@ export type {
 } from "./lifecycle.js";
 export { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES } from "./lifecycle.js";
 export type { ExecutionCorrelations } from "./lifecycle-correlations.js";
+export type { ExecutionFencing, ExecutionReducerOptions } from "./lifecycle-fencing.js";
 export {
   CORRELATION_KEY_PATTERN,
   MAX_CORRELATION_VALUE_LENGTH,
