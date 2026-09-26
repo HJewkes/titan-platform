@@ -77,7 +77,28 @@ describe("claude-print harness", () => {
     const args = recorded("args.txt").split("\n");
     expect(args).toEqual(expect.arrayContaining(["-p", "--strict-mcp-config", "--system-prompt", "Answer in JSON.", "--json-schema"]));
     expect(args[args.indexOf("--tools") + 1]).toBe("");
-    expect(args[args.indexOf("--max-turns") + 1]).toBe("1");
+    expect(args[args.indexOf("--max-turns") + 1]).toBe("2");
+  });
+
+  it.each([
+    ["one turn for a plain-text call", {}, "1"],
+    ["two turns for a schema call configured with one", { outputSchema: okSchema }, "2"],
+    ["the configured turns for a schema call configured with more", { outputSchema: okSchema, maxTurns: 4 }, "4"],
+    ["the configured turns for a plain-text call configured with more", { maxTurns: 3 }, "3"],
+  ])("passes --max-turns as %s", (_scenario, overrides: Partial<AgentRunConfig<unknown>>, expected) => {
+    const args = buildClaudePrintArgs(printConfig(overrides));
+
+    expect(args[args.indexOf("--max-turns") + 1]).toBe(expected);
+  });
+
+  it("reports error_max_turns as a retryable runtime_error with the call's usage", async () => {
+    const maxedOut = { subtype: "error_max_turns", is_error: true, errors: ["max_turns: Reached maximum number of turns (2)"], result: undefined, structured_output: undefined };
+    writeFileSync(join(dir, "result.json"), JSON.stringify(cannedResult(maxedOut)));
+
+    const result = await runAgent(printConfig({ outputSchema: okSchema }), { env: fakeEnv() });
+
+    expect(result).toMatchObject({ ok: false, failure: { kind: "runtime_error" }, usage: { totalCostUsd: 0.0025 } });
+    expect(!result.ok && result.failure.reason).toContain("--max-turns 2");
   });
 
   it("returns the result text when no schema is given", async () => {

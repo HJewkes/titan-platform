@@ -16,9 +16,9 @@ const LOGIN_FAILURE = /not logged in|please run \/login|invalid api key/i;
 
 export function claudePrintCapabilities(): HarnessCapabilityDescriptor<"claude-print"> {
   const capabilities = Object.fromEntries(EXECUTION_CAPABILITIES.map(capability => [capability, {
-    status: "unsupported", reason: "claude -p runs one turn with no tools, hooks, MCP or resume",
+    status: "unsupported", reason: "claude -p runs with no tools, hooks, MCP or resume",
   }])) as HarnessCapabilityDescriptor<"claude-print">["capabilities"];
-  capabilities.fresh_run = { status: "supported", evidence: "spawns claude -p --max-turns 1 per call" };
+  capabilities.fresh_run = { status: "supported", evidence: "spawns one claude -p per call" };
   capabilities.structured_output = { status: "supported", evidence: "--json-schema, then a local zod parse" };
   capabilities.external_cancellation = { status: "supported", evidence: "abort kills the child process group" };
   capabilities.token_reporting = { status: "supported", evidence: "usage and modelUsage from the JSON result" };
@@ -35,7 +35,7 @@ export function assertClaudePrintConfig(config: AgentRunConfig<unknown>): void {
   const field = CLAUDE_PRINT_UNSUPPORTED_OPTIONS.find(name => config[name] !== undefined)
     ?? (config.tools?.length ? "tools" : undefined)
     ?? (config.settingSources?.length ? "settingSources" : undefined);
-  if (field) throw new TypeError(`${field} is not supported by the claude-print harness (one turn, no tools, hooks or MCP)`);
+  if (field) throw new TypeError(`${field} is not supported by the claude-print harness (no tools, hooks or MCP)`);
 }
 
 /** The first executable file named `claude` on PATH, never a shell function or alias. `CLAUDE_BIN` wins. */
@@ -59,12 +59,17 @@ function isExecutableFile(path: string): boolean {
 export function buildClaudePrintArgs(config: AgentRunConfig<unknown>): string[] {
   const args = [
     "-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--mcp-config", EMPTY_MCP_CONFIG,
-    "--setting-sources", "", "--max-turns", "1", "--max-budget-usd", String(config.maxBudgetUsd),
+    "--setting-sources", "", "--max-turns", String(claudePrintMaxTurns(config)), "--max-budget-usd", String(config.maxBudgetUsd),
   ];
   if (config.model) args.push("--model", config.model);
   if (config.systemPrompt !== undefined) args.push("--system-prompt", config.systemPrompt);
   if (config.outputSchema) args.push("--json-schema", cliJsonSchema(config.outputSchema));
   return args;
+}
+
+/** With --json-schema the CLI can need a second turn to emit the structured answer, so a schema run gets at least 2. */
+export function claudePrintMaxTurns(config: AgentRunConfig<unknown>): number {
+  return config.outputSchema ? Math.max(config.maxTurns, 2) : config.maxTurns;
 }
 
 /** The CLI's validator rejects zod's draft 2020-12 `$schema` URI, so the header is dropped. */
@@ -145,7 +150,7 @@ function settle<T>(outcome: ChildOutcome, config: AgentRunConfig<T>, durationMs:
   if (!result) return { ok: false, failure: exitFailure(outcome, "printed no JSON result") };
   config.onMessage?.(result);
   const usage = usageFromResult(result, durationMs);
-  const failure = loginFailure(result) ?? classifyResult(result) ?? (outcome.code === 0 ? undefined : exitFailure(outcome, "reported success"));
+  const failure = loginFailure(result) ?? maxTurnsFailure(result, config) ?? classifyResult(result) ?? (outcome.code === 0 ? undefined : exitFailure(outcome, "reported success"));
   const sessionId = typeof result.session_id === "string" ? result.session_id : undefined;
   if (failure) return { ok: false, failure, ...(sessionId ? { sessionId } : {}), usage };
   if (!sessionId) return { ok: false, failure: { kind: "runtime_error", reason: "the JSON result carried no session_id", raw: result }, usage };
@@ -174,6 +179,13 @@ function loginFailure(result: SDKResultMessage): AgentFailure | undefined {
   const text = result.subtype === "success" ? result.result : (result.errors ?? []).join("\n");
   if (!result.is_error || !LOGIN_FAILURE.test(text)) return undefined;
   return { kind: "auth_misconfigured", reason: text, hint: "run `claude` once interactively and /login", raw: result };
+}
+
+/** The tool-less CLI hits its turn cap only on a structured-output retry, which a fresh call usually clears, so it is retryable. */
+function maxTurnsFailure(result: SDKResultMessage, config: AgentRunConfig<unknown>): AgentFailure | undefined {
+  if (result.subtype !== "error_max_turns") return undefined;
+  const text = (result.errors ?? []).join("\n") || "max turns reached";
+  return { kind: "runtime_error", reason: `claude -p reached --max-turns ${claudePrintMaxTurns(config)}: ${text}`, raw: result };
 }
 
 /** The CLI validated against the JSON Schema already; the zod parse makes the value the one TypeScript promises. */

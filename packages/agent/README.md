@@ -147,7 +147,8 @@ const result = await runAgent({
 | Aspect | claude-print behaviour |
 |---|---|
 | Binary | `CLAUDE_BIN`, else the first executable file named `claude` on the scrubbed env's `PATH`; never a shell function or alias |
-| Fixed flags | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-turns 1 --max-budget-usd <maxBudgetUsd>` |
+| Fixed flags | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-budget-usd <maxBudgetUsd>` |
+| `maxTurns` | `--max-turns <maxTurns>`, raised to at least 2 when `outputSchema` is set, because the CLI can need a second turn to emit the structured answer |
 | Prompt | written to stdin, so large prompts avoid the argv size cap |
 | `model` | `--model <model>` |
 | `systemPrompt` | `--system-prompt <text>`, which replaces the default Claude Code prompt |
@@ -158,6 +159,7 @@ const result = await runAgent({
 | Result | the JSON result has the SDK result-message shape, so `classifyResult` and `usageFromResult` apply unchanged; `onMessage` receives that one message |
 | `init` | only `model` is known, taken from `modelUsage`; the JSON output carries no init message, so there is no `apiKeySource` post-flight |
 | Logged-out CLI | an error result that says to log in becomes `auth_misconfigured` |
+| `error_max_turns` | `runtime_error`, which callers such as the workflow `agentRunner` treat as retryable; with no tools the cap is hit only on a structured-output retry, which a fresh call usually clears |
 | Rejected options | `tools` (other than `[]`), `allowedTools`, `disallowedTools`, `permissionMode`, `resumeSessionId`, `agents`, `mcpServers`, `hooks` and a non-empty `settingSources` throw a `TypeError` before anything spawns |
 
 `claudePrintCapabilities()` reports the same limits in the shared capability
@@ -167,6 +169,11 @@ There is no `HarnessAdapter<"claude-print">` yet, so `dispatchHarnessRun` and th
 durable dispatcher cannot use it; claude-print is selectable only through `runAgent`.
 Without `systemPrompt` the default Claude Code prompt costs about 7,600 input
 tokens per call. A short `systemPrompt` brings that down to about 1,000.
+
+`usage.input_tokens` in the CLI's JSON result counts only the non-cached input
+tokens. A live triage run saw `input_tokens: 2` beside 2,100 to 37,000
+`cache_creation_input_tokens` per call. `modelUsage` splits input the same way.
+Read the cache fields, or use `totalCostUsd`, when judging what a call cost.
 
 ## Explicit multi-harness contracts
 
