@@ -25,6 +25,10 @@ Tuwunel knows the `@core-.*` and `#coord.*` namespaces even though nothing uses 
 - `src/lib.mjs`, `src/bootstrap.mjs`: owner-side scripts over `@titan-design/matrix-bus`.
   `src/core.mjs` is the stage-2 core service and stays on `matrix-js-sdk`. `pnpm install` at the
   repo root installs their dependencies.
+- `core.Dockerfile` builds from the repo root: it installs with `--frozen-lockfile` against the
+  root `pnpm-lock.yaml`, builds `@titan-design/matrix-bus` from the same commit, and ships only
+  the `pnpm deploy --prod` output. `core.Dockerfile.dockerignore` limits the context to the files
+  that build needs, so the VPS needs the full checkout but not Node.
 
 ## Local run
 

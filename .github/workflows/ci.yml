@@ -64,3 +64,4 @@ jobs:
       - run: printf 'SERVER_NAME=tp301.local\nPUBLIC_BASE_URL=https://tp301.local\n' > .env && ./scripts/setup.sh
       - run: docker compose config --quiet
       - run: docker compose --profile remote --profile core config --quiet
+      - run: docker compose --profile core build core
