@@ -1,5 +1,11 @@
 # @titan-design/agent
 
+## 0.4.1
+
+### Patch Changes
+
+- bb543d3: claude-print passes `maxTurns` to `--max-turns` instead of a fixed 1, raised to at least 2 when `outputSchema` is set, and reports `error_max_turns` as a retryable `runtime_error` (TP-371).
+
 ## 0.4.0
 
 ### Minor Changes
