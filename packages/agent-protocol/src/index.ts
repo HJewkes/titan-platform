@@ -30,6 +30,7 @@ export type {
   ExecutionReconcileOutcome,
   ExecutionTerminal,
   ExecutionTransition,
+  HandoffIdentity,
   LifecycleExecutionTarget,
   TerminalExecutionPhase,
 } from "./lifecycle.js";
