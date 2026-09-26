@@ -8,6 +8,12 @@ export const EVENTS_PATH = "/events";
 export const HEALTH_PATH = "/health";
 export const VERSION_PATH = "/version";
 
+/**
+ * A state-changing request with no `Origin` must carry this header, any non-empty value
+ * (conventionally the client's name). A browser page cannot add it without a preflight.
+ */
+export const CLIENT_HEADER = "x-titan-client";
+
 /** The statuses `POST /rpc/:name` answers with besides 200. */
 export const RPC_STATUS = {
   /** Invalid JSON body, or a command failing with `EXIT.DATAERR`. */

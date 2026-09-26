@@ -10,11 +10,11 @@ imports, so a browser bundle can import it. `src/browser-safe.test.ts` enforces 
 runtime source imports only its own files and touches no Node global.
 
 ```ts
-import { RPC_PREFIX, SSE_EVENTS, type JsonEnvelope } from "@titan-design/rpc-protocol";
+import { CLIENT_HEADER, RPC_PREFIX, SSE_EVENTS, type JsonEnvelope } from "@titan-design/rpc-protocol";
 
 const res = await fetch(`${origin}${RPC_PREFIX}task.list`, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", [CLIENT_HEADER]: "my-cli" },
   body: JSON.stringify({ status: "open" }),
 });
 const envelope = (await res.json()) as JsonEnvelope<Task[]>;
@@ -27,6 +27,7 @@ const envelope = (await res.json()) as JsonEnvelope<Task[]>;
 | `JsonEnvelope<T>`, `successEnvelope`, `errorEnvelope` | `{ ok: true, data, warnings? }` or `{ ok: false, error, code }`; `warnings` is omitted when empty |
 | `EXIT` | BSD sysexits codes carried in `code` |
 | `RPC_PREFIX`, `EVENTS_PATH`, `HEALTH_PATH`, `VERSION_PATH` | `/rpc/`, `/events`, `/health`, `/version` |
+| `CLIENT_HEADER` | `x-titan-client`: a non-browser caller sends it, any non-empty value, on a POST with no `Origin` |
 | `RPC_STATUS`, `rpcFailureStatus(code)` | 404 unknown command; 400 invalid JSON or a `DATAERR` failure; 500 any other failure |
 | `SseMessage`, `SSE_EVENTS`, `SSE_READY_DATA`, `SSE_HEARTBEAT_MS` | `ready` with data `connected` on connect, `ping` every 25 s, anything else is a product broadcast |
 | `CommandMap` | `Record<string, { args: unknown; result: unknown }>` |

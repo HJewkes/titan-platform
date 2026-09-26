@@ -111,7 +111,7 @@ describe("mountStaticApp", () => {
     const headers = { host: "127.0.0.1:7400", origin: "http://evil.test", "content-type": "application/json" };
     const refused = await app.request("/rpc/greet", { method: "POST", headers, body: '{"name":"x"}' });
     expect(refused.status).toBe(403);
-    const plain = await app.request("/rpc/greet", { method: "POST", headers: { host: "127.0.0.1:7400" }, body: '{"name":"x"}' });
+    const plain = await app.request("/rpc/greet", { method: "POST", headers: { host: "127.0.0.1:7400", "x-titan-client": "test" }, body: '{"name":"x"}' });
     expect(plain.status).toBe(415);
   });
 });

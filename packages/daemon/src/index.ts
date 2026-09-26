@@ -6,7 +6,7 @@ export { buildHealthPayload } from "./health.js";
 export type { SseMessage, Subscriber } from "./events.js";
 export { EventHub } from "./events.js";
 export type { GuardRefusal, GuardedRequest, RequestGuard, RequestGuardOptions } from "./guards.js";
-export { DEFAULT_ALLOWED_HOSTS, createRequestGuard } from "./guards.js";
+export { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard } from "./guards.js";
 export type { TreeWatcher, WatchTreeOptions } from "./file-watch.js";
 export { watchTree } from "./file-watch.js";
 export type { DaemonMeta, DaemonPaths, PidFileContents, ProbeHealthOptions } from "./lifecycle.js";

@@ -32,6 +32,7 @@ Verified against 0.1.0.
 ```ts
 import {
   EVENTS_PATH,
+  CLIENT_HEADER,
   RPC_PREFIX,
   SSE_EVENTS,
   type JsonEnvelope,
@@ -39,7 +40,7 @@ import {
 
 const res = await fetch(`${origin}${RPC_PREFIX}task.list`, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", [CLIENT_HEADER]: "my-cli" },
   body: JSON.stringify({ status: "open" }),
 });
 const envelope = (await res.json()) as JsonEnvelope<Task[]>;
