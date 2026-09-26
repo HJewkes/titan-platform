@@ -118,7 +118,7 @@ Key exports:
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
 - `index`: `conversationRef`, `conversationItemRef`
-- +19 more in the [reference page](/reference/agent-protocol)
+- +21 more in the [reference page](/reference/agent-protocol)
 
 <a id="cap-chat-protocol"></a>
 

@@ -1,13 +1,21 @@
 import type { ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
 import {
   TERMINAL_EXECUTION_PHASES,
-  type ExecutionOwnerFence,
   type ExecutionPhase,
   type ExecutionRecord,
   type ExecutionTransition,
   type TerminalExecutionPhase,
 } from "./lifecycle.js";
 import { validateCorrelations } from "./lifecycle-correlations.js";
+import {
+  refuseOwnerTransition,
+  requireFence,
+  requirePreparedOwner,
+  resolveFencing,
+  stampSupervisor,
+  type ExecutionFencing,
+  type ExecutionReducerOptions,
+} from "./lifecycle-fencing.js";
 import { cloneTarget, preparedExecution, requireTargetConversation } from "./lifecycle-targets.js";
 import {
   fail,
@@ -20,7 +28,6 @@ import {
   sameSurface,
   validTime,
   validateConversation,
-  validateFence,
   validateLease,
   validateTerminal,
 } from "./lifecycle-validation.js";
@@ -31,19 +38,30 @@ export function isTerminalExecutionPhase(phase: ExecutionPhase): phase is Termin
   return TERMINAL_PHASES.has(phase);
 }
 
+/** The default fencing mode is the per-execution owner lease. */
 export function reduceExecutionTransition<TResult>(
   current: ExecutionRecord<TResult> | undefined,
   transition: ExecutionTransition<TResult>,
+  options: ExecutionReducerOptions = {},
 ): ExecutionRecord<TResult> {
+  const fencing = resolveFencing(options);
   validateEnvelope(transition);
-  if (transition.kind === "prepare") return prepare(current, transition);
+  if (transition.kind === "prepare") return prepare(current, transition, fencing);
   if (!current) fail("not_found", `execution ${transition.executionId} does not exist`);
   validateCurrent(current, transition);
   if (isTerminalExecutionPhase(current.phase)) fail("invalid_transition", `execution is terminal in phase ${current.phase}`);
+  refuseOwnerTransition(transition.kind, fencing);
+  if (transition.kind === "claim_owner") return claimOwner(current, transition);
+  requireFence(current, transition.fence, transition.occurredAt, fencing);
+  return stampSupervisor(applyFenced(current, transition), fencing);
+}
 
+function applyFenced<TResult>(
+  current: ExecutionRecord<TResult>,
+  transition: Exclude<ExecutionTransition<TResult>, { kind: "prepare" | "claim_owner" }>,
+): ExecutionRecord<TResult> {
   switch (transition.kind) {
     case "begin_dispatch":
-      requireFence(current, transition.fence, transition.occurredAt);
       requirePhase(current, ["prepared"], transition.kind);
       return next(current, transition, { phase: "dispatching", dispatchedAt: transition.occurredAt });
     case "observe_launched":
@@ -58,12 +76,9 @@ export function reduceExecutionTransition<TResult>(
       return requireRecovery(current, transition);
     case "finish":
       return finish(current, transition);
-    case "claim_owner":
-      return claimOwner(current, transition);
     case "renew_owner":
       return renewOwner(current, transition);
     case "release_owner":
-      requireFence(current, transition.fence, transition.occurredAt);
       return next(current, transition, { owner: undefined });
     default:
       return fail("invalid_transition", "unknown execution transition kind");
@@ -73,6 +88,7 @@ export function reduceExecutionTransition<TResult>(
 function prepare<TResult>(
   current: ExecutionRecord<TResult> | undefined,
   transition: Extract<ExecutionTransition<TResult>, { kind: "prepare" }>,
+  fencing: ExecutionFencing,
 ): ExecutionRecord<TResult> {
   if (current) fail("invalid_transition", `execution ${transition.executionId} already exists`);
   const execution = preparedExecution(transition);
@@ -81,8 +97,7 @@ function prepare<TResult>(
   }
   optionalNonempty("agent.agentId", transition.agent?.agentId);
   nonempty("requestKey", transition.requestKey);
-  validateLease(transition.owner, transition.occurredAt);
-  if (transition.owner.generation !== 1) fail("invalid_transition", "initial owner generation must be 1");
+  requirePreparedOwner(transition.owner, transition.occurredAt, fencing);
   return {
     execution,
     ...(transition.agent ? { agent: { ...transition.agent } } : {}),
@@ -91,7 +106,7 @@ function prepare<TResult>(
     target: cloneTarget(transition.target),
     phase: "prepared",
     revision: 1,
-    ownerGeneration: 1,
+    ownerGeneration: transition.owner.generation,
     owner: { ...transition.owner },
     preparedAt: transition.occurredAt,
     lastObservedAt: transition.occurredAt,
@@ -103,7 +118,6 @@ function observeRunning<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "observe_running" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "recovery_required"], transition.kind);
   nonempty("runnerRef", transition.runnerRef);
   nonempty("evidence", transition.evidence);
@@ -127,7 +141,6 @@ function observeLaunched<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "observe_launched" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching"], transition.kind);
   nonempty("runnerRef", transition.runnerRef);
   nonempty("evidence", transition.evidence);
@@ -141,7 +154,6 @@ function identifyConversation<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "identify_conversation" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "running", "cancel_requested", "recovery_required"], transition.kind);
   const execution = bindConversation(current, transition.conversation);
   const adapterExecution = current.adapterExecution
@@ -154,7 +166,6 @@ function requestCancellation<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "request_cancellation" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["prepared", "dispatching", "running", "recovery_required"], transition.kind);
   nonempty("reason", transition.reason);
   return next(current, transition, {
@@ -167,7 +178,6 @@ function requireRecovery<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "require_recovery" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "running", "cancel_requested"], transition.kind);
   nonempty("evidence", transition.evidence);
   return next(current, transition, {
@@ -180,7 +190,6 @@ function finish<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "finish" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   validateTerminal(transition.terminal);
   if (current.phase === "prepared" && !["failed", "cancelled"].includes(transition.terminal.outcome)) {
     fail("invalid_transition", `prepared execution cannot finish as ${transition.terminal.outcome}`);
@@ -219,7 +228,6 @@ function renewOwner<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "renew_owner" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   validTime("leaseUntil", transition.leaseUntil);
   if (!current.owner || instant(transition.leaseUntil) <= instant(current.owner.leaseUntil)) {
     fail("invalid_transition", "renewed lease must extend the current lease");
@@ -253,15 +261,6 @@ function validateCurrent<TResult>(current: ExecutionRecord<TResult>, transition:
   if (instant(transition.occurredAt) < instant(current.lastObservedAt)) {
     fail("invalid_transition", "occurredAt precedes the latest observation");
   }
-}
-
-function requireFence<TResult>(current: ExecutionRecord<TResult>, fence: ExecutionOwnerFence, occurredAt: string): void {
-  validateFence(fence);
-  const owner = current.owner;
-  if (!owner || owner.supervisorId !== fence.supervisorId || owner.generation !== fence.generation) {
-    fail("ownership_lost", "execution owner fence does not match");
-  }
-  if (instant(owner.leaseUntil) <= instant(occurredAt)) fail("ownership_lost", "execution owner lease has expired");
 }
 
 function requirePhase<TResult>(current: ExecutionRecord<TResult>, allowed: ExecutionPhase[], event: string): void {
