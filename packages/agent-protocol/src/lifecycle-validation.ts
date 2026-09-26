@@ -4,7 +4,6 @@ import {
   type ExecutionOwnerFence,
   type ExecutionOwnerLease,
   type ExecutionTerminal,
-  type LifecycleExecutionTarget,
 } from "./lifecycle.js";
 
 export type ExecutionTransitionErrorCode =
@@ -24,11 +23,15 @@ export class ExecutionTransitionError extends Error {
 }
 
 export function validateConversation(conversation: ConversationIdentity, harness: string): void {
-  if (!record(conversation)) fail("invalid_transition", "conversation must be an object");
-  nonempty("conversation.harness", conversation.harness);
-  nonempty("conversation.namespace", conversation.namespace);
-  nonempty("conversation.nativeId", conversation.nativeId);
+  validateConversationShape("conversation", conversation);
   if (conversation.harness !== harness) fail("invalid_transition", "conversation harness does not match execution harness");
+}
+
+export function validateConversationShape(name: string, conversation: ConversationIdentity): void {
+  if (!record(conversation)) fail("invalid_transition", `${name} must be an object`);
+  nonempty(`${name}.harness`, conversation.harness);
+  nonempty(`${name}.namespace`, conversation.namespace);
+  nonempty(`${name}.nativeId`, conversation.nativeId);
 }
 
 export function validateTerminal(terminal: ExecutionTerminal<unknown>): void {
@@ -82,10 +85,6 @@ export function record(value: unknown): value is Record<string, unknown> {
 
 export function cloneExecution(execution: ExecutionIdentity): ExecutionIdentity {
   return { ...execution, ...(execution.conversation ? { conversation: { ...execution.conversation } } : {}) };
-}
-
-export function cloneTarget(target: LifecycleExecutionTarget): LifecycleExecutionTarget {
-  return target.kind === "fresh" ? { ...target } : { kind: "resume", conversation: { ...target.conversation } };
 }
 
 export function nonempty(name: string, value: unknown): asserts value is string {

@@ -5,12 +5,10 @@ import {
   type ExecutionPhase,
   type ExecutionRecord,
   type ExecutionTransition,
-  type LifecycleExecutionTarget,
   type TerminalExecutionPhase,
 } from "./lifecycle.js";
+import { cloneTarget, preparedExecution, requireTargetConversation } from "./lifecycle-targets.js";
 import {
-  cloneExecution,
-  cloneTarget,
   fail,
   instant,
   nonempty,
@@ -76,7 +74,7 @@ function prepare<TResult>(
   transition: Extract<ExecutionTransition<TResult>, { kind: "prepare" }>,
 ): ExecutionRecord<TResult> {
   if (current) fail("invalid_transition", `execution ${transition.executionId} already exists`);
-  validateIdentity(transition.execution, transition.harness, transition.target);
+  const execution = preparedExecution(transition);
   if (transition.execution.executionId !== transition.executionId) {
     fail("invalid_transition", "prepared executionId does not match transition executionId");
   }
@@ -85,7 +83,7 @@ function prepare<TResult>(
   validateLease(transition.owner, transition.occurredAt);
   if (transition.owner.generation !== 1) fail("invalid_transition", "initial owner generation must be 1");
   return {
-    execution: cloneExecution(transition.execution),
+    execution,
     ...(transition.agent ? { agent: { ...transition.agent } } : {}),
     harness: transition.harness,
     requestKey: transition.requestKey,
@@ -268,29 +266,10 @@ function requirePhase<TResult>(current: ExecutionRecord<TResult>, allowed: Execu
   if (!allowed.includes(current.phase)) fail("invalid_transition", `${event} is not allowed from ${current.phase}`);
 }
 
-function validateIdentity(execution: ExecutionIdentity, harness: string, target: LifecycleExecutionTarget): void {
-  if (!record(execution)) fail("invalid_transition", "execution must be an object");
-  nonempty("execution.executionId", execution.executionId);
-  nonempty("harness", harness);
-  if (!record(target)) fail("invalid_transition", "target must be an object");
-  if (target.kind === "fresh") {
-    nonempty("target.namespace", target.namespace);
-    if (execution.conversation) fail("invalid_transition", "fresh execution cannot begin with a conversation");
-    return;
-  }
-  if (target.kind !== "resume") fail("invalid_transition", "target.kind must be fresh or resume");
-  validateConversation(target.conversation, harness);
-  if (!execution.conversation || !sameConversation(execution.conversation, target.conversation)) {
-    fail("invalid_transition", "resume execution must carry its target conversation");
-  }
-}
-
 function bindConversation<TResult>(current: ExecutionRecord<TResult>, conversation?: ConversationIdentity): ExecutionIdentity {
   if (!conversation) return current.execution;
   validateConversation(conversation, current.harness);
-  if (current.target.kind === "fresh" && conversation.namespace !== current.target.namespace) {
-    fail("invalid_transition", "conversation namespace does not match fresh target namespace");
-  }
+  requireTargetConversation(current.target, conversation, "conversation");
   const observed = current.execution.conversation;
   if (observed && !sameConversation(observed, conversation)) fail("invalid_transition", "conversation identity cannot change");
   return { ...current.execution, conversation: { ...conversation } };
@@ -308,9 +287,7 @@ function bindAdapterExecution<TResult>(
   const identified = conversation ?? observed.conversation ?? existing?.conversation;
   if (identified) {
     validateConversation(identified, current.harness);
-    if (current.target.kind === "fresh" && identified.namespace !== current.target.namespace) {
-      fail("invalid_transition", "adapter conversation namespace does not match fresh target namespace");
-    }
+    requireTargetConversation(current.target, identified, "adapter conversation");
     for (const candidate of [conversation, observed.conversation, existing?.conversation]) {
       if (candidate && !sameConversation(candidate, identified)) fail("invalid_transition", "adapter conversation identity cannot change");
     }
