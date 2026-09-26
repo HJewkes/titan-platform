@@ -1,11 +1,12 @@
 import type { ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
-import type {
-  ExecutionOwnerFence,
-  ExecutionPhase,
-  ExecutionRecord,
-  ExecutionTransition,
-  LifecycleExecutionTarget,
-  TerminalExecutionPhase,
+import {
+  TERMINAL_EXECUTION_PHASES,
+  type ExecutionOwnerFence,
+  type ExecutionPhase,
+  type ExecutionRecord,
+  type ExecutionTransition,
+  type LifecycleExecutionTarget,
+  type TerminalExecutionPhase,
 } from "./lifecycle.js";
 import {
   cloneExecution,
@@ -25,7 +26,7 @@ import {
   validateTerminal,
 } from "./lifecycle-validation.js";
 
-const TERMINAL_PHASES = new Set<ExecutionPhase>(["succeeded", "failed", "cancelled", "cancellation_unknown"]);
+const TERMINAL_PHASES = new Set<ExecutionPhase>(TERMINAL_EXECUTION_PHASES);
 
 export function isTerminalExecutionPhase(phase: ExecutionPhase): phase is TerminalExecutionPhase {
   return TERMINAL_PHASES.has(phase);
@@ -46,6 +47,8 @@ export function reduceExecutionTransition<TResult>(
       requireFence(current, transition.fence, transition.occurredAt);
       requirePhase(current, ["prepared"], transition.kind);
       return next(current, transition, { phase: "dispatching", dispatchedAt: transition.occurredAt });
+    case "observe_launched":
+      return observeLaunched(current, transition);
     case "observe_running":
       return observeRunning(current, transition);
     case "identify_conversation":
@@ -117,6 +120,21 @@ function observeRunning<TResult>(
     ...(surface ? { surface } : {}),
     recovery: undefined,
   });
+}
+
+/** Records a surface before the harness confirms running; the phase deliberately stays put. */
+function observeLaunched<TResult>(
+  current: ExecutionRecord<TResult>,
+  transition: Extract<ExecutionTransition<TResult>, { kind: "observe_launched" }>,
+): ExecutionRecord<TResult> {
+  requireFence(current, transition.fence, transition.occurredAt);
+  requirePhase(current, ["dispatching"], transition.kind);
+  nonempty("runnerRef", transition.runnerRef);
+  nonempty("evidence", transition.evidence);
+  if (current.runnerRef && current.runnerRef !== transition.runnerRef) fail("invalid_transition", "runnerRef cannot change");
+  if (!transition.surface) fail("invalid_transition", "observe_launched must carry a surface");
+  const surface = bindSurface(current.surface, transition.surface);
+  return next(current, transition, { runnerRef: transition.runnerRef, ...(surface ? { surface } : {}) });
 }
 
 function identifyConversation<TResult>(

@@ -320,6 +320,22 @@ describe("durable reconciliation", () => {
     expect(ledger.get("prepared")?.phase).toBe("failed");
   });
 
+  it("reports a supervisor-ended execution as terminal without relaunch", async () => {
+    const run = vi.fn(async () => success("unused"));
+    const ledger = new MemoryLedger();
+    const at = "2026-09-11T12:00:00.000Z";
+    const fence = { supervisorId: "old", generation: 1 };
+    ledger.apply({ kind: "prepare", executionId: "ended", eventId: "prepare", expectedRevision: 0, occurredAt: at, execution: { executionId: "ended" },
+      harness: "codex", requestKey: "ended-request", target: { kind: "fresh", namespace: "local" }, owner: { ...fence, leaseUntil: "2026-09-11T12:00:01.000Z" } });
+    ledger.apply({ kind: "begin_dispatch", executionId: "ended", eventId: "begin", expectedRevision: 1, occurredAt: at, fence });
+    ledger.apply({ kind: "finish", executionId: "ended", eventId: "end", expectedRevision: 2, occurredAt: at, fence,
+      terminal: { outcome: "ended", evidence: "pane closed" } });
+    const { dispatcher } = setup(controlledAdapter(run), ledger, Date.parse("2026-09-11T12:01:00.000Z"));
+    await expect(dispatcher.reconcile("ended")).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "ended" } });
+    expect(ledger.get("ended")?.phase).toBe("ended");
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("marks post-dispatch restart uncertainty for recovery without relaunch", async () => {
     const run = vi.fn(async () => success("unused"));
     const ledger = new MemoryLedger();
