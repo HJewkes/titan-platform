@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcessByStdio } from "node:child_process";
+import { execFile, spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -99,7 +99,8 @@ function completionOf(child: SpawnedCodexProcess): Promise<CodexProcessExit> {
   });
 }
 
-function terminateProcessGroup(child: SpawnedCodexProcess, signal: NodeJS.Signals): void {
+/** Signals the child's whole group so a grandchild cannot keep its pipes open. */
+export function terminateProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid && process.platform !== "win32") {
     try {
       process.kill(-child.pid, signal);

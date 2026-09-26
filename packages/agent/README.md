@@ -59,7 +59,9 @@ result to `options.env`. It never mutates its argument and never reads
 
 Two guards sit either side of the run. `assertAuthEnvOk` is the pre-flight: it
 refuses to start when the OAuth token is missing, or when a metered credential
-survived the scrub. The post-flight reads `apiKeySource` off the first
+survived the scrub. The claude-print harness passes `requireOAuthToken: false`,
+because the CLI's keychain login is its credential; the metered-credential check
+still applies. The post-flight reads `apiKeySource` off the first
 `system/init` message and ends the run as `auth_misconfigured` if it names the
 env API-key path. That check is a **blacklist**, not a whitelist: the SDK's
 `ApiKeySource` union grows over time, and an unknown new member is far more
@@ -121,6 +123,50 @@ says. Prefer `allowedTools` wildcards over a permissive mode.
 
 This package runs one session. It does not pool, schedule, or retry; that
 belongs to the workflow tier.
+
+## The claude-print harness
+
+`harness: "claude-print"` makes `runAgent` spawn the `claude` CLI in print mode
+instead of calling the SDK. Use it for one-turn structured answers, such as a
+triage or judgement step, on a machine where the CLI is already logged in. The
+CLI's own keychain login is the credential, so `CLAUDE_CODE_OAUTH_TOKEN` is not
+required. `harness` defaults to `"claude-code"`, and the SDK path is unchanged.
+
+```ts
+const result = await runAgent({
+  harness: "claude-print",
+  model: "sonnet",
+  prompt: "Is this diff a refactor? Answer as JSON.",
+  outputSchema: z.object({ refactor: z.boolean() }),
+  cwd: process.cwd(),
+  maxTurns: 1,
+  maxBudgetUsd: 0.5,
+});
+```
+
+| Aspect | claude-print behaviour |
+|---|---|
+| Binary | `CLAUDE_BIN`, else the first executable file named `claude` on the scrubbed env's `PATH`; never a shell function or alias |
+| Fixed flags | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-turns 1 --max-budget-usd <maxBudgetUsd>` |
+| Prompt | written to stdin, so large prompts avoid the argv size cap |
+| `model` | `--model <model>` |
+| `systemPrompt` | `--system-prompt <text>`, which replaces the default Claude Code prompt |
+| `outputSchema` | `--json-schema <schema>` without the `$schema` header, which the CLI rejects; `structured_output` is then re-parsed with the zod schema and a mismatch is `schema_invalid` |
+| `inactivityTimeoutMs` | a wall deadline, because JSON output arrives only at the end; SIGTERM to the process group, then SIGKILL after `CLAUDE_PRINT_KILL_GRACE_MS` |
+| `signal` | kills the process group the same way and returns `aborted` |
+| `allowApiKeyBilling` | same scrub as the SDK path: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are stripped unless it is set |
+| Result | the JSON result has the SDK result-message shape, so `classifyResult` and `usageFromResult` apply unchanged; `onMessage` receives that one message |
+| `init` | only `model` is known, taken from `modelUsage`; the JSON output carries no init message, so there is no `apiKeySource` post-flight |
+| Logged-out CLI | an error result that says to log in becomes `auth_misconfigured` |
+| Rejected options | `tools` (other than `[]`), `allowedTools`, `disallowedTools`, `permissionMode`, `resumeSessionId`, `agents`, `mcpServers`, `hooks` and a non-empty `settingSources` throw a `TypeError` before anything spawns |
+
+`claudePrintCapabilities()` reports the same limits in the shared capability
+vocabulary: fresh runs, structured output, external cancellation and token
+reporting are supported; resume, tools and every interactive capability are not.
+There is no `HarnessAdapter<"claude-print">` yet, so `dispatchHarnessRun` and the
+durable dispatcher cannot use it; claude-print is selectable only through `runAgent`.
+Without `systemPrompt` the default Claude Code prompt costs about 7,600 input
+tokens per call. A short `systemPrompt` brings that down to about 1,000.
 
 ## Explicit multi-harness contracts
 

@@ -59,6 +59,31 @@ if (result.ok) {
 tool set (`[]` runs with no tools, for a pure judgement call), and `systemPrompt`, which
 replaces the Claude Code default prompt. Leaving either unset keeps the SDK default.
 
+## The claude-print harness
+
+`harness: "claude-print"` makes `runAgent` spawn the `claude` CLI in print mode instead of
+calling the SDK. It suits one-turn structured answers on a machine where the CLI is already
+logged in: the keychain login is the credential, so `CLAUDE_CODE_OAUTH_TOKEN` is not required.
+`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are still stripped unless `allowApiKeyBilling`
+is set.
+
+| Option | Maps to |
+|---|---|
+| binary | `CLAUDE_BIN`, else the first executable file named `claude` on `PATH` |
+| every call | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-turns 1 --max-budget-usd <maxBudgetUsd>` |
+| `prompt` | stdin |
+| `model` | `--model` |
+| `systemPrompt` | `--system-prompt` |
+| `outputSchema` | `--json-schema`, then a local zod parse; a mismatch is `schema_invalid` |
+| `inactivityTimeoutMs` | a wall deadline that kills the child process group |
+| `signal` | kills the child process group and returns `aborted` |
+
+Tools other than `[]`, MCP servers, hooks, subagents, permission modes, resume and setting
+sources throw a `TypeError` before anything spawns. `claudePrintCapabilities()` states the
+same limits in the shared capability vocabulary. A measured call with no `systemPrompt`
+used about 7,600 input tokens for the default Claude Code prompt, cost $0.031 on sonnet
+and took 4.4 s wall time.
+
 ## Budgets are required, not defaulted
 
 The SDK leaves `maxTurns` and `maxBudgetUsd` unlimited. Rather than pick a default nobody

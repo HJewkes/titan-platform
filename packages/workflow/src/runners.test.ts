@@ -89,4 +89,20 @@ describe("agentRunner", () => {
     expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
     expect(outcome.ok && outcome.usage).toEqual({ costUsd: 0.12, inputTokens: 900, outputTokens: 80 });
   });
+
+  it("routes steps to the claude-print harness when the defaults select it", async () => {
+    const query = vi.fn();
+    const runner = agentRunner({
+      cwd: "/tmp",
+      maxTurns: 1,
+      maxBudgetUsd: 1,
+      defaults: { harness: "claude-print" },
+      deps: { query, env: { PATH: "/nonexistent" } },
+    });
+
+    const outcome = await runner.run({ runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal });
+
+    expect(outcome).toMatchObject({ ok: false, error: expect.stringContaining("claude binary not found on PATH") });
+    expect(query).not.toHaveBeenCalled();
+  });
 });
