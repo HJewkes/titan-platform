@@ -1,5 +1,11 @@
 # Get started
 
+::: tip Before you build
+Read the [capability catalog](/guides/capabilities) first. It lists every unit with a "use
+this when" line and its key exports, the runtime paths with the credential each needs, and
+the known gaps. Reuse what is there; name the gap you fill when nothing fits.
+:::
+
 ## Install one package
 
 Every package is published independently. Take the one you need; there is no meta-package

@@ -9,13 +9,18 @@ running on the published packages until its capability is rebuilt here.
 **Documentation: <https://hjewkes.github.io/titan-platform/>** — what each package does,
 when to reach for it, worked examples, the architecture, and the case studies.
 
+**Before you build anything, read [CAPABILITIES.md](CAPABILITIES.md).** It lists every
+package, product and app with its purpose, a "use this when" line, and its key exports. It
+also lists the proven runtime paths with the credential each one needs, and the known gaps.
+`pnpm capabilities` regenerates it, and CI fails when it is stale.
+
 ## Layout
 
 ```
 packages/     the shared tiers (published to npm as @titan-design/<name>)
 products/     apps composed from the tiers (private)
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
-scripts/      new-package.mjs, dag-check.sh, gen-docs-reference.mjs
+scripts/      new-package.mjs, dag-check.sh, gen-docs-reference.mjs, gen-capabilities.mjs
 site/         the documentation site (VitePress)
 .codewatch/   check.json: the DAG and fitness rules codewatch enforces
 ```
@@ -70,6 +75,12 @@ package by tier, and CI fails any pull request that adds an import against the o
 ```
 pnpm install && pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check
 ```
+
+Before adding code:
+
+1. Read [CAPABILITIES.md](CAPABILITIES.md) and the reference page of every unit that looks close.
+2. Name the existing unit you reuse, or the gap you fill and its task, in the plan and the PR.
+3. Verify runtime and auth assumptions with the path's smoke check before you build on them.
 
 All six must be green before you finish a change. `dag:check` runs the self-hosted check
 against this repo's own `@titan-design/code-graph`, built by `pnpm build`.

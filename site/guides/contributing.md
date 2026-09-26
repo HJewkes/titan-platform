@@ -26,6 +26,13 @@ Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test`
 `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
+## Before adding code
+
+1. Read the [capability catalog](/guides/capabilities) and the reference page of every unit
+   that looks close.
+2. Name the existing unit you reuse, or the gap you fill and its task, in the plan and the PR.
+3. Verify runtime and auth assumptions with the path's smoke check before you build on them.
+
 ## Adding a package
 
 Never hand-copy a package. Stamp it:
@@ -43,6 +50,10 @@ never `layers` directly.
 The stamped reference page is a placeholder with every section heading and no content. Fill
 it in before the package ships; a second stamp of the same name leaves an existing page
 untouched, so hand-written prose is never flattened.
+
+The stamp also copies `templates/package/CAPABILITY.md`: the package's "use this when" line
+for the [capability catalog](/guides/capabilities). Replace its placeholder in the same pull
+request; `pnpm new:package` regenerates the catalog so the new row shows up at once.
 
 The docs build is a pull-request gate, not just a deploy step: `validate` runs
 `pnpm docs:build` on every pull request, so a public package with no reference page turns
@@ -153,6 +164,19 @@ A new package therefore never needs a hand edit to the nav. The script *fails* i
 package has no `site/reference/<name>.md`, which is the mechanism that stops an undocumented
 package from shipping. `pnpm new:package` stamps that page and reruns the script, so the
 default path is green without a hand edit.
+
+### The capability catalog {#the-capability-catalog}
+
+`pnpm capabilities` writes `CAPABILITIES.md` at the repository root and
+`site/guides/capabilities.md` from the same data. It reuses the reference index's package
+discovery, then adds each unit's version, its key exports parsed from `src/index.ts` (capped
+at twelve, runtime values before types), and the text of its `CAPABILITY.md`. The runtime
+paths and known gaps come from `scripts/capabilities-data.json`, which is edited by hand.
+
+Both outputs are committed. `validate` runs `pnpm capabilities:check`, which regenerates in
+memory and fails when either file differs, so edit the sources and rerun the script. The
+"Version Packages" pull request stays green because `pnpm version-packages` regenerates the
+catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.

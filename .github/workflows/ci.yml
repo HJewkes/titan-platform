@@ -27,6 +27,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
+      - run: pnpm capabilities:check
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build

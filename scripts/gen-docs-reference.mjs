@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-const TIER_LABELS = {
+export const TIER_LABELS = {
   0: { title: "Tier 0 — primitives", blurb: "Domain-free building blocks. No titan dependencies." },
   1: { title: "Tier 1 — engines", blurb: "Reusable machinery over the primitives." },
   2: { title: "Tier 2 — domain", blurb: "Modules that know about a subject: transcripts, code, rules." },
@@ -25,7 +25,7 @@ const TIER_LABELS = {
  * Published `@titan-design/*` packages that do not live in this workspace. They still
  * belong in the reference, so they are declared here rather than discovered.
  */
-const EXTERNAL = [
+export const EXTERNAL = [
   {
     dir: "react-ui",
     tier: "ui",
@@ -52,10 +52,11 @@ function tiersByDir() {
   return out;
 }
 
-function collect() {
+/** Every workspace package, product and app, plus the published packages that live elsewhere. */
+export function collect() {
   const tiers = tiersByDir();
   const entries = [];
-  for (const group of ["packages", "products"]) {
+  for (const group of ["packages", "products", "apps"]) {
     for (const dir of readdirSync(join(root, group)).sort()) {
       const manifest = join(root, group, dir, "package.json");
       let pkg;
@@ -71,6 +72,7 @@ function collect() {
         group,
         tier,
         name: pkg.name,
+        version: pkg.version,
         description: pkg.description ?? "",
         private: pkg.private === true,
         deps: Object.keys(pkg.dependencies ?? {}).filter((d) => d.startsWith("@titan-design/")),
@@ -124,8 +126,12 @@ function indexPage(entries) {
   return lines.join("\n");
 }
 
-const entries = collect();
-assertPagesExist(entries);
-writeFileSync(join(root, "site", ".vitepress", "reference-sidebar.json"), JSON.stringify(sidebar(entries), null, 2) + "\n");
-writeFileSync(join(root, "site", "reference", "index.md"), indexPage(entries));
-console.log(`reference: ${entries.length} workspace packages`);
+function main() {
+  const entries = collect();
+  assertPagesExist(entries);
+  writeFileSync(join(root, "site", ".vitepress", "reference-sidebar.json"), JSON.stringify(sidebar(entries), null, 2) + "\n");
+  writeFileSync(join(root, "site", "reference", "index.md"), indexPage(entries));
+  console.log(`reference: ${entries.length} workspace packages`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();

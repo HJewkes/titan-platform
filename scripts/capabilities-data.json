@@ -1,0 +1,70 @@
+{
+  "external": {
+    "react-ui": "You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it."
+  },
+  "runtimePaths": [
+    {
+      "path": "Claude Agent SDK: `runAgent`, `createClaudeCodeAdapter`",
+      "package": "agent",
+      "credential": "`CLAUDE_CODE_OAUTH_TOKEN` in the environment. `assertAuthEnvOk` refuses to start without it, and strips `ANTHROPIC_API_KEY` unless `allowApiKeyBilling` is set. This is `runAgent`'s default harness.",
+      "smoke": "A one-turn `runAgent` call with `maxTurns: 1` and a small `maxBudgetUsd`; an `auth_misconfigured` failure means the token is missing."
+    },
+    {
+      "path": "Headless `claude -p`: `runAgent({ harness: \"claude-print\" })`",
+      "package": "agent",
+      "credential": "The Claude Code CLI's own keychain login. No OAuth token; `ANTHROPIC_API_KEY` is stripped unless `allowApiKeyBilling` is set. One turn only: tools, MCP, hooks and resume throw a `TypeError` before spawn. Not yet a `HarnessAdapter`, so `dispatchHarnessRun` and the durable dispatcher cannot use it.",
+      "smoke": "A one-turn `runAgent({ harness: \"claude-print\", model: \"sonnet\", prompt, outputSchema, maxTurns: 1, maxBudgetUsd: 0.5 })`; a logged-out CLI returns `auth_misconfigured`."
+    },
+    {
+      "path": "Codex exec: `createCodexExecAdapter({ auth: \"cached-cli\" })`",
+      "package": "agent",
+      "credential": "A cached `codex login` (ChatGPT). API-key variables are stripped from the child. The binary must match `SUPPORTED_CODEX_EXEC_VERSION`.",
+      "smoke": "`TITAN_SMOKE_MODEL=<model> pnpm smoke:codex --run`"
+    },
+    {
+      "path": "Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner`",
+      "package": "workflow",
+      "credential": "`agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: \"claude-print\"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner.",
+      "smoke": "Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner."
+    },
+    {
+      "path": "Style tool runners: ESLint, ruff, and the Python audit tools",
+      "package": "style-checker",
+      "credential": "No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw.",
+      "smoke": "`ruff --version` and `npx eslint --version` in the target repo."
+    },
+    {
+      "path": "Embedding backends: `local`, `ollama`, hash fallback",
+      "package": "embed",
+      "credential": "No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither.",
+      "smoke": "`createEmbedder({ backend: \"ollama\" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over."
+    }
+  ],
+  "knownGaps": [
+    {"id": "TP-254", "package": "agent", "title": "No auth-mode switch (oauth-token, cli-login, api-key) or `appendSystemPrompt` on agent runs"},
+    {"id": "TP-225", "package": "agent", "title": "No config-dir auth source for headless Claude runs"},
+    {"id": "TP-226", "package": "agent", "title": "No `claude -p` adapter with a pinned conversation id"},
+    {"id": "TP-247", "package": "agent", "title": "No weekly or window budget pace cap"},
+    {"id": "TP-227", "package": "agent-thread", "title": "No conversation control core (agent-thread package not built)"},
+    {"id": "TP-171", "package": "registry", "title": "Six exports agent-chat needs: JSON Schema io and override, invalid-args formatter, CLI value names, variadic positionals, option defaults"},
+    {"id": "TP-246", "package": "registry", "title": "No byte-budget head and tail truncator for tool output"},
+    {"id": "TP-194", "package": "store-sqlite", "title": "No driver-neutral SQLite seam; packages call better-sqlite3 directly"},
+    {"id": "TP-220", "package": "store-sqlite", "title": "`CacheBlobTable` has no delete, eviction or TTL"},
+    {"id": "TP-283", "package": "store-postgres", "title": "No Postgres store package"},
+    {"id": "TP-285", "package": "scheduler", "title": "No engine-neutral scheduler or outbox"},
+    {"id": "TP-240", "package": "md-chunk", "title": "No byte-range markdown and JSON chunker for embeddings"},
+    {"id": "TP-241", "package": "retrieval", "title": "No typo recovery when fused results are empty"},
+    {"id": "TP-109", "package": "retrieval", "title": "No token-budgeted, tiered context assembly"},
+    {"id": "TP-146", "package": "hitl", "title": "The root entry is not runtime-neutral: `SqliteGateStore` still lives there"},
+    {"id": "TP-147", "package": "messaging", "title": "No channel-neutral inbound, liveness or capabilities"},
+    {"id": "TP-150", "package": "messaging", "title": "No Web Push backend"},
+    {"id": "TP-118", "package": "session-read", "title": "No storage-free `tailTranscript(path, turns)` read-back helper"},
+    {"id": "TP-252", "package": "code-read", "title": "No static dataset encoder, `./export` writer or static source"},
+    {"id": "TP-309", "package": "code-graph", "title": "`computeLcomMetrics` and cognitive complexity are not exported from the root"},
+    {"id": "TP-166", "package": "code-parser", "title": "`.tsx` files parse with the TypeScript grammar, and `.js` has no grammar"},
+    {"id": "TP-189", "package": "style-profile", "title": "`generateEslintExport` emits a config without plugins, parser or files"},
+    {"id": "TP-235", "package": "style-profile", "title": "Generated naming-convention config passes values typescript-eslint rejects"},
+    {"id": "TP-358", "package": "docs", "title": "Some package.json descriptions are stale, and they feed this catalog"},
+    {"id": "TP-363", "package": "all", "title": "Reimplementation audit: duplicated helpers and parallel implementations not yet mapped to one canonical unit"}
+  ]
+}
