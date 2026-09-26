@@ -187,6 +187,7 @@ export class RunContext implements WorkflowContext {
     let attempt = recovered?.step.attempt ?? 0;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
+    let failedUsage: StepUsage | undefined;
     if (recovered?.kind === "retry_safe") attempt += 1;
     for (;;) {
       if (!pending) {
@@ -204,9 +205,10 @@ export class RunContext implements WorkflowContext {
       if (outcome.kind === "cancellation_unknown") this.requireRecovery(active!, "unknown", outcome.reason);
       this.throwIfCancelled();
       const retry = attempt + 1;
+      failedUsage = addUsage(failedUsage, outcome.usage);
       if (!outcome.retryable || attempt >= this.deps.maxRetries) {
         this.consumeActive(active!);
-        throw new StepFailedError(stepId, iteration, outcome.error);
+        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
       }
       attempt += 1;
       this.deps.emit({ type: "step_retry", runId: this.runId, stepId, attempt: retry, error: outcome.error });
@@ -243,7 +245,7 @@ export class RunContext implements WorkflowContext {
         if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
         return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
       }
-      return { kind: "failed", error: outcome.error, retryable: outcome.retryable };
+      return { kind: "failed", error: outcome.error, retryable: outcome.retryable, usage: outcome.usage };
     }
     if (!isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "recoverable step has no recoverable runner");
     const ack = await this.deps.runner.dispatch({ ...input, executionId: step.executionId, requestKey: step.requestKey, attempt: step.attempt });
@@ -309,4 +311,17 @@ function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function addUsage(total: StepUsage | undefined, next: StepUsage | undefined): StepUsage | undefined {
+  if (!next) return total;
+  if (!total) return next;
+  const tokens = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
+  const inputTokens = tokens(total.inputTokens, next.inputTokens);
+  const outputTokens = tokens(total.outputTokens, next.outputTokens);
+  return {
+    costUsd: total.costUsd + next.costUsd,
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+  };
 }

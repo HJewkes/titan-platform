@@ -14,7 +14,7 @@ export type Harness = "claude-code" | "codex";
 /** Harnesses `runAgent` can drive. `claude-print` is headless `claude -p` on the CLI's own login. */
 export type AgentRunHarness = "claude-code" | "claude-print";
 
-/** `AgentRunConfig` fields claude-print cannot honour: it runs one turn with no tools, hooks, MCP or resume. */
+/** `AgentRunConfig` fields claude-print cannot honour: it runs with no tools, hooks, MCP or resume. */
 export const CLAUDE_PRINT_UNSUPPORTED_OPTIONS = [
   "allowedTools",
   "disallowedTools",
