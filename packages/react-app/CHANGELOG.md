@@ -1,5 +1,13 @@
 # @titan-design/react-app
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+  - @titan-design/rpc-protocol@0.2.0
+  - @titan-design/rpc-client@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

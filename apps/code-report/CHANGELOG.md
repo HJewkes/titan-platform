@@ -1,5 +1,15 @@
 # code-report
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+  - @titan-design/rpc-protocol@0.2.0
+  - @titan-design/rpc-client@0.2.0
+  - @titan-design/code-read@0.1.7
+  - @titan-design/react-app@0.1.1
+
 ## 0.0.7
 
 ### Patch Changes

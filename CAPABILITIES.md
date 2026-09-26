@@ -222,16 +222,16 @@ Key exports:
 
 ### [`rpc-protocol`](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
 
-Tier 0, `@titan-design/rpc-protocol@0.1.0`. Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap
+Tier 0, `@titan-design/rpc-protocol@0.2.0`. Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap
 
 **Use this when:** You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary.
 
 Key exports:
 
 - `envelope`: `EXIT`, `errorEnvelope`, `successEnvelope`
-- `routes`: `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
-- `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`, `SSE_READY_DATA`
-- +3 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
+- `routes`: `CLIENT_HEADER`, `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
+- `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`
+- +4 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
 
 <a id="cap-store-sqlite"></a>
 
@@ -287,7 +287,7 @@ Key exports:
 
 ### [`daemon`](https://hjewkes.github.io/titan-platform/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.2.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.3.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities.
 
@@ -299,7 +299,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
-- +36 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-hitl"></a>
 
@@ -355,7 +355,7 @@ Key exports:
 
 ### [`registry`](https://hjewkes.github.io/titan-platform/reference/registry)
 
-Tier 1, `@titan-design/registry@0.3.0`. zod command registry projected to CLI, MCP, and HTTP surfaces
+Tier 1, `@titan-design/registry@0.3.1`. zod command registry projected to CLI, MCP, and HTTP surfaces
 
 **Use this when:** You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible.
 
@@ -391,7 +391,7 @@ Key exports:
 
 ### [`rpc-client`](https://hjewkes.github.io/titan-platform/reference/rpc-client)
 
-Tier 1, `@titan-design/rpc-client@0.1.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
+Tier 1, `@titan-design/rpc-client@0.2.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
 
 **Use this when:** Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands.
 
@@ -412,7 +412,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.9.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.9.1`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -431,7 +431,7 @@ Key exports:
 
 ### [`code-read`](https://hjewkes.github.io/titan-platform/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.1.6`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.1.7`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -539,7 +539,7 @@ Key exports:
 
 ### [`style-analyzer`](https://hjewkes.github.io/titan-platform/reference/style-analyzer)
 
-Tier 2, `@titan-design/style-analyzer@0.1.0`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
+Tier 2, `@titan-design/style-analyzer@0.1.1`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
 
 **Use this when:** You measure how a codebase is actually written and build a style profile from real code.
 
@@ -560,7 +560,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.3.0`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.3.1`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:** You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape.
 
@@ -583,7 +583,7 @@ Key exports:
 
 ### [`style-profile`](https://hjewkes.github.io/titan-platform/reference/style-profile)
 
-Tier 2, `@titan-design/style-profile@0.1.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
+Tier 2, `@titan-design/style-profile@0.2.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
 
 **Use this when:** You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it.
 
@@ -595,7 +595,7 @@ Key exports:
 - `migrations/migrate-profile`: `migrateProfile`, `registerMigration`
 - `exporters/skill`: `generateSkillFiles`
 - `exporters/claude-rules`: `generateClaudeRules`
-- +33 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
+- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
 
 <a id="cap-workflow"></a>
 
@@ -621,7 +621,7 @@ React bindings for the daemon wire. The design system, react-ui, is listed here 
 
 ### [`react-app`](https://hjewkes.github.io/titan-platform/reference/react-app)
 
-Tier ui, `@titan-design/react-app@0.1.0`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
+Tier ui, `@titan-design/react-app@0.1.1`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
 
 **Use this when:** A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui.
 

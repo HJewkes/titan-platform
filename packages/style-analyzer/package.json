@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/style-analyzer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability",
   "type": "module",
   "main": "./dist/index.js",
