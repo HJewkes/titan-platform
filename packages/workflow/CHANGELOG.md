@@ -1,5 +1,12 @@
 # @titan-design/workflow
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [984e067]
+  - @titan-design/agent@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes
