@@ -40,7 +40,7 @@ describe("liveSource with a foreign server in the way", () => {
     };
     await liveSource({ origin: "http://127.0.0.1:7400/", fetch }).call("task.list", { a: undefined, b: 1 });
     expect(seen[0]?.[0]).toBe("http://127.0.0.1:7400/rpc/task.list");
-    expect(seen[0]?.[1]).toMatchObject({ method: "POST", body: '{"b":1}', headers: { "content-type": "application/json" } });
+    expect(seen[0]?.[1]).toMatchObject({ method: "POST", body: '{"b":1}', headers: { "content-type": "application/json", "x-titan-client": "rpc-client" } });
   });
 });
 

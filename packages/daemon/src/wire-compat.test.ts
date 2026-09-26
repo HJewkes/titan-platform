@@ -31,7 +31,7 @@ afterEach(async () => {
 async function rpc(name: string, body: string): Promise<{ status: number; type: string | null; text: string }> {
   const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/${name}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-titan-client": "test" },
     body,
   });
   return { status: res.status, type: res.headers.get("content-type"), text: await res.text() };

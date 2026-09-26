@@ -19,7 +19,7 @@ import {
   rpcFailureStatus,
 } from "@titan-design/rpc-protocol";
 import type { EventHub } from "./events.js";
-import { createRequestGuard, type RequestGuardOptions } from "./guards.js";
+import { CLIENT_HEADER, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
 import type { SurfaceOptions } from "./surface.js";
 
@@ -78,6 +78,7 @@ function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
       // server's own bind address, never anything a client supplied.
       host: c.req.header("host") ?? new URL(c.req.url).host,
       origin: c.req.header("origin"),
+      client: c.req.header(CLIENT_HEADER),
       contentType: c.req.header("content-type"),
     });
     if (refusal) return c.json(errorEnvelope(refusal.message, EXIT.USAGE), refusal.status);

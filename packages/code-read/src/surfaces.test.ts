@@ -65,6 +65,8 @@ afterAll(async () => {
   await repo.cleanup();
 });
 
+const MCP_TRANSPORT = { requestInit: { headers: { "x-titan-client": "test" } } };
+
 async function inProcess(name: CommandName, args: unknown): Promise<JsonEnvelope<unknown>> {
   const { envelope } = await invokeCommand(registry.get(name)!, args, { warnings: [], format: "json", surface: "in-process" });
   return envelope;
@@ -73,7 +75,7 @@ async function inProcess(name: CommandName, args: unknown): Promise<JsonEnvelope
 async function overRpc(name: CommandName, args: unknown): Promise<JsonEnvelope<unknown>> {
   const response = await fetch(`http://127.0.0.1:${daemon.port}/rpc/${name}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-titan-client": "test" },
     body: JSON.stringify(args),
   });
   return (await response.json()) as JsonEnvelope<unknown>;
@@ -89,7 +91,7 @@ describe("the same commands on every surface", () => {
 
   it.each(CALLS)("%s %j answers identically as an MCP tool", async (name, args) => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`)));
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), MCP_TRANSPORT));
     const tool = `codewatch__${name.replaceAll(".", "__")}`;
 
     const result = await client.callTool({ name: tool, arguments: args });
@@ -101,7 +103,7 @@ describe("the same commands on every surface", () => {
 
   it("lists every command as an MCP tool until the registry can filter surfaces", async () => {
     const client = new Client({ name: "code-read-test", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`)));
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), MCP_TRANSPORT));
 
     const { tools } = await client.listTools();
     await client.close();
@@ -112,7 +114,7 @@ describe("the same commands on every surface", () => {
   it("answers bad arguments over /rpc with HTTP 400 and DATAERR", async () => {
     const response = await fetch(`http://127.0.0.1:${daemon.port}/rpc/snapshot.list`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-titan-client": "test" },
       body: JSON.stringify({ limit: "many" }),
     });
 
