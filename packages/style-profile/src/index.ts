@@ -30,11 +30,15 @@ export { generateEslintExport } from "./exporters/eslint.js";
 export {
   toEslintSeverity,
   severityRank,
+  buildNamingConvention,
   buildNamingConventionRule,
+  toTsEslintFormat,
   buildImportOrderRule,
   buildFunctionLengthRule,
   buildFileNamingRule,
   buildJsdocRules,
+  type EslintSkippedRule,
+  type NamingConventionResult,
 } from "./exporters/eslint-rules.js";
 export { generateRuffExport } from "./exporters/ruff.js";
 export { generateMarkdownExport } from "./exporters/markdown.js";
