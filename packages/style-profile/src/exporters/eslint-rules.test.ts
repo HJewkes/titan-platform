@@ -55,7 +55,7 @@ describe("buildNamingConvention format mapping", () => {
     ["SCREAMING_SNAKE", "UPPER_CASE"],
     ["SCREAMING_SNAKE_CASE", "UPPER_CASE"],
   ])("emits typescript-eslint format %s as %s", (profileValue, format) => {
-    const { rule, skippedRules } = buildNamingConvention(makeProfile({ constants: naming(profileValue) }));
+    const { rule, skippedRules } = buildNamingConvention(makeProfile({ variables: naming(profileValue) }));
 
     expect(rule).toEqual(["@typescript-eslint/naming-convention", ["error", { selector: "variable", format: [format] }]]);
     expect(skippedRules).toEqual([]);
@@ -90,6 +90,21 @@ describe("buildNamingConvention format mapping", () => {
     expect(rule).toEqual(["@typescript-eslint/naming-convention", ["warn", { selector: "typeLike", format: ["PascalCase"] }]]);
   });
 
+  it("scopes the constants selector to global consts, regardless of naming key order in the profile", () => {
+    const profile = makeProfile({
+      constants: naming("UPPER_CASE"),
+      variables: naming("camelCase"),
+    });
+
+    const { rule } = buildNamingConvention(profile);
+
+    expect(rule).toEqual(["@typescript-eslint/naming-convention", [
+      "error",
+      { selector: "variable", format: ["camelCase"] },
+      { selector: "variable", format: ["UPPER_CASE"], modifiers: ["const", "global"] },
+    ]]);
+  });
+
   it("passes eslint extension options through unmapped", () => {
     const options = [{ selector: "variable", format: ["camelCase", "UPPER_CASE"] }];
     const rule: StyleRule = { ...naming("anything"), extensions: { eslint: { options } } };
@@ -116,5 +131,19 @@ describe("buildNamingConvention under real ESLint", () => {
     expect(result.fatalErrorCount).toBe(0);
     expect(result.messages.map((m) => m.ruleId)).toEqual(["@typescript-eslint/naming-convention"]);
     expect(result.messages[0]!.message).toContain("bad_type");
+  });
+
+  it("applies the constants format only to a global const, not to every variable", async () => {
+    const profile = makeProfile({
+      constants: naming("UPPER_SNAKE_CASE"),
+      variables: naming("camelCase"),
+    });
+    const { rule } = buildNamingConvention(profile);
+
+    const result = await lintWithRule(rule!, "export const badConst = 1;\nlet BAD_LET = 2;\n");
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]!.message).toContain("badConst");
+    expect(result.messages[1]!.message).toContain("BAD_LET");
   });
 });

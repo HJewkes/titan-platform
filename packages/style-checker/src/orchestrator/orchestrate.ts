@@ -37,8 +37,13 @@ async function runTools(options: OrchestratorOptions): Promise<RunnerResult[]> {
   const results: RunnerResult[] = [];
 
   if ((language === "typescript" || language === "mixed") && tsFiles.length > 0) {
-    const eslintConfig = generateEslintConfig(profile);
-    if (eslintConfig.length > 0) results.push(await runEslint(eslintConfig, tsFiles, { fix }));
+    const { entries, skippedRules: namingSkipped } = generateEslintConfig(profile);
+    if (entries.length > 0) {
+      const result = await runEslint(entries, tsFiles, { fix });
+      results.push({ ...result, skippedRules: [...namingSkipped, ...result.skippedRules] });
+    } else if (namingSkipped.length > 0) {
+      results.push({ diagnostics: [], exitCode: null, failures: [], skippedRules: namingSkipped });
+    }
   }
 
   if ((language === "python" || language === "mixed") && pyFiles.length > 0) {

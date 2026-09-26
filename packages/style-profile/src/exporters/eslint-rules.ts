@@ -15,11 +15,17 @@ export function severityRank(s: Severity): number {
   return s === "error" ? 3 : s === "warn" ? 2 : 1;
 }
 
+// Key order is significant: typescript-eslint's last-matching-selector-wins rule needs "variables" before "constants".
 const NAMING_SELECTORS: Record<string, string> = {
   variables: "variable",
   functions: "function",
   types: "typeLike",
   constants: "variable",
+};
+
+// Scopes "constants" to top-level const declarations, so it doesn't shadow the "variables" rule for every const.
+const NAMING_MODIFIERS: Partial<Record<string, string[]>> = {
+  constants: ["const", "global"],
 };
 
 function eslintExtensionOptions(rule: StyleRule): unknown[] | undefined {
@@ -82,9 +88,12 @@ function namingSelectors(
   const eslintOptions = eslintExtensionOptions(rule);
   if (eslintOptions) return eslintOptions;
   const format = typeof rule.convention === "string" ? toTsEslintFormat(rule.convention) : null;
-  if (format) return [{ selector: selectorName, format: [format] }];
-  skipped.push(skippedNaming(key, rule.convention));
-  return [];
+  if (!format) {
+    skipped.push(skippedNaming(key, rule.convention));
+    return [];
+  }
+  const modifiers = NAMING_MODIFIERS[key];
+  return [{ selector: selectorName, format: [format], ...(modifiers ? { modifiers } : {}) }];
 }
 
 export function buildNamingConvention(profile: Profile): NamingConventionResult {
@@ -93,9 +102,10 @@ export function buildNamingConvention(profile: Profile): NamingConventionResult 
   const skippedRules: EslintSkippedRule[] = [];
   let maxSeverity: Severity | null = null;
 
-  for (const [key, rule] of Object.entries(profile.naming ?? {})) {
-    const selectorName = NAMING_SELECTORS[key];
-    if (!selectorName) continue;
+  for (const key of Object.keys(NAMING_SELECTORS)) {
+    const rule = profile.naming?.[key];
+    if (!rule) continue;
+    const selectorName = NAMING_SELECTORS[key]!;
     const severity = toEslintSeverity(rule.confidence, thresholds);
     if (!severity) continue;
 

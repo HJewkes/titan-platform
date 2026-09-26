@@ -30,7 +30,7 @@ const profile: Profile = {
 
 describe("runEslint with the real ESLint devDependency", () => {
   it("loads the generated config and returns normalized diagnostics", async () => {
-    const result = await runEslint(generateEslintConfig(profile), [sampleFile], { cwd: packageDir });
+    const result = await runEslint(generateEslintConfig(profile).entries, [sampleFile], { cwd: packageDir });
 
     expect(result.failures).toEqual([]);
     expect(result.exitCode).toBe(1);
@@ -47,7 +47,7 @@ describe("runEslint with the real ESLint devDependency", () => {
   }, 60_000);
 
   it("reports a file ESLint could not parse as a failure, not as clean", async () => {
-    const result = await runEslint(generateEslintConfig(profile), [brokenFile], { cwd: packageDir });
+    const result = await runEslint(generateEslintConfig(profile).entries, [brokenFile], { cwd: packageDir });
 
     expect(result.diagnostics).toEqual([]);
     expect(result.failures).toEqual([
@@ -59,7 +59,7 @@ describe("runEslint with the real ESLint devDependency", () => {
 
 describe("runEslint when the ESLint process fails", () => {
   let bin: FakeBin;
-  const config = generateEslintConfig(profile);
+  const config = generateEslintConfig(profile).entries;
   const run = (timeout?: number) => runEslint(config, [sampleFile], { cwd: packageDir, timeout });
 
   beforeEach(() => {

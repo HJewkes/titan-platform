@@ -72,14 +72,14 @@ const sampleProfile: Profile = {
 
 describe("generateEslintConfig", () => {
   it("generates a flat config array", () => {
-    const config = generateEslintConfig(sampleProfile);
-    expect(config).toBeDefined();
-    expect(Array.isArray(config)).toBe(true);
+    const { entries } = generateEslintConfig(sampleProfile);
+    expect(entries).toBeDefined();
+    expect(Array.isArray(entries)).toBe(true);
   });
 
   it("maps naming conventions to @typescript-eslint/naming-convention", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["@typescript-eslint/naming-convention"],
     );
     expect(rulesConfig).toBeDefined();
@@ -88,8 +88,8 @@ describe("generateEslintConfig", () => {
   });
 
   it("sets severity based on confidence thresholds", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["@typescript-eslint/naming-convention"],
     );
     const rule = rulesConfig!.rules![
@@ -99,16 +99,16 @@ describe("generateEslintConfig", () => {
   });
 
   it("maps import ordering to perfectionist plugin", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["perfectionist/sort-imports"],
     );
     expect(rulesConfig).toBeDefined();
   });
 
   it("maps function max lines to max-lines-per-function", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["max-lines-per-function"],
     );
     expect(rulesConfig).toBeDefined();
@@ -117,16 +117,16 @@ describe("generateEslintConfig", () => {
   });
 
   it("maps file naming to unicorn/filename-case", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["unicorn/filename-case"],
     );
     expect(rulesConfig).toBeDefined();
   });
 
   it("maps documentation rules to eslint-plugin-jsdoc", () => {
-    const config = generateEslintConfig(sampleProfile);
-    const rulesConfig = config.find((c) =>
+    const { entries } = generateEslintConfig(sampleProfile);
+    const rulesConfig = entries.find((c) =>
       Object.keys(c.rules ?? {}).some((r) => r.startsWith("jsdoc/")),
     );
     expect(rulesConfig).toBeDefined();
@@ -143,8 +143,8 @@ describe("generateEslintConfig", () => {
         },
       },
     };
-    const config = generateEslintConfig(lowConfProfile);
-    const rulesConfig = config.find(
+    const { entries } = generateEslintConfig(lowConfProfile);
+    const rulesConfig = entries.find(
       (c) => c.rules?.["@typescript-eslint/naming-convention"],
     );
     expect(rulesConfig).toBeUndefined();
@@ -155,8 +155,28 @@ describe("generateEslintConfig", () => {
       ...baseProfile,
       naming: { variables: { convention: "camelCase", confidence: 0.5, stability: "low" } },
     };
-    const [entry] = generateEslintConfig(infoProfile);
-    const rule = entry!.rules!["@typescript-eslint/naming-convention"] as unknown[];
+    const { entries } = generateEslintConfig(infoProfile);
+    const rule = entries[0]!.rules!["@typescript-eslint/naming-convention"] as unknown[];
     expect(rule[0]).toBe("warn");
+  });
+
+  it("forwards an unmapped naming convention as a skipped rule, and still emits the rest of the config", () => {
+    const profile: Profile = {
+      ...baseProfile,
+      naming: {
+        variables: { convention: "kebab-case", confidence: 0.9, stability: "high" },
+        types: { convention: "PascalCase", confidence: 0.9, stability: "high" },
+      },
+    };
+    const { entries, skippedRules } = generateEslintConfig(profile);
+
+    expect(skippedRules).toEqual([{
+      tool: "eslint",
+      rule: "@typescript-eslint/naming-convention",
+      plugin: "@typescript-eslint",
+      reason: expect.stringContaining('naming.variables convention "kebab-case"'),
+    }]);
+    const rule = entries[0]!.rules!["@typescript-eslint/naming-convention"];
+    expect(rule).toEqual(["error", { selector: "typeLike", format: ["PascalCase"] }]);
   });
 });

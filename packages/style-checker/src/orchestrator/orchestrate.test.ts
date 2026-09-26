@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { orchestrate } from "./orchestrate.js";
+import { runEslint } from "../runners/eslint-runner.js";
 import { runRuff } from "../runners/ruff-runner.js";
 import type { Profile } from "@titan-design/style-profile";
 
@@ -104,5 +105,20 @@ describe("orchestrate", () => {
     expect(result.failures).toEqual([failure]);
     expect(result.skippedRules.map((s) => s.rule)).toEqual(["unicorn/filename-case"]);
     expect(result.summary.total).toBe(1);
+  });
+
+  it("bubbles a style-profile naming skip into skippedRules even when no rule survives to run ESLint", async () => {
+    const profile: Profile = {
+      ...sampleProfile,
+      naming: { variables: { convention: "kebab-case", confidence: 0.94, stability: "high" } },
+    };
+    vi.mocked(runEslint).mockClear();
+
+    const result = await orchestrate({ profile, files: ["src/app.ts"] });
+
+    expect(runEslint).not.toHaveBeenCalled();
+    expect(result.skippedRules).toEqual([
+      expect.objectContaining({ tool: "eslint", rule: "@typescript-eslint/naming-convention" }),
+    ]);
   });
 });
