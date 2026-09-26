@@ -10,10 +10,14 @@ export const EXECUTION_PHASES = [
   "failed",
   "cancelled",
   "cancellation_unknown",
+  "ended",
 ] as const;
 
 export type ExecutionPhase = (typeof EXECUTION_PHASES)[number];
-export type TerminalExecutionPhase = "succeeded" | "failed" | "cancelled" | "cancellation_unknown";
+
+export const TERMINAL_EXECUTION_PHASES = ["succeeded", "failed", "cancelled", "cancellation_unknown", "ended"] as const;
+
+export type TerminalExecutionPhase = (typeof TERMINAL_EXECUTION_PHASES)[number];
 
 export interface ExecutionOwnerFence {
   supervisorId: string;
@@ -32,7 +36,9 @@ export type ExecutionTerminal<TResult = unknown> =
   | { outcome: "succeeded"; result: TResult }
   | { outcome: "failed"; reason: string; retryable: boolean }
   | { outcome: "cancelled"; reason: string }
-  | { outcome: "cancellation_unknown"; reason: string; evidence: string };
+  | { outcome: "cancellation_unknown"; reason: string; evidence: string }
+  /** The process was observed gone without a harness result, so success cannot be claimed. */
+  | { outcome: "ended"; evidence: string; exit?: { code: number | null; signal: string | null } };
 
 export interface ExecutionRecord<TResult = unknown> {
   execution: ExecutionIdentity;
@@ -83,6 +89,13 @@ export type ExecutionTransition<TResult = unknown> =
       adapterExecution: ExecutionIdentity;
       conversation?: ConversationIdentity;
       surface?: SurfaceIdentity;
+      evidence: string;
+    })
+  | (ExecutionTransitionBase & {
+      kind: "observe_launched";
+      fence: ExecutionOwnerFence;
+      runnerRef: string;
+      surface: SurfaceIdentity;
       evidence: string;
     })
   | (ExecutionTransitionBase & {

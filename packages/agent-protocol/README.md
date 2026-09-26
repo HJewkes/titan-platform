@@ -27,6 +27,14 @@ reconciler supplies positive running, terminal, or retry-safe absence evidence.
 The record keeps the caller's durable execution identity separate from an adapter's
 own invocation identity, even when a failure occurs before a conversation is known.
 
+`ended` is the terminal outcome for a process a supervisor saw exit without a harness
+result. It carries nonempty `evidence` and an optional `exit` (`code` and `signal`, each
+nullable). It never implies success. `TERMINAL_EXECUTION_PHASES` is the single list of
+terminal phases; consumers derive from it rather than copying it.
+`observe_launched` records the `runnerRef` and `surface` of a launch before the harness
+confirms it is running. It is allowed only from `dispatching`, and it leaves the phase
+unchanged. A later `observe_running` must agree with both values.
+
 `reduceExecutionTransition()` is the dependency-free state machine used by durable
 ledgers. Persistence, wall-clock enforcement, process supervision, and transcript
 indexing remain outside this package.
