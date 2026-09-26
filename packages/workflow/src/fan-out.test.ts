@@ -5,7 +5,7 @@ import { mapItems, type MapOptions, type MapResult } from "./fan-out.js";
 import { idempotentRunner, inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import type { StepRunner, WorkflowFn } from "./types.js";
+import type { StepRunInput, StepRunner, WorkflowFn } from "./types.js";
 
 const LETTERS = "abcdefghij".split("");
 const byLetter: MapOptions<string> = { key: (item) => item };
@@ -64,7 +64,7 @@ describe("mapItems", () => {
     expect(out.skipped.map((s) => s.key)).toEqual(LETTERS.slice(3));
   });
 
-  it("stops launching after a step fails and reports the failure", async () => {
+  it("stops launching after a non-retryable step failure and reports the failure", async () => {
     const runner = inlineRunner((input) => {
       if (input.stepId === "judge/c") throw new Error("reader refused");
       return "ok";
@@ -73,8 +73,42 @@ describe("mapItems", () => {
     const out = await runOnce(runner, LETTERS, byLetter);
 
     expect(out.stoppedBy).toBe("failure");
-    expect(out.failed).toEqual([{ key: "c", item: "c", error: "reader refused" }]);
+    expect(out.failed).toEqual([{ key: "c", item: "c", error: "reader refused", retryable: false }]);
     expect(out.skipped).toHaveLength(7);
+  });
+
+  it("records a retryable item failure and keeps launching the remaining items", async () => {
+    const run = vi.fn(async (input: StepRunInput) =>
+      input.stepId === "judge/c" ? { ok: false as const, error: "claude -p reached --max-turns 2", retryable: true } : { ok: true as const, output: "ok" });
+
+    const out = await runOnce({ run }, LETTERS, byLetter);
+
+    expect(out.stoppedBy).toBeNull();
+    expect(out.failed).toEqual([{ key: "c", item: "c", error: "claude -p reached --max-turns 2", retryable: true }]);
+    expect(out.results.map((r) => r.key)).toEqual(LETTERS.filter((l) => l !== "c"));
+    expect(out.skipped).toEqual([]);
+  });
+
+  it("stops launching once retryable failures exceed maxFailures", async () => {
+    const run = vi.fn(async () => ({ ok: false as const, error: "flaky", retryable: true }));
+
+    const out = await runOnce({ run }, LETTERS, { ...byLetter, maxFailures: 2 });
+
+    expect(out.stoppedBy).toBe("failure");
+    expect(out.failed.map((f) => f.key)).toEqual(["a", "b", "c"]);
+    expect(out.skipped.map((s) => s.key)).toEqual(LETTERS.slice(3));
+  });
+
+  it("counts the cost of every failed attempt in spentUsd and on the failure", async () => {
+    const run = vi.fn(async (input: StepRunInput) =>
+      input.stepId === "judge/b"
+        ? { ok: false as const, error: "flaky", retryable: true, usage: { costUsd: 0.25 } }
+        : { ok: true as const, output: "ok", usage: { costUsd: 0.1 } });
+
+    const out = await runOnce({ run }, ["a", "b", "c"], byLetter);
+
+    expect(out.failed).toEqual([{ key: "b", item: "b", error: "flaky", retryable: true, usage: { costUsd: 0.5 } }]);
+    expect(out.spentUsd).toBeCloseTo(0.7);
   });
 
   it("rejects duplicate item keys before launching anything", async () => {

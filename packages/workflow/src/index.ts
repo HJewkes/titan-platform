@@ -10,6 +10,7 @@ export type {
   RecoverableStepRunner,
   SeedResult,
   StepDispatchAck,
+  StepFailureDetail,
   StepReconcileOutcome,
   StepResult,
   StepRunInput,
