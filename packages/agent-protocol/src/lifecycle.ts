@@ -28,9 +28,21 @@ export interface ExecutionOwnerLease extends ExecutionOwnerFence {
   leaseUntil: string;
 }
 
+/** One agent generation succeeding another; the brief is a pointer and digest, never the text. */
+export interface HandoffIdentity {
+  handoffId: string;
+  /** The agentId of generation 1, constant across every handoff. */
+  lineageId: string;
+  generation: number;
+  predecessor: { agent: AgentIdentity; executionId?: string; conversation?: ConversationIdentity };
+  brief: { ref: string; sha256: string; bytes: number };
+}
+
 export type LifecycleExecutionTarget =
-  | { kind: "fresh"; namespace: string }
-  | { kind: "resume"; conversation: ConversationIdentity };
+  | { kind: "fresh"; namespace: string; pinnedNativeId?: string }
+  | { kind: "resume"; conversation: ConversationIdentity }
+  | { kind: "fork"; namespace: string; parent: ConversationIdentity }
+  | { kind: "handoff"; namespace: string; handoff: HandoffIdentity };
 
 export type ExecutionTerminal<TResult = unknown> =
   | { outcome: "succeeded"; result: TResult }

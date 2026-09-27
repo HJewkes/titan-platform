@@ -35,6 +35,15 @@ terminal phases; consumers derive from it rather than copying it.
 confirms it is running. It is allowed only from `dispatching`, and it leaves the phase
 unchanged. A later `observe_running` must agree with both values.
 
+A target is one of four kinds. `fresh` may carry `pinnedNativeId`, in which case `prepare`
+records the conversation up front and any other observed ID is refused. `resume` continues
+a known conversation. `fork` names a `parent`; the new conversation must fall in the fork's
+`namespace` and differ from the parent. `handoff` carries a `HandoffIdentity` (`handoffId`,
+`lineageId`, a `generation` of at least 2, the `predecessor`, and the brief as a `ref`,
+lowercase `sha256` and `bytes`, never the text). The successor's agent must differ from the
+predecessor's, and its conversation from the predecessor's. The predecessor conversation is
+checked for shape only, so a handoff may cross harnesses.
+
 `reduceExecutionTransition()` is the dependency-free state machine used by durable
 ledgers. Persistence, wall-clock enforcement, process supervision, and transcript
 indexing remain outside this package.
