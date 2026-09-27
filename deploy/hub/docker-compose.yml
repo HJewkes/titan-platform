@@ -21,8 +21,9 @@ services:
   core:
     profiles: ["core"]
     build:
-      context: .
-      dockerfile: core.Dockerfile
+      # Repo root, so the image installs from the workspace pnpm-lock.yaml; core.Dockerfile.dockerignore trims the context.
+      context: ../..
+      dockerfile: deploy/hub/core.Dockerfile
     environment:
       HS_URL: http://tuwunel:8008
       CORE_BIND: 0.0.0.0
