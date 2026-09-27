@@ -229,9 +229,9 @@ Tier 0, `@titan-design/rpc-protocol@0.1.0`. Dependency-free wire contract betwee
 Key exports:
 
 - `envelope`: `EXIT`, `errorEnvelope`, `successEnvelope`
-- `routes`: `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
-- `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`, `SSE_READY_DATA`
-- +3 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
+- `routes`: `CLIENT_HEADER`, `EVENTS_PATH`, `HEALTH_PATH`, `RPC_PREFIX`, `RPC_STATUS`, `VERSION_PATH`, `rpcFailureStatus`
+- `sse`: `SSE_EVENTS`, `SSE_HEARTBEAT_MS`
+- +4 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
 
 <a id="cap-store-sqlite"></a>
 
@@ -299,7 +299,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
-- +36 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-hitl"></a>
 
@@ -595,7 +595,7 @@ Key exports:
 - `migrations/migrate-profile`: `migrateProfile`, `registerMigration`
 - `exporters/skill`: `generateSkillFiles`
 - `exporters/claude-rules`: `generateClaudeRules`
-- +33 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
+- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
 
 <a id="cap-workflow"></a>
 
