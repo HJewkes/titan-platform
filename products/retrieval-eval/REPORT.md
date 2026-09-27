@@ -1,8 +1,9 @@
 # Retrieval eval, run on the real corpus
 
-TP-84. Run 2026-09-15 on this machine's transcripts and live workspace index. Every number
-below is reproducible from the snapshot in [Corpus](#corpus) with the three commands in
-[README.md](./README.md).
+TP-84. Run 2026-09-15 on this machine's transcripts and live workspace index; **re-scored
+2026-09-26** against active-work 0.16.0 (see [Rescore](#2026-09-26-rescore-on-active-work-0160)).
+Every number below is reproducible from the snapshot in [Corpus](#corpus) with the three
+commands in [README.md](./README.md).
 
 ## The caveat, first
 
@@ -18,14 +19,158 @@ absolute number as a percentage of relevance.
 
 No LLM appears anywhere in the label path or the scoring path.
 
-## Label sets
+## Candidates
+
+| Name | What it is | `chars@5` measures |
+| --- | --- | --- |
+| `date-order-notes` | The production baseline: newest notes by filename date, query ignored. 5 on the spawn arm (agent-chat `MAX_NOTES`), 12 on the bootstrap arm (the pre-TP-26 bootstrap) | whole file size |
+| `active-work-search` | The shipped per-class RRF search, as a subprocess against the installed `active-work` binary (version per run, see each run's corpus snapshot) | excerpt length |
+| `notes-fts` | The notes-only span search the bootstrap runs, mirroring `rank-notes.ts` (`note:` prefix, OR of quoted terms, depth 300) | matched span length |
+| `hybrid-fts-vector` | `notes-fts` fused by RRF (k=60) with a `HashEmbedder` brute-force vector index over every note | matched span length, else a 200-char excerpt |
+
+`chars@5` is **not comparable across candidates** — each reports what it would itself cost a
+prompt, and the baseline injects whole files while the others inject excerpts.
+
+`hybrid-fts-vector` runs with no model and no network. `HashEmbedder` is feature hashing,
+not semantics; it is a floor for the seam, not a serious dense retriever. A real embedder is
+a swap behind `Embedder`.
+
+## Query variants
+
+A spawn brief runs to thousands of characters and FTS ORs every token, so passing it whole
+ranks on document length rather than subject. Two derivations are measured, applied
+identically across runs:
+
+- **`heading-lead`** — the first markdown heading plus the first 30 non-stop-word tokens.
+- **`top-df`** — the 12 rarest terms by document frequency across the pair corpus.
+
+## 2026-09-26: rescore on active-work 0.16.0
+
+Two things moved since the 2026-09-15 run below: the tokenizer fix (TP-86) and the spawn
+subject now leading with the top task id. Re-mined and re-scored against the installed
+`active-work` 0.16.0, same candidates and query variants, so the grids are comparable stage
+for stage. The 2026-09-15 numbers are kept in place below as the "before" this compares
+against; nothing in this section replaces them, it supersedes which numbers are current.
+
+```sh
+node dist/bin.js mine --out pairs.jsonl
+node dist/bin.js run pairs.jsonl --json
+```
+
+Corpus snapshot for this run:
+
+```json
+{
+  "takenAt": "2026-09-26T12:31:21.697Z",
+  "transcripts": 3121,
+  "transcriptRange": {
+    "first": "2026-08-11T11:28:23.126Z",
+    "last": "2026-09-26T12:09:52.878Z"
+  },
+  "graph": {
+    "path": "~/Library/Application Support/active-work/.miner/graph.sqlite3",
+    "bytes": 762896384,
+    "modified": "2026-09-26T12:30:33.027Z"
+  },
+  "activeWorkVersion": "0.16.0"
+}
+```
+
+### Label sets
+
+| Arm | Pairs | Labels | Labels/pair (median) | Query chars (median) | Initiatives |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| spawn | 1,173 | 12,113 | 8 | 4,002 | 19 |
+| bootstrap | 58 | 3,709 | 17.5 | 1,040 | 13 |
+
+#### Link rate
+
+| Arm | Considered | Linked | Rate | How |
+| --- | ---: | ---: | ---: | --- |
+| spawn | 1,328 spawns | 1,295 | **97.5%** | 1,221 brief-text, 74 brief-text + timestamp |
+| bootstrap | 160 transitions | 69 | **43.1%** | 56 session-id, 13 harness-id |
+
+1,173 of the 1,295 linked spawns became pairs (122 linked to a child that opened no file).
+58 of the 69 linked bootstrap transitions became pairs (11 opened no file).
+
+#### What the labels actually are
+
+| Arm | Labels | With a `note:`/`source:`/`task:` ref | Pairs with ≥1 workspace label |
+| --- | ---: | ---: | ---: |
+| spawn | 12,113 | 423 (**3.5%**) | 377 of 1,173 (32%) |
+| bootstrap | 3,709 | 173 (**4.7%**) | 37 of 58 (64%) |
+
+Every cell below is still scored twice, `all` and `workspace`, for the same reason as the
+2026-09-15 run: most of what an agent opens is repository code no workspace retriever can
+return.
+
+### Results
+
+#### Spawn arm — `workspace` scope
+
+377 pairs. Best row in bold.
+
+| Candidate | Variant | R@5 | R@10 | P@5 | MRR | chars@5 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `date-order-notes` | either | 0.004 | 0.004 | 0.002 | 0.006 | 13,690 |
+| `active-work-search` | heading-lead | 0.029 | 0.220 | 0.013 | 0.070 | 798 |
+| `active-work-search` | **top-df** | **0.080** | **0.272** | **0.030** | **0.100** | **771** |
+| `notes-fts` | heading-lead | 0.027 | 0.032 | 0.013 | 0.037 | 12,950 |
+| `notes-fts` | top-df | 0.037 | 0.038 | 0.018 | 0.039 | 9,572 |
+| `hybrid-fts-vector` | heading-lead | 0.020 | 0.028 | 0.007 | 0.022 | 9,007 |
+| `hybrid-fts-vector` | top-df | 0.031 | 0.037 | 0.014 | 0.027 | 7,324 |
+
+#### Bootstrap arm — `workspace` scope
+
+37 pairs. Directional only; see the link-rate caveat.
+
+| Candidate | Variant | R@5 | R@10 | P@5 | MRR | chars@5 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `date-order-notes` | either | 0.000 | 0.001 | 0.000 | 0.004 | 7,415 |
+| `active-work-search` | heading-lead | 0.017 | 0.105 | 0.016 | 0.078 | 797 |
+| `active-work-search` | **top-df** | 0.014 | **0.112** | 0.005 | **0.092** | **759** |
+| `notes-fts` | heading-lead | 0.017 | 0.021 | 0.016 | 0.053 | 10,418 |
+| `notes-fts` | top-df | 0.014 | 0.014 | 0.005 | 0.027 | 4,525 |
+| `hybrid-fts-vector` | heading-lead | 0.017 | 0.017 | 0.016 | 0.023 | 8,721 |
+| `hybrid-fts-vector` | top-df | 0.014 | 0.014 | 0.005 | 0.014 | 3,427 |
+
+#### `all` scope
+
+Every candidate lands between 0.000 and 0.031 on R@10, on both arms — the coverage ceiling
+described above, not a ranking result. The best row is `active-work-search` + `top-df` on
+the spawn arm at R@10 0.031. Full 32-row grid: run `node dist/bin.js run pairs.jsonl --json`.
+
+### What the numbers say, 2026-09-26
+
+**The relevance margin over date order widened.** Spawn arm `active-work-search` + `top-df`
+now reaches R@10 0.272 against the baseline's 0.004 — a factor of 68, up from the
+2026-09-15 run's factor of 34 (0.203 vs 0.006). Injected characters per query are similar
+(771 vs the earlier run's 772), so the improvement is in ranking, not budget.
+
+**The `top-df` vs `heading-lead` gap narrowed.** On 2026-09-15, `top-df` doubled R@10 over
+`heading-lead` (0.203 vs 0.103). Now the gap is 24% (0.272 vs 0.220). The likely cause is
+the spawn subject leading with the top task id: `heading-lead`'s first-30-words window now
+usually captures that id too, so it stops being the one signal only `top-df` could reach.
+`top-df` still wins outright and remains the one to ship.
+
+**The bootstrap arm moved the same direction.** `active-work-search` + `top-df` reaches
+R@10 0.112 against date order's 0.001 (2026-09-15: 0.075 vs 0.000, unmeasurable ratio).
+Still directional — 37 workspace pairs — but it agrees with the spawn arm's ordering, as
+before.
+
+## Baseline: 2026-09-15 run (active-work 0.8.0, 759 transcripts)
+
+Kept as the "before" the [2026-09-26 rescore](#2026-09-26-rescore-on-active-work-0160)
+compares against. Not current; see that section for today's numbers.
+
+### Label sets
 
 | Arm | Pairs | Labels | Labels/pair (median) | Query chars (median) | Initiatives |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | spawn | 608 | 7,355 | 10 | 3,565 | 13 |
 | bootstrap | 35 | 3,427 | 31 | 1,004 | 9 |
 
-### Link rate
+#### Link rate
 
 | Arm | Considered | Linked | Rate | How |
 | --- | ---: | ---: | ---: | --- |
@@ -53,7 +198,7 @@ the `session_01…` id back out of the `https://claude.ai/code/…` url that Cla
 into a transcript recovered 13 more. 35 usable pairs is the honest ceiling on this corpus;
 read its rows as directional.
 
-### What the labels actually are
+#### What the labels actually are
 
 | Arm | Labels | With a `note:`/`source:`/`task:` ref | Pairs with ≥1 workspace label |
 | --- | ---: | ---: | ---: |
@@ -77,33 +222,9 @@ So every cell is scored twice:
 
 Both come from the same search per pair.
 
-## Candidates
+### Results
 
-| Name | What it is | `chars@5` measures |
-| --- | --- | --- |
-| `date-order-notes` | The production baseline: newest notes by filename date, query ignored. 5 on the spawn arm (agent-chat `MAX_NOTES`), 12 on the bootstrap arm (the pre-TP-26 bootstrap) | whole file size |
-| `active-work-search` | The shipped per-class RRF search, as a subprocess against the installed `active-work` 0.8.0 | excerpt length |
-| `notes-fts` | The notes-only span search the bootstrap runs, mirroring `rank-notes.ts` (`note:` prefix, OR of quoted terms, depth 300) | matched span length |
-| `hybrid-fts-vector` | `notes-fts` fused by RRF (k=60) with a `HashEmbedder` brute-force vector index over every note | matched span length, else a 200-char excerpt |
-
-`chars@5` is **not comparable across candidates** — each reports what it would itself cost a
-prompt, and the baseline injects whole files while the others inject excerpts.
-
-`hybrid-fts-vector` runs with no model and no network. `HashEmbedder` is feature hashing,
-not semantics; it is a floor for the seam, not a serious dense retriever. A real embedder is
-a swap behind `Embedder`.
-
-## Query variants
-
-A spawn brief has a median of 3,565 characters and FTS ORs every token, so passing it whole
-ranks on document length rather than subject. Two derivations are measured:
-
-- **`heading-lead`** — the first markdown heading plus the first 30 non-stop-word tokens.
-- **`top-df`** — the 12 rarest terms by document frequency across the pair corpus.
-
-## Results
-
-### Spawn arm — `workspace` scope (the ranking question)
+#### Spawn arm — `workspace` scope (the ranking question)
 
 181 pairs. Best row in bold.
 
@@ -117,7 +238,7 @@ ranks on document length rather than subject. Two derivations are measured:
 | `hybrid-fts-vector` | heading-lead | 0.026 | 0.045 | 0.010 | 0.035 | 9,533 |
 | `hybrid-fts-vector` | top-df | 0.040 | 0.052 | 0.015 | 0.036 | 7,858 |
 
-### Bootstrap arm — `workspace` scope
+#### Bootstrap arm — `workspace` scope
 
 24 pairs. Directional only; see the link-rate caveat.
 
@@ -131,7 +252,7 @@ ranks on document length rather than subject. Two derivations are measured:
 | `hybrid-fts-vector` | heading-lead | 0.006 | 0.006 | 0.017 | 0.024 | 7,766 |
 | `hybrid-fts-vector` | top-df | 0.000 | 0.000 | 0.000 | 0.000 | 3,874 |
 
-### `all` scope
+#### `all` scope
 
 Every candidate lands between 0.000 and 0.015 on R@10, on both arms. That is the coverage
 ceiling described above, not a ranking result: 97.2% of spawn labels are files no workspace
@@ -140,7 +261,7 @@ R@10 0.015. These rows are here to be honest about the denominator, not to rank 
 
 Full 32-row grid, both scopes: run `retrieval-eval run pairs.jsonl`.
 
-### What the numbers say
+#### What the numbers say
 
 **Relevance beats date order by a wide margin, and costs a fifth as much.** On the spawn arm
 `active-work-search` reaches R@10 0.203 against the baseline's 0.006 — a factor of 34 — while
@@ -171,7 +292,7 @@ beat before it earns its dependency.
 against 797). It reports matched span length, and spans in this graph are large. Any design
 that injects spans rather than excerpts should budget for that.
 
-### Known distortions
+#### Known distortions
 
 - **`terms()` drops tokens of two characters or fewer**, mirroring `rank-notes.ts`. Both
   halves of `TP-84` are two characters, so a task reference contributes nothing to any
@@ -319,10 +440,11 @@ node products/retrieval-eval/dist/bin.js uptake --since 2026-09-01
 node products/retrieval-eval/dist/bin.js served --since 2026-09-16T00:00:00Z --until 2026-09-23T18:50:00Z
 ```
 
-## Corpus
+## Corpus (2026-09-15 baseline)
 
 Recorded so a disagreeing re-run is attributable. The graph is written continuously by the
-daemon, so these numbers move hourly.
+daemon, so these numbers move hourly. See the
+[2026-09-26 rescore](#2026-09-26-rescore-on-active-work-0160) for the current snapshot.
 
 ```json
 {
