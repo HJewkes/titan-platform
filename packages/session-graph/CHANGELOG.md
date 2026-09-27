@@ -1,5 +1,16 @@
 # @titan-design/session-graph
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [ca56251]
+- Updated dependencies [18527b6]
+- Updated dependencies [3f935f3]
+- Updated dependencies [4761f82]
+  - @titan-design/agent-protocol@0.2.0
+  - @titan-design/session-read@0.5.1
+
 ## 0.9.0
 
 ### Minor Changes

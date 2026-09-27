@@ -1,5 +1,15 @@
 # @titan-design/code-read
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+- Updated dependencies [483f058]
+  - @titan-design/rpc-protocol@0.2.0
+  - @titan-design/code-graph@0.9.1
+  - @titan-design/registry@0.3.1
+
 ## 0.1.6
 
 ### Patch Changes
