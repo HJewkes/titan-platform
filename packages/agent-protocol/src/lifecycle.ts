@@ -1,4 +1,5 @@
 import type { AgentIdentity, ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
+import type { ExecutionCorrelations } from "./lifecycle-correlations.js";
 
 export const EXECUTION_PHASES = [
   "prepared",
@@ -73,6 +74,8 @@ export interface ExecutionRecord<TResult = unknown> {
   finishedAt?: string;
   lastObservedAt: string;
   terminal?: ExecutionTerminal<TResult>;
+  /** Namespaced `<prefix>.<name>` keys set once by prepare; see CORRELATION_KEY_PATTERN. */
+  correlations?: ExecutionCorrelations;
 }
 
 interface ExecutionTransitionBase {
@@ -92,6 +95,7 @@ export type ExecutionTransition<TResult = unknown> =
       requestKey: string;
       target: LifecycleExecutionTarget;
       owner: ExecutionOwnerLease;
+      correlations?: ExecutionCorrelations;
     })
   | (ExecutionTransitionBase & { kind: "begin_dispatch"; fence: ExecutionOwnerFence })
   | (ExecutionTransitionBase & {

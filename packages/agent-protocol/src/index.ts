@@ -35,6 +35,15 @@ export type {
   TerminalExecutionPhase,
 } from "./lifecycle.js";
 export { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES } from "./lifecycle.js";
+export type { ExecutionCorrelations } from "./lifecycle-correlations.js";
+export {
+  CORRELATION_KEY_PATTERN,
+  MAX_CORRELATION_VALUE_LENGTH,
+  MAX_CORRELATIONS,
+  RESERVED_CORRELATION_PREFIXES,
+  correlationKey,
+  validateCorrelations,
+} from "./lifecycle-correlations.js";
 export type { ExecutionTransitionErrorCode } from "./lifecycle-validation.js";
 export { ExecutionTransitionError } from "./lifecycle-validation.js";
 export {
