@@ -33,7 +33,7 @@ export type {
   LifecycleExecutionTarget,
   TerminalExecutionPhase,
 } from "./lifecycle.js";
-export { EXECUTION_PHASES } from "./lifecycle.js";
+export { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES } from "./lifecycle.js";
 export type { ExecutionTransitionErrorCode } from "./lifecycle-validation.js";
 export { ExecutionTransitionError } from "./lifecycle-validation.js";
 export {

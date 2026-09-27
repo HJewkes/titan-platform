@@ -32,6 +32,8 @@ function terminalOutcome<H extends Harness>(terminal: Terminal<H>): DurableStepO
     case "failed": return { kind: "failed", error: terminal.reason, retryable: terminal.retryable };
     case "cancelled": return { kind: "cancelled", reason: terminal.reason };
     case "cancellation_unknown": return { kind: "cancellation_unknown", reason: terminal.reason };
+    // A step that produced no output cannot be proven side-effect free, so it is never retried.
+    case "ended": return { kind: "failed", error: `ended: ${terminal.evidence}`, retryable: false };
   }
 }
 

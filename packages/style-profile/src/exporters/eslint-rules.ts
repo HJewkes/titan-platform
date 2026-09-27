@@ -32,41 +32,87 @@ function eslintExtensionOptions(rule: StyleRule): unknown[] | undefined {
     : undefined;
 }
 
-function namingSelectors(rule: StyleRule, selectorName: string): unknown[] {
+const NAMING_RULE = "@typescript-eslint/naming-convention";
+
+// Keys are profile vocabulary (style-analyzer emits SCREAMING_SNAKE); values are typescript-eslint's format enum.
+const TS_ESLINT_FORMATS: Record<string, string> = {
+  camelCase: "camelCase",
+  strictCamelCase: "strictCamelCase",
+  PascalCase: "PascalCase",
+  StrictPascalCase: "StrictPascalCase",
+  snake_case: "snake_case",
+  UPPER_CASE: "UPPER_CASE",
+  UPPER_SNAKE_CASE: "UPPER_CASE",
+  SCREAMING_SNAKE: "UPPER_CASE",
+  SCREAMING_SNAKE_CASE: "UPPER_CASE",
+};
+
+/** Same shape as style-checker's SkippedRule, so a consumer can forward it unchanged. */
+export interface EslintSkippedRule {
+  tool: "eslint";
+  rule: string;
+  plugin: string;
+  reason: string;
+}
+
+export interface NamingConventionResult {
+  rule: [string, unknown] | null;
+  skippedRules: EslintSkippedRule[];
+}
+
+export function toTsEslintFormat(convention: string): string | null {
+  return TS_ESLINT_FORMATS[convention] ?? null;
+}
+
+function skippedNaming(key: string, convention: unknown): EslintSkippedRule {
+  return {
+    tool: "eslint",
+    rule: NAMING_RULE,
+    plugin: "@typescript-eslint",
+    reason: `naming.${key} convention ${JSON.stringify(convention)} has no typescript-eslint naming-convention format`,
+  };
+}
+
+function namingSelectors(
+  key: string,
+  rule: StyleRule,
+  selectorName: string,
+  skipped: EslintSkippedRule[],
+): unknown[] {
   const eslintOptions = eslintExtensionOptions(rule);
   if (eslintOptions) return eslintOptions;
-  if (typeof rule.convention === "string") {
-    return [{ selector: selectorName, format: [rule.convention] }];
-  }
+  const format = typeof rule.convention === "string" ? toTsEslintFormat(rule.convention) : null;
+  if (format) return [{ selector: selectorName, format: [format] }];
+  skipped.push(skippedNaming(key, rule.convention));
   return [];
+}
+
+export function buildNamingConvention(profile: Profile): NamingConventionResult {
+  const thresholds = profile.severityThresholds;
+  const selectors: unknown[] = [];
+  const skippedRules: EslintSkippedRule[] = [];
+  let maxSeverity: Severity | null = null;
+
+  for (const [key, rule] of Object.entries(profile.naming ?? {})) {
+    const selectorName = NAMING_SELECTORS[key];
+    if (!selectorName) continue;
+    const severity = toEslintSeverity(rule.confidence, thresholds);
+    if (!severity) continue;
+
+    const ruleSelectors = namingSelectors(key, rule, selectorName, skippedRules);
+    if (ruleSelectors.length === 0) continue;
+    selectors.push(...ruleSelectors);
+    if (!maxSeverity || severityRank(severity) > severityRank(maxSeverity)) maxSeverity = severity;
+  }
+
+  if (selectors.length === 0 || !maxSeverity) return { rule: null, skippedRules };
+  return { rule: [NAMING_RULE, [maxSeverity, ...selectors]], skippedRules };
 }
 
 export function buildNamingConventionRule(
   profile: Profile,
 ): [string, unknown] | null {
-  const thresholds = profile.severityThresholds;
-  const naming = profile.naming;
-  if (!naming) return null;
-
-  const selectors: unknown[] = [];
-  let maxSeverity: Severity | null = null;
-
-  for (const [key, rule] of Object.entries(naming)) {
-    if (key === "files") continue;
-    const selectorName = NAMING_SELECTORS[key];
-    if (!selectorName) continue;
-
-    const severity = toEslintSeverity(rule.confidence, thresholds);
-    if (!severity) continue;
-    if (!maxSeverity || severityRank(severity) > severityRank(maxSeverity)) {
-      maxSeverity = severity;
-    }
-
-    selectors.push(...namingSelectors(rule, selectorName));
-  }
-
-  if (selectors.length === 0 || !maxSeverity) return null;
-  return ["@typescript-eslint/naming-convention", [maxSeverity, ...selectors]];
+  return buildNamingConvention(profile).rule;
 }
 
 export function buildImportOrderRule(

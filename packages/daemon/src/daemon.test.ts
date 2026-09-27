@@ -47,7 +47,7 @@ describe("startDaemon", () => {
 
     const rpc = await fetch(`http://127.0.0.1:${handle.port}/rpc/greet`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-titan-client": "test" },
       body: JSON.stringify({ name: "socket" }),
     });
     expect(await rpc.json()).toMatchObject({ ok: true, data: { greeting: "hello socket" } });
@@ -76,7 +76,7 @@ describe("startDaemon", () => {
   it("serves mcp alongside the hono routes when a tool prefix is set", async () => {
     handle = await startDaemon(options({ toolPrefix: "test__" }));
     const client = new Client({ name: "test-client", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`)));
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${handle.port}/mcp`), { requestInit: { headers: { "x-titan-client": "test" } } }));
 
     const { tools } = await client.listTools();
 
@@ -143,13 +143,22 @@ describe("request guards over a real socket", () => {
     expect(res.status).toBe(403);
   });
 
-  it("still serves a JSON POST from loopback with no Origin", async () => {
+  it("serves a loopback JSON POST with no Origin when it carries the client header", async () => {
+    handle = await startDaemon(options());
+
+    const headers = { "content-type": "application/json", "x-titan-client": "test" };
+    const res = await post(handle.port, "/rpc/greet", headers, '{"name":"socket"}');
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, data: { greeting: "hello socket" } });
+  });
+
+  it("refuses a loopback JSON POST with neither Origin nor the client header", async () => {
     handle = await startDaemon(options());
 
     const res = await post(handle.port, "/rpc/greet", { "content-type": "application/json" }, '{"name":"socket"}');
 
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.body)).toMatchObject({ ok: true, data: { greeting: "hello socket" } });
+    expect(res.status).toBe(403);
   });
 
   it("guards the mcp transport the same way", async () => {
@@ -157,9 +166,14 @@ describe("request guards over a real socket", () => {
     const listTools = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}';
 
     const rebound = await post(handle.port, "/mcp", { "content-type": "application/json", host: "evil.example" }, listTools);
-    const plain = await post(handle.port, "/mcp", { "content-type": "text/plain", accept: "application/json, text/event-stream" }, listTools);
+    const accept = "application/json, text/event-stream";
+    const anonymous = await post(handle.port, "/mcp", { "content-type": "application/json", accept }, listTools);
+    const plain = await post(handle.port, "/mcp", { "content-type": "text/plain", accept, "x-titan-client": "test" }, listTools);
+    const named = await post(handle.port, "/mcp", { "content-type": "application/json", accept, "x-titan-client": "test" }, listTools);
 
     expect(rebound.status).toBe(403);
+    expect(anonymous.status).toBe(403);
+    expect(named.status).toBe(200);
     expect(plain.status).toBe(415);
     expect(JSON.parse(plain.body)).toMatchObject({ ok: false, error: "Content-Type must be application/json" });
   });

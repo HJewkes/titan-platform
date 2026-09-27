@@ -26,7 +26,8 @@ export function agentRunner(options: AgentRunnerOptions): LegacyStepRunner {
         options.deps,
       );
       if (result.ok) return { ok: true, output: outputText(result.output), runnerRef: result.sessionId, usage: stepUsage(result.usage) };
-      return { ok: false, error: `${result.failure.kind}: ${result.failure.reason}`, retryable: RETRYABLE.has(result.failure.kind) };
+      const failed: StepRunOutcome = { ok: false, error: `${result.failure.kind}: ${result.failure.reason}`, retryable: RETRYABLE.has(result.failure.kind) };
+      return result.usage ? { ...failed, usage: stepUsage(result.usage) } : failed;
     },
   };
 }
@@ -66,7 +67,7 @@ export function idempotentRunner(live: LegacyStepRunner): RecoverableStepRunner 
 
 function toDurableOutcome(outcome: StepRunOutcome): DurableStepOutcome {
   if (outcome.ok) return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
-  return { kind: "failed", error: outcome.error, retryable: outcome.retryable };
+  return { kind: "failed", error: outcome.error, retryable: outcome.retryable, usage: outcome.usage };
 }
 
 function failedOutcome(error: unknown): DurableStepOutcome {

@@ -1,0 +1,10 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!packages/matrix-bus
+!deploy/hub/package.json
+!deploy/hub/src
+**/node_modules
+**/dist

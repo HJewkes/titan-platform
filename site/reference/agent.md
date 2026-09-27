@@ -70,7 +70,8 @@ is set.
 | Option | Maps to |
 |---|---|
 | binary | `CLAUDE_BIN`, else the first executable file named `claude` on `PATH` |
-| every call | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-turns 1 --max-budget-usd <maxBudgetUsd>` |
+| every call | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-budget-usd <maxBudgetUsd>` |
+| `maxTurns` | `--max-turns`, at least 2 when `outputSchema` is set; `error_max_turns` is a retryable `runtime_error` |
 | `prompt` | stdin |
 | `model` | `--model` |
 | `systemPrompt` | `--system-prompt` |
@@ -83,6 +84,10 @@ sources throw a `TypeError` before anything spawns. `claudePrintCapabilities()` 
 same limits in the shared capability vocabulary. A measured call with no `systemPrompt`
 used about 7,600 input tokens for the default Claude Code prompt, cost $0.031 on sonnet
 and took 4.4 s wall time.
+
+The JSON result's `usage.input_tokens` is the non-cached count only, often single digits
+beside thousands of `cache_creation_input_tokens`, so read cost from `totalCostUsd` or the
+cache fields.
 
 ## Budgets are required, not defaulted
 

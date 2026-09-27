@@ -92,7 +92,7 @@ active steps. Legacy agent runs without confirmed attachment remain
 
 ## Fan-out
 
-`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd? })` runs `fn` over a list
+`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd?, maxFailures? })` runs `fn` over a list
 with a concurrency cap (default 1). Each item runs as step `${stepId}/${key}`, and `fn`
 receives that id to pass to `ctx.dispatch`, so each item memoizes on its own. After a
 restart, replay reuses finished items and runs only the rest. Matching is by key, not
@@ -107,10 +107,15 @@ const review = await mapItems(ctx, "review", files, (file, itemStepId, c) =>
 // review.results in input order; review.stoppedBy is "budget", "failure" or null
 ```
 
-`budgetUsd` is checked before each launch against the cost finished items reported in
-`StepResult.usage` (a `StepUsage` of `costUsd` plus optional token counts). Items still in
-flight are not counted, so a run can overshoot by up to `concurrency - 1` items. A
-`StepFailedError` also stops new launches. The result carries `results`, `failed`,
+`budgetUsd` is checked before each launch against the cost items reported in
+`StepResult.usage` (a `StepUsage` of `costUsd` plus optional token counts) or on their
+failure. Items still in flight are not counted, so a run can overshoot by up to
+`concurrency - 1` items.
+
+A failed item lands in `failed` with its error, its `retryable` flag and the usage of its
+failed attempts, and the other items keep launching. A non-retryable failure stops new
+launches at once; retryable failures stop them once there are more than `maxFailures`
+(default 3). `spentUsd` includes failed-call cost. The result carries `results`, `failed`,
 `skipped`, `spentUsd`, and `stoppedBy`. Any other error is rethrown once the items in flight
 settle.
 
@@ -118,7 +123,8 @@ settle.
 
 `agentRunner` classifies [`agent`](/reference/agent) failures: rate limits, runtime errors,
 and inactivity are retryable; budget, auth, refusal, and schema failures are not. It reports
-`usage` (`costUsd`, `inputTokens`, `outputTokens`) on every successful step, and a run with
+`usage` (`costUsd`, `inputTokens`, `outputTokens`) on every successful step and on a failed
+step when the agent run reported it, and a run with
 an `outputSchema` stores its output as JSON text.
 
 `idempotentRunner(live)` wraps a live runner whose steps are safe to repeat, such as

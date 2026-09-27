@@ -93,22 +93,31 @@ their own step IDs.
 
 ## Fan-out
 
-`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd? })` runs `fn`
+`mapItems(ctx, stepId, items, fn, { key, concurrency?, budgetUsd?, maxFailures? })` runs `fn`
 over a list with a concurrency cap (default 1). Each item runs as step
 `${stepId}/${key}`, and `fn` receives that id to pass to `ctx.dispatch`, so each
 item memoizes on its own. After a restart, replay reuses the finished items and
 runs only the rest. Matching is by key, not position, so the input may be
 reordered between runs. Duplicate keys throw before anything launches.
 
-`budgetUsd` is checked before each launch against the cost that finished items
-reported in `StepResult.usage`. Items still in flight are not counted, so a run
-can overshoot by up to `concurrency - 1` items. A `StepFailedError` also stops
-new launches. The result reports `results` in input order, plus `failed`,
-`skipped`, `spentUsd` and `stoppedBy` (`"budget"`, `"failure"` or `null`). Any
-other error is rethrown once the items in flight settle.
+`budgetUsd` is checked before each launch against the cost that items reported
+in `StepResult.usage` or on their failure. Items still in flight are not
+counted, so a run can overshoot by up to `concurrency - 1` items.
+
+An item whose step throws `StepFailedError` lands in `failed` with its `error`,
+`retryable` flag and, when the runner reported it, the `usage` of its failed
+attempts, and the remaining items keep launching. A non-retryable failure (auth,
+budget, refusal, schema) stops new launches at once, because the next item would
+fail the same way. Retryable failures stop launches once there are more than
+`maxFailures` of them (default 3). `spentUsd` includes failed-call cost. The
+result reports `results` in input order, plus `failed`, `skipped`, `spentUsd`
+and `stoppedBy` (`"budget"`, `"failure"` or `null`). Any other error is
+rethrown once the items in flight settle.
 
 `agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
-every successful step. A run with an `outputSchema` stores its output as JSON
+every successful step, and on a failed step whenever the agent run reported it.
+The `durableHarnessRunner` reports no usage yet, so its failed items add
+nothing to `spentUsd`. A run with an `outputSchema` stores its output as JSON
 text. Wrap it in `idempotentRunner` when its steps are safe to repeat, such as
 read-only judgements. Then a step that was in flight at a crash is dispatched
 again on `hydrate` instead of parking the run as `recovery_required`. With that

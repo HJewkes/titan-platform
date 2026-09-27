@@ -48,7 +48,7 @@ await fetch(`http://127.0.0.1:${handle.port}/health`).then((r) => r.json());
 
 await fetch(`http://127.0.0.1:${handle.port}/rpc/task.done`, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", "x-titan-client": "my-cli" },
   body: JSON.stringify({ slug: "TP-1" }),
 }).then((r) => r.json());
 // { ok: true, data: { ok: true } }
@@ -67,7 +67,7 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | 403 bad Host/Origin, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
+| `POST /rpc/:name` | 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope and
@@ -76,13 +76,30 @@ exit codes are identical across surfaces.
 ## Request guards
 
 An unauthenticated daemon on loopback is reachable from every browser on the machine, so
-every route is behind three checks: the `Host` header must be in an allowlist (403), a
-state-changing request's `Origin`, when it sends one, must be in an allowlist (403), and a
-state-changing request's `Content-Type` must be `application/json` (415).
+every route is behind four checks: the `Host` header must be in an allowlist (403), a
+state-changing request's `Origin`, when it sends one, must be in an allowlist (403), a
+state-changing request with no `Origin` must send a non-empty `X-Titan-Client` header (403),
+and a state-changing request's `Content-Type` must be `application/json` (415).
 
 The default allowlist is `localhost`, `127.0.0.1`, and `[::1]`, each with and without the
-bound port, plus a non-default `host` option. A client that sends no `Origin` — a CLI,
-curl, an MCP client — is unaffected, and `GET /health` and `GET /version` stay reachable.
+bound port, plus a non-default `host` option; origins are the `http://` and `https://`
+forms of those. A state-changing request with no `Origin` header must send
+`X-Titan-Client` with any non-empty value, conventionally the caller's name. `GET /health`
+and `GET /version` need neither. A state-changing request must also carry a JSON
+`Content-Type`. A cross-origin page can send neither the JSON body nor the custom header
+without a preflight the daemon never answers.
+
+A missing `Origin` alone is not trusted: browsers have omitted it (old releases, privacy
+extensions, webviews), and a loopback peer address proves nothing because the attacking
+page runs on this machine too. The header is not a secret and authenticates no one; any
+local process can send it. It only proves the sender is not a web page.
+
+Non-browser callers opt in explicitly. `liveSource` from `@titan-design/rpc-client` sends
+the header already. A CLI or script adds `x-titan-client: <name>` to its `fetch`. An MCP
+client configures it as a transport header, for example `"headers": { "x-titan-client":
+"claude-code" }` in `.mcp.json` or `requestInit.headers` on the SDK's
+`StreamableHTTPClientTransport`. `CLIENT_HEADER` is exported from `@titan-design/rpc-protocol`
+and re-exported here.
 
 ```ts
 await startDaemon({

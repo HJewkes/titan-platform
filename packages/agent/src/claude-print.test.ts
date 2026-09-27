@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { buildClaudePrintArgs, resolveClaudeBin } from "./claude-print.js";
 import { runAgent } from "./run.js";
@@ -57,13 +58,19 @@ async function whenRecorded(file: string): Promise<void> {
   while (!existsSync(join(dir, file))) await new Promise(resolve => setTimeout(resolve, 20));
 }
 
-function isAlive(pid: number): boolean {
+// A killed orphan stays a zombie until init reaps it, and kill(pid, 0) still succeeds on a zombie.
+function isRunning(pid: number): boolean {
   try {
-    process.kill(pid, 0);
-    return true;
+    const state = execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    return state !== "" && !state.startsWith("Z");
   } catch {
     return false;
   }
+}
+
+async function expectKilled(pidFile: string): Promise<void> {
+  const pid = Number(recorded(pidFile));
+  await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 2_000, interval: 20 });
 }
 
 describe("claude-print harness", () => {
@@ -77,7 +84,28 @@ describe("claude-print harness", () => {
     const args = recorded("args.txt").split("\n");
     expect(args).toEqual(expect.arrayContaining(["-p", "--strict-mcp-config", "--system-prompt", "Answer in JSON.", "--json-schema"]));
     expect(args[args.indexOf("--tools") + 1]).toBe("");
-    expect(args[args.indexOf("--max-turns") + 1]).toBe("1");
+    expect(args[args.indexOf("--max-turns") + 1]).toBe("2");
+  });
+
+  it.each([
+    ["one turn for a plain-text call", {}, "1"],
+    ["two turns for a schema call configured with one", { outputSchema: okSchema }, "2"],
+    ["the configured turns for a schema call configured with more", { outputSchema: okSchema, maxTurns: 4 }, "4"],
+    ["the configured turns for a plain-text call configured with more", { maxTurns: 3 }, "3"],
+  ])("passes --max-turns as %s", (_scenario, overrides: Partial<AgentRunConfig<unknown>>, expected) => {
+    const args = buildClaudePrintArgs(printConfig(overrides));
+
+    expect(args[args.indexOf("--max-turns") + 1]).toBe(expected);
+  });
+
+  it("reports error_max_turns as a retryable runtime_error with the call's usage", async () => {
+    const maxedOut = { subtype: "error_max_turns", is_error: true, errors: ["max_turns: Reached maximum number of turns (2)"], result: undefined, structured_output: undefined };
+    writeFileSync(join(dir, "result.json"), JSON.stringify(cannedResult(maxedOut)));
+
+    const result = await runAgent(printConfig({ outputSchema: okSchema }), { env: fakeEnv() });
+
+    expect(result).toMatchObject({ ok: false, failure: { kind: "runtime_error" }, usage: { totalCostUsd: 0.0025 } });
+    expect(!result.ok && result.failure.reason).toContain("--max-turns 2");
   });
 
   it("returns the result text when no schema is given", async () => {
@@ -118,24 +146,21 @@ describe("claude-print harness", () => {
     expect(result).toMatchObject({ ok: false, failure: { kind: "auth_misconfigured" } });
   });
 
-  it("kills the child process group and fails as inactivity_timeout at the deadline", async () => {
-    const started = Date.now();
+  it("fails as inactivity_timeout when the CLI runs past the deadline", async () => {
+    const result = await runAgent(printConfig({ inactivityTimeoutMs: 50 }), { env: fakeEnv({ FAKE_MODE: "hang" }) });
 
-    const result = await runAgent(printConfig({ inactivityTimeoutMs: 2_000 }), { env: fakeEnv({ FAKE_MODE: "hang" }) });
-
-    expect(result).toMatchObject({ ok: false, failure: { kind: "inactivity_timeout", timeoutMs: 2_000 } });
-    expect(Date.now() - started).toBeLessThan(10_000);
-    expect(isAlive(Number(recorded("sleep.pid")))).toBe(false);
+    expect(result).toMatchObject({ ok: false, failure: { kind: "inactivity_timeout", timeoutMs: 50 } });
   });
 
-  it("kills the child and fails as aborted when the caller aborts", async () => {
+  // The deadline and an abort share one stop path, so this also covers the timeout's group kill.
+  it("kills the child process group and fails as aborted when the caller aborts", async () => {
     const controller = new AbortController();
     void whenRecorded("sleep.pid").then(() => controller.abort("caller gave up"));
 
     const result = await runAgent(printConfig({ signal: controller.signal }), { env: fakeEnv({ FAKE_MODE: "hang" }) });
 
     expect(result).toEqual({ ok: false, failure: { kind: "aborted", reason: "caller gave up" } });
-    expect(isAlive(Number(recorded("sleep.pid")))).toBe(false);
+    await expectKilled("sleep.pid");
   });
 
   it("starts without CLAUDE_CODE_OAUTH_TOKEN and still strips metered credentials", async () => {

@@ -18,6 +18,7 @@ export default withMermaid(
       nav: [
         { text: "Home", link: "/" },
         { text: "Get started", link: "/getting-started" },
+        { text: "Capabilities", link: "/guides/capabilities" },
         { text: "Packages", link: "/reference/" },
         { text: "Guides", link: "/guides/" },
       ],
@@ -27,6 +28,7 @@ export default withMermaid(
           text: "Docs",
           items: [
             { text: "Get started", link: "/getting-started" },
+            { text: "Capability catalog", link: "/guides/capabilities" },
             { text: "Architecture", link: "/guides/architecture" },
             { text: "The binding pattern", link: "/guides/binding-pattern" },
             { text: "Where code goes", link: "/guides/where-code-goes" },

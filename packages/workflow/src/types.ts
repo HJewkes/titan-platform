@@ -121,7 +121,7 @@ export interface StepRunInput {
 
 export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
-  | { kind: "failed"; error: string; retryable: boolean }
+  | { kind: "failed"; error: string; retryable: boolean; usage?: StepUsage }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string };
 
@@ -147,7 +147,7 @@ export type StepReconcileOutcome =
 
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
-  | { ok: false; error: string; retryable: boolean };
+  | { ok: false; error: string; retryable: boolean; usage?: StepUsage };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
@@ -178,14 +178,27 @@ export type WorkflowEvent =
   | { type: "workflow_failed"; runId: string; error: string }
   | { type: "workflow_cancelled"; runId: string; reason: string };
 
+export interface StepFailureDetail {
+  /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */
+  retryable?: boolean;
+  /** Cost of every failed attempt, when the runner reported it. */
+  usage?: StepUsage;
+}
+
 export class StepFailedError extends Error {
+  readonly retryable: boolean;
+  readonly usage: StepUsage | undefined;
+
   constructor(
     readonly stepId: string,
     readonly iteration: number,
     readonly reason: string,
+    detail: StepFailureDetail = {},
   ) {
     super(`step ${stepId} (iteration ${iteration}) failed: ${reason}`);
     this.name = "StepFailedError";
+    this.retryable = detail.retryable ?? false;
+    this.usage = detail.usage;
   }
 }
 

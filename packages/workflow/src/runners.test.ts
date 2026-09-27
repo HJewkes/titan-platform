@@ -22,7 +22,7 @@ const oneDispatch: WorkflowFn = async (ctx) => {
   await ctx.dispatch("work", "read-only judgement");
 };
 
-function structuredQuery(structured: unknown): NonNullable<AgentRunDeps["query"]> {
+function structuredQuery(structured: unknown, result: Record<string, unknown> = {}): NonNullable<AgentRunDeps["query"]> {
   const messages = [
     { type: "system", subtype: "init", apiKeySource: "none", model: "claude-sonnet-5", tools: [], permissionMode: "dontAsk", claude_code_version: "2.1.300", session_id: "sess-1" },
     {
@@ -36,6 +36,7 @@ function structuredQuery(structured: unknown): NonNullable<AgentRunDeps["query"]
       total_cost_usd: 0.12,
       modelUsage: { "claude-sonnet-5": { inputTokens: 900, outputTokens: 80, costUSD: 0.12 } },
       session_id: "sess-1",
+      ...result,
     },
   ];
   return (() => {
@@ -88,6 +89,20 @@ describe("agentRunner", () => {
 
     expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
     expect(outcome.ok && outcome.usage).toEqual({ costUsd: 0.12, inputTokens: 900, outputTokens: 80 });
+  });
+
+  it("reports a failed run's cost on a retryable failure", async () => {
+    const failedResult = { subtype: "error_during_execution", is_error: true, errors: ["socket hang up"] };
+    const runner = agentRunner({
+      cwd: "/tmp",
+      maxTurns: 1,
+      maxBudgetUsd: 1,
+      deps: { query: structuredQuery(undefined, failedResult), env: { CLAUDE_CODE_OAUTH_TOKEN: "sk-oauth" } },
+    });
+
+    const outcome = await runner.run({ runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal });
+
+    expect(outcome).toMatchObject({ ok: false, retryable: true, usage: { costUsd: 0.12, inputTokens: 900, outputTokens: 80 } });
   });
 
   it("routes steps to the claude-print harness when the defaults select it", async () => {

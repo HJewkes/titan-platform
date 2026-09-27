@@ -2,7 +2,8 @@
 
 pnpm monorepo of `@titan-design/*` packages arranged as a strict acyclic DAG, plus
 `products/*` composed from them. Read `README.md` for layout and conventions; this file is
-the short version for agents.
+the short version for agents. Before building anything, read `CAPABILITIES.md` (the generated
+capability catalog): reuse the unit that exists, or file the gap as a task.
 
 ## Shared code: the titan-platform pattern
 
@@ -13,8 +14,9 @@ The design system is separate: `~/projects/titan-design` publishes `@titan-desig
 
 **Before building new functionality, ask three questions in order.**
 
-1. Does a `@titan-design/*` package already do this? Read the package list in
-   `titan-platform/README.md` and the package's own README. If yes, install it from npm.
+1. Does a `@titan-design/*` package already do this? Find it in `CAPABILITIES.md` (every
+   unit, key exports, use-this-when, proven runtime paths and credentials), then read the
+   package's own README. If yes, install it from npm.
    Never copy its source and never use a relative `file:` dependency.
 2. Is it product-specific (this product's policy, vocabulary, or UI)? Then build it here.
 3. Would a second product plausibly want it? Then build it in titan-platform as a package,
