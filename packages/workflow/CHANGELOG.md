@@ -1,5 +1,12 @@
 # @titan-design/workflow
 
+## 0.4.3
+
+### Patch Changes
+
+- 18527b6: agent-protocol: add the `ended` terminal outcome, the `observe_launched` transition and the exported `TERMINAL_EXECUTION_PHASES` tuple (TP-192 S1). workflow maps an `ended` settlement to a non-retryable failed step. agent-lifecycle derives its recoverable-phase filter from `TERMINAL_EXECUTION_PHASES`, so `ended` rows are never listed as recoverable.
+  - @titan-design/agent@0.4.2
+
 ## 0.4.2
 
 ### Patch Changes

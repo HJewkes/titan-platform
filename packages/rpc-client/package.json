@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/rpc-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources",
   "type": "module",
   "main": "./dist/index.js",

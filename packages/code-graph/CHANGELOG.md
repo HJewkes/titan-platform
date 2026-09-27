@@ -1,5 +1,11 @@
 # @titan-design/code-graph
 
+## 0.9.1
+
+### Patch Changes
+
+- 483f058: Only use a prior snapshot as the alias base when its commit is an ancestor of the indexed commit. A force-pushed ref no longer yields spurious rename aliases, or carried-over violations, from an unrelated pre-rewrite snapshot.
+
 ## 0.9.0
 
 ### Minor Changes

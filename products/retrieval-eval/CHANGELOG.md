@@ -1,5 +1,11 @@
 # @titan-design/retrieval-eval
 
+## 0.0.3
+
+### Patch Changes
+
+- 7cefec9: Re-score REPORT.md against active-work 0.16.0 (spawn-arm R@10 0.203 to 0.272); no code change.
+
 ## 0.0.2
 
 ### Patch Changes

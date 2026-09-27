@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/rpc-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap",
   "type": "module",
   "main": "./dist/index.js",
