@@ -1,5 +1,11 @@
 import type { ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
-import type { ExecutionOwnerFence, ExecutionOwnerLease, ExecutionTerminal, LifecycleExecutionTarget } from "./lifecycle.js";
+import {
+  TERMINAL_EXECUTION_PHASES,
+  type ExecutionOwnerFence,
+  type ExecutionOwnerLease,
+  type ExecutionTerminal,
+  type LifecycleExecutionTarget,
+} from "./lifecycle.js";
 
 export type ExecutionTransitionErrorCode =
   | "not_found"
@@ -26,17 +32,27 @@ export function validateConversation(conversation: ConversationIdentity, harness
 }
 
 export function validateTerminal(terminal: ExecutionTerminal<unknown>): void {
-  const outcomes = ["succeeded", "failed", "cancelled", "cancellation_unknown"];
+  const outcomes: readonly string[] = TERMINAL_EXECUTION_PHASES;
   if (!record(terminal) || !outcomes.includes(terminal.outcome as string)) fail("invalid_transition", "terminal.outcome is invalid");
   if (terminal.outcome === "succeeded") {
     if (!("result" in terminal) || terminal.result === undefined) fail("invalid_transition", "succeeded terminal must carry a result");
     return;
   }
+  if (terminal.outcome === "ended") return validateEnded(terminal);
   nonempty("terminal.reason", terminal.reason);
   if (terminal.outcome === "failed" && typeof terminal.retryable !== "boolean") {
     fail("invalid_transition", "terminal.retryable must be boolean");
   }
   if (terminal.outcome === "cancellation_unknown") nonempty("terminal.evidence", terminal.evidence);
+}
+
+function validateEnded(terminal: Extract<ExecutionTerminal<unknown>, { outcome: "ended" }>): void {
+  nonempty("terminal.evidence", terminal.evidence);
+  if (terminal.exit === undefined) return;
+  if (!record(terminal.exit)) fail("invalid_transition", "terminal.exit must be an object");
+  const { code, signal } = terminal.exit;
+  if (code !== null && !Number.isSafeInteger(code)) fail("invalid_transition", "terminal.exit.code must be an integer or null");
+  if (signal !== null && typeof signal !== "string") fail("invalid_transition", "terminal.exit.signal must be a string or null");
 }
 
 export function validateLease(lease: ExecutionOwnerLease, occurredAt: string): void {

@@ -118,6 +118,27 @@ describe("durable harness workflow integration", () => {
     expect(fixture.run).toHaveBeenCalledTimes(1);
   });
 
+  it("fails the step without retry when a supervisor records that the process ended", async () => {
+    const fixture = setup();
+    const first = fixture.runtime("first");
+    const runId = first.runtime.start("work");
+    const active = await acknowledged(first.runtime, runId);
+    first.runtime.shutdown();
+    const record = fixture.ledger.get(active.executionId)!;
+    const { supervisorId, generation } = record.owner!;
+    const ended = fixture.ledger.apply({ kind: "finish", executionId: active.executionId, eventId: "supervisor-ended", expectedRevision: record.revision,
+      occurredAt: record.lastObservedAt, fence: { supervisorId, generation },
+      terminal: { outcome: "ended", evidence: "pane exited with no result" } });
+    expect(ended.ok).toBe(true);
+
+    const second = fixture.runtime("second");
+    await second.runtime.hydrate();
+    const final = await second.runtime.wait(runId);
+    expect(final.status).toBe("failed");
+    expect(final.error).toContain("ended: pane exited with no result");
+    expect(fixture.run).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps cancellation unknown distinct from confirmed cancellation in both stores", async () => {
     const fixture = setup();
     const first = fixture.runtime("first");

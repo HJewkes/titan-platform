@@ -86,6 +86,17 @@ describe("execution ledger", () => {
     } finally { db.close(); }
   });
 
+  it("never lists an ended execution as recoverable", () => {
+    const { db, ledger } = setup();
+    try {
+      const record = applied(ledger, prepare());
+      const dispatched = applied(ledger, { kind: "begin_dispatch", executionId: "execution", eventId: "begin", expectedRevision: record.revision, occurredAt: start, fence });
+      applied(ledger, { kind: "finish", executionId: "execution", eventId: "ended", expectedRevision: dispatched.revision, occurredAt: start, fence,
+        terminal: { outcome: "ended", evidence: "process gone" } });
+      expect(ledger.listRecoverable()).toEqual([]);
+    } finally { db.close(); }
+  });
+
   it("persists snapshots and ordered receipts across reopen and concurrent owners", () => {
     const dir = mkdtempSync(join(tmpdir(), "execution-ledger-")); dirs.push(dir);
     const file = join(dir, "ledger.sqlite");

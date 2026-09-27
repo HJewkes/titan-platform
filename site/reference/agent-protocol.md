@@ -34,3 +34,9 @@ leased ownership. Revisions and captured owner generations fence every mutation;
 terminal states are absorbing. Caller execution identity stays separate from the
 adapter invocation and native conversation identities. Persistence and event replay
 live in [`agent-lifecycle`](/reference/agent-lifecycle).
+
+The terminal outcomes are `succeeded`, `failed`, `cancelled`, `cancellation_unknown` and
+`ended`, exported as `TERMINAL_EXECUTION_PHASES`. `ended` records a process that exited
+without a harness result, with nonempty `evidence` and an optional `exit` code and signal.
+`observe_launched` records a launch's `runnerRef` and `surface` without changing the phase;
+a later `observe_running` must match both.

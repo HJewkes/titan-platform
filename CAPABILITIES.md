@@ -113,11 +113,11 @@ Tier 0, `@titan-design/agent-protocol@0.1.0`. Harness-neutral identity and usage
 
 Key exports:
 
-- `lifecycle`: `ExecutionOwnerFence`, `ExecutionOwnerLease`, `ExecutionPhase`, `ExecutionRecord`, `ExecutionReconcileOutcome`, `ExecutionTerminal`, `EXECUTION_PHASES`
+- `lifecycle`: `ExecutionOwnerFence`, `ExecutionOwnerLease`, `ExecutionPhase`, `ExecutionRecord`, `ExecutionReconcileOutcome`, `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
 - `index`: `conversationRef`, `conversationItemRef`
-- +10 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
+- +11 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
 
 <a id="cap-chat-protocol"></a>
 
