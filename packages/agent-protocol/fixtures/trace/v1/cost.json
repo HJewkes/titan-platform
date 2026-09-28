@@ -1,0 +1,62 @@
+[
+  {
+    "schema": "titan.trace/v1",
+    "kind": "cost",
+    "id": "cost:response:claude-code:host-a:conv-1:msg_01",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:0",
+    "at": "2026-09-28T10:00:40.000Z",
+    "conversation": "conversation:claude-code:host-a:conv-1",
+    "measurement": {
+      "model": "claude-sonnet-5",
+      "tokens": {
+        "input": 1200,
+        "output": 300,
+        "cachedInput": 0,
+        "cacheWriteInput": 0,
+        "reasoningOutput": null,
+        "total": 1500
+      },
+      "cost": {
+        "usd": 0.04,
+        "kind": "estimate"
+      },
+      "source": "claude.message.usage",
+      "kind": "delta",
+      "responseId": "msg_01"
+    }
+  },
+  {
+    "schema": "titan.trace/v1",
+    "kind": "cost",
+    "id": "cost:response:claude-code:host-a:conv-1:msg_02",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:1",
+    "at": "2026-09-28T10:06:29.000Z",
+    "conversation": "conversation:claude-code:host-a:conv-1",
+    "measurement": {
+      "model": "claude-sonnet-5",
+      "tokens": {
+        "input": 9100,
+        "output": 2400,
+        "cachedInput": 0,
+        "cacheWriteInput": 0,
+        "reasoningOutput": null,
+        "total": 11500
+      },
+      "cost": {
+        "usd": 0.31,
+        "kind": "estimate"
+      },
+      "source": "claude.message.usage",
+      "kind": "delta",
+      "responseId": "msg_02"
+    },
+    "span": {
+      "sourceId": "src-1",
+      "byteOffset": 20411,
+      "byteLength": 402,
+      "contentHash": "5fcb6cfeb42da2d40266a28815ecdcb2f4298c75b46ea7101e56ac913a4f4464"
+    }
+  }
+]

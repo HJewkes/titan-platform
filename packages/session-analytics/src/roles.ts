@@ -1,7 +1,7 @@
 import type { SessionClassification } from "./classify-session.js";
 
 /** worker-v1's role vocabulary, from worker-forensics-report.md section 2. */
-export type WorkerRole = "implementer" | "reviewer" | "researcher" | "planner" | "standing_peer" | "unknown";
+export type WorkerRole = "implementer" | "reviewer" | "researcher" | "planner" | "coordinator" | "standing_peer" | "unknown";
 
 /** Spawn profile to role, as the worker report's table (wf_analyze.py:79-91) maps it. */
 export const PROFILE_ROLES: Readonly<Record<string, WorkerRole>> = {
@@ -15,6 +15,8 @@ export const PROFILE_ROLES: Readonly<Record<string, WorkerRole>> = {
   researcher: "researcher",
   explorer: "researcher",
   "fable-architect": "planner",
+  planner: "planner",
+  "fable-coordinator": "coordinator",
   peer: "standing_peer",
 };
 
