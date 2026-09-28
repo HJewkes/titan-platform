@@ -22,22 +22,27 @@ export type Emit = (event: SessionEvent) => void;
 
 /**
  * Translates one transcript JSONL line into typed events. Every rule is
- * stateless across lines, which is what makes an incremental read from a
- * watermark and a whole-file rebuild produce identical event sets.
+ * stateless across lines except the last-seen timestamp: a record such as
+ * `cost-state` carries none of its own and takes the enclosing line's. A
+ * caller resuming mid-file must pass `initialTs` (the last timestamp before
+ * its start offset) so that fallback matches what a whole-file read would
+ * have produced for the same line.
  *
  * `fallbackSessionId` is the transcript's own filename stem, for line types
  * that carry no `sessionId`. `subagentId` marks a subagent sidechain, where a
  * line's `sessionId` names the dispatching parent rather than this session.
  */
 export class LineReader {
-  /** A record such as `cost-state` carries no timestamp of its own; it takes the last line's. */
-  private lastTs = "";
+  private lastTs: string;
 
   constructor(
     readonly emit: Emit,
     private readonly fallbackSessionId: string | null = null,
     private readonly subagentId: string | null = null,
-  ) {}
+    initialTs = "",
+  ) {
+    this.lastTs = initialTs;
+  }
 
   handle(line: Json, loc: LineSpan): void {
     const ownSessionId = str(line, "sessionId") ?? this.subagentId ?? this.fallbackSessionId;

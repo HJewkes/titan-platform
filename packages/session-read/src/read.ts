@@ -3,7 +3,7 @@ import { nextOffset, prefixHash, readJsonLines } from "@titan-design/locator";
 import type { SessionEvent } from "./events.js";
 import { EventFolder, type TranscriptDelta } from "./fold.js";
 import { LineReader } from "./line-reader.js";
-import { asObject } from "./text.js";
+import { asObject, str } from "./text.js";
 
 export interface ReadOptions {
   /** Resume point; must be a line boundary. */
@@ -46,8 +46,9 @@ export async function* readTranscriptEvents(
 ): AsyncGenerator<SessionEvent> {
   const start = options.fromByteOffset ?? 0;
   const fallback = options.fallbackSessionId === undefined ? path.basename(filePath, ".jsonl") : options.fallbackSessionId;
+  const initialTs = start > 0 ? await lastTimestampBefore(filePath, start) : "";
   const pending: SessionEvent[] = [];
-  const reader = new LineReader((event) => pending.push(event), fallback, options.subagentId ?? null);
+  const reader = new LineReader((event) => pending.push(event), fallback, options.subagentId ?? null, initialTs);
   let offset = start;
   for await (const line of readJsonLines(filePath, start)) {
     const trimmed = line.text.trim();
@@ -60,6 +61,24 @@ export async function* readTranscriptEvents(
     if (options.untilByteOffset !== undefined && offset >= options.untilByteOffset) break;
   }
   onDone?.({ lastByteOffset: offset, startByteOffset: start });
+}
+
+/**
+ * A resumed read must seed `LineReader` with the timestamp a whole-file read would
+ * already have carried into `start`, since a line like `cost-state` falls back to it.
+ * No watermark stores this today, so it is recovered by re-scanning the prefix.
+ */
+async function lastTimestampBefore(filePath: string, start: number): Promise<string> {
+  let last = "";
+  for await (const line of readJsonLines(filePath, 0)) {
+    if (line.byteOffset >= start) break;
+    const trimmed = line.text.trim();
+    if (trimmed.length === 0) continue;
+    const parsed = parseLine(filePath, line.byteOffset, trimmed);
+    const ts = str(parsed, "timestamp") ?? str(asObject(parsed?.snapshot), "timestamp");
+    if (ts) last = ts;
+  }
+  return last;
 }
 
 function parseLine(filePath: string, byteOffset: number, text: string): Record<string, unknown> | null {
