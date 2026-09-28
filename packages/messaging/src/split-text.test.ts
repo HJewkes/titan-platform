@@ -112,4 +112,46 @@ describe("splitText", () => {
 
     expect(() => splitText(reply, { maxLength: 6 })).toThrow(RangeError);
   });
+
+  it("keeps a four backtick fence holding a three backtick block whole or reopens the outer fence", () => {
+    const filler = "filler filler filler\n".repeat(8);
+    const reply = `\`\`\`\`md\n\`\`\`js\nx\n\`\`\`\n${filler}\`\`\`\`\nend`;
+
+    const parts = splitText(reply, { maxLength: 70 });
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= 70)).toBe(true);
+    expect(parts.slice(0, -1).every((part) => part.endsWith("````"))).toBe(true);
+    expect(parts.slice(1, -1).every((part) => part.startsWith("````md\n"))).toBe(true);
+    expect(parts.slice(0, -1).some((part) => part.includes("````md\n```js"))).toBe(true);
+  });
+
+  it("closes and reopens a tilde fence that spans a break with tildes", () => {
+    const reply = `~~~py\n${"print(1)\n".repeat(20)}~~~`;
+
+    const parts = splitText(reply, { maxLength: 80 });
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.slice(0, -1).every((part) => part.endsWith("\n~~~"))).toBe(true);
+    expect(parts.slice(1).every((part) => part.startsWith("~~~py\n"))).toBe(true);
+    expect(parts.some((part) => part.includes("```"))).toBe(false);
+  });
+
+  it("does not close a fence on a shorter run or the other character inside it", () => {
+    const filler = "filler filler filler\n".repeat(8);
+    const reply = `\`\`\`\`\nshort\n\`\`\`\n~~~~\n${filler}\`\`\`\`\nend`;
+
+    const parts = splitText(reply, { maxLength: 60 });
+
+    expect(parts.slice(0, -1).every((part) => part.endsWith("````"))).toBe(true);
+    expect(parts.slice(1, -1).every((part) => part.startsWith("````\n"))).toBe(true);
+  });
+
+  it("gives no parts for empty text", () => {
+    expect(splitText("", { maxLength: 10 })).toEqual([]);
+  });
+
+  it("throws a RangeError when maxLength is too small for a surrogate pair", () => {
+    expect(() => splitText("😀", { maxLength: 1 })).toThrow(RangeError);
+  });
 });

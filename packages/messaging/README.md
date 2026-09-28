@@ -153,6 +153,8 @@ for (const part of splitText(reply, { maxLength: TELEGRAM_MAX_TEXT_LENGTH })) {
 
 Joining the parts reproduces the input, except for the fence lines added at a break.
 
+Backtick and tilde fences are recognised, following CommonMark; indented code blocks are not.
+
 ## Telegram
 
 `TelegramTransport` talks to the [Bot API](https://core.telegram.org/bots/api).

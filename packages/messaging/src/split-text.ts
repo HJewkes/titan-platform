@@ -11,6 +11,7 @@ export interface SplitOptions {
 interface Fence {
   start: number;
   end: number;
+  marker: string;
   opener: string;
 }
 
@@ -21,9 +22,8 @@ const BOUNDARY_PATTERNS: Record<SplitBoundary, RegExp> = {
   sentence: /[.!?]\s/g,
   whitespace: /\s/g,
 };
-const OPEN_FENCE = /^ {0,3}```([^`]*)$/;
-const CLOSE_FENCE = /^ {0,3}```\s*$/;
-const CLOSER_LENGTH = "\n```".length;
+const OPEN_FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const CLOSE_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 
 /** Splits text into parts of at most `maxLength` UTF-16 units, preferring natural boundaries. */
 export function splitText(text: string, options: SplitOptions): string[] {
@@ -37,20 +37,20 @@ export function splitText(text: string, options: SplitOptions): string[] {
 
   const parts: string[] = [];
   let rest = text;
-  let carried: string | undefined;
+  let carried: Fence | undefined;
   for (;;) {
-    const prefix = carried ?? "";
+    const prefix = carried?.opener ?? "";
     if (prefix.length + rest.length <= maxLength) {
       parts.push(prefix + rest);
       return parts;
     }
-    if (carried !== undefined && maxLength - prefix.length <= CLOSER_LENGTH) throw fenceRangeError();
+    if (carried && maxLength - prefix.length <= closerLength(carried)) throw fenceRangeError();
     const fences = findFences(rest, carried);
     const at = chooseBreak(rest, fences, maxLength - prefix.length, minLength, prefer);
     const head = rest.slice(0, at);
     const fence = fences.find((f) => at > f.start && at < f.end);
-    parts.push(prefix + head + (fence ? closerFor(head) : ""));
-    carried = fence?.opener;
+    parts.push(prefix + head + (fence ? closerFor(head, fence) : ""));
+    carried = fence;
     rest = rest.slice(at);
   }
 }
@@ -59,23 +59,26 @@ function fenceRangeError(): RangeError {
   return new RangeError("maxLength is too small to hold the fence lines plus one character");
 }
 
-function closerFor(head: string): string {
-  return head.endsWith("\n") ? "```" : "\n```";
+function closerFor(head: string, fence: Fence): string {
+  return head.endsWith("\n") ? fence.marker : `\n${fence.marker}`;
 }
 
-function findFences(text: string, carried: string | undefined): Fence[] {
+function closerLength(fence: Fence): number {
+  return fence.marker.length + 1;
+}
+
+function findFences(text: string, carried: Fence | undefined): Fence[] {
   const fences: Fence[] = [];
-  let open: { start: number; opener: string } | undefined =
-    carried === undefined ? undefined : { start: 0, opener: carried };
+  let open = carried && { ...carried, start: 0 };
   let lineStart = 0;
   while (lineStart <= text.length) {
     const newline = text.indexOf("\n", lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
-    const opening = open ? null : OPEN_FENCE.exec(line);
+    const opening = open ? undefined : openingFence(line, lineStart);
     if (opening) {
-      open = { start: lineStart, opener: `\`\`\`${opening[1]?.trim() ?? ""}\n` };
-    } else if (open && CLOSE_FENCE.test(line) && lineStart > open.start) {
+      open = opening;
+    } else if (open && closesFence(line, open.marker)) {
       fences.push({ ...open, end: lineEnd });
       open = undefined;
     }
@@ -86,6 +89,20 @@ function findFences(text: string, carried: string | undefined): Fence[] {
   return fences;
 }
 
+function openingFence(line: string, start: number): Fence | undefined {
+  const match = OPEN_FENCE.exec(line);
+  const marker = match?.[1];
+  const info = match?.[2]?.trim() ?? "";
+  if (!marker || (marker.startsWith("`") && info.includes("`"))) return undefined;
+  return { start, end: 0, marker, opener: `${marker}${info}\n` };
+}
+
+/** CommonMark: same character as the opener, at least as long, nothing after it. */
+function closesFence(line: string, marker: string): boolean {
+  const run = CLOSE_FENCE.exec(line)?.[1];
+  return run !== undefined && run.startsWith(marker[0] ?? "") && run.length >= marker.length;
+}
+
 function chooseBreak(
   rest: string,
   fences: readonly Fence[],
@@ -93,25 +110,25 @@ function chooseBreak(
   minLength: number,
   prefer: readonly SplitBoundary[],
 ): number {
-  const insideFence = (p: number) => fences.some((f) => p > f.start && p < f.end);
   const tailCap = rest.length - minLength;
   const limit = tailCap >= minLength ? Math.min(room, tailCap) : room;
-  const clean = lastBoundary(rest, limit, minLength, prefer, (p) => !insideFence(p));
-  const at = clean ?? fallbackBreak(rest, limit, minLength, prefer, insideFence);
+  const fenceAt = (p: number) => fences.find((f) => p > f.start && p < f.end);
+  const clean = lastBoundary(rest, limit, minLength, prefer, (p) => !fenceAt(p));
+  // A break inside a fence must leave room for the closing line.
+  const fits = (p: number) => {
+    const fence = fenceAt(p);
+    return !fence || p + closerLength(fence) <= limit;
+  };
+  const at = clean ?? lastBoundary(rest, limit, minLength, prefer, fits) ?? hardBreak(limit, fenceAt);
   return avoidSurrogateSplit(rest, at);
 }
 
-function fallbackBreak(
-  rest: string,
-  limit: number,
-  minLength: number,
-  prefer: readonly SplitBoundary[],
-  insideFence: (p: number) => boolean,
-): number {
-  if (!insideFence(limit)) return limit;
-  const room = limit - CLOSER_LENGTH;
-  if (room < 1) throw fenceRangeError();
-  return lastBoundary(rest, room, minLength, prefer, () => true) ?? room;
+function hardBreak(limit: number, fenceAt: (p: number) => Fence | undefined): number {
+  const fence = fenceAt(limit);
+  if (!fence) return limit;
+  const at = limit - closerLength(fence);
+  if (at < 1) throw fenceRangeError();
+  return at;
 }
 
 /** Tries each kind in order and returns the latest accepted break at or before `limit`. */
