@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { cancelGate } from "@titan-design/hitl";
+import { cancelGate, type GateResolver } from "@titan-design/hitl";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
 import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
@@ -220,10 +220,11 @@ export class WorkflowRuntime {
     return run;
   }
 
-  signal(runId: string, stepId: string, payload: Record<string, unknown> = {}): void {
+  /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
+  signal(runId: string, stepId: string, payload: Record<string, unknown> = {}, resolvedBy?: GateResolver): void {
     const run = this.status(runId);
     const isPending = (gateId: string): boolean => gateIsPending(this.options.gates, gateId);
-    this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload);
+    this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload, resolvedBy);
   }
   cancel(runId: string, reason: string): void {
     const live = this.live.get(runId);

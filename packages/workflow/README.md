@@ -14,7 +14,7 @@ import {
   workflowMigration,
   workflowOwnershipMigration,
 } from "@titan-design/workflow";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 
 const db = openDatabase("state.sqlite3");
@@ -22,6 +22,7 @@ runMigrations(db, [
   gateMigration(1),
   workflowMigration(2),
   workflowOwnershipMigration(3),
+  gateResolverMigration(4),
 ]);
 
 const runtime = new WorkflowRuntime({
@@ -44,7 +45,11 @@ runtime.register("review", async (ctx) => {
 
 const runId = runtime.start("review", { brief: "the thing" });
 await runtime.hydrate();
-runtime.signal(runId, "approve", { signal: "approved" });
+runtime.signal(runId, "approve", { signal: "approved" }, {
+  class: "owner-terminal",
+  id: "alice",
+  channel: "cli",
+});
 ```
 
 ## Database upgrade
@@ -59,12 +64,19 @@ runMigrations(db, [
   gateMigration(1),
   workflowMigration(2),          // may already be recorded
   workflowOwnershipMigration(3), // additive upgrade for existing tables
+  gateResolverMigration(4),      // records who resolved each gate
 ]);
 ```
 
 The ownership migration is idempotent at the schema level, so using the same
 sequence for new and upgraded databases is supported. A custom run table name
 must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
+
+`gateResolverMigration` adds hitl's `resolved_by` column and a trigger that
+refuses a resolution naming no resolver. Once it has run, pass a resolver to
+every `runtime.signal`. A run paused before the migration resumes normally when
+it is signalled with a resolver afterwards. Gates resolved before it keep
+`resolvedBy` undefined.
 
 ## Step kinds
 
@@ -83,8 +95,10 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   each time. The first call uses the key `stepId` and the gate
   `<runId>/<stepId>`, as earlier releases did. Iteration `n` of a repeated call
   uses the key `stepId:n` and the gate `<runId>/<stepId>:n`.
-  `runtime.signal(runId, stepId, payload)` resolves the gate of the call that is
-  waiting. Replay returns the recorded answers in call order and opens no gate
+  `runtime.signal(runId, stepId, payload, resolvedBy)` resolves the gate of the
+  call that is waiting and records `resolvedBy` on the gate. The gate store
+  checks the resolver first: an agent or automation class, or a refusal from
+  the store's `authorize`, throws `GateResolverRefused` and the run stays paused. Replay returns the recorded answers in call order and opens no gate
   for them.
 
 All three methods share one call counter per `stepId`, and each result records

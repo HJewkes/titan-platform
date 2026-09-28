@@ -31,11 +31,12 @@ Verified against 0.1.0 with `inlineRunner`.
 
 ```ts
 import { WorkflowRuntime, inlineRunner, workflowMigration } from "@titan-design/workflow";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 
 const db = openDatabase("state.sqlite3");
-runMigrations(db, [gateMigration(1), workflowMigration(2)]);
+runMigrations(db, [gateMigration(1), workflowMigration(2), gateResolverMigration(3)]);
+const owner = { class: "owner-terminal", id: "alice", channel: "cli" } as const;
 
 const runtime = new WorkflowRuntime({
   db,
@@ -43,7 +44,7 @@ const runtime = new WorkflowRuntime({
   runner: inlineRunner(({ prompt }) => `handled: ${prompt}`),   // returns a string
   onEvent: (event) => {
     // In a real product the answer comes from a human, from anywhere.
-    if (event.type === "gate_opened") runtime.signal(event.runId, event.stepId, { signal: "approved" });
+    if (event.type === "gate_opened") runtime.signal(event.runId, event.stepId, { signal: "approved" }, owner);
   },
 });
 
@@ -101,8 +102,8 @@ active steps. Legacy agent runs without confirmed attachment remain
 - **`seed(stepId, fn)`** runs a deterministic function once per call; its `data` merges
   into the params for later prompts.
 - **`assisted(stepId, prompt)`** opens a gate and waits. The row survives restarts;
-  `runtime.signal(runId, stepId, payload)` resolves it from anywhere. A `signal` field in
-  the payload becomes the step's signal. Like `dispatch` it advances
+  `runtime.signal(runId, stepId, payload, resolvedBy)` resolves it from anywhere and
+  records `resolvedBy` on the gate. A `signal` field in the payload becomes the step's signal. Like `dispatch` it advances
   `ctx.iteration(stepId)`, so each call in a loop opens a new gate: the first is keyed
   `stepId` with gate `<runId>/<stepId>`, iteration `n` is keyed `stepId:n` with gate
   `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
@@ -244,6 +245,12 @@ memoized steps return their stored result instead of re-executing. Keep side eff
 call index. If the edited function reaches a recorded call through a different method, the
 run fails with `WorkflowNonDeterminismError` rather than hand back an answer recorded for
 another question. Add new steps under new step ids.
+
+**An agent cannot answer a gate.** The gate store checks the resolver before it writes.
+A `coordinator`, `worker`, `headless` or `automation` class, or a refusal from the store's
+`authorize`, makes `runtime.signal` throw `GateResolverRefused`; the gate stays pending
+and the run stays paused. Once `gateResolverMigration` has run, a signal with no resolver
+is refused too.
 
 **Gate and workflow migrations share a database.** Pass `migrate: false` to
 `SqliteGateStore` and put `gateMigration(n)` in your own migration list, or the two will
