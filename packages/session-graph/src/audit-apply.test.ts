@@ -10,7 +10,9 @@ import { AUDIT_COLUMNS, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAu
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME } from "./audit-schema-v5.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME } from "./audit-schema-v6.js";
 import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./audit-schema-v7.js";
+import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./audit-schema-v8.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
+import { prsNeedingOutcome } from "./outcomes.js";
 import { purgeTranscript } from "./purge.js";
 import { refreshCorpus } from "./refresh.js";
 import { MIGRATIONS } from "./schema.js";
@@ -110,7 +112,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME],
       [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
@@ -193,6 +195,52 @@ describe("migration 7", () => {
     expect(graph.db.prepare("SELECT sql FROM sqlite_master ORDER BY name").all()).toEqual(schemaOnce);
     expect(originRows(graph.db)).toEqual(rowsOnce);
     expect(originColumns(graph.db)).toEqual(["task_ids", "task_source"]);
+  });
+});
+
+describe("migration 8", () => {
+  const prRows = (db: SessionGraph["db"]) =>
+    db.prepare("SELECT pr_ref, state, review_rounds, review_rounds_gh, review_rounds_chat, commit_times, outcome_checked_at FROM pr ORDER BY pr_ref").all();
+
+  function versionSevenDatabase(file: string, prepare: (db: SessionGraph["db"]) => void = () => {}): void {
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.filter((m) => m.version <= 7));
+    const insert = db.prepare("INSERT INTO pr (pr_ref, repo, number, state, review_rounds, outcome_checked_at) VALUES (?, 'acme/widgets', ?, ?, ?, '2026-09-01T00:00:00Z')");
+    insert.run("pr:acme/widgets#41", 41, "merged", 2);
+    insert.run("pr:acme/widgets#42", 42, "merged", null);
+    prepare(db);
+    db.close();
+  }
+
+  it("migration 8 copies review_rounds into review_rounds_gh and re-queues PRs", () => {
+    const file = path.join(dir, "v7-graph.sqlite3");
+    versionSevenDatabase(file);
+
+    const migrated = openSessionGraph(file);
+
+    expect(REVIEW_VERDICT_MIGRATION_NAME).toBe("review verdicts");
+    expect(prRows(migrated.db)).toEqual([
+      { pr_ref: "pr:acme/widgets#41", state: "merged", review_rounds: 2, review_rounds_gh: 2, review_rounds_chat: null, commit_times: null, outcome_checked_at: null },
+      { pr_ref: "pr:acme/widgets#42", state: "merged", review_rounds: null, review_rounds_gh: null, review_rounds_chat: null, commit_times: null, outcome_checked_at: null },
+    ]);
+    expect(prsNeedingOutcome(migrated).map((pr) => pr.number)).toEqual([41, 42]);
+    expect(columnsOf(migrated.db, REVIEW_TABLE)).toEqual(columnsOf(graph.db, REVIEW_TABLE));
+    migrated.db.close();
+  });
+
+  it("migration 8 succeeds on a database that already has its table and columns", () => {
+    const file = path.join(dir, "v7-with-columns.sqlite3");
+    versionSevenDatabase(file, (db) => {
+      applyReviewVerdictSchema(db);
+      db.prepare(`INSERT INTO ${REVIEW_TABLE} (source_key, surface, verdict, ts, number, pr_ref) VALUES ('chat:tu-1:0', 'chat', 'approve', '2026-09-01T00:00:00Z', 41, 'pr:acme/widgets#41')`).run();
+      db.prepare("UPDATE pr SET commit_times = '[]', review_rounds_chat = 1 WHERE number = 41").run();
+    });
+
+    const migrated = openSessionGraph(file);
+
+    expect(migrated.db.prepare(`SELECT source_key, pr_ref FROM ${REVIEW_TABLE}`).all()).toEqual([{ source_key: "chat:tu-1:0", pr_ref: "pr:acme/widgets#41" }]);
+    expect(prRows(migrated.db)[0]).toMatchObject({ review_rounds_gh: 2, review_rounds_chat: 1, commit_times: "[]" });
+    migrated.db.close();
   });
 });
 
