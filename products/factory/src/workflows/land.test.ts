@@ -9,6 +9,7 @@ import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandSce
 import { ghCliWire, type GhExec } from "../github/gh-cli.js";
 import { githubPort } from "../github/port.js";
 import { MAX_UPDATE_CYCLES, landRoutes } from "./land.js";
+import type { StepRoute } from "../routed-runner.js";
 
 const FOREIGN = fakeSha("foreign1");
 const hosts: FactoryHost[] = [];
@@ -215,4 +216,38 @@ describe("land core", () => {
     expect(records.every((record) => record.v === 1 && record.traceId === runId)).toBe(true);
     expect(records[3].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
   });
+
+  it("fails a step whose evidence record lacks result, so the branch never reads undefined", async () => {
+    const scenario = landScenario();
+    const dropResult = (record: Record<string, unknown>) => (({ result: _result, ...rest }) => rest)(record);
+    const host = hostFor({ ...scenario, routes: rewriteRecords(scenario.routes, "land-rules", dropResult) });
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("output schema: result");
+    expect(scenario.outcomes).toEqual([]);
+  });
+
+  it("keeps a code step's titan.trace.artifacts key in the stored step result", async () => {
+    const scenario = landScenario();
+    const artifacts = [{ kind: "note", ref: "synthetic" }];
+    const host = hostFor({ ...scenario, routes: rewriteRecords(scenario.routes, "land-rules", (record) => ({ ...record, "titan.trace.artifacts": artifacts })) });
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    expect(host.runtime.status(runId)!.stepResults["land-rules:0"]!.data).toMatchObject({ "titan.trace.artifacts": artifacts });
+  });
 });
+
+/** Rewrites the evidence record a matching code route writes, to stand in for a route that answers differently. */
+function rewriteRecords(routes: StepRoute[], match: string, edit: (record: Record<string, unknown>) => Record<string, unknown>): StepRoute[] {
+  return routes.map((route) => {
+    if (route.match !== match) return route;
+    const run: StepRoute["runner"]["run"] = async (input) => {
+      const outcome = await route.runner.run(input);
+      return outcome.ok ? { ...outcome, output: JSON.stringify(edit(JSON.parse(outcome.output!))) } : outcome;
+    };
+    return { ...route, runner: { ...route.runner, run } };
+  });
+}
