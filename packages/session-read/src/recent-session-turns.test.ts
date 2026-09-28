@@ -229,6 +229,8 @@ describe("readRecentSessionTurns", () => {
     await rejection.toThrow(SessionIdentityError);
     await rejection.toThrow("Claude transcript record belongs to native session other-session, expected expected-session");
     await rejection.toMatchObject({ code: "foreign_native_session" });
+    await rejection.toBeInstanceOf(TypeError);
+    await rejection.toBeInstanceOf(SessionIdentityError);
   });
 
   it("rejects multiple parent session IDs in one Claude sidechain window with a multiple_parent_sessions SessionIdentityError", async () => {
@@ -244,6 +246,8 @@ describe("readRecentSessionTurns", () => {
     await rejection.toThrow(SessionIdentityError);
     await rejection.toThrow("Claude sidechain window names multiple parent sessions");
     await rejection.toMatchObject({ code: "multiple_parent_sessions" });
+    await rejection.toBeInstanceOf(TypeError);
+    await rejection.toBeInstanceOf(SessionIdentityError);
   });
 
   it("rejects a Codex native thread mismatch observed inside the window", async () => {
