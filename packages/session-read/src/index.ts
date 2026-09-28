@@ -80,3 +80,4 @@ export { toolFamily, type ToolFamilyResult } from "./tool-family.js";
 export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, parseChannelTag, type ChannelTag, type InjectedMarker, type InjectedMarkerName } from "./injected-markers.js";
 export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
 export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";
+export { ORIENTATION_HEADER, assignedTaskIds, orientationEnd, type Assignment, type AssignmentInput, type AssignmentSource } from "./spawn-assignment.js";
