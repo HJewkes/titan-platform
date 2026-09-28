@@ -1,5 +1,16 @@
 # @titan-design/hitl
 
+## 0.3.0
+
+### Minor Changes
+
+- 629cdd9: Record who resolved a gate. `resolve` and `resolveGate` take an optional `GateResolver`, stored as `GateRecord.resolvedBy` by both stores. Every store refuses a resolver outside authority's `RESOLVER_CLASSES` with `GateResolverRefused`, and a new `authorize` store option can refuse more. `gateResolverMigration(n)` adds the `resolved_by` column and a trigger that refuses a resolve naming no resolver; a store on an unmigrated table throws `GateStoreSchemaOutdated` when given a resolver. Existing callers that pass no resolver and do not run the new migration behave as before. hitl now depends on `@titan-design/authority`.
+
+### Patch Changes
+
+- Updated dependencies [1b02a8b]
+  - @titan-design/authority@0.1.0
+
 ## 0.2.1
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @titan-design/session-graph
 
+## 0.10.0
+
+### Minor Changes
+
+- 5c53f2e: Store and project the task a spawn record assigned. `ResolvedOrigin` gains optional `taskIds` and `taskSource` (typed `TaskLinkSource`). Migration 7, `origin task link` (exported as `ORIGIN_TASK_LINK_MIGRATION_NAME`), adds the matching `session_origin` columns and changes no existing row. `sessionsNeedingOrigin` now also offers a row whose `task_source` is null. A resolver that sets `taskIds` always stores a source, or `none` (`NO_TASK_LINK`) when it found no id, so the row is not offered again. The origin upsert now updates only the columns it names instead of replacing the row. A resolver that omits `taskIds` leaves a stored task link as it was; a task-aware resolver should return an entry for every session it examined, with empty `taskIds` when nothing links, or the session is offered again. Each linked id projects a `task` row and a `ran` edge with `attrs.via = "origin"`; a re-resolution that drops an id expires only that origin-made edge. A transcript that asserts a `ran` edge the origin made first supersedes it without `via`, so origin expiry never removes a transcript's claim.
+- c7d5b1a: Count review rounds over agent-chat verdicts and forge reviews under one rule. `ResolvedPr` gains optional `reviews` (`ResolvedReview`), which replace the PR's forge rows in `pr_review`; `review_rounds_gh` is then counted by the rule against the sent or stored commit times. New `projectReviewRounds` (run by `refreshCorpus` after `enrichPrs`) resolves each chat verdict's `pr_ref` by exact repo, repo hint, the sender's family links, then the sender's working directory repo, and writes `review_rounds_chat` and `review_rounds`. A changes-requested review counts when a later commit answered it, once per head across reviewers and surfaces; an approval never counts. Chat verdicts count only from senders whose profile passes the new `isReviewerProfile` refresh option (default `reviewer` or `*-reviewer`). `RefreshSummary` gains `reviews: { resolved, unresolved, invalidTimes }`. A review whose time does not parse is ignored; a PR with any unparseable commit time is treated as having unknown commit times. Chat row keys now take their ordinal from the `review_verdict` event; an event from an older session-read with no ordinal takes the next index its tool use has not used in that call. With a count-only resolver, `review_rounds` is an upper bound. Also exports `countRounds`, which returns null when a commit time does not parse.
+- 26f97c0: Store review verdicts parsed from agent-chat messages. Migration 8, `review verdicts` (exported as `REVIEW_VERDICT_MIGRATION_NAME`), adds the `pr_review` table (`REVIEW_TABLE`, `REVIEW_DDL`) and the `pr` columns `review_rounds_gh`, `review_rounds_chat` and `commit_times`; it copies `review_rounds` into `review_rounds_gh` and re-queues every PR for the outcome resolver once. `applyDelta` writes one chat row per `review_verdict` event, keyed `chat:<tool_use_id>:<n>`, holding only parsed fields; `purgeTranscript` and `resetIndex` clear them. `ResolvedPr` gains optional `commitTimes`, stored as a JSON array; an omitted field leaves the stored value. `prsNeedingOutcome` also offers a merged PR whose `commit_times` is null, ordered after never-checked and open PRs. A resolver's `reviewRounds` now also sets `review_rounds_gh`.
+
+### Patch Changes
+
+- Updated dependencies [b8a5614]
+- Updated dependencies [15eaffa]
+- Updated dependencies [2983591]
+- Updated dependencies [b1e1c70]
+- Updated dependencies [d019c72]
+- Updated dependencies [c7d5b1a]
+- Updated dependencies [d0ce38a]
+- Updated dependencies [d0ce38a]
+  - @titan-design/agent-protocol@0.3.0
+  - @titan-design/session-read@0.6.0
+
 ## 0.9.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/factory",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams",
   "type": "module",
   "main": "./dist/index.js",

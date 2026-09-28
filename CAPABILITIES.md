@@ -110,7 +110,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.2.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.3.0`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
@@ -128,7 +128,7 @@ Key exports:
 
 ### [`authority`](https://hjewkes.github.io/titan-platform/reference/authority)
 
-Tier 0, `@titan-design/authority@0.0.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
+Tier 0, `@titan-design/authority@0.1.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
 
 **Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
 
@@ -191,7 +191,7 @@ Key exports:
 
 ### [`egress-scan`](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.0.0`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.1.0`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -295,7 +295,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](https://hjewkes.github.io/titan-platform/reference/agent)
 
-Tier 1, `@titan-design/agent@0.4.2`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.4.3`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -312,7 +312,7 @@ Key exports:
 
 ### [`agent-lifecycle`](https://hjewkes.github.io/titan-platform/reference/agent-lifecycle)
 
-Tier 1, `@titan-design/agent-lifecycle@0.1.2`. Durable agent execution state and fenced ownership
+Tier 1, `@titan-design/agent-lifecycle@0.1.3`. Durable agent execution state and fenced ownership
 
 **Use this when:** You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one.
 
@@ -344,7 +344,7 @@ Key exports:
 
 ### [`hitl`](https://hjewkes.github.io/titan-platform/reference/hitl)
 
-Tier 1, `@titan-design/hitl@0.2.1`. Human-in-the-loop gate()/resolve() primitive
+Tier 1, `@titan-design/hitl@0.3.0`. Human-in-the-loop gate()/resolve() primitive
 
 **Use this when:** A step must pause for a human decision and resume, possibly in another process, after a restart.
 
@@ -376,7 +376,7 @@ Key exports:
 
 ### [`messaging`](https://hjewkes.github.io/titan-platform/reference/messaging)
 
-Tier 1, `@titan-design/messaging@0.3.0`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
+Tier 1, `@titan-design/messaging@0.4.0`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
 
 **Use this when:** A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel.
 
@@ -503,7 +503,7 @@ Key exports:
 
 ### [`queue-mirror`](https://hjewkes.github.io/titan-platform/reference/queue-mirror)
 
-Tier 2, `@titan-design/queue-mirror@0.3.1`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
+Tier 2, `@titan-design/queue-mirror@0.4.0`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
 
 **Use this when:** A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back.
 
@@ -523,7 +523,7 @@ Key exports:
 
 ### [`session-analytics`](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.3.1`. Pricing, session classification, banding and the cost report over mined session data
+Tier 2, `@titan-design/session-analytics@0.4.0`. Pricing, session classification, banding and the cost report over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions. Parsing is session-read; storage is session-graph.
 
@@ -541,7 +541,7 @@ Key exports:
 
 ### [`session-graph`](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.9.1`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.10.0`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph.
 
@@ -561,7 +561,7 @@ Key exports:
 
 ### [`session-read`](https://hjewkes.github.io/titan-platform/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.5.1`. Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.6.0`. Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -577,7 +577,7 @@ Key exports:
 
 ### [`style-analyzer`](https://hjewkes.github.io/titan-platform/reference/style-analyzer)
 
-Tier 2, `@titan-design/style-analyzer@0.1.1`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
+Tier 2, `@titan-design/style-analyzer@0.1.2`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
 
 **Use this when:** You measure how a codebase is actually written and build a style profile from real code.
 
@@ -598,7 +598,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.3.1`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.0`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:** You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape.
 
@@ -621,7 +621,7 @@ Key exports:
 
 ### [`style-profile`](https://hjewkes.github.io/titan-platform/reference/style-profile)
 
-Tier 2, `@titan-design/style-profile@0.2.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
+Tier 2, `@titan-design/style-profile@0.3.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
 
 **Use this when:** You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it.
 
@@ -639,7 +639,7 @@ Key exports:
 
 ### [`workflow`](https://hjewkes.github.io/titan-platform/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.4.3`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.5.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 

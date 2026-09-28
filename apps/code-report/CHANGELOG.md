@@ -1,5 +1,11 @@
 # code-report
 
+## 0.0.9
+
+### Patch Changes
+
+- 522d55d: Replace a real home path with a placeholder in the titan-design snapshot fixture.
+
 ## 0.0.8
 
 ### Patch Changes
