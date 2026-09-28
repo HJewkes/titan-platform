@@ -146,15 +146,5 @@
         "link": "/reference/react-ui"
       }
     ]
-  },
-  {
-    "text": "Products",
-    "collapsed": false,
-    "items": [
-      {
-        "text": "factory",
-        "link": "/reference/factory"
-      }
-    ]
   }
 ]

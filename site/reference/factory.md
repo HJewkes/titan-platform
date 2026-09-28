@@ -1,44 +1,55 @@
 # factory
 
-**Tier product.** No titan dependencies yet.
+**Product.** Private, never published. Depends on [`workflow`](/reference/workflow),
+[`hitl`](/reference/hitl) and [`store-sqlite`](/reference/store-sqlite).
 
 ```sh
-npm install @titan-design/factory
+pnpm build
+node products/factory/dist/bin.js --help
 ```
-
-Status: placeholder. Tracked by TP-410. Replace every section below before the package
-ships its first real release.
 
 ## The problem it solves
 
-Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams
+Routine workflow state lived in coordinating agent sessions: which step ran, whether a retry
+is safe, who approved what. That state died with the session and cost a model turn each time
+someone checked it. The factory moves it into code. A run is a durable `workflow` row, a human
+decision is an `hitl` gate, and a crash resumes from the last completed step.
 
-Say what was hard before this package existed, and name the one primitive it adds.
+The primitive it adds is a **routed step runner**: one runtime, many step runners, and a
+restart rule per route. A step routed `repeat` is dispatched again after a crash. A step
+routed `park` leaves the run `recovery_required` for a human, because its effect may already
+have happened.
 
 ## When to reach for it
 
-The situations that should send a reader here, and the neighbouring packages that cover the
-situations that should not.
+A software workflow whose transitions, retries and approvals should be owned by code, such as
+landing a pull request or a documentation change. For dispatching an agent, use relay or
+agent-chat; the factory never dispatches one. For the durable-step engine alone, use
+[`workflow`](/reference/workflow).
 
 ## Example
 
-The smallest program that shows the primitive working. Note the version it was verified
-against.
-
-```ts
-import {} from "@titan-design/factory";
+```sh
+titan-factory resume
+titan-factory gate resolve <runId> approve-publish --json '{"approve":true}'
 ```
+
+`resume` drives every unfinished run until it ends or waits on a gate, prints each open gate
+with its resolve command, and exits.
 
 ## What it deliberately does not do
 
-The scope this package refuses, so nobody files the same issue twice.
+It does not dispatch agents, spawn sessions or create relay items. It holds no allow rule:
+until the authority table is approved, its one gate policy sends every action to a human.
 
 ## Gotchas
 
-The things that cost someone an afternoon: argument shapes that look interchangeable and
-are not, lazy behaviour, errors that are returned rather than thrown.
+- Run `pnpm build` first. Tests and the bin load sibling packages from their `dist`.
+- A killed run keeps its lease for 30 s. `resume` inside that window reports it as held.
+- Declare every step id with one kind. `seed(x)` and `assisted(x)` share a memo key, so the
+  host rejects a workflow that reuses an id across kinds.
 
 ## Where it came from
 
-New, or extracted from somewhere. If it replaces an older approach, say what that was and
-why it went.
+New in TP-410, the first slice of the factory pilots. The step router is a product-side
+adapter until `workflow` exports `routedRunner` (TP-416).

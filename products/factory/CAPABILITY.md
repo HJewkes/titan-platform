@@ -2,4 +2,4 @@
 
 <!-- One to three sentences for a reader deciding whether to reuse this or build something new. Feeds CAPABILITIES.md. -->
 
-Placeholder: replace with the situation that should send a reader to factory, and name the neighbouring unit for the situations that should not.
+You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It never dispatches an agent: relay and agent-chat keep that job.

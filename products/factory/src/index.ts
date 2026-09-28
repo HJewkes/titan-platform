@@ -1,2 +1,15 @@
-// Placeholder entry for @titan-design/factory (tier product). Filled in by TP-410.
-export {};
+export type { FactoryConfig, ConfigSources } from "./config.js";
+export { FactoryConfigSchema, configPath, defaultDbPath, loadConfig, resolveDbPath } from "./config.js";
+export type { StepDeclaration, StepKind, WorkflowDefinition } from "./definition.js";
+export { assertDistinctStepIds, declarationFor, defineWorkflow, guardedContext, stepIdMatches } from "./definition.js";
+export type { EvidenceRecord, StepAttempt, TraceRef } from "./evidence.js";
+export { EVIDENCE_VERSION, TRACE_DATA_KEYS, evidenceRecord, traceRef } from "./evidence.js";
+export type { GateDecision, GatePolicy, PolicyRule } from "./gate-policy.js";
+export { GATE_EVERYTHING_RULE, gateEverything, policyTraceGate } from "./gate-policy.js";
+export type { FactoryHost, FactoryHostOptions, HeldRun, PendingGate, ResumeReport } from "./host.js";
+export { openFactoryHost } from "./host.js";
+export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute } from "./routed-runner.js";
+export { routedRunner } from "./routed-runner.js";
+export type { CliDeps, CliIo } from "./cli.js";
+export { EXIT, formatResume, runCli } from "./cli.js";
+export { factoryRoutes, factoryWorkflows } from "./workflows.js";
