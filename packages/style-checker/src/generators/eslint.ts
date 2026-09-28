@@ -1,16 +1,22 @@
 import type { Profile } from "@titan-design/style-profile";
 import {
-  buildNamingConventionRule,
+  buildNamingConvention,
   buildImportOrderRule,
   buildFunctionLengthRule,
   buildFileNamingRule,
   buildJsdocRules,
 } from "@titan-design/style-profile";
+import type { SkippedRule } from "../orchestrator/types.js";
 
 export interface EslintFlatConfigEntry {
   plugins?: Record<string, unknown>;
   rules?: Record<string, unknown>;
   files?: string[];
+}
+
+export interface EslintConfigResult {
+  entries: EslintFlatConfigEntry[];
+  skippedRules: SkippedRule[];
 }
 
 // ESLint accepts only off, warn and error; style-profile's "info" tier becomes warn, as its own exporter does.
@@ -19,11 +25,12 @@ function withEslintSeverity(value: unknown): unknown {
   return value === "info" ? "warn" : value;
 }
 
-function collectRules(profile: Profile): Record<string, unknown> {
+function collectRules(profile: Profile, skippedRules: SkippedRule[]): Record<string, unknown> {
   const rules: Record<string, unknown> = {};
 
-  const namingRule = buildNamingConventionRule(profile);
+  const { rule: namingRule, skippedRules: namingSkipped } = buildNamingConvention(profile);
   if (namingRule) rules[namingRule[0]] = namingRule[1];
+  skippedRules.push(...namingSkipped);
 
   const importRule = buildImportOrderRule(profile);
   if (importRule) rules[importRule[0]] = importRule[1];
@@ -43,9 +50,10 @@ function collectRules(profile: Profile): Record<string, unknown> {
   return rules;
 }
 
-export function generateEslintConfig(profile: Profile): EslintFlatConfigEntry[] {
+export function generateEslintConfig(profile: Profile): EslintConfigResult {
   const entries: EslintFlatConfigEntry[] = [];
-  const rules = collectRules(profile);
+  const skippedRules: SkippedRule[] = [];
+  const rules = collectRules(profile, skippedRules);
 
   if (Object.keys(rules).length > 0) {
     entries.push({
@@ -54,5 +62,5 @@ export function generateEslintConfig(profile: Profile): EslintFlatConfigEntry[] 
     });
   }
 
-  return entries;
+  return { entries, skippedRules };
 }
