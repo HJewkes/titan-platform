@@ -17,3 +17,5 @@ under test still runs the real parser.
 
 `sent`, `reset` and `failNext(error)` keep their 0.3.0 behaviour, and the
 constructor still takes a bare clock function.
+
+`MockTransport` reports `buttonStates: false` by default, matching Telegram, so a test sees the degraded path unless it passes `capabilities: { buttonStates: true }`.

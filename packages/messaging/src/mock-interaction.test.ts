@@ -34,6 +34,14 @@ describe("MockTransport interactions", () => {
     expect(transport.typingVisible("+1")).toBe(false);
   });
 
+  it("the mock reports button states off unless the caller turns them on", () => {
+    const off = new MockTransport();
+    const on = new MockTransport({ capabilities: { buttonStates: true } });
+
+    expect(off.capabilities.buttonStates).toBe(false);
+    expect(on.capabilities.buttonStates).toBe(true);
+  });
+
   it("an override of reactions false makes react unsupported", async () => {
     const transport = new MockTransport({ capabilities: { reactions: false } });
     const ref = refOf(await transport.send({ handle: "+1", text: "lunch?" }));

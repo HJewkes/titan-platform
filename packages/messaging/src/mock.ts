@@ -46,7 +46,7 @@ const DEFAULT_CAPABILITIES: ChannelCapabilities = {
   canInitiate: true,
   deliveryCeiling: "accepted",
   buttons: true,
-  buttonStates: true,
+  buttonStates: false,
   edits: true,
   reactions: true,
   chatActions: true,
