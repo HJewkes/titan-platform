@@ -100,7 +100,7 @@ Two hits from a real run, trimmed:
       "sources": ["fts"],
       "locator": { "transcript": "~/.claude/projects/…/5a24a94a….jsonl",
                    "byteOffset": 760589, "byteLength": 2724, "field": "tool_input" },
-      "excerpt": "/Users/hjewkes/projects/…/tests/test_logic.py\n  test_cactus_planner, test_layout, …"
+      "excerpt": "/Users/<you>/projects/…/tests/test_logic.py\n  test_cactus_planner, test_layout, …"
     },
     {
       "ref": "file:farmer-was-replaced/CLAUDE.md",
