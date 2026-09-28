@@ -56,10 +56,13 @@ export async function readEnvelope(
   return (await tryReadEnvelope(response)) ?? { ok: false };
 }
 
-/** Zero, negative, NaN, Infinity or a non-number is treated as absent; a fraction rounds up. */
+/** A wait longer than this is clamped: the wait is real, only its size is untrusted. */
+export const TELEGRAM_MAX_RETRY_AFTER_SECONDS = 86_400;
+
+/** Zero, negative, NaN, Infinity or a non-number is absent; a fraction rounds up; a huge value is clamped. */
 function validRetryAfter(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
-  return Math.ceil(value);
+  return Math.min(Math.ceil(value), TELEGRAM_MAX_RETRY_AFTER_SECONDS);
 }
 
 function readParameters(raw: unknown): TelegramEnvelope["parameters"] {
@@ -106,8 +109,8 @@ function retryAfterSeconds(
 ): number | undefined {
   const named = envelope?.parameters?.retryAfterSeconds;
   if (named !== undefined) return named;
-  const match = /retry after (\d+)/i.exec(message);
-  return match ? Number(match[1]) : undefined;
+  const match = /retry after (\d+(?:\.\d+)?)/i.exec(message);
+  return match ? validRetryAfter(Number(match[1])) : undefined;
 }
 
 function errorForStatus(

@@ -21,7 +21,8 @@ Also adds a single private `callBotApi` path for every Telegram method, so the
 token cannot reach a string by a new route, and widens
 `AnswerCallbackResult`'s failure with the same typed `error`.
 
-`parameters.retry_after` is now validated: zero, negative, non-numeric, `NaN`
-or infinite is treated as absent, so the description-text fallback applies
-instead, and a fraction rounds up to a whole second. A large value still
-passes through uncapped; the package never invents a number.
+`parameters.retry_after` and the description-text fallback share one
+validator: zero, negative, non-numeric, `NaN` or infinite is treated as
+absent, a fraction rounds up to a whole second, and a value above the exported
+`TELEGRAM_MAX_RETRY_AFTER_SECONDS` (86,400, one day) is clamped to it, because
+the wait is real and only its size is untrusted.

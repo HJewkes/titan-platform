@@ -285,8 +285,9 @@ README's "Retry semantics" section has the full table.
 **A 429 is `rate-limited`, not `rejected`.** It carries `retryAfterSeconds` when the server named
 a wait: `parameters.retry_after` on Telegram, or the "retry after N" text of the description when
 the envelope omits it. A `retry_after` of zero, negative, non-numeric, `NaN` or infinite is treated
-as absent, so the description fallback applies; a fraction rounds up to a whole second, and a large
-value is passed through uncapped. When neither names a wait the field is absent and the consumer
+as absent, so the description fallback applies; a fraction rounds up to a whole second, and a value
+above `TELEGRAM_MAX_RETRY_AFTER_SECONDS` (86,400, one day) is clamped to it. The description
+fallback follows the same rules. When neither names a wait the field is absent and the consumer
 picks its own backoff, because the package never invents a number. BlueBubbles never names one.
 
 **An unchanged edit is a success, not an error.** Telegram answers 400 "message is not

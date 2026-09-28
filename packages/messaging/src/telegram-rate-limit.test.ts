@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TelegramConfig } from "./telegram.js";
-import { TelegramTransport } from "./telegram.js";
+import { TELEGRAM_MAX_RETRY_AFTER_SECONDS, TelegramTransport } from "./telegram.js";
 import { answerCallbackQuery } from "./telegram-updates.js";
 
 const TOKEN = "123456789:AAH-fake-bot-token_for-tests";
@@ -165,14 +165,45 @@ describe("a 429 from the Bot API", () => {
     });
   });
 
-  it("a very large retry_after is passed through unchanged", async () => {
+  it("a retry_after above the cap is clamped to the cap", async () => {
     const result = await sendInto(() =>
       tooManyRequests({ description: "Too Many Requests", parameters: { retry_after: 86_400_000 } }),
     );
 
     expect(result).toEqual({
       ok: false,
-      error: { kind: "rate-limited", retryAfterSeconds: 86_400_000, message: "Too Many Requests" },
+      error: {
+        kind: "rate-limited",
+        retryAfterSeconds: TELEGRAM_MAX_RETRY_AFTER_SECONDS,
+        message: "Too Many Requests",
+      },
     });
+  });
+
+  it("a description wait above the cap is clamped to the cap", async () => {
+    const description = "Too Many Requests: retry after 99999999";
+    const result = await sendInto(() => tooManyRequests({ description }));
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", retryAfterSeconds: TELEGRAM_MAX_RETRY_AFTER_SECONDS, message: description },
+    });
+  });
+
+  it("a fractional description wait rounds up", async () => {
+    const description = "Too Many Requests: retry after 2.5";
+    const result = await sendInto(() => tooManyRequests({ description }));
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rate-limited", retryAfterSeconds: 3, message: description },
+    });
+  });
+
+  it("a 429 whose description says retry after 0 carries no seconds", async () => {
+    const description = "Too Many Requests: retry after 0";
+    const result = await sendInto(() => tooManyRequests({ description }));
+
+    expect(result).toEqual({ ok: false, error: { kind: "rate-limited", message: description } });
   });
 });

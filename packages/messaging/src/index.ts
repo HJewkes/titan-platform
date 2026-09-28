@@ -50,6 +50,7 @@ export {
   createTelegramTransport,
   redactToken,
   TELEGRAM_MAX_CALLBACK_DATA_BYTES,
+  TELEGRAM_MAX_RETRY_AFTER_SECONDS,
   TELEGRAM_MAX_TEXT_LENGTH,
   TelegramTransport,
 } from "./telegram.js";
