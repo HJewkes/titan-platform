@@ -19,6 +19,8 @@ export interface ResolvedPr {
   closedAt?: string | null;
   /** Stored as the resolver counts it; the round definition is open question Q6 in the TP-256 design. */
   reviewRounds?: number | null;
+  /** The PR's commit times; an empty array is stored as known-empty, an omitted field leaves the stored value. */
+  commitTimes?: readonly string[];
 }
 
 /** Resolutions keyed by `pr_ref` (`pr:acme/demo#7`). */
@@ -44,11 +46,15 @@ export interface PrEnrichment {
 
 export const NO_PR_OUTCOMES: PrEnrichment = Object.freeze({ requested: 0, applied: 0, failed: false });
 
-/** A merge is final, so a merged PR is asked about once; open and closed PRs can still move. */
+/**
+ * A merge is final, so a merged PR is asked about once commit times are known; open and closed PRs
+ * can still move. Never-checked PRs lead and missing commit times trail, so a per-pass cap cannot starve open PRs.
+ */
 const PRS_NEEDING_OUTCOME = `
   SELECT pr_ref, repo, number FROM pr
-  WHERE repo IS NOT NULL AND number IS NOT NULL AND (outcome_checked_at IS NULL OR state IS NOT 'merged')
-  ORDER BY pr_ref`;
+  WHERE repo IS NOT NULL AND number IS NOT NULL
+    AND (outcome_checked_at IS NULL OR state IS NOT 'merged' OR commit_times IS NULL)
+  ORDER BY CASE WHEN outcome_checked_at IS NULL THEN 0 WHEN state IS NOT 'merged' THEN 1 ELSE 2 END, pr_ref`;
 
 /** A stale forge cache must not reopen a PR a transcript saw merged, so `merged` is sticky. */
 const APPLY_OUTCOME = `
@@ -57,6 +63,8 @@ const APPLY_OUTCOME = `
     merged_at = COALESCE(@mergedAt, merged_at),
     closed_at = COALESCE(@closedAt, closed_at),
     review_rounds = COALESCE(@reviewRounds, review_rounds),
+    review_rounds_gh = COALESCE(@reviewRounds, review_rounds_gh),
+    commit_times = COALESCE(@commitTimes, commit_times),
     outcome_checked_at = @checkedAt
   WHERE pr_ref = @prRef`;
 
@@ -96,6 +104,7 @@ function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): 
         mergedAt: fields.mergedAt ?? null,
         closedAt: fields.closedAt ?? null,
         reviewRounds: fields.reviewRounds ?? null,
+        commitTimes: fields.commitTimes ? JSON.stringify(fields.commitTimes) : null,
       }).changes;
     }
     return applied;
