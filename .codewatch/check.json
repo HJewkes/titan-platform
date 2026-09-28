@@ -15,7 +15,8 @@
           "packages/code-parser",
           "packages/rpc-protocol",
           "packages/evidence",
-          "packages/authority"
+          "packages/authority",
+          "packages/egress-scan"
         ],
         "1": [
           "packages/retrieval",
@@ -62,7 +63,8 @@
           "packages/code-parser",
           "packages/rpc-protocol",
           "packages/evidence",
-          "packages/authority"
+          "packages/authority",
+          "packages/egress-scan"
         ],
         [
           "packages/retrieval",

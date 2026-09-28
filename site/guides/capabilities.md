@@ -17,11 +17,12 @@ Before adding code:
 
 | Unit | Tier | Use this when |
 | --- | --- | --- |
-| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. |
+| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
 | [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
+| [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. It scans git patch text you supply and spawns nothing; to mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
@@ -111,16 +112,17 @@ Domain-free building blocks. No titan dependencies.
 
 Tier 0, `@titan-design/agent-protocol@0.2.0`. Harness-neutral identity and usage contracts for execution and session readers
 
-**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`.
+**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
 Key exports:
 
 - `lifecycle`: `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
-- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `MAX_CORRELATIONS`, `correlationKey`, `validateCorrelations`
+- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `correlationKey`, `validateCorrelations`
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
+- `usage-fold`: `foldUsage`
 - `index`: `conversationRef`, `conversationItemRef`
-- +21 more in the [reference page](/reference/agent-protocol)
+- +23 more in the [reference page](/reference/agent-protocol)
 
 <a id="cap-authority"></a>
 
@@ -184,6 +186,24 @@ Key exports:
 - `types`: `Extractor`, `ParsedFile`
 - `parser`: `getSupportedLanguages`, `parseFile`
 - `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+
+<a id="cap-egress-scan"></a>
+
+### [`egress-scan`](/reference/egress-scan)
+
+Tier 0, `@titan-design/egress-scan@0.0.0`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
+
+**Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. It scans git patch text you supply and spawns nothing; to mask secrets for display, use the redactors in queue-mirror instead.
+
+Key exports:
+
+- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `diff`: `parseCommit`, `parseDiff`
+- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
+- `terms`: `parseTerms`, `TermFileError`
+- `scan`: `scan`
+- `report`: `formatReport`
+- +17 more in the [reference page](/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -552,7 +572,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +169 more in the [reference page](/reference/session-read)
+- +175 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

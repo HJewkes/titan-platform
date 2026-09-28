@@ -122,6 +122,34 @@ rather than guessed.
 `~`-relative form) is the key the watermark table stores. Hand-building one with the wrong
 shape is the fastest way to get a confusing NOT NULL failure downstream.
 
+## Assigned task of a spawned session
+
+`assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned session was
+given, from the agent name and the full spawn brief. `isKnown` is the caller's task store:
+an id counts only if it returns true. The result is `{ taskIds, source }`, with up to three
+ids in order.
+
+```ts
+import { assignedTaskIds } from "@titan-design/session-read";
+
+assignedTaskIds({ agentName: "factory-tp422", brief, isKnown });
+// { taskIds: ["TP-422"], source: "name" }
+```
+
+`source` says which rule found the ids. The name wins over the brief. `name-over-brief`
+marks a name whose ids the brief does not repeat. `brief-anchor` is a line that begins with
+`TASK`, `ASSIGNMENT`, `YOUR TASK`, `IMPLEMENT` or `GOAL`; ids in parentheses on it are
+references, not assignments. `brief-paragraph` is the first known id near the start of the
+assignment. `none` is a definite answer that nothing links. More than three ids in one
+source is a list, and that source yields nothing.
+
+**The orientation block is skipped.** agent-chat prepends an orientation that lists every
+open task. `orientationEnd(brief)` returns where the assignment starts: 0 when there is no
+orientation, null when there is one whose end cannot be found. Such a brief links nothing
+rather than guess. The block's format is owned by agent-chat, and the tests pin today's
+headings and truncation marker. Every search reads a bounded window, so a 100 KB brief costs
+the same as a short one.
+
 ## Where it came from
 
 active-work's session miner (the AW-23 line handler). The writer, rollups, PR reconciliation,
@@ -154,8 +182,9 @@ assistant text and applies `maxTurns` after tool traffic is dropped.
 holds a transcript path. The package README has the recipe and measured window sizes.
 
 `SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
-usage without a database. `SessionUsageAccumulator` is shared with graph queries;
-response deltas, reset epochs and unknown token categories retain their semantics.
+usage without a database. `SessionUsageAccumulator` is shared with graph queries. It
+selects measurements with agent-protocol's `foldUsage`, then groups them by model; a
+null token count in a group makes that group's sum null.
 
 **Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
 that belongs to a different native session, or a sidechain window that names more than one
