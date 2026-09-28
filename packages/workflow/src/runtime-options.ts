@@ -13,6 +13,8 @@ export interface WorkflowRuntimeOptions {
   onEvent?: (event: WorkflowEvent) => void;
   maxRetries?: number;
   gatePollMs?: number;
+  /** Largest serialised `data` a schema dispatch may store. Defaults to 64 KiB. */
+  maxStepDataBytes?: number;
   runTable?: string;
   runtimeId?: string;
   leaseMs?: number;
