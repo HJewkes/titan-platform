@@ -132,7 +132,7 @@ export interface StepRunInput {
 
 export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
-  | { kind: "failed"; error: string; retryable: boolean; usage?: StepUsage }
+  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string };
 
@@ -158,7 +158,7 @@ export type StepReconcileOutcome =
 
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
-  | { ok: false; error: string; retryable: boolean; usage?: StepUsage };
+  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
