@@ -387,7 +387,7 @@ Key exports:
 - `mock`: `ManualClock`, `MockTransport`
 - `telegram-fakes`: `fakeCallbackUpdate`, `fakeTextUpdate`
 - `inbound`: `constantTimeEqual`, `MemorySeenStore`, `newMessageEvent`, `validateInbound`
-- +52 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/messaging)
+- +55 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/messaging)
 
 <a id="cap-registry"></a>
 
