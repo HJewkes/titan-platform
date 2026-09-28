@@ -49,6 +49,7 @@ export interface TranscriptDelta {
   prs: EventOf<"pr">[];
   prMerges: EventOf<"pr_merge">[];
   prCreates: EventOf<"pr_create">[];
+  reviewVerdicts: EventOf<"review_verdict">[];
   branches: BranchRow[];
   files: EventOf<"file">[];
   tasks: EventOf<"task">[];
@@ -138,6 +139,7 @@ export class EventFolder {
       fileCheckpoints: list("fileCheckpoints"),
       prMerges: list("prMerges"),
       prCreates: list("prCreates"),
+      reviewVerdicts: list("reviewVerdicts"),
       requests: list("requests"),
       toolCalls: list("toolCalls"),
       inbound: list("inbound"),
@@ -250,7 +252,7 @@ export class EventFolder {
 }
 
 const LIST_OF: Record<
-  "fact" | "span" | "phase" | "human_edit" | "file_checkpoint" | "pr_merge" | "pr_create" | AuditEventKind,
+  "fact" | "span" | "phase" | "human_edit" | "file_checkpoint" | "pr_merge" | "pr_create" | "review_verdict" | AuditEventKind,
   string
 > = {
   fact: "facts",
@@ -260,6 +262,7 @@ const LIST_OF: Record<
   file_checkpoint: "fileCheckpoints",
   pr_merge: "prMerges",
   pr_create: "prCreates",
+  review_verdict: "reviewVerdicts",
   request: "requests",
   tool_call: "toolCalls",
   inbound: "inbound",

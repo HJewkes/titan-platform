@@ -59,9 +59,46 @@ const found = await discoverTranscripts();  // defaults to ~/.claude/projects
 `fact` (one per line, typed by event), `span` (search text for prompt / assistant_response /
 tool_input / tool_result), `session` (descriptive fields and turn/commit/push deltas),
 `turn`, `usage` (per-model tokens with an estimated thinking share), `phase`, `human_edit`,
-`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `branch`, `file`, `task`, `subagent`,
-`subagent_transcript`, `artifact`, and `edge` (`session:… touched file:…` and friends;
-vocabulary in `RELATIONS`).
+`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict` (below), `branch`, `file`,
+`task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
+file:…` and friends; vocabulary in `RELATIONS`).
+
+## Review verdicts
+
+`parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
+verdicts, without storing any of the message. A verdict line either contains the word
+`verdict` followed (after up to three punctuation characters and any whitespace) by a token,
+or begins, after optional markdown, with `APPROVE`, `APPROVED`, `CHANGES REQUESTED` or
+`REQUEST CHANGES`. Tokens are case-insensitive and their words may be joined by a space,
+underscore or hyphen: `APPROVE`, `APPROVED` and `LGTM` mean approve; `CHANGES REQUESTED`,
+`REQUEST CHANGES`, `REQUESTED CHANGES`, `NEEDS CHANGES`, `BLOCKED` and `BLOCKING` mean
+changes requested.
+
+PR references come from the verdict line, or the message's first line when the verdict line
+names none, in precedence order: a `github.com/<owner>/<repo>/pull/<n>` URL or an
+`<owner>/<repo>#<n>` pair give an exact `repo`; `<repo> #<n>` or `<repo> PR #<n>` keep the
+word before the number as a `repoHint`, but only when that word is not a verdict token
+(`approve`, `blocked`, …) or a common filler (`pr`, `see`, `on`, `the`, …) — a rejected
+candidate yields no hint, and the search never looks further left; `PR #<n>`, `PR <n>`,
+`pull request #<n>` and a bare `#<n>` carry neither. One line can name several PRs, each
+becoming its own match. Verdicts dedupe on the pair `(repo ?? repoHint?.toLowerCase() ?? "",
+number)`: two references to the same number in different repos are two verdicts, but when a
+later verdict line names the same pair, it replaces the earlier one.
+
+Every scan is a single bounded pass over the line, so a pathological single-line message
+still parses in linear time.
+
+```ts
+import { parseReviewVerdicts } from "@titan-design/session-read";
+
+parseReviewVerdicts("Verdict: CHANGES REQUESTED on acme/widgets#248");
+// [{ verdict: "changes_requested", repo: "acme/widgets", repoHint: null, number: 248 }]
+```
+
+`readToolUse` emits one `review_verdict` event per match for a tool whose name ends in
+`__chat_send`, adding `toolUseId` and `cwdRepo` (`repoForCwd` of the call's `cwd`). The event
+carries only the parsed fields, never the message text. Resolving `repo`/`repoHint` against
+known PRs and filtering by the sender's profile happen downstream, in `session-graph`.
 
 ## Audit events
 

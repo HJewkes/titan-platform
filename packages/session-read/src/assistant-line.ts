@@ -4,6 +4,7 @@ import { bashSignals, emitSignals, toolUseSignals } from "./audit-signal.js";
 import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
+import { parseReviewVerdicts } from "./review-verdict.js";
 import { asObject, blocks, int, str, thinkingTokens, type Json } from "./text.js";
 
 const FILE_TOOLS = new Set(["Read", "Write", "Edit", "MultiEdit"]);
@@ -56,6 +57,18 @@ function readToolUse(reader: LineReader, ctx: LineContext, block: Json, blockInd
   if (name === "Agent") return readAgent(reader, ctx, block, input);
   if (name === "Artifact") return readArtifact(reader, ctx, block, input);
   if (name === "Bash") return readBash(reader, ctx, block, input, blockIndex);
+  if (name.endsWith("__chat_send")) return readChatSend(reader, ctx, block, input);
+}
+
+/** Reads verdicts from the message text; no message text or excerpt is ever kept on the event. */
+function readChatSend(reader: LineReader, ctx: LineContext, block: Json, input: Json | null): void {
+  const toolUseId = str(block, "id");
+  const text = str(input, "text");
+  if (!toolUseId || !text) return;
+  const cwdRepo = repoForCwd(ctx.cwd);
+  for (const verdict of parseReviewVerdicts(text)) {
+    reader.emit({ ...reader.base(ctx), kind: "review_verdict", toolUseId, ...verdict, cwdRepo });
+  }
 }
 
 function readAgent(reader: LineReader, ctx: LineContext, block: Json, input: Json | null): void {
