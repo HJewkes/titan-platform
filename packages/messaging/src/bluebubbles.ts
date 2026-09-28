@@ -78,10 +78,6 @@ function errorForStatus(
   return { kind: "unknown", message: `HTTP ${status}: ${message}` };
 }
 
-/**
- * Sends over the BlueBubbles Server REST API with `fetch` only, so the same
- * code runs in a Worker, a daemon, and a test.
- */
 /** Tapbacks, typing and edits all need the Private API, which the contract rules out of scope. */
 const BLUEBUBBLES_CAPABILITIES: ChannelCapabilities = {
   channel: "imessage",
@@ -111,6 +107,10 @@ function unsupported(
   };
 }
 
+/**
+ * Sends over the BlueBubbles Server REST API with `fetch` only, so the same
+ * code runs in a Worker, a daemon, and a test.
+ */
 export class BlueBubblesTransport implements InteractiveTransport {
   readonly capabilities = BLUEBUBBLES_CAPABILITIES;
   private readonly doFetch: typeof fetch;
