@@ -21,7 +21,15 @@ const successful: HarnessRunResult<string, "codex"> = {
   ok: true, harness: "codex", execution: { executionId: "native-invocation", conversation },
   conversation, output: { kind: "text", text: "durable answer" }, usage: [],
 };
-const workflow: WorkflowFn = async ctx => { await ctx.dispatch("work", "Do the work"); };
+type Measurement = DurableHarnessSuccess["usage"][number];
+
+function snapshot(sequence: number, cost: Measurement["cost"], input: number, output: number): Measurement {
+  return {
+    kind: "snapshot", scope: "turn", scopeId: "turn-1", epoch: "native-invocation", sequence, model: "test", source: "test",
+    tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null }, cost,
+  };
+}
+const workflow: WorkflowFn =async ctx => { await ctx.dispatch("work", "Do the work"); };
 
 function setup() {
   const db = openDatabase(":memory:");
@@ -82,6 +90,33 @@ describe("durable harness workflow integration", () => {
     expect(recovered.activeSteps).toEqual({});
     expect(fixture.run).toHaveBeenCalledTimes(1);
     expect(fixture.ledger.get(active.executionId)?.adapterExecution?.executionId).toBe("native-invocation");
+  });
+
+  it("reports the harness's cost and tokens on the step result, keeping only the highest-sequence snapshot per turn", async () => {
+    const fixture = setup();
+    const { runtime } = fixture.runtime("first");
+    const runId = runtime.start("work");
+    await acknowledged(runtime, runId);
+    fixture.finish({ ...successful, usage: [
+      snapshot(1, { usd: 0.2, kind: "estimate" }, 1200, 90),
+      snapshot(0, { usd: 0.05, kind: "estimate" }, 400, 20),
+    ] });
+
+    const final = await runtime.wait(runId);
+
+    expect(final.stepResults["work:0"]?.usage).toEqual({ costUsd: 0.2, inputTokens: 1200, outputTokens: 90 });
+  });
+
+  it("omits usage from the step result when the harness reports none", async () => {
+    const fixture = setup();
+    const { runtime } = fixture.runtime("first");
+    const runId = runtime.start("work");
+    await acknowledged(runtime, runId);
+    fixture.finish(successful);
+
+    const final = await runtime.wait(runId);
+
+    expect(final.stepResults["work:0"]).not.toHaveProperty("usage");
   });
 
   it("preserves an uncertain execution after lease expiry without submitting another agent", async () => {

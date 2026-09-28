@@ -71,7 +71,10 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
 - `dispatch(stepId, template, { model?, vars? })` renders a prompt, asks the
   runner to execute it, and parses a signal from the output. Results use the key
   `stepId:iteration`. Retry attempts persist their attempt number and get a new
-  execution ID and request key.
+  execution ID and request key. `StepResult.usage` sums every attempt the
+  runner reported cost for, so a step that fails once and then succeeds
+  reports both attempts. The active step persists the earlier attempts' cost as
+  `priorUsage`, so a run resumed after a crash counts each attempt once.
 - `seed(stepId, fn)` runs deterministic work once and merges its data into the
   workflow parameters.
 - `assisted(stepId, prompt)` opens a durable gate and waits for
@@ -101,7 +104,8 @@ runs only the rest. Matching is by key, not position, so the input may be
 reordered between runs. Duplicate keys throw before anything launches.
 
 `budgetUsd` is checked before each launch against the cost that items reported
-in `StepResult.usage` or on their failure. Items still in flight are not
+in `StepResult.usage` or on their failure. An item that succeeds on retry
+counts its failed attempts once, through its result. Items still in flight are not
 counted, so a run can overshoot by up to `concurrency - 1` items.
 
 An item whose step throws `StepFailedError` lands in `failed` with its `error`,
@@ -116,7 +120,10 @@ rethrown once the items in flight settle.
 
 `agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
 every successful step, and on a failed step whenever the agent run reported it.
-The `durableHarnessRunner` reports no usage yet, so its failed items add
+The `durableHarnessRunner` reports `usage` on a successful step when the
+harness returned measurements. It keeps the highest-sequence snapshot per turn
+and counts an unpriced measurement's tokens with no cost. Its failed steps
+report no usage, because the durable failure record carries none, so they add
 nothing to `spentUsd`. A run with an `outputSchema` stores its output as JSON
 text. Wrap it in `idempotentRunner` when its steps are safe to repeat, such as
 read-only judgements. Then a step that was in flight at a crash is dispatched

@@ -73,6 +73,52 @@ describe("idempotentRunner", () => {
 
     expect(run.stepResults["work:0"]?.usage).toEqual({ costUsd: 0.3 });
   });
+
+  it("a resumed run reports the cost of an attempt that failed before the crash exactly once", async () => {
+    const db = makeDb();
+    const failThenHang = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: "flaky", retryable: true, usage: { costUsd: 0.25 } })
+      .mockReturnValue(new Promise(() => undefined));
+    const first = runtime(db, idempotentRunner({ run: failThenHang }));
+    first.register("once", oneDispatch);
+    const runId = first.start("once");
+    await vi.waitFor(() => expect(first.status(runId)?.activeSteps.work?.attempt).toBe(1));
+    first.shutdown();
+    const second = runtime(db, idempotentRunner({ run: async () => ({ ok: true, output: "ok", usage: { costUsd: 0.1 } }) }));
+    second.register("once", oneDispatch);
+
+    await second.hydrate();
+    const run = await second.wait(runId);
+
+    expect(run.stepResults["work:0"]?.usage?.costUsd).toBeCloseTo(0.35);
+  });
+});
+
+describe("step retries", () => {
+  it("a step that fails once then succeeds reports the cost of both attempts", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: "flaky", retryable: true, usage: { costUsd: 0.25, inputTokens: 100, outputTokens: 10 } })
+      .mockResolvedValueOnce({ ok: true, output: "ok", usage: { costUsd: 0.1, inputTokens: 50, outputTokens: 5 } });
+    const rt = runtime(makeDb(), { run });
+    rt.register("once", oneDispatch);
+
+    const finished = await rt.wait(rt.start("once"));
+
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(finished.stepResults["work:0"]?.usage).toEqual({ costUsd: 0.35, inputTokens: 150, outputTokens: 15 });
+  });
+
+  it("a retried step whose failed attempt reported no cost reports only the success", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: "flaky", retryable: true })
+      .mockResolvedValueOnce({ ok: true, output: "ok", usage: { costUsd: 0.1 } });
+    const rt = runtime(makeDb(), { run });
+    rt.register("once", oneDispatch);
+
+    const finished = await rt.wait(rt.start("once"));
+
+    expect(finished.stepResults["work:0"]?.usage).toEqual({ costUsd: 0.1 });
+  });
 });
 
 describe("agentRunner", () => {
