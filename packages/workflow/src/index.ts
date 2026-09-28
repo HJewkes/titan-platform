@@ -11,6 +11,7 @@ export type {
   SeedResult,
   StepDispatchAck,
   StepFailureDetail,
+  StepOperation,
   StepReconcileOutcome,
   StepResult,
   StepRunInput,
@@ -25,7 +26,13 @@ export type {
   WorkflowRun,
   WorkflowStatus,
 } from "./types.js";
-export { StepFailedError, WorkflowCancelledError, WorkflowRecoveryRequiredError, workflowStepRequestKey } from "./types.js";
+export {
+  StepFailedError,
+  WorkflowCancelledError,
+  WorkflowNonDeterminismError,
+  WorkflowRecoveryRequiredError,
+  workflowStepRequestKey,
+} from "./types.js";
 export type { SignalMatcher, SignalParser, SignalSetParser } from "./signals.js";
 export { DEFAULT_SIGNAL_PATTERNS, EMPTY_OUTPUT_SIGNAL, createSignalParser, createSignalSetParser, parseSignal, parseSignals } from "./signals.js";
 export type { TemplateRenderer } from "./prompt.js";

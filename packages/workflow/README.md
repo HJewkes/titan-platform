@@ -75,8 +75,8 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   runner reported cost for, so a step that fails once and then succeeds
   reports both attempts. The active step persists the earlier attempts' cost as
   `priorUsage`, so a run resumed after a crash counts each attempt once.
-- `seed(stepId, fn)` runs deterministic work once and merges its data into the
-  workflow parameters.
+- `seed(stepId, fn)` runs deterministic work once per call and merges its data
+  into the workflow parameters.
 - `assisted(stepId, prompt)` opens a durable gate and waits for
   `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
   and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
@@ -87,12 +87,19 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   waiting. Replay returns the recorded answers in call order and opens no gate
   for them.
 
-`dispatch` and `assisted` share one call counter per `stepId`, so their keys
-never collide: `dispatch("x")` followed by `assisted("x")` gates on
-`<runId>/x:1`. A run that an earlier release paused inside that shape is still
-waiting on `<runId>/x`, so `assisted` adopts a gate that is still pending there
-when the bare key holds no result. `seed` keys by `stepId` alone, so give seeds
-their own step IDs.
+All three methods share one call counter per `stepId`, and each result records
+the method that wrote it as `StepResult.operation`. `seed("x")` followed by
+`assisted("x")` therefore gates on `<runId>/x:1`, and `dispatch("x")` followed
+by `assisted("x")` does the same. A replay that reaches a recorded call through
+a different method, because the workflow was edited under a live run, fails the
+run with `WorkflowNonDeterminismError` instead of returning the stale answer.
+
+Runs stored by releases before 0.5 hold results without `operation`. They keep
+that release's keys until they finish: seeds key by the bare `stepId` outside
+the call count, and replay does not check the method. A run that such a release
+paused inside `assisted("x")` after a `dispatch("x")` is still waiting on
+`<runId>/x`, so `assisted` adopts a gate that is still pending there when the
+bare key holds no result.
 
 ## Fan-out
 

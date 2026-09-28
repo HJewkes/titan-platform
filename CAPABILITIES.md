@@ -608,11 +608,10 @@ Tier 2, `@titan-design/workflow@0.4.3`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
+- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
 - `prompt`: `buildStepVars`, `mustacheRenderer`, `unfilledVariables`
-- `store`: `WorkflowOwnershipLostError`
-- +51 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +53 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
