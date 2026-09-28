@@ -1,4 +1,4 @@
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { routedRunner, type RestartRule, type RouteRunner, type RoutedStepInput, type StepRoute } from "./routed-runner.js";
@@ -9,7 +9,7 @@ import type { StepRunner, WorkflowFn } from "./types.js";
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4)]);
   return db;
 }
 

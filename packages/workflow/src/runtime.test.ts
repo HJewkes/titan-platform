@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { GateStore } from "@titan-design/hitl";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { GateResolverRefused, type GateResolver, type GateStore } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { RunContext, type ContextDeps } from "./context.js";
@@ -20,9 +20,11 @@ import type {
   WorkflowRun,
 } from "./types.js";
 
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
+
 function makeDb(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4)]);
   return db;
 }
 
@@ -53,7 +55,7 @@ function gatesOpened(events: WorkflowEvent[]): Extract<WorkflowEvent, { type: "g
 async function answerInterview(rt: WorkflowRuntime, runId: string, events: WorkflowEvent[], answers: string[]): Promise<WorkflowRun> {
   for (const [index, answer] of answers.entries()) {
     await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(index + 1));
-    rt.signal(runId, "ask", { signal: answer });
+    rt.signal(runId, "ask", { signal: answer }, OWNER);
   }
   return rt.wait(runId);
 }
@@ -146,7 +148,7 @@ describe("WorkflowRuntime", () => {
     await vi.waitFor(() => expect(rt.status(runId)?.status).toBe("paused"));
     expect(events.find((e) => e.type === "gate_opened")).toMatchObject({ gateId: `${runId}/approve` });
 
-    rt.signal(runId, "approve", { signal: "approved", by: "reviewer" });
+    rt.signal(runId, "approve", { signal: "approved", by: "reviewer" }, OWNER);
     const run = await rt.wait(runId);
     expect(run.status).toBe("completed");
     expect(run.stepResults.approve).toMatchObject({ signal: "approved", data: { signal: "approved", by: "reviewer" } });
@@ -175,7 +177,7 @@ describe("WorkflowRuntime", () => {
     second.register("gated", gated);
     expect(await second.hydrate()).toEqual([runId]);
     await vi.waitFor(() => expect(second.status(runId)?.currentStep).toBe("approve"));
-    second.signal(runId, "approve", {});
+    second.signal(runId, "approve", {}, OWNER);
     const run = await second.wait(runId);
     expect(run.status).toBe("completed");
     expect(dispatched).toEqual(["ship"]);
@@ -202,7 +204,7 @@ describe("WorkflowRuntime", () => {
     first.register("interview", interview);
     const runId = first.start("interview");
     await vi.waitFor(() => expect(first.status(runId)?.status).toBe("paused"));
-    first.signal(runId, "ask", { signal: "first" });
+    first.signal(runId, "ask", { signal: "first" }, OWNER);
     await vi.waitFor(() => expect(first.status(runId)).toMatchObject({ status: "paused", stepResults: { ask: { signal: "first" } } }));
     first.shutdown();
 
@@ -210,7 +212,7 @@ describe("WorkflowRuntime", () => {
     const second = runtime(db, inlineRunner(() => "ok"), events);
     second.register("interview", interview);
     expect(await second.hydrate()).toEqual([runId]);
-    second.signal(runId, "ask", { signal: "second" });
+    second.signal(runId, "ask", { signal: "second" }, OWNER);
     const run = await second.wait(runId);
 
     expect(run.status).toBe("completed");
@@ -225,7 +227,7 @@ describe("WorkflowRuntime", () => {
     rt.register("mixed", mixedStep);
     const runId = rt.start("mixed");
     await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(1));
-    rt.signal(runId, "x", { signal: "approved" });
+    rt.signal(runId, "x", { signal: "approved" }, OWNER);
     const run = await rt.wait(runId);
 
     expect(gatesOpened(events).map((e) => e.gateId)).toEqual([`${runId}/x:1`]);
@@ -254,7 +256,7 @@ describe("WorkflowRuntime", () => {
     const rt = runtime(db, inlineRunner(() => "drafted"), events);
     rt.register("mixed", mixedStep);
     expect(await rt.hydrate()).toEqual([legacy.id]);
-    rt.signal(legacy.id, "x", { signal: "approved" });
+    rt.signal(legacy.id, "x", { signal: "approved" }, OWNER);
     const run = await rt.wait(legacy.id);
 
     expect(run.status).toBe("completed");
@@ -798,3 +800,59 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   const promise = new Promise<T>((accept) => { resolve = accept; });
   return { promise, resolve };
 }
+
+describe("WorkflowRuntime.signal resolver", () => {
+  const approval: WorkflowFn = async (ctx) => {
+    await ctx.assisted("approve", "Approve?");
+  };
+
+  async function pausedRun(db: Db): Promise<{ rt: WorkflowRuntime; runId: string }> {
+    const rt = runtime(db, inlineRunner(() => "ok"));
+    rt.register("approval", approval);
+    const runId = rt.start("approval");
+    await vi.waitFor(() => expect(rt.status(runId)?.status).toBe("paused"));
+    return { rt, runId };
+  }
+
+  it("resumes the run and records the owner who answered the gate", async () => {
+    const db = makeDb();
+    const { rt, runId } = await pausedRun(db);
+
+    rt.signal(runId, "approve", { signal: "approved" }, OWNER);
+
+    expect((await rt.wait(runId)).status).toBe("completed");
+    expect(new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`)?.resolvedBy).toEqual(OWNER);
+  });
+
+  it("refuses a coordinator's answer and leaves the run paused on a pending gate", async () => {
+    const db = makeDb();
+    const { rt, runId } = await pausedRun(db);
+    const coordinator: GateResolver = { class: "coordinator", id: "agent-1", channel: "test" };
+
+    expect(() => rt.signal(runId, "approve", { signal: "approved" }, coordinator)).toThrow(GateResolverRefused);
+
+    const gate = new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`);
+    expect(gate).toMatchObject({ status: "pending", payload: undefined, resolvedBy: undefined });
+    expect(rt.status(runId)?.status).toBe("paused");
+    rt.shutdown();
+  });
+
+  it("resumes a run paused before the resolver migration once the database is migrated", async () => {
+    const db = openDatabase(":memory:");
+    const before = [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)];
+    runMigrations(db, before);
+    const { rt: first, runId } = await pausedRun(db);
+    first.shutdown();
+
+    runMigrations(db, [...before, gateResolverMigration(4)]);
+    const events: WorkflowEvent[] = [];
+    const second = runtime(db, inlineRunner(() => "ok"), events);
+    second.register("approval", approval);
+    expect(await second.hydrate()).toEqual([runId]);
+    second.signal(runId, "approve", { signal: "approved" }, OWNER);
+
+    expect((await second.wait(runId)).status).toBe("completed");
+    expect(gatesOpened(events)).toEqual([]);
+    expect(new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`)?.resolvedBy).toEqual(OWNER);
+  });
+});

@@ -1,5 +1,10 @@
-import { MemoryGateStore, type GateStore } from "@titan-design/hitl";
+import { MemoryGateStore, type GateAuthorize, type GateStore } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import type { MatrixEvent } from "@titan-design/matrix-bus";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeHub } from "./fake-hub.js";
 import { hitlQueueSource } from "./hitl.js";
@@ -7,14 +12,15 @@ import { MemoryMirrorState } from "./memory-state.js";
 import { createMirror } from "./mirror.js";
 import type { SourceEvent } from "./types.js";
 
-const OWNER = "@owner:hub.test";
+const OWNER = "@owner:example.org";
+const STRANGER = "@stranger:example.org";
 const ANSWER_SCHEMA = { type: "object", properties: { pick: { type: "string" } }, required: ["pick"] };
 
 let seq = 0;
-const reaction = (target: string, key: string): MatrixEvent => ({
+const reaction = (target: string, key: string, sender = OWNER): MatrixEvent => ({
   type: "m.reaction",
   event_id: `$r${++seq}`,
-  sender: OWNER,
+  sender,
   content: { "m.relates_to": { rel_type: "m.annotation", event_id: target, key } },
 });
 const reply = (target: string, body: string): MatrixEvent => ({
@@ -24,8 +30,7 @@ const reply = (target: string, body: string): MatrixEvent => ({
   content: { msgtype: "m.text", body, "m.relates_to": { "m.in_reply_to": { event_id: target } } },
 });
 
-async function rig(clock = { now: Date.parse("2026-09-23T12:00:00Z") }) {
-  const store = new MemoryGateStore({ now: () => clock.now });
+async function rig(clock = { now: Date.parse("2026-09-23T12:00:00Z") }, store: GateStore = new MemoryGateStore({ now: () => clock.now })) {
   const source = hitlQueueSource(store, { machine: "edge1", session: "ff-daemon", pollMs: 1 });
   const hub = new FakeHub();
   const state = new MemoryMirrorState();
@@ -76,7 +81,7 @@ describe("hitlQueueSource with the mirror", () => {
     const gate = store.create({ prompt: "go?" });
     store.resolve(gate.id, "from the terminal");
 
-    expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x" })).toEqual({ ok: false, reason: "closed" });
+    expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x", sender: OWNER })).toEqual({ ok: false, reason: "closed" });
   });
 
   it("maps a hitl error to closed by name, not instanceof", async () => {
@@ -94,7 +99,7 @@ describe("hitlQueueSource with the mirror", () => {
     };
     const source = hitlQueueSource(throwing, { machine: "m", session: "s" });
 
-    expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x" })).toMatchObject({ ok: false, reason: "closed" });
+    expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x", sender: OWNER })).toMatchObject({ ok: false, reason: "closed" });
   });
 
   it("tails opened gates, then closed/expired once the clock passes expiresAt", async () => {
@@ -110,5 +115,93 @@ describe("hitlQueueSource with the mirror", () => {
 
     expect(opened).toMatchObject({ type: "opened", item: { id: gate.id, expiresAt: clock.now } });
     expect(closed).toMatchObject({ type: "closed", id: gate.id, outcome: "expired" });
+  });
+});
+
+function migratedGateFile(): string {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "qm-hitl-")), "gates.db");
+  runMigrations(openDatabase(file), [gateMigration(1), gateResolverMigration(2)]);
+  return file;
+}
+
+const refuseAll: GateAuthorize = () => ({ allowed: false, reason: "private refusal text" });
+
+describe("hitlQueueSource records who resolved the gate", () => {
+  it("an owner ✅ through the mirror stores the owner, over Matrix, confirmed by the reaction", async () => {
+    const file = migratedGateFile();
+    const { hub, state, mirror } = await rig(undefined, new SqliteGateStore(openDatabase(file), { migrate: false }));
+    const gate = new SqliteGateStore(openDatabase(file), { migrate: false }).create({ prompt: "merge?" });
+    await mirror.reconcile();
+    const ack = reaction(state.bySourceId(gate.id)!.eventId, "✅");
+
+    await mirror.applySyncBatch(hub.deliver(ack));
+
+    const reread = new SqliteGateStore(openDatabase(file), { migrate: false }).get(gate.id);
+    expect(reread).toMatchObject({ status: "resolved", payload: { approved: true } });
+    expect(reread?.resolvedBy).toEqual({ class: "owner-remote", id: OWNER, channel: "matrix", confirmEvent: ack.event_id });
+  });
+
+  it("a resolver the store refuses leaves the item open, marked refused, and the gate pending", async () => {
+    const { store, hub, state, mirror } = await rig(undefined, new MemoryGateStore({ authorize: refuseAll }));
+    const gate = store.create({ prompt: "merge?" });
+    await mirror.reconcile();
+
+    await mirror.applySyncBatch(hub.deliver(reaction(state.bySourceId(gate.id)!.eventId, "✅")));
+
+    expect(store.get(gate.id)).toMatchObject({ status: "pending", resolvedBy: undefined });
+    expect(state.bySourceId(gate.id)?.status).toBe("open");
+    const bodies = JSON.stringify(hub.edits().map((edit) => edit.content["m.new_content"]));
+    expect(bodies).toContain("refused: resolver owner-remote refused");
+    expect(bodies).not.toContain("private refusal text");
+  });
+
+  it("a ✅ from anyone but the owner resolves nothing", async () => {
+    const { store, hub, state, mirror } = await rig();
+    const gate = store.create({ prompt: "merge?" });
+    await mirror.reconcile();
+
+    await mirror.applySyncBatch(hub.deliver(reaction(state.bySourceId(gate.id)!.eventId, "✅", STRANGER)));
+
+    expect(store.get(gate.id)).toMatchObject({ status: "pending", resolvedBy: undefined });
+    expect(state.bySourceId(gate.id)?.status).toBe("open");
+    expect(hub.edits()).toEqual([]);
+  });
+
+  it("a gate table without the resolver column fails the batch loudly and leaves the item untouched", async () => {
+    const { store, hub, state, mirror } = await rig(undefined, new SqliteGateStore(openDatabase(":memory:")));
+    const gate = store.create({ prompt: "merge?" });
+    await mirror.reconcile();
+
+    const applying = mirror.applySyncBatch(hub.deliver(reaction(state.bySourceId(gate.id)!.eventId, "✅")));
+
+    await expect(applying).rejects.toMatchObject({ name: "GateStoreSchemaOutdated" });
+    expect(store.get(gate.id)?.status).toBe("pending");
+    expect(state.bySourceId(gate.id)?.status).toBe("open");
+    expect(state.syncToken()).toBeUndefined();
+    expect(hub.edits()).toEqual([]);
+  });
+
+  it("an authorize that does not return a decision fails the batch loudly instead of refusing", async () => {
+    const promised = (() => Promise.resolve({ allowed: true })) as unknown as GateAuthorize;
+    const { store, hub, state, mirror } = await rig(undefined, new MemoryGateStore({ authorize: promised }));
+    const gate = store.create({ prompt: "merge?" });
+    await mirror.reconcile();
+
+    const applying = mirror.applySyncBatch(hub.deliver(reaction(state.bySourceId(gate.id)!.eventId, "✅")));
+
+    await expect(applying).rejects.toMatchObject({ name: "GateAuthorizeInvalid" });
+    expect(store.get(gate.id)?.status).toBe("pending");
+    expect(hub.edits()).toEqual([]);
+  });
+
+  it("resolverOf replaces the recorded resolver", async () => {
+    const store = new MemoryGateStore();
+    const gate = store.create({ prompt: "merge?" });
+    const resolverOf = () => ({ class: "owner-terminal", id: "owner", channel: "bridge" }) as const;
+    const source = hitlQueueSource(store, { machine: "m", session: "s", resolverOf });
+
+    expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x", sender: OWNER })).toEqual({ ok: true });
+
+    expect(store.get(gate.id)?.resolvedBy).toEqual({ class: "owner-terminal", id: "owner", channel: "bridge" });
   });
 });
