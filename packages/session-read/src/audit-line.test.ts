@@ -109,6 +109,19 @@ describe("audit emitters", () => {
     expect(JSON.parse(result.costStates[0]!.modelUsageJson)).toHaveProperty("claude-opus-5.costUSD", 25.5);
   });
 
+  it("a cost-state observation keeps its timestamp", () => {
+    const events = eventsFor([{ type: "cost-state", sessionId: SESSION, timestamp: "2026-07-01T00:05:00Z", totalCostUSD: 1, modelUsage: {} }]);
+    expect(events.find((e) => e.kind === "cost_state")).toMatchObject({ ts: "2026-07-01T00:05:00Z" });
+  });
+
+  it("a cost-state observation with no timestamp of its own takes the enclosing line's timestamp", () => {
+    const events = eventsFor([
+      { type: "mode", sessionId: SESSION, mode: "plan", timestamp: "2026-07-01T00:05:00Z" },
+      { type: "cost-state", sessionId: SESSION, totalCostUSD: 1, modelUsage: {} },
+    ]);
+    expect(events.find((e) => e.kind === "cost_state")).toMatchObject({ ts: "2026-07-01T00:05:00Z" });
+  });
+
   it("a chunked read equals a whole-file read for every audit list", async () => {
     const split = offsetAfterLine(FIXTURE_LINES, 8);
     const full = await extractTranscript(transcript);

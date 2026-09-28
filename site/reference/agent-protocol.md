@@ -1,6 +1,6 @@
 # agent-protocol
 
-**Tier 0 · contracts.** No dependencies.
+**Tier 0 · contracts.** No runtime dependencies. The `./trace` subpath needs `zod` as an optional peer.
 
 Shared identity and usage types for agent execution and transcript readers. It does
 not launch agents or parse logs.
@@ -71,3 +71,44 @@ lease, the lease to outlive `occurredAt`, the row to belong to the same supervis
 row's generation to be no newer than the lease's. Each accepted write stamps the lease onto
 the row, so a restarted supervisor adopts its rows without per-row events. `prepare` must
 name the lease as owner, and `claim_owner`, `renew_owner` and `release_owner` are refused.
+
+## Trace schemas
+
+The `@titan-design/agent-protocol/trace` subpath (TP-390) defines `titan.trace/v1`, one
+record set for a factory run. It needs `zod` 4 as a peer, which is optional for root-entry
+consumers. The root entry never imports it, and it has no `node:` import, so it runs in
+Workers.
+
+A trace is a projection of state that is already durable (workflow runs, hitl gates, the
+execution ledger, transcripts), not a new store. Every id is a pure function of source ids,
+so re-projecting a run yields the same records and a consumer can upsert by `id`.
+
+| Kind | One record per | Id |
+|---|---|---|
+| `run` | workflow run | `WorkflowRun.id` |
+| `attempt` | step, iteration and attempt | `workflowStepRequestKey`, matched by `ATTEMPT_ID_PATTERN` |
+| `call` | model response or tool call in a transcript | `conversationItemRef` of the call or response |
+| `gate` | human gate (`gateKind: "human"`) or policy decision (`"policy"`) | `gateIdFor` / `assistedKey`, or `policyGateId(attemptId, table, rowId)` |
+| `artifact` | commit, pull request or file version (`artifactKind`) | `commitRef(repo, sha)`, `pr:<repo>#<n>`, `file:<repo>/<path>@<sha>` |
+| `cost` | usage measurement | `costId(conversation, measurement)` |
+
+Every record carries `schema`, `kind`, `id`, `runId` and `at`; the four step-level kinds add
+an optional `attemptId`. Enums derive from the existing tuples (`phase` is
+`EXECUTION_PHASES`), `cost.measurement` is a `UsageMeasurement` unchanged, and
+`TranscriptSpan` (`sourceId`, `byteOffset`, `byteLength`, `contentHash`) accepts
+session-read's `SourceLineEvidence` as is. Prompts, outputs and payloads appear only as
+SHA-256 digests.
+
+`parseTraceRecord` is the producer parse and rejects unknown keys. `parseTraceRecordLoose`
+is the consumer parse: it keeps unknown keys and returns an unknown `kind` or
+`artifactKind` as `{ kind: "unknown", value }`. A known kind must still be valid in both.
+
+`TRACE_FIELD_PRIVACY` classifies every leaf field of every kind as `export`, `digest`,
+`public` (kept only for repos listed as public), `local` (dropped), `mcp-local` (tool names
+of MCP servers) or `actor` (`agent:` actors digested). `redactTraceRecord(record, {
+publicRepos })` applies it and resolves to a plain object; digests are `sha256:<hex>` via
+Web Crypto. Correlation keys survive redaction and their values do not.
+
+Fixtures for a synthetic documentation run ship in the package under
+`fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
+kind holds the same records split by kind.

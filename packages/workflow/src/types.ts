@@ -29,7 +29,7 @@ export interface StepResult {
   output?: string;
   /** Structured payload: a seed's data or a gate's resolution. */
   data?: Record<string, unknown>;
-  /** Present when the runner reported cost; `mapItems` sums it against its budget. */
+  /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
   usage?: StepUsage;
 }
 
@@ -39,6 +39,8 @@ export interface ActiveStepBase {
   attempt: number;
   startedAt: string;
   runnerRef?: string;
+  /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
+  priorUsage?: StepUsage;
   recovery?: { kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown"; evidence: string; observedAt: string };
 }
 
