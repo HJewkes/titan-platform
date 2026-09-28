@@ -18,6 +18,8 @@ describe("worker roles", () => {
       researcher: "researcher",
       explorer: "researcher",
       "fable-architect": "planner",
+      planner: "planner",
+      "fable-coordinator": "coordinator",
       peer: "standing_peer",
     };
 
@@ -64,5 +66,19 @@ describe("worker roles", () => {
     expect(sessionRole(spawned, worker)).toBe("worker:planner");
     expect(sessionRole(coordinator, worker)).toBe("coordinator");
     expect(sessionRole(headless, worker)).toBe("headless_sdk");
+  });
+
+  it("a planner-profile spawn reports as worker:planner", () => {
+    const worker = { profile: "planner", lifetimeMs: 0, assignments: 1 };
+    const spawned = classifySession({ origin: { depth: 1, profile: "planner" } });
+
+    expect(sessionRole(spawned, worker)).toBe("worker:planner");
+  });
+
+  it("a fable-coordinator-profile spawn reports as worker:coordinator, not the human coordinator role", () => {
+    const worker = { profile: "fable-coordinator", lifetimeMs: 0, assignments: 1 };
+    const spawned = classifySession({ origin: { depth: 1, profile: "fable-coordinator" } });
+
+    expect(sessionRole(spawned, worker)).toBe("worker:coordinator");
   });
 });

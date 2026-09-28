@@ -82,8 +82,8 @@ active steps. Legacy agent runs without confirmed attachment remain
   once (`maxRetries`); anything else fails the run. `StepResult.usage` sums every attempt,
   retries included, and the active step persists earlier attempts' cost as `priorUsage` so
   a resumed run counts each attempt once.
-- **`seed(stepId, fn)`** runs a deterministic function once; its `data` merges into the
-  params for later prompts.
+- **`seed(stepId, fn)`** runs a deterministic function once per call; its `data` merges
+  into the params for later prompts.
 - **`assisted(stepId, prompt)`** opens a gate and waits. The row survives restarts;
   `runtime.signal(runId, stepId, payload)` resolves it from anywhere. A `signal` field in
   the payload becomes the step's signal. Like `dispatch` it advances
@@ -91,6 +91,10 @@ active steps. Legacy agent runs without confirmed attachment remain
   `stepId` with gate `<runId>/<stepId>`, iteration `n` is keyed `stepId:n` with gate
   `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
   returns recorded answers without reopening their gates.
+
+All three share one call counter per `stepId`, so `seed("x")` then `assisted("x")` gates on
+`<runId>/x:1`, and every result records the method that wrote it as `StepResult.operation`.
+Runs stored before 0.5 carry no `operation` and keep that release's keys until they finish.
 
 ## Fan-out
 
@@ -206,6 +210,11 @@ listing `store.listPending()`.
 **Your workflow function re-runs from the top on resume.** That is the mechanism, not a bug:
 memoized steps return their stored result instead of re-executing. Keep side effects inside
 `seed` or `dispatch`, never in the function body between them.
+
+**Editing a workflow under a live run can fail it.** Replay matches calls by step id and
+call index. If the edited function reaches a recorded call through a different method, the
+run fails with `WorkflowNonDeterminismError` rather than hand back an answer recorded for
+another question. Add new steps under new step ids.
 
 **Gate and workflow migrations share a database.** Pass `migrate: false` to
 `SqliteGateStore` and put `gateMigration(n)` in your own migration list, or the two will
