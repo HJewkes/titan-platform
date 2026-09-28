@@ -1,13 +1,17 @@
 import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
+import type { ZodType } from "zod";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
+import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
   StepFailedError,
+  StepOutputInvalidError,
   WorkflowCancelledError,
   WorkflowNonDeterminismError,
   WorkflowRecoveryRequiredError,
+  WorkflowSchemaDriftError,
   workflowStepRequestKey,
   type ActiveStep,
   type AssistedOptions,
@@ -38,6 +42,7 @@ export interface ContextDeps {
   emit: (event: WorkflowEvent) => void;
   maxRetries: number;
   gatePollMs: number;
+  maxStepDataBytes: number;
   executionId: () => string;
   save: (run: WorkflowRun) => void;
   recovered: ReadonlyMap<string, RecoveredStep>;
@@ -50,6 +55,12 @@ export function gateIdFor(runId: string, stepId: string): string {
 /** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
 export function memoKey(operation: StepOperation, stepId: string, index: number): string {
   return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
+}
+
+interface CompletedStep {
+  output: string;
+  runnerRef: string | null;
+  usage?: StepUsage;
 }
 
 interface Memo {
@@ -113,8 +124,8 @@ export class RunContext implements WorkflowContext {
     return this.iterations[stepId] ?? 0;
   }
 
-  dispatch(stepId: string, template: string, options: DispatchOptions = {}): Promise<StepResult> {
-    const pending = this.dispatchStep(stepId, template, options);
+  dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
+    const pending = this.dispatchStep(stepId, template, options) as Promise<StepResult<T>>;
     this.inFlight.add(pending);
     void pending.then(() => this.inFlight.delete(pending), () => this.inFlight.delete(pending));
     return pending;
@@ -124,13 +135,14 @@ export class RunContext implements WorkflowContext {
     while (this.inFlight.size > 0) await Promise.allSettled([...this.inFlight]);
   }
 
-  private async dispatchStep(stepId: string, template: string, options: DispatchOptions): Promise<StepResult> {
+  private async dispatchStep(stepId: string, template: string, options: DispatchOptions<unknown>): Promise<StepResult> {
     const { index: iteration, key: iterKey, cached } = this.recall("dispatch", stepId);
-    if (cached) return this.bump(stepId, cached);
+    if (cached) return this.bump(stepId, this.replayed(cached, iteration, options.schema));
     const recovered = this.deps.recovered.get(iterKey);
     if (!recovered) this.throwIfCancelled();
     const prompt = await this.deps.render(template, buildStepVars(this.run, options.vars));
-    const completed = await this.runWithRetry(stepId, iteration, iterKey, prompt, options.model, recovered);
+    const completed = await this.runWithRetry(stepId, iteration, iterKey, prompt, options, recovered);
+    const data = options.schema ? this.parsedData(stepId, iteration, completed, options.schema) : undefined;
     const result: StepResult = {
       stepId,
       iteration,
@@ -139,12 +151,30 @@ export class RunContext implements WorkflowContext {
       signal: this.deps.parseSignal(completed.output),
       completedAt: nowIso(),
       output: completed.output,
+      ...(data ? { data } : {}),
       ...(completed.usage ? { usage: completed.usage } : {}),
     };
     delete this.run.activeSteps[stepId];
     this.record(iterKey, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: result.signal });
     return this.bump(stepId, result);
+  }
+
+  /** Re-derives `data` from the recorded output under the current schema, leaving the stored result as it was. */
+  private replayed(cached: StepResult, callIndex: number, schema: ZodType | undefined): StepResult {
+    if (!schema) return cached;
+    const parsed = parseStepOutput(schema, cached.output ?? "", Number.POSITIVE_INFINITY);
+    if (!parsed.ok) throw new WorkflowSchemaDriftError(this.runId, cached.stepId, callIndex, parsed.issues);
+    return { ...cached, data: parsed.data };
+  }
+
+  /** Parses after the retry loop, so an invalid payload costs one runner call and records no result. */
+  private parsedData(stepId: string, iteration: number, completed: CompletedStep, schema: ZodType): Record<string, unknown> {
+    const parsed = parseStepOutput(schema, completed.output, this.deps.maxStepDataBytes);
+    if (parsed.ok) return parsed.data;
+    delete this.run.activeSteps[stepId];
+    this.persist();
+    throw new StepOutputInvalidError(stepId, iteration, parsed.kind, parsed.issues, completed.usage);
   }
 
   async seed(stepId: string, fn: () => Promise<SeedResult>): Promise<StepResult> {
@@ -199,9 +229,9 @@ export class RunContext implements WorkflowContext {
     iteration: number,
     iterKey: string,
     prompt: string,
-    model: string | undefined,
+    options: DispatchOptions<unknown>,
     recovered?: RecoveredStep,
-  ): Promise<{ output: string; runnerRef: string | null; usage?: StepUsage }> {
+  ): Promise<CompletedStep> {
     let attempt = recovered?.step.attempt ?? 0;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
@@ -211,7 +241,7 @@ export class RunContext implements WorkflowContext {
       if (!pending) {
         active = this.newActiveStep(stepId, iterKey, attempt, failedUsage);
         this.activate(active);
-        pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model, signal: this.signal });
+        pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model: options.model, outputSchema: options.schema, signal: this.signal });
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;

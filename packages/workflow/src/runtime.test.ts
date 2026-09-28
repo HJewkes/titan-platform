@@ -67,6 +67,7 @@ function replayDeps(gates: GateStore): ContextDeps {
     emit: () => undefined,
     maxRetries: 1,
     gatePollMs: 10,
+    maxStepDataBytes: 65_536,
     executionId: () => "unused",
     save: () => undefined,
     recovered: new Map(),
