@@ -5,8 +5,9 @@ import type { DiscoveredTranscript } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ORIGIN_MIGRATION_NAME, ORIGIN_TABLES } from "./audit-schema-v5.js";
+import { ORIGIN_TASK_LINK_MIGRATION_NAME } from "./audit-schema-v7.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
-import { NO_ORIGINS, type OriginResolution, type OriginResolver } from "./origin.js";
+import { NO_ORIGINS, resolveOrigins, sessionsNeedingOrigin, type OriginResolution, type OriginResolver, type ResolvedOrigin } from "./origin.js";
 import { purgeTranscript } from "./purge.js";
 import { refreshCorpus } from "./refresh.js";
 import { MIGRATIONS } from "./schema.js";
@@ -83,7 +84,7 @@ describe("migration 5", () => {
     first.db.close();
     const second = openSessionGraph(file);
 
-    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 1001, 1002]);
+    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 1001, 1002]);
     expect(migrationsAfterFirst.find((r) => r.version === 5)?.name).toBe("origin, episodes, prices");
     expect(ORIGIN_MIGRATION_NAME).toBe("origin, episodes, prices");
     expect(migrationRows(second.db)).toEqual(migrationsAfterFirst);
@@ -181,6 +182,112 @@ describe("origin resolver", () => {
     resetIndex(graph);
 
     for (const table of ORIGIN_TABLES) expect(rows(`SELECT * FROM ${table}`)).toEqual([]);
+  });
+});
+
+describe("origin task link", () => {
+  const linked = (fields: Partial<ResolvedOrigin>): OriginResolution => ({ origins: { worker: { ...WORKER_ORIGIN.origins.worker!, ...fields } } });
+  const ranEdges = () =>
+    graph.edges.from("session:worker").filter((e) => e.relation === "ran").map((e) => ({ target: e.targetRef, via: e.attrs?.via ?? null, confidence: e.confidence }));
+  const transcriptRan = (taskId: string) => graph.edges.assert({ sourceRef: "session:worker", relation: "ran", targetRef: `task:${taskId}`, tValid: WORKER_END });
+  const relink = async (fields: Partial<ResolvedOrigin>) => {
+    graph.db.prepare("UPDATE session_origin SET resolved_at = ''").run();
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked(fields)) });
+  };
+
+  it("projects a ran edge and a task row for each linked id", async () => {
+    const resolveTasks = (taskIds: readonly string[]) => new Map(taskIds.map((id) => [id, { initiative: "demo" }]));
+
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7", "DEMO-8"], taskSource: "brief-anchor" })), resolveTasks });
+
+    expect(rows("SELECT task_ids, task_source FROM session_origin")).toEqual([{ task_ids: '["DEMO-7","DEMO-8"]', task_source: "brief-anchor" }]);
+    expect(ranEdges()).toEqual([
+      { target: "task:DEMO-7", via: "origin", confidence: 0.9 },
+      { target: "task:DEMO-8", via: "origin", confidence: 0.9 },
+    ]);
+    expect(graph.edges.from("session:worker").find((e) => e.relation === "ran")?.attrs).toEqual({ via: "origin", source: "brief-anchor" });
+    expect(rows("SELECT task_ref, initiative FROM task ORDER BY task_ref")).toEqual([
+      { task_ref: "task:DEMO-7", initiative: "demo" },
+      { task_ref: "task:DEMO-8", initiative: "demo" },
+    ]);
+  });
+
+  it("expires an origin ran edge when a re-resolution changes the task, and keeps a transcript ran edge", async () => {
+    await refreshCorpus(graph, corpus());
+    transcriptRan("DEMO-9");
+    transcriptRan("DEMO-6");
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7", "DEMO-6"], taskSource: "name" })) });
+
+    await relink({ taskIds: ["DEMO-8"], taskSource: "name" });
+
+    expect(ranEdges()).toEqual([
+      { target: "task:DEMO-9", via: null, confidence: 1 },
+      { target: "task:DEMO-6", via: null, confidence: 1 },
+      { target: "task:DEMO-8", via: "origin", confidence: 1 },
+    ]);
+  });
+
+  it("expires every origin ran edge when a re-resolution links nothing", async () => {
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "brief-paragraph" })) });
+    expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: "origin", confidence: 0.6 }]);
+
+    await relink({ taskIds: null, taskSource: null });
+
+    expect(ranEdges()).toEqual([]);
+    expect(rows("SELECT task_ids, task_source FROM session_origin")).toEqual([{ task_ids: null, task_source: null }]);
+  });
+});
+
+describe("migration 7", () => {
+  const SPAWNED_AT = "2026-09-01T00:04:59Z";
+  const RESOLVED_AT = "2026-09-02T00:00:00Z";
+
+  /** A version 6 store with a real origin row, a spawned edge, a transcript ran edge and a subagent row. */
+  function versionSixDatabase(file: string): void {
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.filter((m) => m.version <= 6));
+    db.prepare("INSERT INTO session (session_id, cwd, ended_at) VALUES ('worker', '/before', ?)").run(WORKER_END);
+    db.prepare(
+      `INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_session_id, profile, origin_kind, spawned_at, resolved_at)
+       VALUES ('worker', 'agent-chat', 'a-42', 'demo-7-impl', 'parent', 'implementer', 'spawned', ?, ?)`,
+    ).run(SPAWNED_AT, RESOLVED_AT);
+    const edge = db.prepare("INSERT INTO edge (source_ref, relation, target_ref, t_valid, t_created) VALUES (?, ?, ?, ?, '2026-09-02T00:00:00Z')");
+    edge.run("session:parent", "spawned", "session:worker", SPAWNED_AT);
+    edge.run("session:worker", "ran", "task:DEMO-5", WORKER_END);
+    db.prepare("INSERT INTO subagent (agent_ref, session_id, child_session_id, label) VALUES ('agent:agent-chat:a-42', 'parent', 'worker', 'demo-7-impl')").run();
+    db.close();
+  }
+  const edgeRows = (db: SessionGraph["db"]) => db.prepare("SELECT source_ref, relation, target_ref, t_valid, t_expired, attrs FROM edge ORDER BY edge_id").all();
+
+  it("keeps every row and edge of a version 6 store and re-queues its origin rows once", async () => {
+    const file = path.join(dir, "v6-graph.sqlite3");
+    versionSixDatabase(file);
+    const before = openDatabase(file);
+    const [edgesBefore, subagentsBefore] = [edgeRows(before), before.prepare("SELECT * FROM subagent").all()];
+    before.close();
+
+    const migrated = openSessionGraph(file);
+
+    expect(ORIGIN_TASK_LINK_MIGRATION_NAME).toBe("origin task link");
+    expect(migrated.db.prepare("SELECT name FROM _migration WHERE version = 7").get()).toEqual({ name: "origin task link" });
+    expect(migrated.db.prepare("SELECT agent_name, profile, spawned_at, resolved_at, task_ids, task_source FROM session_origin").all()).toEqual([
+      { agent_name: "demo-7-impl", profile: "implementer", spawned_at: SPAWNED_AT, resolved_at: "", task_ids: null, task_source: null },
+    ]);
+    expect(edgeRows(migrated.db)).toEqual(edgesBefore);
+    expect(migrated.db.prepare("SELECT * FROM subagent").all()).toEqual(subagentsBefore);
+    expect(sessionsNeedingOrigin(migrated)).toEqual(["worker"]);
+
+    await resolveOrigins(migrated, () => ({ origins: { worker: { originSystem: "agent-chat", parentSessionId: "parent", spawnedAt: SPAWNED_AT, taskIds: ["DEMO-7"], taskSource: "name" } } }));
+
+    expect(sessionsNeedingOrigin(migrated)).toEqual([]);
+    expect(migrated.edges.from("session:worker").map((e) => [e.targetRef, e.attrs])).toEqual([
+      ["task:DEMO-5", null],
+      ["task:DEMO-7", { via: "origin", source: "name" }],
+    ]);
+    migrated.db.close();
+    const reopened = openSessionGraph(file);
+    expect(sessionsNeedingOrigin(reopened)).toEqual([]);
+    reopened.db.close();
   });
 });
 

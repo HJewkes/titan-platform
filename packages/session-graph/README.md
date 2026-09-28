@@ -175,6 +175,17 @@ Migration 6, `episode transcript ids`, adds nullable `start_transcript_id` and
 `endTranscriptId`. A session resumed across two transcripts then orders by timestamp,
 transcript id, and byte offset, because byte offsets reset with the new file.
 
+Migration 7, `origin task link`, adds nullable `task_ids` (a JSON array, primary id first)
+and `task_source` columns to `session_origin`, surfaced as `ResolvedOrigin.taskIds` and
+`taskSource`. It then clears `resolved_at` on every existing origin row, so the next
+`resolveOrigins` pass re-resolves each ended session once; that pass is the backfill.
+Existing rows and edges are otherwise untouched. Each linked id projects a `task` row and a
+`session ran task` edge with `attrs = { via: "origin", source }` and a confidence of 1.0 for
+`name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for `brief-paragraph`. When a
+re-resolution drops an id, only that origin-made edge expires; a `ran` edge a transcript
+asserted carries no `via` and is never expired by the projection. session-graph stores and
+projects the ids a resolver hands it; it does not compute them.
+
 For snapshot-only usage across multiple physical sources, queries select one source
 by latest native usage timestamp, then greatest usage-record coverage and stable
 source ID. Source-local reset epochs cannot safely be summed across copies. This is

@@ -1,4 +1,4 @@
-import { RELATIONS, sessionRef } from "@titan-design/session-read";
+import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 
 /**
@@ -26,6 +26,10 @@ export interface ResolvedOrigin {
   briefExcerpt?: string | null;
   briefPath?: string | null;
   launchArgs?: string | null;
+  /** Task ids the spawn record assigned, primary first. Each projects a `ran` edge. */
+  taskIds?: readonly string[] | null;
+  /** How the ids were found: `name`, `name-over-brief`, `brief-anchor` or `brief-paragraph`. */
+  taskSource?: string | null;
 }
 
 /** A lifecycle event the launcher saw outside the transcript: `teleport`, `handoff`, `retired`, `exited`. */
@@ -75,10 +79,10 @@ const SESSIONS_NEEDING_ORIGIN = `
 const UPSERT_ORIGIN = `
   INSERT OR REPLACE INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
-    brief_chars, brief_excerpt, brief_path, launch_args, resolved_at)
+    brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at)
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
-    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @resolvedAt)`;
+    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt)`;
 
 const UPSERT_EVENT = `
   INSERT INTO session_external_event (session_id, ts, origin_system, kind, detail)
@@ -141,6 +145,7 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     depth: o.depth ?? null, originKind: o.originKind ?? null, configDir: o.configDir ?? null, spawnCwd: o.spawnCwd ?? null,
     spawnedAt: o.spawnedAt ?? null, briefChars: o.briefChars ?? null, briefExcerpt: o.briefExcerpt ?? null,
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
+    taskIds: o.taskIds?.length ? JSON.stringify(o.taskIds) : null, taskSource: o.taskSource ?? null,
   };
 }
 
@@ -151,7 +156,46 @@ function projectOrigins(graph: SessionGraph): void {
   graph.db.transaction(() => {
     graph.db.prepare(PROJECT_SUBAGENTS).run();
     for (const o of spawned) {
-      graph.edges.assert({ sourceRef: sessionRef(o.parent_session_id), relation: RELATIONS.SPAWNED, targetRef: sessionRef(o.session_id), tValid: o.spawned_at ?? o.resolved_at });
+      graph.edges.assert({ sourceRef: sessionRef(o.parent_session_id), relation: RELATIONS.SPAWNED, targetRef: sessionRef(o.session_id), tValid: validFrom(o) });
     }
+    projectTaskLinks(graph);
   })();
+}
+
+/** Migration 7 clears `resolved_at` to re-queue rows; an empty string is not a time, so the edge store stamps now instead. */
+const validFrom = (o: { spawned_at: string | null; resolved_at: string }): string | undefined => o.spawned_at ?? (o.resolved_at || undefined);
+
+/** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
+const LINK_CONFIDENCE: Record<string, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
+const LOWEST_CONFIDENCE = 0.6;
+
+interface TaskLinkRow { session_id: string; task_ids: string | null; task_source: string | null; spawned_at: string | null; resolved_at: string }
+
+/**
+ * Assert `session ran task` for every id a spawn record assigned, with a task row so
+ * the same pass's `enrichTasks` fills its initiative. Only edges this projection made
+ * (`attrs.via = 'origin'`) are expired; a transcript's `ran` edge carries no `via`.
+ */
+function projectTaskLinks(graph: SessionGraph): void {
+  const insertTask = graph.db.prepare("INSERT OR IGNORE INTO task (task_ref, task_id) VALUES (?, ?)");
+  const rows = graph.db.prepare("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin").all() as TaskLinkRow[];
+  for (const o of rows) {
+    const taskIds: string[] = o.task_ids ? (JSON.parse(o.task_ids) as string[]) : [];
+    const source = sessionRef(o.session_id);
+    const attrs = { via: "origin", source: o.task_source };
+    const confidence = LINK_CONFIDENCE[o.task_source ?? ""] ?? LOWEST_CONFIDENCE;
+    for (const taskId of taskIds) {
+      insertTask.run(taskRef(taskId), taskId);
+      graph.edges.assert({ sourceRef: source, relation: RELATIONS.RAN, targetRef: taskRef(taskId), tValid: validFrom(o), attrs, confidence });
+    }
+    expireStaleTaskLinks(graph, source, new Set(taskIds.map(taskRef)));
+  }
+}
+
+function expireStaleTaskLinks(graph: SessionGraph, source: string, linked: ReadonlySet<string>): void {
+  for (const edge of graph.edges.from(source)) {
+    if (edge.relation === RELATIONS.RAN && edge.attrs?.via === "origin" && !linked.has(edge.targetRef)) {
+      graph.edges.expire(source, RELATIONS.RAN, edge.targetRef);
+    }
+  }
 }
