@@ -5,7 +5,7 @@ import { prefixHash } from "@titan-design/locator";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CWD, FIXTURE_LINES, SESSION, offsetAfterLine, renderTranscript } from "./fixture.js";
 import type { TranscriptDelta } from "./fold.js";
-import { TranscriptParseError, extractTranscript, readTranscriptEvents } from "./read.js";
+import { TranscriptParseError, extractTranscript, lastTimestampBefore, readTranscriptEvents } from "./read.js";
 
 let dir: string;
 let transcript: string;
@@ -138,6 +138,24 @@ describe("extractTranscript", () => {
     expect(new Set(events.map((e) => e.sessionId))).toEqual(new Set(["abc"]));
     const spawned = events.filter((e) => e.kind === "edge" && e.relation === "spawned");
     expect(spawned[0]).toMatchObject({ sourceRef: "session:sess-1", targetRef: "session:abc" });
+  });
+});
+
+describe("lastTimestampBefore", () => {
+  it("widens the window until it finds a timestamp more than one window before the resume offset", async () => {
+    const lines = [{ type: "seed", timestamp: "2026-01-01T00:00:00Z" }, { type: "cost-state" }, { type: "cost-state" }, { type: "cost-state" }];
+    const file = path.join(dir, "windowed.jsonl");
+    writeFileSync(file, renderTranscript(lines), "utf8");
+    const start = Buffer.byteLength(renderTranscript(lines), "utf8");
+    expect(await lastTimestampBefore(file, start, 8)).toBe("2026-01-01T00:00:00Z");
+  });
+
+  it("returns an empty string when no earlier line carries a timestamp", async () => {
+    const lines = [{ type: "cost-state" }, { type: "cost-state" }];
+    const file = path.join(dir, "no-ts.jsonl");
+    writeFileSync(file, renderTranscript(lines), "utf8");
+    const start = Buffer.byteLength(renderTranscript(lines), "utf8");
+    expect(await lastTimestampBefore(file, start, 8)).toBe("");
   });
 });
 

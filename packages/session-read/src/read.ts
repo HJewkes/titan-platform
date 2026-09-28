@@ -1,3 +1,4 @@
+import { open } from "node:fs/promises";
 import path from "node:path";
 import { nextOffset, prefixHash, readJsonLines } from "@titan-design/locator";
 import type { SessionEvent } from "./events.js";
@@ -63,22 +64,64 @@ export async function* readTranscriptEvents(
   onDone?.({ lastByteOffset: offset, startByteOffset: start });
 }
 
+const TS_LOOKBACK_WINDOW = 64 * 1024;
+
 /**
  * A resumed read must seed `LineReader` with the timestamp a whole-file read would
  * already have carried into `start`, since a line like `cost-state` falls back to it.
- * No watermark stores this today, so it is recovered by re-scanning the prefix.
+ * No watermark stores this today, so it is recovered by scanning backward from `start`
+ * in doubling windows, cheaper than parsing the whole prefix on every incremental pass.
  */
-async function lastTimestampBefore(filePath: string, start: number): Promise<string> {
-  let last = "";
-  for await (const line of readJsonLines(filePath, 0)) {
-    if (line.byteOffset >= start) break;
-    const trimmed = line.text.trim();
-    if (trimmed.length === 0) continue;
-    const parsed = parseLine(filePath, line.byteOffset, trimmed);
-    const ts = str(parsed, "timestamp") ?? str(asObject(parsed?.snapshot), "timestamp");
-    if (ts) last = ts;
+export async function lastTimestampBefore(filePath: string, start: number, windowSize = TS_LOOKBACK_WINDOW): Promise<string> {
+  if (start === 0) return "";
+  const from = Math.max(0, start - windowSize);
+  const ts = await lastTimestampInWindow(filePath, from, start);
+  if (ts || from === 0) return ts;
+  return lastTimestampBefore(filePath, start, windowSize * 2);
+}
+
+/** `from > 0` means the window's first line may have started before it, so it is discarded unread. */
+async function lastTimestampInWindow(filePath: string, from: number, to: number): Promise<string> {
+  const handle = await open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(to - from);
+    for (let filled = 0; filled < buffer.length; ) {
+      const { bytesRead } = await handle.read(buffer, filled, buffer.length - filled, from + filled);
+      if (bytesRead === 0) break;
+      filled += bytesRead;
+    }
+    const lines = splitLines(buffer, from > 0);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const ts = timestampOf(lines[i]!);
+      if (ts) return ts;
+    }
+    return "";
+  } finally {
+    await handle.close();
   }
-  return last;
+}
+
+function splitLines(buffer: Buffer, discardFirst: boolean): Buffer[] {
+  const lines: Buffer[] = [];
+  let lineStart = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    if (buffer[i] === 0x0a) {
+      lines.push(buffer.subarray(lineStart, i));
+      lineStart = i + 1;
+    }
+  }
+  return discardFirst ? lines.slice(1) : lines;
+}
+
+function timestampOf(bytes: Buffer): string {
+  const text = bytes.toString("utf8").trim();
+  if (!text) return "";
+  try {
+    const parsed = asObject(JSON.parse(text));
+    return str(parsed, "timestamp") ?? str(asObject(parsed?.snapshot), "timestamp") ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function parseLine(filePath: string, byteOffset: number, text: string): Record<string, unknown> | null {
