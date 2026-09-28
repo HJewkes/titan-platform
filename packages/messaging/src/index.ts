@@ -66,3 +66,6 @@ export { validateTelegramWebhook } from "./telegram-webhook.js";
 
 export type { TelegramLiveness } from "./telegram-liveness.js";
 export { probeTelegramLiveness } from "./telegram-liveness.js";
+
+export type { SplitBoundary, SplitOptions } from "./split-text.js";
+export { splitText } from "./split-text.js";

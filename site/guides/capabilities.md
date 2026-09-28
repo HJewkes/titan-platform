@@ -388,7 +388,7 @@ Key exports:
 - `inbound`: `constantTimeEqual`, `MemorySeenStore`, `newMessageEvent`, `validateInbound`
 - `liveness`: `probeLiveness`
 - `telegram`: `createTelegramTransport`, `redactToken`
-- +34 more in the [reference page](/reference/messaging)
+- +37 more in the [reference page](/reference/messaging)
 
 <a id="cap-registry"></a>
 
