@@ -555,7 +555,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +64 more in the [reference page](/reference/session-graph)
+- +67 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -645,10 +645,10 @@ Tier 2, `@titan-design/workflow@0.4.3`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
+- `types`: `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
-- `prompt`: `buildStepVars`, `mustacheRenderer`, `unfilledVariables`
-- +59 more in the [reference page](/reference/workflow)
+- `prompt`: `buildStepVars`
+- +62 more in the [reference page](/reference/workflow)
 
 ## UI
 

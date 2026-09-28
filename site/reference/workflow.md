@@ -82,6 +82,22 @@ active steps. Legacy agent runs without confirmed attachment remain
   once (`maxRetries`); anything else fails the run. `StepResult.usage` sums every attempt,
   retries included, and the active step persists earlier attempts' cost as `priorUsage` so
   a resumed run counts each attempt once.
+- **`dispatch(stepId, template, { schema })`** takes a zod schema for a typed step. The runner
+  receives it as `StepRunInput.outputSchema` and may pass it to the model; the workflow's own
+  parse is authoritative either way. After the runner succeeds, the output is parsed as JSON,
+  validated, and stored as `StepResult.data`, typed as the schema's output, beside the raw
+  `output`. A payload that is not JSON, fails the schema, or serialises to more than
+  `maxStepDataBytes` (default 64 KiB) throws `StepOutputInvalidError`, a non-retryable
+  `StepFailedError` with `kind` (`not_json`, `schema`, `too_large`), `issues` and the attempt's
+  `usage`. It costs one runner call and records no result. `z.object` strips undeclared keys,
+  but any top-level `titan.trace.*` key in the output that the schema does not declare is
+  carried into `data` unchanged, before the size bound applies; a key the schema declares is
+  the schema's. Schemas should produce JSON values, because the stored `data` is serialised.
+  On replay, `data` is re-derived from the recorded `output` under the current schema, so a
+  run stored before typed output replays with typed data and a memoised step is never re-run.
+  A recorded output that no longer fits the schema fails the run with
+  `WorkflowSchemaDriftError`. A replayed call without a schema returns the recorded result
+  unchanged. `signal` still comes from the signal parser, not from `data`.
 - **`seed(stepId, fn)`** runs a deterministic function once per call; its `data` merges
   into the params for later prompts.
 - **`assisted(stepId, prompt)`** opens a gate and waits. The row survives restarts;
