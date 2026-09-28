@@ -26,6 +26,33 @@ Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test`
 `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
+## The egress scan
+
+This repository is public. [egress-scan](/reference/egress-scan) refuses pushes that add an
+absolute home path, a path into the active-work data directory, or a term from your private
+list. A finding names only `file:line` and the rule, never the text.
+
+- **The pre-push hook.** `pnpm install` builds the package and installs the hook through the
+  root `prepare` script, on a fresh clone as well. It goes into git's shared hooks directory,
+  so every linked worktree uses it. A worktree without `node_modules` cannot push until you
+  run `pnpm install` there; the hook fails closed rather than skip the scan. The hook is never
+  installed in CI. If the install printed "pre-push hook not installed", run `pnpm build`,
+  then `pnpm run prepare`.
+- **The CI job.** `egress-scan` scans every commit of a pull request, from its base sha to its
+  head sha, and every push to main. It is a merge gate, not an egress control: a branch is
+  public as soon as it is pushed. CI does not have the private term list.
+- **The allow file.** `.egress-allow` at the root holds `<glob> <rule-id> <reason>` lines,
+  one per file and rule. The reason names a task id. `private-term` hits are never
+  allowable; rewrite them. Prefer a placeholder segment (`/Users/you`, `/home/<user>`) or a
+  string built at runtime over a new allow entry.
+- **The private term list.** Keep it outside every repository, at
+  `$XDG_CONFIG_HOME/titan-egress/private-terms` (default `~/.config/titan-egress/private-terms`),
+  mode 600, one term per line. `TITAN_EGRESS_TERMS` overrides the path, and
+  `TITAN_EGRESS_REQUIRE_TERMS=1` makes a missing list fail the push. Do not list your GitHub
+  handle: it is in every `package.json`.
+- **By hand.** `pnpm egress:scan range <base> <head>` scans a range; `pnpm egress:scan tree`
+  scans every tracked file.
+
 ## Before adding code
 
 1. Read the [capability catalog](/guides/capabilities) and the reference page of every unit
