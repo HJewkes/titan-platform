@@ -18,6 +18,7 @@ Before adding code:
 | Unit | Tier | Use this when |
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. |
+| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
@@ -121,6 +122,22 @@ Key exports:
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
 - `index`: `conversationRef`, `conversationItemRef`
 - +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
+
+<a id="cap-authority"></a>
+
+### [`authority`](https://hjewkes.github.io/titan-platform/reference/authority)
+
+Tier 0, `@titan-design/authority@0.0.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
+
+**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
+
+Key exports:
+
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`, `ActorClass`, `EvidenceKind`
+- `schema`: `policyTableSchema`
+- `evaluate`: `evaluate`, `canResolve`
+- `table`: `DEFAULT_TABLE`
+- +6 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -554,7 +571,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +167 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +169 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -628,11 +645,10 @@ Tier 2, `@titan-design/workflow@0.4.3`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
+- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
 - `prompt`: `buildStepVars`, `mustacheRenderer`, `unfilledVariables`
-- `store`: `WorkflowOwnershipLostError`
-- +51 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
