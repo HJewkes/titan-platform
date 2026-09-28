@@ -352,6 +352,18 @@ describe("chat review verdicts", () => {
     expect(count("pr_review")).toBe(2);
   });
 
+  it("one tool use's verdicts split across two deltas keep distinct keys", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = await extractTranscript(transcript.absolutePath);
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    const [first, second] = delta.reviewVerdicts;
+
+    applyDelta(graph, transcriptId, { ...delta, reviewVerdicts: [first!] });
+    applyDelta(graph, transcriptId, { ...delta, reviewVerdicts: [second!] });
+
+    expect(reviews()).toMatchObject([{ source_key: "chat:tv1:0", number: 88 }, { source_key: "chat:tv1:1", number: 89 }]);
+  });
+
   it("re-reading a rewritten transcript does not double its verdict rows", async () => {
     writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
     await refreshCorpus(graph, [transcript]);

@@ -113,15 +113,12 @@ const UPSERT_CHAT_VERDICT = `
     transcript_id = excluded.transcript_id, repo = excluded.repo, repo_hint = excluded.repo_hint,
     cwd_repo = excluded.cwd_repo, number = excluded.number`;
 
-/** One tool use's verdicts come from one line, so their order in the delta is their parsed order. */
+/** The ordinal comes from the event, so one tool use's verdicts keep distinct keys across chunk boundaries. */
 function applyReviewVerdicts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
   const upsert = db.prepare(UPSERT_CHAT_VERDICT);
-  const seen = new Map<string, number>();
   for (const v of delta.reviewVerdicts) {
-    const n = seen.get(v.toolUseId) ?? 0;
-    seen.set(v.toolUseId, n + 1);
     upsert.run({
-      sourceKey: `chat:${v.toolUseId}:${n}`, verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
+      sourceKey: `chat:${v.toolUseId}:${v.ordinal}`, verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
       repo: v.repo, repoHint: v.repoHint, cwdRepo: v.cwdRepo, number: v.number,
     });
   }
