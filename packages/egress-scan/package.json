@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "titan-egress-scan": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,6 +16,7 @@
   },
   "files": [
     "dist",
+    "hooks",
     "README.md"
   ],
   "author": "Henry Jewkes",
