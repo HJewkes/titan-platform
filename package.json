@@ -24,17 +24,20 @@
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
+    "egress:scan": "node packages/egress-scan/dist/bin.js",
     "docs:dev": "pnpm docs:reference && vitepress dev site",
     "docs:build": "pnpm docs:reference && vitepress build site",
     "docs:preview": "vitepress preview site",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/gen-capabilities.mjs",
     "release": "pnpm -r run build && changeset publish",
-    "smoke:codex": "node scripts/smoke-codex.mjs"
+    "smoke:codex": "node scripts/smoke-codex.mjs",
+    "prepare": "pnpm --silent --filter @titan-design/egress-scan run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
     "@eslint/js": "^9.39.0",
+    "@titan-design/egress-scan": "workspace:*",
     "@types/node": "^25.3.2",
     "eslint": "^9.39.0",
     "globals": "^16.0.0",

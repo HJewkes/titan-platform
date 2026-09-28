@@ -21,7 +21,9 @@ so it cannot echo a line by construction.
 ## When to reach for it
 
 A pre-push hook or a CI job that must refuse content before it reaches a public remote.
-The caller runs git, reads the private term list and the allow file, and passes text in.
+Use the `titan-egress-scan` bin for both. Use the library entry when you already hold the
+patch text: the caller runs git, reads the private term list and the allow file, and passes
+text in.
 To mask credentials for display, use the redactor in [queue-mirror](./queue-mirror.md);
 it masks rather than locates.
 
@@ -85,10 +87,50 @@ reason must name a task id such as `TP-405`. An entry suppresses only its rule, 
 matching files, and every suppression is counted in the report's `allowed:` line. There
 are no inline suppression comments.
 
+## Command line
+
+The package ships a `titan-egress-scan` bin. It needs git 2.24 or later.
+
+```sh
+titan-egress-scan pre-push <remote>     # the commits a push sends; reads git's pre-push stdin
+titan-egress-scan range <base> <head>   # every commit in base..head, for CI
+titan-egress-scan tree                  # every tracked file at HEAD, once at rollout
+titan-egress-scan install-hook          # write the pre-push hook
+```
+
+Exit codes are 0 clean, 1 findings, 2 usage or configuration error. Findings go to stdout;
+notices and errors go to stderr.
+
+- **What a push scans.** `pre-push` skips ref deletions and scans `remote..local` for an
+  existing branch. For a new branch it scans only the commits no ref of that remote has.
+  `range` with an all-zero base scans the head commit alone. Each commit is read with
+  `git show -c`, so a merge commit's combined diff is scanned too. After a merge of the main
+  branch, a line already on main can be reported again in a file both sides changed.
+- **Arguments.** Shas on pre-push stdin must be full hex shas. A `range` base or head must be
+  a hex sha or a ref name, and a remote name must not start with a dash. A bad value exits 2
+  and the message names its position, never its value.
+- **The private term list.** The bin reads `$TITAN_EGRESS_TERMS`, else
+  `${XDG_CONFIG_HOME:-$HOME/.config}/titan-egress/private-terms`. When `CI` is set it never
+  looks. Locally a missing list prints a notice and the scan continues, and
+  `TITAN_EGRESS_REQUIRE_TERMS=1` turns that into exit 2.
+- **The allow file.** The bin reads `.egress-allow` from the repo root; a malformed file exits 2.
+- **The hook.** `install-hook` writes into the directory `git rev-parse --git-path hooks`
+  names. That is `core.hooksPath` when set, otherwise the common git directory, which every
+  linked worktree shares. It never sets `core.hooksPath` and never replaces a `pre-push` it
+  did not write, and it does nothing when `CI` is set. The hook runs the pushing worktree's
+  `node_modules/.bin/titan-egress-scan`. It falls back to the package's built `dist/bin.js`,
+  because pnpm skips the `.bin` link for a workspace package that was unbuilt at install.
+  It fails closed when neither exists.
+
+In a consumer repo, add the package as a devDependency with
+`"prepare": "titan-egress-scan install-hook"`, and run `range` in a CI job with the pull
+request's base and head shas. titan-platform builds the package inside `prepare` instead;
+see [Working in the repo](/guides/contributing#the-egress-scan).
+
 ## What it deliberately does not do
 
-It does not run git, read files or look at the environment; the caller does, which keeps
-the core the same under a hook and under CI. It does not scan for credentials, which GitHub
+The library entry does not run git, read files or look at the environment; the bin does,
+which keeps the core the same under a hook and under CI. It does not scan for credentials, which GitHub
 push protection covers. It cannot see text published through other channels: pull request
 titles and bodies, issue comments and release notes.
 
@@ -109,7 +151,7 @@ location.
 
 Scan each commit of a push, not the diff between its endpoints. A leak added in one commit
 and removed in the next is still in the pushed history. `parseCommit` expects
-`git show -U0 --format=%B%x00` output: the message, a NUL, then the patch.
+`git show -c -U0 --format=%B%x00` output: the message, a NUL, then the patch.
 
 Combined merge diffs (`diff --cc`) are parsed: a line counts as added when any parent lacks
 it and no column marks it removed.
