@@ -23,11 +23,28 @@ const successful: HarnessRunResult<string, "codex"> = {
 };
 type Measurement = DurableHarnessSuccess["usage"][number];
 
-function snapshot(sequence: number, cost: Measurement["cost"], input: number, output: number): Measurement {
+function priced(usd: number, input: number, output: number): Pick<Measurement, "model" | "source" | "tokens" | "cost"> {
   return {
-    kind: "snapshot", scope: "turn", scopeId: "turn-1", epoch: "native-invocation", sequence, model: "test", source: "test",
-    tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null }, cost,
+    model: "test", source: "test", cost: { usd, kind: "estimate" },
+    tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null },
   };
+}
+
+function snapshot(sequence: number, usd: number, input: number, output: number, scope: "turn" | "conversation" = "turn"): Measurement {
+  return { kind: "snapshot", scope, scopeId: `${scope}-1`, epoch: "native-invocation", sequence, ...priced(usd, input, output) };
+}
+
+function delta(responseId: string, usd: number, input: number, output: number): Measurement {
+  return { kind: "delta", responseId, ...priced(usd, input, output) };
+}
+
+async function stepUsageFor(usage: Measurement[]) {
+  const fixture = setup();
+  const { runtime } = fixture.runtime("first");
+  const runId = runtime.start("work");
+  await acknowledged(runtime, runId);
+  fixture.finish({ ...successful, usage });
+  return (await runtime.wait(runId)).stepResults["work:0"]?.usage;
 }
 const workflow: WorkflowFn =async ctx => { await ctx.dispatch("work", "Do the work"); };
 
@@ -93,18 +110,30 @@ describe("durable harness workflow integration", () => {
   });
 
   it("reports the harness's cost and tokens on the step result, keeping only the highest-sequence snapshot per turn", async () => {
-    const fixture = setup();
-    const { runtime } = fixture.runtime("first");
-    const runId = runtime.start("work");
-    await acknowledged(runtime, runId);
-    fixture.finish({ ...successful, usage: [
-      snapshot(1, { usd: 0.2, kind: "estimate" }, 1200, 90),
-      snapshot(0, { usd: 0.05, kind: "estimate" }, 400, 20),
-    ] });
+    const usage = await stepUsageFor([snapshot(1, 0.2, 1200, 90), snapshot(0, 0.05, 400, 20)]);
 
-    const final = await runtime.wait(runId);
+    expect(usage).toEqual({ costUsd: 0.2, inputTokens: 1200, outputTokens: 90 });
+  });
 
-    expect(final.stepResults["work:0"]?.usage).toEqual({ costUsd: 0.2, inputTokens: 1200, outputTokens: 90 });
+  it("a harness that returns both deltas and snapshots reports the spend once", async () => {
+    const usage = await stepUsageFor([
+      snapshot(0, 0.3, 1500, 100),
+      delta("response-1", 0.1, 500, 40),
+      delta("response-2", 0.2, 1000, 60),
+      delta("response-1", 0.1, 500, 40),
+    ]);
+
+    expect(usage?.costUsd).toBeCloseTo(0.3);
+    expect(usage).toMatchObject({ inputTokens: 1500, outputTokens: 100 });
+  });
+
+  it("a conversation snapshot supersedes turn snapshots in the same epoch", async () => {
+    const usage = await stepUsageFor([
+      snapshot(0, 0.1, 500, 40),
+      snapshot(0, 0.3, 1500, 100, "conversation"),
+    ]);
+
+    expect(usage).toEqual({ costUsd: 0.3, inputTokens: 1500, outputTokens: 100 });
   });
 
   it("omits usage from the step result when the harness reports none", async () => {

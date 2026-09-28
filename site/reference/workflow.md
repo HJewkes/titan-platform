@@ -130,9 +130,10 @@ step when the agent run reported it, and a run with
 an `outputSchema` stores its output as JSON text.
 
 `durableHarnessRunner` reports `usage` on a successful step from the harness's
-measurements: the highest-sequence snapshot per turn, deltas once per response, and an
-unpriced measurement's tokens at zero cost. Its failed steps report none, because the
-durable failure record carries no usage.
+measurements. Response deltas count once each and supersede snapshots; without deltas it
+keeps the highest-sequence snapshot per scope, and a conversation snapshot supersedes turn
+snapshots in its epoch. An unpriced measurement adds its tokens at zero cost. Its failed
+steps report none, because the durable failure record carries no usage.
 
 `idempotentRunner(live)` wraps a live runner whose steps are safe to repeat, such as
 read-only judgements. A step that was in flight at a crash is dispatched again on `hydrate`

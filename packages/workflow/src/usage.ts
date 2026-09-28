@@ -25,17 +25,27 @@ export function usageFromMeasurements(measurements: readonly UsageMeasurement[])
   }), undefined);
 }
 
-/** Deltas deduplicate by response id; a later snapshot replaces an earlier one for the same scope and epoch. */
+type Delta = Extract<UsageMeasurement, { kind: "delta" }>;
+type Snapshot = Extract<UsageMeasurement, { kind: "snapshot" }>;
+
+/** Same fold as session-read's SessionUsageAccumulator: deltas supersede snapshots, which describe the same spend. */
 function latestMeasurements(measurements: readonly UsageMeasurement[]): UsageMeasurement[] {
-  const byIdentity = new Map<string, UsageMeasurement>();
+  const deltas = new Map<string, Delta>();
+  const snapshots = new Map<string, Snapshot>();
   for (const measurement of measurements) {
-    const identity = measurement.kind === "delta"
-      ? `delta:${measurement.responseId}`
-      : `snapshot:${measurement.scope}:${measurement.scopeId}:${measurement.epoch}`;
-    const held = byIdentity.get(identity);
-    if (held?.kind === "snapshot" && measurement.kind === "snapshot" && held.sequence > measurement.sequence) continue;
-    if (held?.kind === "delta") continue;
-    byIdentity.set(identity, measurement);
+    if (measurement.kind === "delta") {
+      deltas.set(measurement.responseId, measurement);
+      continue;
+    }
+    const key = JSON.stringify([measurement.scope, measurement.scopeId, measurement.epoch]);
+    const held = snapshots.get(key);
+    if (!held || held.sequence <= measurement.sequence) snapshots.set(key, measurement);
   }
-  return [...byIdentity.values()];
+  return deltas.size > 0 ? [...deltas.values()] : withoutSupersededScopes([...snapshots.values()]);
+}
+
+/** A conversation snapshot already covers every turn in its epoch. */
+function withoutSupersededScopes(snapshots: Snapshot[]): Snapshot[] {
+  const conversationEpochs = new Set(snapshots.filter((value) => value.scope === "conversation").map((value) => value.epoch));
+  return snapshots.filter((value) => value.scope === "conversation" || !conversationEpochs.has(value.epoch));
 }
