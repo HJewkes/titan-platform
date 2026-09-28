@@ -9,7 +9,7 @@ export interface SessionUsageSummary {
   basis: "delta" | "snapshot";
 }
 
-/** Collects one conversation's measurements; the shared fold decides which of them count. */
+/** Collects one conversation's measurements; the shared fold decides which count. Memory grows with every measurement added, so callers fold once after their loop. */
 export class SessionUsageAccumulator {
   private readonly measurements: UsageMeasurement[] = [];
 
