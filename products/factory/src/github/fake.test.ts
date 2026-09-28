@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { fakeGitHub } from "./fake.js";
+import { fakeGitHub, fakeSha } from "./fake.js";
 import { GitHubConflictError, githubPort } from "./port.js";
 
 const REPO = "octo/demo";
+const H1 = fakeSha("head1");
+const H2 = fakeSha("head2");
+const BASE = fakeSha("base");
+const ADVANCED = fakeSha("advanced1");
 
 describe("check-then-act port over the fake", () => {
   it("ensureBranch on an existing branch is a no-op that keeps the branch's sha", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
 
-    const first = await port.ensureBranch(REPO, "factory/doc-1", "base0000");
-    fake.refs.set("factory/doc-1", "advanced1");
-    const again = await port.ensureBranch(REPO, "factory/doc-1", "base0000");
+    const first = await port.ensureBranch(REPO, "factory/doc-1", BASE);
+    fake.refs.set("factory/doc-1", ADVANCED);
+    const again = await port.ensureBranch(REPO, "factory/doc-1", BASE);
 
-    expect(first).toEqual({ sha: "base0000", done: true });
-    expect(again).toEqual({ sha: "advanced1", done: false, skipped: "exists" });
+    expect(first).toEqual({ sha: BASE, done: true });
+    expect(again).toEqual({ sha: ADVANCED, done: false, skipped: "exists" });
     expect(fake.effects.createRef).toBe(1);
   });
 
@@ -36,11 +40,11 @@ describe("check-then-act port over the fake", () => {
   it("openPr finds the PR a crashed attempt already opened, even after it merged", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
-    fake.refs.set("topic", "head1");
+    fake.refs.set("topic", H1);
     const request = { head: "topic", base: "main", title: "T", body: "B" };
 
     const opened = await port.openPr(REPO, request);
-    await port.merge(REPO, opened.pr.number, "head1", "squash");
+    await port.merge(REPO, opened.pr.number, H1, "squash");
     const again = await port.openPr(REPO, request);
 
     expect(again).toMatchObject({ done: false, skipped: "exists", pr: { number: opened.pr.number, merged: true } });
@@ -50,10 +54,10 @@ describe("check-then-act port over the fake", () => {
   it("merge is a no-op on a merged PR and returns the stored merge sha", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
-    const pr = fake.addPr({ headSha: "head1" });
+    const pr = fake.addPr({ headSha: H1 });
 
-    const first = await port.merge(REPO, pr.number, "head1", "squash");
-    const again = await port.merge(REPO, pr.number, "head1", "squash");
+    const first = await port.merge(REPO, pr.number, H1, "squash");
+    const again = await port.merge(REPO, pr.number, H1, "squash");
 
     expect(again).toEqual({ mergeSha: first.mergeSha, done: false, skipped: "merged" });
     expect(fake.effects.merge).toBe(1);
@@ -61,10 +65,10 @@ describe("check-then-act port over the fake", () => {
 
   it("merge refuses a head other than the one named, without calling GitHub's merge", async () => {
     const fake = fakeGitHub();
-    const pr = fake.addPr({ headSha: "head1" });
-    fake.pushHead(pr.number, "foreign1");
+    const pr = fake.addPr({ headSha: H1 });
+    fake.pushHead(pr.number, fakeSha("foreign1"));
 
-    const result = await githubPort(fake.wire).merge(REPO, pr.number, "head1", "squash");
+    const result = await githubPort(fake.wire).merge(REPO, pr.number, H1, "squash");
 
     expect(result).toMatchObject({ done: false, skipped: "head-moved" });
     expect(fake.calls).not.toContain("merge");
@@ -73,12 +77,12 @@ describe("check-then-act port over the fake", () => {
   it("updateBranch skips a head that moved, a branch that is current, and a merged PR", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);
-    const behind = fake.addPr({ headSha: "head1", behind: true });
-    const current = fake.addPr({ headSha: "head2" });
+    const behind = fake.addPr({ headSha: H1, behind: true });
+    const current = fake.addPr({ headSha: H2 });
 
-    const done = await port.updateBranch(REPO, behind.number, "head1");
-    const moved = await port.updateBranch(REPO, behind.number, "head1");
-    const upToDate = await port.updateBranch(REPO, current.number, "head2");
+    const done = await port.updateBranch(REPO, behind.number, H1);
+    const moved = await port.updateBranch(REPO, behind.number, H1);
+    const upToDate = await port.updateBranch(REPO, current.number, H2);
 
     expect([done, moved, upToDate]).toEqual([{ done: true }, { done: false, skipped: "head-moved" }, { done: false, skipped: "up-to-date" }]);
     expect(fake.effects.updateBranch).toBe(1);

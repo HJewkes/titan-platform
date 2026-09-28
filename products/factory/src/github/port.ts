@@ -1,4 +1,5 @@
 import { latestPerName } from "./checks.js";
+import { checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -118,22 +119,32 @@ export class GitHubConflictError extends Error {
   }
 }
 
+/** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
 export function githubPort(wire: GitHubWire): GitHubPort {
+  const repoOf = checkRepo;
+  const pr = (number: number) => checkPositiveInt("pr", number);
   return {
-    getHeadSha: (repo, branch) => wire.getRef(repo, branch),
-    ensureBranch: (repo, branch, baseSha) => ensureBranch(wire, repo, branch, baseSha),
-    getFile: (repo, path, ref) => wire.getContent(repo, path, ref),
-    putFile: (repo, request) => putFile(wire, repo, request),
-    findPr: (repo, headBranch) => findPr(wire, repo, headBranch),
-    openPr: (repo, request) => openPr(wire, repo, request),
-    getPr: (repo, number) => wire.getPr(repo, number),
-    requiredChecks: (repo, branch) => wire.getBranchRules(repo, branch),
-    latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repo, sha)),
-    getCommit: (repo, sha) => wire.getCommit(repo, sha),
-    updateBranch: (repo, number, expectedHeadSha) => updateBranch(wire, repo, number, expectedHeadSha),
-    merge: (repo, number, sha, method) => merge(wire, repo, number, sha, method),
-    rerunFailed: (repo, runId) => rerunFailed(wire, repo, runId),
+    getHeadSha: async (repo, branch) => wire.getRef(repoOf(repo), checkRef("branch", branch)),
+    ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
+    getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
+    putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
+    findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
+    openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
+    getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
+    requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
+    latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
+    getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
+    updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
+    merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
+    rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
   };
+}
+
+function checkPutFile(request: PutFileRequest): PutFileRequest {
+  checkPath(request.path);
+  checkRef("branch", request.branch);
+  if (request.expectedBlobSha !== null) checkSha("expectedBlobSha", request.expectedBlobSha);
+  return request;
 }
 
 async function ensureBranch(wire: GitHubWire, repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>> {

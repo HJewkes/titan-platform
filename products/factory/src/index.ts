@@ -19,5 +19,7 @@ export type { ChecksVerdict } from "./github/checks.js";
 export { evaluateChecks, latestPerName } from "./github/checks.js";
 export type { GhExec, GhResult } from "./github/gh-cli.js";
 export { GhError, execGh, ghCliWire } from "./github/gh-cli.js";
+export { GitHubInputError } from "./github/validate.js";
+export { MAX_STORED_ERROR_CHARS, REDACTED, redactForEvidence } from "./redact.js";
 export type { CiSnapshot, FailingCheck, LandDeps, LandInput, LandOptions, LandOutcome } from "./workflows/land.js";
 export { LAND_STEPS, MAX_CI_CYCLES, MAX_UPDATE_CYCLES, land, landRoutes, readCi } from "./workflows/land.js";

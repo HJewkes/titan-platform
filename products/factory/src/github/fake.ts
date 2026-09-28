@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CheckRun, Commit, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -39,6 +40,11 @@ export class FakeHttpError extends Error {
   }
 }
 
+/** A real-shaped commit sha, stable per tag, so tests can name heads. */
+export function fakeSha(tag: string): string {
+  return createHash("sha1").update(tag).digest("hex");
+}
+
 export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success"): CheckRun {
   return { id, name, status: "completed", conclusion, startedAt, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
 }
@@ -47,7 +53,7 @@ export function successRun(name: string, id: number, startedAt = "2026-01-01T00:
 export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): FakeGitHub {
   const base = options.base ?? "main";
   let counter = 0;
-  const nextSha = (tag: string): string => `${tag}${String(++counter).padStart(4, "0")}`;
+  const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
   const effects: FakeEffects = { createRef: 0, putContent: 0, createPr: 0, updateBranch: 0, merge: 0, rerunFailedJobs: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
@@ -58,7 +64,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): F
     calls: [],
     rules: { contexts: ["validate", "dag-check"], strict: true },
     commits: new Map(),
-    refs: new Map([[base, options.baseSha ?? "base0000"]]),
+    refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     files: new Map(),
     addPr(fields) {
       const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };

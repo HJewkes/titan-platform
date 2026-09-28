@@ -5,6 +5,7 @@ import { evidenceRecord } from "../evidence.js";
 import type { GatePolicy } from "../gate-policy.js";
 import { evaluateChecks } from "../github/checks.js";
 import type { GitHubPort, MergeMethod, PullRequest, RepoSlug } from "../github/port.js";
+import { redactForEvidence } from "../redact.js";
 import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
@@ -187,7 +188,7 @@ function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: A
       const record = evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), { result });
       return { ok: true as const, output: JSON.stringify(record) };
     } catch (error) {
-      return { ok: false as const, error: error instanceof Error ? error.message : String(error), retryable: false };
+      return { ok: false as const, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
     }
   };
   return { match, onRestart: "repeat", runner: { run } };

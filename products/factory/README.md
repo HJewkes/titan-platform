@@ -62,6 +62,13 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
 
+`githubPort` validates every argument before any wire call, because each one becomes part of a
+`gh api` path. It checks five things. The repo is `owner/name` of `[A-Za-z0-9._-]`, and neither
+part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?` or `#`. A sha is
+40 lower-case hex characters. A PR number or run id is a positive safe integer. A content path is
+relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value throws
+`GitHubInputError` naming the field, and `gh` never runs.
+
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
@@ -84,10 +91,22 @@ carry a success and a later superseded `cancelled` run. `behind` comes from the 
 - `merge:<n>`: `sha` is the approved head, or a head this run's own update built on it
   (GitHub's merge of that head and the base). A head anyone else pushed asks again.
 
+A failed code step stores its error through `redactForEvidence` (`src/redact.ts`). That call
+replaces gh token shapes (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) and
+`Authorization:` header values with a marker, and caps the text at 500 characters.
+
 `land` returns `merged`, `ci-failed` (with the failing checks and their Actions run ids, for
 pilot 2 to classify) or `stopped`. Each code step's output is one evidence record whose
 `result` the workflow reads. A workflow that lands a PR spreads `LAND_STEPS` into its own step
 declaration and `landRoutes({ port })` into the host's routes.
+
+### Not covered
+
+GitHub applies `update-branch` asynchronously, and the fake applies it at once. A kill inside
+`waitForHeadChange` can therefore send a second `update-branch` with the same
+`expected_head_sha` on resume. The worst case is one extra merge-of-base commit on the PR branch.
+That commit cannot reach `merge` without a trusted head: it is trusted only if its first parent
+is a head the approval already covers, and anything else asks the human again.
 
 ## F3 seam: `traceRef()` in `src/evidence.ts`
 

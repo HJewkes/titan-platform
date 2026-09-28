@@ -4,9 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE, type GatePolicy } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
-import { MAX_UPDATE_CYCLES } from "./land.js";
+import { fakeSha } from "../github/fake.js";
+import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
+import { ghCliWire, type GhExec } from "../github/gh-cli.js";
+import { githubPort } from "../github/port.js";
+import { MAX_UPDATE_CYCLES, landRoutes } from "./land.js";
 
+const FOREIGN = fakeSha("foreign1");
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
 afterEach(() => {
@@ -36,13 +40,13 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     scenario.fake.pr(1).behind = true;
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: "head1" });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
     const run = await host.runtime.wait(runId);
 
     const pr = scenario.fake.pr(1);
     expect(run.status).toBe("completed");
     expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
-    expect(pr.headSha).toMatch(/^update/);
+    expect(scenario.fake.commits.get(pr.headSha)?.parents[0]).toBe(H1);
     expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: pr.headSha, mergeSha: pr.mergeSha });
     expect(host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
   });
@@ -56,7 +60,7 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(scenario.fake.pr(1).headSha);
-    expect(scenario.fake.pr(1).headSha).toMatch(/^update/);
+    expect(scenario.fake.commits.get(scenario.fake.pr(1).headSha)?.parents[0]).toBe(H1);
     expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 0 });
   });
 
@@ -134,7 +138,7 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     scenario.fake.pr(1).mergeableState = "unknown";
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: "head1" });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
     const run = await host.runtime.wait(runId);
 
     expect(run.status).toBe("failed");
@@ -147,15 +151,15 @@ describe("land core", () => {
     const runId = host.runtime.start("land-test");
     await gateOpened(host, gateId(runId, "approve-merge"));
 
-    scenario.fake.pushHead(1, "foreign1");
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: "head1" });
+    scenario.fake.pushHead(1, FOREIGN);
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
     await gateOpened(host, gateId(runId, "approve-merge", 1));
     const mergesBeforeSecondApproval = scenario.fake.effects.merge;
     await approveUntilSettled(host, runId, scenario.fake);
 
     expect(mergesBeforeSecondApproval).toBe(0);
     expect(scenario.fake.effects.merge).toBe(1);
-    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: "foreign1" });
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: FOREIGN });
   });
 
   it("refuses an approval that names a head other than the one shown, and does not merge", async () => {
@@ -164,9 +168,9 @@ describe("land core", () => {
     const runId = host.runtime.start("land-test");
     await gateOpened(host, gateId(runId, "approve-merge"));
 
-    const answer = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: "some-other-head" });
+    const answer = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: fakeSha("other") });
 
-    expect(answer).toThrow(/headSha: expected "head1"/);
+    expect(answer).toThrow(`headSha: expected "${H1}"`);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
     expect(scenario.fake.calls).not.toContain("merge");
   });
@@ -179,8 +183,22 @@ describe("land core", () => {
     const run = await host.runtime.wait(host.runtime.start("land-test"));
 
     expect(run.status).toBe("completed");
-    expect(scenario.outcomes.at(-1)).toEqual({ kind: "ci-failed", headSha: "head1", failing: [{ name: "validate", conclusion: "failure", url: "u", workflowRunId: 77 }] });
+    expect(scenario.outcomes.at(-1)).toEqual({ kind: "ci-failed", headSha: H1, failing: [{ name: "validate", conclusion: "failure", url: "u", workflowRunId: 77 }] });
     expect(host.gates.listPending()).toEqual([]);
+  });
+
+  it("stores a failed step's gh error without the token-shaped text gh printed", async () => {
+    const leaked = `ghp_${"Z9y8".repeat(9)}`;
+    const exec: GhExec = async () => ({ code: 1, stdout: "", stderr: `gh: Bad credentials; Authorization: token ${leaked} (HTTP 401)\n` });
+    const scenario = landScenario();
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: landRoutes({ port: githubPort(ghCliWire(exec)) }), gatePollMs: 5 });
+    hosts.push(host);
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    expect(run).toMatchObject({ status: "failed", error: expect.stringContaining("Bad credentials") });
+    expect(JSON.stringify(run)).not.toContain(leaked);
+    expect(JSON.stringify(run)).not.toContain("Z9y8");
   });
 
   it("writes one evidence record per step with the run as trace and the step attempt as span", async () => {
