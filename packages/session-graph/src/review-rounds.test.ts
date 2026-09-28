@@ -74,7 +74,7 @@ describe("review rounds", () => {
     const summary = await refresh({ resolvePrs: forge({ [DEMO]: { commitTimes: COMMITS, reviews: [] } }) });
 
     expect(rounds()).toEqual({ review_rounds: 1, review_rounds_gh: 0, review_rounds_chat: 1 });
-    expect(summary.reviews).toEqual({ resolved: 1, unresolved: 0 });
+    expect(summary.reviews).toEqual({ resolved: 1, unresolved: 0, invalidTimes: 0 });
   });
 
   it("two changes-requested verdicts on the same head count once, across reviewers and surfaces", async () => {
@@ -120,6 +120,40 @@ describe("review rounds", () => {
     expect(rounds()).toEqual({ review_rounds: 2, review_rounds_gh: 1, review_rounds_chat: 1 });
   });
 
+  it("a review with an unparseable time adds no round", async () => {
+    const reviews = [{ state: "CHANGES_REQUESTED", submittedAt: "not-a-date" }];
+
+    await refresh({ resolvePrs: forge({ [DEMO]: { commitTimes: COMMITS, reviews } }) });
+
+    expect(rounds()).toEqual({ review_rounds: 0, review_rounds_gh: 0, review_rounds_chat: 0 });
+  });
+
+  it("a PR with an unparseable commit time keeps the forge count and no chat count", async () => {
+    add("rev", chatSend("rev", "cs1", BEFORE_LAST_COMMIT, "acme/demo#7 — Verdict: CHANGES REQUESTED"));
+    const reviews = [{ state: "CHANGES_REQUESTED", submittedAt: BEFORE_LAST_COMMIT }];
+
+    await refresh({ resolvePrs: forge({ [DEMO]: { reviewRounds: 3, commitTimes: [COMMITS[0]!, "not-a-date", COMMITS[1]!], reviews } }) });
+
+    expect(rounds()).toEqual({ review_rounds: 3, review_rounds_gh: 3, review_rounds_chat: null });
+  });
+
+  it("the pass reports unusable times", async () => {
+    const badReview = [{ state: "CHANGES_REQUESTED", submittedAt: "" }];
+
+    const summary = await refresh({ resolvePrs: forge({ [DEMO]: { commitTimes: COMMITS, reviews: badReview }, [TOOLS]: { commitTimes: ["not-a-date"] } }) });
+
+    expect(summary.reviews.invalidTimes).toBe(2);
+  });
+
+  it("a resolver that sends reviews without commit times counts against the stored commit times", async () => {
+    const reviews = [{ state: "CHANGES_REQUESTED", submittedAt: BEFORE_LAST_COMMIT }];
+    await refresh({ resolvePrs: forge({ [DEMO]: { commitTimes: COMMITS, reviews } }) });
+
+    await refresh({ resolvePrs: forge({ [DEMO]: { reviews, reviewRounds: 99 } }) });
+
+    expect(rounds()).toEqual({ review_rounds: 1, review_rounds_gh: 1, review_rounds_chat: 0 });
+  });
+
   it("an unknown commit history leaves the forge count and no chat count", async () => {
     add("rev", chatSend("rev", "cs1", BEFORE_LAST_COMMIT, "acme/demo#7 — Verdict: CHANGES REQUESTED"));
 
@@ -140,7 +174,7 @@ describe("resolving the PR a chat verdict names", () => {
     const summary = await refresh();
 
     expect(verdictRefs()).toEqual([DEMO, null]);
-    expect(summary.reviews).toEqual({ resolved: 0, unresolved: 1 });
+    expect(summary.reviews).toEqual({ resolved: 0, unresolved: 1, invalidTimes: 0 });
   });
 
   it("a hint that names no known repo resolves through the sibling link", async () => {

@@ -132,6 +132,7 @@ const hasOrdinal = (v: ChatVerdict): boolean => Number.isInteger(v.ordinal) && v
 /**
  * A session-read that predates `ordinal` sends none, so those verdicts take the next index
  * this call has not used for their tool use, skipping any ordinal another event carries.
+ * Per call is enough because that session-read emits all of one tool use's verdicts from one line.
  */
 function chatVerdictKeys(verdicts: readonly ChatVerdict[]): string[] {
   const used = new Map<string, Set<number>>();

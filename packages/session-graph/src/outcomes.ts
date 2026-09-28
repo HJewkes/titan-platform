@@ -103,6 +103,7 @@ export async function enrichPrs(graph: SessionGraph, resolver: PrResolver | unde
 
 function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): number {
   const apply = graph.db.prepare(APPLY_OUTCOME);
+  const stored = graph.db.prepare("SELECT commit_times FROM pr WHERE pr_ref = ?");
   return graph.db.transaction(() => {
     let applied = 0;
     for (const [prRef, fields] of resolved) {
@@ -113,7 +114,7 @@ function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): 
         state: fields.state ?? null,
         mergedAt: fields.mergedAt ?? null,
         closedAt: fields.closedAt ?? null,
-        reviewRounds: forgeRounds(fields),
+        reviewRounds: forgeRounds(fields, () => storedCommitTimes(stored.get(prRef))),
         commitTimes: fields.commitTimes ? JSON.stringify(fields.commitTimes) : null,
       }).changes;
       if (fields.reviews) replaceForgeReviews(graph, prRef, fields.reviews);
@@ -124,9 +125,17 @@ function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): 
 
 const isChangesRequested = (review: ResolvedReview) => review.state.toUpperCase() === "CHANGES_REQUESTED";
 
-function forgeRounds(fields: ResolvedPr): number | null {
-  if (!fields.reviews || !fields.commitTimes) return fields.reviewRounds ?? null;
-  return countRounds(fields.reviews.filter(isChangesRequested).map((r) => r.submittedAt), fields.commitTimes);
+/** Counts against sent commit times, else stored ones; unusable or absent times leave `reviewRounds` as sent. */
+function forgeRounds(fields: ResolvedPr, storedTimes: () => string[] | null): number | null {
+  if (!fields.reviews) return fields.reviewRounds ?? null;
+  const commitTimes = fields.commitTimes ?? storedTimes();
+  const counted = commitTimes ? countRounds(fields.reviews.filter(isChangesRequested).map((r) => r.submittedAt), commitTimes) : null;
+  return counted ?? fields.reviewRounds ?? null;
+}
+
+function storedCommitTimes(row: unknown): string[] | null {
+  const times = (row as { commit_times: string | null } | undefined)?.commit_times;
+  return times ? (JSON.parse(times) as string[]) : null;
 }
 
 const FORGE_VERDICTS: Record<string, string> = { APPROVED: "approve", CHANGES_REQUESTED: "changes_requested" };

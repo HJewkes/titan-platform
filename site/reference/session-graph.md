@@ -121,9 +121,10 @@ await refreshCorpus(graph, transcripts, {
 - **`commitTimes`** is stored as a JSON array in `commit_times`. Send an empty array for a PR
   with no commits, so it is not offered again; omitting the field leaves the stored value.
 - **`reviews`** replaces the PR's forge rows in `pr_review` (`APPROVED` and
-  `CHANGES_REQUESTED`, keyed `gh:<pr_ref>:<submittedAt>`); omitting it leaves them. With both
-  `reviews` and `commitTimes`, the round rule below counts `review_rounds_gh`. Otherwise
-  `reviewRounds` is stored there as the forge counted it.
+  `CHANGES_REQUESTED`, keyed `gh:<pr_ref>:<submittedAt>`); omitting it leaves them. With
+  `reviews`, the round rule below counts `review_rounds_gh` against the sent `commitTimes`, or
+  the stored ones when none are sent. With no usable commit times, `reviewRounds` is stored
+  there as the forge counted it, and omitting that too leaves the stored value.
 
 ## Review rounds
 
@@ -148,6 +149,11 @@ second reviewer, or the other surface. An approval is stored and never adds a ro
   is exact once the resolver sends `reviews` and `commitTimes`.
 - **Unknown commits.** While `commit_times` is null, `review_rounds_chat` stays null and
   `review_rounds` equals `review_rounds_gh`.
+- **Unparseable times.** A review whose time does not parse is ignored by the rule and stays
+  stored. If any of a PR's commit times does not parse, its commit times count as unknown,
+  since a dropped commit would shift every later head. `countRounds` returns null in that
+  case. `summary.reviews.invalidTimes` counts the ignored reviews plus the PRs with unusable
+  commit times.
 
 **Resolving a chat verdict.** An exact `owner/name` must match a `pr` row, or the verdict
 stays unresolved. Otherwise the candidates are the `pr` rows with that number, narrowed in
@@ -176,7 +182,9 @@ two PR observation tables, and `pr_review`.
 
 `pr_review` holds one row per review verdict. A chat row comes from a `chat_send` tool use
 that session-read parsed a verdict from, keyed `chat:<tool_use_id>:<n>` where `n` is the
-verdict's `ordinal` in that message. It keeps only the parsed fields (verdict, repo, repo hint,
+verdict's `ordinal` in that message. An event from a session-read that predates `ordinal`
+takes the next index its tool use has not used in that `applyDelta` call; that session-read
+emits all of one tool use's verdicts from one line, so the keys cannot collide across calls. It keeps only the parsed fields (verdict, repo, repo hint,
 PR number, and the repo of the sender's working directory), never message text, and is purged
 with its transcript. `pr_ref` stays null until a later pass resolves it.
 

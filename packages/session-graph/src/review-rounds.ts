@@ -19,24 +19,39 @@ export interface ReviewProjection {
   resolved: number;
   /** Chat verdicts whose PR is still unknown. */
   unresolved: number;
+  /** Reviews ignored for a time that does not parse, plus PRs whose commit times were unusable. */
+  invalidTimes: number;
 }
 
 /**
  * The number of distinct heads among changes-requested reviews that a later commit answered.
  * A review's head is the count of commits at or before it, so two reviews on one head count once.
+ * A review whose time does not parse is ignored. Returns null when any commit time does not
+ * parse, because a missing commit would shift every later head.
  */
-export function countRounds(changesRequestedAt: readonly string[], commitTimes: readonly string[]): number {
-  return answeredHeads(changesRequestedAt, commitTimes.map(Date.parse)).size;
+export function countRounds(changesRequestedAt: readonly string[], commitTimes: readonly string[]): number | null {
+  const commits = parseCommitTimes(commitTimes);
+  return commits ? answeredHeads(changesRequestedAt, commits).heads.size : null;
 }
 
-function answeredHeads(reviewTimes: readonly string[], commits: readonly number[]): Set<number> {
+function parseCommitTimes(commitTimes: readonly string[]): number[] | null {
+  const commits = commitTimes.map(Date.parse);
+  return commits.some(Number.isNaN) ? null : commits;
+}
+
+function answeredHeads(reviewTimes: readonly string[], commits: readonly number[]): { heads: Set<number>; ignored: number } {
   const heads = new Set<number>();
+  let ignored = 0;
   for (const ts of reviewTimes) {
     const at = Date.parse(ts);
+    if (Number.isNaN(at)) {
+      ignored += 1;
+      continue;
+    }
     const head = commits.filter((c) => c <= at).length;
     if (head < commits.length) heads.add(head);
   }
-  return heads;
+  return { heads, ignored };
 }
 
 /**
@@ -47,9 +62,9 @@ export function projectReviewRounds(graph: SessionGraph, options: ReviewRoundOpt
   const isReviewer = options.isReviewerProfile ?? isReviewerProfile;
   return graph.db.transaction(() => {
     const resolved = resolveChatVerdicts(graph.db);
-    writeRounds(graph.db, isReviewer);
+    const invalidTimes = writeRounds(graph.db, isReviewer);
     const { n } = graph.db.prepare(`SELECT count(*) AS n FROM ${REVIEW_TABLE} WHERE surface = 'chat' AND pr_ref IS NULL`).get() as { n: number };
-    return { resolved, unresolved: n };
+    return { resolved, unresolved: n, invalidTimes };
   })();
 }
 
@@ -135,29 +150,33 @@ const CHANGES_REQUESTED = `
   SELECT r.pr_ref, r.surface, r.ts, o.profile FROM ${REVIEW_TABLE} r LEFT JOIN session_origin o ON o.session_id = r.session_id
   WHERE r.verdict = 'changes_requested' AND r.pr_ref IS NOT NULL`;
 
-function writeRounds(db: Db, isReviewer: ReviewerProfilePredicate): void {
+/** Returns the count of unusable times met, for the pass summary. */
+function writeRounds(db: Db, isReviewer: ReviewerProfilePredicate): number {
   const byPr = new Map<string, ChangesRequested[]>();
   for (const review of db.prepare(CHANGES_REQUESTED).all() as ChangesRequested[]) {
     if (review.surface === "chat" && !(review.profile && isReviewer(review.profile))) continue;
     byPr.set(review.pr_ref, [...(byPr.get(review.pr_ref) ?? []), review]);
   }
   const update = db.prepare("UPDATE pr SET review_rounds_chat = ?, review_rounds = ? WHERE pr_ref = ?");
+  let invalidTimes = 0;
   for (const pr of db.prepare("SELECT pr_ref, commit_times, review_rounds_gh FROM pr").all() as PrRoundRow[]) {
-    const { chat, total } = roundsFor(pr, byPr.get(pr.pr_ref) ?? []);
+    const { chat, total, invalid } = roundsFor(pr, byPr.get(pr.pr_ref) ?? []);
     update.run(chat, total, pr.pr_ref);
+    invalidTimes += invalid;
   }
+  return invalidTimes;
 }
 
 /**
  * Chat heads join the forge count only where no forge review already sits on that head,
  * so a resolver that sends only a count still adds to the chat rounds unchanged.
  */
-function roundsFor(pr: PrRoundRow, reviews: readonly ChangesRequested[]): { chat: number | null; total: number | null } {
-  if (pr.commit_times === null) return { chat: null, total: pr.review_rounds_gh };
-  const commits = (JSON.parse(pr.commit_times) as string[]).map(Date.parse);
+function roundsFor(pr: PrRoundRow, reviews: readonly ChangesRequested[]): { chat: number | null; total: number | null; invalid: number } {
+  const commits = pr.commit_times === null ? null : parseCommitTimes(JSON.parse(pr.commit_times) as string[]);
+  if (!commits) return { chat: null, total: pr.review_rounds_gh, invalid: pr.commit_times === null ? 0 : 1 };
   const timesOn = (surface: string) => reviews.filter((r) => r.surface === surface).map((r) => r.ts);
-  const forgeHeads = answeredHeads(timesOn("github"), commits);
-  const chatHeads = answeredHeads(timesOn("chat"), commits);
-  const chatOnly = [...chatHeads].filter((head) => !forgeHeads.has(head)).length;
-  return { chat: chatHeads.size, total: (pr.review_rounds_gh ?? 0) + chatOnly };
+  const forge = answeredHeads(timesOn("github"), commits);
+  const chat = answeredHeads(timesOn("chat"), commits);
+  const chatOnly = [...chat.heads].filter((head) => !forge.heads.has(head)).length;
+  return { chat: chat.heads.size, total: (pr.review_rounds_gh ?? 0) + chatOnly, invalid: forge.ignored + chat.ignored };
 }
