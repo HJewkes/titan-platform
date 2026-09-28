@@ -87,3 +87,5 @@ export type UsageMeasurement = {
   | { kind: "delta"; responseId: string }
   | { kind: "snapshot"; scope: "turn" | "conversation"; scopeId: string; epoch: string; sequence: number }
 );
+
+export { foldUsage, type UsageFold } from "./usage-fold.js";

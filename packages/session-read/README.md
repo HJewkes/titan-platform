@@ -183,7 +183,8 @@ message/tool counts, explicit native permission-denial evidence and usage. Gener
 tool errors are separate from permission denials; missing error and token fields
 remain unknown. Usage deduplicates response deltas and replaces snapshots within
 scope/reset epochs. Conversation-wide snapshots are not attributed to one model.
-`SessionUsageAccumulator` provides the same fold to graph-backed consumers.
+The fold is agent-protocol's `foldUsage`; `SessionUsageAccumulator` applies it for
+graph-backed consumers.
 Consumer-specific cost estimates, friction heuristics and presentation remain in
 the consumer. Native extensions retain provider fields without making them portable.
 
