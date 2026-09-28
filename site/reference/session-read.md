@@ -77,9 +77,13 @@ changes requested.
 PR references come from the verdict line, or the message's first line when the verdict line
 names none, in precedence order: a `github.com/<owner>/<repo>/pull/<n>` URL or an
 `<owner>/<repo>#<n>` pair give an exact `repo`; `<repo> #<n>` or `<repo> PR #<n>` keep the
-word before the number as a `repoHint` (never `PR`, `pull` or `request`); `PR #<n>`, `PR <n>`,
+word before the number as a `repoHint`, but only when that word is not a verdict token
+(`approve`, `blocked`, …) or a common filler (`pr`, `see`, `on`, `the`, …) — a rejected
+candidate yields no hint, and the search never looks further left; `PR #<n>`, `PR <n>`,
 `pull request #<n>` and a bare `#<n>` carry neither. One line can name several PRs, each
-becoming its own match; when several verdict lines name the same PR, the last one wins.
+becoming its own match. Verdicts dedupe on the pair `(repo ?? repoHint?.toLowerCase() ?? "",
+number)`: two references to the same number in different repos are two verdicts, but when a
+later verdict line names the same pair, it replaces the earlier one.
 
 Every scan is a single bounded pass over the line, so a pathological single-line message
 still parses in linear time.

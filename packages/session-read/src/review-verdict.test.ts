@@ -42,6 +42,26 @@ describe("parseReviewVerdicts", () => {
     expect(parseReviewVerdicts(text)).toEqual([{ verdict: "approve", repo: null, repoHint: null, number: 501 }]);
   });
 
+  it("keeps both verdicts when two repos share a PR number", () => {
+    const text = "Verdict: APPROVE acme/widgets#5 other/thing#5";
+    expect(parseReviewVerdicts(text)).toEqual([
+      { verdict: "approve", repo: "acme/widgets", repoHint: null, number: 5 },
+      { verdict: "approve", repo: "other/thing", repoHint: null, number: 5 },
+    ]);
+  });
+
+  it("never takes a verdict token as a repo hint", () => {
+    expect(parseReviewVerdicts("Verdict: CHANGES REQUESTED — changes #12")[0]?.repoHint).toBeNull();
+    expect(parseReviewVerdicts("Verdict: BLOCKED — blocked #57")[0]?.repoHint).toBeNull();
+  });
+
+  it("never takes a filler word as a repo hint", () => {
+    expect(parseReviewVerdicts("Verdict: APPROVE PR #501")[0]?.repoHint).toBeNull();
+    expect(parseReviewVerdicts("Verdict: APPROVE — see PR #77")[0]?.repoHint).toBeNull();
+    // A real repo word before the PR marker still hints, so the filler-word rule does not overreach.
+    expect(parseReviewVerdicts("Verdict: APPROVE acme-widgets PR #12")[0]?.repoHint).toBe("acme-widgets");
+  });
+
   it("reads an exact owner/repo#n reference", () => {
     const text = "Verdict: CHANGES REQUESTED on acme/widgets#248";
     expect(parseReviewVerdicts(text)).toEqual([

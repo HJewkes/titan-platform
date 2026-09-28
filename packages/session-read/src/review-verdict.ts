@@ -42,22 +42,33 @@ const LINE_START_TOKENS: TokenSpec[] = [
 
 const SEPARATORS = new Set([" ", "_", "-"]);
 const MARKDOWN_PREFIX = new Set(["#", "*", "_", ">", "-", "`"]);
-const MARKER_WORDS = new Set(["pr", "pull", "request"]);
 
-/** One entry per PR named on one verdict line, applied to each message line in order. */
+/** Never a repo hint: verdict-token words, and common fillers around a PR mention. */
+const REJECTED_HINT_WORDS = new Set([
+  "approve", "approved", "lgtm", "changes", "requested", "request", "needs", "blocked", "blocking", "verdict",
+  "pr", "pull", "see", "on", "for", "of", "in", "and", "to", "the", "review", "reviewed", "re",
+]);
+
+/** One entry per (repo-or-hint, number) pair named on a verdict line; a later line for the same pair replaces the earlier one. */
 export function parseReviewVerdicts(text: string): ReviewVerdictMatch[] {
   const lines = text.split("\n");
   const firstLineRefs = findPrRefs(lines[0] ?? "");
-  const byNumber = new Map<number, ReviewVerdictMatch>();
+  const byKey = new Map<string, ReviewVerdictMatch>();
   for (const line of lines) {
     const verdict = lineVerdict(line);
     if (!verdict) continue;
     const refs = findPrRefs(line);
     for (const ref of refs.length > 0 ? refs : firstLineRefs) {
-      byNumber.set(ref.number, { verdict, repo: ref.repo, repoHint: ref.repoHint, number: ref.number });
+      const match: ReviewVerdictMatch = { verdict, repo: ref.repo, repoHint: ref.repoHint, number: ref.number };
+      byKey.set(dedupeKey(match), match);
     }
   }
-  return [...byNumber.values()];
+  return [...byKey.values()];
+}
+
+function dedupeKey(match: ReviewVerdictMatch): string {
+  const repoKey = match.repo ?? match.repoHint?.toLowerCase() ?? "";
+  return `${repoKey}\u0000${match.number}`;
 }
 
 function lineVerdict(line: string): Verdict | null {
@@ -184,12 +195,17 @@ function precedingWord(line: string, pos: number): { word: string; start: number
   return { word: line.slice(start, end), start };
 }
 
-/** `<repo> #<n>` and `<repo> PR #<n>` keep the repo word; `PR`/`pull`/`request` are never hints. */
+function validHint(word: string): boolean {
+  return word.length > 0 && !REJECTED_HINT_WORDS.has(word.toLowerCase());
+}
+
+/**
+ * `<repo> #<n>` and `<repo> PR #<n>` keep the repo word, when it is not a verdict token or a
+ * filler word. A rejected candidate yields no hint; the search never looks further left.
+ */
 function hintBefore(line: string, hashIndex: number): string | null {
   const { word, start } = precedingWord(line, hashIndex);
-  if (!word) return null;
-  const lower = word.toLowerCase();
-  if (lower !== "pr") return MARKER_WORDS.has(lower) ? null : word;
+  if (word.toLowerCase() !== "pr") return validHint(word) ? word : null;
   const before = precedingWord(line, start);
-  return before.word && !MARKER_WORDS.has(before.word.toLowerCase()) ? before.word : null;
+  return validHint(before.word) ? before.word : null;
 }
