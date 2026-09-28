@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import type { GateResolver } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { inlineRunner } from "./runners.js";
@@ -7,9 +8,11 @@ import { WorkflowRuntime } from "./runtime.js";
 import { WorkflowRunStore, newRun, workflowMigration, workflowOwnershipMigration } from "./store.js";
 import type { StepRunner, WorkflowEvent, WorkflowFn } from "./types.js";
 
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
+
 function makeDb(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4)]);
   return db;
 }
 
@@ -51,7 +54,7 @@ describe("memoized call keys", () => {
     rt.register("seeded", seedThenGate);
     const runId = rt.start("seeded");
     await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(1));
-    rt.signal(runId, "x", { signal: "approved" });
+    rt.signal(runId, "x", { signal: "approved" }, OWNER);
     const run = await rt.wait(runId);
 
     expect(run.status).toBe("completed");
@@ -100,7 +103,7 @@ describe("memoized call keys", () => {
     const rt = runtime(db, inlineRunner(runner), events);
     rt.register("legacy", legacyShape);
     expect(await rt.hydrate()).toEqual([legacy.id]);
-    rt.signal(legacy.id, "ship", { signal: "shipped" });
+    rt.signal(legacy.id, "ship", { signal: "shipped" }, OWNER);
     const run = await rt.wait(legacy.id);
 
     expect(run.status).toBe("completed");

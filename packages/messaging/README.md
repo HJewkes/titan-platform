@@ -252,6 +252,26 @@ if (liveness.state === "dark") {
 reports them. The probe races its own timer and aborts the request it gave up
 on, so a hung server cannot wedge a caller's tick.
 
+## Splitting long text
+
+`splitText` breaks a reply into parts that each fit a channel's limit. It prefers paragraph,
+newline, sentence and whitespace boundaries in that order, never splits a surrogate pair, and
+closes then reopens a code fence that straddles a break.
+
+```ts
+import { splitText, TELEGRAM_MAX_TEXT_LENGTH } from "@titan-design/messaging";
+
+for (const part of splitText(reply, { maxLength: TELEGRAM_MAX_TEXT_LENGTH })) {
+  await transport.send({ handle, text: part });
+}
+```
+
+Joining the parts reproduces the input, except for the fence lines added at a break.
+
+Backtick and tilde fences are recognised, following CommonMark; indented code blocks are not.
+
+When a split lands just before a run of three backticks at the end of a code line, the next part can contain a line that is only a fence marker. The splitter keeps the fence open, but a Markdown renderer reading that part alone may read it as a closer.
+
 ## Telegram
 
 `TelegramTransport` talks to the [Bot API](https://core.telegram.org/bots/api).
