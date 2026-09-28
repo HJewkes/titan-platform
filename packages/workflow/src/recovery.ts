@@ -80,7 +80,7 @@ async function reconcileLegacy(
     options,
   );
   if (outcome?.ok) {
-    return { kind: "completion", step, completion: Promise.resolve({ kind: "succeeded", output: outcome.output }) };
+    return { kind: "completion", step, completion: Promise.resolve({ kind: "succeeded", output: outcome.output, usage: outcome.usage }) };
   }
   const evidence = outcome ? `legacy attach failed: ${outcome.error}` : "runner cannot reconcile work after restart";
   markStepRecovery(step, "legacy_unrecoverable", evidence, options.now());
