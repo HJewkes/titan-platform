@@ -112,6 +112,14 @@ describe("review rounds", () => {
     expect(rounds()).toMatchObject({ review_rounds_chat: 1 });
   });
 
+  it("a count-only resolver and a chat verdict on the same head count twice", async () => {
+    add("rev", chatSend("rev", "cs1", BEFORE_LAST_COMMIT, "acme/demo#7 — Verdict: CHANGES REQUESTED"));
+
+    await refresh({ resolvePrs: forge({ [DEMO]: { reviewRounds: 1, commitTimes: COMMITS } }) });
+
+    expect(rounds()).toEqual({ review_rounds: 2, review_rounds_gh: 1, review_rounds_chat: 1 });
+  });
+
   it("an unknown commit history leaves the forge count and no chat count", async () => {
     add("rev", chatSend("rev", "cs1", BEFORE_LAST_COMMIT, "acme/demo#7 — Verdict: CHANGES REQUESTED"));
 

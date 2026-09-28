@@ -116,12 +116,35 @@ const UPSERT_CHAT_VERDICT = `
 /** The ordinal comes from the event, so one tool use's verdicts keep distinct keys across chunk boundaries. */
 function applyReviewVerdicts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
   const upsert = db.prepare(UPSERT_CHAT_VERDICT);
-  for (const v of delta.reviewVerdicts) {
+  const keys = chatVerdictKeys(delta.reviewVerdicts);
+  delta.reviewVerdicts.forEach((v, i) => {
     upsert.run({
-      sourceKey: `chat:${v.toolUseId}:${v.ordinal}`, verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
+      sourceKey: keys[i], verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
       repo: v.repo, repoHint: v.repoHint, cwdRepo: v.cwdRepo, number: v.number,
     });
-  }
+  });
+}
+
+type ChatVerdict = TranscriptDelta["reviewVerdicts"][number];
+
+const hasOrdinal = (v: ChatVerdict): boolean => Number.isInteger(v.ordinal) && v.ordinal >= 0;
+
+/**
+ * A session-read that predates `ordinal` sends none, so those verdicts take the next index
+ * this call has not used for their tool use, skipping any ordinal another event carries.
+ */
+function chatVerdictKeys(verdicts: readonly ChatVerdict[]): string[] {
+  const used = new Map<string, Set<number>>();
+  const usedBy = (id: string) => used.get(id) ?? used.set(id, new Set()).get(id)!;
+  for (const v of verdicts) if (hasOrdinal(v)) usedBy(v.toolUseId).add(v.ordinal);
+  return verdicts.map((v) => {
+    if (hasOrdinal(v)) return `chat:${v.toolUseId}:${v.ordinal}`;
+    const taken = usedBy(v.toolUseId);
+    let n = 0;
+    while (taken.has(n)) n += 1;
+    taken.add(n);
+    return `chat:${v.toolUseId}:${n}`;
+  });
 }
 
 /**

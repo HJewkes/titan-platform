@@ -142,6 +142,10 @@ second reviewer, or the other surface. An approval is stored and never adds a ro
 - **Totals.** `review_rounds` is `review_rounds_gh` plus the chat heads no forge review
   already sits on. A resolver that sends only a `reviewRounds` count therefore still adds to
   the chat rounds unchanged.
+- **Count-only resolvers overcount.** Without `reviews`, the forge reviews' heads are unknown,
+  so a chat verdict and a forge review on the same head both count. `review_rounds` is then
+  an upper bound. `review_rounds_gh` and `review_rounds_chat` are each exact, and the total
+  is exact once the resolver sends `reviews` and `commitTimes`.
 - **Unknown commits.** While `commit_times` is null, `review_rounds_chat` stays null and
   `review_rounds` equals `review_rounds_gh`.
 
