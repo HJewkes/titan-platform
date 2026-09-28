@@ -48,6 +48,7 @@ Before adding code:
 | [`workflow`](#cap-workflow) | 2 | Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths. |
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
+| [`factory`](#cap-factory) | product | Placeholder: replace with the situation that should send a reader to factory, and name the neighbouring unit for the situations that should not. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against today's injected baseline. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`code-report`](#cap-code-report) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
@@ -645,6 +646,18 @@ Tier ui, `@titan-design/react-ui`, published from the titan-design repository. C
 ## Products
 
 Thin compositions of the tiers. Private, not published.
+
+<a id="cap-factory"></a>
+
+### [`factory`](https://hjewkes.github.io/titan-platform/reference/factory)
+
+Tier product, `@titan-design/factory@0.0.0`. Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams
+
+**Use this when:** Placeholder: replace with the situation that should send a reader to factory, and name the neighbouring unit for the situations that should not.
+
+Key exports:
+
+No library entry point.
 
 <a id="cap-retrieval-eval"></a>
 
