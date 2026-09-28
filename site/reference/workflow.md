@@ -82,8 +82,8 @@ active steps. Legacy agent runs without confirmed attachment remain
   once (`maxRetries`); anything else fails the run. `StepResult.usage` sums every attempt,
   retries included, and the active step persists earlier attempts' cost as `priorUsage` so
   a resumed run counts each attempt once.
-- **`seed(stepId, fn)`** runs a deterministic function once; its `data` merges into the
-  params for later prompts.
+- **`seed(stepId, fn)`** runs a deterministic function once per call; its `data` merges
+  into the params for later prompts.
 - **`assisted(stepId, prompt)`** opens a gate and waits. The row survives restarts;
   `runtime.signal(runId, stepId, payload)` resolves it from anywhere. A `signal` field in
   the payload becomes the step's signal. Like `dispatch` it advances
@@ -91,6 +91,10 @@ active steps. Legacy agent runs without confirmed attachment remain
   `stepId` with gate `<runId>/<stepId>`, iteration `n` is keyed `stepId:n` with gate
   `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
   returns recorded answers without reopening their gates.
+
+All three share one call counter per `stepId`, so `seed("x")` then `assisted("x")` gates on
+`<runId>/x:1`, and every result records the method that wrote it as `StepResult.operation`.
+Runs stored before 0.5 carry no `operation` and keep that release's keys until they finish.
 
 ## Fan-out
 
@@ -139,6 +143,15 @@ steps report none, because the durable failure record carries no usage.
 read-only judgements. A step that was in flight at a crash is dispatched again on `hydrate`
 instead of parking the run as `recovery_required`. With the wrapper, a step's `agentId` is
 its request key, not the agent session id.
+
+`routedRunner(routes)` sends each dispatch step to the runner its route names, so one
+workflow can mix code steps and model steps. A route's `match` covers a step id and its
+`<id>:<suffix>` family, and the longest match wins. Its `onRestart` rule decides what a
+crash does to a step in flight: `"repeat"` dispatches it again on `hydrate`, and `"park"`
+leaves the run `recovery_required`, as does a step with no route. Call
+`runner.assertRoutes(workflowName, dispatchStepIds)` when you register a workflow; it
+throws naming every uncovered step id. Two routes with the same `match` throw at
+construction.
 
 `inlineRunner(fn)` is for tests and for steps that are not agents. **Its function returns a
 plain string**, not a `StepRunOutcome` — the wrapper turns a thrown error into a
@@ -206,6 +219,11 @@ listing `store.listPending()`.
 **Your workflow function re-runs from the top on resume.** That is the mechanism, not a bug:
 memoized steps return their stored result instead of re-executing. Keep side effects inside
 `seed` or `dispatch`, never in the function body between them.
+
+**Editing a workflow under a live run can fail it.** Replay matches calls by step id and
+call index. If the edited function reaches a recorded call through a different method, the
+run fails with `WorkflowNonDeterminismError` rather than hand back an answer recorded for
+another question. Add new steps under new step ids.
 
 **Gate and workflow migrations share a database.** Pass `migrate: false` to
 `SqliteGateStore` and put `gateMigration(n)` in your own migration list, or the two will

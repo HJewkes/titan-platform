@@ -552,7 +552,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +167 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +169 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -626,11 +626,10 @@ Tier 2, `@titan-design/workflow@0.4.3`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
+- `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
 - `prompt`: `buildStepVars`, `mustacheRenderer`, `unfilledVariables`
-- `store`: `WorkflowOwnershipLostError`
-- +51 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
@@ -677,7 +676,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +35 more in `products/factory/src/index.ts`
+- +74 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

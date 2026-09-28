@@ -75,8 +75,8 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   runner reported cost for, so a step that fails once and then succeeds
   reports both attempts. The active step persists the earlier attempts' cost as
   `priorUsage`, so a run resumed after a crash counts each attempt once.
-- `seed(stepId, fn)` runs deterministic work once and merges its data into the
-  workflow parameters.
+- `seed(stepId, fn)` runs deterministic work once per call and merges its data
+  into the workflow parameters.
 - `assisted(stepId, prompt)` opens a durable gate and waits for
   `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
   and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
@@ -87,12 +87,19 @@ must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
   waiting. Replay returns the recorded answers in call order and opens no gate
   for them.
 
-`dispatch` and `assisted` share one call counter per `stepId`, so their keys
-never collide: `dispatch("x")` followed by `assisted("x")` gates on
-`<runId>/x:1`. A run that an earlier release paused inside that shape is still
-waiting on `<runId>/x`, so `assisted` adopts a gate that is still pending there
-when the bare key holds no result. `seed` keys by `stepId` alone, so give seeds
-their own step IDs.
+All three methods share one call counter per `stepId`, and each result records
+the method that wrote it as `StepResult.operation`. `seed("x")` followed by
+`assisted("x")` therefore gates on `<runId>/x:1`, and `dispatch("x")` followed
+by `assisted("x")` does the same. A replay that reaches a recorded call through
+a different method, because the workflow was edited under a live run, fails the
+run with `WorkflowNonDeterminismError` instead of returning the stale answer.
+
+Runs stored by releases before 0.5 hold results without `operation`. They keep
+that release's keys until they finish: seeds key by the bare `stepId` outside
+the call count, and replay does not check the method. A run that such a release
+paused inside `assisted("x")` after a `dispatch("x")` is still waiting on
+`<runId>/x`, so `assisted` adopts a gate that is still pending there when the
+bare key holds no result.
 
 ## Fan-out
 
@@ -131,6 +138,32 @@ text. Wrap it in `idempotentRunner` when its steps are safe to repeat, such as
 read-only judgements. Then a step that was in flight at a crash is dispatched
 again on `hydrate` instead of parking the run as `recovery_required`. With that
 wrapper, a step's `agentId` is its request key, not the agent session id.
+
+## Routing steps to runners
+
+`routedRunner(routes)` is one runner for the runtime that sends each dispatch
+step to its own runner. That lets a workflow mix code steps and model steps.
+A route names a step id in `match`, which also covers the `<id>:<suffix>`
+family; the longest matching route wins. It also names a restart rule.
+`onRestart: "repeat"` dispatches a step that was in flight at a crash again on
+`hydrate`. `onRestart: "park"` leaves the run `recovery_required` for a human,
+for steps whose effect may already have happened. A step no route covers also
+parks.
+
+```ts
+const runner = routedRunner([
+  { match: "draft", onRestart: "repeat", runner: agentRunner({ cwd, maxTurns: 20, maxBudgetUsd: 1 }) },
+  { match: "open-pr", onRestart: "park", runner: openPrRunner },
+]);
+runner.assertRoutes("ship", ["draft", "open-pr"]);
+runtime.register("ship", ship);
+```
+
+Call `runner.assertRoutes(workflowName, stepIds)` when registering a workflow.
+It throws naming every dispatch step id that no route covers. Two routes with
+the same `match` throw when the runner is built. Route runners receive the
+step's `attempt` and `requestKey` with the usual input, and a step's `agentId`
+is its request key.
 
 ## Signals
 
