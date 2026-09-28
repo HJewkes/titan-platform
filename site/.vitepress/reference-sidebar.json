@@ -8,6 +8,10 @@
         "link": "/reference/agent-protocol"
       },
       {
+        "text": "authority",
+        "link": "/reference/authority"
+      },
+      {
         "text": "chat-protocol",
         "link": "/reference/chat-protocol"
       },
@@ -18,6 +22,10 @@
       {
         "text": "code-parser",
         "link": "/reference/code-parser"
+      },
+      {
+        "text": "egress-scan",
+        "link": "/reference/egress-scan"
       },
       {
         "text": "embed",

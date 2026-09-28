@@ -18,9 +18,11 @@ Before adding code:
 | Unit | Tier | Use this when |
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. |
+| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
+| [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. It scans git patch text you supply and spawns nothing; to mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
@@ -121,6 +123,22 @@ Key exports:
 - `index`: `conversationRef`, `conversationItemRef`
 - +21 more in the [reference page](/reference/agent-protocol)
 
+<a id="cap-authority"></a>
+
+### [`authority`](/reference/authority)
+
+Tier 0, `@titan-design/authority@0.0.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
+
+**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
+
+Key exports:
+
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`, `ActorClass`, `EvidenceKind`
+- `schema`: `policyTableSchema`
+- `evaluate`: `evaluate`, `canResolve`
+- `table`: `DEFAULT_TABLE`
+- +6 more in the [reference page](/reference/authority)
+
 <a id="cap-chat-protocol"></a>
 
 ### [`chat-protocol`](/reference/chat-protocol)
@@ -167,6 +185,24 @@ Key exports:
 - `types`: `Extractor`, `ParsedFile`
 - `parser`: `getSupportedLanguages`, `parseFile`
 - `file-filter`: `getLanguageFromPath`, `isExcludedDir`, `shouldIncludeFile`
+
+<a id="cap-egress-scan"></a>
+
+### [`egress-scan`](/reference/egress-scan)
+
+Tier 0, `@titan-design/egress-scan@0.0.0`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
+
+**Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. It scans git patch text you supply and spawns nothing; to mask secrets for display, use the redactors in queue-mirror instead.
+
+Key exports:
+
+- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `diff`: `parseCommit`, `parseDiff`
+- `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
+- `terms`: `parseTerms`, `TermFileError`
+- `scan`: `scan`
+- `report`: `formatReport`
+- +17 more in the [reference page](/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -579,7 +615,7 @@ Key exports:
 - `runners/pyright-audit`: `runPyrightAudit`
 - `runners/import-linter`: `runImportLinter`
 - `runners/suppressions`: `countSuppressions`, `findSuppressions`
-- +33 more in the [reference page](/reference/style-checker)
+- +34 more in the [reference page](/reference/style-checker)
 
 <a id="cap-style-profile"></a>
 

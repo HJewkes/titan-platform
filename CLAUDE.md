@@ -107,3 +107,8 @@ on already exists on npm.
 Do not bump the `packageManager` pin (`pnpm@9.15.0`) without testing a real publish. pnpm
 implements `publish` natively from v11 instead of delegating to the npm CLI, and that
 delegation is what performs the OIDC exchange release.yml depends on.
+
+## Gotchas
+
+- A fresh worktree needs `pnpm install --frozen-lockfile` and then `pnpm build` before vitest can import sibling packages, because packages resolve through their built `dist/` entries.
+- On the docs site, an explicit `<br/>` in a mermaid node label clips the last line; write short labels, let them wrap, and view the rendered diagram before committing.

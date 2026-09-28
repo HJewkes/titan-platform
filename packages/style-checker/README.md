@@ -36,11 +36,13 @@ const { diagnostics, failures, skippedRules, summary } = await orchestrate({
   for naming, import order, function docs and function length that clear the profile's
   `info` threshold, and carries `line-length`, isort section order, pydocstyle convention
   and mccabe max complexity.
-- `generateEslintConfig(profile)` returns an `EslintFlatConfigEntry[]`: one entry for
-  `**/*.ts` and `**/*.tsx` holding the rules style-profile's rule builders produce, or an
-  empty array when there are none. It is data: rule names and options, with no plugin
-  objects and no parser. Style-profile's `info` tier becomes `warn`, because ESLint accepts
-  only `off`, `warn` and `error`.
+- `generateEslintConfig(profile)` returns `{ entries, skippedRules }`. `entries` is an
+  `EslintFlatConfigEntry[]`: one entry for `**/*.ts` and `**/*.tsx` holding the rules
+  style-profile's rule builders produce, or an empty array when there are none. It is data:
+  rule names and options, with no plugin objects and no parser. Style-profile's `info` tier
+  becomes `warn`, because ESLint accepts only `off`, `warn` and `error`. `skippedRules` lists
+  a naming value style-profile's `buildNamingConvention` had no typescript-eslint format for
+  (same shape as `orchestrate`'s `skippedRules`).
 - `orchestrate({ profile, files, fix?, language? })` picks the files by extension, runs
   ESLint (through `npx --no -- eslint`) on `.ts`, `.tsx`, `.js`, `.jsx` and ruff on `.py`,
   and returns `{ diagnostics, failures, skippedRules, summary }`. A tool is skipped when
