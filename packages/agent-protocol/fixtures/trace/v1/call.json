@@ -1,0 +1,22 @@
+[
+  {
+    "schema": "titan.trace/v1",
+    "kind": "call",
+    "id": "call:claude-code:host-a:conv-1:toolu_07",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:1",
+    "at": "2026-09-28T10:04:12.500Z",
+    "callKind": "tool",
+    "name": "Edit",
+    "namespace": null,
+    "conversation": "conversation:claude-code:host-a:conv-1",
+    "turn": "turn:claude-code:host-a:conv-1:turn-3",
+    "isError": false,
+    "span": {
+      "sourceId": "src-1",
+      "byteOffset": 18234,
+      "byteLength": 911,
+      "contentHash": "15cb2fbc579679745196a1246830eaa812c1447ba1ec0532fed1ccd6834a0bea"
+    }
+  }
+]
