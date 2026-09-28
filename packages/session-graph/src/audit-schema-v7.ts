@@ -5,12 +5,10 @@ import { addColumnIfMissing } from "./audit-schema.js";
 export const ORIGIN_TASK_LINK_MIGRATION_NAME = "origin task link";
 
 /**
- * `task_ids` is a JSON array, primary id first. Clearing `resolved_at` puts every
- * existing row back in front of the resolver once, since `'' < ended_at` for any
- * ended session; that pass is the backfill.
+ * `task_ids` is a JSON array, primary id first. Both start null; a null `task_source`
+ * re-offers the row to the resolver until a task-aware one answers, which is the backfill.
  */
 export function applyOriginTaskLinkSchema(db: Db): void {
   addColumnIfMissing(db, "session_origin", "task_ids", "TEXT");
   addColumnIfMissing(db, "session_origin", "task_source", "TEXT");
-  db.exec("UPDATE session_origin SET resolved_at = ''");
 }

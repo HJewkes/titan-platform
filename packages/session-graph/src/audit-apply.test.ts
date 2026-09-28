@@ -179,7 +179,7 @@ describe("migration 7", () => {
     const migrated = openSessionGraph(file);
 
     expect(originColumns(migrated.db)).toEqual(["task_ids", "task_source"]);
-    expect(originRows(migrated.db)).toEqual([expect.objectContaining({ session_id: "kept", task_ids: '["DEMO-7"]', task_source: "name", resolved_at: "" })]);
+    expect(originRows(migrated.db)).toEqual([expect.objectContaining({ session_id: "kept", task_ids: '["DEMO-7"]', task_source: "name", resolved_at: "2026-09-01T00:00:00Z" })]);
     migrated.db.close();
   });
 
