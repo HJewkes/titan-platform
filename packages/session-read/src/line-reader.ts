@@ -30,6 +30,9 @@ export type Emit = (event: SessionEvent) => void;
  * line's `sessionId` names the dispatching parent rather than this session.
  */
 export class LineReader {
+  /** A record such as `cost-state` carries no timestamp of its own; it takes the last line's. */
+  private lastTs = "";
+
   constructor(
     readonly emit: Emit,
     private readonly fallbackSessionId: string | null = null,
@@ -42,11 +45,13 @@ export class LineReader {
     if (!sessionId) return;
     const branch = str(line, "gitBranch");
     const cwd = str(line, "cwd");
+    const ownTs = str(line, "timestamp") ?? str(asObject(line.snapshot), "timestamp");
+    if (ownTs) this.lastTs = ownTs;
     const ctx: LineContext = {
       line,
       loc,
       sessionId,
-      ts: str(line, "timestamp") ?? str(asObject(line.snapshot), "timestamp") ?? "",
+      ts: ownTs ?? this.lastTs,
       cwd,
       gitBranch: branch === "HEAD" ? null : branch,
       repo: repoForCwd(cwd),
