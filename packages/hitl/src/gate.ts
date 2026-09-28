@@ -6,6 +6,7 @@ import {
   GateNotFound,
   GatePayloadInvalid,
   type GateRecord,
+  type GateResolver,
   type GateStore,
 } from "./types.js";
 
@@ -77,8 +78,8 @@ export async function waitForGate<T = unknown>(
 }
 
 /** Resolve a gate from wherever the human answered: a CLI, an MCP tool, a dashboard route. */
-export function resolveGate(store: GateStore, id: string, payload: unknown): GateRecord {
-  return store.resolve(id, payload);
+export function resolveGate(store: GateStore, id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+  return store.resolve(id, payload, resolvedBy);
 }
 
 export function cancelGate(store: GateStore, id: string, reason: string): GateRecord {
