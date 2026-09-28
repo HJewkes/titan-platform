@@ -18,9 +18,14 @@ export interface StepUsage {
   outputTokens?: number;
 }
 
+/** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
+export type StepOperation = "seed" | "dispatch" | "assisted";
+
 export interface StepResult {
   stepId: string;
   iteration: number;
+  /** Absent on results written before 0.5, which replay under the old keys unchecked. */
+  operation?: StepOperation;
   /** Runner-assigned id (an agent session id, a job id); null for seed and gate steps. */
   agentId: string | null;
   /** Condition signal parsed from the output, e.g. `needs_revision`. */
@@ -63,7 +68,7 @@ export interface WorkflowRun {
   params: Record<string, string>;
   status: WorkflowStatus;
   currentStep: string | null;
-  /** Keyed by `stepId:iteration` for dispatches, `stepId` for seeds, and `stepId` then `stepId:iteration` for repeated gates. */
+  /** Keyed by step id and call index: `stepId:n` for dispatches, `stepId` then `stepId:n` for seeds and gates. */
   stepResults: Record<string, StepResult>;
   activeSteps: Record<string, ActiveStep>;
   revision: number;
@@ -222,5 +227,18 @@ export class WorkflowRecoveryRequiredError extends Error {
   ) {
     super(`workflow ${runId} requires recovery for step ${stepId}: ${evidence}`);
     this.name = "WorkflowRecoveryRequiredError";
+  }
+}
+
+export class WorkflowNonDeterminismError extends Error {
+  constructor(
+    readonly runId: string,
+    readonly stepId: string,
+    readonly callIndex: number,
+    readonly recorded: StepOperation,
+    readonly replayed: StepOperation,
+  ) {
+    super(`workflow ${runId} replayed ${replayed}("${stepId}") at call ${callIndex}, where the run recorded ${recorded}; the workflow changed under a live run`);
+    this.name = "WorkflowNonDeterminismError";
   }
 }
