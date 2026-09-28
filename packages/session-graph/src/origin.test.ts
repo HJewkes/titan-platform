@@ -189,7 +189,19 @@ describe("origin task link", () => {
   const linked = (fields: Partial<ResolvedOrigin>): OriginResolution => ({ origins: { worker: { ...WORKER_ORIGIN.origins.worker!, ...fields } } });
   const ranEdges = () =>
     graph.edges.from("session:worker").filter((e) => e.relation === "ran").map((e) => ({ target: e.targetRef, via: e.attrs?.via ?? null, confidence: e.confidence }));
+  // Writes the edge directly, bypassing apply.ts's assertTranscriptEdge; use transcriptCloses for that path.
   const transcriptRan = (taskId: string) => graph.edges.assert({ sourceRef: "session:worker", relation: "ran", targetRef: `task:${taskId}`, tValid: WORKER_END });
+  /** Appends an `aw task done` Bash line to the worker transcript and indexes it through the real apply path. */
+  const transcriptCloses = async (taskId: string) => {
+    const closing = line("worker", {
+      type: "assistant", timestamp: "2026-09-01T00:05:20Z", requestId: "req-close",
+      message: { role: "assistant", model: "m", content: [{ type: "tool_use", id: "tu-close", name: "Bash", input: { command: `aw task done demo ${taskId}` } }] },
+    });
+    const transcripts = corpus();
+    appendFileSync(transcripts[1]!.absolutePath, JSON.stringify(closing) + "\n");
+    await refreshCorpus(graph, transcripts);
+    return transcripts;
+  };
   const relink = async (fields: Partial<ResolvedOrigin>) => {
     graph.db.prepare("UPDATE session_origin SET resolved_at = ''").run();
     await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked(fields)) });
@@ -229,19 +241,45 @@ describe("origin task link", () => {
 
   it("keeps a ran edge the transcript claimed after the origin did, when a re-resolution drops its id", async () => {
     await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "name" })) });
-    const closing = line("worker", {
-      type: "assistant", timestamp: "2026-09-01T00:05:20Z", requestId: "req-close",
-      message: { role: "assistant", model: "m", content: [{ type: "tool_use", id: "tu-close", name: "Bash", input: { command: "aw task done demo DEMO-7" } }] },
-    });
-    const [parent, worker] = corpus();
-    appendFileSync(worker!.absolutePath, JSON.stringify(closing) + "\n");
-    await refreshCorpus(graph, [parent!, worker!]);
+    const transcripts = await transcriptCloses("DEMO-7");
     expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: null, confidence: 1 }]);
 
     graph.db.prepare("UPDATE session_origin SET resolved_at = ''").run();
-    await refreshCorpus(graph, [parent!, worker!], { resolveOrigins: answer(linked({ taskIds: [], taskSource: null })) });
+    await refreshCorpus(graph, transcripts, { resolveOrigins: answer(linked({ taskIds: [], taskSource: null })) });
 
     expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: null, confidence: 1 }]);
+  });
+
+  it("keeps a transcript-claimed ran edge without via when a later resolution names the same id", async () => {
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "name" })) });
+    const transcripts = await transcriptCloses("DEMO-7");
+    const claimed = graph.edges.current("session:worker", "ran", "task:DEMO-7");
+
+    for (let pass = 0; pass < 2; pass++) {
+      graph.db.prepare("UPDATE session_origin SET resolved_at = ''").run();
+      await refreshCorpus(graph, transcripts, { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "name" })) });
+    }
+
+    expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: null, confidence: 1 }]);
+    expect(graph.edges.current("session:worker", "ran", "task:DEMO-7")?.edgeId).toBe(claimed?.edgeId);
+  });
+
+  it("a filled row keeps its task link after an upsert from a resolver that omits taskIds", async () => {
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "brief-anchor" })) });
+
+    await relink({});
+
+    expect(rows("SELECT task_ids, task_source FROM session_origin")).toEqual([{ task_ids: '["DEMO-7"]', task_source: "brief-anchor" }]);
+    expect(ranEdges()).toEqual([{ target: "task:DEMO-7", via: "origin", confidence: 0.9 }]);
+  });
+
+  it("a filled row is cleared to none by a resolver that supplies empty taskIds", async () => {
+    await refreshCorpus(graph, corpus(), { resolveOrigins: answer(linked({ taskIds: ["DEMO-7"], taskSource: "brief-anchor" })) });
+
+    await relink({ taskIds: [] });
+
+    expect(rows("SELECT task_ids, task_source FROM session_origin")).toEqual([{ task_ids: null, task_source: NO_TASK_LINK }]);
+    expect(ranEdges()).toEqual([]);
   });
 
   it("expires every origin ran edge when a re-resolution links nothing", async () => {

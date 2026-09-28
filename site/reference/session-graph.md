@@ -207,7 +207,10 @@ and `task_source` columns to `session_origin`, surfaced as `ResolvedOrigin.taskI
 offered to the resolver again on every pass, so the first pass with a task-aware resolver
 is the backfill. A resolver that sets `taskIds`, even to an empty array or null, always
 leaves `task_source` non-null: the given source, or `none` (`NO_TASK_LINK`) when there are
-no ids. A resolver that leaves `taskIds` undefined keeps the row null and on offer. The
+no ids. A resolver that leaves `taskIds` undefined leaves a stored link as it was, and a
+row without one stays on offer. A task-aware resolver therefore returns an entry for every
+requested session it examined, with `taskIds` empty when nothing links; a session it leaves
+out keeps a null `task_source` and is offered again on every pass. The
 upsert updates only the columns it names, so a later column keeps its value. Each linked id
 projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
 and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for

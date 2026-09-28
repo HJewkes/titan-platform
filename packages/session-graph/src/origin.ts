@@ -28,7 +28,8 @@ export interface ResolvedOrigin {
   launchArgs?: string | null;
   /**
    * Task ids the spawn record assigned, primary first; each projects a `ran` edge. Leave it
-   * undefined only if the resolver does not look for tasks: the row is then offered again.
+   * undefined only if the resolver does not look for tasks: a stored link then stands and a
+   * row without one is offered again. A task-aware resolver sets it, empty when nothing links.
    */
   taskIds?: readonly string[] | null;
   /** How the ids were found. Stored as `none` when `taskIds` is given but empty. */
@@ -59,7 +60,9 @@ export interface OriginResolution {
 /**
  * Supplied by the caller, never by this package: session-graph is tier 2 and
  * must not learn where a launcher keeps its records. Called once per pass with
- * every session that has no origin row or a stale one.
+ * every session that has no origin row, a stale one, or a null `task_source`.
+ * A task-aware resolver returns an entry for every requested session it examined,
+ * with `taskIds` empty when nothing links; a session left out is offered again.
  */
 export type OriginResolver = (sessionIds: readonly string[]) => PromiseLike<OriginResolution> | OriginResolution;
 
@@ -89,8 +92,12 @@ const SESSIONS_NEEDING_ORIGIN = `
 
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
-  "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "task_ids", "task_source", "resolved_at",
+  "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
 ] as const;
+
+/** A null `task_source` means the resolver did not look for tasks, so the stored link stands; `none` clears it. */
+const TASK_LINK_UPDATE = `task_source = COALESCE(excluded.task_source, task_source),
+    task_ids = CASE WHEN excluded.task_source IS NOT NULL THEN excluded.task_ids ELSE task_ids END`;
 
 /** An update, not a replace, so a column this writer does not name keeps its value. */
 const UPSERT_ORIGIN = `
@@ -100,7 +107,8 @@ const UPSERT_ORIGIN = `
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
     @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt)
-  ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")}`;
+  ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
+    ${TASK_LINK_UPDATE}`;
 
 const UPSERT_EVENT = `
   INSERT INTO session_external_event (session_id, ts, origin_system, kind, detail)
