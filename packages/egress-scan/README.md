@@ -26,19 +26,20 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 
 ## Rules
 
-- `home-path`: `/Users/<seg>`, `/home/<seg>` and `C:\Users\<seg>`, also inside `file://`
-  URLs and JSON-escaped. Placeholder segments are exempt: `PLACEHOLDER_SEGMENTS`, and any
+- `home-path`: `/Users/<seg>`, `/home/<seg>` and `C:\Users\<seg>`, root in any case, also
+  inside `file://` URLs with any host and JSON-escaped. Placeholder segments are exempt: `PLACEHOLDER_SEGMENTS`, and any
   segment written `<...>`, `{...}` or starting with `$`.
 - `aw-data-path`: the active-work data directory in its macOS, XDG and Windows default
   shapes, with any prefix.
 - `private-term`: one per line of the term list. `#` comments and blank lines are skipped.
   A plain term matches case-insensitively on word boundaries; a `re:` line is a regex
-  compiled with `iu`. A finding carries `termIndex`, the term's line in the file.
+  compiled with `iu`. A term that matches the empty string is rejected. A finding carries `termIndex`, the term's line in the file.
 
 ## Allow file
 
 `.egress-allow` holds `<glob> <rule-id> <reason>` lines. The reason must name a task id
-such as `TP-405`. `private-term` is never allowable. `parseAllow` throws `AllowFileError`
+such as `TP-405`, and the glob must name at least one literal path segment.
+`private-term` is never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 
 ## Safety

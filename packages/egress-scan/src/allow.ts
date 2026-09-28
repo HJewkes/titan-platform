@@ -47,6 +47,11 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${source}$`);
 }
 
+// A glob made only of wildcard segments would allow a rule across the whole tree.
+function hasLiteralSegment(glob: string): boolean {
+  return glob.split("/").some((segment) => segment !== "" && !/[*?]/.test(segment));
+}
+
 function parseEntry(entry: string, line: number): AllowEntry {
   const fields = /^(\S+)\s+(\S+)\s+(.+)$/.exec(entry);
   if (!fields) throw new AllowFileError(line, "expected <glob> <rule-id> <reason>");
@@ -54,6 +59,7 @@ function parseEntry(entry: string, line: number): AllowEntry {
   if (rule === "private-term") throw new AllowFileError(line, "private-term is never allowable");
   if (!ALLOWABLE.includes(rule)) throw new AllowFileError(line, "unknown rule id");
   if (!TASK_ID.test(reason)) throw new AllowFileError(line, "reason must name a task id");
+  if (!hasLiteralSegment(glob)) throw new AllowFileError(line, "glob must name at least one literal path segment");
   return { glob, rule: rule as AllowableRule, line, pattern: globToRegExp(glob) };
 }
 

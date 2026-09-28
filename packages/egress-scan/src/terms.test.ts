@@ -47,6 +47,13 @@ describe("parseTerms", () => {
     expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain("zq-planted-");
   });
 
+  it.each(["re:.*", "re:a?", "re:^"])("fails a term that matches the empty string: %s", (entry) => {
+    const error = captureError(() => parseTerms(`zq-ok\n${entry}`));
+    expect(error).toBeInstanceOf(TermFileError);
+    expect(String(error)).toMatch(/line 2: matches the empty string/);
+    expect(String(error)).not.toContain(entry.slice(3));
+  });
+
   it("fails an empty re: line", () => {
     expect(() => parseTerms("re:")).toThrow(/line 1: empty regular expression/);
   });

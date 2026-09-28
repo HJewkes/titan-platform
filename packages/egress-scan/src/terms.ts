@@ -45,6 +45,7 @@ export function parseTerms(text: string): TermRule[] {
       const entry = raw.trim();
       if (entry === "" || entry.startsWith("#")) return;
       const pattern = compileTerm(entry, i + 1);
+      if (pattern.test("")) throw new TermFileError(i + 1, "matches the empty string, so it would match every line");
       rules.push({ index: i + 1, matches: (candidate) => pattern.test(candidate) });
     });
   return rules;

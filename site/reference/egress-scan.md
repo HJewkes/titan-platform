@@ -59,7 +59,7 @@ formatReport(result.findings, { ...result, termsLoaded: true });
 
 | Rule | Matches | Allowable |
 |---|---|---|
-| `home-path` | `/Users/<seg>`, `/home/<seg>`, `C:\Users\<seg>` and `C:/Users/<seg>`, also inside `file://` URLs and JSON-escaped | yes |
+| `home-path` | `/Users/<seg>`, `/home/<seg>`, `C:\Users\<seg>` and `C:/Users/<seg>` with the root in any case, also inside `file://` URLs with or without a host, and JSON-escaped | yes |
 | `aw-data-path` | the active-work data directory in each default shape: the macOS Application Support directory, the XDG data directory under `.local/share`, and Windows local `AppData`, with any prefix (`~`, `$HOME` or absolute) | yes |
 | `private-term` | each line of the private term list | never |
 
@@ -71,13 +71,16 @@ so `app/home/page.tsx` and `/UsersGuide` do not match.
 
 The private term list is UTF-8 with one term per line. `#` starts a comment and blank lines
 are skipped. A plain term matches case-insensitively on Unicode word boundaries. A line
-starting `re:` is a regular expression compiled with the `iu` flags. `termIndex` is the
+starting `re:` is a regular expression compiled with the `iu` flags. A term that matches the
+empty string, such as `re:.*`, is rejected, because it would match every line. `termIndex` is the
 term's line number, so the owner can find it locally without the report naming it.
 
 ## The allow file
 
 `.egress-allow` at the repo root holds one `<glob> <rule-id> <reason>` entry per line. The
 glob is anchored to the repo-relative path: `**` spans directories, `*` and `?` do not. The
+glob must name at least one literal path segment, one with no wildcard, so `**`, `*`,
+`**/*` and `*/*.md` are rejected: they would allow a rule across the whole tree. The
 reason must name a task id such as `TP-405`. An entry suppresses only its rule, only in
 matching files, and every suppression is counted in the report's `allowed:` line. There
 are no inline suppression comments.

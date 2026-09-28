@@ -18,6 +18,14 @@ describe("parseAllow", () => {
     expect(() => parseAllow(text)).toThrow(message);
   });
 
+  it.each(["**", "*", "**/*", "*/**", "*/*.md"])("fails a glob with no literal segment: %s", (glob) => {
+    expect(() => parseAllow(`# c\n${glob} home-path TP-1`)).toThrow(/line 2: glob must name at least one literal path segment/);
+  });
+
+  it("accepts a glob that names a literal segment", () => {
+    expect(parseAllow("packages/**/*.test.ts home-path TP-1").entries).toHaveLength(1);
+  });
+
   it("fails the whole file when a later line is malformed", () => {
     expect(() => parseAllow("a.md home-path TP-1\nbroken\n")).toThrow(/line 2/);
   });

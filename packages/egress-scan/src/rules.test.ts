@@ -13,6 +13,9 @@ describe("home-path", () => {
     ["Windows forward slash", join("/", "C:", "Users", user)],
     ["lower-case Windows", join("\\", "d:", "users", user)],
     ["file URL", `file://${join("/", "", "Users", user, "a.txt")}`],
+    ["file URL with a host", `file://localhost${join("/", "", "Users", user, "x")}`],
+    ["lower-case macOS root", join("/", "", "users", user, "x")],
+    ["capitalised Linux root", join("/", "", "Home", user, "x")],
     ["JSON-escaped backslashes", `"${join("\\\\", "C:", "Users", user)}"`],
     ["JSON-escaped slashes", `"${join("\\/", "", "Users", user)}"`],
     ["quoted in prose", `see '${join("/", "", "home", user)}' for details`],
@@ -30,7 +33,8 @@ describe("home-path", () => {
     ["placeholder ending a sentence", `under ${join("/", "", "Users", "you")}.`],
     ["a word that only starts like the root", join("/", "docs", "UsersGuide", user)],
     ["a route under a relative home directory", join("/", "app", "home", user)],
-    ["an API route in lower case", join("/", "", "users", user)],
+    ["relative path through a Users directory", join("/", "docs", "Users", "guide.md")],
+    ["relative path through a home directory", join("/", "src", "home", "index.ts")],
     ["a bare root", join("/", "", "Users", "")],
   ])("ignores a %s", (_label, text) => {
     expect(matchesHomePath(text)).toBe(false);

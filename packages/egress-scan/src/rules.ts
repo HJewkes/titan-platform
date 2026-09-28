@@ -32,7 +32,10 @@ export const PLACEHOLDER_SEGMENTS: readonly string[] = [
 // One path separator: slash, backslash, or the JSON-escaped form of either.
 const SEP = String.raw`(?:\\\\|\\/|/|\\)`;
 const SEGMENT = String.raw`([^/\\\s"'\`),;\]]+)`;
-const HOME_ROOT = String.raw`(?:(?<![\w.-])${SEP}(?:Users|home)|(?<!\w)[A-Za-z]:${SEP}[Uu]sers)`;
+const USERS = "[Uu][Ss][Ee][Rr][Ss]";
+// A root must start a path; after `file://` any host may precede it.
+const PATH_START = String.raw`(?:(?<![\w.-])|(?<=file://[^/\s"'\`]*))`;
+const HOME_ROOT = String.raw`(?:${PATH_START}${SEP}(?:${USERS}|[Hh][Oo][Mm][Ee])|(?<!\w)[A-Za-z]:${SEP}${USERS})`;
 const HOME_PATH = new RegExp(`${HOME_ROOT}${SEP}${SEGMENT}`, "g");
 
 const SPACE = String.raw`(?: |%20|\\ )`;
