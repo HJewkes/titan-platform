@@ -1,6 +1,7 @@
 # hitl
 
-**Tier 1 · engines.** `zod` v4 is a peer. The root entry is runtime-neutral; the SQLite
+**Tier 1 · engines.** `zod` v4 is a peer. It depends on [`authority`](/reference/authority)
+for the actor vocabulary. The root entry is runtime-neutral; the SQLite
 store lives on a subpath, `@titan-design/hitl/sqlite`, which depends on
 [`store-sqlite`](/reference/store-sqlite).
 
@@ -100,9 +101,38 @@ suite.
 database with domain tables — which is what [`workflow`](/reference/workflow) does. `table`
 renames the table so one database can host several gate spaces.
 
-`SqliteGateStore`, `gateMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
+`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
 not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare
 Workers isolate. `MemoryGateStore` stays on the root.
+
+## Who resolved it
+
+`resolve` and `resolveGate` take an optional third argument, a `GateResolver`:
+`{ class, id, channel, confirmEvent? }`. `class` is an actor class from
+[`@titan-design/authority`](/reference/authority). The store records it as `resolvedBy`.
+
+```ts
+resolveGate(store, "deploy-approval", { approved: true }, {
+  class: "owner-terminal",
+  id: "owner",
+  channel: "cli",
+});
+```
+
+Every store refuses a resolver whose class is not in authority's `RESOLVER_CLASSES`, so an
+agent or automation never answers a gate. It throws `GateResolverRefused` and the gate stays
+pending. A store's `authorize` option runs after that check and can refuse more, never fewer.
+Refusals name the gate id and the actor class, never the resolver's other fields.
+
+hitl records a claim about the resolver; it cannot prove one. Any process that can write
+the database can claim any class.
+
+On SQLite the resolver lives in a `resolved_by` column that `gateResolverMigration(n)` adds,
+along with a trigger that refuses any resolve naming no resolver. Add it to your own
+migration list after `gateMigration`. It is idempotent and does not backfill: gates resolved
+before it read back with `resolvedBy` undefined. Until the migration runs, a store resolves
+without a resolver as before and throws `GateStoreSchemaOutdated` when given one, rather
+than dropping it. `migrate: true` does not run it yet.
 
 ## Gotchas
 

@@ -352,7 +352,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateCancelled`, `GateError`, `GateExpired`, `GateNotFound`, `GatePayloadInvalid`
-- +13 more in the [reference page](/reference/hitl)
+- +19 more in the [reference page](/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 

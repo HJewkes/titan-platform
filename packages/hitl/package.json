@@ -40,6 +40,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@titan-design/authority": "workspace:^",
     "@titan-design/store-sqlite": "workspace:*"
   },
   "peerDependencies": {

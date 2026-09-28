@@ -271,6 +271,9 @@ importers:
 
   packages/hitl:
     dependencies:
+      '@titan-design/authority':
+        specifier: workspace:^
+        version: link:../authority
       '@titan-design/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite

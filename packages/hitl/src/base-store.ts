@@ -1,12 +1,16 @@
 import { checkAgainstJsonSchema } from "./json-schema.js";
+import { defaultResolverRefusal } from "./resolver-policy.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
+  GateResolverRefused,
+  type GateAuthorize,
   type GateInput,
   type GateRecord,
+  type GateResolver,
   type GateStore,
 } from "./types.js";
 
@@ -15,7 +19,10 @@ import {
  * apart. Subclasses only move rows.
  */
 export abstract class BaseGateStore implements GateStore {
-  protected constructor(protected readonly clock: () => number) {}
+  protected constructor(
+    protected readonly clock: () => number,
+    private readonly authorize?: GateAuthorize,
+  ) {}
 
   protected abstract insert(record: GateRecord): void;
   protected abstract read(id: string): GateRecord | undefined;
@@ -35,6 +42,7 @@ export abstract class BaseGateStore implements GateStore {
       createdAt: this.nowIso(),
       resolvedAt: undefined,
       expiresAt: toIso(input.expiresAt),
+      resolvedBy: undefined,
     };
     this.insert(record);
     return record;
@@ -45,13 +53,14 @@ export abstract class BaseGateStore implements GateStore {
     return record ? this.lapseIfExpired(record) : undefined;
   }
 
-  resolve(id: string, payload: unknown): GateRecord {
+  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
     const record = this.requirePending(id);
+    this.requireAuthorized(record, resolvedBy);
     if (record.schema) {
       const issues = checkAgainstJsonSchema(record.schema, payload);
       if (issues.length > 0) throw new GatePayloadInvalid(id, issues);
     }
-    const resolved: GateRecord = { ...record, status: "resolved", payload, resolvedAt: this.nowIso() };
+    const resolved: GateRecord = { ...record, status: "resolved", payload, resolvedAt: this.nowIso(), resolvedBy };
     this.update(resolved);
     return resolved;
   }
@@ -76,6 +85,15 @@ export abstract class BaseGateStore implements GateStore {
     if (record.status === "expired") throw new GateExpired(id);
     if (record.status !== "pending") throw new GateAlreadySettled(id, record.status);
     return record;
+  }
+
+  /** The default check runs first and `authorize` second, so `authorize` can only narrow who may resolve. */
+  private requireAuthorized(record: GateRecord, resolvedBy: GateResolver | undefined): void {
+    const refusal = resolvedBy ? defaultResolverRefusal(resolvedBy) : undefined;
+    if (refusal) throw new GateResolverRefused(record.id, resolvedBy?.class, refusal);
+    if (!this.authorize) return;
+    const decision = this.authorize(record, resolvedBy);
+    if (!decision.allowed) throw new GateResolverRefused(record.id, resolvedBy?.class, decision.reason);
   }
 
   /** Expiry is lazy: nothing sweeps the table, so a read is what notices the deadline passed. */

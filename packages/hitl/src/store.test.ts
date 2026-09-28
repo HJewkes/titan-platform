@@ -1,16 +1,20 @@
-import { openDatabase } from "@titan-design/store-sqlite";
+import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass } from "@titan-design/authority";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryGateStore } from "./memory-store.js";
-import { SqliteGateStore } from "./sqlite-store.js";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "./sqlite-store.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
+  GateResolverRefused,
+  type GateAuthorize,
+  type GateResolver,
   type GateStore,
 } from "./types.js";
 
@@ -28,11 +32,13 @@ interface Harness {
 }
 
 const T0 = Date.UTC(2026, 8, 8, 10, 0, 0);
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
+const AGENT_CLASSES = ACTOR_CLASSES.filter((c) => !(RESOLVER_CLASSES as readonly ActorClass[]).includes(c));
 
-function memoryHarness(): Harness {
+function memoryHarness(authorize?: GateAuthorize): Harness {
   let millis = T0;
   return {
-    store: new MemoryGateStore({ now: () => millis }),
+    store: new MemoryGateStore(authorize ? { now: () => millis, authorize } : { now: () => millis }),
     setNow: (value) => {
       millis = value;
     },
@@ -40,12 +46,14 @@ function memoryHarness(): Harness {
   };
 }
 
-function sqliteHarness(): Harness {
+function sqliteHarness(authorize?: GateAuthorize): Harness {
   let millis = T0;
   const dir = mkdtempSync(path.join(tmpdir(), "hitl-"));
   const db = openDatabase(path.join(dir, "gates.sqlite3"));
+  runMigrations(db, [gateMigration(1), gateResolverMigration(2)]);
+  const options = { migrate: false, now: () => millis };
   return {
-    store: new SqliteGateStore(db, { now: () => millis }),
+    store: new SqliteGateStore(db, authorize ? { ...options, authorize } : options),
     setNow: (value) => {
       millis = value;
     },
@@ -92,7 +100,7 @@ describe.each([
   it("records the payload and the time it was resolved", () => {
     store.create({ id: "g1", prompt: "ship it?" });
     harness.setNow(T0 + 5_000);
-    const resolved = store.resolve("g1", { approved: true });
+    const resolved = store.resolve("g1", { approved: true }, OWNER);
     expect(resolved).toMatchObject({
       status: "resolved",
       payload: { approved: true },
@@ -102,19 +110,19 @@ describe.each([
 
   it("round-trips a null payload as a value, not as absence", () => {
     store.create({ id: "g1", prompt: "anything?" });
-    store.resolve("g1", null);
+    store.resolve("g1", null, OWNER);
     expect(store.get("g1")?.payload).toBeNull();
   });
 
   it("rejects a second resolve", () => {
     store.create({ id: "g1", prompt: "ship it?" });
-    store.resolve("g1", { approved: true });
-    expect(() => store.resolve("g1", { approved: false })).toThrow(GateAlreadySettled);
+    store.resolve("g1", { approved: true }, OWNER);
+    expect(() => store.resolve("g1", { approved: false }, OWNER)).toThrow(GateAlreadySettled);
     expect(store.get("g1")?.payload).toEqual({ approved: true });
   });
 
   it("rejects resolving an unknown gate", () => {
-    expect(() => store.resolve("nope", {})).toThrow(GateNotFound);
+    expect(() => store.resolve("nope", {}, OWNER)).toThrow(GateNotFound);
   });
 
   it("cancels a pending gate with a reason", () => {
@@ -125,13 +133,13 @@ describe.each([
 
   it("rejects a payload that does not match the stored schema", () => {
     store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
-    expect(() => store.resolve("g1", { note: "looks fine" })).toThrow(GatePayloadInvalid);
+    expect(() => store.resolve("g1", { note: "looks fine" }, OWNER)).toThrow(GatePayloadInvalid);
     expect(store.get("g1")?.status).toBe("pending");
   });
 
   it("accepts a payload that matches the stored schema", () => {
     store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
-    expect(store.resolve("g1", { approved: false, note: "not yet" }).status).toBe("resolved");
+    expect(store.resolve("g1", { approved: false, note: "not yet" }, OWNER).status).toBe("resolved");
   });
 
   it("lists pending gates oldest first and drops settled ones", () => {
@@ -140,7 +148,7 @@ describe.each([
     store.create({ id: "b", prompt: "second" });
     harness.setNow(T0 + 2_000);
     store.create({ id: "c", prompt: "third" });
-    store.resolve("b", "done");
+    store.resolve("b", "done", OWNER);
     expect(store.listPending().map((g) => g.id)).toEqual(["a", "c"]);
   });
 
@@ -163,12 +171,111 @@ describe.each([
   it("refuses to resolve an expired gate", () => {
     store.create({ id: "g1", prompt: "ship it?", expiresAt: new Date(T0 + 1_000) });
     harness.setNow(T0 + 5_000);
-    expect(() => store.resolve("g1", "late")).toThrow(GateExpired);
+    expect(() => store.resolve("g1", "late", OWNER)).toThrow(GateExpired);
   });
 
   it("keeps an expiry that has not arrived out of the way", () => {
     store.create({ id: "g1", prompt: "ship it?", expiresAt: new Date(T0 + 60_000) });
     harness.setNow(T0 + 30_000);
-    expect(store.resolve("g1", "in time").status).toBe("resolved");
+    expect(store.resolve("g1", "in time", OWNER).status).toBe("resolved");
   });
+
+  it("records who resolved the gate and reads it back", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const remote: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix", confirmEvent: "$evt1" };
+    store.resolve("g1", { approved: true }, remote);
+    expect(store.get("g1")?.resolvedBy).toEqual(remote);
+  });
+
+  it("keeps the stored resolver when a caller mutates the record it was handed", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    store.resolve("g1", "ok", { ...OWNER });
+    const read = store.get("g1");
+    if (read?.resolvedBy) read.resolvedBy.id = "someone-else";
+    expect(store.get("g1")?.resolvedBy).toEqual(OWNER);
+  });
+
+  it("leaves resolvedBy unset on a gate nobody has resolved", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    store.cancel("g1", "superseded");
+    expect(store.get("g1")?.resolvedBy).toBeUndefined();
+  });
+
+  it("refuses a worker resolution and leaves the gate open and unchanged", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const before = store.get("g1");
+    const worker: GateResolver = { class: "worker", id: "agent-fixture", channel: "chat" };
+    expect(() => store.resolve("g1", { approved: true }, worker)).toThrow(GateResolverRefused);
+    expect(store.get("g1")).toEqual(before);
+    expect(store.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it.each(AGENT_CLASSES)("refuses a resolution by the %s class", (actorClass) => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(() => store.resolve("g1", "ok", { class: actorClass, id: "x", channel: "y" })).toThrow(GateResolverRefused);
+    expect(store.get("g1")?.status).toBe("pending");
+  });
+
+  it("names the gate and the actor class in a refusal, never the resolver's own fields", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const worker: GateResolver = { class: "worker", id: "secret-agent-id", channel: "secret-channel", confirmEvent: "secret-evt" };
+    const error = catchError(() => store.resolve("g1", "ok", worker));
+    expect(error).toBeInstanceOf(GateResolverRefused);
+    expect(error).toMatchObject({ gateId: "g1", actorClass: "worker" });
+    expect((error as Error).message).toContain("g1");
+    expect((error as Error).message).toContain("worker");
+    expect((error as Error).message).not.toMatch(/secret/);
+  });
+
+  it("still refuses an agent class that authorize allows", () => {
+    const allowAll = scoped(makeHarness(() => ({ allowed: true }))).store;
+    allowAll.create({ id: "g1", prompt: "ship it?" });
+    const coordinator: GateResolver = { class: "coordinator", id: "agent-fixture", channel: "chat" };
+    expect(() => allowAll.resolve("g1", "ok", coordinator)).toThrow(GateResolverRefused);
+    expect(allowAll.get("g1")?.status).toBe("pending");
+  });
+
+  it("lets authorize refuse an owner resolver and carries its reason", () => {
+    const refuseRemote: GateAuthorize = (_gate, resolver) =>
+      resolver?.class === "owner-remote" ? { allowed: false, reason: "remote resolution is off" } : { allowed: true };
+    const narrowed = scoped(makeHarness(refuseRemote)).store;
+    narrowed.create({ id: "g1", prompt: "ship it?" });
+    const error = catchError(() => narrowed.resolve("g1", "ok", { class: "owner-remote", id: "o", channel: "matrix" }));
+    expect(error).toBeInstanceOf(GateResolverRefused);
+    expect(error).toMatchObject({ reason: "remote resolution is off" });
+    expect(narrowed.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
+    expect(narrowed.resolve("g1", "ok", OWNER).resolvedBy).toEqual(OWNER);
+  });
+
+  it("hands authorize the pending gate and the resolver", () => {
+    const seen: unknown[] = [];
+    const recording = scoped(
+      makeHarness((gate, resolver) => {
+        seen.push([gate.id, gate.status, resolver]);
+        return { allowed: true };
+      }),
+    ).store;
+    recording.create({ id: "g1", prompt: "ship it?" });
+    recording.resolve("g1", "ok", OWNER);
+    expect(seen).toEqual([["g1", "pending", OWNER]]);
+  });
+
+  function scoped(extra: Harness): Harness {
+    extraHarnesses.push(extra);
+    return extra;
+  }
 });
+
+const extraHarnesses: Harness[] = [];
+afterEach(() => {
+  while (extraHarnesses.length > 0) extraHarnesses.pop()?.dispose();
+});
+
+function catchError(action: () => unknown): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected the action to throw");
+}
