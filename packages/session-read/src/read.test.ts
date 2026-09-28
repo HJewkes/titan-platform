@@ -181,6 +181,25 @@ describe("review_verdict dispatch", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ toolUseId: "cs1", verdict: "approve", repo: null, repoHint: null, number: 501, cwdRepo: "demo" });
   });
+
+  it("numbers each tool use's verdicts in parsed order", () => {
+    const send = (id: string, text: string) => ({ type: "tool_use", id, name: "mcp__plugin_agent-chat_agent-chat__chat_send", input: { to: "coordinator", text } });
+    const line = {
+      type: "assistant",
+      sessionId: SESSION,
+      cwd: FIXTURE_CWD,
+      timestamp: "2026-07-01T00:02:00Z",
+      message: {
+        role: "assistant",
+        id: "msg-ordinals",
+        model: "claude-opus-5",
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [send("cs1", "PR #12 and #13 — Verdict: LGTM"), send("cs2", "Verdict: APPROVE — PR #14")],
+      },
+    };
+    const events = eventsForLines([line]).filter((e) => e.kind === "review_verdict");
+    expect(events.map((e) => [e.toolUseId, e.ordinal, e.number])).toEqual([["cs1", 0, 12], ["cs1", 1, 13], ["cs2", 0, 14]]);
+  });
 });
 
 function sortedJson(rows: unknown[]): string[] {

@@ -45,7 +45,11 @@ describe("BlueBubblesTransport.send", () => {
 
     const result = await transport.send({ handle: "+15550000000", text: "hi" });
 
-    expect(result).toEqual({ ok: true, messageGuid: "m-9" });
+    expect(result).toEqual({
+      ok: true,
+      messageGuid: "m-9",
+      ref: { channel: "imessage", chat: "iMessage;-;+15550000000", messageId: "m-9" },
+    });
     const call = calls[0];
     expect(call?.url).toBe(
       `http://127.0.0.1:1234/api/v1/message/text?password=${encodeURIComponent(PASSWORD)}`,
@@ -213,7 +217,7 @@ describe("BlueBubblesTransport.send", () => {
     });
 
     it("HTTP error statuses unchanged, even with a body that cannot be parsed", async () => {
-      const statuses = { 400: "rejected", 401: "unauthorized", 403: "unauthorized", 404: "no-chat", 429: "rejected", 500: "unknown", 502: "unknown" };
+      const statuses = { 400: "rejected", 401: "unauthorized", 403: "unauthorized", 404: "no-chat", 429: "rate-limited", 500: "unknown", 502: "unknown" };
 
       const kinds = await Promise.all(
         Object.keys(statuses).map(async (status) => {

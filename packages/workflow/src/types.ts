@@ -21,7 +21,7 @@ export interface StepUsage {
 /** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
 export type StepOperation = "seed" | "dispatch" | "assisted";
 
-export interface StepResult {
+export interface StepResult<TData extends Record<string, unknown> = Record<string, unknown>> {
   stepId: string;
   iteration: number;
   /** Absent on results written before 0.5, which replay under the old keys unchecked. */
@@ -32,8 +32,8 @@ export interface StepResult {
   signal: string | null;
   completedAt: string;
   output?: string;
-  /** Structured payload: a seed's data or a gate's resolution. */
-  data?: Record<string, unknown>;
+  /** Structured payload: a seed's data, a gate's resolution, or a dispatch's output parsed by its schema. */
+  data?: TData;
   /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
   usage?: StepUsage;
 }
@@ -85,10 +85,12 @@ export interface SeedResult {
   output?: string;
 }
 
-export interface DispatchOptions {
+export interface DispatchOptions<T = Record<string, unknown>> {
   model?: string;
   /** Extra template variables for this step only. */
   vars?: Record<string, string>;
+  /** Parses the output as JSON into `data`; a payload that fails it fails the step without a retry. */
+  schema?: ZodType<T>;
 }
 
 export interface AssistedOptions {
@@ -103,7 +105,7 @@ export interface WorkflowContext {
   readonly workflowName: string;
   param(key: string): string | undefined;
   /** Render the template, run it through the step runner, parse signals. Retried once on a retryable failure. */
-  dispatch(stepId: string, template: string, options?: DispatchOptions): Promise<StepResult>;
+  dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;
   /** Deterministic step without a runner; its data merges into params. */
   seed(stepId: string, fn: () => Promise<SeedResult>): Promise<StepResult>;
   /** Pause on a durable gate until something outside resolves it. */
@@ -123,12 +125,14 @@ export interface StepRunInput {
   iteration: number;
   prompt: string;
   model?: string;
+  /** The step's schema; a runner may pass it to the model, and the workflow parses the output with it either way. */
+  outputSchema?: ZodType;
   signal: AbortSignal;
 }
 
 export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
-  | { kind: "failed"; error: string; retryable: boolean; usage?: StepUsage }
+  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string };
 
@@ -154,7 +158,7 @@ export type StepReconcileOutcome =
 
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
-  | { ok: false; error: string; retryable: boolean; usage?: StepUsage };
+  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
@@ -209,6 +213,22 @@ export class StepFailedError extends Error {
   }
 }
 
+export type StepOutputFailureKind = "not_json" | "schema" | "too_large";
+
+/** A dispatch whose output failed its schema. Never retryable: the same prompt would produce the same kind of payload. */
+export class StepOutputInvalidError extends StepFailedError {
+  constructor(
+    stepId: string,
+    iteration: number,
+    readonly kind: StepOutputFailureKind,
+    readonly issues: string[],
+    usage?: StepUsage,
+  ) {
+    super(stepId, iteration, `output ${kind}: ${issues.join("; ")}`, { retryable: false, usage });
+    this.name = "StepOutputInvalidError";
+  }
+}
+
 export class WorkflowCancelledError extends Error {
   constructor(
     readonly runId: string,
@@ -240,5 +260,18 @@ export class WorkflowNonDeterminismError extends Error {
   ) {
     super(`workflow ${runId} replayed ${replayed}("${stepId}") at call ${callIndex}, where the run recorded ${recorded}; the workflow changed under a live run`);
     this.name = "WorkflowNonDeterminismError";
+  }
+}
+
+/** A replayed dispatch whose recorded output no longer satisfies the step's current schema. */
+export class WorkflowSchemaDriftError extends Error {
+  constructor(
+    readonly runId: string,
+    readonly stepId: string,
+    readonly callIndex: number,
+    readonly issues: string[],
+  ) {
+    super(`workflow ${runId} replayed dispatch("${stepId}") at call ${callIndex}, whose recorded output no longer fits the step schema: ${issues.join("; ")}`);
+    this.name = "WorkflowSchemaDriftError";
   }
 }

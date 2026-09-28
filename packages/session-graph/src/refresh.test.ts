@@ -1,8 +1,9 @@
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { DiscoveredTranscript } from "@titan-design/session-read";
+import { extractTranscript, type DiscoveredTranscript, type TranscriptDelta } from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { applyDelta } from "./apply.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { indexTranscript, refreshCorpus } from "./refresh.js";
 
@@ -317,5 +318,105 @@ describe("refreshCorpus", () => {
     const summary = await refreshCorpus(graph, [transcript]);
     expect(summary.quarantined).toBe(1);
     expect(graph.transcripts.get(transcript.displayPath)).toMatchObject({ status: "quarantined", lastOffset: 0 });
+  });
+});
+
+describe("chat review verdicts", () => {
+  const chatSend = (id: string, text: string) => tool(id, "mcp__plugin_agent-chat_agent-chat__chat_send", { to: "coordinator", text });
+  const verdictLines = (id: string) => [
+    prompt("p1", "2026-07-01T00:00:02Z", "review it"),
+    assistant("2026-07-01T00:00:04Z", [chatSend(id, "acme/widgets#88 and widgets #89. Verdict: CHANGES REQUESTED")]),
+  ];
+  const reviews = () => graph.db.prepare("SELECT * FROM pr_review ORDER BY source_key").all();
+
+  it("stores one row per parsed verdict with the parsed fields only", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+
+    await refreshCorpus(graph, [transcript]);
+
+    const common = { surface: "chat", verdict: "changes_requested", ts: "2026-07-01T00:00:04Z", session_id: "s1", transcript_id: 1, cwd_repo: "demo", pr_ref: null };
+    expect(reviews()).toEqual([
+      { ...common, source_key: "chat:tv1:0", repo: "acme/widgets", repo_hint: null, number: 88 },
+      { ...common, source_key: "chat:tv1:1", repo: null, repo_hint: "widgets", number: 89 },
+    ]);
+  });
+
+  it("re-applying the same verdicts neither duplicates nor fails", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = await extractTranscript(transcript.absolutePath);
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    applyDelta(graph, transcriptId, delta);
+
+    applyDelta(graph, transcriptId, delta);
+
+    expect(count("pr_review")).toBe(2);
+  });
+
+  it("one tool use's verdicts split across two deltas keep distinct keys", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = await extractTranscript(transcript.absolutePath);
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    const [first, second] = delta.reviewVerdicts;
+
+    applyDelta(graph, transcriptId, { ...delta, reviewVerdicts: [first!] });
+    applyDelta(graph, transcriptId, { ...delta, reviewVerdicts: [second!] });
+
+    expect(reviews()).toMatchObject([{ source_key: "chat:tv1:0", number: 88 }, { source_key: "chat:tv1:1", number: 89 }]);
+  });
+
+  const withoutOrdinals = (delta: TranscriptDelta): TranscriptDelta =>
+    ({ ...delta, reviewVerdicts: delta.reviewVerdicts.map(({ ordinal: _, ...rest }) => rest as TranscriptDelta["reviewVerdicts"][number]) });
+  const keys = () => (reviews() as { source_key: string }[]).map((r) => r.source_key);
+
+  it("keeps every verdict of a tool use when the events carry no ordinal", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = withoutOrdinals(await extractTranscript(transcript.absolutePath));
+
+    applyDelta(graph, graph.transcripts.ensure(transcript.displayPath).sourceId, delta);
+
+    expect(keys()).toEqual(["chat:tv1:0", "chat:tv1:1"]);
+  });
+
+  it("re-applying a delta with no ordinals stays idempotent", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = withoutOrdinals(await extractTranscript(transcript.absolutePath));
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    applyDelta(graph, transcriptId, delta);
+
+    applyDelta(graph, transcriptId, delta);
+
+    expect(keys()).toEqual(["chat:tv1:0", "chat:tv1:1"]);
+  });
+
+  it("rows written without ordinals and re-read with them land on the same keys", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = await extractTranscript(transcript.absolutePath);
+    const transcriptId = graph.transcripts.ensure(transcript.displayPath).sourceId;
+    applyDelta(graph, transcriptId, withoutOrdinals(delta));
+
+    applyDelta(graph, transcriptId, delta);
+
+    expect(reviews()).toMatchObject([{ source_key: "chat:tv1:0", number: 88 }, { source_key: "chat:tv1:1", number: 89 }]);
+  });
+
+  it("a verdict with no ordinal never takes an index another event of its tool use carries", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    const delta = await extractTranscript(transcript.absolutePath);
+    const [first, second] = delta.reviewVerdicts;
+    const mixed = { ...delta, reviewVerdicts: [withoutOrdinals({ ...delta, reviewVerdicts: [first!] }).reviewVerdicts[0]!, { ...second!, ordinal: 0 }] };
+
+    applyDelta(graph, graph.transcripts.ensure(transcript.displayPath).sourceId, mixed);
+
+    expect(reviews()).toMatchObject([{ source_key: "chat:tv1:0", number: 89 }, { source_key: "chat:tv1:1", number: 88 }]);
+  });
+
+  it("re-reading a rewritten transcript does not double its verdict rows", async () => {
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv1")));
+    await refreshCorpus(graph, [transcript]);
+    writeFileSync(transcript.absolutePath, render(verdictLines("tv2").slice(1)));
+
+    expect(await refreshCorpus(graph, [transcript])).toMatchObject({ rewound: 1 });
+
+    expect((reviews() as { source_key: string }[]).map((r) => r.source_key)).toEqual(["chat:tv2:0", "chat:tv2:1"]);
   });
 });

@@ -1,4 +1,6 @@
+import { REVIEW_TABLE } from "./audit-schema-v8.js";
 import type { SessionGraph } from "./graph.js";
+import { countRounds } from "./review-rounds.js";
 
 /** A PR the graph holds, as the resolver needs it to ask a forge. */
 export interface PrKey {
@@ -17,8 +19,18 @@ export interface ResolvedPr {
   state?: string | null;
   mergedAt?: string | null;
   closedAt?: string | null;
-  /** Stored as the resolver counts it; the round definition is open question Q6 in the TP-256 design. */
+  /** Stored as the forge's round count when `reviews` or `commitTimes` is absent; otherwise the round rule counts it. */
   reviewRounds?: number | null;
+  /** The PR's commit times; an empty array is stored as known-empty, an omitted field leaves the stored value. */
+  commitTimes?: readonly string[];
+  /** Replaces the PR's stored forge reviews; an omitted field leaves them. */
+  reviews?: readonly ResolvedReview[];
+}
+
+/** One forge review. `APPROVED` and `CHANGES_REQUESTED`, in any case, are stored; other states are ignored. */
+export interface ResolvedReview {
+  state: string;
+  submittedAt: string;
 }
 
 /** Resolutions keyed by `pr_ref` (`pr:acme/demo#7`). */
@@ -44,11 +56,15 @@ export interface PrEnrichment {
 
 export const NO_PR_OUTCOMES: PrEnrichment = Object.freeze({ requested: 0, applied: 0, failed: false });
 
-/** A merge is final, so a merged PR is asked about once; open and closed PRs can still move. */
+/**
+ * A merge is final, so a merged PR is asked about once commit times are known; open and closed PRs
+ * can still move. Never-checked PRs lead and missing commit times trail, so a per-pass cap cannot starve open PRs.
+ */
 const PRS_NEEDING_OUTCOME = `
   SELECT pr_ref, repo, number FROM pr
-  WHERE repo IS NOT NULL AND number IS NOT NULL AND (outcome_checked_at IS NULL OR state IS NOT 'merged')
-  ORDER BY pr_ref`;
+  WHERE repo IS NOT NULL AND number IS NOT NULL
+    AND (outcome_checked_at IS NULL OR state IS NOT 'merged' OR commit_times IS NULL)
+  ORDER BY CASE WHEN outcome_checked_at IS NULL THEN 0 WHEN state IS NOT 'merged' THEN 1 ELSE 2 END, pr_ref`;
 
 /** A stale forge cache must not reopen a PR a transcript saw merged, so `merged` is sticky. */
 const APPLY_OUTCOME = `
@@ -57,6 +73,8 @@ const APPLY_OUTCOME = `
     merged_at = COALESCE(@mergedAt, merged_at),
     closed_at = COALESCE(@closedAt, closed_at),
     review_rounds = COALESCE(@reviewRounds, review_rounds),
+    review_rounds_gh = COALESCE(@reviewRounds, review_rounds_gh),
+    commit_times = COALESCE(@commitTimes, commit_times),
     outcome_checked_at = @checkedAt
   WHERE pr_ref = @prRef`;
 
@@ -85,6 +103,7 @@ export async function enrichPrs(graph: SessionGraph, resolver: PrResolver | unde
 
 function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): number {
   const apply = graph.db.prepare(APPLY_OUTCOME);
+  const stored = graph.db.prepare("SELECT commit_times FROM pr WHERE pr_ref = ?");
   return graph.db.transaction(() => {
     let applied = 0;
     for (const [prRef, fields] of resolved) {
@@ -95,9 +114,43 @@ function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): 
         state: fields.state ?? null,
         mergedAt: fields.mergedAt ?? null,
         closedAt: fields.closedAt ?? null,
-        reviewRounds: fields.reviewRounds ?? null,
+        reviewRounds: forgeRounds(fields, () => storedCommitTimes(stored.get(prRef))),
+        commitTimes: fields.commitTimes ? JSON.stringify(fields.commitTimes) : null,
       }).changes;
+      if (fields.reviews) replaceForgeReviews(graph, prRef, fields.reviews);
     }
     return applied;
   })();
+}
+
+const isChangesRequested = (review: ResolvedReview) => review.state.toUpperCase() === "CHANGES_REQUESTED";
+
+/** Counts against sent commit times, else stored ones; unusable or absent times leave `reviewRounds` as sent. */
+function forgeRounds(fields: ResolvedPr, storedTimes: () => string[] | null): number | null {
+  if (!fields.reviews) return fields.reviewRounds ?? null;
+  const commitTimes = fields.commitTimes ?? storedTimes();
+  const counted = commitTimes ? countRounds(fields.reviews.filter(isChangesRequested).map((r) => r.submittedAt), commitTimes) : null;
+  return counted ?? fields.reviewRounds ?? null;
+}
+
+function storedCommitTimes(row: unknown): string[] | null {
+  const times = (row as { commit_times: string | null } | undefined)?.commit_times;
+  return times ? (JSON.parse(times) as string[]) : null;
+}
+
+const FORGE_VERDICTS: Record<string, string> = { APPROVED: "approve", CHANGES_REQUESTED: "changes_requested" };
+
+/** Two reviews in the same second share a key; a changes-requested one is kept over an approval. */
+const INSERT_FORGE_REVIEW = `
+  INSERT INTO ${REVIEW_TABLE} (source_key, surface, verdict, ts, repo, number, pr_ref)
+  SELECT 'gh:' || pr_ref || ':' || @ts, 'github', @verdict, @ts, repo, number, pr_ref FROM pr WHERE pr_ref = @prRef
+  ON CONFLICT (source_key) DO UPDATE SET verdict = CASE WHEN verdict = 'changes_requested' THEN verdict ELSE excluded.verdict END`;
+
+function replaceForgeReviews(graph: SessionGraph, prRef: string, reviews: readonly ResolvedReview[]): void {
+  graph.db.prepare(`DELETE FROM ${REVIEW_TABLE} WHERE surface = 'github' AND pr_ref = ?`).run(prRef);
+  const insert = graph.db.prepare(INSERT_FORGE_REVIEW);
+  for (const review of reviews) {
+    const verdict = FORGE_VERDICTS[review.state.toUpperCase()];
+    if (verdict) insert.run({ prRef, verdict, ts: review.submittedAt });
+  }
 }

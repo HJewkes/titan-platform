@@ -173,4 +173,25 @@ describe("splitText", () => {
     expect(parts.some((part) => part.startsWith("```ts\n"))).toBe(true);
     expect(parts.filter((part) => part.includes("```ts")).slice(0, -1).every((part) => part.endsWith("```"))).toBe(true);
   });
+
+  it("hard-splits a long line inside a fence and still closes and reopens the fence", () => {
+    const reply = `\`\`\`js\n${"y".repeat(200)}\n\`\`\``;
+
+    const parts = splitText(reply, { maxLength: 50 });
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= 50)).toBe(true);
+    expect(parts.every((part) => part.startsWith("```js\n"))).toBe(true);
+    expect(parts.every((part) => part.endsWith("```"))).toBe(true);
+  });
+
+  it("keeps the fence open when a content line becomes a bare fence marker after a split", () => {
+    const reply = `\`\`\`js\n${"x".repeat(40)}\`\`\`\n${"z\n".repeat(30)}\`\`\``;
+
+    const parts = splitText(reply, { maxLength: 50 });
+
+    expect(parts[1]?.startsWith("```js\n```\n")).toBe(true);
+    expect(parts.slice(0, -1).every((part) => part.endsWith("```"))).toBe(true);
+    expect(parts.slice(1).every((part) => part.startsWith("```js\n"))).toBe(true);
+  });
 });

@@ -4,9 +4,10 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { agentRunner, idempotentRunner, inlineRunner } from "./runners.js";
+import { routedRunner } from "./routed-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import type { StepRunner, WorkflowFn } from "./types.js";
+import { StepOutputInvalidError, type StepRunner, type WorkflowFn } from "./types.js";
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");
@@ -135,6 +136,69 @@ describe("agentRunner", () => {
 
     expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
     expect(outcome.ok && outcome.usage).toEqual({ costUsd: 0.12, inputTokens: 900, outputTokens: 80 });
+  });
+
+  const stepInput = { runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal };
+  const oauth = { CLAUDE_CODE_OAUTH_TOKEN: "sk-oauth" };
+
+  it("uses the step's schema when the runner has no default schema", async () => {
+    const runner = agentRunner({ cwd: "/tmp", maxTurns: 1, maxBudgetUsd: 1, deps: { query: structuredQuery({ verdict: "confirmed" }), env: oauth } });
+
+    const outcome = await runner.run({ ...stepInput, outputSchema: z.object({ verdict: z.string() }) });
+
+    expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
+  });
+
+  it("prefers the step's schema over the runner's default schema", async () => {
+    const runner = agentRunner({ cwd: "/tmp", maxTurns: 1, maxBudgetUsd: 1, defaults: { outputSchema: z.object({ score: z.number() }) }, deps: { query: structuredQuery({ verdict: "confirmed" }), env: oauth } });
+
+    const outcome = await runner.run({ ...stepInput, outputSchema: z.object({ verdict: z.string() }) });
+
+    expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
+  });
+
+  it("fails a step as StepOutputInvalidError when the agent reports schema_invalid, without a retry", async () => {
+    const query = vi.fn(structuredQuery({ verdict: 3 }));
+    const agent = agentRunner({ cwd: "/tmp", maxTurns: 1, maxBudgetUsd: 1, deps: { query, env: oauth } });
+    const run = vi.spyOn(agent, "run");
+    let caught: unknown;
+    const review: WorkflowFn = async (ctx) => {
+      try {
+        await ctx.dispatch("review", "review it", { schema: z.object({ verdict: z.string() }) });
+      } catch (error) {
+        caught = error;
+        throw error;
+      }
+    };
+    const rt = runtime(makeDb(), routedRunner([{ match: "review", onRestart: "repeat", runner: agent }]));
+    rt.register("review", review);
+
+    const finished = await rt.wait(rt.start("review"));
+
+    expect(finished.status).toBe("failed");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(caught).toBeInstanceOf(StepOutputInvalidError);
+    expect(caught).toMatchObject({ kind: "schema", retryable: false, usage: { costUsd: 0.12 } });
+    expect((caught as StepOutputInvalidError).message).toContain("verdict");
+    expect((caught as StepOutputInvalidError).message).not.toContain("3");
+  });
+
+  it("fails a step as StepOutputInvalidError when a legacy agentRunner reports schema_invalid", async () => {
+    const agent = agentRunner({ cwd: "/tmp", maxTurns: 1, maxBudgetUsd: 1, deps: { query: structuredQuery({ verdict: 3 }), env: oauth } });
+    const run = vi.spyOn(agent, "run");
+    const rt = runtime(makeDb(), agent);
+    rt.register("review", async (ctx) => {
+      await ctx.dispatch("review", "review it", { schema: z.object({ verdict: z.string() }) }).catch((error: unknown) => {
+        expect(error).toBeInstanceOf(StepOutputInvalidError);
+        throw error;
+      });
+    });
+
+    const finished = await rt.wait(rt.start("review"));
+
+    expect(finished.status).toBe("failed");
+    expect(finished.error).toMatch(/output schema/);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it("reports a failed run's cost on a retryable failure", async () => {

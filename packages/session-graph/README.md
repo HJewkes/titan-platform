@@ -46,9 +46,10 @@ passes 1002.
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage
    from child sessions.
 6. `enrichPrs` runs if the caller passed a `resolvePrs` resolver. See below.
-7. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
+7. `projectReviewRounds` resolves chat verdicts and writes review rounds. See below.
+8. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
    task table. See below.
-8. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
+9. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex` clears every derived table and rewinds watermarks; the next refresh rebuilds
@@ -93,10 +94,55 @@ await refreshCorpus(graph, transcripts, {
 - **Merged is sticky.** A resolver's `open` or `closed` never replaces a `merged` state, so a
   stale forge cache cannot reopen a PR. States are stored lower-case.
 - **Batching.** One call per refresh with every PR that has a repo and number and whose
-  outcome may still change: never checked, or not yet merged. A merged PR is asked about
-  once. The resolver only updates rows; a PR enters the graph from a transcript.
-- **`review_rounds`** is stored as the resolver counts it. What counts as a round is an open
-  question in the TP-256 design (Q6).
+  outcome may still change: never checked, not yet merged, or merged with no commit times
+  stored. PRs never checked come first, then open and closed PRs, then merged PRs offered only
+  for their commit times, so a resolver that caps its batch reaches open PRs before the
+  backlog. The resolver only updates rows; a PR enters the graph from a transcript.
+- **`commitTimes`** is stored as a JSON array in `commit_times`. Send an empty array for a PR
+  with no commits, so it is not offered again; omitting the field leaves the stored value.
+- **`reviews`** replaces the PR's forge rows in `pr_review` (`APPROVED` and
+  `CHANGES_REQUESTED`, keyed `gh:<pr_ref>:<submittedAt>`); omitting it leaves them. With
+  `reviews`, the round rule below counts `review_rounds_gh` against the sent `commitTimes`, or
+  the stored ones when none are sent. With no usable commit times, `reviewRounds` is stored
+  there as the forge counted it, and omitting that too leaves the stored value.
+
+## Review rounds
+
+`projectReviewRounds` runs after `enrichPrs` on every pass. It first resolves each chat
+verdict's `pr_ref`, then writes `review_rounds_chat` and `review_rounds` for every PR.
+
+**The rule.** A review's head is the number of the PR's commits at or before it. A
+changes-requested review counts when its head is below the commit count, which means a later
+commit answered it. A PR's rounds are the distinct heads among its counting reviews. A second
+changes-requested review on one head adds nothing, whether it comes from the same reviewer, a
+second reviewer, or the other surface. An approval is stored and never adds a round.
+
+- **Senders.** A chat verdict counts only when the sender's `session_origin.profile` passes
+  `isReviewerProfile`, a `refreshCorpus` option. The default accepts `reviewer` and any
+  profile ending in `-reviewer`.
+- **Totals.** `review_rounds` is `review_rounds_gh` plus the chat heads no forge review
+  already sits on. A resolver that sends only a `reviewRounds` count therefore still adds to
+  the chat rounds unchanged.
+- **Count-only resolvers overcount.** Without `reviews`, the forge reviews' heads are unknown,
+  so a chat verdict and a forge review on the same head both count. `review_rounds` is then
+  an upper bound. `review_rounds_gh` and `review_rounds_chat` are each exact, and the total
+  is exact once the resolver sends `reviews` and `commitTimes`.
+- **Unknown commits.** While `commit_times` is null, `review_rounds_chat` stays null and
+  `review_rounds` equals `review_rounds_gh`.
+- **Unparseable times.** A review whose time does not parse is ignored by the rule and stays
+  stored. If any of a PR's commit times does not parse, its commit times count as unknown,
+  since a dropped commit would shift every later head. `countRounds` returns null in that
+  case. `summary.reviews.invalidTimes` counts the ignored reviews plus the PRs with unusable
+  commit times.
+
+**Resolving a chat verdict.** An exact `owner/name` must match a `pr` row, or the verdict
+stays unresolved. Otherwise the candidates are the `pr` rows with that number, narrowed in
+order. A repo hint keeps the rows whose repo's last path segment matches it, in any case; a
+hint that matches none is ignored. Then the sender's family links keep the PRs `linked` from
+the sender, its parent session, or any session that parent spawned. Last, the sender's
+working directory repo, a bare name, is compared with each repo's last path segment. The first
+step that leaves exactly one row resolves the verdict. A resolved `pr_ref` is kept on later
+passes, and `summary.reviews` reports `resolved` (this pass) and `unresolved` (still null).
 - **Failure.** Same as the task resolver: the pass completes, the rows stand, and
   `summary.prs` carries `failed` plus `error`.
 
@@ -110,7 +156,19 @@ Kit tables: `transcript` (watermark), `edge` (bi-temporal, `session:… touched 
 `search_span` + `search_fts` (contentless full-text over prompts, responses, tool inputs
 and results, keyed by the session ref). Domain tables: `fact`, `session`,
 `session_model_usage`, `turn`, `permission_phase`, `human_edit`, `file_checkpoint`, `pr`,
-`branch`, `file`, `task`, `subagent`, `artifact`, and the two PR observation tables.
+`branch`, `file`, `task`, `subagent`, `artifact`, the two PR observation tables, and
+`pr_review`.
+
+`pr_review` holds one row per review verdict. A chat row comes from a `chat_send` tool use
+that session-read parsed a verdict from, keyed `chat:<tool_use_id>:<n>` where `n` is the
+verdict's `ordinal` in that message. An event from a session-read that predates `ordinal`
+takes the next index its tool use has not used in that `applyDelta` call; that session-read
+emits all of one tool use's verdicts from one line, so the keys cannot collide across calls. It keeps only the parsed fields (verdict, repo, repo hint,
+PR number, and the repo of the sender's working directory), never message text, and is purged
+with its transcript. `pr_ref` stays null until a later pass resolves it.
+
+`resetIndex` drops `pr` rows and forge review rows with everything else, so `commit_times`,
+`review_rounds_gh` and the forge reviews return only when a resolver answers again.
 
 Everything except `transcript` is derivable, which is what makes the schema safe to evolve
 by drop-and-rederive.

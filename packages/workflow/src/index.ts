@@ -12,6 +12,7 @@ export type {
   StepDispatchAck,
   StepFailureDetail,
   StepOperation,
+  StepOutputFailureKind,
   StepReconcileOutcome,
   StepResult,
   StepRunInput,
@@ -28,9 +29,11 @@ export type {
 } from "./types.js";
 export {
   StepFailedError,
+  StepOutputInvalidError,
   WorkflowCancelledError,
   WorkflowNonDeterminismError,
   WorkflowRecoveryRequiredError,
+  WorkflowSchemaDriftError,
   workflowStepRequestKey,
 } from "./types.js";
 export type { SignalMatcher, SignalParser, SignalSetParser } from "./signals.js";

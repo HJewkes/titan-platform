@@ -101,6 +101,7 @@ describe("pollUpdates", () => {
       updateId: 7,
       chatId: CHAT,
       fromId: 99,
+      messageId: 70,
       text: "ready",
       date: 1757808000,
     });
@@ -111,7 +112,7 @@ describe("pollUpdates", () => {
       [
         textUpdate(201, "from a stranger", 9999),
         { update_id: 202, edited_message: { text: "edited" } },
-        { update_id: 203, message: { date: 1, chat: { id: CHAT }, photo: [] } },
+        { update_id: 203, message: { message_id: 2030, date: 1, chat: { id: CHAT }, photo: [] } },
         { nonsense: true },
         textUpdate(204, "mine"),
       ],
