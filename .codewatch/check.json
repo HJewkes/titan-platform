@@ -14,7 +14,8 @@
           "packages/chat-protocol",
           "packages/code-parser",
           "packages/rpc-protocol",
-          "packages/evidence"
+          "packages/evidence",
+          "packages/authority"
         ],
         "1": [
           "packages/retrieval",
@@ -60,7 +61,8 @@
           "packages/chat-protocol",
           "packages/code-parser",
           "packages/rpc-protocol",
-          "packages/evidence"
+          "packages/evidence",
+          "packages/authority"
         ],
         [
           "packages/retrieval",
