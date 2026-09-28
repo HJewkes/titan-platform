@@ -53,6 +53,17 @@ list. A finding names only `file:line` and the rule, never the text.
 - **By hand.** `pnpm egress:scan range <base> <head>` scans a range; `pnpm egress:scan tree`
   scans every tracked file.
 
+When a push is refused:
+
+- **A branch cut before the scanner existed.** Its checkout has no scanner, so the hook
+  refuses the push. Merge main into the branch, run `pnpm install`, and push again.
+- **The first push to a new remote that shares no history.** No ref of that remote holds
+  any of your commits, so the hook scans the whole reachable history. It can report old
+  findings in files the allow file does not cover.
+- **The CI job is not the control.** CI runs after the push, so the hook is the egress
+  control and the CI job is a merge gate. A pull request can edit the job itself, so
+  reviewers read workflow diffs.
+
 ## Before adding code
 
 1. Read the [capability catalog](/guides/capabilities) and the reference page of every unit
@@ -109,7 +120,9 @@ what CI does. `scripts/dag-check.sh` remains for one release as a fallback that 
 - `zod` is a peer dependency of packages that use it, never a regular dependency.
 - Products own surface wiring — commander, MCP SDK transports, hono servers. Packages
   expose surface-independent cores.
-- Every CLI surface a package exposes takes `--json` and returns the JSON envelope.
+- Every CLI surface a package exposes takes `--json` and returns the JSON envelope. The one
+  exception is `titan-egress-scan`: it prints `file:line` and the rule to stdout, notices to
+  stderr, and an exit code, with no `--json`, because its only callers are the hook and CI.
 
 ## Changesets
 
