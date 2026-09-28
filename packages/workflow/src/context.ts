@@ -2,6 +2,7 @@ import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan
 import { nowIso } from "@titan-design/store-sqlite";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
+import { addUsage } from "./usage.js";
 import {
   StepFailedError,
   WorkflowCancelledError,
@@ -187,17 +188,17 @@ export class RunContext implements WorkflowContext {
     let attempt = recovered?.step.attempt ?? 0;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
-    let failedUsage: StepUsage | undefined;
+    let failedUsage = recovered?.step.priorUsage;
     if (recovered?.kind === "retry_safe") attempt += 1;
     for (;;) {
       if (!pending) {
-        active = this.newActiveStep(stepId, iterKey, attempt);
+        active = this.newActiveStep(stepId, iterKey, attempt, failedUsage);
         this.activate(active);
         pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model, signal: this.signal });
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: outcome.usage };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage) };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
@@ -215,17 +216,15 @@ export class RunContext implements WorkflowContext {
     }
   }
 
-  private newActiveStep(stepId: string, iterKey: string, attempt: number): ActiveStep {
-    if (!isRecoverable(this.deps.runner)) return { kind: "legacy", stepId, iterKey, attempt, startedAt: nowIso() };
+  private newActiveStep(stepId: string, iterKey: string, attempt: number, priorUsage: StepUsage | undefined): ActiveStep {
+    const base = { stepId, iterKey, attempt, startedAt: nowIso(), ...(priorUsage ? { priorUsage } : {}) };
+    if (!isRecoverable(this.deps.runner)) return { kind: "legacy", ...base };
     const executionId = this.deps.executionId();
     return {
       kind: "recoverable",
-      stepId,
-      iterKey,
-      attempt,
+      ...base,
       executionId,
       requestKey: workflowStepRequestKey(this.runId, stepId, Number(iterKey.slice(iterKey.lastIndexOf(":") + 1)), attempt),
-      startedAt: nowIso(),
     };
   }
 
@@ -311,17 +310,4 @@ function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function addUsage(total: StepUsage | undefined, next: StepUsage | undefined): StepUsage | undefined {
-  if (!next) return total;
-  if (!total) return next;
-  const tokens = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
-  const inputTokens = tokens(total.inputTokens, next.inputTokens);
-  const outputTokens = tokens(total.outputTokens, next.outputTokens);
-  return {
-    costUsd: total.costUsd + next.costUsd,
-    ...(inputTokens === undefined ? {} : { inputTokens }),
-    ...(outputTokens === undefined ? {} : { outputTokens }),
-  };
 }

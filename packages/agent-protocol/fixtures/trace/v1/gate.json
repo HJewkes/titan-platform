@@ -1,0 +1,49 @@
+[
+  {
+    "schema": "titan.trace/v1",
+    "kind": "gate",
+    "id": "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:1#policy:F5:pr.open.docs",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:draft:0:1",
+    "at": "2026-09-28T10:06:31.000Z",
+    "gateKind": "policy",
+    "verdict": "allow",
+    "decidedBy": "policy:F5",
+    "policyRule": {
+      "table": "F5",
+      "rowId": "pr.open.docs",
+      "version": 1
+    }
+  },
+  {
+    "schema": "titan.trace/v1",
+    "kind": "gate",
+    "id": "3f1c2a9e-0000-4000-8000-000000000001/owner-review",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:owner-review:0:0",
+    "at": "2026-09-28T10:06:32.100Z",
+    "gateKind": "human",
+    "status": "resolved",
+    "verdict": "revise",
+    "decidedBy": "human:owner",
+    "resolvedAt": "2026-09-28T10:20:00.000Z",
+    "reason": "synthetic: shorten the second paragraph",
+    "promptSha256": "e9620877a3a135b502ee2e1f47599c1ecbd3267c954adb244396963271614ab7",
+    "payloadSha256": "c80717712b5aed8a7c030e1e04a5ee23c2a5d68a224681390dfd5fc6d7c49e1d"
+  },
+  {
+    "schema": "titan.trace/v1",
+    "kind": "gate",
+    "id": "3f1c2a9e-0000-4000-8000-000000000001/owner-review:1",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:owner-review:1:0",
+    "at": "2026-09-28T10:24:01.100Z",
+    "gateKind": "human",
+    "status": "resolved",
+    "verdict": "allow",
+    "decidedBy": "human:owner",
+    "resolvedAt": "2026-09-28T10:40:00.000Z",
+    "promptSha256": "9e792c81444f99ba2ebec1296f873ea8691fa06bd12ee14264fd5b19c71ec8f1",
+    "payloadSha256": "fded30a3616f727d5c83a8109fc91a20bd28cdef9ab65c92e958a1060d536c57"
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "schema": "titan.trace/v1",
+    "kind": "artifact",
+    "id": "commit:acme/docs@9f2c61fa57ac329b906c6bbd234f0cf13b93c3a5",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:open-pr:0:0",
+    "at": "2026-09-28T10:41:03.120Z",
+    "artifactKind": "commit",
+    "repo": "acme/docs",
+    "sha": "9f2c61fa57ac329b906c6bbd234f0cf13b93c3a5",
+    "branch": "branch:acme/docs/docs-demo-7"
+  },
+  {
+    "schema": "titan.trace/v1",
+    "kind": "artifact",
+    "id": "file:acme/docs/site/guide.md@9f2c61fa57ac329b906c6bbd234f0cf13b93c3a5",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:open-pr:0:0",
+    "at": "2026-09-28T10:41:03.120Z",
+    "artifactKind": "file",
+    "repo": "acme/docs",
+    "path": "site/guide.md",
+    "commit": "commit:acme/docs@9f2c61fa57ac329b906c6bbd234f0cf13b93c3a5",
+    "lines": [
+      {
+        "lineStart": 40,
+        "lineEnd": 58
+      }
+    ]
+  },
+  {
+    "schema": "titan.trace/v1",
+    "kind": "artifact",
+    "id": "pr:acme/docs#12",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "attemptId": "workflow:3f1c2a9e-0000-4000-8000-000000000001:open-pr:0:0",
+    "at": "2026-09-28T10:41:03.120Z",
+    "artifactKind": "pr",
+    "repo": "acme/docs",
+    "number": 12,
+    "state": "merged",
+    "mergedAt": "2026-09-28T11:02:40.000Z",
+    "reviewRounds": 1,
+    "checks": "passing"
+  }
+]
