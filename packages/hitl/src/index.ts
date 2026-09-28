@@ -14,6 +14,7 @@ export {
   GateAborted,
   GateAlreadyExists,
   GateAlreadySettled,
+  GateAuthorizeInvalid,
   GateCancelled,
   GateError,
   GateExpired,
@@ -25,5 +26,5 @@ export {
 export { BaseGateStore } from "./base-store.js";
 export type { MemoryGateStoreOptions } from "./memory-store.js";
 export { MemoryGateStore } from "./memory-store.js";
-export { defaultResolverRefusal } from "./resolver-policy.js";
+export { defaultResolverRefusal, snapshotResolver } from "./resolver-policy.js";
 export { checkAgainstJsonSchema } from "./json-schema.js";

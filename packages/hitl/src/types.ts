@@ -33,8 +33,11 @@ export interface GateResolver {
 
 export type GateAuthorization = { allowed: true } | { allowed: false; reason: string };
 
-/** Runs after the default resolver-class check, so it can refuse a resolver but never admit one the default refused. */
-export type GateAuthorize = (gate: GateRecord, resolver: GateResolver | undefined) => GateAuthorization;
+/**
+ * Runs after the default resolver-class check, so it can refuse a resolver but
+ * never admit one the default refused. Must return synchronously.
+ */
+export type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>) => GateAuthorization;
 
 export interface GateInput {
   /** Defaults to a random UUID. Supply one to make the gate addressable by a name you already own. */
@@ -135,5 +138,11 @@ export class GateStoreSchemaOutdated extends GateError {
     readonly migration: string,
   ) {
     super(`gate ${gateId} cannot record its resolver: table ${table} needs ${migration}`, gateId);
+  }
+}
+
+export class GateAuthorizeInvalid extends GateError {
+  constructor(gateId: string) {
+    super(`authorize for gate ${gateId} must return a decision { allowed: boolean } synchronously`, gateId);
   }
 }

@@ -9,6 +9,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "./sqlite-
 import {
   GateAlreadyExists,
   GateAlreadySettled,
+  GateAuthorizeInvalid,
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
@@ -260,6 +261,82 @@ describe.each([
     expect(seen).toEqual([["g1", "pending", OWNER]]);
   });
 
+  it("checks and stores one reading of the resolver", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    store.create({ id: "g2", prompt: "ship it?" });
+    expect(store.resolve("g1", "ok", shiftingClass("owner-terminal", "worker")).resolvedBy?.class).toBe("owner-terminal");
+    expect(store.get("g1")?.resolvedBy?.class).toBe("owner-terminal");
+    expect(() => store.resolve("g2", "ok", shiftingClass("worker", "owner-terminal"))).toThrow(GateResolverRefused);
+    expect(store.get("g2")).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it("stores only declared resolver fields", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    store.create({ id: "g2", prompt: "ship it?" });
+    const withExtra = { ...OWNER, confirmEvent: "$evt1", token: "undeclared" } as GateResolver;
+    const noEventWithExtra = { ...OWNER, token: "undeclared" } as GateResolver;
+    store.resolve("g1", "ok", withExtra);
+    store.resolve("g2", "ok", noEventWithExtra);
+    expect(store.get("g1")?.resolvedBy).toEqual({ ...OWNER, confirmEvent: "$evt1" });
+    expect(store.get("g2")?.resolvedBy).toEqual(OWNER);
+  });
+
+  it("refuses a resolver whose class is not a string", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const numeric = { ...OWNER, class: 42 } as unknown as GateResolver;
+    const noChannel = { class: "owner-terminal", id: "o" } as unknown as GateResolver;
+    expect(catchError(() => store.resolve("g1", "ok", numeric))).toMatchObject({
+      name: "GateResolverRefused",
+      actorClass: undefined,
+    });
+    expect(() => store.resolve("g1", "ok", noChannel)).toThrow(GateResolverRefused);
+    expect(store.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it("never echoes a class outside the actor vocabulary", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const invented = { ...OWNER, class: "superuser-invented" } as unknown as GateResolver;
+    const error = catchError(() => store.resolve("g1", "ok", invented));
+    expect(error).toMatchObject({ name: "GateResolverRefused", actorClass: undefined });
+    expect((error as Error).message).not.toContain("superuser-invented");
+  });
+
+  it("refuses an anonymous resolution when authorize is installed", () => {
+    let calls = 0;
+    const permissive = (_gate: unknown, resolver: GateResolver | undefined) => {
+      calls += 1;
+      return resolver?.class === "owner-remote" ? { allowed: false as const, reason: "no remote" } : { allowed: true as const };
+    };
+    const guarded = scoped(makeHarness(permissive)).store;
+    guarded.create({ id: "g1", prompt: "ship it?" });
+    expect(() => guarded.resolve("g1", "ok")).toThrow(GateResolverRefused);
+    expect(guarded.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
+    expect(calls).toBe(0);
+  });
+
+  it.each([
+    ["a promise", () => Promise.reject(new Error("async policy"))],
+    ["undefined", () => undefined],
+  ])("refuses an authorize that returns %s and leaves the gate open", (_label, callback) => {
+    const odd = scoped(makeHarness(callback as unknown as GateAuthorize)).store;
+    odd.create({ id: "g1", prompt: "ship it?" });
+    const before = odd.get("g1");
+    expect(() => odd.resolve("g1", "ok", OWNER)).toThrow(GateAuthorizeInvalid);
+    expect(odd.get("g1")).toEqual(before);
+  });
+
+  it("lets an authorize that throws propagate and leaves the gate unchanged", () => {
+    const failing = scoped(
+      makeHarness(() => {
+        throw new Error("policy backend down");
+      }),
+    ).store;
+    failing.create({ id: "g1", prompt: "ship it?" });
+    const before = failing.get("g1");
+    expect(() => failing.resolve("g1", "ok", OWNER)).toThrow("policy backend down");
+    expect(failing.get("g1")).toEqual(before);
+  });
+
   function scoped(extra: Harness): Harness {
     extraHarnesses.push(extra);
     return extra;
@@ -270,6 +347,19 @@ const extraHarnesses: Harness[] = [];
 afterEach(() => {
   while (extraHarnesses.length > 0) extraHarnesses.pop()?.dispose();
 });
+
+/** A resolver whose class reads differently the second time, to prove the store reads it once. */
+function shiftingClass(first: ActorClass, later: ActorClass): GateResolver {
+  let reads = 0;
+  return {
+    get class() {
+      reads += 1;
+      return reads === 1 ? first : later;
+    },
+    id: "shifty",
+    channel: "test-cli",
+  };
+}
 
 function catchError(action: () => unknown): unknown {
   try {

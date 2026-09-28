@@ -36,13 +36,18 @@ export function gateMigration(version: number, name: string = DEFAULT_GATE_TABLE
 }
 
 /**
- * The trigger that refuses a resolve naming no resolver, so a writer that
- * predates `resolved_by` fails loudly instead of resolving anonymously.
+ * The triggers that refuse a resolved row naming no resolver, on update and on
+ * insert, so a writer that predates `resolved_by` fails loudly instead of resolving anonymously.
  */
 export function resolverRequiredTriggerDdl(name: string = DEFAULT_GATE_TABLE): string {
+  return (["UPDATE", "INSERT"] as const).map((event) => resolverTrigger(name, event)).join("\n");
+}
+
+function resolverTrigger(name: string, event: "UPDATE" | "INSERT"): string {
+  const suffix = event === "UPDATE" ? "resolver_required" : "resolver_required_insert";
   return `
-    CREATE TRIGGER IF NOT EXISTS ${quoteIdent(`${name}_resolver_required`)}
-      BEFORE UPDATE ON ${quoteIdent(name)}
+    CREATE TRIGGER IF NOT EXISTS ${quoteIdent(`${name}_${suffix}`)}
+      BEFORE ${event} ON ${quoteIdent(name)}
       FOR EACH ROW WHEN NEW.status = 'resolved' AND NEW.resolved_by IS NULL
     BEGIN
       SELECT RAISE(ABORT, 'hitl: resolvedBy required');

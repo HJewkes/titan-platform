@@ -71,7 +71,7 @@ describe("gateResolverMigration", () => {
     migration.up(db);
     migration.up(db);
     expect(resolverColumnCount(db)).toBe(1);
-    expect(triggerCount(db)).toBe(1);
+    expect(triggerCount(db)).toBe(2);
   });
 
   it("succeeds on a table that already has the column", () => {
@@ -79,7 +79,7 @@ describe("gateResolverMigration", () => {
     db.exec(`ALTER TABLE "hitl_gate" ADD COLUMN resolved_by TEXT`);
     runMigrations(db, [gateMigration(1), gateResolverMigration(2)]);
     expect(resolverColumnCount(db)).toBe(1);
-    expect(triggerCount(db)).toBe(1);
+    expect(triggerCount(db)).toBe(2);
   });
 
   it("takes its version from the product's list and names itself after the table", () => {
@@ -132,6 +132,14 @@ describe("an old writer against a migrated table", () => {
     const db = migratedWithLegacyRows();
     db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "p1");
     expect(rawRow(db, "p1")).toMatchObject({ status: "cancelled", reason: "superseded", resolved_by: null });
+  });
+
+  it("is refused when it inserts a resolved row with no resolver", () => {
+    const db = migratedWithLegacyRows();
+    expect(() => oldInsert(db, "direct", "resolved", JSON.stringify("yes"))).toThrow("hitl: resolvedBy required");
+    expect(db.prepare(`SELECT 1 FROM "hitl_gate" WHERE id = 'direct'`).get()).toBeUndefined();
+    const store = new SqliteGateStore(db, { migrate: false });
+    expect(store.create({ id: "fresh", prompt: "ship it?" }).status).toBe("pending");
   });
 
   it("still inserts pending gates with the old SQL", () => {
