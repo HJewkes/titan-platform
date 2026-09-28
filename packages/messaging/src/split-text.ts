@@ -38,6 +38,7 @@ export function splitText(text: string, options: SplitOptions): string[] {
   const parts: string[] = [];
   let rest = text;
   let carried: Fence | undefined;
+  let midLine = false;
   for (;;) {
     const prefix = carried?.opener ?? "";
     if (prefix.length + rest.length <= maxLength) {
@@ -45,12 +46,13 @@ export function splitText(text: string, options: SplitOptions): string[] {
       return parts;
     }
     if (carried && maxLength - prefix.length <= closerLength(carried)) throw fenceRangeError();
-    const fences = findFences(rest, carried);
+    const fences = findFences(rest, carried, midLine);
     const at = chooseBreak(rest, fences, maxLength - prefix.length, minLength, prefer);
     const head = rest.slice(0, at);
     const fence = fences.find((f) => at > f.start && at < f.end);
     parts.push(prefix + head + (fence ? closerFor(head, fence) : ""));
     carried = fence;
+    midLine = !head.endsWith("\n");
     rest = rest.slice(at);
   }
 }
@@ -67,7 +69,8 @@ function closerLength(fence: Fence): number {
   return fence.marker.length + 1;
 }
 
-function findFences(text: string, carried: Fence | undefined): Fence[] {
+/** A fence line can only open or close at a real line start, so a mid-line remainder skips its first line. */
+function findFences(text: string, carried: Fence | undefined, midLine: boolean): Fence[] {
   const fences: Fence[] = [];
   let open = carried && { ...carried, start: 0 };
   let lineStart = 0;
@@ -75,10 +78,11 @@ function findFences(text: string, carried: Fence | undefined): Fence[] {
     const newline = text.indexOf("\n", lineStart);
     const lineEnd = newline === -1 ? text.length : newline;
     const line = text.slice(lineStart, lineEnd);
-    const opening = open ? undefined : openingFence(line, lineStart);
+    const skip = midLine && lineStart === 0;
+    const opening = open || skip ? undefined : openingFence(line, lineStart);
     if (opening) {
       open = opening;
-    } else if (open && closesFence(line, open.marker)) {
+    } else if (open && !skip && closesFence(line, open.marker)) {
       fences.push({ ...open, end: lineEnd });
       open = undefined;
     }

@@ -154,4 +154,23 @@ describe("splitText", () => {
   it("throws a RangeError when maxLength is too small for a surrogate pair", () => {
     expect(() => splitText("😀", { maxLength: 1 })).toThrow(RangeError);
   });
+
+  it("does not read inline backticks after a mid-line break as a fence", () => {
+    const input = "b``` ```    ```\n    ```\nxxxxxxx. ";
+
+    const parts = splitText(input, { maxLength: 15 });
+
+    expect(parts.join("")).toBe(input);
+    expect(parts.some((part) => part.includes("\n```") && part.startsWith("```"))).toBe(false);
+  });
+
+  it("still recognises a real fence on the line after a mid-line break", () => {
+    const reply = `${"w".repeat(60)}\n\`\`\`ts\n${"code();\n".repeat(10)}\`\`\``;
+
+    const parts = splitText(reply, { maxLength: 40 });
+
+    expect(parts[0]).toBe("w".repeat(parts[0]?.length ?? 0));
+    expect(parts.some((part) => part.startsWith("```ts\n"))).toBe(true);
+    expect(parts.filter((part) => part.includes("```ts")).slice(0, -1).every((part) => part.endsWith("```"))).toBe(true);
+  });
 });
