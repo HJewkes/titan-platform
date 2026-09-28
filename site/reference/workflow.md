@@ -144,6 +144,15 @@ read-only judgements. A step that was in flight at a crash is dispatched again o
 instead of parking the run as `recovery_required`. With the wrapper, a step's `agentId` is
 its request key, not the agent session id.
 
+`routedRunner(routes)` sends each dispatch step to the runner its route names, so one
+workflow can mix code steps and model steps. A route's `match` covers a step id and its
+`<id>:<suffix>` family, and the longest match wins. Its `onRestart` rule decides what a
+crash does to a step in flight: `"repeat"` dispatches it again on `hydrate`, and `"park"`
+leaves the run `recovery_required`, as does a step with no route. Call
+`runner.assertRoutes(workflowName, dispatchStepIds)` when you register a workflow; it
+throws naming every uncovered step id. Two routes with the same `match` throw at
+construction.
+
 `inlineRunner(fn)` is for tests and for steps that are not agents. **Its function returns a
 plain string**, not a `StepRunOutcome` — the wrapper turns a thrown error into a
 non-retryable failure.
