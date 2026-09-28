@@ -97,6 +97,43 @@ can send on as-is.
 The row carries a `reason` column beyond the minimum, so a cancelled gate can
 tell its waiter why.
 
+## Who resolved it
+
+`resolve` and `resolveGate` take an optional third argument, a `GateResolver`:
+`{ class, id, channel, confirmEvent? }`. `class` is an actor class from
+`@titan-design/authority`. The store records it as `resolvedBy`.
+
+```ts
+resolveGate(store, "deploy-approval", { approved: true }, {
+  class: "owner-terminal",
+  id: "owner",
+  channel: "cli",
+});
+```
+
+Every store refuses a resolver whose class is not in authority's `RESOLVER_CLASSES`, so an
+agent or automation never answers a gate. It throws `GateResolverRefused` and the gate stays
+pending. The store reads each declared resolver field once into a frozen copy, and checks and stores
+only that copy. A store's `authorize` option runs after the class check and can refuse more,
+never fewer. It must return `{ allowed }` synchronously, or the store throws
+`GateAuthorizeInvalid`. With `authorize` installed, a resolve that names no resolver is refused.
+Refusals name the gate id and the actor class, never the resolver's other fields.
+
+hitl records a claim about the resolver; it cannot prove one. Any process that can write
+the database can claim any class.
+
+On SQLite the resolver lives in a `resolved_by` column that `gateResolverMigration(n)` adds,
+along with a trigger that refuses any resolve naming no resolver. Add it to your own
+migration list after `gateMigration`. It is idempotent and does not backfill: gates resolved
+before it read back with `resolvedBy` undefined. Until the migration runs, a store resolves
+without a resolver as before and throws `GateStoreSchemaOutdated` when given one, rather
+than dropping it. `migrate: true` does not run it yet.
+
+After the migration, a writer built on hitl 0.2.x fails when it resolves: SQLite aborts the
+statement with a raw error whose message is `hitl: resolvedBy required`. The same trigger
+refuses a direct insert of a resolved row with no resolver. Cancels from an old writer still
+work. The fix is to upgrade that writer so it passes a resolver.
+
 ## Settling
 
 A gate is `pending`, then exactly one of `resolved`, `cancelled`, or `expired`.

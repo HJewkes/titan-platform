@@ -89,6 +89,16 @@ describe("openGate", () => {
   });
 });
 
+describe("resolveGate", () => {
+  it("passes the resolver through to the store", () => {
+    const store = new MemoryGateStore();
+    const gate = openGate(store, { prompt: "ship it?" });
+    const resolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" } as const;
+    expect(resolveGate(store, gate.id, "ok", resolver).resolvedBy).toEqual(resolver);
+    expect(store.get(gate.id)?.resolvedBy).toEqual(resolver);
+  });
+});
+
 describe("waitForGate", () => {
   it("re-attaches to a gate opened by a process that has since exited", async () => {
     const dbPath = tempDbPath();

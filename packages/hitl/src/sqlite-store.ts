@@ -1,6 +1,13 @@
 import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import { BaseGateStore } from "./base-store.js";
-import type { GateRecord, GateStatus, JsonSchema } from "./types.js";
+import {
+  GateStoreSchemaOutdated,
+  type GateAuthorize,
+  type GateRecord,
+  type GateResolver,
+  type GateStatus,
+  type JsonSchema,
+} from "./types.js";
 
 export const DEFAULT_GATE_TABLE = "hitl_gate";
 
@@ -28,11 +35,52 @@ export function gateMigration(version: number, name: string = DEFAULT_GATE_TABLE
   return { version, name: `hitl:${name}`, up: (db) => db.exec(gateTableDdl(name)) };
 }
 
+/**
+ * The triggers that refuse a resolved row naming no resolver, on update and on
+ * insert, so a writer that predates `resolved_by` fails loudly instead of resolving anonymously.
+ */
+export function resolverRequiredTriggerDdl(name: string = DEFAULT_GATE_TABLE): string {
+  return (["UPDATE", "INSERT"] as const).map((event) => resolverTrigger(name, event)).join("\n");
+}
+
+function resolverTrigger(name: string, event: "UPDATE" | "INSERT"): string {
+  const suffix = event === "UPDATE" ? "resolver_required" : "resolver_required_insert";
+  return `
+    CREATE TRIGGER IF NOT EXISTS ${quoteIdent(`${name}_${suffix}`)}
+      BEFORE ${event} ON ${quoteIdent(name)}
+      FOR EACH ROW WHEN NEW.status = 'resolved' AND NEW.resolved_by IS NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'hitl: resolvedBy required');
+    END;
+  `;
+}
+
+/**
+ * Adds `resolved_by` and the resolver trigger. Idempotent and backfill-free:
+ * gates resolved before it keep an unknown resolver rather than a guessed one.
+ */
+export function gateResolverMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:resolver:${name}`,
+    up: (db) => {
+      if (!hasResolverColumn(db, name)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_by TEXT`);
+      db.exec(resolverRequiredTriggerDdl(name));
+    },
+  };
+}
+
+function hasResolverColumn(db: Db, table: string): boolean {
+  return db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = 'resolved_by'").get(table) !== undefined;
+}
+
 export interface SqliteGateStoreOptions {
   table?: string;
   /** Run `gateMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
+  /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
+  authorize?: GateAuthorize;
 }
 
 interface RawGateRow {
@@ -45,6 +93,8 @@ interface RawGateRow {
   created_at: string;
   resolved_at: string | null;
   expires_at: string | null;
+  /** Absent entirely on a table that has not run `gateResolverMigration`. */
+  resolved_by?: string | null;
 }
 
 /**
@@ -54,12 +104,13 @@ interface RawGateRow {
  */
 export class SqliteGateStore extends BaseGateStore {
   private readonly table: string;
+  private resolverColumnSeen = false;
 
   constructor(
     private readonly db: Db,
     options: SqliteGateStoreOptions = {},
   ) {
-    super(options.now ?? Date.now);
+    super(options.now ?? Date.now, options.authorize);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
     if (options.migrate ?? true) runMigrations(db, [gateMigration(1, this.table)]);
   }
@@ -82,6 +133,10 @@ export class SqliteGateStore extends BaseGateStore {
   }
 
   protected update(record: GateRecord): void {
+    if (record.resolvedBy) {
+      this.updateWithResolver(record, record.resolvedBy);
+      return;
+    }
     this.db
       .prepare(
         `UPDATE ${quoteIdent(this.table)}
@@ -89,6 +144,33 @@ export class SqliteGateStore extends BaseGateStore {
           WHERE id = ?`,
       )
       .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, record.id);
+  }
+
+  /** Refuses rather than dropping the resolver when the table has no column to hold it. */
+  private updateWithResolver(record: GateRecord, resolvedBy: GateResolver): void {
+    if (!this.resolverColumnPresent()) {
+      throw new GateStoreSchemaOutdated(record.id, this.table, "gateResolverMigration");
+    }
+    this.db
+      .prepare(
+        `UPDATE ${quoteIdent(this.table)}
+            SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
+          WHERE id = ?`,
+      )
+      .run(
+        record.status,
+        toJson(record.payload),
+        record.reason ?? null,
+        record.resolvedAt ?? null,
+        JSON.stringify(resolvedBy),
+        record.id,
+      );
+  }
+
+  /** Only a positive probe is cached, so a migration run after construction is still noticed. */
+  private resolverColumnPresent(): boolean {
+    if (!this.resolverColumnSeen) this.resolverColumnSeen = hasResolverColumn(this.db, this.table);
+    return this.resolverColumnSeen;
   }
 
   protected readByStatus(status: GateStatus): GateRecord[] {
@@ -129,5 +211,6 @@ function toRecord(row: RawGateRow): GateRecord {
     createdAt: row.created_at,
     resolvedAt: row.resolved_at ?? undefined,
     expiresAt: row.expires_at ?? undefined,
+    resolvedBy: row.resolved_by ? (JSON.parse(row.resolved_by) as GateResolver) : undefined,
   };
 }

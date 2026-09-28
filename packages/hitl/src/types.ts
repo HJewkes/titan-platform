@@ -1,3 +1,5 @@
+import type { ActorClass } from "@titan-design/authority";
+
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
 export type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
 
@@ -16,7 +18,26 @@ export interface GateRecord {
   createdAt: string;
   resolvedAt: string | undefined;
   expiresAt: string | undefined;
+  /** Who resolved the gate, as claimed by the caller; unset for gates resolved before stores recorded it. */
+  resolvedBy: GateResolver | undefined;
 }
+
+/** A claim about who answered a gate. hitl records it and checks its class; it cannot prove it. */
+export interface GateResolver {
+  class: ActorClass;
+  id: string;
+  channel: string;
+  /** The channel's own id for the confirming event, such as a chat reaction. */
+  confirmEvent?: string;
+}
+
+export type GateAuthorization = { allowed: true } | { allowed: false; reason: string };
+
+/**
+ * Runs after the default resolver-class check, so it can refuse a resolver but
+ * never admit one the default refused. Must return synchronously.
+ */
+export type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>) => GateAuthorization;
 
 export interface GateInput {
   /** Defaults to a random UUID. Supply one to make the gate addressable by a name you already own. */
@@ -33,7 +54,7 @@ export interface GateInput {
 export interface GateStore {
   create(input: GateInput): GateRecord;
   get(id: string): GateRecord | undefined;
-  resolve(id: string, payload: unknown): GateRecord;
+  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord;
   cancel(id: string, reason: string): GateRecord;
   listPending(): GateRecord[];
 }
@@ -96,5 +117,32 @@ export class GatePayloadInvalid extends GateError {
 export class GateAborted extends GateError {
   constructor(gateId: string, reason: string) {
     super(`stopped waiting on gate ${gateId}: ${reason}`, gateId);
+  }
+}
+
+export class GateResolverRefused extends GateError {
+  constructor(
+    gateId: string,
+    readonly actorClass: string | undefined,
+    readonly reason: string,
+  ) {
+    super(`gate ${gateId} refused a resolution by ${actorClass ?? "an unnamed resolver"}: ${reason}`, gateId);
+  }
+}
+
+/** The store cannot record a resolver because its table predates the resolver migration. */
+export class GateStoreSchemaOutdated extends GateError {
+  constructor(
+    gateId: string,
+    readonly table: string,
+    readonly migration: string,
+  ) {
+    super(`gate ${gateId} cannot record its resolver: table ${table} needs ${migration}`, gateId);
+  }
+}
+
+export class GateAuthorizeInvalid extends GateError {
+  constructor(gateId: string) {
+    super(`authorize for gate ${gateId} must return a decision { allowed: boolean } synchronously`, gateId);
   }
 }
