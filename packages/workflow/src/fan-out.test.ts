@@ -111,6 +111,21 @@ describe("mapItems", () => {
     expect(out.spentUsd).toBeCloseTo(0.7);
   });
 
+  it("counts an item that fails once then succeeds against the budget once, with both attempts' cost", async () => {
+    let bFailed = false;
+    const run = vi.fn(async (input: StepRunInput) => {
+      if (input.stepId !== "judge/b" || bFailed) return { ok: true as const, output: "ok", usage: { costUsd: 0.1 } };
+      bFailed = true;
+      return { ok: false as const, error: "flaky", retryable: true, usage: { costUsd: 0.25 } };
+    });
+
+    const out = await runOnce({ run }, ["a", "b", "c"], byLetter);
+
+    expect(out.failed).toEqual([]);
+    expect(out.results.find((r) => r.key === "b")?.result.usage?.costUsd).toBeCloseTo(0.35);
+    expect(out.spentUsd).toBeCloseTo(0.55);
+  });
+
   it("rejects duplicate item keys before launching anything", async () => {
     const run = vi.fn(async () => ({ ok: true as const, output: "ok" }));
     const rt = runtime(makeDb(), { run });
