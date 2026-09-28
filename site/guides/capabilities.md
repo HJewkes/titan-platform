@@ -611,7 +611,7 @@ Key exports:
 - `types`: `StepFailedError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
 - `prompt`: `buildStepVars`, `mustacheRenderer`, `unfilledVariables`
-- +53 more in the [reference page](/reference/workflow)
+- +59 more in the [reference page](/reference/workflow)
 
 ## UI
 
