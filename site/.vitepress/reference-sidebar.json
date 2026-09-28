@@ -20,6 +20,10 @@
         "link": "/reference/code-parser"
       },
       {
+        "text": "egress-scan",
+        "link": "/reference/egress-scan"
+      },
+      {
         "text": "embed",
         "link": "/reference/embed"
       },
