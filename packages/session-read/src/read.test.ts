@@ -5,7 +5,7 @@ import { prefixHash } from "@titan-design/locator";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CWD, FIXTURE_LINES, SESSION, offsetAfterLine, renderTranscript } from "./fixture.js";
 import type { TranscriptDelta } from "./fold.js";
-import { TranscriptParseError, extractTranscript, readTranscriptEvents } from "./read.js";
+import { TranscriptParseError, extractTranscript, lastTimestampBefore, readTranscriptEvents } from "./read.js";
 
 let dir: string;
 let transcript: string;
@@ -112,20 +112,22 @@ describe("extractTranscript", () => {
   });
 
   it("produces the same rows chunked as in one full pass", async () => {
-    const split = offsetAfterLine(FIXTURE_LINES, 8);
+    // FIXTURE_LINES[24] is the cost-state line, which carries no timestamp of its own;
+    // splitting right before it resumes with that line first, the case a from-zero read never hits.
+    const split = offsetAfterLine(FIXTURE_LINES, 24);
     const full = await extractTranscript(transcript);
     const first = await extractTranscript(transcript, { untilByteOffset: split });
     const second = await extractTranscript(transcript, { fromByteOffset: first.lastByteOffset, priorPrefixHash: first.prefixHash });
     expect(first.lastByteOffset).toBe(split);
     expect(second.restartedFromZero).toBe(false);
 
-    const keys = ["facts", "spans", "phases", "humanEdits", "fileCheckpoints", "prMerges", "prCreates"] as const;
+    const keys = ["facts", "spans", "phases", "humanEdits", "fileCheckpoints", "prMerges", "prCreates", "costStates"] as const;
     for (const kind of keys) {
       expect(sortedJson([...first[kind], ...second[kind]]), kind).toEqual(sortedJson(full[kind]));
     }
     expect(dedupe([...first.edges, ...second.edges], (e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`)).toHaveLength(full.edges.length);
     expect(dedupe([...first.files, ...second.files], (f) => f.fileRef).map((f) => f.fileRef)).toEqual(full.files.map((f) => f.fileRef));
-    expect(first.usage[0]!.requestCount + second.usage[0]!.requestCount).toBe(full.usage[0]!.requestCount);
+    expect(first.usage[0]!.requestCount + (second.usage[0]?.requestCount ?? 0)).toBe(full.usage[0]!.requestCount);
   });
 
   it("gives a subagent sidechain its own identity and links it to the parent", async () => {
@@ -136,6 +138,24 @@ describe("extractTranscript", () => {
     expect(new Set(events.map((e) => e.sessionId))).toEqual(new Set(["abc"]));
     const spawned = events.filter((e) => e.kind === "edge" && e.relation === "spawned");
     expect(spawned[0]).toMatchObject({ sourceRef: "session:sess-1", targetRef: "session:abc" });
+  });
+});
+
+describe("lastTimestampBefore", () => {
+  it("widens the window until it finds a timestamp more than one window before the resume offset", async () => {
+    const lines = [{ type: "seed", timestamp: "2026-01-01T00:00:00Z" }, { type: "cost-state" }, { type: "cost-state" }, { type: "cost-state" }];
+    const file = path.join(dir, "windowed.jsonl");
+    writeFileSync(file, renderTranscript(lines), "utf8");
+    const start = Buffer.byteLength(renderTranscript(lines), "utf8");
+    expect(await lastTimestampBefore(file, start, 8)).toBe("2026-01-01T00:00:00Z");
+  });
+
+  it("returns an empty string when no earlier line carries a timestamp", async () => {
+    const lines = [{ type: "cost-state" }, { type: "cost-state" }];
+    const file = path.join(dir, "no-ts.jsonl");
+    writeFileSync(file, renderTranscript(lines), "utf8");
+    const start = Buffer.byteLength(renderTranscript(lines), "utf8");
+    expect(await lastTimestampBefore(file, start, 8)).toBe("");
   });
 });
 
