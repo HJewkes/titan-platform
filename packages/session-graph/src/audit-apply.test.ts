@@ -9,6 +9,7 @@ import { applyAudit } from "./audit-apply.js";
 import { AUDIT_COLUMNS, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME } from "./audit-schema-v5.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME } from "./audit-schema-v6.js";
+import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./audit-schema-v7.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { purgeTranscript } from "./purge.js";
 import { refreshCorpus } from "./refresh.js";
@@ -109,7 +110,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME],
       [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
@@ -160,6 +161,38 @@ describe("migration 6", () => {
     ]);
     migrated.db.close();
     fresh.db.close();
+  });
+});
+
+describe("migration 7", () => {
+  const originColumns = (db: SessionGraph["db"]) => columnsOf(db, "session_origin").filter((c) => c === "task_ids" || c === "task_source");
+  const originRows = (db: SessionGraph["db"]) => db.prepare("SELECT * FROM session_origin").all();
+
+  it("migration 7 succeeds on a database that already has the columns", () => {
+    const file = path.join(dir, "v6-with-columns.sqlite3");
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.filter((m) => m.version <= 6));
+    db.exec("ALTER TABLE session_origin ADD COLUMN task_ids TEXT; ALTER TABLE session_origin ADD COLUMN task_source TEXT");
+    db.prepare("INSERT INTO session_origin (session_id, origin_system, task_ids, task_source, resolved_at) VALUES ('kept', 'agent-chat', '[\"DEMO-7\"]', 'name', '2026-09-01T00:00:00Z')").run();
+    db.close();
+
+    const migrated = openSessionGraph(file);
+
+    expect(originColumns(migrated.db)).toEqual(["task_ids", "task_source"]);
+    expect(originRows(migrated.db)).toEqual([expect.objectContaining({ session_id: "kept", task_ids: '["DEMO-7"]', task_source: "name", resolved_at: "2026-09-01T00:00:00Z" })]);
+    migrated.db.close();
+  });
+
+  it("a second run of the migration 7 body changes nothing", () => {
+    graph.db.prepare("INSERT INTO session_origin (session_id, origin_system, resolved_at) VALUES ('kept', 'agent-chat', '2026-09-01T00:00:00Z')").run();
+    applyOriginTaskLinkSchema(graph.db);
+    const [schemaOnce, rowsOnce] = [graph.db.prepare("SELECT sql FROM sqlite_master ORDER BY name").all(), originRows(graph.db)];
+
+    applyOriginTaskLinkSchema(graph.db);
+
+    expect(graph.db.prepare("SELECT sql FROM sqlite_master ORDER BY name").all()).toEqual(schemaOnce);
+    expect(originRows(graph.db)).toEqual(rowsOnce);
+    expect(originColumns(graph.db)).toEqual(["task_ids", "task_source"]);
   });
 });
 

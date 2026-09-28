@@ -18,6 +18,14 @@ within a reset epoch. Null token fields and null cost mean unreported, never zer
 Input includes cache reads/writes, and output includes reasoning. Those counters are subsets. A reader must never add snapshots
 to response deltas or add subset counters to input/output totals.
 
+`foldUsage(measurements)` picks the measurements that describe distinct spend and
+returns them with their `basis`. Deltas count once per `responseId`, the last report
+winning. Any delta supersedes every snapshot. Without deltas it keeps the
+highest-sequence snapshot per scope, scope ID and epoch (a tie goes to the later one),
+and a conversation snapshot supersedes the other scopes in its epoch. It returns the
+measurements unchanged; summing them, and what a null count means in a sum, stays
+with the caller. An empty list folds to no measurements on a `snapshot` basis.
+
 The lifecycle protocol records one invocation from durable preparation through terminal
 evidence. Every transition carries an event ID and expected revision, while owner
 generations and leases fence stale supervisors. `cancel_requested` records intent;

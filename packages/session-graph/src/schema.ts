@@ -1,6 +1,7 @@
 import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./audit-schema-v5.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./audit-schema-v6.js";
+import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./audit-schema-v7.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, kitMigration, type Migration } from "@titan-design/store-sqlite";
 
@@ -177,4 +178,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 4, name: AUDIT_MIGRATION_NAME, up: applyAuditSchema },
   { version: 5, name: ORIGIN_MIGRATION_NAME, up: applyOriginSchema },
   { version: 6, name: EPISODE_TRANSCRIPT_MIGRATION_NAME, up: applyEpisodeTranscriptSchema },
+  { version: 7, name: ORIGIN_TASK_LINK_MIGRATION_NAME, up: applyOriginTaskLinkSchema },
 ];

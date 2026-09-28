@@ -23,6 +23,14 @@ a reset epoch. Unknown counts and costs are null. Input includes cache reads and
 writes; output includes reasoning. These subsets must not be added to totals, and
 snapshots must not be added to response deltas.
 
+`foldUsage(measurements)` picks the measurements that describe distinct spend and
+returns them with their `basis`. Deltas count once per `responseId`, the last report
+winning. Any delta supersedes every snapshot. Without deltas it keeps the
+highest-sequence snapshot per scope, scope ID and epoch (a tie goes to the later one),
+and a conversation snapshot supersedes the other scopes in its epoch. It returns the
+measurements unchanged; summing them, and what a null count means in a sum, stays
+with the caller. An empty list folds to no measurements on a `snapshot` basis.
+
 See the [multi-harness contract decision](/guides/multi-harness-contracts) for
 execution and decoder integration, compatibility boundaries and implementation order.
 

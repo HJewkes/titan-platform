@@ -134,9 +134,9 @@ step when the agent run reported it, and a run with
 an `outputSchema` stores its output as JSON text.
 
 `durableHarnessRunner` reports `usage` on a successful step from the harness's
-measurements. Response deltas count once each and supersede snapshots; without deltas it
+measurements, selected with agent-protocol's `foldUsage`. Response deltas count once each and supersede snapshots; without deltas it
 keeps the highest-sequence snapshot per scope, and a conversation snapshot supersedes turn
-snapshots in its epoch. An unpriced measurement adds its tokens at zero cost. Its failed
+snapshots in its epoch. An unpriced measurement adds its tokens at zero cost, and a null token count adds nothing. Its failed
 steps report none, because the durable failure record carries no usage.
 
 `idempotentRunner(live)` wraps a live runner whose steps are safe to repeat, such as
