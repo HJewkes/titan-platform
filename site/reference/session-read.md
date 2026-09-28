@@ -156,3 +156,11 @@ holds a transcript path. The package README has the recipe and measured window s
 `SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
 usage without a database. `SessionUsageAccumulator` is shared with graph queries;
 response deltas, reset epochs and unknown token categories retain their semantics.
+
+**Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
+that belongs to a different native session, or a sidechain window that names more than one
+parent session, throws `SessionIdentityError` — a `TypeError` subclass with a stable
+`code` field (`"foreign_native_session"` or `"multiple_parent_sessions"`). Existing
+`instanceof TypeError` catches and message-prefix matches keep working; a consumer that
+wants to tell this apart from option-validation `TypeError`s (which stay plain) can now
+check `instanceof SessionIdentityError` and read `.code`.
