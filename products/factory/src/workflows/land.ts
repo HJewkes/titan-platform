@@ -7,6 +7,7 @@ import { evaluateChecks } from "../github/checks.js";
 import type { GitHubPort, MergeMethod, PullRequest, RepoSlug } from "../github/port.js";
 import { redactForEvidence } from "../redact.js";
 import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
+import { CiSnapshotResult, LandRulesResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
 export const MAX_UPDATE_CYCLES = 3;
@@ -85,12 +86,6 @@ interface UpdateResult {
   skipped?: string;
 }
 
-interface MergeResult {
-  done: boolean;
-  skipped?: string;
-  mergeSha: string;
-}
-
 interface LandState {
   cycle: number;
   updates: number;
@@ -105,11 +100,11 @@ interface LandState {
  * instead of merging on anything else, so the calling pilot decides what a red CI means.
  */
 export async function land(ctx: WorkflowContext, input: LandInput, options: LandOptions): Promise<LandOutcome> {
-  const rules = await step<LandRules>(ctx, "land-rules", { repo: input.repo, pr: input.pr });
+  const rules = await step(ctx, "land-rules", { repo: input.repo, pr: input.pr }, LandRulesResult);
   const state: LandState = { cycle: 0, updates: 0, updatesSinceGate: 0, merges: 0, trusted: new Set() };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
-    const ci = await step<CiSnapshot>(ctx, `ci-wait:${state.cycle++}`, { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict });
+    const ci = await step(ctx, `ci-wait:${state.cycle++}`, { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
     const next = ci.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, ci, state, options);
     if (next) return next;
   }
@@ -121,7 +116,7 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
     if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, `behind after ${state.updates} updates`);
     state.updatesSinceGate = 0;
   }
-  const update = await step<UpdateResult>(ctx, `update-branch:${state.updates++}`, { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha });
+  const update = await step(ctx, `update-branch:${state.updates++}`, { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   state.updatesSinceGate += 1;
   if (update.own && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   return undefined;
@@ -133,7 +128,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options.policy);
-  const merge = await step<MergeResult>(ctx, `merge:${state.merges++}`, { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" });
+  const merge = await step(ctx, `merge:${state.merges++}`, { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" }, MergeResultResult);
   if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
@@ -164,9 +159,9 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 }
 
 /** Code steps take their input as JSON and answer with one evidence record whose `result` the workflow reads. */
-async function step<T>(ctx: WorkflowContext, stepId: string, input: object): Promise<T> {
-  const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) } });
-  return (JSON.parse(done.output ?? "{}") as { result: T }).result;
+async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
+  const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
+  return done.data!.result;
 }
 
 /** Every land step is a code step that reads before it writes, so each is safe to repeat after a crash. */
