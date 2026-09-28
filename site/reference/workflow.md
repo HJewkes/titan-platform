@@ -147,7 +147,11 @@ settle.
 and inactivity are retryable; budget, auth, refusal, and schema failures are not. It reports
 `usage` (`costUsd`, `inputTokens`, `outputTokens`) on every successful step and on a failed
 step when the agent run reported it, and a run with
-an `outputSchema` stores its output as JSON text.
+an `outputSchema` stores its output as JSON text. A step's own `schema` is forwarded as that
+`outputSchema` and wins over `defaults.outputSchema`. A `schema_invalid` failure from the agent
+ends as the same non-retryable `StepOutputInvalidError` (`kind: "schema"`) as a workflow-side
+parse failure, through `idempotentRunner` and `routedRunner` too; its message carries zod issue
+paths, never the payload.
 
 `durableHarnessRunner` reports `usage` on a successful step from the harness's
 measurements, selected with agent-protocol's `foldUsage`. Response deltas count once each and supersede snapshots; without deltas it

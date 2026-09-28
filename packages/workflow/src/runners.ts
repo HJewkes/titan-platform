@@ -1,4 +1,4 @@
-import { runAgent, type AgentRunConfig, type AgentRunDeps, type AgentUsage } from "@titan-design/agent";
+import { runAgent, type AgentFailure, type AgentRunConfig, type AgentRunDeps, type AgentUsage } from "@titan-design/agent";
 import type { DurableStepOutcome, LegacyStepRunner, RecoverableStepRunner, StepRunInput, StepRunOutcome, StepUsage } from "./types.js";
 
 /** Failure kinds where a fresh attempt could plausibly succeed. Budget, auth, and refusal would only repeat. */
@@ -22,14 +22,20 @@ export function agentRunner(options: AgentRunnerOptions): LegacyStepRunner {
   return {
     async run(input: StepRunInput): Promise<StepRunOutcome> {
       const result = await runAgent(
-        { ...options.defaults, prompt: input.prompt, cwd: options.cwd, maxTurns: options.maxTurns, maxBudgetUsd: options.maxBudgetUsd, model: input.model ?? options.defaults?.model, signal: input.signal },
+        { ...options.defaults, prompt: input.prompt, cwd: options.cwd, maxTurns: options.maxTurns, maxBudgetUsd: options.maxBudgetUsd, model: input.model ?? options.defaults?.model, outputSchema: input.outputSchema ?? options.defaults?.outputSchema, signal: input.signal },
         options.deps,
       );
       if (result.ok) return { ok: true, output: outputText(result.output), runnerRef: result.sessionId, usage: stepUsage(result.usage) };
-      const failed: StepRunOutcome = { ok: false, error: `${result.failure.kind}: ${result.failure.reason}`, retryable: RETRYABLE.has(result.failure.kind) };
+      const failed: StepRunOutcome = { ok: false, error: failureText(result.failure), retryable: RETRYABLE.has(result.failure.kind), ...(result.failure.kind === "schema_invalid" ? { code: "schema_invalid" as const } : {}) };
       return result.usage ? { ...failed, usage: stepUsage(result.usage) } : failed;
     },
   };
+}
+
+/** Kind, reason and zod issue paths only: the raw model payload never enters an error message. */
+function failureText(failure: AgentFailure): string {
+  const issues = failure.kind === "schema_invalid" ? failure.error?.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`) : undefined;
+  return `${failure.kind}: ${failure.reason}${issues?.length ? ` (${issues.join("; ")})` : ""}`;
 }
 
 /** An `outputSchema` run returns an object; steps store text, so it is kept as JSON. */
@@ -67,7 +73,7 @@ export function idempotentRunner(live: LegacyStepRunner): RecoverableStepRunner 
 
 function toDurableOutcome(outcome: StepRunOutcome): DurableStepOutcome {
   if (outcome.ok) return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
-  return { kind: "failed", error: outcome.error, retryable: outcome.retryable, usage: outcome.usage };
+  return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
 }
 
 function failedOutcome(error: unknown): DurableStepOutcome {
