@@ -254,6 +254,10 @@ export class RunContext implements WorkflowContext {
       this.throwIfCancelled();
       const retry = attempt + 1;
       failedUsage = addUsage(failedUsage, outcome.usage);
+      if (outcome.code === "schema_invalid") {
+        this.consumeActive(active!);
+        throw new StepOutputInvalidError(stepId, iteration, "schema", [outcome.error], failedUsage);
+      }
       if (!outcome.retryable || attempt >= this.deps.maxRetries) {
         this.consumeActive(active!);
         throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
@@ -291,7 +295,7 @@ export class RunContext implements WorkflowContext {
         if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
         return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
       }
-      return { kind: "failed", error: outcome.error, retryable: outcome.retryable, usage: outcome.usage };
+      return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
     }
     if (!isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "recoverable step has no recoverable runner");
     const ack = await this.deps.runner.dispatch({ ...input, executionId: step.executionId, requestKey: step.requestKey, attempt: step.attempt });
