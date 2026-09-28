@@ -8,6 +8,7 @@ import { CODEX_ROLLOUT_FORMAT, codexSourceId } from "./codex-discover.js";
 import { codexFixtureRecords, renderCodexRollout } from "./codex-fixture.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
 import { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-session-turns.js";
+import { SessionIdentityError } from "./recent-claude.js";
 
 const directories: string[] = [];
 
@@ -206,11 +207,13 @@ describe("readRecentSessionTurns", () => {
     expect(readRecentSessionTurnsSync(source, options())).toEqual(asynchronous);
   });
 
-  it.each([0, Number.NaN, 1.5])("rejects malformed bounds before reading: %s", async (value) => {
+  it.each([0, Number.NaN, 1.5])("rejects malformed bounds before reading with a plain TypeError: %s", async (value) => {
     const conversation = identity("claude-code", "invalid-bound-session");
     const directory = await temporaryDirectory();
     const source = claudeSource(join(directory, `${conversation.nativeId}.jsonl`), conversation);
-    await expect(readRecentSessionTurns(source, options({ maxBytes: value }))).rejects.toThrow(/maxBytes/);
+    const rejection = expect(readRecentSessionTurns(source, options({ maxBytes: value }))).rejects;
+    await rejection.toThrow(/maxBytes/);
+    await rejection.not.toBeInstanceOf(SessionIdentityError);
   });
 
   it("rejects a mismatched descriptor before reading its path", async () => {
@@ -219,13 +222,16 @@ describe("readRecentSessionTurns", () => {
     await expect(readRecentSessionTurns(source, options())).rejects.toThrow(/consistent codex-rollout/);
   });
 
-  it("rejects a Claude native session mismatch observed inside the window", async () => {
+  it("rejects a Claude native session mismatch observed inside the window with a foreign_native_session SessionIdentityError", async () => {
     const conversation = identity("claude-code", "expected-session");
     const source = await writeClaude(conversation, [claudeRow("user", "wrong", { sessionId: "other-session" })]);
-    await expect(readRecentSessionTurns(source, options())).rejects.toThrow(/other-session, expected expected-session/);
+    const rejection = expect(readRecentSessionTurns(source, options())).rejects;
+    await rejection.toThrow(SessionIdentityError);
+    await rejection.toThrow("Claude transcript record belongs to native session other-session, expected expected-session");
+    await rejection.toMatchObject({ code: "foreign_native_session" });
   });
 
-  it("rejects multiple parent session IDs in one Claude sidechain window", async () => {
+  it("rejects multiple parent session IDs in one Claude sidechain window with a multiple_parent_sessions SessionIdentityError", async () => {
     const conversation = identity("claude-code", "child-agent");
     const directory = await temporaryDirectory();
     const path = join(directory, `agent-${conversation.nativeId}.jsonl`);
@@ -234,7 +240,10 @@ describe("readRecentSessionTurns", () => {
       claudeRow("assistant", "two", { sessionId: "parent-two" }),
     ];
     await writeFile(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
-    await expect(readRecentSessionTurns(claudeSource(path, conversation), options())).rejects.toThrow(/multiple parent sessions/);
+    const rejection = expect(readRecentSessionTurns(claudeSource(path, conversation), options())).rejects;
+    await rejection.toThrow(SessionIdentityError);
+    await rejection.toThrow("Claude sidechain window names multiple parent sessions");
+    await rejection.toMatchObject({ code: "multiple_parent_sessions" });
   });
 
   it("rejects a Codex native thread mismatch observed inside the window", async () => {
