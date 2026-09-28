@@ -22,6 +22,7 @@ retrieval-eval mine --out pairs.jsonl            # query/label pairs, both arms,
 retrieval-eval run pairs.jsonl                   # score every candidate and query variant
 retrieval-eval run pairs.jsonl --embedder ollama # hybrid over Ollama nomic-embed-text instead of hash
 retrieval-eval uptake --since 2026-09-01         # recall-tool calls vs filesystem search
+retrieval-eval served --since 2026-09-16         # what rendered blocks served, and whether it was used
 ```
 
 `mine` writes JSONL to stdout (or `--out`) and a stats-plus-corpus-snapshot block to stderr.
@@ -40,6 +41,30 @@ the next canonical session on that initiative opened. Resolving that next record
 transcript works for a uuid `session_id`, and for a `session_01…` id via the session's own
 web url stamped into the transcript. Records whose `session_id` is a hand-written slug
 pre-date transcript ids and cannot be resolved at all.
+
+## The served arm
+
+The two arms above ask whether a ranker *would have* surfaced what the agent read. The
+`served` arm asks whether what was *actually rendered* got used (design-sources §1.3). One
+query unit is one rendered block, read back from the transcript's first user turn that
+carries it: active-work's bootstrap `see:` lines under each open loop, or agent-chat's
+"## Related to this assignment" list in a spawned agent's brief. Each served ref gets three
+labels:
+
+- **opened**: its filename (or task id) appears in any later tool input: `Read`, a Bash
+  `cat` or `sed`, a Grep path.
+- **cited**: its filename or task id appears in later assistant prose or in the session
+  record written at wrap. This catches a note whose title was enough without opening it.
+- **opened-section**: reported as `n/a`. Rendered refs carry no span anchor until design B4
+  ships, so there is no served line range to match a `Read` offset against.
+
+The control is the unserved base rate: every same-class file in each served initiative that
+the block did not serve, run through the same filename test. It is computed for sources and
+notes; a task id is a substring of too much to be a fair control. Rows are sliced by trigger
+and class, by initiative, by whether the ref was foreign (``[from `slug`]``), and by file.
+
+`--until` closes the window: blocks rendered at or after it are skipped, and so is any later
+activity in an earlier session, so a re-run over a closed window gives the same numbers.
 
 ## The candidates
 

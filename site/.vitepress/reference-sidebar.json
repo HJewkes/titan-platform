@@ -8,6 +8,10 @@
         "link": "/reference/agent-protocol"
       },
       {
+        "text": "authority",
+        "link": "/reference/authority"
+      },
+      {
         "text": "chat-protocol",
         "link": "/reference/chat-protocol"
       },
@@ -20,8 +24,16 @@
         "link": "/reference/code-parser"
       },
       {
+        "text": "egress-scan",
+        "link": "/reference/egress-scan"
+      },
+      {
         "text": "embed",
         "link": "/reference/embed"
+      },
+      {
+        "text": "evidence",
+        "link": "/reference/evidence"
       },
       {
         "text": "locator",
@@ -58,6 +70,10 @@
         "link": "/reference/hitl"
       },
       {
+        "text": "matrix-bus",
+        "link": "/reference/matrix-bus"
+      },
+      {
         "text": "messaging",
         "link": "/reference/messaging"
       },
@@ -90,6 +106,10 @@
       {
         "text": "memory",
         "link": "/reference/memory"
+      },
+      {
+        "text": "queue-mirror",
+        "link": "/reference/queue-mirror"
       },
       {
         "text": "session-analytics",

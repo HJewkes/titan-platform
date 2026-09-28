@@ -1,0 +1,14 @@
+id: titan-core
+url: ${CORE_URL}
+as_token: ${CORE_AS_TOKEN}
+hs_token: ${CORE_HS_TOKEN}
+sender_localpart: core-bot
+rate_limited: false
+namespaces:
+  users:
+    - exclusive: true
+      regex: "@core-.*:${SERVER_NAME_RE}"
+  aliases:
+    - exclusive: true
+      regex: "#coord.*:${SERVER_NAME_RE}"
+  rooms: []

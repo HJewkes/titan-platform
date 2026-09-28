@@ -31,7 +31,7 @@ client.subscribe({ onEvent: (m) => m.event === "change" && refetch() });
 | Export | What it does |
 | --- | --- |
 | `createRpcClient<M>(source)` | `call(name, args?, { signal })` typed by `M`; rejects with `RpcError` (`command`, `code`, `message`) on a failure envelope. Args may be omitted only when every field is optional. |
-| `liveSource({ origin?, fetch?, reconnectDelayMs?, maxReconnectDelayMs? })` | Calls with a JSON content type, so the daemon's Host, Origin, and Content-Type guards pass unchanged. SSE over `fetch`, redialled with doubling backoff (500 ms to 10 s) until closed. |
+| `liveSource({ origin?, fetch?, reconnectDelayMs?, maxReconnectDelayMs? })` | Calls with a JSON content type and `x-titan-client: rpc-client`, so the daemon's guards pass from a page or from Node. SSE over `fetch`, redialled with doubling backoff (500 ms to 10 s) until closed. |
 | `staticSource({ snapshot, resolve? })` | Recorded answer by canonical key first, then `resolve(command, args, snapshot.dataset)`, then `EXIT.UNAVAILABLE`. A resolver that throws, rejects, or returns no envelope answers `EXIT.SOFTWARE` with its message. Returns a fresh copy per call. |
 | `DataSource` | `call(name, args, { signal })` resolves to an envelope for every outcome and rejects only on abort; `subscribe(handlers, { signal })`. Args must be JSON-serialisable: a BigInt or a cycle answers `EXIT.DATAERR` from both sources. |
 | `Snapshot`, `SNAPSHOT_FORMAT`, `parseSnapshot`, `buildSnapshot` | The `titan-snapshot@1` container, its validator, and a recorder over any source. |

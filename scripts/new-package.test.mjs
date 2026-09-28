@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseArgs, registerLayer, stampReferencePage } from "./new-package.mjs";
+import { parseArgs, registerLayer, stampPackageDir, stampReferencePage } from "./new-package.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -106,5 +106,16 @@ describe("stamping the reference page the docs build demands", () => {
     writeFileSync(page, "# beacon\n\nhand-written\n");
     expect(stampReferencePage(root, opts)).toBeNull();
     expect(readFileSync(page, "utf8")).toBe("# beacon\n\nhand-written\n");
+  });
+});
+
+describe("stamping the package directory", () => {
+  it("gives the new package a CAPABILITY.md naming it, so the capability catalog can list it", () => {
+    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
+    const { dest } = stampPackageDir(root, { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" });
+    const capability = readFileSync(join(dest, "CAPABILITY.md"), "utf8");
+    expect(capability).toContain("# beacon: use this when");
+    expect(capability).not.toMatch(/__[A-Z]+__/);
   });
 });

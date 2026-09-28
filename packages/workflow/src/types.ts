@@ -11,9 +11,21 @@ export interface WorkflowOwnerLease extends WorkflowOwnerFence {
   leaseUntil: string;
 }
 
+/** What one step cost, as the runner reported it. */
+export interface StepUsage {
+  costUsd: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+/** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
+export type StepOperation = "seed" | "dispatch" | "assisted";
+
 export interface StepResult {
   stepId: string;
   iteration: number;
+  /** Absent on results written before 0.5, which replay under the old keys unchecked. */
+  operation?: StepOperation;
   /** Runner-assigned id (an agent session id, a job id); null for seed and gate steps. */
   agentId: string | null;
   /** Condition signal parsed from the output, e.g. `needs_revision`. */
@@ -22,6 +34,8 @@ export interface StepResult {
   output?: string;
   /** Structured payload: a seed's data or a gate's resolution. */
   data?: Record<string, unknown>;
+  /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
+  usage?: StepUsage;
 }
 
 export interface ActiveStepBase {
@@ -30,6 +44,8 @@ export interface ActiveStepBase {
   attempt: number;
   startedAt: string;
   runnerRef?: string;
+  /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
+  priorUsage?: StepUsage;
   recovery?: { kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown"; evidence: string; observedAt: string };
 }
 
@@ -52,7 +68,7 @@ export interface WorkflowRun {
   params: Record<string, string>;
   status: WorkflowStatus;
   currentStep: string | null;
-  /** Keyed by `stepId:iteration` for dispatches, `stepId` for seeds, and `stepId` then `stepId:iteration` for repeated gates. */
+  /** Keyed by step id and call index: `stepId:n` for dispatches, `stepId` then `stepId:n` for seeds and gates. */
   stepResults: Record<string, StepResult>;
   activeSteps: Record<string, ActiveStep>;
   revision: number;
@@ -111,8 +127,8 @@ export interface StepRunInput {
 }
 
 export type DurableStepOutcome =
-  | { kind: "succeeded"; output: string }
-  | { kind: "failed"; error: string; retryable: boolean }
+  | { kind: "succeeded"; output: string; usage?: StepUsage }
+  | { kind: "failed"; error: string; retryable: boolean; usage?: StepUsage }
   | { kind: "cancelled"; reason: string }
   | { kind: "cancellation_unknown"; reason: string };
 
@@ -137,8 +153,8 @@ export type StepReconcileOutcome =
   | { kind: "unknown"; evidence: string };
 
 export type StepRunOutcome =
-  | { ok: true; output: string; runnerRef?: string }
-  | { ok: false; error: string; retryable: boolean };
+  | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
+  | { ok: false; error: string; retryable: boolean; usage?: StepUsage };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
@@ -169,14 +185,27 @@ export type WorkflowEvent =
   | { type: "workflow_failed"; runId: string; error: string }
   | { type: "workflow_cancelled"; runId: string; reason: string };
 
+export interface StepFailureDetail {
+  /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */
+  retryable?: boolean;
+  /** Cost of every failed attempt, when the runner reported it. */
+  usage?: StepUsage;
+}
+
 export class StepFailedError extends Error {
+  readonly retryable: boolean;
+  readonly usage: StepUsage | undefined;
+
   constructor(
     readonly stepId: string,
     readonly iteration: number,
     readonly reason: string,
+    detail: StepFailureDetail = {},
   ) {
     super(`step ${stepId} (iteration ${iteration}) failed: ${reason}`);
     this.name = "StepFailedError";
+    this.retryable = detail.retryable ?? false;
+    this.usage = detail.usage;
   }
 }
 
@@ -198,5 +227,18 @@ export class WorkflowRecoveryRequiredError extends Error {
   ) {
     super(`workflow ${runId} requires recovery for step ${stepId}: ${evidence}`);
     this.name = "WorkflowRecoveryRequiredError";
+  }
+}
+
+export class WorkflowNonDeterminismError extends Error {
+  constructor(
+    readonly runId: string,
+    readonly stepId: string,
+    readonly callIndex: number,
+    readonly recorded: StepOperation,
+    readonly replayed: StepOperation,
+  ) {
+    super(`workflow ${runId} replayed ${replayed}("${stepId}") at call ${callIndex}, where the run recorded ${recorded}; the workflow changed under a live run`);
+    this.name = "WorkflowNonDeterminismError";
   }
 }

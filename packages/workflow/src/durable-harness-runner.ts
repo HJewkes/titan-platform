@@ -10,6 +10,7 @@ import type {
   RecoverableStepDispatchInput,
   RecoverableStepRunner,
 } from "./types.js";
+import { usageFromMeasurements } from "./usage.js";
 
 export interface DurableHarnessRunnerOptions<H extends Harness> {
   /** Supplies native configuration and bounds. The workflow owns the cancellation signal. */
@@ -26,12 +27,19 @@ function outputText(result: DurableHarnessSuccess): string {
   return text;
 }
 
+function succeeded(result: DurableHarnessSuccess): DurableStepOutcome {
+  const usage = usageFromMeasurements(result.usage);
+  return { kind: "succeeded", output: outputText(result), ...(usage ? { usage } : {}) };
+}
+
 function terminalOutcome<H extends Harness>(terminal: Terminal<H>): DurableStepOutcome {
   switch (terminal.outcome) {
-    case "succeeded": return { kind: "succeeded", output: outputText(terminal.result) };
+    case "succeeded": return succeeded(terminal.result);
     case "failed": return { kind: "failed", error: terminal.reason, retryable: terminal.retryable };
     case "cancelled": return { kind: "cancelled", reason: terminal.reason };
     case "cancellation_unknown": return { kind: "cancellation_unknown", reason: terminal.reason };
+    // A step that produced no output cannot be proven side-effect free, so it is never retried.
+    case "ended": return { kind: "failed", error: `ended: ${terminal.evidence}`, retryable: false };
   }
 }
 

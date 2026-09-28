@@ -1,0 +1,7 @@
+# Appended by setup.sh only when PUBLIC_BASE_URL is set (remote phase behind Caddy).
+ip_source = "rightmost_x_forwarded_for"
+database_backup_path = "/var/lib/tuwunel-backup"
+database_backups_to_keep = 3
+
+[global.well_known]
+client = "${PUBLIC_BASE_URL}"

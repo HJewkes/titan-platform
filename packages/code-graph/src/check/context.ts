@@ -6,18 +6,22 @@ export type RuleStore = Pick<CodeGraphStore, "listNodes" | "listEdges" | "listMe
 
 export interface RuleContext {
   nodes: readonly GraphNode[];
+  /** Kept apart from `nodes` so only rules that ask for `kind: "symbol"` evaluate them. */
+  symbolNodes: readonly GraphNode[];
   nodesById: Map<string, GraphNode>;
   metricsByNode: Map<string, Map<string, number>>;
   edges: readonly GraphEdge[];
 }
 
-/** The snapshot's file-level graph (no symbol layer, no references edges) and its non-null metrics. */
+/** The snapshot's file-level graph (no references edges), its symbol layer, and its non-null metrics. */
 export function buildRuleContext(store: RuleStore, snapshotId: number): RuleContext {
-  const nodes = store.listNodes(snapshotId);
+  const all = store.listNodes(snapshotId, { includeSymbols: true });
+  const nodes = all.filter((n) => n.kind !== "symbol");
+  const symbolNodes = all.filter((n) => n.kind === "symbol");
   const edges = store.listEdges(snapshotId);
   const nodesById = new Map<string, GraphNode>();
   for (const n of nodes) nodesById.set(n.id, n);
-  return { nodes, nodesById, metricsByNode: indexMetrics(store.listMetrics(snapshotId)), edges };
+  return { nodes, symbolNodes, nodesById, metricsByNode: indexMetrics(store.listMetrics(snapshotId)), edges };
 }
 
 function indexMetrics(metrics: readonly GraphMetric[]): Map<string, Map<string, number>> {

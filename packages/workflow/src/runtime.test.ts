@@ -116,7 +116,7 @@ describe("WorkflowRuntime", () => {
     expect(events.at(-1)).toMatchObject({ type: "workflow_failed" });
   });
 
-  it("seeds merge data into params and memoize by step id", async () => {
+  it("seeds merge data into params and record each call of a step id under its own key", async () => {
     const db = makeDb();
     const seed = vi.fn(async () => ({ data: { planId: "P-1" }, output: "seeded" }));
     const rt = runtime(db, inlineRunner((i) => `got ${i.prompt}`));
@@ -126,7 +126,8 @@ describe("WorkflowRuntime", () => {
       await ctx.dispatch("use", "plan {{PLAN_ID}} / {{planId}}");
     });
     const run = await rt.wait(rt.start("seeded"));
-    expect(seed).toHaveBeenCalledTimes(1);
+    expect(seed).toHaveBeenCalledTimes(2);
+    expect(Object.keys(run.stepResults)).toEqual(["seed", "seed:1", "use:0"]);
     expect(run.params.planId).toBe("P-1");
     expect(run.stepResults["use:0"]?.output).toBe("got plan P-1 / P-1");
   });

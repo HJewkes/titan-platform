@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { existsSync } from "node:fs";
 import type { FileSystemHost } from "ts-morph";
 import { fileId } from "./ids.js";
 
@@ -65,4 +66,20 @@ export function inRepoFileId(repoRoot: string, abs: string): string | null {
   if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
   if (relative.split(path.sep).includes("node_modules")) return null;
   return fileId(repoRoot, abs);
+}
+
+// ts-morph resolves workspace imports like `@codewatch/analyzer` to the
+// package's `types` entry (`<pkg>/dist/index.d.ts`), but the indexer's file
+// walker excludes `dist/` and `.d.ts`. Without remapping, every cross-package
+// edge points to a nonexistent node and the rendered graph fails to construct.
+export function remapDistToSrc(abs: string): string {
+  const m = /^(.*)[\\/]dist[\\/](.+)\.d\.ts$/.exec(abs);
+  if (!m) return abs;
+  const base = m[1]!;
+  const sub = m[2]!;
+  for (const ext of [".ts", ".tsx"]) {
+    const candidate = path.join(base, "src", sub + ext);
+    if (existsSync(candidate)) return candidate;
+  }
+  return abs;
 }

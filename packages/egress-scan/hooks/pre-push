@@ -1,0 +1,15 @@
+#!/bin/sh
+# titan-egress-scan managed pre-push hook; `titan-egress-scan install-hook` rewrites this file.
+# It resolves the scanner from the pushing worktree and fails closed when it is missing.
+top=$(git rev-parse --show-toplevel) || exit 1
+bin="$top/node_modules/.bin/titan-egress-scan"
+if [ -x "$bin" ]; then
+  exec "$bin" pre-push "$1"
+fi
+# pnpm skips the .bin link for a workspace package that was unbuilt at install time.
+script="$top/node_modules/@titan-design/egress-scan/dist/bin.js"
+if [ -f "$script" ]; then
+  exec node "$script" pre-push "$1"
+fi
+echo "titan-egress-scan: not installed in this worktree; run pnpm install (and pnpm build in titan-platform), then push again" >&2
+exit 1

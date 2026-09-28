@@ -13,7 +13,7 @@ import type { Hono } from "hono";
 import { EXIT, errorEnvelope, type BaseContext } from "@titan-design/registry";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
-import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
+import { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, isProcessAlive, readPidFile, removePidFile, writePidFile, type DaemonPaths } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
@@ -180,6 +180,7 @@ async function handleMcpRequest<Ctx extends BaseContext>(
     method: req.method ?? "GET",
     host: req.headers.host,
     origin: req.headers.origin,
+    client: headerValue(req.headers[CLIENT_HEADER]),
     contentType: req.headers["content-type"],
   });
   if (refusal) return respondJson(res, refusal.status, refusal.message);
@@ -200,6 +201,10 @@ async function handleMcpRequest<Ctx extends BaseContext>(
   });
   await server.connect(transport);
   await transport.handleRequest(req, res, body);
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value.join(",") : value;
 }
 
 function respondJson(res: ServerResponse, status: number, error: string): void {

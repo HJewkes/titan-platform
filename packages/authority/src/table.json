@@ -1,0 +1,867 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "id": "MRG-OT",
+      "action": "merge",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-gh"
+      ]
+    },
+    {
+      "id": "MRG-OR",
+      "action": "merge",
+      "actor": "owner-remote",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-remote"
+      ],
+      "condition": "Read-back of repo, pull request number, head SHA and title. Resolves a coordinator or automation merge gate; no direct door.",
+      "evidence": [
+        "E-gate",
+        "E-prin"
+      ]
+    },
+    {
+      "id": "MRG-CO",
+      "action": "merge",
+      "actor": "coordinator",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-terminal",
+        "owner-remote"
+      ],
+      "evidence": [
+        "E-gate",
+        "E-dec"
+      ]
+    },
+    {
+      "id": "MRG-WK",
+      "action": "merge",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "MRG-HD",
+      "action": "merge",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "MRG-AU",
+      "action": "merge",
+      "actor": "automation",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-terminal",
+        "owner-remote"
+      ],
+      "condition": "Merge on green plus owner approval.",
+      "evidence": [
+        "E-gate",
+        "E-gh"
+      ]
+    },
+    {
+      "id": "REL-OT",
+      "action": "release",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Includes the first hand publish of a new package.",
+      "evidence": [
+        "E-npm"
+      ]
+    },
+    {
+      "id": "REL-OR",
+      "action": "release",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "REL-CO",
+      "action": "release",
+      "actor": "coordinator",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-terminal"
+      ],
+      "condition": "A Version Packages pull request merge and a Worker deploy are releases.",
+      "evidence": [
+        "E-gate",
+        "E-dec"
+      ]
+    },
+    {
+      "id": "REL-WK",
+      "action": "release",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "REL-HD",
+      "action": "release",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "REL-AU",
+      "action": "release",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Only the release workflow on main after a merged Version Packages pull request.",
+      "evidence": [
+        "E-npm"
+      ]
+    },
+    {
+      "id": "SEC-OT",
+      "action": "secret-read",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Secret values are never logged.",
+      "evidence": []
+    },
+    {
+      "id": "SEC-OR",
+      "action": "secret-read",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SEC-CO",
+      "action": "secret-read",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SEC-WK",
+      "action": "secret-read",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SEC-HD",
+      "action": "secret-read",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SEC-AU",
+      "action": "secret-read",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Its own scoped credential only.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "UNT-OT",
+      "action": "untrusted-ingest",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "The receiving session becomes tainted.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "UNT-OR",
+      "action": "untrusted-ingest",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "condition": "The message arrives human-endorsed, never as from the human; forwarded third-party text taints.",
+      "evidence": [
+        "E-prin"
+      ]
+    },
+    {
+      "id": "UNT-CO",
+      "action": "untrusted-ingest",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "condition": "The session becomes tainted.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "UNT-WK",
+      "action": "untrusted-ingest",
+      "actor": "worker",
+      "verdict": "allow",
+      "condition": "The session becomes tainted.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "UNT-HD",
+      "action": "untrusted-ingest",
+      "actor": "headless",
+      "verdict": "allow",
+      "condition": "Only fenced as data with no authority tools; the run is tainted from the start.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "UNT-AU",
+      "action": "untrusted-ingest",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Only into a fenced field that a consumer treats as tainted.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "PUB-OT",
+      "action": "private-to-public",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "PUB-OR",
+      "action": "private-to-public",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-CO",
+      "action": "private-to-public",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-WK",
+      "action": "private-to-public",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-HD",
+      "action": "private-to-public",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-AU",
+      "action": "private-to-public",
+      "actor": "automation",
+      "verdict": "deny",
+      "condition": "The CI check fails.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "EXT-OT",
+      "action": "private-egress",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "EXT-OR",
+      "action": "private-egress",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "condition": "Read-back of open queue items to the owner's own device.",
+      "evidence": [
+        "E-prin"
+      ]
+    },
+    {
+      "id": "EXT-CO",
+      "action": "private-egress",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "taintEscalates": true,
+      "condition": "Outside registered pipes.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "EXT-WK",
+      "action": "private-egress",
+      "actor": "worker",
+      "verdict": "deny",
+      "condition": "Outside registered pipes.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "EXT-HD",
+      "action": "private-egress",
+      "actor": "headless",
+      "verdict": "deny",
+      "condition": "Outside registered pipes.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "EXT-AU",
+      "action": "private-egress",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Through a registered pipe with redaction and minimization.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "HW-OT",
+      "action": "hardware-actuate",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HW-OR",
+      "action": "hardware-actuate",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "condition": "Engaging or raising load; hardware-stop covers stop and unload.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HW-CO",
+      "action": "hardware-actuate",
+      "actor": "coordinator",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-terminal"
+      ],
+      "condition": "The owner at the device confirms each engage step; a forced takeover of an engaged device is always gated.",
+      "evidence": [
+        "E-gate",
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HW-WK",
+      "action": "hardware-actuate",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HW-HD",
+      "action": "hardware-actuate",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HW-AU",
+      "action": "hardware-actuate",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HWS-OT",
+      "action": "hardware-stop",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-OR",
+      "action": "hardware-stop",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-CO",
+      "action": "hardware-stop",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-WK",
+      "action": "hardware-stop",
+      "actor": "worker",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-HD",
+      "action": "hardware-stop",
+      "actor": "headless",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-AU",
+      "action": "hardware-stop",
+      "actor": "automation",
+      "verdict": "allow",
+      "evidence": [
+        "E-dev"
+      ]
+    },
+    {
+      "id": "DSR-OT",
+      "action": "destructive-remote",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Through the git-safety bypass or a command the owner typed.",
+      "evidence": [
+        "E-byp"
+      ]
+    },
+    {
+      "id": "DSR-OR",
+      "action": "destructive-remote",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSR-CO",
+      "action": "destructive-remote",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSR-WK",
+      "action": "destructive-remote",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSR-HD",
+      "action": "destructive-remote",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSR-AU",
+      "action": "destructive-remote",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-gh"
+      ]
+    },
+    {
+      "id": "DSL-OT",
+      "action": "destructive-local",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "DSL-OR",
+      "action": "destructive-local",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSL-CO",
+      "action": "destructive-local",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "condition": "Inside its own checkout.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "DSL-WK",
+      "action": "destructive-local",
+      "actor": "worker",
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
+    },
+    {
+      "id": "DSL-HD",
+      "action": "destructive-local",
+      "actor": "headless",
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
+    },
+    {
+      "id": "DSL-AU",
+      "action": "destructive-local",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Inside its own workspace.",
+      "evidence": []
+    },
+    {
+      "id": "DSX-OT",
+      "action": "destructive-foreign",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "condition": "Includes retire --force and a broker restart, which are terminal-only.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "DSX-OR",
+      "action": "destructive-foreign",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-CO",
+      "action": "destructive-foreign",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-WK",
+      "action": "destructive-foreign",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-HD",
+      "action": "destructive-foreign",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-AU",
+      "action": "destructive-foreign",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SPN-OT",
+      "action": "spawn",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-spn"
+      ]
+    },
+    {
+      "id": "SPN-OR",
+      "action": "spawn",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "condition": "Within service limits, which are never lifted; the owner is recorded as the principal.",
+      "evidence": [
+        "E-spn",
+        "E-prin"
+      ]
+    },
+    {
+      "id": "SPN-CO",
+      "action": "spawn",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "taintEscalates": true,
+      "condition": "Within the spawn escalation, depth, rate, cwd and slot limits.",
+      "evidence": [
+        "E-spn",
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SPN-WK",
+      "action": "spawn",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SPN-HD",
+      "action": "spawn",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SPN-AU",
+      "action": "spawn",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Within service limits, with no principal recorded.",
+      "evidence": [
+        "E-spn"
+      ]
+    },
+    {
+      "id": "SPD-OT",
+      "action": "spend-over-cap",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "SPD-OR",
+      "action": "spend-over-cap",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "condition": "There is no cap to raise remotely.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "SPD-CO",
+      "action": "spend-over-cap",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "condition": "Spend is recorded and crossing the notice threshold notifies the owner; the run continues.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "SPD-WK",
+      "action": "spend-over-cap",
+      "actor": "worker",
+      "verdict": "allow",
+      "condition": "Spend is recorded and crossing the notice threshold notifies the owner; the run continues.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "SPD-HD",
+      "action": "spend-over-cap",
+      "actor": "headless",
+      "verdict": "allow",
+      "condition": "Spend is recorded and crossing the notice threshold notifies the owner; the run continues.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "SPD-AU",
+      "action": "spend-over-cap",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Spend is recorded and crossing the notice threshold notifies the owner; the run continues.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "CFG-OT",
+      "action": "authority-config",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "CFG-OR",
+      "action": "authority-config",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-CO",
+      "action": "authority-config",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "condition": "A repository CLAUDE.md change goes through a pull request under merge, flagged as a sensitive path.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-WK",
+      "action": "authority-config",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-HD",
+      "action": "authority-config",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-AU",
+      "action": "authority-config",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HV-OT",
+      "action": "human-verb",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": [
+        "E-gate"
+      ]
+    },
+    {
+      "id": "HV-OR",
+      "action": "human-verb",
+      "actor": "owner-remote",
+      "verdict": "gate",
+      "resolvers": [
+        "owner-remote"
+      ],
+      "condition": "Read-back of what is answered; voice caps an endorsement at 600 characters and a permission preview at 300.",
+      "evidence": [
+        "E-prin",
+        "E-gate"
+      ]
+    },
+    {
+      "id": "HV-CO",
+      "action": "human-verb",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HV-WK",
+      "action": "human-verb",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HV-HD",
+      "action": "human-verb",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "HV-AU",
+      "action": "human-verb",
+      "actor": "automation",
+      "verdict": "deny",
+      "condition": "A queue mirror applying a verdict the owner gave remotely acts as owner-remote, not as automation.",
+      "evidence": [
+        "E-gate"
+      ]
+    }
+  ]
+}

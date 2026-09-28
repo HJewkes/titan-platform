@@ -116,14 +116,14 @@ describe("daemon", () => {
     try {
       const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/status`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-titan-client": "test" },
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ok: boolean; data: { sessions: number } };
       expect(body).toMatchObject({ ok: true, data: { sessions: 1 } });
       const health = (await (await fetch(`http://127.0.0.1:${handle.port}/health`)).json()) as { sessions?: number };
       expect(health.sessions).toBe(1);
-      const bad = await fetch(`http://127.0.0.1:${handle.port}/rpc/search`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: 5 }) });
+      const bad = await fetch(`http://127.0.0.1:${handle.port}/rpc/search`, { method: "POST", headers: { "content-type": "application/json", "x-titan-client": "test" }, body: JSON.stringify({ limit: 5 }) });
       expect(bad.status).toBe(400);
     } finally {
       await handle.close();

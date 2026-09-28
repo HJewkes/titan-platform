@@ -1,0 +1,12 @@
+id: titan-edge1
+url: null
+as_token: ${EDGE1_AS_TOKEN}
+hs_token: ${EDGE1_HS_TOKEN}
+sender_localpart: ac-edge1
+rate_limited: false
+namespaces:
+  users:
+    - exclusive: true
+      regex: "@ac-edge1-.*:${SERVER_NAME_RE}"
+  aliases: []
+  rooms: []

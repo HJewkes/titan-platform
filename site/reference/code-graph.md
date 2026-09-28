@@ -75,9 +75,14 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 // newErrors: 1, carryoverErrors: 4, passed: false
 ```
 
-Six rule types, as codewatch had them: `metric-max`, `metric-min`, `metric-product-max`,
+Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one), and `no-internal-only-barrels`. Severity defaults to `error`.
+own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
+nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
+snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
+percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
+absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
+zero-valued node is never flagged. Severity defaults to `error`.
 
 `snapshot` and `baseline` take a numeric id or a ref name, and a ref resolves to its newest
 snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same engine on
@@ -89,6 +94,38 @@ for edge rules) also fires on the baseline is marked `isCarryover`. Only new err
 baseline's node ids are carried through the alias chain into the checked snapshot first, so a
 moved file's violations carry over instead of reading as one resolved plus one new. Unmoved
 ids key exactly as before, so baselines from older builds still match.
+
+**Symbol rules.** A metric rule with `kind: "symbol"` evaluates the symbol layer, so
+`symbol_cyclomatic` and `symbol_cognitive` rules fire per function. A rule without `kind`
+stays on the file graph, so existing baselines do not change. Before this release symbol
+rules never fired (TP-251): the rule context read `listNodes` without `includeSymbols`.
+
+**Findings.** Metric violations carry `path` (a symbol's parent file), `lineStart`,
+`lineEnd`, `symbol`, `evidence` (`symbol_cyclomatic=14 (max 10)`) and `tool`.
+`toFindings(result)` turns a `CheckResult` into tool-neutral `Finding` records whose `id`
+keys on the node id, so an id survives code moving above it. `externalToFinding({ tool,
+rule, file, line, endLine, message, severity })` maps another linter's diagnostic, such as
+style-checker's ruff output, onto the same shape without importing that linter.
+
+**Stored findings and verdicts.** `Finding.id` is not unique: an external tool's id embeds
+its line number, and two diagnostics on one line share it. Stored findings key on
+`findingKey` instead: tool, signal, the innermost symbol node id (or the path), a hash of
+the whitespace-normalized flagged text, and a collision ordinal. An inserted line above the
+finding keeps its key. `keyFindings(inputs)` numbers collisions in source order, so input
+order does not change a key.
+
+```ts
+const stored = keyFindings(findings.map((finding) => ({ finding, anchor, flaggedText, excerptHash })));
+saveFindings(store, snapshotId, stored);
+saveVerdicts(store, snapshotId, verdicts); // { key, verdict, rationale, citations, excerptHash, model?, ... }
+carryForwardVerdicts(store, previousSnapshotId, snapshotId); // count copied
+```
+
+`carryForwardVerdicts` copies a verdict only when the target snapshot has a finding with the
+same key and the same excerpt hash as the one the verdict judged, so a change anywhere in
+the shown excerpt forces a fresh judgement. Both tables are snapshot-scoped and pruned with
+their snapshot. The schema moved to version 4 with no `INDEX_VERSION` bump; an older build
+refuses a database this build opened.
 
 ## Diffing two snapshots
 
@@ -173,19 +210,134 @@ snapshotSymbolConsumers(store, snapshotId)[0];
 does. `snapshotRelevance` is the seeded variant over symmetrized edges that `graph context`
 uses, so relevance reaches a target's importers as well as its imports.
 
-The index-time metrics, all sparse (a row only when above zero):
+The dead-code and growth-risk metrics are sparse (a row only when above zero):
 
 | Metric | Languages | Counts |
 | --- | --- | --- |
-| `unreachable_statements` | TypeScript | statements after a `return`, `throw`, `break` or `continue` in the same block |
-| `unused_locals` | TypeScript | plain-identifier locals never referenced in their function |
-| `unused_params` | TypeScript | the trailing run of unused plain parameters |
+| `unreachable_statements` | TypeScript, Python | statements after a `return`, `throw` or `raise`, `break` or `continue` in the same block |
+| `unused_locals` | TypeScript, Python | plain-identifier locals never referenced in their function |
+| `unused_params` | TypeScript, Python | the trailing run of unused plain parameters; Python skips `self`, `cls`, `_`-prefixed names and stub bodies |
 | `loop_depth` | TypeScript, Python | deepest lexical loop nesting, emitted at 2 or more |
 | `recursive_functions` | TypeScript | named functions that call themselves by name |
 | `search_in_loop` | TypeScript | `.includes`, `.find`, `.filter` and similar inside a loop |
 
 Growth-risk metrics are smells, not complexity bounds: `.includes` on a `Set` is O(1), and
 two nested loops over different collections are linear.
+
+Comment, shape, and exception-handling metrics are written on every function or file, zeros
+included, for TypeScript and Python. Per symbol: `symbol_comment_lines`,
+`symbol_docstring_lines`, `symbol_body_lines`, `symbol_comment_ratio`,
+`symbol_narrating_comments` (comments that restate the identifiers of the statement they
+sit beside), and `symbol_pass_through` (1 when the body is one call that forwards every
+parameter in order). Per file: `except_count`, `except_density` (per 100 non-blank lines),
+and `swallowed_except` (handlers whose body is empty, `pass`, a bare return, or one logger
+call; a Python `except ImportError` or `ModuleNotFoundError` is exempt).
+
+**Call-graph metrics** come from symbol `calls` edges, one per caller and callee, each
+carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a
+call or `new` through the type checker to one in-repo declaration. Python resolves only a
+bare module-level name in the same file, a name bound by an in-repo `from … import`, and
+`self.<name>()` on a class in the same file; anything else is dropped, never guessed.
+Each function, method, and class gets `symbol_caller_count` (distinct callers, recursion
+excluded) and `symbol_single_caller_helper` (1 when a non-exported, non-dunder symbol has
+exactly one caller). A callable with 2 or more resolved call sites also gets
+`symbol_constant_params`: parameters every site passes the same literal, or none passes.
+These metrics need edges from every file, so they are recomputed on each index. `listEdges`
+and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
+`includeReferences`.
+
+## Partition quality
+
+Scores a package partition of the file graph. Verified against this release, over this
+repo's `packages/` (26 packages, 659 files, 1,706 package-to-package edges):
+
+```ts
+import { computePartitionQuality, invertBuckets } from "@titan-design/code-graph";
+
+const { modularityQ, perPackage, pairCoupling, flagsCount } = computePartitionQuality({
+  packages, // [{ id: "packages/code-graph" }, …]
+  fileByPackage, // Map { "packages/code-graph" => ["packages/code-graph/src/store.ts", …] }
+  nodes,
+  edges,
+});
+
+modularityQ; // 0.774 — Newman-Girvan Q over the package partition
+perPackage.find((p) => p.pkgId === "packages/store-sqlite");
+// { fileCount: 20, cohesion: 1, instability: 0, abstractness: 0, layer: 'foundation', flags: [] }
+perPackage.find((p) => p.pkgId === "packages/code-read");
+// { fileCount: 44, cohesion: 0.87, instability: 1, abstractness: 0, layer: 'top', flags: [] }
+pairCoupling.filter((p) => p.flag === "tight");
+// [ { from: 'packages/rpc-client', to: 'packages/rpc-protocol', edges: 14, intensity: 0.67, … }, … ]
+flagsCount; // 3
+```
+
+`cohesion` is internal over internal-plus-outgoing edges, `instability` is Martin's I, and
+`abstractness` is the share of the package's files with `role: "types"` — a file-level proxy
+for Martin's A, since there are no symbol-level abstract counts. `layer` is read off
+instability: `foundation` at 0.3 or below, `top` at 0.9 or above, `middle` between.
+`weak-boundary` flags a non-top package whose cohesion is under 0.5. Pair `intensity` is
+`edges / files(from)`: `tight` at 0.6 or above, `moderate` at 0.3.
+
+`resolveBarrels: true` rewrites an edge landing on a `role: "barrel"` file onto the files it
+re-exports, transitively. It over-attributes — one import of one name becomes one edge per
+re-export target — so it is off by default. On this repo it takes Q from 0.774 to 0.292.
+
+`invertBuckets(fileByPackage)` is the file-id-to-package-id lookup the same callers need,
+skipping the `""` unassigned bucket.
+
+## Pruning snapshots
+
+```ts
+import { planPrune, runPrune } from "@titan-design/code-graph";
+
+planPrune(store, { keep: 10, keepRefs: ["main"] });
+// { keep: [ …10 newest plus every snapshot on main… ], remove: [ … ] }
+
+runPrune(store, { keep: 2, vacuum: true });
+// { plan, rowsBefore: { snapshot: 5, node: 25615, edge: 25115, metric: 90955, id_alias: 0 },
+//   rowsAfter:  { snapshot: 2, node: 10246, edge: 10046, metric: 36382, id_alias: 0 }, vacuumed: true }
+```
+
+The domain tables declare no foreign key, so `CodeGraphStore.deleteSnapshots` clears every
+table in `SNAPSHOT_SCOPED_TABLES` itself instead of relying on a cascade. `blob_cache` is
+content-addressed rather than snapshot-scoped, so a prune never drops a cached embedding.
+
+## Conventions
+
+"How does this repo do X, and where does code like this belong?" Ported from codewatch's
+unmerged C-88 branch (TP-130). The layer cuts the barrel-resolved file graph into a few coarse
+areas, has an injected summarizer describe each one, and ranks areas against a question by
+embedding similarity. Verified against this release on this repo's `packages/`, with a fake
+summarizer:
+
+```ts
+import { findConventions, getConventionMap, summarizeConventions } from "@titan-design/code-graph";
+
+const summarizer = { model: "claude:sonnet", summarize: (prompt: string) => callYourLlm(prompt) };
+await summarizeConventions(store, snapshotId, summarizer);
+// { coverage: { files: 713, grouped: 513, areas: 24, summarized: 24 }, newlySummarized: 24, reused: 0, … }
+// a second run: { newlySummarized: 0, reused: 24 }
+
+getConventionMap(store, snapshotId, "claude:sonnet"); // the same areas, stored summaries only
+await findConventions(store, snapshotId, "how are CLI commands registered?", embedder, "claude:sonnet");
+// { matches: [ { label, summary, files: [ …up to 5 ], size, score }, … up to 3 ] }
+```
+
+- **The cut.** `detectCommunities` is greedy modularity (Clauset-Newman-Moore), not Leiden. It
+  is deterministic without a seed: ties resolve by sorted id. `targetCount` keeps merging past
+  the natural modularity stop until that many communities remain, and a size cap of twice the
+  ideal share keeps a dense repo from collapsing into one area. The default target is one area
+  per 25 files, clamped to 6..40. Areas under `minSize` (default 3) files are left unsummarized.
+  Disconnected components never merge, so the component count is the floor.
+- **Only the coarse level is summarized.** LLM cost is one call per area, and each summary is
+  stored in `blob_cache` under `code-graph/community-summary`, keyed by `summarizer.model` and a
+  hash of the prompt. The prompt carries the member files and their key exported signatures, so
+  an area whose membership and signatures did not change is a cache hit in any snapshot. On
+  this repo a finer cut (`targetCount: 60`) still reused 8 of its 35 areas.
+- **The package ships no LLM client.** `Summarizer` is `{ model, summarize(prompt) }`; the
+  product supplies it. `getConventionMap` and `findConventions` never call it. `findConventions`
+  throws when no summary is stored for the model, and returns candidates with scores, not
+  verdicts. Summary vectors go through the same embedding cache as similar symbols.
 
 ## The id scheme
 
@@ -290,6 +442,24 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
 
+**The adapter is a root export, not a `./history` one.** A product that runs its own indexing
+pass needs the same `GraphMetric` rows `indexPaths` writes, and `./history` may not speak
+graph types:
+
+```ts
+import { DEFAULT_CHURN_WINDOWS, loadHistoryMetrics, windowSuffix } from "@titan-design/code-graph";
+
+const loaded = loadHistoryMetrics(nodes, repoRoot, { churnWindowDays: 30, includeLifetime: true });
+// null outside git; otherwise { metrics: GraphMetric[], primaryEntries: ChurnEntry[] }
+loaded?.metrics.filter((m) => m.name === `churn_${windowSuffix(30)}`); // churn_30d
+DEFAULT_CHURN_WINDOWS; // [30, 90, 180]
+```
+
+`primaryEntries` are the churn entries inside the primary window, which is what
+`computeTestCoverageOwnership` needs and what saves a caller a second git pass.
+`resolveChurnWindows` and `computeRecencyWindows` are exported beside them. Node ids are the
+history engine's repo-relative paths, so `nodes` and `repoRoot` must share a root.
+
 Change coupling is not stored. It is computed on demand from `loadChurnEntries`, as
 codewatch's `graph coupled` command did.
 
@@ -358,8 +528,25 @@ describeMetric("churn_90d");
 The three reads are index searches, with no new index or migration. On that tree,
 `listMetricsForNode` takes 0.014 ms against 9.7 ms for `listMetrics` filtered to the node,
 and `listEdgesTouching` takes 0.03 to 0.08 ms against 2.0 ms for `listEdges` filtered.
-`listEdgesTouching` hides `references` edges unless you pass `includeReferences`, as
+`listEdgesTouching` hides `references` and `calls` edges unless you pass `includeReferences`, as
 `listEdges` does.
+
+Three more reads answer a report's questions on the same indexes, over this repo's
+`packages/` snapshot:
+
+```ts
+store.listMetricNames(snapshotId);
+// 20 names: [ 'class_count', 'cognitive_max', 'cognitive_sum', 'cyclomatic_max', … ]
+
+store.topByMetric({ snapshotId, metric: "loc", kind: "file", limit: 3 });
+// [ { nodeId: 'packages/code-graph/src/check/check.test.ts', name: 'check.test.ts',
+//     kind: 'file', role: 'test', value: 1038, unit: 'lines' }, … ]
+
+store.replaceMetricsByName(snapshotId, "coverage_pct", metrics); // one transaction, no stale rows
+```
+
+`replaceMetricsByName` is the write an overlay needs: coverage is re-ingested wholesale, and
+inserting without deleting would leave rows for symbols that no longer exist.
 
 `METRIC_CATALOGUE` describes every metric name the package writes: unit, node kinds, rollup
 rule, direction, what a missing row means, and the writing module. Windowed names such as
@@ -381,7 +568,7 @@ remapping the `dist/*.d.ts` entry ts-morph resolves back onto `src/`. That remap
 dist to exist, which is why `pnpm build` precedes both `pnpm test` and `dag:check` here.
 
 **The symbol layer is hidden by default.** `listNodes` drops `symbol` nodes and `listEdges`
-drops `references` edges unless you ask for them, so a caller reasoning about module
+drops `references` and `calls` edges unless you ask for them, so a caller reasoning about module
 structure does not have one import of thirty names read as thirty dependencies.
 
 **Snapshots, not intervals.** The domain `edge` table here is snapshot-scoped, keyed
@@ -399,11 +586,11 @@ tree-sitter declaration walk that feeds complexity.
 
 ## What was deliberately left in codewatch
 
-All of it follow-up work *on* this package rather than changes *to* it: the remaining graph
-analyses over a finished snapshot (communities, partition quality). The rules engine, the
-snapshot diff, git history (churn, ownership, change coupling), symbol embeddings, dead code,
-growth risk, PageRank, relevance, symbol coupling, test linking, and the coverage overlay
-started here too and have since been ported.
+The product surfaces: the CLI commands, the `claude -p` summarizer that `summarizeConventions`
+is handed, and the MCP and read-API wiring. The rules engine, the snapshot diff, git history
+(churn, ownership, change coupling), symbol embeddings, dead code, growth risk, PageRank,
+relevance, symbol coupling, test linking, the coverage overlay, partition quality, snapshot
+pruning, communities, and conventions started there and have since been ported.
 
 ## Where it came from
 

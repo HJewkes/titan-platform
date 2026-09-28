@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/style-profile",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown",
   "type": "module",
   "main": "./dist/index.js",
@@ -43,6 +43,9 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "eslint": "^9.39.0",
     "zod": "^4.4.3"
   }
 }

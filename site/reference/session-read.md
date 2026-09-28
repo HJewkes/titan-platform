@@ -59,9 +59,77 @@ const found = await discoverTranscripts();  // defaults to ~/.claude/projects
 `fact` (one per line, typed by event), `span` (search text for prompt / assistant_response /
 tool_input / tool_result), `session` (descriptive fields and turn/commit/push deltas),
 `turn`, `usage` (per-model tokens with an estimated thinking share), `phase`, `human_edit`,
-`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `branch`, `file`, `task`, `subagent`,
-`subagent_transcript`, `artifact`, and `edge` (`session:… touched file:…` and friends;
-vocabulary in `RELATIONS`).
+`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict` (below), `branch`, `file`,
+`task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
+file:…` and friends; vocabulary in `RELATIONS`).
+
+## Review verdicts
+
+`parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
+verdicts, without storing any of the message. A verdict line either contains the word
+`verdict` followed (after up to three punctuation characters and any whitespace) by a token,
+or begins, after optional markdown, with `APPROVE`, `APPROVED`, `CHANGES REQUESTED` or
+`REQUEST CHANGES`. Tokens are case-insensitive and their words may be joined by a space,
+underscore or hyphen: `APPROVE`, `APPROVED` and `LGTM` mean approve; `CHANGES REQUESTED`,
+`REQUEST CHANGES`, `REQUESTED CHANGES`, `NEEDS CHANGES`, `BLOCKED` and `BLOCKING` mean
+changes requested.
+
+PR references come from the verdict line, or the message's first line when the verdict line
+names none, in precedence order: a `github.com/<owner>/<repo>/pull/<n>` URL or an
+`<owner>/<repo>#<n>` pair give an exact `repo`; `<repo> #<n>` or `<repo> PR #<n>` keep the
+word before the number as a `repoHint`, but only when that word is not a verdict token
+(`approve`, `blocked`, …) or a common filler (`pr`, `see`, `on`, `the`, …) — a rejected
+candidate yields no hint, and the search never looks further left; `PR #<n>`, `PR <n>`,
+`pull request #<n>` and a bare `#<n>` carry neither. One line can name several PRs, each
+becoming its own match. Verdicts dedupe on the pair `(repo ?? repoHint?.toLowerCase() ?? "",
+number)`: two references to the same number in different repos are two verdicts, but when a
+later verdict line names the same pair, it replaces the earlier one.
+
+Every scan is a single bounded pass over the line, so a pathological single-line message
+still parses in linear time.
+
+```ts
+import { parseReviewVerdicts } from "@titan-design/session-read";
+
+parseReviewVerdicts("Verdict: CHANGES REQUESTED on acme/widgets#248");
+// [{ verdict: "changes_requested", repo: "acme/widgets", repoHint: null, number: 248 }]
+```
+
+`readToolUse` emits one `review_verdict` event per match for a tool whose name ends in
+`__chat_send`, adding `toolUseId` and `cwdRepo` (`repoForCwd` of the call's `cwd`). The event
+carries only the parsed fields, never the message text. Resolving `repo`/`repoHint` against
+known PRs and filtering by the sender's profile happen downstream, in `session-graph`.
+
+## Audit events
+
+Eight more kinds feed cost and context audits. Each extends the event base with
+`blockIndex`: the position of the block within the line's content, or 0 for a whole-line
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 2) is bumped
+whenever a classification rule changes, so a store can tell stale rows apart and re-index.
+
+| kind | list | emitted for |
+|---|---|---|
+| `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Supersedes the deprecated `usage`. |
+| `tool_call` | `toolCalls` | each `tool_use` block, with `family` and `mcpServer` from `toolFamily`, and `inputChars` |
+| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName` and `msgId`. A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. |
+| `context_block` | `contextBlocks` | the characters that entered context, by `ContextSource`. A user record gives one row for its text, labelled by its wake cause (`human`, `channel`, `compaction_summary`, or `system_reminder` for other injected text). It also gives one `tool_result` row per `tool_result` block, and one `image` row per image block. An assistant line gives one row per `text`, `thinking` and `tool_use` block. An attachment gives one row (`skill_listing`, or `attachment` with `attachmentType`) only when its string content is 256 characters or more (`MIN_ATTACHMENT_CHARS`). `isMedia` marks base64 images, whose `chars` is the encoded length. |
+| `compaction` | `compactions` | a `compact_boundary` system line: trigger, tokens before and after, dropped tokens, duration |
+| `queue_op` | `queueOps` | a `queue-operation` line. `enqueue` is when a message arrived during a busy turn; rollup pairs it with the matching `inbound` by `contentHash`. |
+| `signal` | `signals` | a recognisable act in one `tool_use` block (provisional vocabulary, below) |
+| `cost_state` | `costStates` | a `cost-state` line: `totalCostUsd` and the raw model usage |
+
+`SignalKind` values, each read from a single block:
+
+- `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
+- `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
+- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
+- `task_done` is `active-work task done`, with the task id as `detail`.
+- `doc_written` is a `Write` to a `.md` path.
+- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+
+The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
+`bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
 
 ## Why incremental reading is safe
 
@@ -90,6 +158,34 @@ rather than guessed.
 `{ projectDir, absolutePath, displayPath, subagentId? }`, and `displayPath` (the
 `~`-relative form) is the key the watermark table stores. Hand-building one with the wrong
 shape is the fastest way to get a confusing NOT NULL failure downstream.
+
+## Assigned task of a spawned session
+
+`assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned session was
+given, from the agent name and the full spawn brief. `isKnown` is the caller's task store:
+an id counts only if it returns true. The result is `{ taskIds, source }`, with up to three
+ids in order.
+
+```ts
+import { assignedTaskIds } from "@titan-design/session-read";
+
+assignedTaskIds({ agentName: "factory-tp422", brief, isKnown });
+// { taskIds: ["TP-422"], source: "name" }
+```
+
+`source` says which rule found the ids. The name wins over the brief. `name-over-brief`
+marks a name whose ids the brief does not repeat. `brief-anchor` is a line that begins with
+`TASK`, `ASSIGNMENT`, `YOUR TASK`, `IMPLEMENT` or `GOAL`; ids in parentheses on it are
+references, not assignments. `brief-paragraph` is the first known id near the start of the
+assignment. `none` is a definite answer that nothing links. More than three ids in one
+source is a list, and that source yields nothing.
+
+**The orientation block is skipped.** agent-chat prepends an orientation that lists every
+open task. `orientationEnd(brief)` returns where the assignment starts: 0 when there is no
+orientation, null when there is one whose end cannot be found. Such a brief links nothing
+rather than guess. The block's format is owned by agent-chat, and the tests pin today's
+headings and truncation marker. Every search reads a bounded window, so a 100 KB brief costs
+the same as a short one.
 
 ## Where it came from
 
@@ -123,5 +219,14 @@ assistant text and applies `maxTurns` after tool traffic is dropped.
 holds a transcript path. The package README has the recipe and measured window sizes.
 
 `SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
-usage without a database. `SessionUsageAccumulator` is shared with graph queries;
-response deltas, reset epochs and unknown token categories retain their semantics.
+usage without a database. `SessionUsageAccumulator` is shared with graph queries. It
+selects measurements with agent-protocol's `foldUsage`, then groups them by model; a
+null token count in a group makes that group's sum null.
+
+**Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
+that belongs to a different native session, or a sidechain window that names more than one
+parent session, throws `SessionIdentityError` — a `TypeError` subclass with a stable
+`code` field (`"foreign_native_session"` or `"multiple_parent_sessions"`). Existing
+`instanceof TypeError` catches and message-prefix matches keep working; a consumer that
+wants to tell this apart from option-validation `TypeError`s (which stay plain) can now
+check `instanceof SessionIdentityError` and read `.code`.

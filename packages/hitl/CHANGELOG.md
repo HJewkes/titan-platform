@@ -1,5 +1,12 @@
 # @titan-design/hitl
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [825b8b2]
+  - @titan-design/store-sqlite@0.3.1
+
 ## 0.2.0
 
 ### Minor Changes

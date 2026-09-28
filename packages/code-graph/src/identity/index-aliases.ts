@@ -1,8 +1,8 @@
-import { buildAliases, detectGitHead, detectRenames, isInsideGitRepo } from "../git-renames.js";
+import { buildAliases, detectRenames } from "../git-renames.js";
 import { SYMBOL_ID_SEP } from "../extractors/ids.js";
 import type { CodeGraphStore } from "../store.js";
 import type { GraphNode, IdAlias } from "../types.js";
-import { aliasBaseFor } from "./store-identity.js";
+import { aliasBaseFor, aliasTargetCommit } from "./store-identity.js";
 
 export interface AliasBridgeInput {
   rootDir: string;
@@ -50,19 +50,19 @@ export function movedSymbolAliases(
   return out;
 }
 
-function renameAliases(input: AliasBridgeInput, baseCommit: string): IdAlias[] {
-  if (input.detectRenames === false || !isInsideGitRepo(input.rootDir)) return [];
-  const target = input.commitHash ?? detectGitHead(input.rootDir) ?? undefined;
-  if (target === baseCommit) return [];
+function renameAliases(input: AliasBridgeInput, baseCommit: string, target: string): IdAlias[] {
+  if (input.detectRenames === false || target === baseCommit) return [];
   const pairs = detectRenames({ repoRoot: input.rootDir, fromCommit: baseCommit, toCommit: target });
   return buildAliases(input.idRoot, pairs);
 }
 
 /** File, module, and symbol aliases bridging a rename between the alias base's commit and this index. */
 export function computeAliasBridge(store: CodeGraphStore, input: AliasBridgeInput): AliasBridge {
-  const base = aliasBaseFor(store, input.ref);
-  if (!base?.commitHash) return { baseSnapshotId: null, aliases: [] };
-  const fileAliases = renameAliases(input, base.commitHash);
+  const target = { repoRoot: input.rootDir, commit: input.commitHash };
+  const base = aliasBaseFor(store, input.ref, target);
+  const commit = base ? aliasTargetCommit(target) : null;
+  if (!base?.commitHash || !commit) return { baseSnapshotId: null, aliases: [] };
+  const fileAliases = renameAliases(input, base.commitHash, commit);
   const symbols = movedSymbolAliases(store, base.id, fileAliases, input.nodes);
   return { baseSnapshotId: base.id, aliases: [...fileAliases, ...symbols] };
 }

@@ -5,8 +5,8 @@ buckets, permission phases, touched files, branches, PRs, subagents, and the edg
 them, all in one SQLite file built from `@titan-design/store-sqlite` kit tables and kept
 current incrementally.
 
-Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`, and
-`cluster`. Extracted from active-work's session index (AW-23, TP-6).
+Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`,
+`cluster`, `locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
 
 ```ts
 import { discoverTranscripts } from "@titan-design/session-read";
@@ -14,7 +14,8 @@ import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
 
 const graph = openSessionGraph("~/.local/state/miner/index.sqlite3");
 const summary = await refreshCorpus(graph, await discoverTranscripts());
-// summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing
+// summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing,
+// summary.facetsBackfilled, summary.facetBacklog
 ```
 
 `openSessionGraph` takes an optional `schemaVersion`: the highest migration version the
@@ -29,15 +30,25 @@ passes 1002.
    checks the file (`unchanged`, `appended`, `rewritten`, `missing`), reads the delta with
    `extractTranscript`, applies it in one transaction, and advances the watermark with the
    new prefix hash. A malformed line quarantines that transcript only.
-2. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
-   time) for the sessions that changed. Recompute, never accumulate, so incremental and
+2. `backfillFacets` re-extracts the audit facet of already-indexed transcripts whose
+   `transcript_facet` version is below session-read's `EXTRACT_VERSION`: up to
+   `facetLimit` of them per pass (default 40), newest `file_mtime` first, each read from
+   byte 0 to its watermark. It replaces that transcript's rows in the eight audit tables
+   and never writes the legacy tables, so their accumulating counts cannot double.
+   Transcripts that are `missing` or `quarantined` are skipped. `summary.facetsBackfilled`
+   and `summary.facetBacklog` report progress; pass `facetLimit: Infinity` to clear the
+   backlog in one pass. A classifier change is a version bump, not a `resetIndex`.
+3. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
+   time) for the sessions that changed, including those the backfill touched. Recompute, never accumulate, so incremental and
    full passes converge.
-3. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
+4. `resolveOrigins` runs if the caller passed a `resolveOrigins` resolver. See migration 5.
+5. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage
    from child sessions.
-4. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
+6. `enrichPrs` runs if the caller passed a `resolvePrs` resolver. See below.
+7. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
    task table. See below.
-5. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
+8. Rows whose source file has vanished are marked `missing`. Their facts stay: surviving
    Claude Code's own pruning is much of the point.
 
 `resetIndex` clears every derived table and rewinds watermarks; the next refresh rebuilds
@@ -59,11 +70,39 @@ await refreshCorpus(graph, transcripts, {
 - **Precedence.** Every field the resolver states wins; every field it omits or nulls keeps
   what the transcripts derived. The store is the system of record for a task's present
   status, while a transcript only witnesses a command that was observed to run.
+- **Estimate.** `estimate` fills `task.estimate`, in whatever unit the store keeps.
 - **Batching.** One call per refresh, holding every task id in the graph, because a real
   resolver reads a database. Returning an id no transcript mentioned inserts that task.
 - **Failure.** A resolver that throws costs that pass its enrichment and nothing else; the
   rows stand as the transcripts left them and `summary.tasks` carries `failed` plus the
   `error` message for the caller to log.
+
+## The PR outcome resolver
+
+A transcript sees a merge only when that session ran `gh pr merge`. A merge done by another
+session or in the browser, a close, and the review history exist nowhere in the corpus. Pass
+`resolvePrs` and a product fills `state`, `merged_at`, `closed_at` and `review_rounds`.
+
+```ts
+await refreshCorpus(graph, transcripts, {
+  resolvePrs: async (prs) => new Map(prs.map((pr) => [pr.prRef, myForge.outcome(pr.repo, pr.number)])),
+});
+```
+
+- **Order.** It runs after `reconcile`, so it sees every merge the transcripts witnessed.
+- **Merged is sticky.** A resolver's `open` or `closed` never replaces a `merged` state, so a
+  stale forge cache cannot reopen a PR. States are stored lower-case.
+- **Batching.** One call per refresh with every PR that has a repo and number and whose
+  outcome may still change: never checked, or not yet merged. A merged PR is asked about
+  once. The resolver only updates rows; a PR enters the graph from a transcript.
+- **`review_rounds`** is stored as the resolver counts it. What counts as a round is an open
+  question in the TP-256 design (Q6).
+- **Failure.** Same as the task resolver: the pass completes, the rows stand, and
+  `summary.prs` carries `failed` plus `error`.
+
+`reconcile` sets `merged_at` from merge sightings only for a PR the resolver has not yet
+checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
+pass never overwrites it with a sighting time.
 
 ## Tables
 
@@ -99,6 +138,61 @@ reclassified. `resolveConversationAlias` rejects ambiguous aliases. Original sou
 files are not needed to migrate. Back up the database before upgrading; restoring
 that backup is the rollback path for an older binary. Explicit `resetIndex` remains a
 destructive rebuild and requires the original sources; it is never run by migration.
+
+Migration 4, `audit tables`, adds one table per session-read audit event kind
+(`request`, `tool_call`, `inbound`, `context_block`, `compaction`, `queue_op`,
+`session_signal`, `cost_state_observation`) plus `transcript_facet`, and adds
+`session.account` and five rollup or outcome columns. It creates only empty tables and
+nullable columns, so existing rows are untouched; transcripts indexed before it gain
+audit rows through `backfillFacets` on later refreshes. `request` holds one row per `(transcript_id, request_id)`:
+the several assistant lines of one API response collapse to the first line's offset and
+the largest value of each token column. `session.account` comes from discovery, not the
+transcript. `purgeTranscript` and `resetIndex` clear all nine tables.
+
+Migration 5, `origin, episodes, prices`, adds four tables and three views. It creates only
+empty tables, so existing rows are untouched.
+
+- `session_origin` and `session_external_event` hold who launched a session and the
+  lifecycle events the launcher saw outside the transcript. `refreshCorpus` fills them
+  through the `resolveOrigins` option, once per pass, for sessions with no origin row or one
+  older than the session's last line. Each origin with a parent projects into a `spawned`
+  edge and a `subagent` row. `resetIndex` clears them and the next pass refills them.
+- `episode` holds each segmentation heuristic's cut of a session.
+  `replaceEpisodes(graph, sessionId, heuristic, rows)` is its only writer. It replaces one
+  heuristic's rows for one session in a transaction and leaves every other heuristic's rows
+  alone, so `worker-v1` and `coordinator-v1` coexist. The rule itself lives in
+  session-analytics. A rewritten transcript purges its sessions' episodes.
+- `price` holds USD per million tokens by model prefix and effective date.
+  `syncPrices(graph, rows, { tableVersion, source })` replaces the whole table in one
+  transaction.
+- `request_dedup` collapses fan-out copies of a request to the earliest one. Every cost
+  query reads it, never `request`. `request_cost` prices each row by longest model prefix
+  and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.
+  `context_contribution` attributes each request's context growth to the blocks before it.
+
+Migration 6, `episode transcript ids`, adds nullable `start_transcript_id` and
+`end_transcript_id` columns to `episode`, surfaced as `EpisodeRow.startTranscriptId` and
+`endTranscriptId`. A session resumed across two transcripts then orders by timestamp,
+transcript id, and byte offset, because byte offsets reset with the new file.
+
+Migration 7, `origin task link`, adds nullable `task_ids` (a JSON array, primary id first)
+and `task_source` columns to `session_origin`, surfaced as `ResolvedOrigin.taskIds` and
+`taskSource`. It changes no existing row or edge. A row whose `task_source` is null is
+offered to the resolver again on every pass, so the first pass with a task-aware resolver
+is the backfill. A resolver that sets `taskIds`, even to an empty array or null, always
+leaves `task_source` non-null: the given source, or `none` (`NO_TASK_LINK`) when there are
+no ids. A resolver that leaves `taskIds` undefined leaves a stored link as it was, and a
+row without one stays on offer. A task-aware resolver therefore returns an entry for every
+requested session it examined, with `taskIds` empty when nothing links; a session it leaves
+out keeps a null `task_source` and is offered again on every pass. The
+upsert updates only the columns it names, so a later column keeps its value. Each linked id
+projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
+and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for
+`brief-paragraph`. Only rows resolved in the current pass are projected. When a
+re-resolution drops an id, only that origin-made edge expires. A transcript's `ran` edge
+carries no `via`, and when a transcript claims an edge the origin made first, the edge is
+superseded without `via`, so origin expiry never removes a transcript's claim.
+session-graph stores and projects the ids a resolver hands it; it does not compute them.
 
 For snapshot-only usage across multiple physical sources, queries select one source
 by latest native usage timestamp, then greatest usage-record coverage and stable

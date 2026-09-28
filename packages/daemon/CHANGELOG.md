@@ -1,5 +1,32 @@
 # @titan-design/daemon
 
+## 0.3.0
+
+### Minor Changes
+
+- dede06c: The daemon's guards now refuse a state-changing request (POST, PUT, PATCH, DELETE, including `/rpc/:name` and `/mcp`) that carries neither an `Origin` header nor a non-empty `X-Titan-Client` header, with a 403. Before, a missing `Origin` skipped the origin check. Non-browser callers must add `x-titan-client: <name>`; `CLIENT_HEADER` is exported from `@titan-design/rpc-protocol` and re-exported by `@titan-design/daemon`, and `liveSource` in `@titan-design/rpc-client` now sends it. `GuardedRequest` gains a `client` field (TP-238).
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+  - @titan-design/rpc-protocol@0.2.0
+  - @titan-design/registry@0.3.1
+
+## 0.2.0
+
+### Minor Changes
+
+- f2c70e0: Add `mountStaticApp(app, { root, base, immutableDir })` for the `mountRoutes` seam (TP-140). It serves a built front end, or a single-file build, under a path prefix. It sets content types, `nosniff`, immutable caching for hashed assets, and `no-cache` elsewhere. Client routes fall back to `index.html`, and a missing asset gets 404. The page answers 503 until the app is built. Traversal is refused, by encoded segment, by symlink, and for dotfiles. It registers `GET` only, behind the existing guards.
+
+### Patch Changes
+
+- cb3b7e2: The wire contract now comes from `@titan-design/rpc-protocol`. `registry` re-exports `JsonEnvelope`, `EXIT`, `successEnvelope`, and `errorEnvelope`, and `daemon` re-exports `SseMessage`, so existing imports keep working. The bytes on the wire are unchanged (TP-138).
+- Updated dependencies [cb3b7e2]
+- Updated dependencies [cb3b7e2]
+- Updated dependencies [e3128f0]
+  - @titan-design/registry@0.3.0
+  - @titan-design/rpc-protocol@0.1.0
+
 ## 0.1.4
 
 ### Patch Changes

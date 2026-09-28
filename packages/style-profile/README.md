@@ -57,6 +57,10 @@ Each format also has its own generator (`generateEslintExport`, `generateRuffExp
 on). The rule builders in `eslint-rules` (`buildNamingConventionRule`,
 `buildFunctionLengthRule`, `buildFileNamingRule`, `buildJsdocRules`, `buildImportOrderRule`)
 return single `[ruleName, config]` pairs for callers that assemble their own ESLint config.
+`buildNamingConvention` returns the naming rule plus `skippedRules`: profile naming values
+are mapped to typescript-eslint formats (`UPPER_SNAKE_CASE` and `SCREAMING_SNAKE` become
+`UPPER_CASE`), and a value with no typescript-eslint format, such as `kebab-case`, is left
+out of the rule and reported there with a reason instead of making ESLint reject the config.
 
 ## Provenance
 

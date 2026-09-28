@@ -1,0 +1,17 @@
+[
+  {
+    "schema": "titan.trace/v1",
+    "kind": "run",
+    "id": "3f1c2a9e-0000-4000-8000-000000000001",
+    "runId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "at": "2026-09-28T10:00:00.000Z",
+    "workflowName": "doc-change",
+    "status": "completed",
+    "completedAt": "2026-09-28T11:02:41.000Z",
+    "error": null,
+    "correlations": {
+      "factory.task": "DEMO-7"
+    },
+    "paramsSha256": "eac83e453efe724691a20b8c6cabf2207d90ae5d6bffdd1b7166651e35e6afd4"
+  }
+]

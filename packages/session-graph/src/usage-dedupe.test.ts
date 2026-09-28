@@ -50,10 +50,8 @@ afterEach(() => {
 });
 
 describe("usage dedupe", () => {
-  // Bug tracked as T9 / TP-266: recordUsage in assistant-line.ts has no
-  // requestId/message.id dedup, so one API response split across N assistant
-  // lines is counted N times. Fix lands with T9; until then this stays it.fails.
-  it.fails("counts one request for an API response written as three assistant lines", async () => {
+  // TP-266: session_model_usage is recomputed from the request table, which dedupes on requestId.
+  it("counts one request for an API response written as three assistant lines", async () => {
     await refreshCorpus(graph, [transcript]);
     const usage = graph.db.prepare("SELECT request_count, output_tokens FROM session_model_usage").get() as {
       request_count: number;

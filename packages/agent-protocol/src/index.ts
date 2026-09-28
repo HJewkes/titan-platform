@@ -30,10 +30,21 @@ export type {
   ExecutionReconcileOutcome,
   ExecutionTerminal,
   ExecutionTransition,
+  HandoffIdentity,
   LifecycleExecutionTarget,
   TerminalExecutionPhase,
 } from "./lifecycle.js";
-export { EXECUTION_PHASES } from "./lifecycle.js";
+export { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES } from "./lifecycle.js";
+export type { ExecutionCorrelations } from "./lifecycle-correlations.js";
+export type { ExecutionFencing, ExecutionReducerOptions } from "./lifecycle-fencing.js";
+export {
+  CORRELATION_KEY_PATTERN,
+  MAX_CORRELATION_VALUE_LENGTH,
+  MAX_CORRELATIONS,
+  RESERVED_CORRELATION_PREFIXES,
+  correlationKey,
+  validateCorrelations,
+} from "./lifecycle-correlations.js";
 export type { ExecutionTransitionErrorCode } from "./lifecycle-validation.js";
 export { ExecutionTransitionError } from "./lifecycle-validation.js";
 export {
@@ -76,3 +87,5 @@ export type UsageMeasurement = {
   | { kind: "delta"; responseId: string }
   | { kind: "snapshot"; scope: "turn" | "conversation"; scopeId: string; epoch: string; sequence: number }
 );
+
+export { foldUsage, type UsageFold } from "./usage-fold.js";

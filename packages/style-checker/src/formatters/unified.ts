@@ -113,6 +113,7 @@ export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
   return entries.flatMap((entry) => isRuffSyntaxError(entry.code) ? [] : [{
     file: entry.filename,
     line: entry.location.row,
+    endLine: entry.end_location.row,
     column: entry.location.column,
     severity: "warn" as const,
     message: entry.message,

@@ -1,0 +1,40 @@
+
+---------
+Contracts
+---------
+
+Analyzed 4 files, 3 dependencies.
+---------------------------------
+
+Leaf must not reach top BROKEN
+App layers BROKEN
+
+Contracts: 0 kept, 2 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+Leaf must not reach top
+-----------------------
+
+app.leaf is not allowed to import app.top:
+
+-   app.leaf -> app.mid (l.1)
+    app.mid -> app.top (l.3)
+
+
+App layers
+----------
+
+app.leaf is not allowed to import app.mid:
+
+- app.leaf -> app.mid (l.1)
+
+
+app.mid is not allowed to import app.top:
+
+- app.mid -> app.top (l.3)
+
+

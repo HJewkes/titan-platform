@@ -82,9 +82,51 @@ TD-31 to TD-35, and each one says so where it is defined:
 | (no growth timeline yet) | TD-34 line chart |
 | Directory neighbours note | TD-35 dependency structure matrix |
 
+## Fixtures
+
+`fixtures/` holds two committed `titan-snapshot@1` files, built from real indexes by
+`pnpm --filter code-report fixtures`. Neither carries a dataset, so each answers exactly the
+calls it recorded and nothing else; that keeps them small enough to commit and to load in a
+test. Pass `--with-dataset` for a self-answering export instead, which costs megabytes.
+
+| Fixture | Holds | Bytes |
+| --- | --- | --- |
+| `titan-platform-history.snapshot.json` | This repository at 17 of its 59 tags, 2026-09-08 to 2026-09-19, in one store: a real growth timeline | 179,023 |
+| `titan-design.snapshot.json` | `~/projects/titan-design` at its current main (`028e30b`), one snapshot, 60 findings | 497,149 |
+
+The script clones each repository into a scratch directory and checks the clone out at each
+ref, so neither working tree is touched. `--full` indexes all 59 tags instead of every
+fourth plus the newest three; `--reuse` skips indexing when the scratch store is already
+there; `--only platform` or `--only design` builds one of the two.
+
+A clone carries commits only, so the script runs `git status --porcelain` on each source
+first. Local changes print a warning with the path count and are recorded in the fixture's
+top-level `provenance` (`commit`, `dirty`, `dirtyFiles`); `--require-clean` refuses instead.
+
+The output is byte-stable: two runs over the same refs write the same files. code-graph
+stamps each snapshot's `takenAt` with the wall clock and cannot be told otherwise, so the
+exporter rewrites it to the indexed commit's date and sets `createdAt` to the newest one.
+The history fixture is indexed without git churn, recency, and ownership, because code-graph
+measures those against today rather than the tag's date, which is wrong for an old tag and
+changes daily. The titan-design fixture keeps them, so its churn columns move if it is
+rebuilt on another day.
+
+Both fixtures use this repository's own `.codewatch/check.json`, which is why the
+titan-platform one has no findings at all: CI keeps those rules at zero. Set
+`CODE_REPORT_RULES=apps/code-report/rules/strict.json` to rebuild with the demo thresholds
+instead. `TITAN_DESIGN_REPO` and `CODE_REPORT_SCRATCH` move the second repository and the
+scratch directory.
+
+There is no timeline command in code-read's contract, so a metric's history is recorded as
+`snapshot.list` plus one `node.get` per node per snapshot. A node the snapshot predates
+answers `EXIT.NOINPUT`, not a null value with a reason, so a consumer assembling a line has
+to read that error as the gap it is. `scripts/fixtures.test.ts` asserts both, along with the
+row, point, and call counts.
+
 ## Tests
 
 `src/routes.test.tsx` renders the whole app at each route against a fixture snapshot
 embedded in the page, the same path an exported report takes. It covers loading, empty,
-not-found, unavailable, and recorded-before-dataset. Run it from the repository root with
-`pnpm test`.
+not-found, unavailable, and recorded-before-dataset. `scripts/fixtures.test.ts` replays
+every call in the two committed fixtures through the static source. Run both from the
+repository root with `pnpm test`.

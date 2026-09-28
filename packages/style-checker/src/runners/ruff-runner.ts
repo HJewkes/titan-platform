@@ -49,6 +49,7 @@ function toToml(config: RuffConfig): string {
   if (config["line-length"]) {
     lines.push(`line-length = ${config["line-length"]}`);
   }
+  if (config.preview) lines.push("preview = true");
 
   if (config.lint) {
     lines.push("[lint]", ...lintSelectionLines(config.lint), ...lintSubsectionLines(config.lint));

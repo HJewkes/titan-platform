@@ -14,6 +14,7 @@ export interface RuffConfig {
     };
   };
   "line-length"?: number;
+  preview?: boolean;
 }
 
 type RuffLint = NonNullable<RuffConfig["lint"]> & { select: string[] };

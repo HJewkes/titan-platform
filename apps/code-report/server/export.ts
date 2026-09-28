@@ -1,40 +1,19 @@
 // Writes dist/report.html, the built page with a titan-snapshot@1 embedded, that opens from disk: `pnpm --filter code-report export`.
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createQueryResolver, type QueryResolver } from "@titan-design/code-read";
+import { createQueryResolver } from "@titan-design/code-read";
 import { embedSnapshot } from "@titan-design/react-app";
 import { canonicalArgs, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { exportSnapshot } from "@titan-design/rpc-client/node";
 import { invokeCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
-import { CALLS, NO_FILTERS, overviewMetrics } from "../src/data/calls.js";
 import { datasetSource } from "../src/data/dataset.js";
 import { encodeDataset } from "./dataset-export.js";
+import { firstPaintCalls, type PlannedCall } from "./plan.js";
 import { DIST_DIR } from "./paths.js";
 import { createContext, createReportRegistry } from "./registry.js";
 
 const SNAPSHOT_FILE = path.join(DIST_DIR, "report-snapshot.json");
 const REPORT_FILE = path.join(DIST_DIR, "report.html");
-
-interface PlannedCall {
-  command: string;
-  args: unknown;
-}
-
-/** What each page asks for on first paint, plus every finding; anything else is answered by the resolver. */
-function firstPaintCalls(snapshot: number, resolve: QueryResolver): PlannedCall[] {
-  const describe = resolve("api.describe", CALLS.describe());
-  const counts = resolve("findings.list", { snapshot, limit: 500 });
-  if (!describe.ok || !counts.ok) throw new Error("The dataset cannot answer api.describe or findings.list");
-  const metrics = overviewMetrics((describe.data as { metrics: Parameters<typeof overviewMetrics>[0] }).metrics).map((m) => m.name);
-  const findings = (counts.data as { rows: Array<{ id: string }> }).rows;
-  return [
-    { command: "api.describe", args: CALLS.describe() },
-    { command: "findings.list", args: CALLS.findingCounts(snapshot) },
-    { command: "hierarchy.get", args: CALLS.overviewTree(snapshot, metrics) },
-    { command: "findings.list", args: CALLS.findingsPage(snapshot, NO_FILTERS, "severity", 0) },
-    ...findings.map((f) => ({ command: "finding.get", args: CALLS.finding(snapshot, f.id) })),
-  ];
-}
 
 /** Fields that differ by design: the export says "static", serves flagged files only, and carries the newest snapshot alone. */
 function comparable(command: string, envelope: unknown): string {

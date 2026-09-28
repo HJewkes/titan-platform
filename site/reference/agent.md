@@ -1,6 +1,7 @@
 # agent
 
-**Tier 1 · engines.** Depends on [`agent-protocol`](/reference/agent-protocol) and `@anthropic-ai/claude-agent-sdk`;
+**Tier 1 · engines.** Depends on [`agent-protocol`](/reference/agent-protocol),
+[`agent-lifecycle`](/reference/agent-lifecycle), and `@anthropic-ai/claude-agent-sdk`;
 `zod` v4 is a peer.
 
 ```sh
@@ -50,6 +51,43 @@ if (result.ok) {
   scheduleRetry(result.failure.retryAt);
 }
 ```
+
+## Pass-through options
+
+`agents`, `mcpServers`, `hooks`, `allowedTools`, `disallowedTools`, `model`,
+`resumeSessionId`, and `settingSources` go straight to the SDK. So do `tools`, the built-in
+tool set (`[]` runs with no tools, for a pure judgement call), and `systemPrompt`, which
+replaces the Claude Code default prompt. Leaving either unset keeps the SDK default.
+
+## The claude-print harness
+
+`harness: "claude-print"` makes `runAgent` spawn the `claude` CLI in print mode instead of
+calling the SDK. It suits one-turn structured answers on a machine where the CLI is already
+logged in: the keychain login is the credential, so `CLAUDE_CODE_OAUTH_TOKEN` is not required.
+`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are still stripped unless `allowApiKeyBilling`
+is set.
+
+| Option | Maps to |
+|---|---|
+| binary | `CLAUDE_BIN`, else the first executable file named `claude` on `PATH` |
+| every call | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-budget-usd <maxBudgetUsd>` |
+| `maxTurns` | `--max-turns`, at least 2 when `outputSchema` is set; `error_max_turns` is a retryable `runtime_error` |
+| `prompt` | stdin |
+| `model` | `--model` |
+| `systemPrompt` | `--system-prompt` |
+| `outputSchema` | `--json-schema`, then a local zod parse; a mismatch is `schema_invalid` |
+| `inactivityTimeoutMs` | a wall deadline that kills the child process group |
+| `signal` | kills the child process group and returns `aborted` |
+
+Tools other than `[]`, MCP servers, hooks, subagents, permission modes, resume and setting
+sources throw a `TypeError` before anything spawns. `claudePrintCapabilities()` states the
+same limits in the shared capability vocabulary. A measured call with no `systemPrompt`
+used about 7,600 input tokens for the default Claude Code prompt, cost $0.031 on sonnet
+and took 4.4 s wall time.
+
+The JSON result's `usage.input_tokens` is the non-cached count only, often single digits
+beside thousands of `cache_creation_input_tokens`, so read cost from `totalCostUsd` or the
+cache fields.
 
 ## Budgets are required, not defaulted
 

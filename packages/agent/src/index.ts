@@ -1,6 +1,7 @@
 export type { AgentRunDeps } from "./run.js";
 export { DEFAULT_INACTIVITY_MS, runAgent } from "./run.js";
 export type {
+  AgentRunHarness,
   BoundedRunBase,
   CapabilityAssessment,
   ClaudeCodeNativeOptions,
@@ -29,7 +30,18 @@ export type {
   RunTarget,
   TranscriptSourceHint,
 } from "./harness-contracts.js";
-export { CODEX_APPROVAL_POLICIES, CODEX_SANDBOXES, EXECUTION_CAPABILITIES } from "./harness-contracts.js";
+export {
+  CLAUDE_PRINT_UNSUPPORTED_OPTIONS,
+  CODEX_APPROVAL_POLICIES,
+  CODEX_SANDBOXES,
+  EXECUTION_CAPABILITIES,
+} from "./harness-contracts.js";
+export {
+  CLAUDE_PRINT_KILL_GRACE_MS,
+  buildClaudePrintArgs,
+  claudePrintCapabilities,
+  resolveClaudeBin,
+} from "./claude-print.js";
 export { dispatchHarnessRun, preflightHarnessRun } from "./preflight.js";
 export type {
   CodexExecAdapterOptions,
@@ -62,7 +74,7 @@ export type {
 } from "./types.js";
 export type { ClassifyOptions } from "./failures.js";
 export { classifyResult, sumModelCost, usageFromResult } from "./failures.js";
-export type { PrepareEnvOptions } from "./env.js";
+export type { AuthEnvCheckOptions, PrepareEnvOptions } from "./env.js";
 export {
   ANTI_NESTING_VARS,
   AuthMisconfiguredError,

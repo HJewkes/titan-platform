@@ -1,4 +1,6 @@
 import { readAssistantLine } from "./assistant-line.js";
+import { emitAttachmentContextBlock } from "./audit-context.js";
+import { emitInbound } from "./audit-inbound.js";
 import { emitCompaction, emitCostState, emitQueueOp } from "./audit-line.js";
 import type { EventBase, LineSpan, SessionEvent, SessionPatch, SpanField } from "./events.js";
 import { RELATIONS, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, toRepoRelative } from "./refs.js";
@@ -20,19 +22,27 @@ export type Emit = (event: SessionEvent) => void;
 
 /**
  * Translates one transcript JSONL line into typed events. Every rule is
- * stateless across lines, which is what makes an incremental read from a
- * watermark and a whole-file rebuild produce identical event sets.
+ * stateless across lines except the last-seen timestamp: a record such as
+ * `cost-state` carries none of its own and takes the enclosing line's. A
+ * caller resuming mid-file must pass `initialTs` (the last timestamp before
+ * its start offset) so that fallback matches what a whole-file read would
+ * have produced for the same line.
  *
  * `fallbackSessionId` is the transcript's own filename stem, for line types
  * that carry no `sessionId`. `subagentId` marks a subagent sidechain, where a
  * line's `sessionId` names the dispatching parent rather than this session.
  */
 export class LineReader {
+  private lastTs: string;
+
   constructor(
     readonly emit: Emit,
     private readonly fallbackSessionId: string | null = null,
     private readonly subagentId: string | null = null,
-  ) {}
+    initialTs = "",
+  ) {
+    this.lastTs = initialTs;
+  }
 
   handle(line: Json, loc: LineSpan): void {
     const ownSessionId = str(line, "sessionId") ?? this.subagentId ?? this.fallbackSessionId;
@@ -40,11 +50,13 @@ export class LineReader {
     if (!sessionId) return;
     const branch = str(line, "gitBranch");
     const cwd = str(line, "cwd");
+    const ownTs = str(line, "timestamp") ?? str(asObject(line.snapshot), "timestamp");
+    if (ownTs) this.lastTs = ownTs;
     const ctx: LineContext = {
       line,
       loc,
       sessionId,
-      ts: str(line, "timestamp") ?? str(asObject(line.snapshot), "timestamp") ?? "",
+      ts: ownTs ?? this.lastTs,
       cwd,
       gitBranch: branch === "HEAD" ? null : branch,
       repo: repoForCwd(cwd),
@@ -188,6 +200,8 @@ export class LineReader {
   private attachment(ctx: LineContext): void {
     this.fact(ctx, "attachment");
     const attachment = asObject(ctx.line.attachment);
+    const queued = str(attachment, "type") === "queued_command" ? emitInbound(this, ctx) : null;
+    emitAttachmentContextBlock(this, ctx, attachment, queued?.cause ?? null);
     const filename = str(attachment, "filename");
     if (str(attachment, "type") !== "edited_text_file" || !filename) return;
     const file = this.recordFile(ctx, filename, RELATIONS.EDITED_BY_HUMAN);

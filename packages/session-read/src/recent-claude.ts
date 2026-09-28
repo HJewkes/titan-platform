@@ -4,6 +4,19 @@ import type { RecentFormatResult, RecentObservedValue, RecentSessionTurn, Recent
 import type { RecentSourceLine } from "./recent-tail.js";
 import { observed, oneLine, parseRecentRecord, renderedValue, text, truncate, unknownValue, withNativeOrdinal } from "./recent-values.js";
 
+export type SessionIdentityErrorCode = "foreign_native_session" | "multiple_parent_sessions";
+
+/** Extends TypeError so existing `instanceof TypeError` catches keep working for a released consumer. */
+export class SessionIdentityError extends TypeError {
+  constructor(
+    message: string,
+    readonly code: SessionIdentityErrorCode,
+  ) {
+    super(message);
+    this.name = "SessionIdentityError";
+  }
+}
+
 export function parseRecentClaude(
   lines: readonly RecentSourceLine[],
   truncatedBefore: boolean,
@@ -43,10 +56,15 @@ function assertClaudeRecordIdentity(
 ): string | null {
   const sessionId = text(record.sessionId);
   if (!claudeRecordBelongsToSource(source, record)) {
-    throw new TypeError(`Claude transcript record belongs to native session ${String(sessionId)}, expected ${source.conversation.nativeId}`);
+    throw new SessionIdentityError(
+      `Claude transcript record belongs to native session ${String(sessionId)}, expected ${source.conversation.nativeId}`,
+      "foreign_native_session",
+    );
   }
   if (!sessionId || sessionId === source.conversation.nativeId) return parentSessionId;
-  if (parentSessionId && parentSessionId !== sessionId) throw new TypeError("Claude sidechain window names multiple parent sessions");
+  if (parentSessionId && parentSessionId !== sessionId) {
+    throw new SessionIdentityError("Claude sidechain window names multiple parent sessions", "multiple_parent_sessions");
+  }
   return sessionId;
 }
 

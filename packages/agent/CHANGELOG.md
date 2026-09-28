@@ -1,5 +1,34 @@
 # @titan-design/agent
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [ca56251]
+- Updated dependencies [18527b6]
+- Updated dependencies [3f935f3]
+- Updated dependencies [4761f82]
+  - @titan-design/agent-protocol@0.2.0
+  - @titan-design/agent-lifecycle@0.1.2
+
+## 0.4.1
+
+### Patch Changes
+
+- bb543d3: claude-print passes `maxTurns` to `--max-turns` instead of a fixed 1, raised to at least 2 when `outputSchema` is set, and reports `error_max_turns` as a retryable `runtime_error` (TP-371).
+
+## 0.4.0
+
+### Minor Changes
+
+- 984e067: Add the `claude-print` harness to `runAgent`: `harness: "claude-print"` spawns headless `claude -p` on the CLI's own keychain login, so `CLAUDE_CODE_OAUTH_TOKEN` is not required. It runs one turn with no tools, hooks or MCP, passes `systemPrompt` as `--system-prompt` and `outputSchema` as `--json-schema` with a local zod re-parse, enforces the timeout and abort by killing the child process group, and still strips `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` unless `allowApiKeyBilling` is set. New exports: `AgentRunHarness`, `AuthEnvCheckOptions`, `CLAUDE_PRINT_UNSUPPORTED_OPTIONS`, `CLAUDE_PRINT_KILL_GRACE_MS`, `buildClaudePrintArgs`, `claudePrintCapabilities`, `resolveClaudeBin`.
+
+## 0.3.0
+
+### Minor Changes
+
+- 09690de: `runAgent` accepts `tools` and `systemPrompt`, passed through to the SDK, so a call can run with no tools and a short system prompt.
+
 ## 0.2.0
 
 ### Minor Changes

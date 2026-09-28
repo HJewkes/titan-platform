@@ -11,6 +11,8 @@ export interface ResolvedTask {
   initiative?: string | null;
   title?: string | null;
   status?: string | null;
+  /** The store's size estimate for the task, in whatever unit it keeps. */
+  estimate?: number | null;
 }
 
 /** Resolutions keyed by bare task id (`AW-23`, not `task:AW-23`). */
@@ -44,11 +46,12 @@ export const NO_ENRICHMENT: TaskEnrichment = Object.freeze({ requested: 0, appli
  * a task's present status, while a transcript only witnesses a command that ran.
  */
 const UPSERT_TASK = `
-  INSERT INTO task (task_ref, task_id, initiative, title, status) VALUES (@taskRef, @taskId, @initiative, @title, @status)
+  INSERT INTO task (task_ref, task_id, initiative, title, status, estimate) VALUES (@taskRef, @taskId, @initiative, @title, @status, @estimate)
   ON CONFLICT (task_ref) DO UPDATE SET
     initiative = COALESCE(excluded.initiative, initiative),
     title      = COALESCE(excluded.title, title),
-    status     = COALESCE(excluded.status, status)`;
+    status     = COALESCE(excluded.status, status),
+    estimate   = COALESCE(excluded.estimate, estimate)`;
 
 export function allTaskIds(graph: SessionGraph): string[] {
   return (graph.db.prepare("SELECT task_id FROM task").all() as { task_id: string }[]).map((r) => r.task_id);
@@ -83,6 +86,7 @@ function write(graph: SessionGraph, resolved: TaskResolution): number {
         initiative: fields.initiative ?? null,
         title: fields.title ?? null,
         status: fields.status ?? null,
+        estimate: fields.estimate ?? null,
       }).changes;
     }
     return applied;

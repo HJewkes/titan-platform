@@ -1,0 +1,1 @@
+broken.py:1: invalid syntax at "def broken(:"

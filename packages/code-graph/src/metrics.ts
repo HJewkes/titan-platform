@@ -56,6 +56,7 @@ function weightedInbound(
   const util = new Map<string, number>();
   for (const n of nodes) util.set(n.id, 0);
   for (const e of resolveBarrelEdges(nodes, edges)) {
+    if (e.kind === "calls") continue;
     if (util.has(e.dstId)) util.set(e.dstId, util.get(e.dstId)! + edgeWeight(e));
   }
   return util;

@@ -1,5 +1,59 @@
 # @titan-design/session-miner
 
+## 0.2.11
+
+### Patch Changes
+
+- Updated dependencies [dede06c]
+  - @titan-design/daemon@0.3.0
+  - @titan-design/session-graph@0.9.1
+  - @titan-design/session-read@0.5.1
+  - @titan-design/registry@0.3.1
+
+## 0.2.10
+
+### Patch Changes
+
+- Updated dependencies [5b4f9de]
+  - @titan-design/session-graph@0.9.0
+
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies [527b81e]
+- Updated dependencies [da2f8d9]
+  - @titan-design/session-graph@0.8.0
+
+## 0.2.8
+
+### Patch Changes
+
+- Updated dependencies [0877916]
+  - @titan-design/session-graph@0.7.0
+
+## 0.2.7
+
+### Patch Changes
+
+- Updated dependencies [825b8b2]
+- Updated dependencies [1035eb1]
+- Updated dependencies [1e41479]
+- Updated dependencies [79a855d]
+- Updated dependencies [1a47098]
+- Updated dependencies [38903dd]
+- Updated dependencies [283d7e1]
+- Updated dependencies [1035eb1]
+- Updated dependencies [cb3b7e2]
+- Updated dependencies [e3128f0]
+- Updated dependencies [f2c70e0]
+- Updated dependencies [a49eb2d]
+  - @titan-design/store-sqlite@0.3.1
+  - @titan-design/session-graph@0.6.0
+  - @titan-design/session-read@0.5.0
+  - @titan-design/registry@0.3.0
+  - @titan-design/daemon@0.2.0
+
 ## 0.2.6
 
 ### Patch Changes

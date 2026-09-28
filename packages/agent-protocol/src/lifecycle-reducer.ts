@@ -1,15 +1,23 @@
 import type { ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
-import type {
-  ExecutionOwnerFence,
-  ExecutionPhase,
-  ExecutionRecord,
-  ExecutionTransition,
-  LifecycleExecutionTarget,
-  TerminalExecutionPhase,
-} from "./lifecycle.js";
 import {
-  cloneExecution,
-  cloneTarget,
+  TERMINAL_EXECUTION_PHASES,
+  type ExecutionPhase,
+  type ExecutionRecord,
+  type ExecutionTransition,
+  type TerminalExecutionPhase,
+} from "./lifecycle.js";
+import { validateCorrelations } from "./lifecycle-correlations.js";
+import {
+  refuseOwnerTransition,
+  requireFence,
+  requirePreparedOwner,
+  resolveFencing,
+  stampSupervisor,
+  type ExecutionFencing,
+  type ExecutionReducerOptions,
+} from "./lifecycle-fencing.js";
+import { cloneTarget, preparedExecution, requireTargetConversation } from "./lifecycle-targets.js";
+import {
   fail,
   instant,
   nonempty,
@@ -20,32 +28,44 @@ import {
   sameSurface,
   validTime,
   validateConversation,
-  validateFence,
   validateLease,
   validateTerminal,
 } from "./lifecycle-validation.js";
 
-const TERMINAL_PHASES = new Set<ExecutionPhase>(["succeeded", "failed", "cancelled", "cancellation_unknown"]);
+const TERMINAL_PHASES = new Set<ExecutionPhase>(TERMINAL_EXECUTION_PHASES);
 
 export function isTerminalExecutionPhase(phase: ExecutionPhase): phase is TerminalExecutionPhase {
   return TERMINAL_PHASES.has(phase);
 }
 
+/** The default fencing mode is the per-execution owner lease. */
 export function reduceExecutionTransition<TResult>(
   current: ExecutionRecord<TResult> | undefined,
   transition: ExecutionTransition<TResult>,
+  options: ExecutionReducerOptions = {},
 ): ExecutionRecord<TResult> {
+  const fencing = resolveFencing(options);
   validateEnvelope(transition);
-  if (transition.kind === "prepare") return prepare(current, transition);
+  if (transition.kind === "prepare") return prepare(current, transition, fencing);
   if (!current) fail("not_found", `execution ${transition.executionId} does not exist`);
   validateCurrent(current, transition);
   if (isTerminalExecutionPhase(current.phase)) fail("invalid_transition", `execution is terminal in phase ${current.phase}`);
+  refuseOwnerTransition(transition.kind, fencing);
+  if (transition.kind === "claim_owner") return claimOwner(current, transition);
+  requireFence(current, transition.fence, transition.occurredAt, fencing);
+  return stampSupervisor(applyFenced(current, transition), fencing);
+}
 
+function applyFenced<TResult>(
+  current: ExecutionRecord<TResult>,
+  transition: Exclude<ExecutionTransition<TResult>, { kind: "prepare" | "claim_owner" }>,
+): ExecutionRecord<TResult> {
   switch (transition.kind) {
     case "begin_dispatch":
-      requireFence(current, transition.fence, transition.occurredAt);
       requirePhase(current, ["prepared"], transition.kind);
       return next(current, transition, { phase: "dispatching", dispatchedAt: transition.occurredAt });
+    case "observe_launched":
+      return observeLaunched(current, transition);
     case "observe_running":
       return observeRunning(current, transition);
     case "identify_conversation":
@@ -56,12 +76,9 @@ export function reduceExecutionTransition<TResult>(
       return requireRecovery(current, transition);
     case "finish":
       return finish(current, transition);
-    case "claim_owner":
-      return claimOwner(current, transition);
     case "renew_owner":
       return renewOwner(current, transition);
     case "release_owner":
-      requireFence(current, transition.fence, transition.occurredAt);
       return next(current, transition, { owner: undefined });
     default:
       return fail("invalid_transition", "unknown execution transition kind");
@@ -71,28 +88,29 @@ export function reduceExecutionTransition<TResult>(
 function prepare<TResult>(
   current: ExecutionRecord<TResult> | undefined,
   transition: Extract<ExecutionTransition<TResult>, { kind: "prepare" }>,
+  fencing: ExecutionFencing,
 ): ExecutionRecord<TResult> {
   if (current) fail("invalid_transition", `execution ${transition.executionId} already exists`);
-  validateIdentity(transition.execution, transition.harness, transition.target);
+  const execution = preparedExecution(transition);
   if (transition.execution.executionId !== transition.executionId) {
     fail("invalid_transition", "prepared executionId does not match transition executionId");
   }
   optionalNonempty("agent.agentId", transition.agent?.agentId);
   nonempty("requestKey", transition.requestKey);
-  validateLease(transition.owner, transition.occurredAt);
-  if (transition.owner.generation !== 1) fail("invalid_transition", "initial owner generation must be 1");
+  requirePreparedOwner(transition.owner, transition.occurredAt, fencing);
   return {
-    execution: cloneExecution(transition.execution),
+    execution,
     ...(transition.agent ? { agent: { ...transition.agent } } : {}),
     harness: transition.harness,
     requestKey: transition.requestKey,
     target: cloneTarget(transition.target),
     phase: "prepared",
     revision: 1,
-    ownerGeneration: 1,
+    ownerGeneration: transition.owner.generation,
     owner: { ...transition.owner },
     preparedAt: transition.occurredAt,
     lastObservedAt: transition.occurredAt,
+    ...(transition.correlations === undefined ? {} : { correlations: validateCorrelations(transition.correlations) }),
   };
 }
 
@@ -100,7 +118,6 @@ function observeRunning<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "observe_running" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "recovery_required"], transition.kind);
   nonempty("runnerRef", transition.runnerRef);
   nonempty("evidence", transition.evidence);
@@ -119,11 +136,24 @@ function observeRunning<TResult>(
   });
 }
 
+/** Records a surface before the harness confirms running; the phase deliberately stays put. */
+function observeLaunched<TResult>(
+  current: ExecutionRecord<TResult>,
+  transition: Extract<ExecutionTransition<TResult>, { kind: "observe_launched" }>,
+): ExecutionRecord<TResult> {
+  requirePhase(current, ["dispatching"], transition.kind);
+  nonempty("runnerRef", transition.runnerRef);
+  nonempty("evidence", transition.evidence);
+  if (current.runnerRef && current.runnerRef !== transition.runnerRef) fail("invalid_transition", "runnerRef cannot change");
+  if (!transition.surface) fail("invalid_transition", "observe_launched must carry a surface");
+  const surface = bindSurface(current.surface, transition.surface);
+  return next(current, transition, { runnerRef: transition.runnerRef, ...(surface ? { surface } : {}) });
+}
+
 function identifyConversation<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "identify_conversation" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "running", "cancel_requested", "recovery_required"], transition.kind);
   const execution = bindConversation(current, transition.conversation);
   const adapterExecution = current.adapterExecution
@@ -136,7 +166,6 @@ function requestCancellation<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "request_cancellation" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["prepared", "dispatching", "running", "recovery_required"], transition.kind);
   nonempty("reason", transition.reason);
   return next(current, transition, {
@@ -149,7 +178,6 @@ function requireRecovery<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "require_recovery" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   requirePhase(current, ["dispatching", "running", "cancel_requested"], transition.kind);
   nonempty("evidence", transition.evidence);
   return next(current, transition, {
@@ -162,7 +190,6 @@ function finish<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "finish" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   validateTerminal(transition.terminal);
   if (current.phase === "prepared" && !["failed", "cancelled"].includes(transition.terminal.outcome)) {
     fail("invalid_transition", `prepared execution cannot finish as ${transition.terminal.outcome}`);
@@ -201,7 +228,6 @@ function renewOwner<TResult>(
   current: ExecutionRecord<TResult>,
   transition: Extract<ExecutionTransition<TResult>, { kind: "renew_owner" }>,
 ): ExecutionRecord<TResult> {
-  requireFence(current, transition.fence, transition.occurredAt);
   validTime("leaseUntil", transition.leaseUntil);
   if (!current.owner || instant(transition.leaseUntil) <= instant(current.owner.leaseUntil)) {
     fail("invalid_transition", "renewed lease must extend the current lease");
@@ -237,42 +263,14 @@ function validateCurrent<TResult>(current: ExecutionRecord<TResult>, transition:
   }
 }
 
-function requireFence<TResult>(current: ExecutionRecord<TResult>, fence: ExecutionOwnerFence, occurredAt: string): void {
-  validateFence(fence);
-  const owner = current.owner;
-  if (!owner || owner.supervisorId !== fence.supervisorId || owner.generation !== fence.generation) {
-    fail("ownership_lost", "execution owner fence does not match");
-  }
-  if (instant(owner.leaseUntil) <= instant(occurredAt)) fail("ownership_lost", "execution owner lease has expired");
-}
-
 function requirePhase<TResult>(current: ExecutionRecord<TResult>, allowed: ExecutionPhase[], event: string): void {
   if (!allowed.includes(current.phase)) fail("invalid_transition", `${event} is not allowed from ${current.phase}`);
-}
-
-function validateIdentity(execution: ExecutionIdentity, harness: string, target: LifecycleExecutionTarget): void {
-  if (!record(execution)) fail("invalid_transition", "execution must be an object");
-  nonempty("execution.executionId", execution.executionId);
-  nonempty("harness", harness);
-  if (!record(target)) fail("invalid_transition", "target must be an object");
-  if (target.kind === "fresh") {
-    nonempty("target.namespace", target.namespace);
-    if (execution.conversation) fail("invalid_transition", "fresh execution cannot begin with a conversation");
-    return;
-  }
-  if (target.kind !== "resume") fail("invalid_transition", "target.kind must be fresh or resume");
-  validateConversation(target.conversation, harness);
-  if (!execution.conversation || !sameConversation(execution.conversation, target.conversation)) {
-    fail("invalid_transition", "resume execution must carry its target conversation");
-  }
 }
 
 function bindConversation<TResult>(current: ExecutionRecord<TResult>, conversation?: ConversationIdentity): ExecutionIdentity {
   if (!conversation) return current.execution;
   validateConversation(conversation, current.harness);
-  if (current.target.kind === "fresh" && conversation.namespace !== current.target.namespace) {
-    fail("invalid_transition", "conversation namespace does not match fresh target namespace");
-  }
+  requireTargetConversation(current.target, conversation, "conversation");
   const observed = current.execution.conversation;
   if (observed && !sameConversation(observed, conversation)) fail("invalid_transition", "conversation identity cannot change");
   return { ...current.execution, conversation: { ...conversation } };
@@ -290,9 +288,7 @@ function bindAdapterExecution<TResult>(
   const identified = conversation ?? observed.conversation ?? existing?.conversation;
   if (identified) {
     validateConversation(identified, current.harness);
-    if (current.target.kind === "fresh" && identified.namespace !== current.target.namespace) {
-      fail("invalid_transition", "adapter conversation namespace does not match fresh target namespace");
-    }
+    requireTargetConversation(current.target, identified, "adapter conversation");
     for (const candidate of [conversation, observed.conversation, existing?.conversation]) {
       if (candidate && !sameConversation(candidate, identified)) fail("invalid_transition", "adapter conversation identity cannot change");
     }

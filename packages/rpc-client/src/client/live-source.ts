@@ -1,4 +1,4 @@
-import { EVENTS_PATH, EXIT, RPC_PREFIX, errorEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
+import { CLIENT_HEADER, EVENTS_PATH, EXIT, RPC_PREFIX, errorEnvelope, type JsonEnvelope } from "@titan-design/rpc-protocol";
 import { checkedWireArgs } from "./canonical-key.js";
 import type { DataSource } from "./data-source.js";
 import { isEnvelope } from "./envelope-shape.js";
@@ -42,8 +42,9 @@ async function postRpc(
 ): Promise<JsonEnvelope<unknown>> {
   const wire = checkedWireArgs(args);
   if (!wire.ok) return wire;
-  // The daemon's guards refuse a state-changing request without a JSON content type (415).
-  const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wire.data), signal };
+  // The daemon's guards refuse a POST without a JSON content type (415), or without Origin and the client header (403).
+  const headers = { "content-type": "application/json", [CLIENT_HEADER]: "rpc-client" };
+  const init = { method: "POST", headers, body: JSON.stringify(wire.data), signal };
   try {
     const response = await doFetch(url, init);
     const body: unknown = await response.json().catch(() => undefined);

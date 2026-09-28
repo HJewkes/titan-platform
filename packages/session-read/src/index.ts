@@ -7,6 +7,8 @@ export type { ExtractOptions, ExtractResult, ReadOptions, ReadResult } from "./r
 export { TranscriptParseError, extractTranscript, readTranscriptEvents } from "./read.js";
 export type { Relation, RepoRelativePath } from "./refs.js";
 export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, taskRef, toRepoRelative } from "./refs.js";
+export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
+export { parseReviewVerdicts } from "./review-verdict.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
@@ -69,7 +71,15 @@ export type { ReadClaudeTextOptions } from "./claude-read.js";
 export { readSessionObservations, readSessionSourceText } from "./session-observations.js";
 export type { ReadSessionObservationOptions, ReadSessionSourceTextOptions, SessionObservationReadResult } from "./session-observations.js";
 export { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-session-turns.js";
+export { SessionIdentityError } from "./recent-claude.js";
+export type { SessionIdentityErrorCode } from "./recent-claude.js";
 export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionReadError, RecentSessionTurn,
   RecentSessionTurns, RecentSessionUnknown, RecentTurnKind, RecentTurnProjection, RecentTurnRepresentation, RecentTurnRole,
   RecentUnknownReason } from "./recent-session-turns.js";
 export { EXTRACT_VERSION, type AuditEvent, type AuditEventBase, type AuditEventKind, type ContextSource, type QueueOperation, type SignalKind, type ToolFamily, type WakeCause } from "./audit-events.js";
+export { classifyInbound, contentHash, HASH_PREFIX_CHARS, type Inbound, type InboundDelivery } from "./wake-cause.js";
+export { toolFamily, type ToolFamilyResult } from "./tool-family.js";
+export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, parseChannelTag, type ChannelTag, type InjectedMarker, type InjectedMarkerName } from "./injected-markers.js";
+export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
+export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";
+export { ORIENTATION_HEADER, assignedTaskIds, orientationEnd, type Assignment, type AssignmentInput, type AssignmentSource } from "./spawn-assignment.js";

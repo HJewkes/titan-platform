@@ -1,3 +1,4 @@
+import { prepareAuditRollup } from "./audit-rollup.js";
 import type { SessionGraph } from "./graph.js";
 
 const BATCH = 400;
@@ -39,28 +40,35 @@ const RENUMBER_TURNS = `
   )
   UPDATE turn SET turn_index = ordered.idx FROM ordered WHERE turn.prompt_id = ordered.prompt_id`;
 
-/** Recompute turn aggregates for the given sessions in one transaction. */
+/** Recompute turn aggregates and the audit rollup for the given sessions in one transaction. */
 export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[]): number {
   const unique = [...new Set(sessionIds)];
   if (unique.length === 0) return 0;
   const aggregate = graph.db.prepare(ROLLUP);
   const renumber = graph.db.prepare(RENUMBER_TURNS);
+  const audit = prepareAuditRollup(graph.db);
   return graph.db.transaction(() => {
     let updated = 0;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = JSON.stringify(unique.slice(i, i + BATCH));
       renumber.run({ sessionIds: batch });
       updated += aggregate.run({ sessionIds: batch }).changes;
+      audit(batch);
     }
     return updated;
   })();
 }
 
-/** A merge sighting and the `pr-link` naming the same PR routinely live in different transcripts; fold at pass end. */
+/**
+ * A merge sighting and the `pr-link` naming the same PR routinely live in different transcripts; fold at pass end.
+ * Once the forge has checked a PR (`outcome_checked_at` set), its `merged_at` is forge-accurate and must not be
+ * overwritten by a transcript sighting time on a later pass.
+ */
 const RECONCILE_PR_MERGES = `
   UPDATE pr SET state = 'merged',
     merged_at = (SELECT MIN(o.merged_at) FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))
-  WHERE EXISTS (SELECT 1 FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))`;
+  WHERE pr.outcome_checked_at IS NULL
+    AND EXISTS (SELECT 1 FROM pr_merge_observation o WHERE o.number = pr.number AND (o.repo_hint IS NULL OR pr.repo LIKE '%/' || o.repo_hint))`;
 
 /** Both halves of a `gh pr create` make a real PR whether or not a `pr-link` ever mentioned it. */
 const RECONCILE_PR_CREATES = `

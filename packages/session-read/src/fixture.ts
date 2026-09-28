@@ -1,6 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { SessionEvent } from "./events.js";
+import { LineReader } from "./line-reader.js";
+import type { Json } from "./text.js";
 
 /**
  * Hand-written transcript fixture: one line of every event type the reader
@@ -55,6 +58,45 @@ function queueOperation(ts: string, operation: string, content: string | null): 
 function toolUse(id: string, name: string, input: unknown): Record<string, unknown> {
   return { type: "tool_use", id, name, input };
 }
+
+export const CHANNEL_PROMPT = '<channel source="plugin:agent-chat:agent-chat" from="peer-1" msg_id="m1">hello</channel>';
+export const SKILL_LISTING = `- active-work: durable per-initiative state\n${"- demo-skill: a listed skill\n".repeat(10)}`;
+
+const AUDIT_LINES: Record<string, unknown>[] = [
+  line({ type: "user", uuid: "p3", isMeta: true, timestamp: "2026-07-01T00:00:20Z", message: { role: "user", content: CHANNEL_PROMPT } }),
+  assistant("2026-07-01T00:00:21Z", [toolUse("t9", "mcp__plugin_agent-chat_agent-chat__chat_send", { to: "coordinator", text: "Status: DONE\nPR opened." })]),
+  line({
+    type: "attachment",
+    timestamp: "2026-07-01T00:00:22Z",
+    attachment: { type: "queued_command", prompt: QUEUED_CHANNEL_TEXT, commandMode: "prompt", origin: { kind: "channel", server: "plugin:demo:demo" }, isMeta: true },
+  }),
+  line({ type: "attachment", timestamp: "2026-07-01T00:00:23Z", attachment: { type: "skill_listing", content: SKILL_LISTING, isInitial: true } }),
+  assistant("2026-07-01T00:00:24Z", [
+    toolUse("t10", "Write", { file_path: `${CWD}/docs/notes.md`, content: "# Notes" }),
+    toolUse("t11", "Bash", { command: `cd ${CWD} && git commit -m y && git push && gh pr create --title "Demo"` }),
+  ]),
+  line({
+    type: "user",
+    timestamp: "2026-07-01T00:00:25Z",
+    message: {
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "t10", content: "written" },
+        { type: "tool_result", tool_use_id: "t11", content: [{ type: "text", text: "https://github.com/acme/demo/pull/43" }] },
+      ],
+    },
+  }),
+  assistant("2026-07-01T00:00:26Z", [
+    toolUse("t12", "Bash", { command: "active-work wrap demo --summary done" }),
+    toolUse("t13", "Skill", { skill: "active-work", args: "wrap" }),
+  ]),
+  line({
+    type: "user",
+    uuid: "p4",
+    timestamp: "2026-07-01T00:00:27Z",
+    message: { role: "user", content: [{ type: "text", text: "see this" }, { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } }] },
+  }),
+];
 
 export const FIXTURE_LINES: Record<string, unknown>[] = [
   line({ type: "ai-title", aiTitle: "Demo session", timestamp: "2026-07-01T00:00:00Z" }),
@@ -117,6 +159,9 @@ export const FIXTURE_LINES: Record<string, unknown>[] = [
   userPrompt("p2", "2026-07-01T00:00:19Z", "ship it"),
 ];
 
+/** The base fixture plus the lines the inbound, context-block and signal emitters branch on. */
+export const AUDIT_FIXTURE_LINES: Record<string, unknown>[] = [...FIXTURE_LINES, ...AUDIT_LINES];
+
 export function renderTranscript(lines: Record<string, unknown>[]): string {
   return lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
 }
@@ -124,4 +169,17 @@ export function renderTranscript(lines: Record<string, unknown>[]): string {
 /** Byte offset just past the Nth line: a valid resume watermark. */
 export function offsetAfterLine(lines: Record<string, unknown>[], count: number): number {
   return Buffer.byteLength(renderTranscript(lines.slice(0, count)), "utf8");
+}
+
+/** Every event the reader emits for `lines`, without folding, so a test can see one line's rows. */
+export function eventsForLines(lines: Record<string, unknown>[]): SessionEvent[] {
+  const events: SessionEvent[] = [];
+  const reader = new LineReader((event) => events.push(event));
+  let byteOffset = 0;
+  for (const line of lines) {
+    const byteLength = Buffer.byteLength(JSON.stringify(line), "utf8");
+    reader.handle(line as Json, { byteOffset, byteLength });
+    byteOffset += byteLength + 1;
+  }
+  return events;
 }

@@ -1,24 +1,33 @@
+import { applyAudit } from "./audit-apply.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
-import { sessionRef, type TranscriptDelta } from "@titan-design/session-read";
-import type { Db } from "@titan-design/store-sqlite";
+import { RELATIONS, sessionRef, type TranscriptDelta } from "@titan-design/session-read";
+import type { Db, EdgeInput } from "@titan-design/store-sqlite";
 import type { SessionGraph } from "./graph.js";
 
 /**
  * Apply one transcript chunk's delta in a single transaction, so a crash can
  * never leave rows committed behind a stale watermark or ahead of their rows.
- * Append-only tables are idempotent through unique indexes; session and usage
- * rows accumulate; ref-keyed assets insert-if-absent with COALESCE merges that
- * mirror `EventFolder`'s rules.
+ * Append-only tables are idempotent through unique indexes; session rows
+ * accumulate; usage is left to the rollup, which recomputes it from `request`;
+ * ref-keyed assets insert-if-absent with COALESCE merges that mirror
+ * `EventFolder`'s rules.
  */
-export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta): void {
+export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource = {}): void {
   graph.db.transaction(() => {
     applyFacts(graph.db, transcriptId, delta);
-    applySessions(graph.db, transcriptId, delta);
+    applySessions(graph.db, transcriptId, delta, source.account ?? null);
     backfillClaudeAliases(graph.db, delta.sessions.map(s => s.sessionId));
     applyAssets(graph.db, delta);
     applyPhases(graph.db, transcriptId, delta);
     applyLinkedRows(graph, transcriptId, delta);
+    applyAudit(graph.db, transcriptId, delta);
   })();
+}
+
+/** What discovery knows about the file that the lines themselves do not carry. */
+export interface DeltaSource {
+  /** The Claude config dir the transcript was found under; `null` when discovery did not say. */
+  account?: string | null;
 }
 
 const INSERT_FACT = `
@@ -37,8 +46,8 @@ function applyFacts(db: Db, transcriptId: number, delta: TranscriptDelta): void 
 }
 
 const UPSERT_SESSION = `
-  INSERT INTO session (session_id, transcript_id, started_at, ended_at, start_type, cwd, git_branch, ai_title, seed_prompt, cli_version, turn_count, commit_count, push_count)
-  VALUES (@sessionId, @transcriptId, @startedAt, @endedAt, @startType, @cwd, @gitBranch, @aiTitle, @seedPrompt, @cliVersion, @turnDelta, @commitDelta, @pushDelta)
+  INSERT INTO session (session_id, transcript_id, started_at, ended_at, start_type, cwd, git_branch, ai_title, seed_prompt, cli_version, account, turn_count, commit_count, push_count)
+  VALUES (@sessionId, @transcriptId, @startedAt, @endedAt, @startType, @cwd, @gitBranch, @aiTitle, @seedPrompt, @cliVersion, @account, @turnDelta, @commitDelta, @pushDelta)
   ON CONFLICT (session_id) DO UPDATE SET
     started_at  = MIN(COALESCE(started_at, excluded.started_at), COALESCE(excluded.started_at, started_at)),
     ended_at    = MAX(COALESCE(ended_at, excluded.ended_at), COALESCE(excluded.ended_at, ended_at)),
@@ -52,24 +61,14 @@ const UPSERT_SESSION = `
     ai_title    = COALESCE(excluded.ai_title, ai_title),
     seed_prompt = COALESCE(seed_prompt, excluded.seed_prompt),
     cli_version = COALESCE(excluded.cli_version, cli_version),
+    account     = COALESCE(excluded.account, account),
     turn_count   = turn_count + excluded.turn_count,
     commit_count = commit_count + excluded.commit_count,
     push_count   = push_count + excluded.push_count`;
 
-const UPSERT_USAGE = `
-  INSERT INTO session_model_usage (session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, thinking_tokens, request_count)
-  VALUES (@sessionId, @model, @inputTokens, @outputTokens, @cacheReadTokens, @cacheCreationTokens, @thinkingTokens, @requestCount)
-  ON CONFLICT (session_id, model) DO UPDATE SET
-    input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens,
-    cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
-    cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens,
-    thinking_tokens = thinking_tokens + excluded.thinking_tokens, request_count = request_count + excluded.request_count`;
-
-function applySessions(db: Db, transcriptId: number, delta: TranscriptDelta): void {
+function applySessions(db: Db, transcriptId: number, delta: TranscriptDelta, account: string | null): void {
   const upsertSession = db.prepare(UPSERT_SESSION);
-  for (const s of delta.sessions) upsertSession.run({ ...s, transcriptId });
-  const upsertUsage = db.prepare(UPSERT_USAGE);
-  for (const u of delta.usage) upsertUsage.run(u);
+  for (const s of delta.sessions) upsertSession.run({ ...s, transcriptId, account });
 }
 
 const ASSET_UPSERTS = {
@@ -149,11 +148,21 @@ function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: Trans
   const linkTranscript = db.prepare("INSERT INTO subagent (agent_ref, child_session_id) VALUES (?, ?) ON CONFLICT (agent_ref) DO UPDATE SET child_session_id = excluded.child_session_id");
   for (const l of delta.subagentTranscripts) linkTranscript.run(l.agentRef, l.childSessionId);
 
-  for (const e of delta.edges) graph.edges.assert({ sourceRef: e.sourceRef, relation: e.relation, targetRef: e.targetRef, tValid: e.ts, factId: factId(e.byteOffset) });
+  for (const e of delta.edges) assertTranscriptEdge(graph, { sourceRef: e.sourceRef, relation: e.relation, targetRef: e.targetRef, tValid: e.ts, factId: factId(e.byteOffset) });
 
   for (const span of delta.spans) {
     graph.spans.index({ ownerRef: sessionRef(span.sessionId), field: span.field, sourceId: transcriptId, byteOffset: span.byteOffset, byteLength: span.byteLength }, span.text);
   }
+}
+
+/**
+ * A transcript's `ran` claim outranks a spawn record's: an origin-made edge for the same
+ * task is superseded without `via`, so origin expiry cannot later remove it.
+ */
+function assertTranscriptEdge(graph: SessionGraph, edge: EdgeInput): void {
+  const existing = edge.relation === RELATIONS.RAN ? graph.edges.current(edge.sourceRef, edge.relation, edge.targetRef) : undefined;
+  if (existing?.attrs?.via === "origin") graph.edges.supersede(edge);
+  else graph.edges.assert(edge);
 }
 
 function factIdFor(db: Db, transcriptId: number, byteOffset: number): number | null {

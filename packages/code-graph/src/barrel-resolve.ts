@@ -9,17 +9,19 @@ export function edgeWeight(e: GraphEdge): number {
 /**
  * Drop `references` edges (C-53) whose target `symbol` node doesn't exist — an
  * aliased re-export chain, or a barrel that changed under a reused file, can
- * resolve a name to an origin that doesn't declare it. Only `references` can
- * dangle (imports/re-exports resolve to always-emitted file/external nodes);
- * metrics already guard unknown ids, so this just keeps the persisted edge set
- * clean. Mutates `edges` in place.
+ * resolve a name to an origin that doesn't declare it. `calls` edges (TP-323)
+ * are dropped the same way, which is how a callee name that maps to no symbol
+ * node is discarded rather than guessed. Only these two can dangle
+ * (imports/re-exports resolve to always-emitted file/external nodes). Mutates
+ * `edges` in place.
  */
 export function pruneDanglingReferences(
   nodes: ReadonlyMap<string, GraphNode>,
   edges: Map<string, GraphEdge>,
 ): void {
   for (const [key, edge] of edges) {
-    if (edge.kind === "references" && !nodes.has(edge.dstId)) edges.delete(key);
+    const symbolLayer = edge.kind === "references" || edge.kind === "calls";
+    if (symbolLayer && (!nodes.has(edge.dstId) || !nodes.has(edge.srcId))) edges.delete(key);
   }
 }
 

@@ -44,6 +44,15 @@ export type SessionEvent =
   | (EventBase & { kind: "pr"; prRef: string; number: number; repo: string; title: string | null; url: string | null })
   | (EventBase & { kind: "pr_merge"; number: number; repoHint: string | null })
   | (EventBase & { kind: "pr_create"; toolUseId: string; title: string | null; number: number | null; repo: string | null; url: string | null })
+  | (EventBase & {
+      kind: "review_verdict";
+      toolUseId: string;
+      verdict: "approve" | "changes_requested";
+      repo: string | null;
+      repoHint: string | null;
+      number: number;
+      cwdRepo: string | null;
+    })
   | (EventBase & { kind: "branch"; branchRef: string; repo: string | null; name: string; base: string | null; deleted: boolean })
   | (EventBase & { kind: "file"; fileRef: string; repo: string | null; path: string })
   | (EventBase & { kind: "task"; taskRef: string; taskId: string; status: string | null })

@@ -13,12 +13,14 @@ import { mineSpawnArm } from "./mine/spawn-arm.js";
 import { formatPairs, parsePairs } from "./pairs.js";
 import { QUERY_VARIANTS, type QueryVariant } from "./query/variants.js";
 import { formatRows, runEval } from "./run.js";
+import { formatServed } from "./served/format.js";
+import { buildReport, collectServed } from "./served/report.js";
 import { snapshot } from "./snapshot.js";
 import { countUptake } from "./uptake.js";
 
 /**
- * Three verbs, matching the three parts of the harness: mine the pairs, score
- * the candidates on them, count whether anyone used a recall tool at all.
+ * Four verbs: mine the pairs, score the candidates on them, count whether
+ * anyone used a recall tool at all, and label what the renderers actually served.
  */
 
 interface CommonOptions {
@@ -122,12 +124,29 @@ function uptakeCommand(): Command {
     });
 }
 
+function servedCommand(): Command {
+  return new Command("served")
+    .description("Label what rendered bootstrap and spawn blocks served: opened, cited, and the unserved base rate")
+    .option("--since <iso-date>", "only blocks rendered at or after this instant")
+    .option("--until <iso-date>", "only blocks rendered before this instant; later activity is ignored")
+    .option("--files <n>", "rows in the per-file table", "20")
+    .option("--json", "emit the full report as JSON")
+    .option("--active-root <dir>", "active-work root, read-only", defaultActiveRoot())
+    .action(async (options) => {
+      const files = discoverTranscripts(defaultTranscriptRoots());
+      const window = { ...(options.since ? { since: options.since } : {}), ...(options.until ? { until: options.until } : {}) };
+      const report = buildReport(await collectServed(files, options.activeRoot, window), window, files.length);
+      console.log(options.json ? JSON.stringify(report, null, 2) : formatServed(report, Number(options.files)));
+    });
+}
+
 export function buildCli(): Command {
   return new Command("retrieval-eval")
     .description("Transcript-mined retrieval eval harness (TP-84)")
     .addCommand(mineCommand())
     .addCommand(runCommand())
-    .addCommand(uptakeCommand());
+    .addCommand(uptakeCommand())
+    .addCommand(servedCommand());
 }
 
 export async function runCli(argv: string[]): Promise<number> {

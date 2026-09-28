@@ -2,9 +2,11 @@ import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan
 import { nowIso } from "@titan-design/store-sqlite";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
+import { addUsage } from "./usage.js";
 import {
   StepFailedError,
   WorkflowCancelledError,
+  WorkflowNonDeterminismError,
   WorkflowRecoveryRequiredError,
   workflowStepRequestKey,
   type ActiveStep,
@@ -14,9 +16,11 @@ import {
   type RecoverableActiveStep,
   type RecoverableStepRunner,
   type SeedResult,
+  type StepOperation,
   type StepResult,
   type StepRunInput,
   type StepRunner,
+  type StepUsage,
   type WorkflowContext,
   type WorkflowEvent,
   type WorkflowRun,
@@ -43,9 +47,15 @@ export function gateIdFor(runId: string, stepId: string): string {
   return `${runId}/${stepId}`;
 }
 
-/** The first call keeps the bare key earlier releases persisted, so their paused runs still resume; repeats use `stepId:iteration`. */
-export function assistedKey(stepId: string, iteration: number): string {
-  return iteration === 0 ? stepId : `${stepId}:${iteration}`;
+/** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
+export function memoKey(operation: StepOperation, stepId: string, index: number): string {
+  return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
+}
+
+interface Memo {
+  index: number;
+  key: string;
+  cached: StepResult | undefined;
 }
 
 /**
@@ -56,7 +66,7 @@ export function assistedGateId(run: WorkflowRun, stepId: string, iteration: numb
   const legacy = gateIdFor(run.id, stepId);
   if (iteration === 0) return legacy;
   if (!run.stepResults[stepId] && isPending(legacy)) return legacy;
-  return gateIdFor(run.id, assistedKey(stepId, iteration));
+  return gateIdFor(run.id, memoKey("assisted", stepId, iteration));
 }
 
 /** Every recorded result for `stepId` is one earlier call, so the count is the iteration of the gate now waiting. */
@@ -81,6 +91,8 @@ export class RunContext implements WorkflowContext {
   readonly signal: AbortSignal;
   private readonly iterations: Record<string, number> = {};
   private readonly inFlight = new Set<Promise<unknown>>();
+  /** A run with a result from before 0.5 keeps that release's keys: seeds apart from the call count, and no operation check. */
+  private readonly legacyKeys: boolean;
 
   constructor(
     readonly run: WorkflowRun,
@@ -90,6 +102,7 @@ export class RunContext implements WorkflowContext {
     this.runId = run.id;
     this.workflowName = run.workflowName;
     this.signal = controller.signal;
+    this.legacyKeys = Object.values(run.stepResults).some((result) => result.operation === undefined);
   }
 
   param(key: string): string | undefined {
@@ -112,9 +125,7 @@ export class RunContext implements WorkflowContext {
   }
 
   private async dispatchStep(stepId: string, template: string, options: DispatchOptions): Promise<StepResult> {
-    const iteration = this.iteration(stepId);
-    const iterKey = `${stepId}:${iteration}`;
-    const cached = this.run.stepResults[iterKey];
+    const { index: iteration, key: iterKey, cached } = this.recall("dispatch", stepId);
     if (cached) return this.bump(stepId, cached);
     const recovered = this.deps.recovered.get(iterKey);
     if (!recovered) this.throwIfCancelled();
@@ -123,10 +134,12 @@ export class RunContext implements WorkflowContext {
     const result: StepResult = {
       stepId,
       iteration,
+      operation: "dispatch",
       agentId: completed.runnerRef,
       signal: this.deps.parseSignal(completed.output),
       completedAt: nowIso(),
       output: completed.output,
+      ...(completed.usage ? { usage: completed.usage } : {}),
     };
     delete this.run.activeSteps[stepId];
     this.record(iterKey, result);
@@ -136,29 +149,36 @@ export class RunContext implements WorkflowContext {
 
   async seed(stepId: string, fn: () => Promise<SeedResult>): Promise<StepResult> {
     this.throwIfCancelled();
-    const cached = this.run.stepResults[stepId];
-    if (cached) return cached;
+    const { index: iteration, key, cached } = this.recall("seed", stepId);
+    if (cached) return this.bumpSeed(stepId, cached);
     this.setCurrent(stepId);
     const seed = await fn();
     Object.assign(this.run.params, seed.data);
-    const result: StepResult = { stepId, iteration: 0, agentId: null, signal: null, completedAt: nowIso(), output: seed.output, data: seed.data };
-    this.record(stepId, result);
-    this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration: 0, signal: null });
-    return result;
+    const result: StepResult = {
+      stepId,
+      iteration,
+      operation: "seed",
+      agentId: null,
+      signal: null,
+      completedAt: nowIso(),
+      output: seed.output,
+      data: seed.data,
+    };
+    this.record(key, result);
+    this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: null });
+    return this.bumpSeed(stepId, result);
   }
 
   async assisted(stepId: string, prompt: string, options: AssistedOptions = {}): Promise<StepResult> {
     this.throwIfCancelled();
-    const iteration = this.iteration(stepId);
-    const key = assistedKey(stepId, iteration);
-    const cached = this.run.stepResults[key];
+    const { index: iteration, key, cached } = this.recall("assisted", stepId);
     if (cached) return this.bump(stepId, cached);
     const gateId = assistedGateId(this.run, stepId, iteration, (id) => gateIsPending(this.deps.gates, id));
     this.setCurrent(stepId, "paused");
     this.openGateOnce(gateId, prompt, options, stepId);
     const payload = (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
     const signal = typeof payload?.signal === "string" ? payload.signal : null;
-    const result: StepResult = { stepId, iteration, agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
+    const result: StepResult = { stepId, iteration, operation: "assisted", agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
     this.run.status = "running";
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal });
@@ -181,20 +201,21 @@ export class RunContext implements WorkflowContext {
     prompt: string,
     model: string | undefined,
     recovered?: RecoveredStep,
-  ): Promise<{ output: string; runnerRef: string | null }> {
+  ): Promise<{ output: string; runnerRef: string | null; usage?: StepUsage }> {
     let attempt = recovered?.step.attempt ?? 0;
     let pending = recovered?.kind === "completion" ? recovered.completion : undefined;
     let active: ActiveStep | undefined = recovered?.step;
+    let failedUsage = recovered?.step.priorUsage;
     if (recovered?.kind === "retry_safe") attempt += 1;
     for (;;) {
       if (!pending) {
-        active = this.newActiveStep(stepId, iterKey, attempt);
+        active = this.newActiveStep(stepId, iterKey, attempt, failedUsage);
         this.activate(active);
         pending = this.start(active, { runId: this.runId, workflowName: this.workflowName, stepId, iteration, prompt, model, signal: this.signal });
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage) };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
@@ -202,26 +223,25 @@ export class RunContext implements WorkflowContext {
       if (outcome.kind === "cancellation_unknown") this.requireRecovery(active!, "unknown", outcome.reason);
       this.throwIfCancelled();
       const retry = attempt + 1;
+      failedUsage = addUsage(failedUsage, outcome.usage);
       if (!outcome.retryable || attempt >= this.deps.maxRetries) {
         this.consumeActive(active!);
-        throw new StepFailedError(stepId, iteration, outcome.error);
+        throw new StepFailedError(stepId, iteration, outcome.error, { retryable: outcome.retryable, usage: failedUsage });
       }
       attempt += 1;
       this.deps.emit({ type: "step_retry", runId: this.runId, stepId, attempt: retry, error: outcome.error });
     }
   }
 
-  private newActiveStep(stepId: string, iterKey: string, attempt: number): ActiveStep {
-    if (!isRecoverable(this.deps.runner)) return { kind: "legacy", stepId, iterKey, attempt, startedAt: nowIso() };
+  private newActiveStep(stepId: string, iterKey: string, attempt: number, priorUsage: StepUsage | undefined): ActiveStep {
+    const base = { stepId, iterKey, attempt, startedAt: nowIso(), ...(priorUsage ? { priorUsage } : {}) };
+    if (!isRecoverable(this.deps.runner)) return { kind: "legacy", ...base };
     const executionId = this.deps.executionId();
     return {
       kind: "recoverable",
-      stepId,
-      iterKey,
-      attempt,
+      ...base,
       executionId,
       requestKey: workflowStepRequestKey(this.runId, stepId, Number(iterKey.slice(iterKey.lastIndexOf(":") + 1)), attempt),
-      startedAt: nowIso(),
     };
   }
 
@@ -239,9 +259,9 @@ export class RunContext implements WorkflowContext {
       const outcome = await this.deps.runner.run(input);
       if (outcome.ok) {
         if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
-        return { kind: "succeeded", output: outcome.output };
+        return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
       }
-      return { kind: "failed", error: outcome.error, retryable: outcome.retryable };
+      return { kind: "failed", error: outcome.error, retryable: outcome.retryable, usage: outcome.usage };
     }
     if (!isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "recoverable step has no recoverable runner");
     const ack = await this.deps.runner.dispatch({ ...input, executionId: step.executionId, requestKey: step.requestKey, attempt: step.attempt });
@@ -269,6 +289,22 @@ export class RunContext implements WorkflowContext {
     this.persist();
     this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId: step.stepId, evidence });
     throw new WorkflowRecoveryRequiredError(this.runId, step.stepId, evidence);
+  }
+
+  /** Finds what this call position recorded, and refuses a replay that reaches it through a different method. */
+  private recall(operation: StepOperation, stepId: string): Memo {
+    const index = this.legacyKeys && operation === "seed" ? 0 : this.iteration(stepId);
+    const key = memoKey(operation, stepId, index);
+    if (this.legacyKeys) return { index, key, cached: this.run.stepResults[key] };
+    const cached = this.run.stepResults[key] ?? this.run.stepResults[memoKey(otherKeyShape(operation), stepId, index)];
+    if (cached?.operation && cached.operation !== operation) {
+      throw new WorkflowNonDeterminismError(this.runId, stepId, index, cached.operation, operation);
+    }
+    return { index, key, cached };
+  }
+
+  private bumpSeed(stepId: string, result: StepResult): StepResult {
+    return this.legacyKeys ? result : this.bump(stepId, result);
   }
 
   private bump(stepId: string, result: StepResult): StepResult {
@@ -299,6 +335,11 @@ export class RunContext implements WorkflowContext {
   private persist(): void {
     this.deps.save(this.run);
   }
+}
+
+/** The first call position has two key shapes, bare and `:0`, so a lookup checks the one this operation does not write. */
+function otherKeyShape(operation: StepOperation): StepOperation {
+  return operation === "dispatch" ? "assisted" : "dispatch";
 }
 
 function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {

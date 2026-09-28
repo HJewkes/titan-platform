@@ -1,4 +1,5 @@
 import type { AgentIdentity, ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
+import type { ExecutionCorrelations } from "./lifecycle-correlations.js";
 
 export const EXECUTION_PHASES = [
   "prepared",
@@ -10,10 +11,14 @@ export const EXECUTION_PHASES = [
   "failed",
   "cancelled",
   "cancellation_unknown",
+  "ended",
 ] as const;
 
 export type ExecutionPhase = (typeof EXECUTION_PHASES)[number];
-export type TerminalExecutionPhase = "succeeded" | "failed" | "cancelled" | "cancellation_unknown";
+
+export const TERMINAL_EXECUTION_PHASES = ["succeeded", "failed", "cancelled", "cancellation_unknown", "ended"] as const;
+
+export type TerminalExecutionPhase = (typeof TERMINAL_EXECUTION_PHASES)[number];
 
 export interface ExecutionOwnerFence {
   supervisorId: string;
@@ -24,15 +29,29 @@ export interface ExecutionOwnerLease extends ExecutionOwnerFence {
   leaseUntil: string;
 }
 
+/** One agent generation succeeding another; the brief is a pointer and digest, never the text. */
+export interface HandoffIdentity {
+  handoffId: string;
+  /** The agentId of generation 1, constant across every handoff. */
+  lineageId: string;
+  generation: number;
+  predecessor: { agent: AgentIdentity; executionId?: string; conversation?: ConversationIdentity };
+  brief: { ref: string; sha256: string; bytes: number };
+}
+
 export type LifecycleExecutionTarget =
-  | { kind: "fresh"; namespace: string }
-  | { kind: "resume"; conversation: ConversationIdentity };
+  | { kind: "fresh"; namespace: string; pinnedNativeId?: string }
+  | { kind: "resume"; conversation: ConversationIdentity }
+  | { kind: "fork"; namespace: string; parent: ConversationIdentity }
+  | { kind: "handoff"; namespace: string; handoff: HandoffIdentity };
 
 export type ExecutionTerminal<TResult = unknown> =
   | { outcome: "succeeded"; result: TResult }
   | { outcome: "failed"; reason: string; retryable: boolean }
   | { outcome: "cancelled"; reason: string }
-  | { outcome: "cancellation_unknown"; reason: string; evidence: string };
+  | { outcome: "cancellation_unknown"; reason: string; evidence: string }
+  /** The process was observed gone without a harness result, so success cannot be claimed. */
+  | { outcome: "ended"; evidence: string; exit?: { code: number | null; signal: string | null } };
 
 export interface ExecutionRecord<TResult = unknown> {
   execution: ExecutionIdentity;
@@ -55,6 +74,8 @@ export interface ExecutionRecord<TResult = unknown> {
   finishedAt?: string;
   lastObservedAt: string;
   terminal?: ExecutionTerminal<TResult>;
+  /** Namespaced `<prefix>.<name>` keys set once by prepare; see CORRELATION_KEY_PATTERN. */
+  correlations?: ExecutionCorrelations;
 }
 
 interface ExecutionTransitionBase {
@@ -74,6 +95,7 @@ export type ExecutionTransition<TResult = unknown> =
       requestKey: string;
       target: LifecycleExecutionTarget;
       owner: ExecutionOwnerLease;
+      correlations?: ExecutionCorrelations;
     })
   | (ExecutionTransitionBase & { kind: "begin_dispatch"; fence: ExecutionOwnerFence })
   | (ExecutionTransitionBase & {
@@ -83,6 +105,13 @@ export type ExecutionTransition<TResult = unknown> =
       adapterExecution: ExecutionIdentity;
       conversation?: ConversationIdentity;
       surface?: SurfaceIdentity;
+      evidence: string;
+    })
+  | (ExecutionTransitionBase & {
+      kind: "observe_launched";
+      fence: ExecutionOwnerFence;
+      runnerRef: string;
+      surface: SurfaceIdentity;
       evidence: string;
     })
   | (ExecutionTransitionBase & {

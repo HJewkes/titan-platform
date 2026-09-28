@@ -1,15 +1,34 @@
 /**
- * Host, Origin, and Content-Type guards for the daemon's request surfaces.
+ * Host, Origin, client-header, and Content-Type guards for the daemon's request surfaces.
  *
  * An unauthenticated daemon on loopback is reachable from every browser on the machine.
  * A page that re-resolves its own name to 127.0.0.1 makes requests the browser treats as
  * same-origin, so no CORS rule stops them. What the browser cannot forge is the `Host`
  * header (it carries the attacker's name) or the `Origin` header, and what it cannot send
- * without a preflight is a JSON body. Checking all three is what keeps a cross-origin page
- * from running a command.
+ * without a preflight is a JSON body or a custom header.
+ *
+ * Threat model for a state-changing request (POST, PUT, PATCH, DELETE):
+ *
+ * - A present `Origin` must be allowlisted. Browsers set it and page script cannot.
+ * - A missing `Origin` proves nothing. Current browsers attach one to every non-GET
+ *   request, but older browsers, privacy extensions, and embedded webviews have omitted
+ *   it. So absence says "probably not a browser"; it does not say "not a browser".
+ * - A missing `Origin` must therefore come with {@link CLIENT_HEADER}. Any value passes,
+ *   because the header is not a secret: its proof is that a page can only attach a custom
+ *   header after a CORS preflight, and this daemon answers no preflight. A request that
+ *   carries it came from a non-browser client, or from a page that already passed the
+ *   Origin check. Adding CORS headers that allow it would void this proof.
+ * - Loopback alone is not enough, and the guard does not look at the peer address. The
+ *   attacker's page runs in a browser on this machine, so its requests arrive from
+ *   127.0.0.1 exactly as a CLI's do.
+ * - None of this authenticates anyone. Any local process can send the header; the
+ *   guards only keep web pages out, and the OS account stays the trust boundary.
  *
  * The Host-allowlist shape is adapted from beads (MIT), `internal/httpapi/server.go`.
  */
+import { CLIENT_HEADER } from "@titan-design/rpc-protocol";
+
+export { CLIENT_HEADER };
 
 export interface RequestGuardOptions {
   /** Host values answered to, each matched with and without the bound port. */
@@ -28,6 +47,8 @@ export interface GuardedRequest {
   method: string;
   host: string | null | undefined;
   origin: string | null | undefined;
+  /** The {@link CLIENT_HEADER} value, which stands in for `Origin` on non-browser calls. */
+  client: string | null | undefined;
   contentType: string | null | undefined;
 }
 
@@ -72,12 +93,22 @@ function refuse(request: GuardedRequest, policy: Policy): GuardRefusal | null {
     return { status: 403, message: "Host header is not one this daemon answers to" };
   }
   if (!STATE_CHANGING.has(request.method.toUpperCase())) return null;
-  // An opaque origin arrives as the literal string "null", which no allowlist entry matches.
-  if (request.origin != null && !policy.origins.has(request.origin.toLowerCase())) {
-    return { status: 403, message: "Origin is not one this daemon answers to" };
-  }
+  const originRefusal = refuseOrigin(request, policy);
+  if (originRefusal) return originRefusal;
   if (mediaType(request.contentType) !== JSON_MEDIA_TYPE) {
     return { status: 415, message: `Content-Type must be ${JSON_MEDIA_TYPE}` };
+  }
+  return null;
+}
+
+function refuseOrigin(request: GuardedRequest, policy: Policy): GuardRefusal | null {
+  if (request.origin == null) {
+    if (request.client) return null;
+    return { status: 403, message: "State-changing request needs an Origin header or an X-Titan-Client header" };
+  }
+  // An opaque origin arrives as the literal string "null", which no allowlist entry matches.
+  if (!policy.origins.has(request.origin.toLowerCase())) {
+    return { status: 403, message: "Origin is not one this daemon answers to" };
   }
   return null;
 }

@@ -26,6 +26,51 @@ Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test`
 `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
+## The egress scan
+
+This repository is public. [egress-scan](/reference/egress-scan) refuses pushes that add an
+absolute home path, a path into the active-work data directory, or a term from your private
+list. A finding names only `file:line` and the rule, never the text.
+
+- **The pre-push hook.** `pnpm install` builds the package and installs the hook through the
+  root `prepare` script, on a fresh clone as well. It goes into git's shared hooks directory,
+  so every linked worktree uses it. A worktree without `node_modules` cannot push until you
+  run `pnpm install` there; the hook fails closed rather than skip the scan. The hook is never
+  installed in CI. If the install printed "pre-push hook not installed", run `pnpm build`,
+  then `pnpm run prepare`.
+- **The CI job.** `egress-scan` scans every commit of a pull request, from its base sha to its
+  head sha, and every push to main. It is a merge gate, not an egress control: a branch is
+  public as soon as it is pushed. CI does not have the private term list.
+- **The allow file.** `.egress-allow` at the root holds `<glob> <rule-id> <reason>` lines,
+  one per file and rule. The reason names a task id. `private-term` hits are never
+  allowable; rewrite them. Prefer a placeholder segment (`/Users/you`, `/home/<user>`) or a
+  string built at runtime over a new allow entry.
+- **The private term list.** Keep it outside every repository, at
+  `$XDG_CONFIG_HOME/titan-egress/private-terms` (default `~/.config/titan-egress/private-terms`),
+  mode 600, one term per line. `TITAN_EGRESS_TERMS` overrides the path, and
+  `TITAN_EGRESS_REQUIRE_TERMS=1` makes a missing list fail the push. Do not list your GitHub
+  handle: it is in every `package.json`.
+- **By hand.** `pnpm egress:scan range <base> <head>` scans a range; `pnpm egress:scan tree`
+  scans every tracked file.
+
+When a push is refused:
+
+- **A branch cut before the scanner existed.** Its checkout has no scanner, so the hook
+  refuses the push. Merge main into the branch, run `pnpm install`, and push again.
+- **The first push to a new remote that shares no history.** No ref of that remote holds
+  any of your commits, so the hook scans the whole reachable history. It can report old
+  findings in files the allow file does not cover.
+- **The CI job is not the control.** CI runs after the push, so the hook is the egress
+  control and the CI job is a merge gate. A pull request can edit the job itself, so
+  reviewers read workflow diffs.
+
+## Before adding code
+
+1. Read the [capability catalog](/guides/capabilities) and the reference page of every unit
+   that looks close.
+2. Name the existing unit you reuse, or the gap you fill and its task, in the plan and the PR.
+3. Verify runtime and auth assumptions with the path's smoke check before you build on them.
+
 ## Adding a package
 
 Never hand-copy a package. Stamp it:
@@ -43,6 +88,10 @@ never `layers` directly.
 The stamped reference page is a placeholder with every section heading and no content. Fill
 it in before the package ships; a second stamp of the same name leaves an existing page
 untouched, so hand-written prose is never flattened.
+
+The stamp also copies `templates/package/CAPABILITY.md`: the package's "use this when" line
+for the [capability catalog](/guides/capabilities). Replace its placeholder in the same pull
+request; `pnpm new:package` regenerates the catalog so the new row shows up at once.
 
 The docs build is a pull-request gate, not just a deploy step: `validate` runs
 `pnpm docs:build` on every pull request, so a public package with no reference page turns
@@ -71,7 +120,9 @@ what CI does. `scripts/dag-check.sh` remains for one release as a fallback that 
 - `zod` is a peer dependency of packages that use it, never a regular dependency.
 - Products own surface wiring — commander, MCP SDK transports, hono servers. Packages
   expose surface-independent cores.
-- Every CLI surface a package exposes takes `--json` and returns the JSON envelope.
+- Every CLI surface a package exposes takes `--json` and returns the JSON envelope. The one
+  exception is `titan-egress-scan`: it prints `file:line` and the rule to stdout, notices to
+  stderr, and an exit code, with no `--json`, because its only callers are the hook and CI.
 
 ## Changesets
 
@@ -153,6 +204,19 @@ A new package therefore never needs a hand edit to the nav. The script *fails* i
 package has no `site/reference/<name>.md`, which is the mechanism that stops an undocumented
 package from shipping. `pnpm new:package` stamps that page and reruns the script, so the
 default path is green without a hand edit.
+
+### The capability catalog {#the-capability-catalog}
+
+`pnpm capabilities` writes `CAPABILITIES.md` at the repository root and
+`site/guides/capabilities.md` from the same data. It reuses the reference index's package
+discovery, then adds each unit's version, its key exports parsed from `src/index.ts` (capped
+at twelve, runtime values before types), and the text of its `CAPABILITY.md`. The runtime
+paths and known gaps come from `scripts/capabilities-data.json`, which is edited by hand.
+
+Both outputs are committed. `validate` runs `pnpm capabilities:check`, which regenerates in
+memory and fails when either file differs, so edit the sources and rerun the script. The
+"Version Packages" pull request stays green because `pnpm version-packages` regenerates the
+catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.

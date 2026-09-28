@@ -21,7 +21,32 @@ const successful: HarnessRunResult<string, "codex"> = {
   ok: true, harness: "codex", execution: { executionId: "native-invocation", conversation },
   conversation, output: { kind: "text", text: "durable answer" }, usage: [],
 };
-const workflow: WorkflowFn = async ctx => { await ctx.dispatch("work", "Do the work"); };
+type Measurement = DurableHarnessSuccess["usage"][number];
+
+function priced(usd: number, input: number, output: number): Pick<Measurement, "model" | "source" | "tokens" | "cost"> {
+  return {
+    model: "test", source: "test", cost: { usd, kind: "estimate" },
+    tokens: { input, output, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: null },
+  };
+}
+
+function snapshot(sequence: number, usd: number, input: number, output: number, scope: "turn" | "conversation" = "turn"): Measurement {
+  return { kind: "snapshot", scope, scopeId: `${scope}-1`, epoch: "native-invocation", sequence, ...priced(usd, input, output) };
+}
+
+function delta(responseId: string, usd: number, input: number, output: number): Measurement {
+  return { kind: "delta", responseId, ...priced(usd, input, output) };
+}
+
+async function stepUsageFor(usage: Measurement[]) {
+  const fixture = setup();
+  const { runtime } = fixture.runtime("first");
+  const runId = runtime.start("work");
+  await acknowledged(runtime, runId);
+  fixture.finish({ ...successful, usage });
+  return (await runtime.wait(runId)).stepResults["work:0"]?.usage;
+}
+const workflow: WorkflowFn =async ctx => { await ctx.dispatch("work", "Do the work"); };
 
 function setup() {
   const db = openDatabase(":memory:");
@@ -84,6 +109,45 @@ describe("durable harness workflow integration", () => {
     expect(fixture.ledger.get(active.executionId)?.adapterExecution?.executionId).toBe("native-invocation");
   });
 
+  it("reports the harness's cost and tokens on the step result, keeping only the highest-sequence snapshot per turn", async () => {
+    const usage = await stepUsageFor([snapshot(1, 0.2, 1200, 90), snapshot(0, 0.05, 400, 20)]);
+
+    expect(usage).toEqual({ costUsd: 0.2, inputTokens: 1200, outputTokens: 90 });
+  });
+
+  it("a harness that returns both deltas and snapshots reports the spend once", async () => {
+    const usage = await stepUsageFor([
+      snapshot(0, 0.3, 1500, 100),
+      delta("response-1", 0.1, 500, 40),
+      delta("response-2", 0.2, 1000, 60),
+      delta("response-1", 0.1, 500, 40),
+    ]);
+
+    expect(usage?.costUsd).toBeCloseTo(0.3);
+    expect(usage).toMatchObject({ inputTokens: 1500, outputTokens: 100 });
+  });
+
+  it("a conversation snapshot supersedes turn snapshots in the same epoch", async () => {
+    const usage = await stepUsageFor([
+      snapshot(0, 0.1, 500, 40),
+      snapshot(0, 0.3, 1500, 100, "conversation"),
+    ]);
+
+    expect(usage).toEqual({ costUsd: 0.3, inputTokens: 1500, outputTokens: 100 });
+  });
+
+  it("omits usage from the step result when the harness reports none", async () => {
+    const fixture = setup();
+    const { runtime } = fixture.runtime("first");
+    const runId = runtime.start("work");
+    await acknowledged(runtime, runId);
+    fixture.finish(successful);
+
+    const final = await runtime.wait(runId);
+
+    expect(final.stepResults["work:0"]).not.toHaveProperty("usage");
+  });
+
   it("preserves an uncertain execution after lease expiry without submitting another agent", async () => {
     const fixture = setup();
     const first = fixture.runtime("first");
@@ -115,6 +179,27 @@ describe("durable harness workflow integration", () => {
     expect(final.activeSteps.work?.runnerRef).toBe(active.executionId);
     expect(final.stepResults["work:0"]).toBeUndefined();
     expect(fixture.ledger.get(active.executionId)?.phase).toBe("recovery_required");
+    expect(fixture.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails the step without retry when a supervisor records that the process ended", async () => {
+    const fixture = setup();
+    const first = fixture.runtime("first");
+    const runId = first.runtime.start("work");
+    const active = await acknowledged(first.runtime, runId);
+    first.runtime.shutdown();
+    const record = fixture.ledger.get(active.executionId)!;
+    const { supervisorId, generation } = record.owner!;
+    const ended = fixture.ledger.apply({ kind: "finish", executionId: active.executionId, eventId: "supervisor-ended", expectedRevision: record.revision,
+      occurredAt: record.lastObservedAt, fence: { supervisorId, generation },
+      terminal: { outcome: "ended", evidence: "pane exited with no result" } });
+    expect(ended.ok).toBe(true);
+
+    const second = fixture.runtime("second");
+    await second.runtime.hydrate();
+    const final = await second.runtime.wait(runId);
+    expect(final.status).toBe("failed");
+    expect(final.error).toContain("ended: pane exited with no result");
     expect(fixture.run).toHaveBeenCalledTimes(1);
   });
 

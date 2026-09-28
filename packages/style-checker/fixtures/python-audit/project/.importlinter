@@ -1,0 +1,10 @@
+[importlinter]
+root_package = pkg
+
+[importlinter:contract:helpers-leaf]
+name = Helpers must not import core
+type = forbidden
+source_modules =
+    pkg.helpers
+forbidden_modules =
+    pkg.core

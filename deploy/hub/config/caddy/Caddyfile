@@ -1,0 +1,17 @@
+# TP-301 remote phase. SERVER_NAME comes from .env through the compose environment.
+{$SERVER_NAME} {
+	reverse_proxy /_matrix/* tuwunel:8008
+	reverse_proxy /_tuwunel/* tuwunel:8008
+
+	# Tuwunel serves the client well-known once [global.well_known] client is set; Caddy answers if it returns 404.
+	handle /.well-known/matrix/client {
+		header Access-Control-Allow-Origin "*"
+		reverse_proxy tuwunel:8008 {
+			@missing status 404
+			handle_response @missing {
+				header Content-Type application/json
+				respond `{"m.homeserver":{"base_url":"https://{$SERVER_NAME}"}}` 200
+			}
+		}
+	}
+}

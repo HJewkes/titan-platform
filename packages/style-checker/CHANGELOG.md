@@ -1,5 +1,25 @@
 # @titan-design/style-checker
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [89da3cf]
+  - @titan-design/style-profile@0.2.0
+  - @titan-design/style-analyzer@0.1.1
+
+## 0.3.0
+
+### Minor Changes
+
+- 3dd426d: Add Tier B Python audit runners: `runVultureAudit`, `runPydoclintAudit`, `runPyrightAudit` (with `AUDIT_PYRIGHT_RULES` and `generatePyrightAuditConfig`), `runImportLinter`, and the pure `countSuppressions`, `findSuppressions` and `suppressionTotals`. Each runner reports stable `<tool>/<rule>` ids and paths relative to `cwd`, and returns an empty result with an install hint in the new optional `RunnerResult.warnings` when its tool is not installed. `ToolName` gains `vulture`, `pydoclint`, `pyright`, `import-linter` and `suppressions`.
+
+## 0.2.0
+
+### Minor Changes
+
+- 1963d4e: Add `AUDIT_RUFF_RULES`, `generateRuffAuditConfig` and `runRuffAudit`, a pinned ruff rule set run with preview on and repo-relative paths. `CheckDiagnostic` gains `endLine`, filled from ruff's `end_location`.
+
 ## 0.1.0
 
 ### Minor Changes

@@ -40,3 +40,19 @@ export type { CorpusSnapshot } from "./snapshot.js";
 export { activeWorkVersion, snapshot } from "./snapshot.js";
 export type { UptakeOptions, UptakeReport, UsageClass } from "./uptake.js";
 export { classify, countUptake } from "./uptake.js";
+export type { RefClass, ServedRef, Trigger } from "./served/blocks.js";
+export { parseBootstrapBlock, parseSpawnBlock } from "./served/blocks.js";
+export type { ServedBlock, ServedSession, Window } from "./served/session.js";
+export { readServedSession } from "./served/session.js";
+export type { BaseRateCount, RefLabels } from "./served/labels.js";
+export {
+  indexWrapRecords,
+  isCited,
+  isOpened,
+  OPENED_SECTION_UNAVAILABLE,
+  unservedBaseRate,
+  wrapRecordFor,
+} from "./served/labels.js";
+export type { ClassRow, FileRow, InitiativeRow, Observation, ServedInputs, ServedReport, Tally } from "./served/report.js";
+export { buildReport, collectServed } from "./served/report.js";
+export { formatServed } from "./served/format.js";

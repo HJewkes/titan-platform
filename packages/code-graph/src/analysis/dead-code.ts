@@ -1,6 +1,7 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import type { GraphMetric } from "../types.js";
+import { pythonDeadCode, type DeadCodeCounts } from "./dead-code-python.js";
 
 /**
  * Function-local dead-code metrics (C-65 Phase 1). Pure functions of one file's
@@ -37,10 +38,10 @@ const TERMINALS = new Set([
 ]);
 
 /**
- * Per-file dead-code metrics for TypeScript files. Emitted sparsely — only when
- * a count is > 0 — so a clean file adds no rows (a full index and an incremental
- * re-index therefore produce the identical metric set). Non-TypeScript files are
- * skipped for now.
+ * Per-file dead-code metrics for TypeScript and Python files (Python since
+ * TP-318, in dead-code-python.ts). Emitted sparsely — only when a count is > 0 —
+ * so a clean file adds no rows (a full index and an incremental re-index
+ * therefore produce the identical metric set). Other languages are skipped.
  */
 export function computeDeadCodeMetrics(
   files: readonly ParsedFile[],
@@ -48,13 +49,13 @@ export function computeDeadCodeMetrics(
 ): GraphMetric[] {
   const out: GraphMetric[] = [];
   for (const file of files) {
-    if (file.language !== "typescript" && file.language !== "tsx") continue;
+    const counts = deadCodeOf(file);
+    if (!counts) continue;
     const id = fileIdOf(file.filePath);
-    const unreachable = countUnreachable(file.tree.rootNode);
+    const { unreachable, locals, params } = counts;
     if (unreachable > 0) {
       out.push({ nodeId: id, name: "unreachable_statements", value: unreachable, unit: "count" });
     }
-    const { locals, params } = countUnusedBindings(file.tree.rootNode);
     if (locals > 0) {
       out.push({ nodeId: id, name: "unused_locals", value: locals, unit: "count" });
     }
@@ -63,6 +64,13 @@ export function computeDeadCodeMetrics(
     }
   }
   return out;
+}
+
+function deadCodeOf(file: ParsedFile): DeadCodeCounts | null {
+  const root = file.tree.rootNode;
+  if (file.language === "python") return pythonDeadCode(root);
+  if (file.language !== "typescript" && file.language !== "tsx") return null;
+  return { unreachable: countUnreachable(root), ...countUnusedBindings(root) };
 }
 
 /**

@@ -13,8 +13,10 @@ function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
   });
 }
 
+const CLI_HEADERS = { "content-type": "application/json", "x-titan-client": "test-cli" };
+
 async function postRpc(app: Hono, name: string, body?: string, init: RequestInit = {}): Promise<Response> {
-  const headers = { "content-type": "application/json", ...(init.headers as Record<string, string> | undefined) };
+  const headers = { ...CLI_HEADERS, ...(init.headers as Record<string, string> | undefined) };
   return app.request(`/rpc/${name}`, { method: "POST", body, ...init, headers });
 }
 
@@ -112,7 +114,7 @@ describe("request guards", () => {
   });
 
   it("rejects a POST with no Content-Type at all", async () => {
-    const res = await buildApp().request("/rpc/boom", { method: "POST" });
+    const res = await buildApp().request("/rpc/boom", { method: "POST", headers: { "x-titan-client": "test-cli" } });
 
     expect(res.status).toBe(415);
   });
@@ -151,10 +153,48 @@ describe("request guards", () => {
     expect(res.status).toBe(200);
   });
 
-  it("serves a command with no Origin header at all, as a CLI or curl sends it", async () => {
+  it("serves a command with no Origin when the client header names the caller", async () => {
     const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "cli" }));
 
     expect(res.status).toBe(200);
+  });
+
+  it("refuses a command with neither an Origin nor the client header", async () => {
+    const res = await buildApp().request("/rpc/greet", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "anon" }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: "State-changing request needs an Origin header or an X-Titan-Client header",
+      code: 64,
+    });
+  });
+
+  it("treats a blank client header as absent", async () => {
+    const res = await postRpc(buildApp(), "greet", "{}", { headers: { "x-titan-client": "  " } });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("does not let the client header excuse a foreign Origin", async () => {
+    const res = await postRpc(buildApp(), "greet", "{}", { headers: { origin: "http://evil.example" } });
+
+    expect(res.status).toBe(403);
+  });
+
+  it.each(["PUT", "PATCH", "DELETE"])("requires Origin or the client header on a product %s route", async (method) => {
+    const app = buildApp({ mountRoutes: (a) => a.on(method, "/thing", (c) => c.json({ ok: true })) });
+    const headers = { "content-type": "application/json" };
+
+    const anonymous = await app.request("/thing", { method, headers, body: "{}" });
+    const named = await app.request("/thing", { method, headers: { ...headers, "x-titan-client": "t" }, body: "{}" });
+
+    expect(anonymous.status).toBe(403);
+    expect(named.status).toBe(200);
   });
 
   it("keeps /health and /version reachable from an allowed host", async () => {

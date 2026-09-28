@@ -1,6 +1,7 @@
 # registry
 
-**Tier 1 · engines.** No titan dependencies. `zod` v4 is a peer.
+**Tier 1 · engines.** Depends on [`rpc-protocol`](/reference/rpc-protocol) for the envelope
+shapes and exit codes it re-exports. `zod` v4 is a peer.
 
 ```sh
 npm install @titan-design/registry zod

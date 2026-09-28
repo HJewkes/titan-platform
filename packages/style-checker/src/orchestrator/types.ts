@@ -5,6 +5,8 @@ export type { Severity };
 export interface CheckDiagnostic {
   file: string;
   line: number;
+  /** Last line of the flagged range, when the tool reports one. */
+  endLine?: number;
   column: number;
   severity: Exclude<Severity, "off">;
   message: string;
@@ -23,7 +25,7 @@ export interface CheckResult {
   exitCode: number;
 }
 
-export type ToolName = "eslint" | "ruff";
+export type ToolName = "eslint" | "ruff" | "vulture" | "pydoclint" | "pyright" | "import-linter" | "suppressions";
 
 export type ToolFailureKind =
   | "spawn-failed"

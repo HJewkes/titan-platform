@@ -13,7 +13,10 @@
           "packages/agent-protocol",
           "packages/chat-protocol",
           "packages/code-parser",
-          "packages/rpc-protocol"
+          "packages/rpc-protocol",
+          "packages/evidence",
+          "packages/authority",
+          "packages/egress-scan"
         ],
         "1": [
           "packages/retrieval",
@@ -23,7 +26,8 @@
           "packages/hitl",
           "packages/agent-lifecycle",
           "packages/messaging",
-          "packages/rpc-client"
+          "packages/rpc-client",
+          "packages/matrix-bus"
         ],
         "2": [
           "packages/session-read",
@@ -35,7 +39,8 @@
           "packages/style-analyzer",
           "packages/style-checker",
           "packages/code-read",
-          "packages/session-analytics"
+          "packages/session-analytics",
+          "packages/queue-mirror"
         ],
         "ui": [
           "packages/react-app"
@@ -43,7 +48,8 @@
         "product": [
           "products/session-miner",
           "products/retrieval-eval",
-          "apps/code-report"
+          "apps/code-report",
+          "products/factory"
         ]
       },
       "layers": [
@@ -55,7 +61,10 @@
           "packages/agent-protocol",
           "packages/chat-protocol",
           "packages/code-parser",
-          "packages/rpc-protocol"
+          "packages/rpc-protocol",
+          "packages/evidence",
+          "packages/authority",
+          "packages/egress-scan"
         ],
         [
           "packages/retrieval",
@@ -65,7 +74,8 @@
           "packages/hitl",
           "packages/agent-lifecycle",
           "packages/messaging",
-          "packages/rpc-client"
+          "packages/rpc-client",
+          "packages/matrix-bus"
         ],
         [
           "packages/session-read",
@@ -77,7 +87,8 @@
           "packages/style-analyzer",
           "packages/style-checker",
           "packages/code-read",
-          "packages/session-analytics"
+          "packages/session-analytics",
+          "packages/queue-mirror"
         ],
         [
           "packages/react-app"
@@ -85,7 +96,8 @@
         [
           "products/session-miner",
           "products/retrieval-eval",
-          "apps/code-report"
+          "apps/code-report",
+          "products/factory"
         ]
       ]
     },

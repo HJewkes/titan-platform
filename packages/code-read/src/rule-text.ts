@@ -15,6 +15,8 @@ export function describeRule(rule: CheckRule): string {
       return `${rule.metric} must be at least ${rule.min}${scopeSuffix(rule.kind, rule.excludeRoles)}.`;
     case "metric-product-max":
       return `The product ${rule.metrics.join(" * ")} must be at most ${rule.max}${scopeSuffix(rule.kind, rule.excludeRoles)}.`;
+    case "metric-outlier":
+      return `${rule.metric} must not exceed its ${rule.percentile}th percentile over every ${rule.kind} in the snapshot.`;
     case "forbid-import":
       return `Files matching ${rule.from} must not import ${rule.to}.`;
     case "layered-deps":
