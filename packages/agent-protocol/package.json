@@ -9,10 +9,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./trace": {
+      "types": "./dist/trace/index.d.ts",
+      "import": "./dist/trace/index.js"
     }
   },
   "files": [
     "dist",
+    "fixtures",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -34,5 +39,16 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }

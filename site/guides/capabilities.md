@@ -17,7 +17,7 @@ Before adding code:
 
 | Unit | Tier | Use this when |
 | --- | --- | --- |
-| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. |
+| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
@@ -109,7 +109,7 @@ Domain-free building blocks. No titan dependencies.
 
 Tier 0, `@titan-design/agent-protocol@0.2.0`. Harness-neutral identity and usage contracts for execution and session readers
 
-**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work.
+**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`.
 
 Key exports:
 
