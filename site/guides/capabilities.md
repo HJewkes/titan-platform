@@ -17,7 +17,7 @@ Before adding code:
 
 | Unit | Tier | Use this when |
 | --- | --- | --- |
-| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. |
+| [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
 | [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
@@ -111,16 +111,17 @@ Domain-free building blocks. No titan dependencies.
 
 Tier 0, `@titan-design/agent-protocol@0.2.0`. Harness-neutral identity and usage contracts for execution and session readers
 
-**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`.
+**Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
 Key exports:
 
 - `lifecycle`: `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
-- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `MAX_CORRELATIONS`, `correlationKey`, `validateCorrelations`
+- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `correlationKey`, `validateCorrelations`
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
+- `usage-fold`: `foldUsage`
 - `index`: `conversationRef`, `conversationItemRef`
-- +21 more in the [reference page](/reference/agent-protocol)
+- +23 more in the [reference page](/reference/agent-protocol)
 
 <a id="cap-authority"></a>
 

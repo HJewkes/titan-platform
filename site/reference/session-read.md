@@ -154,8 +154,9 @@ assistant text and applies `maxTurns` after tool traffic is dropped.
 holds a transcript path. The package README has the recipe and measured window sizes.
 
 `SessionSummaryAccumulator` and `summarizeSession` expose observed spans, tools and
-usage without a database. `SessionUsageAccumulator` is shared with graph queries;
-response deltas, reset epochs and unknown token categories retain their semantics.
+usage without a database. `SessionUsageAccumulator` is shared with graph queries. It
+selects measurements with agent-protocol's `foldUsage`, then groups them by model; a
+null token count in a group makes that group's sum null.
 
 **Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
 that belongs to a different native session, or a sidechain window that names more than one

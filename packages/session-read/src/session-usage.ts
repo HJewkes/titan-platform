@@ -1,4 +1,4 @@
-import type { TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
+import { foldUsage, type TokenCounts, type UsageMeasurement } from "@titan-design/agent-protocol";
 
 export interface SessionUsageSummary {
   model: string | null;
@@ -9,28 +9,18 @@ export interface SessionUsageSummary {
   basis: "delta" | "snapshot";
 }
 
-/** Fold one conversation: response deltas supersede snapshots; reset epochs remain independently accounted. */
+/** Collects one conversation's measurements; the shared fold decides which of them count. */
 export class SessionUsageAccumulator {
-  private readonly deltas = new Map<string, Extract<UsageMeasurement, { kind: "delta" }>>();
-  private readonly snapshots = new Map<string, Extract<UsageMeasurement, { kind: "snapshot" }>>();
+  private readonly measurements: UsageMeasurement[] = [];
 
   add(measurement: UsageMeasurement): void {
-    if (measurement.kind === "delta") {
-      this.deltas.set(measurement.responseId, measurement);
-      return;
-    }
-    const key = JSON.stringify([measurement.scope, measurement.scopeId, measurement.epoch]);
-    const previous = this.snapshots.get(key);
-    if (!previous || previous.sequence <= measurement.sequence) this.snapshots.set(key, measurement);
+    this.measurements.push(measurement);
   }
 
   summaries(): SessionUsageSummary[] {
-    if (this.deltas.size) return aggregate([...this.deltas.values()], "delta");
-    const snapshots = [...this.snapshots.values()];
-    const conversationEpochs = new Set(snapshots.filter(value => value.scope === "conversation").map(value => value.epoch));
-    const values = snapshots.filter(value => value.scope === "conversation" || !conversationEpochs.has(value.epoch))
-      .map(value => value.scope === "conversation" ? { ...value, model: null } : value);
-    return aggregate(values, "snapshot");
+    const { basis, measurements } = foldUsage(this.measurements);
+    return aggregate(basis === "delta" ? measurements
+      : measurements.map(value => value.kind === "snapshot" && value.scope === "conversation" ? { ...value, model: null } : value), basis);
   }
 }
 

@@ -128,11 +128,11 @@ rethrown once the items in flight settle.
 `agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
 every successful step, and on a failed step whenever the agent run reported it.
 The `durableHarnessRunner` reports `usage` on a successful step when the
-harness returned measurements. It folds them as session-read does: response
-deltas count once each and supersede snapshots; otherwise it keeps the
-highest-sequence snapshot per scope, and a conversation snapshot supersedes
-turn snapshots in its epoch. It counts an unpriced measurement's tokens with
-no cost. Its failed steps report no usage, because the durable failure record
+harness returned measurements. It selects them with agent-protocol's
+`foldUsage`, the fold session-read uses: response deltas count once each and
+supersede snapshots; otherwise it keeps the highest-sequence snapshot per scope,
+and a conversation snapshot supersedes turn snapshots in its epoch. It counts an
+unpriced measurement's tokens with no cost and skips a null token count. Its failed steps report no usage, because the durable failure record
 carries none, so they add nothing to `spentUsd`. A run with an `outputSchema` stores its output as JSON
 text. Wrap it in `idempotentRunner` when its steps are safe to repeat, such as
 read-only judgements. Then a step that was in flight at a crash is dispatched
