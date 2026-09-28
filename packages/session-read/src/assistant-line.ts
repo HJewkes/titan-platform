@@ -66,9 +66,9 @@ function readChatSend(reader: LineReader, ctx: LineContext, block: Json, input: 
   const text = str(input, "text");
   if (!toolUseId || !text) return;
   const cwdRepo = repoForCwd(ctx.cwd);
-  for (const verdict of parseReviewVerdicts(text)) {
-    reader.emit({ ...reader.base(ctx), kind: "review_verdict", toolUseId, ...verdict, cwdRepo });
-  }
+  parseReviewVerdicts(text).forEach((verdict, ordinal) => {
+    reader.emit({ ...reader.base(ctx), kind: "review_verdict", toolUseId, ordinal, ...verdict, cwdRepo });
+  });
 }
 
 function readAgent(reader: LineReader, ctx: LineContext, block: Json, input: Json | null): void {

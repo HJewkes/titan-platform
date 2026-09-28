@@ -96,7 +96,8 @@ parseReviewVerdicts("Verdict: CHANGES REQUESTED on acme/widgets#248");
 ```
 
 `readToolUse` emits one `review_verdict` event per match for a tool whose name ends in
-`__chat_send`, adding `toolUseId` and `cwdRepo` (`repoForCwd` of the call's `cwd`). The event
+`__chat_send`, adding `toolUseId`, `ordinal` (the verdict's index in that message's parsed list) and `cwdRepo`
+(`repoForCwd` of the call's `cwd`). The event
 carries only the parsed fields, never the message text. Resolving `repo`/`repoHint` against
 known PRs and filtering by the sender's profile happen downstream, in `session-graph`.
 

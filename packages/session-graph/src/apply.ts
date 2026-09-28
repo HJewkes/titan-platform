@@ -113,18 +113,39 @@ const UPSERT_CHAT_VERDICT = `
     transcript_id = excluded.transcript_id, repo = excluded.repo, repo_hint = excluded.repo_hint,
     cwd_repo = excluded.cwd_repo, number = excluded.number`;
 
-/** One tool use's verdicts come from one line, so their order in the delta is their parsed order. */
+/** The ordinal comes from the event, so one tool use's verdicts keep distinct keys across chunk boundaries. */
 function applyReviewVerdicts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
   const upsert = db.prepare(UPSERT_CHAT_VERDICT);
-  const seen = new Map<string, number>();
-  for (const v of delta.reviewVerdicts) {
-    const n = seen.get(v.toolUseId) ?? 0;
-    seen.set(v.toolUseId, n + 1);
+  const keys = chatVerdictKeys(delta.reviewVerdicts);
+  delta.reviewVerdicts.forEach((v, i) => {
     upsert.run({
-      sourceKey: `chat:${v.toolUseId}:${n}`, verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
+      sourceKey: keys[i], verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
       repo: v.repo, repoHint: v.repoHint, cwdRepo: v.cwdRepo, number: v.number,
     });
-  }
+  });
+}
+
+type ChatVerdict = TranscriptDelta["reviewVerdicts"][number];
+
+const hasOrdinal = (v: ChatVerdict): boolean => Number.isInteger(v.ordinal) && v.ordinal >= 0;
+
+/**
+ * A session-read that predates `ordinal` sends none, so those verdicts take the next index
+ * this call has not used for their tool use, skipping any ordinal another event carries.
+ * Per call is enough because that session-read emits all of one tool use's verdicts from one line.
+ */
+function chatVerdictKeys(verdicts: readonly ChatVerdict[]): string[] {
+  const used = new Map<string, Set<number>>();
+  const usedBy = (id: string) => used.get(id) ?? used.set(id, new Set()).get(id)!;
+  for (const v of verdicts) if (hasOrdinal(v)) usedBy(v.toolUseId).add(v.ordinal);
+  return verdicts.map((v) => {
+    if (hasOrdinal(v)) return `chat:${v.toolUseId}:${v.ordinal}`;
+    const taken = usedBy(v.toolUseId);
+    let n = 0;
+    while (taken.has(n)) n += 1;
+    taken.add(n);
+    return `chat:${v.toolUseId}:${n}`;
+  });
 }
 
 /**

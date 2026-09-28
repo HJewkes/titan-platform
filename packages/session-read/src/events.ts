@@ -47,6 +47,8 @@ export type SessionEvent =
   | (EventBase & {
       kind: "review_verdict";
       toolUseId: string;
+      /** The verdict's index among those parsed from this tool use's message. */
+      ordinal: number;
       verdict: "approve" | "changes_requested";
       repo: string | null;
       repoHint: string | null;
