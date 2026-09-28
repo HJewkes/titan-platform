@@ -181,6 +181,38 @@ describe("Telegram interactions", () => {
   });
 });
 
+describe("Telegram interactions when fetch rejects", () => {
+  const leaky = async (): Promise<Response> => {
+    throw new Error(`connect ECONNRESET https://api.telegram.org/bot${TOKEN}/method`);
+  };
+  const transport = () =>
+    new TelegramTransport({ token: TOKEN, chatIdFor: () => 4242, fetch: leaky });
+
+  async function expectContained(call: Promise<unknown>): Promise<void> {
+    const result = (await call) as { ok: boolean };
+
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(TOKEN);
+    expect(JSON.stringify(result)).not.toContain(encodeURIComponent(TOKEN));
+  }
+
+  it("a fetch that rejects returns ok false from react", async () => {
+    await expectContained(transport().react({ to: REF, emoji: "👍" }));
+  });
+
+  it("a fetch that rejects returns ok false from chatAction", async () => {
+    await expectContained(transport().chatAction({ handle: "lifter", action: "typing" }));
+  });
+
+  it("a fetch that rejects returns ok false from edit", async () => {
+    await expectContained(transport().edit({ ref: REF, text: "changed" }));
+  });
+
+  it("a fetch that rejects returns ok false from answerAction", async () => {
+    await expectContained(transport().answerAction({ actionId: "cb-1", toast: "done" }));
+  });
+});
+
 describe("BlueBubbles interactions", () => {
   it("BlueBubbles answers unsupported and makes no request", async () => {
     let requests = 0;
