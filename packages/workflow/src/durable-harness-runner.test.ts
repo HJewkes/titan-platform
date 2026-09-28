@@ -7,7 +7,7 @@ import {
   type HarnessRunResult,
 } from "@titan-design/agent";
 import { SqliteExecutionLedger, executionLedgerMigration } from "@titan-design/agent-lifecycle";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { durableHarnessRunner } from "./durable-harness-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
@@ -51,7 +51,7 @@ const workflow: WorkflowFn =async ctx => { await ctx.dispatch("work", "Do the wo
 function setup() {
   const db = openDatabase(":memory:");
   cleanups.push(() => db.close());
-  runMigrations(db, [gateMigration(1), workflowMigration(2), executionLedgerMigration(3)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), executionLedgerMigration(3), gateResolverMigration(4)]);
   let now = Date.now();
   const ledger = new SqliteExecutionLedger<DurableHarnessSuccess<unknown, "codex">>(db, { now: () => new Date(now).toISOString() });
   let finish!: (result: HarnessRunResult<string, "codex">) => void;

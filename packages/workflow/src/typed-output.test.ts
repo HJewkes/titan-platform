@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import type { GateResolver } from "@titan-design/hitl";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -18,11 +19,13 @@ import {
   type WorkflowFn,
 } from "./types.js";
 
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
+
 const verdictSchema = z.object({ verdict: z.enum(["approved", "needs_changes"]) });
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4)]);
   return db;
 }
 
@@ -223,7 +226,7 @@ describe("replaying typed dispatch output", () => {
     rt.register("gated", reviewThenShip);
 
     await rt.hydrate();
-    rt.signal(runId, "ship", { signal: "shipped" });
+    rt.signal(runId, "ship", { signal: "shipped" }, OWNER);
     const run = await rt.wait(runId);
 
     expect(run.status).toBe("completed");
