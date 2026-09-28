@@ -1,4 +1,6 @@
+import { REVIEW_TABLE } from "./audit-schema-v8.js";
 import type { SessionGraph } from "./graph.js";
+import { countRounds } from "./review-rounds.js";
 
 /** A PR the graph holds, as the resolver needs it to ask a forge. */
 export interface PrKey {
@@ -17,10 +19,18 @@ export interface ResolvedPr {
   state?: string | null;
   mergedAt?: string | null;
   closedAt?: string | null;
-  /** Stored as the resolver counts it; the round definition is open question Q6 in the TP-256 design. */
+  /** Stored as the forge's round count when `reviews` or `commitTimes` is absent; otherwise the round rule counts it. */
   reviewRounds?: number | null;
   /** The PR's commit times; an empty array is stored as known-empty, an omitted field leaves the stored value. */
   commitTimes?: readonly string[];
+  /** Replaces the PR's stored forge reviews; an omitted field leaves them. */
+  reviews?: readonly ResolvedReview[];
+}
+
+/** One forge review. `APPROVED` and `CHANGES_REQUESTED`, in any case, are stored; other states are ignored. */
+export interface ResolvedReview {
+  state: string;
+  submittedAt: string;
 }
 
 /** Resolutions keyed by `pr_ref` (`pr:acme/demo#7`). */
@@ -103,10 +113,35 @@ function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): 
         state: fields.state ?? null,
         mergedAt: fields.mergedAt ?? null,
         closedAt: fields.closedAt ?? null,
-        reviewRounds: fields.reviewRounds ?? null,
+        reviewRounds: forgeRounds(fields),
         commitTimes: fields.commitTimes ? JSON.stringify(fields.commitTimes) : null,
       }).changes;
+      if (fields.reviews) replaceForgeReviews(graph, prRef, fields.reviews);
     }
     return applied;
   })();
+}
+
+const isChangesRequested = (review: ResolvedReview) => review.state.toUpperCase() === "CHANGES_REQUESTED";
+
+function forgeRounds(fields: ResolvedPr): number | null {
+  if (!fields.reviews || !fields.commitTimes) return fields.reviewRounds ?? null;
+  return countRounds(fields.reviews.filter(isChangesRequested).map((r) => r.submittedAt), fields.commitTimes);
+}
+
+const FORGE_VERDICTS: Record<string, string> = { APPROVED: "approve", CHANGES_REQUESTED: "changes_requested" };
+
+/** Two reviews in the same second share a key; a changes-requested one is kept over an approval. */
+const INSERT_FORGE_REVIEW = `
+  INSERT INTO ${REVIEW_TABLE} (source_key, surface, verdict, ts, repo, number, pr_ref)
+  SELECT 'gh:' || pr_ref || ':' || @ts, 'github', @verdict, @ts, repo, number, pr_ref FROM pr WHERE pr_ref = @prRef
+  ON CONFLICT (source_key) DO UPDATE SET verdict = CASE WHEN verdict = 'changes_requested' THEN verdict ELSE excluded.verdict END`;
+
+function replaceForgeReviews(graph: SessionGraph, prRef: string, reviews: readonly ResolvedReview[]): void {
+  graph.db.prepare(`DELETE FROM ${REVIEW_TABLE} WHERE surface = 'github' AND pr_ref = ?`).run(prRef);
+  const insert = graph.db.prepare(INSERT_FORGE_REVIEW);
+  for (const review of reviews) {
+    const verdict = FORGE_VERDICTS[review.state.toUpperCase()];
+    if (verdict) insert.run({ prRef, verdict, ts: review.submittedAt });
+  }
 }

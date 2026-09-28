@@ -18,8 +18,10 @@ export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from 
 export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
 export type { ExternalEvent, OriginEnrichment, OriginResolution, OriginResolver, ResolvedOrigin, TaskLinkSource } from "./origin.js";
 export { NO_ORIGINS, NO_TASK_LINK, resolveOrigins, sessionsNeedingOrigin } from "./origin.js";
-export type { PrEnrichment, PrKey, PrResolution, PrResolver, ResolvedPr } from "./outcomes.js";
+export type { PrEnrichment, PrKey, PrResolution, PrResolver, ResolvedPr, ResolvedReview } from "./outcomes.js";
 export { enrichPrs, NO_PR_OUTCOMES, prsNeedingOutcome } from "./outcomes.js";
+export type { ReviewerProfilePredicate, ReviewProjection, ReviewRoundOptions } from "./review-rounds.js";
+export { countRounds, isReviewerProfile, projectReviewRounds } from "./review-rounds.js";
 export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
 export { syncPrices, type PriceInput, type SyncPricesOptions } from "./prices.js";
 
