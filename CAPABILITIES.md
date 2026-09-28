@@ -615,7 +615,7 @@ Key exports:
 - `runners/pyright-audit`: `runPyrightAudit`
 - `runners/import-linter`: `runImportLinter`
 - `runners/suppressions`: `countSuppressions`, `findSuppressions`
-- +33 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-checker)
+- +34 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
 <a id="cap-style-profile"></a>
 
