@@ -52,6 +52,25 @@ describe("PR outcome resolver", () => {
     expect(prRow()).toEqual({ state: "merged", merged_at: "2026-09-02T10:00:00Z", closed_at: "2026-09-02T10:00:00Z", review_rounds: 2, checked: 1 });
   });
 
+  it("a resolver that sends only reviewRounds still sets review_rounds", async () => {
+    const resolvePrs = answer(new Map([[PR_REF, { reviewRounds: 2, commitTimes: ["2026-09-01T00:00:00Z"] }]]));
+
+    await refreshCorpus(graph, [transcriptOf([prLink])], { resolvePrs });
+
+    expect(graph.db.prepare("SELECT review_rounds, review_rounds_gh, review_rounds_chat FROM pr").get()).toEqual({ review_rounds: 2, review_rounds_gh: 2, review_rounds_chat: 0 });
+  });
+
+  it("a later answer replaces the PR's stored forge reviews", async () => {
+    const transcript = transcriptOf([prLink]);
+    const first = [{ state: "CHANGES_REQUESTED", submittedAt: "2026-09-01T01:00:00Z" }, { state: "COMMENTED", submittedAt: "2026-09-01T01:30:00Z" }];
+    await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "open", reviews: first }]])) });
+    await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "open", reviews: [{ state: "approved", submittedAt: "2026-09-01T02:00:00Z" }] }]])) });
+
+    expect(graph.db.prepare("SELECT source_key, verdict, pr_ref FROM pr_review").all()).toEqual([
+      { source_key: `gh:${PR_REF}:2026-09-01T02:00:00Z`, verdict: "approve", pr_ref: PR_REF },
+    ]);
+  });
+
   it("a resolver answer never downgrades merged to open", async () => {
     const resolvePrs = answer(new Map([[PR_REF, { state: "OPEN", reviewRounds: 1 }]]));
 
