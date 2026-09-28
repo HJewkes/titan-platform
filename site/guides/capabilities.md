@@ -387,7 +387,7 @@ Key exports:
 - `mock`: `ManualClock`, `MockTransport`
 - `telegram-fakes`: `fakeCallbackUpdate`, `fakeTextUpdate`
 - `inbound`: `constantTimeEqual`, `MemorySeenStore`, `newMessageEvent`, `validateInbound`
-- +51 more in the [reference page](/reference/messaging)
+- +52 more in the [reference page](/reference/messaging)
 
 <a id="cap-registry"></a>
 
