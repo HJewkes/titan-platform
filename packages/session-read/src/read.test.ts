@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { prefixHash } from "@titan-design/locator";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CWD, FIXTURE_LINES, SESSION, offsetAfterLine, renderTranscript } from "./fixture.js";
+import { FIXTURE_CWD, FIXTURE_LINES, SESSION, eventsForLines, offsetAfterLine, renderTranscript } from "./fixture.js";
 import type { TranscriptDelta } from "./fold.js";
 import { TranscriptParseError, extractTranscript, lastTimestampBefore, readTranscriptEvents } from "./read.js";
 
@@ -156,6 +156,30 @@ describe("lastTimestampBefore", () => {
     writeFileSync(file, renderTranscript(lines), "utf8");
     const start = Buffer.byteLength(renderTranscript(lines), "utf8");
     expect(await lastTimestampBefore(file, start, 8)).toBe("");
+  });
+});
+
+describe("review_verdict dispatch", () => {
+  it("a chat_send tool use emits review_verdict events; another MCP tool with a text field does not", () => {
+    const line = {
+      type: "assistant",
+      sessionId: SESSION,
+      cwd: FIXTURE_CWD,
+      timestamp: "2026-07-01T00:02:00Z",
+      message: {
+        role: "assistant",
+        id: "msg-verdicts",
+        model: "claude-opus-5",
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [
+          { type: "tool_use", id: "cs1", name: "mcp__plugin_agent-chat_agent-chat__chat_send", input: { to: "coordinator", text: "Verdict: APPROVE — PR #501" } },
+          { type: "tool_use", id: "cs2", name: "mcp__other_server__post_message", input: { text: "Verdict: APPROVE — PR #501" } },
+        ],
+      },
+    };
+    const events = eventsForLines([line]).filter((e) => e.kind === "review_verdict");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ toolUseId: "cs1", verdict: "approve", repo: null, repoHint: null, number: 501, cwdRepo: "demo" });
   });
 });
 
