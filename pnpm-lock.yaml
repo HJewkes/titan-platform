@@ -161,6 +161,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/authority:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/chat-protocol:
     devDependencies:
       ai:

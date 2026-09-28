@@ -1,0 +1,109 @@
+# authority
+
+**Tier 0 · primitives.** No titan dependencies; `zod` is a peer dependency.
+
+```sh
+npm install @titan-design/authority zod
+```
+
+## The problem it solves
+
+Agents, headless runs and automation all act with the owner's credentials, so nothing on
+the remote side can tell who merged a pull request, published a package or engaged a
+device. Each tool that wanted a rule grew its own deny list, and the lists drifted.
+
+This package holds one decision table as data. For every action class and actor class it
+names exactly one verdict: `allow`, `gate` (proceed only after a listed owner class
+resolves an approval gate) or `deny`. `evaluate` looks a request up in the table, and
+`canResolve` says whether a would-be resolver may resolve the gate a rule opens.
+`policyTableSchema` rejects a table that misses a pair, repeats a pair, or names anyone
+but the owner as a resolver.
+
+## When to reach for it
+
+Any enforcement point that must decide whether an actor may do something: a PreToolUse
+hook, a workflow step before a merge or a device action, a spawn path, a gate resolver.
+Import the table and call `evaluate`; a plain-node hook can read
+`@titan-design/authority/table.json` directly without a build step. The gate itself is
+[hitl](./hitl.md); this package only decides whether one is needed and who may close it.
+
+## Example
+
+Verified against 0.0.0 (table version 1.0.0).
+
+```ts
+import { DEFAULT_TABLE, canResolve, evaluate } from "@titan-design/authority";
+
+const actor = { class: "coordinator" as const, id: "hermes" };
+
+evaluate(DEFAULT_TABLE, { action: "merge", actor, tainted: false, subject: { repo: "titan-platform", pr: "12" } });
+// { verdict: "gate", ruleId: "MRG-CO", resolvers: ["owner-terminal", "owner-remote"], reason: "..." }
+
+evaluate(DEFAULT_TABLE, { action: "spawn", actor, tainted: true, subject: {} });
+// { verdict: "gate", ruleId: "SPN-CO", resolvers: ["owner-terminal"], reason: "..." }
+
+canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); // false: agents never resolve
+canResolve(DEFAULT_TABLE, "MRG-CO", { class: "owner-remote", tainted: false }); // true
+```
+
+## The vocabulary
+
+Actor classes, classified by the process that performs the action, never by what a model
+claims: `owner-terminal` (OT), `owner-remote` (OR, a verified phone, voice or Matrix
+channel), `coordinator` (CO), `worker` (WK), `headless` (HD, a daemon-dispatched run) and
+`automation` (AU, CI and other non-agent processes).
+
+A session is **tainted** once untrusted content (web pages, issue text, third-party
+messages) enters its context. Taint is sticky and inherited on spawn. A rule marked T turns
+`allow` into a gate that only the owner at a terminal resolves; in table 1.0.0 only
+`spawn` by a coordinator escalates. `private-egress` by a coordinator also carries the
+marker but is already `deny`. A tainted session never resolves a gate.
+
+## The table (version 1.0.0)
+
+40 allow, 6 gate and 44 deny rows. Each rule also carries an optional `condition` that
+qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
+the enforcing code should record.
+
+| Action | OT | OR | CO | WK | HD | AU |
+|---|---|---|---|---|---|---|
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR) |
+| `release` | allow | deny | gate (OT) | deny | deny | allow |
+| `secret-read` | allow | deny | deny | deny | deny | allow |
+| `untrusted-ingest` | allow | allow | allow | allow | allow | allow |
+| `private-to-public` | allow | deny | deny | deny | deny | deny |
+| `private-egress` | allow | allow | deny T | deny | deny | allow |
+| `hardware-actuate` | allow | deny | gate (OT) | deny | deny | deny |
+| `hardware-stop` | allow | allow | allow | allow | allow | allow |
+| `destructive-remote` | allow | deny | deny | deny | deny | deny |
+| `destructive-local` | allow | deny | allow | allow | allow | allow |
+| `destructive-foreign` | allow | deny | deny | deny | deny | deny |
+| `spawn` | allow | allow | allow T | deny | deny | allow |
+| `spend-over-cap` | allow | deny | allow | allow | allow | allow |
+| `authority-config` | allow | deny | deny | deny | deny | deny |
+| `human-verb` | allow | gate (OR) | deny | deny | deny | deny |
+
+Spend is monitored, not capped: `spend-over-cap` is allowed for every local actor, with
+the spend recorded and a notice to the owner at a threshold. Only raising a cap remotely
+is denied.
+
+## What it deliberately does not do
+
+It enforces nothing. It has no hooks, spawns no processes, and does no file or network
+access. It does not decide whether a session is tainted or which class an actor belongs
+to; the caller classifies, and the table decides. It opens no gates and writes no
+records: `evidence` names what a consumer should record, not a store.
+
+## Gotchas
+
+`evaluate` denies any pair the table does not name, with `ruleId: null`, so a typo in an
+action string is a refusal rather than an exception. `DEFAULT_TABLE` is parsed through
+`policyTableSchema` on import, so an invalid `table.json` fails at load. A gate decision
+lists the resolvers; checking a real resolver still needs `canResolve`, which is where
+taint and agent classes are refused.
+
+## Where it came from
+
+New in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+are the owner-approved table of 2026-09-28, including the change that makes spend
+monitor-only.
