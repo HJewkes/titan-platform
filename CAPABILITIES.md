@@ -660,7 +660,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +35 more in `products/factory/src/index.ts`
+- +74 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 
