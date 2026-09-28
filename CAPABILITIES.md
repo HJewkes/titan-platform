@@ -384,11 +384,10 @@ Key exports:
 
 - `contract`: `sendFailed`
 - `bluebubbles`: `BlueBubblesTransport`, `createBlueBubblesTransport`, `redactPassword`
-- `mock`: `MockTransport`
+- `mock`: `ManualClock`, `MockTransport`
+- `telegram-fakes`: `fakeCallbackUpdate`, `fakeTextUpdate`
 - `inbound`: `constantTimeEqual`, `MemorySeenStore`, `newMessageEvent`, `validateInbound`
-- `liveness`: `probeLiveness`
-- `telegram`: `createTelegramTransport`, `redactToken`
-- +34 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/messaging)
+- +52 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/messaging)
 
 <a id="cap-registry"></a>
 

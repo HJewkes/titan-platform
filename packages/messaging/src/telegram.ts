@@ -1,97 +1,27 @@
 import type {
+  Button,
   ButtonRow,
-  MessageTransport,
+  ChannelCapabilities,
+  EditInput,
+  InteractionResult,
+  InteractiveTransport,
+  MessageRef,
   SendError,
   SendInput,
   SendResult,
 } from "./contract.js";
-import { sendFailed } from "./contract.js";
-import { attemptFetch, unreadableSuccess } from "./send-failure.js";
+import { emptyEditError, sendFailed } from "./contract.js";
+import type { TelegramConfig } from "./telegram-api.js";
+import {
+  callBotApi,
+  describeCause,
+  redactToken,
+  TELEGRAM_MAX_CALLBACK_DATA_BYTES,
+  TELEGRAM_MAX_TEXT_LENGTH,
+} from "./telegram-api.js";
 
-export interface TelegramConfig {
-  /** Bot token from BotFather. It sits in the URL path, so it is redacted everywhere. */
-  token: string;
-  /** A bot cannot message a chat it has never seen, so the chat id comes from outside. */
-  chatIdFor: (
-    handle: string,
-  ) => string | number | undefined | Promise<string | number | undefined>;
-  fetch?: typeof fetch;
-  /** Override for a local Bot API server. Defaults to the cloud one. */
-  baseUrl?: string;
-}
-
-export const TELEGRAM_BASE_URL = "https://api.telegram.org";
-
-/** `sendMessage` documents `text` as 1-4096 characters after entities parsing. */
-export const TELEGRAM_MAX_TEXT_LENGTH = 4096;
-
-/** `callback_data` is documented as 1-64 bytes, and Telegram counts UTF-8 bytes. */
-export const TELEGRAM_MAX_CALLBACK_DATA_BYTES = 64;
-
-/** Every string that leaves this module passes through here. */
-export function redactToken(value: string, token: string): string {
-  if (!token) return value;
-  const encoded = encodeURIComponent(token);
-  const once = value.split(token).join("***");
-  return encoded === token ? once : once.split(encoded).join("***");
-}
-
-export function methodUrl(config: TelegramConfig, method: string): string {
-  const origin = (config.baseUrl ?? TELEGRAM_BASE_URL).replace(/\/+$/, "");
-  return `${origin}/bot${config.token}/${method}`;
-}
-
-export function describeCause(cause: unknown): string {
-  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
-  return String(cause);
-}
-
-/** The Bot API envelope: `{ ok, result }`, or `{ ok: false, description }`. */
-export interface TelegramEnvelope {
-  ok: boolean;
-  result?: unknown;
-  description?: string;
-}
-
-export async function readEnvelope(
-  response: Response,
-): Promise<TelegramEnvelope> {
-  return (await tryReadEnvelope(response)) ?? { ok: false };
-}
-
-/** Undefined when the body is not JSON or the connection drops while it is read. */
-async function tryReadEnvelope(
-  response: Response,
-): Promise<TelegramEnvelope | undefined> {
-  try {
-    const body = (await response.json()) as {
-      ok?: unknown;
-      result?: unknown;
-      description?: unknown;
-    };
-    return {
-      ok: body.ok === true,
-      result: body.result,
-      description:
-        typeof body.description === "string" ? body.description : undefined,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function errorForStatus(
-  status: number,
-  message: string,
-  handle: string,
-): SendError {
-  if (status === 401) return { kind: "unauthorized", message };
-  if (status === 400 && /chat not found/i.test(message)) {
-    return { kind: "no-chat", handle, message };
-  }
-  if (status >= 400 && status < 500) return { kind: "rejected", status, message };
-  return { kind: "unknown", message: `HTTP ${status}: ${message}` };
-}
+/** The Bot API plumbing lives next door; re-exported so no consumer's import path moves. */
+export * from "./telegram-api.js";
 
 /** The message never quotes a data value: consumers may put ids in it. */
 function buttonsError(rows: readonly ButtonRow[]): SendError | undefined {
@@ -122,15 +52,60 @@ function sendError({ text, buttons }: SendInput): SendError | undefined {
   return buttons ? buttonsError(buttons) : undefined;
 }
 
+/**
+ * `style` is Bot API 9.4 and `disabled` is 10.3; both shapes are UNVERIFIED
+ * against a live bot, so TP-290 keeps them behind `buttonStates` until spike S5.
+ */
+function inlineButton(button: Button, buttonStates: boolean): Record<string, unknown> {
+  const base = { text: button.label, callback_data: button.data };
+  if (!buttonStates) return base;
+  return {
+    ...base,
+    ...(button.style ? { style: button.style } : {}),
+    ...(button.state === "disabled" ? { disabled: {} } : {}),
+  };
+}
+
+function inlineKeyboard(rows: readonly ButtonRow[], buttonStates: boolean): unknown {
+  return {
+    inline_keyboard: rows.map((row) => row.map((button) => inlineButton(button, buttonStates))),
+  };
+}
+
 function messageBody(
   chatId: string | number,
   { text, buttons }: SendInput,
+  buttonStates: boolean,
 ): Record<string, unknown> {
   if (!buttons || buttons.length === 0) return { chat_id: chatId, text };
-  const inlineKeyboard = buttons.map((row) =>
-    row.map((button) => ({ text: button.label, callback_data: button.data })),
-  );
-  return { chat_id: chatId, text, reply_markup: { inline_keyboard: inlineKeyboard } };
+  return { chat_id: chatId, text, reply_markup: inlineKeyboard(buttons, buttonStates) };
+}
+
+/** Telegram answers 400 for both, and only the text tells a quiet no-op from a lost message. */
+function editOutcome(error: SendError): InteractionResult {
+  if (error.kind === "rejected" && /message is not modified/i.test(error.message)) {
+    return { ok: true, changed: false };
+  }
+  if (error.kind === "rejected" && /message to edit not found/i.test(error.message)) {
+    return { ok: false, error: { kind: "message-gone", message: error.message } };
+  }
+  return { ok: false, error };
+}
+
+function editBody(
+  { ref, text, buttons }: EditInput,
+  buttonStates: boolean,
+): { method: string; body: Record<string, unknown> } {
+  const target = {
+    chat_id: ref.chat,
+    message_id: Number(ref.messageId),
+    ...(buttons === undefined
+      ? {}
+      : { reply_markup: buttons === "remove" ? { inline_keyboard: [] } : inlineKeyboard(buttons, buttonStates) }),
+  };
+  return text === undefined
+    ? { method: "editMessageReplyMarkup", body: target }
+    : { method: "editMessageText", body: { ...target, text } };
 }
 
 function readMessageId(result: unknown): string | undefined {
@@ -142,11 +117,11 @@ function readMessageId(result: unknown): string | undefined {
  * Sends over the Telegram Bot API with `fetch` only, so the same code runs in a
  * Worker, a daemon, and a test. No `parse_mode`: coach copy is sent verbatim.
  */
-export class TelegramTransport implements MessageTransport {
-  private readonly doFetch: typeof fetch;
+export class TelegramTransport implements InteractiveTransport {
+  readonly capabilities: ChannelCapabilities;
 
   constructor(private readonly config: TelegramConfig) {
-    this.doFetch = config.fetch ?? globalThis.fetch;
+    this.capabilities = telegramCapabilities(config);
   }
 
   async send(input: SendInput): Promise<SendResult> {
@@ -157,37 +132,78 @@ export class TelegramTransport implements MessageTransport {
     const chatId = await this.resolveChatId(handle);
     if (chatId.kind !== "ok") return sendFailed(chatId.error);
 
-    const attempt = await attemptFetch(this.doFetch, () =>
-      this.sendMessageRequest(messageBody(chatId.value, input)),
+    const call = await callBotApi(
+      this.config,
+      "sendMessage",
+      messageBody(chatId.value, input, this.capabilities.buttonStates),
+      handle,
     );
-    if (!attempt.sent) {
-      return sendFailed({ kind: attempt.kind, message: this.redact(describeCause(attempt.cause)) });
-    }
-    return await this.resultFor(attempt.response, handle);
+    if (!call.ok) return sendFailed(call.error);
+    const messageId = readMessageId(call.result);
+    if (messageId === undefined) return { ok: true };
+    return {
+      ok: true,
+      messageGuid: messageId,
+      ref: { channel: "telegram", chat: String(chatId.value), messageId },
+    };
   }
 
-  private async resultFor(response: Response, handle: string): Promise<SendResult> {
-    const envelope = await tryReadEnvelope(response);
-    if (response.ok && envelope === undefined) {
-      return sendFailed(unreadableSuccess(response.status));
-    }
-    const message = this.redact(envelope?.description ?? response.statusText);
-    if (!response.ok || !envelope?.ok) {
-      return sendFailed(errorForStatus(response.status, message, handle));
-    }
-    return { ok: true, messageGuid: readMessageId(envelope.result) };
+  /** A second call replaces the mark, so a product can swap "seen" for "done". */
+  async react({ to, emoji }: { to: MessageRef; emoji: string | null }): Promise<InteractionResult> {
+    return await this.interact("setMessageReaction", {
+      chat_id: to.chat,
+      message_id: Number(to.messageId),
+      reaction: emoji === null ? [] : [{ type: "emoji", emoji }],
+    });
   }
 
-  /** Parsing the URL here, not inside fetch, is what lets a malformed base URL count as never sent. */
-  private sendMessageRequest(body: Record<string, unknown>): Parameters<typeof fetch> {
-    return [
-      new URL(methodUrl(this.config, "sendMessage")),
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    ];
+  /** Telegram shows it for five seconds or until the bot's next message; keeping it alive is the caller's job. */
+  async chatAction({
+    handle,
+    action,
+    threadId,
+  }: {
+    handle: string;
+    action: "typing";
+    threadId?: string;
+  }): Promise<InteractionResult> {
+    const chatId = await this.resolveChatId(handle);
+    if (chatId.kind !== "ok") return { ok: false, error: chatId.error };
+    return await this.interact("sendChatAction", {
+      chat_id: chatId.value,
+      action,
+      ...(threadId === undefined ? {} : { message_thread_id: Number(threadId) }),
+    });
+  }
+
+  async edit(input: EditInput): Promise<InteractionResult> {
+    const invalid = emptyEditError(input);
+    if (invalid) return { ok: false, error: invalid };
+
+    const { method, body } = editBody(input, this.capabilities.buttonStates);
+    const call = await callBotApi(this.config, method, body);
+    return call.ok ? { ok: true, changed: true } : editOutcome(call.error);
+  }
+
+  async answerAction({
+    actionId,
+    toast,
+  }: {
+    actionId: string;
+    toast?: string;
+  }): Promise<InteractionResult> {
+    return await this.interact("answerCallbackQuery", {
+      callback_query_id: actionId,
+      ...(toast === undefined ? {} : { text: toast }),
+    });
+  }
+
+  private async interact(
+    method: string,
+    body: Record<string, unknown>,
+  ): Promise<InteractionResult> {
+    const call = await callBotApi(this.config, method, body);
+    return call.ok ? { ok: true, changed: true } : { ok: false, error: call.error };
   }
 
   private async resolveChatId(handle: string): Promise<
@@ -220,8 +236,30 @@ export class TelegramTransport implements MessageTransport {
   }
 }
 
+/**
+ * A flag is true only where this adapter implements the thing today, so
+ * `drafts` waits for TP-292 and `threads` for TP-295 rather than describing
+ * what the Bot API could do.
+ */
+function telegramCapabilities(config: TelegramConfig): ChannelCapabilities {
+  return {
+    channel: "telegram",
+    maxTextLength: TELEGRAM_MAX_TEXT_LENGTH,
+    canInitiate: false,
+    deliveryCeiling: "accepted",
+    buttons: true,
+    buttonStates: config.buttonStates === true,
+    edits: true,
+    reactions: true,
+    chatActions: true,
+    drafts: false,
+    draftStreaming: false,
+    threads: false,
+  };
+}
+
 export function createTelegramTransport(
   config: TelegramConfig,
-): MessageTransport {
+): InteractiveTransport {
   return new TelegramTransport(config);
 }

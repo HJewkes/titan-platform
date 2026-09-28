@@ -1,16 +1,27 @@
 import { z } from "zod";
+import type { ButtonRow, MessageRef, SendError } from "./contract.js";
 import type { TelegramConfig } from "./telegram.js";
-import { describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
+import { callBotApi, describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
+
+/** Only buttons with `callback_data` are read back: a URL or Web App button cannot be answered. */
+const inlineKeyboard = z.object({
+  inline_keyboard: z.array(
+    z.array(z.object({ text: z.string(), callback_data: z.string().optional() })),
+  ),
+});
 
 /** The Update shapes this package reads: a text message, or a tapped inline button. */
 export const telegramUpdateEvent = z.object({
   update_id: z.number().int(),
   message: z
     .object({
+      message_id: z.number().int(),
       date: z.number().int(),
       text: z.string().optional(),
       from: z.object({ id: z.number().int() }).optional(),
       chat: z.object({ id: z.number().int() }),
+      message_thread_id: z.number().int().optional(),
+      reply_to_message: z.object({ message_id: z.number().int() }).optional(),
     })
     .optional(),
   callback_query: z
@@ -22,6 +33,9 @@ export const telegramUpdateEvent = z.object({
           message_id: z.number().int(),
           chat: z.object({ id: z.number().int() }),
           date: z.number().int(),
+          text: z.string().optional(),
+          message_thread_id: z.number().int().optional(),
+          reply_markup: inlineKeyboard.optional(),
         })
         .optional(),
       data: z.string().optional(),
@@ -35,8 +49,12 @@ export interface TelegramTextUpdate {
   updateId: number;
   chatId: number;
   fromId: number;
+  /** Required: nothing can react to or edit a message it cannot address. */
+  messageId: number;
   text: string;
   date: number;
+  threadId?: number;
+  replyToMessageId?: number;
 }
 
 /** A tapped inline button; `data` is the button's callback data, verbatim. */
@@ -49,6 +67,10 @@ export interface TelegramCallback {
   messageId: number;
   data: string;
   date: number;
+  threadId?: number;
+  messageText?: string;
+  /** The tapped prompt's own keyboard, so a receipt needs no store of what was sent. */
+  buttons?: ButtonRow[];
 }
 
 export type TelegramInbound = ({ kind: "text" } & TelegramTextUpdate) | TelegramCallback;
@@ -112,20 +134,39 @@ async function getUpdates(
   return Array.isArray(envelope.result) ? envelope.result : [];
 }
 
+/** A row of only URL buttons disappears rather than arriving empty, so a receipt can rebuild it. */
+function readButtons(
+  markup: z.infer<typeof inlineKeyboard> | undefined,
+): ButtonRow[] | undefined {
+  const rows = (markup?.inline_keyboard ?? [])
+    .map((row) =>
+      row
+        .filter((button) => button.callback_data !== undefined)
+        .map((button) => ({ label: button.text, data: button.callback_data as string })),
+    )
+    .filter((row) => row.length > 0);
+  return rows.length > 0 ? rows : undefined;
+}
+
 function toCallback(
   updateId: number,
   query: NonNullable<TelegramUpdateEvent["callback_query"]>,
 ): TelegramCallback | undefined {
-  if (!query.message || query.data === undefined) return undefined;
+  const { message } = query;
+  if (!message || query.data === undefined) return undefined;
+  const buttons = readButtons(message.reply_markup);
   return {
     kind: "callback",
     updateId,
-    chatId: query.message.chat.id,
+    chatId: message.chat.id,
     fromId: query.from.id,
     callbackQueryId: query.id,
-    messageId: query.message.message_id,
+    messageId: message.message_id,
     data: query.data,
-    date: query.message.date,
+    date: message.date,
+    ...(message.message_thread_id === undefined ? {} : { threadId: message.message_thread_id }),
+    ...(message.text === undefined ? {} : { messageText: message.text }),
+    ...(buttons ? { buttons } : {}),
   };
 }
 
@@ -136,13 +177,27 @@ function toInbound({
 }: TelegramUpdateEvent): TelegramInbound | undefined {
   if (query) return toCallback(updateId, query);
   if (!message?.text || !message.from) return undefined;
+  const replyTo = message.reply_to_message?.message_id;
   return {
     kind: "text",
     updateId,
     chatId: message.chat.id,
     fromId: message.from.id,
+    messageId: message.message_id,
     text: message.text,
     date: message.date,
+    ...(message.message_thread_id === undefined ? {} : { threadId: message.message_thread_id }),
+    ...(replyTo === undefined ? {} : { replyToMessageId: replyTo }),
+  };
+}
+
+/** The user's own message for a typed update, the tapped prompt for a tap. */
+export function refOfInbound(update: TelegramInbound): MessageRef {
+  return {
+    channel: "telegram",
+    chat: String(update.chatId),
+    messageId: String(update.messageId),
+    ...(update.threadId === undefined ? {} : { threadId: String(update.threadId) }),
   };
 }
 
@@ -208,7 +263,10 @@ export async function readChatIds(config: TelegramConfig): Promise<number[]> {
   return [...ids];
 }
 
-export type AnswerCallbackResult = { ok: true } | { ok: false; reason: string };
+/** `error` carries the same typed failure a send would report, so a 429 here is backed off, not parsed. */
+export type AnswerCallbackResult =
+  | { ok: true }
+  | { ok: false; reason: string; error: SendError };
 
 /**
  * Stops the tapped button's loading spinner; Telegram expects this for every
@@ -219,25 +277,10 @@ export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,
 ): Promise<AnswerCallbackResult> {
-  const doFetch = config.fetch ?? globalThis.fetch;
   const body = text === undefined
     ? { callback_query_id: callbackQueryId }
     : { callback_query_id: callbackQueryId, text };
-  try {
-    const response = await doFetch(methodUrl(config, "answerCallbackQuery"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const envelope = await readEnvelope(response);
-    if (response.ok && envelope.ok) return { ok: true };
-    const description = envelope.description ?? response.statusText;
-    return failedAnswer(config, `answerCallbackQuery failed (${response.status}): ${description}`);
-  } catch (cause) {
-    return failedAnswer(config, describeCause(cause));
-  }
-}
-
-function failedAnswer(config: TelegramConfig, reason: string): AnswerCallbackResult {
-  return { ok: false, reason: redactToken(reason, config.token) };
+  const call = await callBotApi(config, "answerCallbackQuery", body);
+  if (call.ok) return { ok: true };
+  return { ok: false, reason: `answerCallbackQuery failed: ${call.error.message}`, error: call.error };
 }
