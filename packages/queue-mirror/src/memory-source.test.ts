@@ -53,7 +53,7 @@ describe("MemoryQueueSource", () => {
   it("resolves an open item once and reports a closed one", async () => {
     const source = new MemoryQueueSource();
     source.add(item("a"));
-    const verdict = { verdict: "dismiss", resolutionEventId: "$r" } as const;
+    const verdict = { verdict: "dismiss", resolutionEventId: "$r", sender: "@owner:example.org" } as const;
 
     expect(await source.resolve("a", verdict)).toEqual({ ok: true });
     expect(await source.resolve("a", verdict)).toEqual({ ok: false, reason: "closed" });

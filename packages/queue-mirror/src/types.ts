@@ -28,6 +28,8 @@ export interface VerdictInput {
   verdict: Verdict;
   text?: string;
   resolutionEventId: string;
+  /** The Matrix user who sent the resolving event; the fold only admits the owner. */
+  sender: string;
 }
 
 export type ResolveResult = { ok: true } | { ok: false; reason: "closed" | "rejected"; detail?: string };

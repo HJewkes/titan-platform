@@ -8,6 +8,9 @@ close edits the item with `m.replace`.
 - `runMirror(source, bus, state, options)`: the supervised loop.
 - `QueueSource` and `MirrorState` ports, with `MemoryQueueSource` and `MemoryMirrorState`.
 - `@titan-design/queue-mirror/hitl`: `hitlQueueSource(store, options)` over a hitl `GateStore`.
+  Each resolve records the reacting owner as `{ class: "owner-remote", id: sender, channel:
+  "matrix", confirmEvent }` (override with `resolverOf`); a refused resolver leaves the item
+  open and marked refused.
 - `@titan-design/queue-mirror/sqlite`: `SqliteMirrorState`, the durable `MirrorState`, and
   `mirrorMigration(version, prefix)` for a product's own migration list.
 
@@ -15,7 +18,7 @@ close edits the item with `m.replace`.
 eagerly: the connection must exist when `tail()` returns, not at the first `next()`. A lazy
 `async function*` misses items opened during reconcile. A source that cannot replay a gap
 yields `{type: "resync", cursor}`, and the mirror reconciles against `open()` and commits
-the cursor. A `rejected` verdict edits the item `refused: <detail>` and leaves it open.
+the cursor. `VerdictInput.sender` names the Matrix user who sent the resolving event. A `rejected` verdict edits the item `refused: <detail>` and leaves it open.
 
 Tier 2 of the titan-platform DAG. Depends on `@titan-design/matrix-bus`,
 `@titan-design/hitl` and `@titan-design/store-sqlite`. The root entry has no `node:` import.

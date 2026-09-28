@@ -108,6 +108,18 @@ polls `listPending()` every `pollMs` (hitl has no change feed). allow and approv
 "denied from Matrix". Override this mapping with `toPayload`. hitl errors are matched by
 `name`, not `instanceof`.
 
+Every resolve names a resolver. `VerdictInput.sender` carries the Matrix user who sent the
+resolving event, which the fold has already checked is the owner. By default the source
+passes `{ class: "owner-remote", id: sender, channel: "matrix", confirmEvent:
+resolutionEventId }` to `store.resolve`; `resolverOf(gate, verdict)` replaces it. When the
+store refuses the resolver (`GateResolverRefused`, from hitl's default class check or the
+store's `authorize`), the source returns `rejected`: the gate stays pending and the item is
+edited to `refused: resolver <class> refused`. The refusal reason itself never reaches the
+room. `GateAuthorizeInvalid` and `GateStoreSchemaOutdated` are configuration faults, not
+refusals. The source rethrows them, the sync loop logs the failure and retries with backoff,
+and the reaction is applied once the store is fixed. A store whose table lacks the resolver
+column needs `gateResolverMigration` from `@titan-design/hitl/sqlite` in its migration list.
+
 **`/sqlite`.** `new SqliteMirrorState(db, { tablePrefix?, migrate? })` is the durable
 `MirrorState` over [`store-sqlite`](/reference/store-sqlite). It keeps three tables,
 `<prefix>_item`, `<prefix>_applied` and `<prefix>_cursor` (prefix

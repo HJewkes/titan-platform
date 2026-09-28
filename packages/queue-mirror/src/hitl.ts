@@ -1,4 +1,4 @@
-import type { GateRecord, GateStatus, GateStore } from "@titan-design/hitl";
+import type { GateRecord, GateResolver, GateStatus, GateStore } from "@titan-design/hitl";
 import { abortableSleep } from "./supervise.js";
 import type { CloseOutcome, QueueItem, QueueSource, ResolveResult, SourceEvent, VerdictInput } from "./types.js";
 
@@ -13,6 +13,8 @@ export interface HitlSourceOptions {
   pollMs?: number;
   kindOf?: (gate: GateRecord) => GateKind;
   toPayload?: (gate: GateRecord, verdict: VerdictInput) => GateAction;
+  /** Who the store records as resolving the gate; defaults to the owner over Matrix. */
+  resolverOf?: (gate: GateRecord, verdict: VerdictInput) => GateResolver;
 }
 
 const DEFAULT_POLL_MS = 1_000;
@@ -29,12 +31,28 @@ export function defaultGatePayload(_gate: GateRecord, { verdict, text }: Verdict
   return { cancel: "denied from Matrix" };
 }
 
+/** The reacting sender, which the mirror's fold has already checked is the owner. */
+export function defaultGateResolver(_gate: GateRecord, { sender, resolutionEventId }: VerdictInput): GateResolver {
+  return { class: "owner-remote", id: sender, channel: "matrix", confirmEvent: resolutionEventId };
+}
+
+/**
+ * Anything unmatched, such as GateAuthorizeInvalid or GateStoreSchemaOutdated, is a
+ * configuration fault: it is rethrown so the supervisor logs it and the verdict is retried.
+ */
 function errorResult(err: unknown): ResolveResult {
   const name = err instanceof Error ? err.name : "";
   const detail = err instanceof Error ? err.message : String(err);
   if (CLOSED_ERRORS.has(name)) return { ok: false, reason: "closed", detail };
   if (name === "GatePayloadInvalid") return { ok: false, reason: "rejected", detail };
+  if (name === "GateResolverRefused") return { ok: false, reason: "rejected", detail: refusalDetail(err) };
   throw err;
+}
+
+// The refusal reason can come from a caller's authorize, so only the actor class reaches the room.
+function refusalDetail(err: unknown): string {
+  const actorClass = (err as { actorClass?: unknown }).actorClass;
+  return typeof actorClass === "string" ? `resolver ${actorClass} refused` : "resolver refused";
 }
 
 class HitlQueueSource implements QueueSource {
@@ -54,7 +72,7 @@ class HitlQueueSource implements QueueSource {
     if (gate?.status !== "pending") return { ok: false, reason: "closed" };
     const action = (this.options.toPayload ?? defaultGatePayload)(gate, verdict);
     try {
-      if ("resolve" in action) this.store.resolve(id, action.resolve);
+      if ("resolve" in action) this.store.resolve(id, action.resolve, (this.options.resolverOf ?? defaultGateResolver)(gate, verdict));
       else this.store.cancel(id, action.cancel);
       return { ok: true };
     } catch (err) {
