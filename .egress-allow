@@ -1,0 +1,11 @@
+# Files allowed to carry an egress-scan hit: <glob> <rule-id> <reason with a task id>.
+# One entry per file and rule. Private terms are never allowable. See site/guides/contributing.md.
+packages/agent/src/claude-print.test.ts home-path placeholder HOME for a fake child process, TP-405
+packages/session-analytics/src/fixture.ts home-path placeholder session cwd, TP-405
+packages/session-analytics/src/initiative.test.ts home-path placeholder cwd for initiative parsing, TP-405
+packages/session-analytics/src/initiative.test.ts aw-data-path data-dir shape the parser recognises, TP-405
+packages/session-read/src/normalized.test.ts home-path placeholder transcript paths, TP-405
+packages/session-read/src/repo-root.ts aw-data-path doc comment naming the data-dir shape, TP-405
+products/retrieval-eval/REPORT.md aw-data-path miner database path in tilde form, TP-405
+products/retrieval-eval/src/mine/briefing-slug.test.ts aw-data-path placeholder data-dir root, TP-405
+products/retrieval-eval/src/mine/labels.test.ts aw-data-path placeholder data-dir root, TP-405

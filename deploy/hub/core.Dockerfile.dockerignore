@@ -4,6 +4,7 @@
 !pnpm-workspace.yaml
 !tsconfig.base.json
 !packages/matrix-bus
+!packages/egress-scan
 !deploy/hub/package.json
 !deploy/hub/src
 **/node_modules
