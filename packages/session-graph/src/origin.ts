@@ -1,4 +1,4 @@
-import { RELATIONS, sessionRef } from "@titan-design/session-read";
+import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 
 /**
@@ -26,7 +26,20 @@ export interface ResolvedOrigin {
   briefExcerpt?: string | null;
   briefPath?: string | null;
   launchArgs?: string | null;
+  /**
+   * Task ids the spawn record assigned, primary first; each projects a `ran` edge. Leave it
+   * undefined only if the resolver does not look for tasks: a stored link then stands and a
+   * row without one is offered again. A task-aware resolver sets it, empty when nothing links.
+   */
+  taskIds?: readonly string[] | null;
+  /** How the ids were found. Stored as `none` when `taskIds` is given but empty. */
+  taskSource?: TaskLinkSource | null;
 }
+
+/** Stored when a task-aware resolver found no id, so the row is not offered again. */
+export const NO_TASK_LINK = "none";
+
+export type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | typeof NO_TASK_LINK;
 
 /** A lifecycle event the launcher saw outside the transcript: `teleport`, `handoff`, `retired`, `exited`. */
 export interface ExternalEvent {
@@ -47,7 +60,9 @@ export interface OriginResolution {
 /**
  * Supplied by the caller, never by this package: session-graph is tier 2 and
  * must not learn where a launcher keeps its records. Called once per pass with
- * every session that has no origin row or a stale one.
+ * every session that has no origin row, a stale one, or a null `task_source`.
+ * A task-aware resolver returns an entry for every requested session it examined,
+ * with `taskIds` empty when nothing links; a session left out is offered again.
  */
 export type OriginResolver = (sessionIds: readonly string[]) => PromiseLike<OriginResolution> | OriginResolution;
 
@@ -66,19 +81,34 @@ export interface OriginEnrichment {
 
 export const NO_ORIGINS: OriginEnrichment = Object.freeze({ requested: 0, applied: 0, events: 0, failed: false });
 
-/** A session whose transcript grew after its origin was resolved may have been retired or handed off since. */
+/**
+ * A session whose transcript grew after its origin was resolved may have been retired or handed off since.
+ * A null `task_source` means no task-aware resolver has answered for the row yet.
+ */
 const SESSIONS_NEEDING_ORIGIN = `
   SELECT s.session_id FROM session s LEFT JOIN session_origin o ON o.session_id = s.session_id
-  WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at
+  WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at OR o.task_source IS NULL
   ORDER BY s.session_id`;
 
+const ORIGIN_COLUMNS = [
+  "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
+  "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
+] as const;
+
+/** A null `task_source` means the resolver did not look for tasks, so the stored link stands; `none` clears it. */
+const TASK_LINK_UPDATE = `task_source = COALESCE(excluded.task_source, task_source),
+    task_ids = CASE WHEN excluded.task_source IS NOT NULL THEN excluded.task_ids ELSE task_ids END`;
+
+/** An update, not a replace, so a column this writer does not name keeps its value. */
 const UPSERT_ORIGIN = `
-  INSERT OR REPLACE INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
+  INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
-    brief_chars, brief_excerpt, brief_path, launch_args, resolved_at)
+    brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at)
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
-    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @resolvedAt)`;
+    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt)
+  ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
+    ${TASK_LINK_UPDATE}`;
 
 const UPSERT_EVENT = `
   INSERT INTO session_external_event (session_id, ts, origin_system, kind, detail)
@@ -106,14 +136,16 @@ export function sessionsNeedingOrigin(graph: SessionGraph): string[] {
 export async function resolveOrigins(graph: SessionGraph, resolver: OriginResolver | undefined): Promise<OriginEnrichment> {
   if (!resolver) return NO_ORIGINS;
   const sessionIds = sessionsNeedingOrigin(graph);
+  let resolved: readonly string[] = [];
   try {
     const resolution = await resolver(sessionIds);
     const written = writeResolution(graph, resolution, new Date().toISOString());
+    resolved = Object.keys(resolution.origins);
     return { requested: sessionIds.length, ...written, failed: false };
   } catch (err) {
     return { requested: sessionIds.length, applied: 0, events: 0, failed: true, error: err instanceof Error ? err.message : String(err) };
   } finally {
-    projectOrigins(graph);
+    projectOrigins(graph, resolved);
   }
 }
 
@@ -141,10 +173,18 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     depth: o.depth ?? null, originKind: o.originKind ?? null, configDir: o.configDir ?? null, spawnCwd: o.spawnCwd ?? null,
     spawnedAt: o.spawnedAt ?? null, briefChars: o.briefChars ?? null, briefExcerpt: o.briefExcerpt ?? null,
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
+    ...taskLinkColumns(o),
   };
 }
 
-function projectOrigins(graph: SessionGraph): void {
+/** `undefined` ids mean a resolver that predates task links; null or empty ids mean it looked and found none. */
+function taskLinkColumns(o: ResolvedOrigin): { taskIds: string | null; taskSource: string | null } {
+  if (o.taskIds === undefined) return { taskIds: null, taskSource: null };
+  if (!o.taskIds?.length) return { taskIds: null, taskSource: NO_TASK_LINK };
+  return { taskIds: JSON.stringify(o.taskIds), taskSource: o.taskSource ?? NO_TASK_LINK };
+}
+
+function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void {
   const spawned = graph.db.prepare("SELECT session_id, parent_session_id, spawned_at, resolved_at FROM session_origin WHERE parent_session_id IS NOT NULL").all() as {
     session_id: string; parent_session_id: string; spawned_at: string | null; resolved_at: string;
   }[];
@@ -153,5 +193,44 @@ function projectOrigins(graph: SessionGraph): void {
     for (const o of spawned) {
       graph.edges.assert({ sourceRef: sessionRef(o.parent_session_id), relation: RELATIONS.SPAWNED, targetRef: sessionRef(o.session_id), tValid: o.spawned_at ?? o.resolved_at });
     }
+    projectTaskLinks(graph, resolved);
   })();
+}
+
+/** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
+const LINK_CONFIDENCE: Record<string, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
+const LOWEST_CONFIDENCE = 0.6;
+
+interface TaskLinkRow { session_id: string; task_ids: string | null; task_source: string | null; spawned_at: string | null; resolved_at: string }
+
+/**
+ * Assert `session ran task` for every id a spawn record assigned, with a task row so
+ * the same pass's `enrichTasks` fills its initiative. Only edges this projection made
+ * (`attrs.via = 'origin'`) are expired; a transcript's `ran` edge carries no `via`.
+ * Only this pass's rows are read: task links change only when a row is re-resolved.
+ */
+function projectTaskLinks(graph: SessionGraph, resolved: readonly string[]): void {
+  const insertTask = graph.db.prepare("INSERT OR IGNORE INTO task (task_ref, task_id) VALUES (?, ?)");
+  const select = graph.db.prepare("SELECT session_id, task_ids, task_source, spawned_at, resolved_at FROM session_origin WHERE session_id = ?");
+  for (const sessionId of resolved) {
+    const o = select.get(sessionId) as TaskLinkRow | undefined;
+    if (!o) continue;
+    const taskIds: string[] = o.task_ids ? (JSON.parse(o.task_ids) as string[]) : [];
+    const source = sessionRef(o.session_id);
+    const attrs = { via: "origin", source: o.task_source };
+    const confidence = LINK_CONFIDENCE[o.task_source ?? ""] ?? LOWEST_CONFIDENCE;
+    for (const taskId of taskIds) {
+      insertTask.run(taskRef(taskId), taskId);
+      graph.edges.assert({ sourceRef: source, relation: RELATIONS.RAN, targetRef: taskRef(taskId), tValid: o.spawned_at ?? o.resolved_at, attrs, confidence });
+    }
+    expireStaleTaskLinks(graph, source, new Set(taskIds.map(taskRef)));
+  }
+}
+
+function expireStaleTaskLinks(graph: SessionGraph, source: string, linked: ReadonlySet<string>): void {
+  for (const edge of graph.edges.from(source)) {
+    if (edge.relation === RELATIONS.RAN && edge.attrs?.via === "origin" && !linked.has(edge.targetRef)) {
+      graph.edges.expire(source, RELATIONS.RAN, edge.targetRef);
+    }
+  }
 }

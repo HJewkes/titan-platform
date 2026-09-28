@@ -1,7 +1,7 @@
 import { applyAudit } from "./audit-apply.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
-import { sessionRef, type TranscriptDelta } from "@titan-design/session-read";
-import type { Db } from "@titan-design/store-sqlite";
+import { RELATIONS, sessionRef, type TranscriptDelta } from "@titan-design/session-read";
+import type { Db, EdgeInput } from "@titan-design/store-sqlite";
 import type { SessionGraph } from "./graph.js";
 
 /**
@@ -148,11 +148,21 @@ function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: Trans
   const linkTranscript = db.prepare("INSERT INTO subagent (agent_ref, child_session_id) VALUES (?, ?) ON CONFLICT (agent_ref) DO UPDATE SET child_session_id = excluded.child_session_id");
   for (const l of delta.subagentTranscripts) linkTranscript.run(l.agentRef, l.childSessionId);
 
-  for (const e of delta.edges) graph.edges.assert({ sourceRef: e.sourceRef, relation: e.relation, targetRef: e.targetRef, tValid: e.ts, factId: factId(e.byteOffset) });
+  for (const e of delta.edges) assertTranscriptEdge(graph, { sourceRef: e.sourceRef, relation: e.relation, targetRef: e.targetRef, tValid: e.ts, factId: factId(e.byteOffset) });
 
   for (const span of delta.spans) {
     graph.spans.index({ ownerRef: sessionRef(span.sessionId), field: span.field, sourceId: transcriptId, byteOffset: span.byteOffset, byteLength: span.byteLength }, span.text);
   }
+}
+
+/**
+ * A transcript's `ran` claim outranks a spawn record's: an origin-made edge for the same
+ * task is superseded without `via`, so origin expiry cannot later remove it.
+ */
+function assertTranscriptEdge(graph: SessionGraph, edge: EdgeInput): void {
+  const existing = edge.relation === RELATIONS.RAN ? graph.edges.current(edge.sourceRef, edge.relation, edge.targetRef) : undefined;
+  if (existing?.attrs?.via === "origin") graph.edges.supersede(edge);
+  else graph.edges.assert(edge);
 }
 
 function factIdFor(db: Db, transcriptId: number, byteOffset: number): number | null {

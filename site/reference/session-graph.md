@@ -200,3 +200,22 @@ Migration 6, `episode transcript ids`, adds nullable `start_transcript_id` and
 `end_transcript_id` columns to `episode`, surfaced as `EpisodeRow.startTranscriptId` and
 `endTranscriptId`. A session resumed across two transcripts then orders by timestamp,
 transcript id, and byte offset, because byte offsets reset with the new file.
+
+Migration 7, `origin task link`, adds nullable `task_ids` (a JSON array, primary id first)
+and `task_source` columns to `session_origin`, surfaced as `ResolvedOrigin.taskIds` and
+`taskSource`. It changes no existing row or edge. A row whose `task_source` is null is
+offered to the resolver again on every pass, so the first pass with a task-aware resolver
+is the backfill. A resolver that sets `taskIds`, even to an empty array or null, always
+leaves `task_source` non-null: the given source, or `none` (`NO_TASK_LINK`) when there are
+no ids. A resolver that leaves `taskIds` undefined leaves a stored link as it was, and a
+row without one stays on offer. A task-aware resolver therefore returns an entry for every
+requested session it examined, with `taskIds` empty when nothing links; a session it leaves
+out keeps a null `task_source` and is offered again on every pass. The
+upsert updates only the columns it names, so a later column keeps its value. Each linked id
+projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
+and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for
+`brief-paragraph`. Only rows resolved in the current pass are projected. When a
+re-resolution drops an id, only that origin-made edge expires. A transcript's `ran` edge
+carries no `via`, and when a transcript claims an edge the origin made first, the edge is
+superseded without `via`, so origin expiry never removes a transcript's claim.
+session-graph stores and projects the ids a resolver hands it; it does not compute them.
