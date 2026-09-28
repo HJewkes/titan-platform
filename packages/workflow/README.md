@@ -139,6 +139,32 @@ read-only judgements. Then a step that was in flight at a crash is dispatched
 again on `hydrate` instead of parking the run as `recovery_required`. With that
 wrapper, a step's `agentId` is its request key, not the agent session id.
 
+## Routing steps to runners
+
+`routedRunner(routes)` is one runner for the runtime that sends each dispatch
+step to its own runner. That lets a workflow mix code steps and model steps.
+A route names a step id in `match`, which also covers the `<id>:<suffix>`
+family; the longest matching route wins. It also names a restart rule.
+`onRestart: "repeat"` dispatches a step that was in flight at a crash again on
+`hydrate`. `onRestart: "park"` leaves the run `recovery_required` for a human,
+for steps whose effect may already have happened. A step no route covers also
+parks.
+
+```ts
+const runner = routedRunner([
+  { match: "draft", onRestart: "repeat", runner: agentRunner({ cwd, maxTurns: 20, maxBudgetUsd: 1 }) },
+  { match: "open-pr", onRestart: "park", runner: openPrRunner },
+]);
+runner.assertRoutes("ship", ["draft", "open-pr"]);
+runtime.register("ship", ship);
+```
+
+Call `runner.assertRoutes(workflowName, stepIds)` when registering a workflow.
+It throws naming every dispatch step id that no route covers. Two routes with
+the same `match` throw when the runner is built. Route runners receive the
+step's `attempt` and `requestKey` with the usual input, and a step's `agentId`
+is its request key.
+
 ## Signals
 
 `parseSignals(output)` returns every signal an output carries, highest
