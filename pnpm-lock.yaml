@@ -155,7 +155,11 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
-  packages/agent-protocol: {}
+  packages/agent-protocol:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/chat-protocol:
     devDependencies:
@@ -519,6 +523,24 @@ importers:
       '@titan-design/agent-lifecycle':
         specifier: workspace:^
         version: link:../agent-lifecycle
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  products/factory:
+    dependencies:
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../../packages/hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../../packages/workflow
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
       zod:
         specifier: ^4.4.3
         version: 4.5.4
