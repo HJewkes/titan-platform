@@ -93,8 +93,12 @@ await refreshCorpus(graph, transcripts, {
 - **Merged is sticky.** A resolver's `open` or `closed` never replaces a `merged` state, so a
   stale forge cache cannot reopen a PR. States are stored lower-case.
 - **Batching.** One call per refresh with every PR that has a repo and number and whose
-  outcome may still change: never checked, or not yet merged. A merged PR is asked about
-  once. The resolver only updates rows; a PR enters the graph from a transcript.
+  outcome may still change: never checked, not yet merged, or merged with no commit times
+  stored. PRs never checked come first, then open and closed PRs, then merged PRs offered only
+  for their commit times, so a resolver that caps its batch reaches open PRs before the
+  backlog. The resolver only updates rows; a PR enters the graph from a transcript.
+- **`commitTimes`** is stored as a JSON array in `commit_times`. Send an empty array for a PR
+  with no commits, so it is not offered again; omitting the field leaves the stored value.
 - **`review_rounds`** is stored as the resolver counts it. What counts as a round is an open
   question in the TP-256 design (Q6).
 - **Failure.** Same as the task resolver: the pass completes, the rows stand, and
@@ -110,7 +114,14 @@ Kit tables: `transcript` (watermark), `edge` (bi-temporal, `session:… touched 
 `search_span` + `search_fts` (contentless full-text over prompts, responses, tool inputs
 and results, keyed by the session ref). Domain tables: `fact`, `session`,
 `session_model_usage`, `turn`, `permission_phase`, `human_edit`, `file_checkpoint`, `pr`,
-`branch`, `file`, `task`, `subagent`, `artifact`, and the two PR observation tables.
+`branch`, `file`, `task`, `subagent`, `artifact`, the two PR observation tables, and
+`pr_review`.
+
+`pr_review` holds one row per review verdict. A chat row comes from a `chat_send` tool use
+that session-read parsed a verdict from, keyed `chat:<tool_use_id>:<n>` where `n` is the
+verdict's index in that message. It keeps only the parsed fields (verdict, repo, repo hint,
+PR number, and the repo of the sender's working directory), never message text, and is purged
+with its transcript. `pr_ref` stays null until a later pass resolves it.
 
 Everything except `transcript` is derivable, which is what makes the schema safe to evolve
 by drop-and-rederive.

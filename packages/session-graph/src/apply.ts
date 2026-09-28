@@ -1,4 +1,5 @@
 import { applyAudit } from "./audit-apply.js";
+import { REVIEW_TABLE } from "./audit-schema-v8.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
 import { RELATIONS, sessionRef, type TranscriptDelta } from "@titan-design/session-read";
 import type { Db, EdgeInput } from "@titan-design/store-sqlite";
@@ -20,6 +21,7 @@ export function applyDelta(graph: SessionGraph, transcriptId: number, delta: Tra
     applyAssets(graph.db, delta);
     applyPhases(graph.db, transcriptId, delta);
     applyLinkedRows(graph, transcriptId, delta);
+    applyReviewVerdicts(graph.db, transcriptId, delta);
     applyAudit(graph.db, transcriptId, delta);
   })();
 }
@@ -101,6 +103,28 @@ function applyAssets(db: Db, delta: TranscriptDelta): void {
 function pick(row: Record<string, unknown>, sql: string): Record<string, unknown> {
   const names = new Set([...sql.matchAll(/@(\w+)/g)].map((m) => m[1]!));
   return Object.fromEntries([...names].map((name) => [name, row[name] ?? null]));
+}
+
+/** A re-read refreshes the parsed fields and keeps a resolved `pr_ref`. */
+const UPSERT_CHAT_VERDICT = `
+  INSERT INTO ${REVIEW_TABLE} (source_key, surface, verdict, ts, session_id, transcript_id, repo, repo_hint, cwd_repo, number)
+  VALUES (@sourceKey, 'chat', @verdict, @ts, @sessionId, @transcriptId, @repo, @repoHint, @cwdRepo, @number)
+  ON CONFLICT (source_key) DO UPDATE SET verdict = excluded.verdict, ts = excluded.ts, session_id = excluded.session_id,
+    transcript_id = excluded.transcript_id, repo = excluded.repo, repo_hint = excluded.repo_hint,
+    cwd_repo = excluded.cwd_repo, number = excluded.number`;
+
+/** One tool use's verdicts come from one line, so their order in the delta is their parsed order. */
+function applyReviewVerdicts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
+  const upsert = db.prepare(UPSERT_CHAT_VERDICT);
+  const seen = new Map<string, number>();
+  for (const v of delta.reviewVerdicts) {
+    const n = seen.get(v.toolUseId) ?? 0;
+    seen.set(v.toolUseId, n + 1);
+    upsert.run({
+      sourceKey: `chat:${v.toolUseId}:${n}`, verdict: v.verdict, ts: v.ts, sessionId: v.sessionId, transcriptId,
+      repo: v.repo, repoHint: v.repoHint, cwdRepo: v.cwdRepo, number: v.number,
+    });
+  }
 }
 
 /**

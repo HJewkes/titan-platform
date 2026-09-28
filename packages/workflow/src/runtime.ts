@@ -6,6 +6,7 @@ import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions } from "./runtime-options.js";
 import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
+import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import {
   WorkflowCancelledError,
@@ -47,6 +48,7 @@ export class WorkflowRuntime {
       emit: (event) => options.onEvent?.(event),
       maxRetries: options.maxRetries ?? 1,
       gatePollMs: options.gatePollMs ?? 250,
+      maxStepDataBytes: options.maxStepDataBytes ?? DEFAULT_MAX_STEP_DATA_BYTES,
       executionId: options.executionId ?? randomUUID,
     };
   }
