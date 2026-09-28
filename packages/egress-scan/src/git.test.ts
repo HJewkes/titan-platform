@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { commitsForRange, commitsForUpdate, parsePrePush, readCommit } from "./git.js";
 import { scan } from "./scan.js";
-import { makeTestRepo, plantedHomePath, ZERO_SHA, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, plantedHomePath, tempDir, ZERO_SHA, type TestRepo } from "./test-repo.js";
 
 const repos: TestRepo[] = [];
 
@@ -116,5 +117,27 @@ describe("per-commit scanning", () => {
     const result = findings(repo, commitsForRange(repo.dir, side, merge));
 
     expect(result).toEqual([`commit ${merge.slice(0, 7)} f.txt:2 home-path`]);
+  });
+});
+
+describe("option injection", () => {
+  it("refuses a commit value that begins with a dash and writes no file", () => {
+    const repo = newRepo();
+    repo.commit("base");
+    const outDir = tempDir("egress-out-");
+    const target = path.join(outDir, "leaked-output");
+
+    expect(() => readCommit(repo.dir, `--output=${target}`)).toThrow("commit is not a sha or ref name");
+    expect(fs.existsSync(target)).toBe(false);
+    fs.rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("refuses a remote name that begins with a dash", () => {
+    const repo = newRepo();
+    const sha = repo.commit("base");
+
+    expect(() => commitsForUpdate(repo.dir, "--all", { localSha: sha, remoteSha: ZERO_SHA })).toThrow(
+      "remote is not a remote name",
+    );
   });
 });

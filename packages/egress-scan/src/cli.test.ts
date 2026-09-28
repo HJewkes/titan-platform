@@ -194,6 +194,57 @@ describe("pre-push and tree", () => {
   });
 });
 
+describe("argument validation", () => {
+  function outputTarget(): string {
+    return path.join(emptyHome(), "leaked-output");
+  }
+
+  it("exits 2 and writes no file when a pre-push stdin sha begins with a dash", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const target = outputTarget();
+
+    const result = run(repo, ["pre-push", "origin"], {}, `refs/heads/main --output=${target} refs/heads/main ${base}\n`);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("line 1: field 2 is not a full sha");
+    expect(result.err.includes(target)).toBe(false);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it("exits 2 and writes no file when the range base is an --output option", () => {
+    const repo = newRepo();
+    const head = repo.commit("base");
+    const target = outputTarget();
+
+    const result = run(repo, ["range", `--output=${target}`, head]);
+
+    expect(result.code).toBe(2);
+    expect(result.err.includes(target)).toBe(false);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it("exits 2 naming the position when a range head begins with a dash after --", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+
+    const result = run(repo, ["range", "--", base, "-p"]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("range: argument 2 is not a sha or ref name");
+  });
+
+  it("exits 2 when the pre-push remote name begins with a dash", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+
+    const result = run(repo, ["pre-push", "--", "--upload-pack=x"], {}, `refs/heads/main ${base} refs/heads/main ${ZERO_SHA}\n`);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("pre-push: argument 1 is not a remote name");
+  });
+});
+
 describe("usage", () => {
   it.each([[[]], [["bogus"]], [["range", "only-one"]], [["tree", "extra"]], [["--nope"]]])(
     "exits 2 for %j",
@@ -202,10 +253,20 @@ describe("usage", () => {
     },
   );
 
-  it("prints usage and exits 0 for --help", () => {
-    const result = run(newRepo(), ["--help"]);
+  it.each([[["--help"]], [["-h", "range"]]])("prints usage and exits 0 for %j", (argv) => {
+    const result = run(newRepo(), argv);
 
     expect(result.code).toBe(0);
     expect(result.out).toContain("usage: titan-egress-scan");
+  });
+
+  it("exits 2 instead of skipping the scan when a help flag follows the command", () => {
+    const repo = newRepo();
+    const head = repo.commit("base");
+
+    const result = run(repo, ["range", "-h", head, head]);
+
+    expect(result.code).toBe(2);
+    expect(result.out).not.toContain("usage: titan-egress-scan");
   });
 });

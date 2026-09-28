@@ -25,6 +25,11 @@ notices and errors to stderr.
   and for a new branch scans only the commits no ref of that remote has. `range` with an
   all-zero base scans the head commit alone. Each commit is read with `git show -c`, so a
   merge commit's combined diff is scanned too.
+- **Arguments.** Shas on pre-push stdin must be full hex shas, a `range` base or head must be
+  a hex sha or a ref name, and a remote name must not start with a dash or hold whitespace.
+  A bad value exits 2 with its position, never its value. Every revision reaches git after
+  `--end-of-options`, so the bin needs git 2.24 or later. A help flag after the command
+  exits 2 rather than skipping the scan.
 - **Private term list.** `$TITAN_EGRESS_TERMS`, else
   `${XDG_CONFIG_HOME:-$HOME/.config}/titan-egress/private-terms`. When `CI` is set it is never
   looked up. Locally a missing list prints a notice and the scan continues;

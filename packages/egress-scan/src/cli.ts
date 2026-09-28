@@ -1,7 +1,16 @@
 import { parseArgs } from "node:util";
 import { ConfigError, loadAllow, loadTerms } from "./config.js";
 import type { ScanSource } from "./diff.js";
-import { commitsForRange, commitsForUpdate, parsePrePush, readCommit, readTree, repoRoot } from "./git.js";
+import {
+  commitsForRange,
+  commitsForUpdate,
+  isRemoteName,
+  isRevision,
+  parsePrePush,
+  readCommit,
+  readTree,
+  repoRoot,
+} from "./git.js";
 import { installHook, type InstallResult } from "./install.js";
 import { formatReport } from "./report.js";
 import { scan } from "./scan.js";
@@ -71,14 +80,23 @@ function expectArgs(command: string, args: readonly string[], min: number, max: 
   if (args.length < min || args.length > max) throw new ConfigError(`${command}: wrong number of arguments`);
 }
 
+/** Rejects a value by its position only, so the message never repeats what was passed. */
+function expectValid(command: string, args: readonly string[], valid: (value: string) => boolean, what: string): void {
+  args.forEach((value, i) => {
+    if (!valid(value)) throw new ConfigError(`${command}: argument ${i + 1} is not ${what}`);
+  });
+}
+
 function dispatch(command: string | undefined, args: readonly string[], io: CliIo): number {
   switch (command) {
     case "pre-push":
       // git passes the remote name and its URL; only the name is used.
       expectArgs(command, args, 1, 2);
+      expectValid(command, args.slice(0, 1), isRemoteName, "a remote name");
       return runScan(io, (root) => prePushSources(root, args[0] ?? "", io.readStdin()));
     case "range":
       expectArgs(command, args, 2, 2);
+      expectValid(command, args, isRevision, "a sha or ref name");
       return runScan(io, (root) => readCommits(root, commitsForRange(root, args[0] ?? "", args[1] ?? "")));
     case "tree":
       expectArgs(command, args, 0, 0);
@@ -91,15 +109,27 @@ function dispatch(command: string | undefined, args: readonly string[], io: CliI
   }
 }
 
+/** Help counts only before the command; after it, a help flag is a usage error, never a skipped scan. */
+function parseCommandLine(argv: readonly string[]): { positionals: string[]; help: boolean } {
+  const { positionals, tokens } = parseArgs({
+    args: [...argv],
+    allowPositionals: true,
+    tokens: true,
+    options: { help: { type: "boolean", short: "h" } },
+  });
+  const command = tokens.find((token) => token.kind === "positional");
+  const helps = tokens.filter((token) => token.kind === "option" && token.name === "help");
+  if (helps.some((token) => command !== undefined && token.index > command.index)) {
+    throw new ConfigError("a help flag after the command is not allowed");
+  }
+  return { positionals, help: helps.length > 0 };
+}
+
 /** Runs one command. Errors print as one line to stderr and exit 2; nothing echoes scanned text. */
 export function runCli(argv: readonly string[], io: CliIo): number {
   try {
-    const { values, positionals } = parseArgs({
-      args: [...argv],
-      allowPositionals: true,
-      options: { help: { type: "boolean", short: "h" } },
-    });
-    if (values.help) {
+    const { positionals, help } = parseCommandLine(argv);
+    if (help) {
       for (const line of USAGE) io.out(line);
       return 0;
     }
