@@ -89,20 +89,23 @@ describe("installHook", () => {
 });
 
 describe.skipIf(process.platform === "win32")("the installed hook", () => {
-  function runHook(cwd: string, hookPath: string): ReturnType<typeof spawnSync> {
-    return spawnSync("sh", [hookPath, "origin", "git@example.com:o/r.git"], { cwd, input: "stdin-line\n" });
+  function fakeScanner(file: string, exitCode: number): void {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `#!/bin/sh\necho "args:$*"\ncat\nexit ${exitCode}\n`, { mode: 0o755 });
   }
 
-  it("fails closed with an install message when the worktree has no scanner", () => {
-    const repo = newRepo();
-    const worktree = linkedWorktree(repo);
-    const { hookPath = "" } = installHook(worktree, LOCAL);
-
-    const result = runHook(worktree, hookPath);
-
-    expect(result.status).toBe(1);
-    expect(String(result.stderr)).toContain("run pnpm install");
-  });
+  /** Runs the hook with a PATH holding only the tools it needs, so a global scanner never leaks in. */
+  function runHook(cwd: string, hookPath: string, extraPathDir?: string): ReturnType<typeof spawnSync> {
+    const toolDir = path.join(tempDir("egress-tools-"), "bin");
+    dirs.push(path.dirname(toolDir));
+    fs.mkdirSync(toolDir, { recursive: true });
+    for (const tool of ["sh", "git", "dirname", "cat", "node"]) {
+      const found = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf-8" }).stdout.trim();
+      fs.symlinkSync(found, path.join(toolDir, tool));
+    }
+    const env = { ...process.env, PATH: [extraPathDir, toolDir].filter((part) => part !== undefined).join(path.delimiter) };
+    return spawnSync("sh", [hookPath, "origin", "git@example.com:o/r.git"], { cwd, env, input: "stdin-line\n" });
+  }
 
   it("runs the pushing worktree's scanner with the remote name and git's stdin", () => {
     const repo = newRepo();
@@ -130,5 +133,104 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
 
     expect(result.status).toBe(4);
     expect(String(result.stdout)).toBe("args:pre-push origin\n");
+  });
+
+  it("refuses the push and names all three places it looked when no scanner exists", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+
+    const result = runHook(worktree, hookPath);
+    const err = String(result.stderr);
+
+    expect(result.status).toBe(1);
+    expect(err).toContain(`${worktree}/node_modules`);
+    expect(err).toContain(`${repo.dir}/node_modules`);
+    expect(err).toContain("PATH");
+    expect(err).toContain("pnpm install && pnpm build");
+    expect(err).toContain("npm i -g @titan-design/egress-scan");
+  });
+
+  it("uses the main checkout's scanner from a linked worktree with no node_modules", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    fakeScanner(path.join(repo.dir, "node_modules", ".bin", "titan-egress-scan"), 5);
+
+    const result = runHook(worktree, hookPath);
+
+    expect(result.status).toBe(5);
+    expect(String(result.stdout)).toBe("args:pre-push origin\nstdin-line\n");
+  });
+
+  it("uses the main checkout's built script when it has no .bin link", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    const script = path.join(repo.dir, "node_modules", "@titan-design", "egress-scan", "dist", "bin.js");
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.writeFileSync(script, "process.exitCode = 6;\n");
+
+    expect(runHook(worktree, hookPath).status).toBe(6);
+  });
+
+  it("uses a scanner on PATH when neither checkout has one", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    const pathDir = path.join(tempDir("egress-path-"), "bin");
+    dirs.push(path.dirname(pathDir));
+    fakeScanner(path.join(pathDir, "titan-egress-scan"), 7);
+
+    const result = runHook(worktree, hookPath, pathDir);
+
+    expect(result.status).toBe(7);
+    expect(String(result.stdout)).toBe("args:pre-push origin\nstdin-line\n");
+  });
+
+  it("prefers the worktree's scanner over the main checkout's", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    fakeScanner(path.join(worktree, "node_modules", ".bin", "titan-egress-scan"), 3);
+    fakeScanner(path.join(repo.dir, "node_modules", ".bin", "titan-egress-scan"), 5);
+
+    expect(runHook(worktree, hookPath).status).toBe(3);
+  });
+
+  it("prefers the main checkout's scanner over PATH", () => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    const pathDir = path.join(tempDir("egress-path-"), "bin");
+    dirs.push(path.dirname(pathDir));
+    fakeScanner(path.join(pathDir, "titan-egress-scan"), 7);
+    fakeScanner(path.join(repo.dir, "node_modules", ".bin", "titan-egress-scan"), 5);
+
+    expect(runHook(worktree, hookPath, pathDir).status).toBe(5);
+  });
+
+  it.each([
+    ["a dot segment", "."],
+    ["a leading empty segment", ""],
+    ["a middle empty segment", "/nonexistent-a::/nonexistent-b"],
+  ])("fails closed when PATH has %s that would resolve a scanner planted in the pushed tree", (_name, extraPath) => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    fakeScanner(path.join(worktree, "titan-egress-scan"), 0);
+
+    const result = runHook(worktree, hookPath, extraPath);
+
+    expect(result.status).toBe(1);
+    expect(String(result.stdout)).toBe("");
+    expect(String(result.stderr)).toContain("It looked in:");
+  });
+
+  it("never exits 0 when no scanner is found (kills the exit-0-when-none-found mutant)", () => {
+    const repo = newRepo();
+    const { hookPath = "" } = installHook(repo.dir, LOCAL);
+
+    expect(runHook(repo.dir, hookPath).status).not.toBe(0);
   });
 });
