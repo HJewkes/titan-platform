@@ -121,7 +121,7 @@ describe("loadSeatBook", () => {
   it.each([
     ["no frontmatter", "# notes\n"],
     ["another schema", "---\nschema: other/v1\nname: x\n---\n"],
-    ["repos that is not a list", GADGET_SEAT.replace(/repos:\n(  - .*\n)+/, "repos: x\n")],
+    ["repos that is not a list", GADGET_SEAT.replace(/repos:\n( {2}- .*\n)+/, "repos: x\n")],
     ["unparseable yaml", "---\nschema: [\n---\n"],
   ])("throws, naming the file, when a seat file has %s", (_case, body) => {
     const seatsDir = writeSeats({ "a-good.md": GADGET_SEAT, "z-bad.md": body });
