@@ -16,6 +16,11 @@ const SeatFileSchema = z.object({
 
 const CharterSchema = z.object({ hard_stops: z.array(z.string()).default([]) });
 
+/** A GitHub `owner/name` with no URL, `.git` suffix, extra path segment or whitespace. */
+export function isRepoKey(repo: string): boolean {
+  return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo) && !/\.git$/i.test(repo);
+}
+
 export interface Seat {
   name: string;
   /** `owner/name` remotes this seat owns. */
@@ -34,45 +39,66 @@ export type SeatLookup = { kind: "seat"; seat: Seat } | { kind: "none" } | { kin
 export interface SeatSources {
   seatsDir?: string;
   charterPath?: string;
+  /** Charter hard-stop id to the `owner/name` remotes it forbids, e.g. `dotfiles-merge`. */
+  hardStopRepos?: Record<string, string[]>;
 }
 
-/** The charter's `dotfiles-merge` hard stop names this one repo. */
-export const DOTFILES_REMOTE = "HJewkes/dotfiles";
+export class SeatBookInvalid extends Error {
+  override readonly name = "SeatBookInvalid";
+}
 
 export function frontmatter(text: string): unknown {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   return match ? parse(match[1]!) : undefined;
 }
 
-/** Reads every seat file, in filename order, plus the charter; a missing directory or charter reads as empty. */
+/** Reads every seat file plus the charter; a missing seats directory is an empty book, any invalid file throws. */
 export function loadSeatBook(sources: SeatSources): SeatBook {
   const files = readSeatFiles(sources.seatsDir);
-  const seats = files.map(({ data }) => toSeat(data));
-  const denied = files.flatMap(({ data }) => deniedRemotes(data));
-  if (charterHardStops(sources.charterPath).includes("dotfiles-merge")) denied.push(DOTFILES_REMOTE.toLowerCase());
+  const seats = files.map(toSeat);
+  const denied = files.flatMap(deniedRemotes);
+  const stops = charterHardStops(sources.charterPath);
+  for (const [stop, remotes] of Object.entries(sources.hardStopRepos ?? {})) {
+    if (stops.includes(stop)) denied.push(...remotes.map((r) => r.toLowerCase()));
+  }
   return { seats, denied };
 }
 
-/** A deny wins over any seat; otherwise the first seat listing the remote owns it. */
+/** A malformed key or a deny wins over any seat; a remote several seats list gets the grants they all share. */
 export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
+  if (!isRepoKey(repo)) return { kind: "denied", reason: `${JSON.stringify(repo)} is not an owner/name repo` };
   const remote = repo.toLowerCase();
-  const name = remote.split("/").pop() ?? remote;
+  const name = remote.split("/")[1]!;
   if (book.denied.includes(remote) || book.denied.includes(name)) return { kind: "denied", reason: `${repo} is on a seat deny list or a charter hard stop` };
-  const seat = book.seats.find((s) => s.remotes.some((r) => r.toLowerCase() === remote));
-  return seat ? { kind: "seat", seat } : { kind: "none" };
+  const seats = book.seats.filter((s) => s.remotes.some((r) => r.toLowerCase() === remote));
+  return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
+}
+
+function narrowest(seats: Seat[]): Seat {
+  if (seats.length === 1) return seats[0]!;
+  const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
+  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], grants };
 }
 
 type SeatFile = z.infer<typeof SeatFileSchema>;
 
-function readSeatFiles(dir: string | undefined): { data: SeatFile }[] {
+function readSeatFiles(dir: string | undefined): SeatFile[] {
   if (!dir || !existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .sort()
-    .flatMap((f) => {
-      const parsed = SeatFileSchema.safeParse(frontmatter(readFileSync(join(dir, f), "utf8")));
-      return parsed.success ? [{ data: parsed.data }] : [];
-    });
+    .map((f) => parseFrontmatter(join(dir, f), "seat file", SeatFileSchema));
+}
+
+function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): T {
+  let parsed: z.ZodSafeParseResult<T>;
+  try {
+    parsed = schema.safeParse(frontmatter(readFileSync(path, "utf8")));
+  } catch (error) {
+    throw new SeatBookInvalid(`unreadable ${kind} ${path}: ${(error as Error).message}`);
+  }
+  if (!parsed.success) throw new SeatBookInvalid(`invalid ${kind} ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
+  return parsed.data;
 }
 
 function toSeat(data: SeatFile): Seat {
@@ -88,8 +114,8 @@ function deniedRemotes(data: SeatFile): string[] {
   });
 }
 
+/** No configured charter means no hard stops; a configured one must exist and parse. */
 function charterHardStops(path: string | undefined): string[] {
-  if (!path || !existsSync(path)) return [];
-  const parsed = CharterSchema.safeParse(frontmatter(readFileSync(path, "utf8")));
-  return parsed.success ? parsed.data.hard_stops : [];
+  if (!path) return [];
+  return parseFrontmatter(path, "charter", CharterSchema).hard_stops;
 }

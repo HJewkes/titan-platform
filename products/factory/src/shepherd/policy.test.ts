@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy } from "./policy.js";
-import { DOTFILES_REMOTE, lookupSeat, type Seat, type SeatBook } from "./seats.js";
+import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], grants: ["some-other-grant"] };
 const TRUSTED: Seat = { name: "trusted-seat", remotes: ["acme/gizmos"], grants: ["merge-on-green-approve"] };
-const BOOK: SeatBook = { seats: [GATED, TRUSTED], denied: ["parked-app", "acme/retired", DOTFILES_REMOTE.toLowerCase()] };
+const BOOK: SeatBook = { seats: [GATED, TRUSTED], denied: ["parked-app", "acme/retired"] };
 
-function effective(repo: string, requested?: Parameters<typeof resolveEffectivePolicy>[1]) {
+function effective(repo: string, requested?: unknown) {
   return resolveEffectivePolicy(lookupSeat(BOOK, repo), requested);
 }
 
@@ -37,8 +37,21 @@ describe("resolveEffectivePolicy", () => {
     expect(effective("acme/widgets", { mergeMethod: "rebase", reviewer: "review-bot", priority: 2 })).toMatchObject({ mergeMethod: "rebase", reviewer: "review-bot", priority: 2, seat: "gated-seat" });
   });
 
-  it.each(["acme/parked-app", "acme/retired", DOTFILES_REMOTE])("refuses %s, a denied repo", (repo) => {
+  it.each(["acme/parked-app", "Acme/Retired"])("refuses %s, a denied repo", (repo) => {
     expect(() => effective(repo, { merge: "never" })).toThrow(RegistrationRefused);
+  });
+
+  it.each([
+    ["an unknown merge mode", { merge: "yolo" }],
+    ["a wrong-case merge mode", { merge: "Never" }],
+    ["an unknown merge method", { mergeMethod: "fast-forward" }],
+    ["a string fixer", { fixer: "false" }],
+    ["a non-integer priority", { priority: 1.5 }],
+    ["an empty reviewer", { reviewer: "" }],
+    ["an unknown key", { merge: "never", autoMerge: true }],
+    ["a request that is not an object", "never"],
+  ])("refuses a request with %s instead of passing it through", (_case, requested) => {
+    expect(() => effective("acme/gizmos", requested)).toThrow(RegistrationRefused);
   });
 });
 

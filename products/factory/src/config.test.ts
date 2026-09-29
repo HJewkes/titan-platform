@@ -44,6 +44,16 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).shepherd).toEqual({ seatsDir: "/seats", charterPath: "/charter.md" });
   });
 
+  it("reads the repos each charter hard stop forbids", () => {
+    const env = xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": ["acme/dotfiles"] } } });
+
+    expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
+  });
+
+  it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
+  });
+
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
   });
