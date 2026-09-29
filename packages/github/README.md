@@ -14,6 +14,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | Write | Reads first | Guard GitHub enforces |
 | --- | --- | --- |
 | `ensureBranch` | the ref | none |
+| `deleteRef` | the head's repo, the default branch, then the ref; a fork head or the default branch skips | none |
 | `putFile` | the file on the branch; identical content skips | `sha` = expected blob |
 | `openPr` | open, then merged, PRs for the head | none |
 | `updateBranch` | the PR: merged, head moved or not behind skips | `expected_head_sha` |
@@ -32,6 +33,22 @@ hardcoded list. `latestCheckRuns` keeps the newest run per check name, because o
 carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
 `evaluateChecks(required, latestRuns)` folds those into `pending`, `passed` or `failed`; a
 required name with no run is pending, never passed.
+
+`mergeReadiness({ pr, rules, runs, requiredApps, approvedHead })` is pure. It is ready only when
+the PR is open, not a draft, not conflicting, up to date when the rules are strict, at exactly
+the approved head, and every required context has a passing latest run from an app in
+`requiredApps` (`GITHUB_ACTIONS_APP_ID`, 15368, on this owner's repos). A run from any other app
+never counts, and a red run from an allowed app blocks even when it is not required. Every
+not-ready result lists `blockers`, each with a `reason` and a `detail`.
+
+Every call runs `gh api -i`, so the wire sees the status line and headers. A GET sends the
+ETag of the same request's last 200 as `If-None-Match`, and a 304 answers with that cached
+body. Lists follow `Link: rel="next"` page by page, each page conditional on its own ETag, and
+only to `api.github.com`. One `RateBudget` per process (`sharedRateBudget`, or pass `budget`)
+reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time left until
+reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
+`listOpenPrs(repo, headPrefix?)` lists open PRs; list rows carry no `behind` or
+`mergeableState`.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
