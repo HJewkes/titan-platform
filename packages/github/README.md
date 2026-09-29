@@ -36,11 +36,14 @@ required name with no run is pending, never passed.
 
 `mergeReadiness({ pr, rules, runs, requiredApps, approvedHead })` is pure. It is ready only when
 the PR is open, not a draft, not conflicting, up to date when the rules are strict, at exactly
-the approved head, and every required context has a passing latest run from an app in
-`requiredApps` (`GITHUB_ACTIONS_APP_ID`, 15368, on this owner's repos) at `pr.headSha`. A run
-from any other app, or at any other sha, never counts. Any latest counted run that is not
-passing blocks, required or not, including one still queued or in progress. Every
-not-ready result lists `blockers`, each with a `reason` and a `detail`.
+the approved head, the rules name at least one required context, and every required context
+has a completed run concluding `success` from an app in `requiredApps`
+(`GITHUB_ACTIONS_APP_ID`, 15368, on this owner's repos) at `pr.headSha`. A run from any other
+app, or at any other sha, never counts. Every counted run must be green (`success`,
+`neutral` or `skipped`), superseded or not, required or not, so an older red run of a
+re-run check still blocks and so does one still queued or in progress. Pass it every run,
+from `checkRuns`, never `latestCheckRuns`. Every not-ready result lists `blockers`, each
+with a `reason` and a `detail`.
 
 Every call runs `gh api -i`, so the wire sees the status line and headers. A GET sends the
 ETag of the same request's last 200 as `If-None-Match`, and a 304 answers with that cached

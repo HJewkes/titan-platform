@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeGitHub, fakeSha } from "./fake.js";
+import { fakeGitHub, fakeSha, successRun } from "./fake.js";
 import { githubPort } from "./port.js";
 import { GitHubInputError } from "./validate.js";
 
@@ -62,5 +62,17 @@ describe("listOpenPrs and jobLogTail", () => {
     expect(await port.jobLogTail(REPO, 9, 2)).toBe("two\nthree");
     expect(await port.jobLogTail(REPO, 9, 10)).toBe("one\ntwo\nthree");
     await expect(port.jobLogTail(REPO, 9, 0)).rejects.toBeInstanceOf(GitHubInputError);
+  });
+});
+
+describe("checkRuns", () => {
+  it("returns every run on the sha, including a superseded one latestCheckRuns drops", async () => {
+    const { fake, port } = setup();
+    const sha = fakeSha("head");
+    fake.setRuns(sha, [successRun("check", 1, "2026-01-01T00:00:00Z", "failure"), successRun("check", 2, "2026-01-02T00:00:00Z")]);
+
+    expect((await port.checkRuns(REPO, sha)).map((run) => run.id)).toEqual([1, 2]);
+    expect((await port.latestCheckRuns(REPO, sha)).map((run) => run.id)).toEqual([2]);
+    await expect(port.checkRuns(REPO, "not-a-sha")).rejects.toBeInstanceOf(GitHubInputError);
   });
 });

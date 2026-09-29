@@ -123,6 +123,8 @@ export interface GitHubPort {
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
   requiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
+  checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** The latest run for each check name on `sha`. */
   latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
@@ -156,6 +158,7 @@ export function githubPort(wire: GitHubWire): GitHubPort {
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
+    checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),

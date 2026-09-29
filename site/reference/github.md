@@ -60,7 +60,7 @@ fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2, 
 mergeReadiness({
   pr: await port.getPr("o/r", pr.number),
   rules: await port.requiredChecks("o/r", "main"),
-  runs: await port.latestCheckRuns("o/r", pr.headSha),
+  runs: await port.checkRuns("o/r", pr.headSha),
   requiredApps: [GITHUB_ACTIONS_APP_ID],
   approvedHead: pr.headSha,
 });
@@ -84,14 +84,16 @@ await port.deleteRef("o/r", { branch: pr.headRef, repo: pr.headRepo });       //
 
 - `mergeableState` is computed lazily by GitHub. `unknown` is common and never means clean.
 - One head can carry several runs per check name, for example a success and a later
-  superseded `cancelled` run. Use `latestCheckRuns` or `latestPerName`, never the raw list.
+  superseded `cancelled` run. `evaluateChecks` wants `latestCheckRuns`; `mergeReadiness`
+  wants every run from `checkRuns`, so a superseded red run still blocks the merge.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
   `GhError`, whose `status` is the HTTP status when `gh` reported one.
 - `mergeReadiness` counts only runs whose `appId` is in `requiredApps` and whose `headSha` is
-  the PR's head, matching authority's MRG-AU-RV. An optional run that is queued or in
-  progress blocks too, so an unfinished extra check holds the merge.
+  the PR's head, matching authority's MRG-AU-RV. A required context passes only on
+  `success`; `neutral` and `skipped` pass for other checks. An empty required-context list
+  refuses as `no-required-checks`, and an unfinished extra check holds the merge.
 - Branch names with `%` are refused, because GitHub decodes the path and `%2e%2e` would
   become `..`.
 - `deleteRef` needs the PR's `headRepo`. A head in a fork, or a deleted fork (`null`), skips as

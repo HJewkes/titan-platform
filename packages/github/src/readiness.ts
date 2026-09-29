@@ -1,10 +1,10 @@
-import { evaluateChecks, isPassing, latestPerName } from "./checks.js";
+import { isPassing } from "./checks.js";
 import type { CheckRun, PullRequest, RequiredChecks } from "./port.js";
 
 /** The GitHub Actions app; on this owner's repos every required check comes from it. */
 export const GITHUB_ACTIONS_APP_ID = 15368;
 
-export type MergeBlockReason = "merged" | "closed" | "draft" | "unapproved" | "head-moved" | "behind" | "conflict" | "mergeability-unknown" | "check-pending" | "check-failed";
+export type MergeBlockReason = "merged" | "closed" | "draft" | "no-required-checks" | "unapproved" | "head-moved" | "behind" | "conflict" | "mergeability-unknown" | "check-pending" | "check-failed";
 
 export interface MergeBlocker {
   reason: MergeBlockReason;
@@ -52,21 +52,31 @@ function approvalBlockers(pr: PullRequest, approvedHead: string | null): MergeBl
 }
 
 /**
- * Only runs from an allowed app at the PR head count, as in authority's MRG-AU-RV; among those,
- * any latest run that is not passing blocks, required or not, finished or not.
+ * Only runs from an allowed app at the PR head count, as in authority's MRG-AU-RV. Every counted run
+ * must be green, superseded or not, and each required context needs a completed run concluding success.
  */
 function checkBlockers({ pr, rules, runs, requiredApps }: MergeReadinessInput): MergeBlocker[] {
   if (pr.merged || pr.state === "closed") return [];
-  const counted = latestPerName(runs.filter((run) => run.headSha === pr.headSha && run.appId !== null && requiredApps.includes(run.appId)));
-  const verdict = evaluateChecks(rules.contexts, counted);
-  const required = new Set(rules.contexts);
-  const optional = counted.filter((run) => !required.has(run.name) && !isPassing(run));
+  if (rules.contexts.length === 0) return [{ reason: "no-required-checks", detail: "the rules name no required check context, so nothing proves the head green" }];
+  const counted = runs.filter((run) => run.headSha === pr.headSha && run.appId !== null && requiredApps.includes(run.appId));
   const apps = requiredApps.join(", ") || "none";
-  return [
-    ...verdict.pending.map((name) => ({ reason: "check-pending" as const, detail: `${name} has no completed run at ${pr.headSha} from app ${apps}` })),
-    ...verdict.failing.map(failedBlocker),
-    ...optional.map((run) => (run.status === "completed" ? failedBlocker(run) : { reason: "check-pending" as const, detail: `${run.name} is ${run.status} at ${pr.headSha}` })),
-  ];
+  return [...rules.contexts.flatMap((name) => requiredBlockers(name, counted, pr.headSha, apps)), ...counted.filter((run) => !isPassing(run)).map(runBlocker)];
+}
+
+/** Non-green runs are reported by `runBlocker`; this adds only what a missing or merely green required run lacks. */
+function requiredBlockers(name: string, counted: readonly CheckRun[], headSha: string, apps: string): MergeBlocker[] {
+  const named = counted.filter((run) => run.name === name);
+  if (named.some(isSucceeded)) return [];
+  if (named.length === 0) return [{ reason: "check-pending", detail: `${name} has no completed run at ${headSha} from app ${apps}` }];
+  return named.every(isPassing) ? named.map(failedBlocker) : [];
+}
+
+function isSucceeded(run: CheckRun): boolean {
+  return run.status === "completed" && run.conclusion === "success";
+}
+
+function runBlocker(run: CheckRun): MergeBlocker {
+  return run.status === "completed" ? failedBlocker(run) : { reason: "check-pending", detail: `${run.name} is ${run.status} at ${run.headSha}` };
 }
 
 function failedBlocker(run: CheckRun): MergeBlocker {
