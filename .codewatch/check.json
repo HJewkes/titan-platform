@@ -16,7 +16,8 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/fix-proof"
         ],
         "1": [
           "packages/retrieval",
@@ -66,7 +67,8 @@
           "packages/rpc-protocol",
           "packages/evidence",
           "packages/authority",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/fix-proof"
         ],
         [
           "packages/retrieval",

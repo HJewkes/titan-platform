@@ -25,6 +25,7 @@ Before adding code:
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -241,6 +242,23 @@ Key exports:
 - `controls`: `pickControls`, `placeControls`, `scoreControls`
 - `seeded`: `seededRandom`
 - +12 more in the [reference page](/reference/evidence)
+
+<a id="cap-fix-proof"></a>
+
+### [`fix-proof`](/reference/fix-proof)
+
+Tier 0, `@titan-design/fix-proof@0.0.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
+
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority.
+
+Key exports:
+
+- `config`: `CONFIG_PATH`, `DEFAULT_CARRY_GLOBS`, `DEFAULT_TEST_GLOBS`, `parseFixProofConfig`
+- `glob`: `compileGlobs`
+- `plan`: `planFixProof`
+- `classify`: `classifyReports`, `TEST_CLASSES`, `VERDICTS`
+- `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
+- +17 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
