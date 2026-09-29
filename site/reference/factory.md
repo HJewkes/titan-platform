@@ -46,6 +46,9 @@ until the authority table is approved, its one gate policy sends every action to
 
 - Run `pnpm build` first. Tests and the bin load sibling packages from their `dist`.
 - A killed run keeps its lease for 30 s. `resume` inside that window reports it as held.
+- Shepherd seat paths must be `~/`, `$HOME/`, `${HOME}/` or `/` then plain segments; anything
+  else throws. Symlinks are not resolved (no `realpath`), so spell a deny and its repo path the
+  same way.
 - Declare every step id with one kind. `seed(x)` and `assisted(x)` share a memo key, so the
   host rejects a workflow that reuses an id across kinds.
 

@@ -2,10 +2,19 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { isRepoKey } from "./shepherd/seats.js";
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos, device and post-merge keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
+  shepherd: z
+    .object({
+      seatsDir: z.string().min(1).optional(),
+      charterPath: z.string().min(1).optional(),
+      hardStopRepos: z.record(z.string().min(1), z.array(z.string().refine(isRepoKey, "must be an owner/name repo"))).optional(),
+    })
+    .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
+    .optional(),
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
