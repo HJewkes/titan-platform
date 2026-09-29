@@ -42,8 +42,12 @@ function readIfPresent(file: string, what: string): string | undefined {
   }
 }
 
+function requiresTerms(env: Env): boolean {
+  return env.TITAN_EGRESS_REQUIRE_TERMS === "1";
+}
+
 function missingTerms(env: Env): LoadedTerms {
-  if (env.TITAN_EGRESS_REQUIRE_TERMS === "1") {
+  if (requiresTerms(env)) {
     throw new ConfigError("private term list not found and TITAN_EGRESS_REQUIRE_TERMS=1");
   }
   return { ...NOT_LOADED, notices: ["private term list not found; generic rules only"] };
@@ -58,15 +62,22 @@ function compileTerms(text: string): readonly TermRule[] {
   }
 }
 
-/** Loads the private term list. In CI it is never looked up; locally an absent file is a notice. */
+/**
+ * Loads the private term list. In CI it is never looked up and an absent file is a notice, unless
+ * TITAN_EGRESS_REQUIRE_TERMS=1, which always loads and fails on a missing, unreadable or empty list.
+ */
 export function loadTerms(env: Env): LoadedTerms {
-  if (isCi(env)) return NOT_LOADED;
+  if (isCi(env) && !requiresTerms(env)) return NOT_LOADED;
   const file = termFilePath(env);
   const text = file === undefined ? undefined : readIfPresent(file, "private term list");
   if (file === undefined || text === undefined) return missingTerms(env);
   const openToOthers = process.platform !== "win32" && (fs.statSync(file).mode & 0o077) !== 0;
   const notices = openToOthers ? ["private term list is readable by other users; chmod 600 it"] : [];
-  return { terms: compileTerms(text), loaded: true, notices };
+  const terms = compileTerms(text);
+  if (terms.length === 0 && requiresTerms(env)) {
+    throw new ConfigError("private term list holds no terms and TITAN_EGRESS_REQUIRE_TERMS=1");
+  }
+  return { terms, loaded: true, notices };
 }
 
 /** Loads `.egress-allow` from the repo root. A malformed file fails the scan, never reads as empty. */
