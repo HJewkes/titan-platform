@@ -23,6 +23,16 @@ dispatchToAgentChat(
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit throws
   `DispatchError` carrying the CLI's stdout reason, else its stderr.
+- `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
+  agent on another Claude account.
+- `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
+  --message <message>`, so the broker tracks the resumed session. It refuses a name outside
+  agent-chat's name shape before running anything. The message is in argv.
+- `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
+  longest backtick run in it (at least three), preceded by a line saying it is data.
+- Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
+  cannot reach the broker, the call throws `BrokerUnavailableError` (a `DispatchError`);
+  every other refusal stays a plain `DispatchError`.
 - `resumeArgs(sessionId, message)` returns `claude` argv; run it with `execSafe`. The
   message is in argv here, so callers decide what may go in it.
 - `listAgents(bin, timeoutMs)` reads `agent-chat agent ls --json` and returns typed

@@ -1,5 +1,8 @@
 export {
+  BrokerUnavailableError,
   DispatchError,
+  PEER_NAME_PATTERN,
+  agentChatEnv,
   buildSpawnArgs,
   dispatchToAgentChat,
   type DispatchRequest,
@@ -13,7 +16,14 @@ export {
   resolveBinaryPath,
   type SafeExecResult,
 } from "./exec.js";
-export { ResumeError, resumeArgs } from "./resume.js";
+export {
+  ResumeError,
+  buildResumeAgentArgs,
+  resumeAgent,
+  resumeArgs,
+  type ResumeAgentResult,
+} from "./resume.js";
+export { dataFence } from "./fence.js";
 export {
   DispatchTimeoutError,
   buildListAgentsArgs,
