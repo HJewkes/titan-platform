@@ -30,7 +30,7 @@ describe("parseVerdictBlock", () => {
   });
 
   it("trims leading and trailing whitespace on each line", () => {
-    expect(parseVerdictBlock(`  Verdict: MERGE  \n\tPR: octo/demo#12 \n   Head: ${SHA}\t`)).toMatchObject({ ok: true });
+    expect(parseVerdictBlock(`  Verdict: MERGE  \n  PR: octo/demo#12 \n   Head: ${SHA}\t`)).toMatchObject({ ok: true });
   });
 
   it("refuses text with no block", () => {
@@ -117,6 +117,71 @@ describe("parseVerdictBlock", () => {
     expect(refused(`~~~text\n${block()}\n~~~`)).toBe("no_block");
     expect(parseVerdictBlock(`\`\`\`\n${block()}\n\`\`\`\n${block("FIX_FIRST")}`)).toMatchObject({
       ok: true, verdict: "FIX_FIRST", lineOffset: 5,
+    });
+  });
+
+  describe("fences follow CommonMark", () => {
+    const own = block("FIX_FIRST");
+    it("keeps a block fenced when a shorter closer follows a 4-backtick opener", () => {
+      expect(refused(`\`\`\`\`\nfoo\n\`\`\`\n${block()}`)).toBe("no_block");
+    });
+    it("keeps a block fenced when backticks try to close a tilde fence", () => {
+      expect(refused(`~~~\nfoo\n\`\`\`\n${block()}`)).toBe("no_block");
+    });
+    it("keeps a block fenced when tildes try to close a backtick fence", () => {
+      expect(refused(`\`\`\`\nfoo\n~~~\n${block()}`)).toBe("no_block");
+    });
+    it("closes a fence with a longer closer of the same character", () => {
+      expect(parseVerdictBlock(`\`\`\`\nfoo\n\`\`\`\`\`\n${own}`)).toMatchObject({ ok: true, verdict: "FIX_FIRST", lineOffset: 3 });
+      expect(parseVerdictBlock(`~~~\nfoo\n~~~~\n${own}`)).toMatchObject({ ok: true, lineOffset: 3 });
+    });
+    it("keeps everything after an unclosed fence fenced", () => {
+      expect(refused(`\`\`\`\nfoo\n${block()}`)).toBe("no_block");
+    });
+    it("does not close a fence on a closer line that carries text", () => {
+      expect(refused(`\`\`\`\n\`\`\` text\n${block()}`)).toBe("no_block");
+    });
+    it("does not close a fence on a closer indented 4 or more spaces", () => {
+      expect(refused(`\`\`\`\n    \`\`\`\n${block()}`)).toBe("no_block");
+    });
+  });
+
+  describe("indentation", () => {
+    it("reads a block indented 3 spaces", () => {
+      expect(parseVerdictBlock(`   Verdict: MERGE\n   PR: octo/demo#12\n   Head: ${SHA}`)).toMatchObject({ ok: true });
+    });
+    it("does not read a block indented 4 spaces or a tab", () => {
+      expect(refused(block().replace(/^/gm, "    "))).toBe("no_block");
+      expect(refused(block().replace(/^/gm, "\t"))).toBe("no_block");
+    });
+    it("refuses a block whose PR or Head line is indented 4 spaces", () => {
+      expect(refused(`Verdict: MERGE\n    PR: octo/demo#12\nHead: ${SHA}`)).toBe("missing_pr_line");
+      expect(refused(`Verdict: MERGE\nPR: octo/demo#12\n    Head: ${SHA}`)).toBe("missing_head_line");
+    });
+    it("still reads an own block beside an indented one", () => {
+      expect(parseVerdictBlock(`${block().replace(/^/gm, "    ")}\n\n${block("FIX_FIRST")}`)).toMatchObject({ ok: true, verdict: "FIX_FIRST" });
+    });
+  });
+
+  describe("HTML comments", () => {
+    it("ignores a block inside a multi-line comment", () => {
+      expect(refused(`<!--\n${block()}\n-->`)).toBe("no_block");
+      expect(refused(`<!-- note\n${block()}\nmore -->`)).toBe("no_block");
+    });
+    it("ignores a block whose Verdict line opens on a comment line", () => {
+      expect(refused(`<!-- Verdict: MERGE -->\nPR: octo/demo#12\nHead: ${SHA}`)).toBe("no_block");
+    });
+    it("ignores a block inside a one-line comment", () => {
+      expect(refused(`<!-- ${block().replace(/\n/g, " ")} -->`)).toBe("no_block");
+    });
+    it("keeps everything after an unclosed comment hidden", () => {
+      expect(refused(`<!-- start\n${block()}`)).toBe("no_block");
+    });
+    it("reads a block after the comment closed", () => {
+      expect(parseVerdictBlock(`<!-- note -->\n<!--\nx\n-->\n${block()}`)).toMatchObject({ ok: true, lineOffset: 4 });
+    });
+    it("does not treat comment markers inside a fence as a comment", () => {
+      expect(parseVerdictBlock(`\`\`\`\n<!--\n\`\`\`\n${block()}`)).toMatchObject({ ok: true, lineOffset: 3 });
     });
   });
 
