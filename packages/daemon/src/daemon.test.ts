@@ -8,6 +8,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { DaemonAlreadyRunningError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
+import { NonLoopbackBindError } from "./bind-guard.js";
 import { daemonPaths, readPidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
@@ -35,6 +36,34 @@ afterEach(async () => {
   await handle?.close();
   handle = null;
   await rm(stateDir, { recursive: true, force: true });
+});
+
+describe("startDaemon bind guard", () => {
+  it.each(["0.0.0.0", "::", "192.168.1.20", "example.test", ""])("refuses %j before binding or writing the pid file", async (host) => {
+    const attempt = startDaemon(options({ host }));
+    await expect(attempt).rejects.toBeInstanceOf(NonLoopbackBindError);
+    await expect(attempt).rejects.toMatchObject({ host });
+    expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+  });
+
+  it.each(["127.0.0.1", "localhost", "LOCALHOST"])("starts on loopback spelling %s", async (host) => {
+    handle = await startDaemon(options({ host }));
+    expect(handle.port).toBeGreaterThan(0);
+  });
+
+  it("starts on 0.0.0.0 when the unauthenticated opt-in is set", async () => {
+    handle = await startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: true }));
+    expect((await fetch(`http://127.0.0.1:${handle.port}/health`)).status).toBe(200);
+  });
+
+  it("does not read the opt-in from the environment", async () => {
+    process.env.ALLOW_UNAUTHENTICATED_NON_LOOPBACK = "true";
+    try {
+      await expect(startDaemon(options({ host: "0.0.0.0" }))).rejects.toBeInstanceOf(NonLoopbackBindError);
+    } finally {
+      delete process.env.ALLOW_UNAUTHENTICATED_NON_LOOPBACK;
+    }
+  });
 });
 
 describe("startDaemon", () => {

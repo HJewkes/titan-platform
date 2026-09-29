@@ -96,6 +96,15 @@ names are `${toolPrefix}${command.replaceAll(".", "__")}`.
 `/mcp` is spliced in ahead of hono on the raw Node server because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.
 
+## Bind address
+
+The daemon has no authentication, so `startDaemon` throws `NonLoopbackBindError` (carrying
+the rejected `host`) before it binds unless the host is loopback: any `127.0.0.0/8`
+address, `::1`, `::ffff:127.x.y.z`, or `localhost`. Hostnames are never resolved, so every
+other name is refused, as are `0.0.0.0`, `::`, and the empty string. Passing
+`allowUnauthenticatedNonLoopback: true` lifts the check and exposes every route to the
+network; no environment variable does.
+
 ## Serving a built front end
 
 `mountStaticApp(app, { root, base?, immutableDir? })` serves a built app through
