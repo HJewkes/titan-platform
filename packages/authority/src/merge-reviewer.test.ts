@@ -58,11 +58,14 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["an upper-case sha on every side", (f) => { atHead(f, HEAD.toUpperCase()); }, "verdict-merge-at-head"],
   ["an empty head on every side", (f) => { atHead(f, ""); }, "verdict-merge-at-head"],
   ["a verdict naming a prefix of the head", (f) => { f.verdict.head = HEAD.slice(0, 7); }, "verdict-merge-at-head"],
+  ["a 41-character sha on every side", (f) => { atHead(f, `${HEAD}a`); }, "verdict-merge-at-head"],
   ["a verdict naming the head in upper case", (f) => { f.verdict.head = HEAD.toUpperCase(); }, "verdict-merge-at-head"],
   ["a required context with no run", (f) => { f.requiredContexts.push("e2e"); }, "required-contexts-green"],
   ["a required context green only from another app", (f) => { f.checkRuns[0]!.appId = OTHER_APP; }, "required-contexts-green"],
   ["a required context green only at an older head", (f) => { f.checkRuns[0]!.headSha = OLD_HEAD; }, "required-contexts-green"],
   ["no required contexts at all", (f) => { f.requiredContexts = []; }, "required-contexts-green"],
+  ["a required context whose only run concluded neutral", (f) => { f.checkRuns[0]!.conclusion = "neutral"; }, "required-contexts-green"],
+  ["a required context whose only run was skipped", (f) => { f.checkRuns[0]!.conclusion = "skipped"; }, "required-contexts-green"],
   ["no allowed apps", (f) => { f.allowedApps = []; }, "required-contexts-green"],
   ["a failed run beside the green required one", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }); }, "no-non-green-run"],
   ["a run still in progress", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: null }); }, "no-non-green-run"],
@@ -78,6 +81,22 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a change to .gitmodules", (f) => { f.changedPaths.push(".gitmodules"); }, "no-protected-path-change"],
   ["a change to ./.github/workflows/ci.yml", (f) => { f.changedPaths.push("./.github/workflows/ci.yml"); }, "no-protected-path-change"],
   ["a change to ./CODEOWNERS", (f) => { f.changedPaths.push("./CODEOWNERS"); }, "no-protected-path-change"],
+  ["a change to .github/x", (f) => { f.changedPaths.push(".github/x"); }, "no-protected-path-change"],
+  ["a change to a/../.github/x", (f) => { f.changedPaths.push("a/../.github/x"); }, "no-protected-path-change"],
+  ["a change to docs/../CODEOWNERS", (f) => { f.changedPaths.push("docs/../CODEOWNERS"); }, "no-protected-path-change"],
+  ["a change to /.github/x", (f) => { f.changedPaths.push("/.github/x"); }, "no-protected-path-change"],
+  ["a change to .//.github/x", (f) => { f.changedPaths.push(".//.github/x"); }, "no-protected-path-change"],
+  ["a change to docs/./CODEOWNERS", (f) => { f.changedPaths.push("docs/./CODEOWNERS"); }, "no-protected-path-change"],
+  ["a change to .GITHUB/x", (f) => { f.changedPaths.push(".GITHUB/x"); }, "no-protected-path-change"],
+  ["a change to .github", (f) => { f.changedPaths.push(".github"); }, "no-protected-path-change"],
+  ["a change to CODEOWNERS/", (f) => { f.changedPaths.push("CODEOWNERS/"); }, "no-protected-path-change"],
+  ["a change to codeowners", (f) => { f.changedPaths.push("codeowners"); }, "no-protected-path-change"],
+  ["a change to Docs/CODEOWNERS", (f) => { f.changedPaths.push("Docs/CODEOWNERS"); }, "no-protected-path-change"],
+  ["a change to .GitModules", (f) => { f.changedPaths.push(".GitModules"); }, "no-protected-path-change"],
+  ["a change to docs\\guide.md", (f) => { f.changedPaths.push("docs\\guide.md"); }, "no-protected-path-change"],
+  ["a change to packages//x.ts", (f) => { f.changedPaths.push("packages//x.ts"); }, "no-protected-path-change"],
+  ["a change to packages/x/..", (f) => { f.changedPaths.push("packages/x/.."); }, "no-protected-path-change"],
+  ["a rename whose old side is under .github/", (f) => { f.changedPaths.push(".github/workflows/old.yml", "tools/old.yml"); }, "no-protected-path-change"],
   ["a seat without merge-on-green-approve", (f) => { f.seatGrants = ["task-close-on-merged-pr"]; }, "seat-grants-merge-on-green-approve"],
 ];
 
@@ -112,6 +131,14 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
 
   it("gates an automation merge that brings no facts", () => {
     expect(evaluate(DEFAULT_TABLE, mergeBy("automation", undefined))).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+
+  it("gates rather than throws when the check runs are missing", () => {
+    const facts = patched((f) => { Reflect.deleteProperty(f, "checkRuns"); });
+    expect(unmetConditions(CONDITION_KINDS, { merge: facts })).toEqual(["required-contexts-green", "no-non-green-run"]);
+    const decision = evaluate(DEFAULT_TABLE, mergeBy("automation", facts));
+    expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    expect(decision.verdict === "gate" && decision.reason).toContain("MRG-AU-RV unmet: required-contexts-green, no-non-green-run");
   });
 
   it("ignores a failed run from an app outside the allowed list", () => {
