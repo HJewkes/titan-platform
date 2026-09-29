@@ -1,2 +1,16 @@
-// Placeholder entry for @titan-design/agent-dispatch (tier 1). Filled in by an untracked task.
-export {};
+export {
+  DispatchError,
+  buildSpawnArgs,
+  dispatchToAgentChat,
+  type DispatchRequest,
+  type DispatchResult,
+} from "./dispatch.js";
+export {
+  ExecError,
+  ExecTimeoutError,
+  execSafe,
+  minimalEnv,
+  resolveBinaryPath,
+  type SafeExecResult,
+} from "./exec.js";
+export { ResumeError, resumeArgs } from "./resume.js";

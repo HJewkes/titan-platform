@@ -11,14 +11,17 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  DISPATCH_PROFILE,
   DispatchError,
   buildSpawnArgs,
-  dispatchToAgentChat,
-  REVIEW_PROFILE,
-  installProfiles,
-  peerNameFor,
+  dispatchToAgentChat as dispatchWithAllowlist,
+  type DispatchRequest,
 } from "./dispatch.js";
+
+// relay's profile names; the allowlist is the caller's policy, passed in.
+const DISPATCH_PROFILE = "relay-implementer";
+const REVIEW_PROFILE = "relay-reviewer";
+const dispatchToAgentChat = (req: DispatchRequest, timeoutMs: number) =>
+  dispatchWithAllowlist(req, timeoutMs, [DISPATCH_PROFILE, REVIEW_PROFILE]);
 
 let dir: string;
 
@@ -70,52 +73,12 @@ const request = (bin: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-describe("installProfiles", () => {
-  it("puts a profile agent-chat can parse where agent-chat looks for it", () => {
-    const [dest] = installProfiles(join(dir, "profiles"));
-    expect(dest).toBe(join(dir, "profiles", `${DISPATCH_PROFILE}.json`));
-
-    const profile = JSON.parse(readFileSync(dest!, "utf8"));
-    // The two fields this whole file exists to pin down (Q3): headless, because
-    // a launchd daemon has no pane to answer a prompt in, and worktree
-    // isolation, because the agent now has real Write/Edit/Bash.
-    expect(profile.surface).toBe("headless");
-    expect(profile.isolation).toBe("worktree");
-    expect(profile.allowedTools).toContain("Bash");
-    expect(profile.disallowedTools).toContain("AskUserQuestion");
-  });
-
-  it("installs the reviewer too, read-only and sharing the implementer's worktree", () => {
-    const dests = installProfiles(join(dir, "profiles"));
-    const dest = dests.find((path) => path.endsWith(`${REVIEW_PROFILE}.json`));
-    expect(dest).toBeDefined();
-
-    const profile = JSON.parse(readFileSync(dest!, "utf8"));
-    // `none`, not `worktree`: R-63's reviewer is spawned INTO the implementer's
-    // worktree, and its own isolation strategy allocating a second one would
-    // point it at a clean checkout with nothing to review.
-    expect(profile.isolation).toBe("none");
-    expect(profile.surface).toBe("headless");
-    expect(profile.allowedTools).not.toContain("Write");
-    expect(profile.allowedTools).not.toContain("Edit");
-    expect(profile.disallowedTools).toContain("Write");
-    expect(profile.disallowedTools).toContain("Edit");
-  });
-});
-
 describe("profile allowlist", () => {
   it("refuses a profile that is neither the implementer nor the reviewer", () => {
     const bin = fakeAgentChat();
     expect(() =>
       dispatchToAgentChat(request(bin, { profile: "implementer" }), 10_000),
     ).toThrow(DispatchError);
-  });
-});
-
-describe("peerNameFor", () => {
-  it("derives a unique name per item id", () => {
-    expect(peerNameFor(42)).toBe("relay-item-42");
-    expect(peerNameFor(7)).not.toBe(peerNameFor(42));
   });
 });
 
@@ -150,18 +113,6 @@ describe("buildSpawnArgs", () => {
       REVIEW_PROFILE,
       "--brief-stdin",
     ]);
-  });
-
-  it("names the headless relay profiles, never agent-chat's iterm-pane builtins", () => {
-    expect(DISPATCH_PROFILE).toBe("relay-implementer");
-    expect(REVIEW_PROFILE).toBe("relay-reviewer");
-    expect(
-      buildSpawnArgs({
-        peerName: "a",
-        profile: DISPATCH_PROFILE,
-        briefing: "c",
-      }),
-    ).not.toContain("implementer");
   });
 });
 
