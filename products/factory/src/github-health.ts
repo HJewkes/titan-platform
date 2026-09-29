@@ -46,7 +46,7 @@ async function probe(exec: GhExec, timeoutMs: number): Promise<string> {
     timer = setTimeout(() => resolve(`gh api rate_limit timed out after ${timeoutMs} ms`), timeoutMs);
   });
   try {
-    const result = await Promise.race([exec(["api", "rate_limit"]).then(describe, (err: unknown) => describeError(err)), timedOut]);
+    const result = await Promise.race([exec(["api", "rate_limit"], undefined, { timeoutMs }).then(describe, (err: unknown) => describeError(err)), timedOut]);
     return result;
   } finally {
     clearTimeout(timer);

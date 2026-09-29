@@ -37,7 +37,13 @@ killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prin
 built `dist/bin.js` and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
 `Background` job is throttled by macOS. The verb only prints. It never touches
-`~/Library/LaunchAgents` or runs `launchctl`, so the owner installs it:
+`~/Library/LaunchAgents` or runs `launchctl`, so the owner installs it.
+
+The node path is the running node, except that a Homebrew Cellar path (`.../Cellar/node/22.1.0/bin/node`)
+becomes the prefix symlink (`<prefix>/bin/node`, or `<prefix>/opt/node@20/bin/node` for a versioned
+formula) when that symlink resolves to the same binary, so `brew upgrade` does not break the job.
+Pass `--node <absolute path>` to choose another node. After changing node (an upgrade to a different
+major, a version manager switch), re-run `service plist`, rewrite the file and bootstrap it again.
 
 ```sh
 pnpm build
