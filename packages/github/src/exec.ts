@@ -12,6 +12,8 @@ export type GhExec = (args: readonly string[], input?: string, options?: GhExecO
 export interface GhExecOptions {
   /** Kills the child with SIGKILL and rejects once this many milliseconds pass. */
   timeoutMs?: number;
+  /** Caps stdout and stderr each, in bytes; defaults to 32 MiB. Exceeding it rejects. */
+  maxBufferBytes?: number;
 }
 
 export class GhError extends Error {
@@ -31,15 +33,18 @@ export class GhError extends Error {
   }
 }
 
+const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
+
 /** Uses the caller's existing `gh` login; this module never sees a token. */
 export const execGh: GhExec = (args, input, options = {}) =>
   new Promise((resolve, reject) => {
-    const { timeoutMs } = options;
+    const { timeoutMs, maxBufferBytes = DEFAULT_MAX_BUFFER } = options;
     const child = execFile(
       "gh",
       [...args],
-      { maxBuffer: 32 * 1024 * 1024, ...(timeoutMs === undefined ? {} : { timeout: timeoutMs, killSignal: "SIGKILL" as const }) },
+      { maxBuffer: maxBufferBytes, ...(timeoutMs === undefined ? {} : { timeout: timeoutMs, killSignal: "SIGKILL" as const }) },
       (error, stdout, stderr) => {
+        if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return reject(new Error(`gh ${args.slice(0, 2).join(" ")} output exceeded ${maxBufferBytes} bytes`));
         if (timeoutMs !== undefined && error?.killed) return reject(new Error(`gh ${args.slice(0, 2).join(" ")} timed out after ${timeoutMs} ms`));
         const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
         resolve({ code, stdout, stderr });
