@@ -1,5 +1,6 @@
 import { applyAudit } from "./audit-apply.js";
 import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { isInjectedCause, stripInjected } from "./injected-text.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
 import { RELATIONS, sessionRef, type TranscriptDelta } from "@titan-design/session-read";
 import type { Db, EdgeInput } from "@titan-design/store-sqlite";
@@ -21,6 +22,7 @@ export function applyDelta(graph: SessionGraph, transcriptId: number, delta: Tra
     applyAssets(graph.db, delta);
     applyPhases(graph.db, transcriptId, delta);
     applyLinkedRows(graph, transcriptId, delta);
+    applySpans(graph, transcriptId, delta);
     applyReviewVerdicts(graph.db, transcriptId, delta);
     applyAudit(graph.db, transcriptId, delta);
   })();
@@ -194,9 +196,16 @@ function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: Trans
   for (const l of delta.subagentTranscripts) linkTranscript.run(l.agentRef, l.childSessionId);
 
   for (const e of delta.edges) assertTranscriptEdge(graph, { sourceRef: e.sourceRef, relation: e.relation, targetRef: e.targetRef, tValid: e.ts, factId: factId(e.byteOffset) });
+}
 
+/** Prompt spans index only what the human typed; a line nobody typed indexes no prompt at all. */
+function applySpans(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta): void {
+  const injectedLines = new Set(delta.inbound.filter(i => isInjectedCause(i.cause)).map(i => i.byteOffset));
   for (const span of delta.spans) {
-    graph.spans.index({ ownerRef: sessionRef(span.sessionId), field: span.field, sourceId: transcriptId, byteOffset: span.byteOffset, byteLength: span.byteLength }, span.text);
+    const isPrompt = span.field === "prompt";
+    const text = !isPrompt ? span.text : injectedLines.has(span.byteOffset) ? "" : stripInjected(span.text);
+    if (isPrompt && !text) continue;
+    graph.spans.index({ ownerRef: sessionRef(span.sessionId), field: span.field, sourceId: transcriptId, byteOffset: span.byteOffset, byteLength: span.byteLength }, text);
   }
 }
 

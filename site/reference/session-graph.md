@@ -194,6 +194,36 @@ with its transcript. `pr_ref` stays null until a later pass resolves it.
 Everything except `transcript` is derivable, which is what makes the schema safe to evolve by
 drop-and-rederive.
 
+## Injected context
+
+A `user` record carries more than the human typed. The harness, hooks and agent-chat put
+their own blocks there, and indexing them would make every session match its own
+reminders and briefs. `stripInjected` removes them before a prompt reaches `search_fts`,
+and `readIndexedText` applies it again on readback, so a miner excerpt shows the same
+text. Only prompt spans change. `fact`, `normalized_event` and the audit tables keep
+every line, and a turn with nothing left indexes no prompt span.
+An index built before this rule keeps its old prompt spans until `resetIndex` rebuilds it.
+
+- **Whole line.** A line whose session-read inbound cause is anything but `human_typed` or
+  `tool_result` indexes no prompt. That covers `isMeta` lines (hook and SessionStart
+  bootstrap output, skill loads, harness resumes), peer channel messages, task
+  notifications, compaction summaries, scheduled wakeups, image notes and local commands.
+- **Blocks cut anywhere.** session-read's closed `INJECTED_MARKERS` (`<system-reminder>`,
+  `<channel source="...">`, `<task-notification>`), plus `<user-prompt-submit-hook>`,
+  `<command-name>`, `<command-message>`, `<local-command-caveat>`,
+  `<local-command-stdout>`, `<local-command-stderr>`, `<bash-stdout>`, `<bash-stderr>`
+  and `[Request interrupted by user…]` notes.
+- **Kept words.** `<command-args>` and `<bash-input>` lose their tags and keep their
+  contents, because the human typed them.
+- **Whole turn by text.** session-read's unclosed markers heading the text (local-command
+  output, compaction summary, image note, loop wakeup, the agent-chat orientation header).
+  agent-chat puts no tag around a spawn brief, so a brief is also known by the framing
+  agent-chat writes itself: a `# Predecessor:` handover, the isolated or shared worktree
+  note that ends the brief, or a `--- File Ownership ---` section. A brief with none of
+  these still indexes, because nothing in the line tells it apart from a typed prompt.
+- **Tool-result echoes.** `tool_result` blocks never enter prompt text; a user line's prompt
+  span holds its text blocks only. Background results arrive as `<task-notification>`.
+
 ## Gotchas
 
 **`refreshCorpus` takes `DiscoveredTranscript` objects**, not paths. Use

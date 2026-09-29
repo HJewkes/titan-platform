@@ -26,5 +26,6 @@ export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
 export { syncPrices, type PriceInput, type SyncPricesOptions } from "./prices.js";
 
 export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
+export { isInjectedCause, stripInjected } from "./injected-text.js";
 export { normalizedSessions, normalizedUsage, readIndexedText, type ConversationSummary, type IndexedSpan, type NormalizedUsageSummary } from "./normalized-query.js";
 export { resolveConversationAlias } from "./normalized-schema.js";
