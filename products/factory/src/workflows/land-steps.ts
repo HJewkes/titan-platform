@@ -26,4 +26,6 @@ export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.bo
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 
-export const MergePolicyResult = z.looseObject({ outcome: z.literal("allow"), headSha: z.string() });
+const PolicyRule = z.looseObject({ table: z.string(), rowId: z.string(), version: z.number() });
+
+export const MergePolicyResult = z.looseObject({ outcome: z.enum(["gate", "allow", "deny"]), headSha: z.string(), rule: PolicyRule, reason: z.string() });

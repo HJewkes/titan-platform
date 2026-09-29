@@ -17,8 +17,8 @@ function dbFile(): string {
   return join(dir, "factory.sqlite3");
 }
 
-/** The path a behind PR takes: rules, behind, update, green, approval, green again, merge. */
-const STEPS = ["land-rules", "ci-wait:0", "update-branch:0", "ci-wait:1", "ci-wait:2", "merge:0"];
+/** The path a behind PR takes: rules, behind, update, green, recorded decision, approval, green again, merge. */
+const STEPS = ["land-rules", "ci-wait:0", "update-branch:0", "ci-wait:1", "merge-policy:0", "ci-wait:2", "merge:0"];
 
 /** A kill after the step's effect reached GitHub but before the run recorded the step. */
 function hangAfterEffect(routes: readonly StepRoute[], stepId: string, entered: () => void): StepRoute[] {

@@ -198,9 +198,9 @@ describe("land core", () => {
     const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.output);
     const records = results.map((result) => JSON.parse(result.output!));
 
-    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.ci-wait", "land.merge"]);
+    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.merge-policy", "land.ci-wait", "land.merge"]);
     expect(records.every((record) => record.v === 1 && record.traceId === runId)).toBe(true);
-    expect(records[3].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
+    expect(records[4].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
   });
 
   it("fails a step whose evidence record lacks result, so the branch never reads undefined", async () => {
