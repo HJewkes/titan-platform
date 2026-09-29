@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StepRoute } from "../routed-runner.js";
 import { crashAt } from "../test-support/crash.js";
-import type { FakeGitHub } from "../github/fake.js";
+import type { FakeGitHub } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
 import { answerPendingGate, approveUntilSettled, gateId, landScenario } from "../test-support/land.js";
 
