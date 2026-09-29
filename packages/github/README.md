@@ -20,6 +20,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `updateBranch` | the PR: merged, head moved or not behind skips | `expected_head_sha` |
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
+| `upsertComment` | the PR's comments; one containing the marker skips | none |
 
 `githubPort` validates every argument before any wire call, because each one becomes part of a
 `gh api` path. It checks five things. The repo is `owner/name` of `[A-Za-z0-9._-]`, and neither
@@ -53,6 +54,20 @@ reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time 
 reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
 `listOpenPrs(repo, headPrefix?)` lists open PRs; list rows carry no `behind` or
 `mergeableState`.
+
+`listPrFiles(repo, pr)` returns every changed file of a PR, all pages, with `previousPath` on a
+rename. GitHub stops that list at 3,000 files without saying so, so the port compares the count
+with the PR's own `changed_files` and throws `FileListTruncatedError` when fewer came back. A
+caller must treat that error as "cannot decide" (for example, hold the PR for a human), never as
+an empty or partial list. `compareFiles(repo, base, head)` returns `{ mergeBaseSha, files,
+truncated }`. GitHub caps compare at 300 files and 250 commits, also silently; `truncated` is
+true when `files` reaches 300 or the commits returned are fewer than `total_commits`. When it is
+true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
+unknown. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
+when none by the authenticated `gh` user has `marker` (an HTML comment the caller builds, also
+put in `body`) alone on a line. Another author's comment or a longer marker never counts. Two
+concurrent callers can both post; there is no lock. Each read carries the same ETag cache and
+rate budget as the others.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
