@@ -103,15 +103,19 @@ MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
 - the merge-tree is clean and the repo is not frozen;
 - no changed path is `.github` or under it, or is `CODEOWNERS`, `docs/CODEOWNERS` or
   `.gitmodules`, compared case-insensitively. A path that is not canonical (a backslash,
-  a leading, trailing or doubled `/`, a `.` or `..` segment, or any character outside
-  printable ASCII) counts as protected, and an empty `changedPaths` fails;
+  a leading, trailing or doubled `/`, a `.` or `..` segment, a segment ending in a space
+  or a dot, or any character outside printable ASCII) counts as protected, and an empty `changedPaths` fails;
 - the seat grants `merge-on-green-approve`.
 
-A request with no `facts` fails every condition, and a tainted request never matches a
-conditional row, so both get the MRG-AU gate. Every fact is attested by the caller, so a
+A request with no `facts` fails every condition, and a conditional row matches only when
+`tainted` is exactly `false`; any other value (`true`, missing, `null`, `0`, `""`) is
+treated as tainted, so all of these get the MRG-AU gate. Every fact is attested by the caller, so a
 trusted collector, never the requesting session, must gather them. Its `changedPaths`
-must list both the source and the target of every rename. A missing or malformed fact
-fails its condition rather than throwing: booleans must be exactly `true` or `false`, ids
+must list both the source and the target of every rename. Conditions read a JSON copy
+of the facts made inside a guard: array holes become `null`, non-plain objects lose their
+prototypes and methods, and facts that cannot be copied (a throwing getter, a cycle, a
+BigInt) fail every condition. A missing or malformed fact fails its condition rather than
+throwing: booleans must be exactly `true` or `false`, ids
 non-empty strings compared exactly, and lists real arrays matched by exact element. `allowedApps` is caller-supplied: the package
 pins no app id, so Shepherd must pin GitHub Actions (app id 15368) itself. The row
 decides; it does not resolve a hitl gate. hitl refuses an `automation` resolver, so a

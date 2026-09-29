@@ -40,6 +40,7 @@ const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_DIRS = new Set([".github"]);
 const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".gitmodules"]);
 const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
+const TRAILING_SPACE_OR_DOT = /[ .]$/;
 
 function isId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -54,9 +55,13 @@ function verdictMergeAtHead(facts: MergeFacts): boolean {
   return facts.verdict.value === "MERGE" && typeof head === "string" && FULL_SHA.test(head) && facts.verdict.head === head;
 }
 
+function isNonCanonicalSegment(segment: string): boolean {
+  return NON_CANONICAL_SEGMENTS.has(segment) || TRAILING_SPACE_OR_DOT.test(segment);
+}
+
 // A path we cannot compare exactly could alias a protected one, so it counts as protected.
 function isNonCanonical(path: string): boolean {
-  return !PRINTABLE_ASCII.test(path) || path.includes("\\") || path.split("/").some((segment) => NON_CANONICAL_SEGMENTS.has(segment));
+  return !PRINTABLE_ASCII.test(path) || path.includes("\\") || path.split("/").some(isNonCanonicalSegment);
 }
 
 function isProtectedPath(path: unknown): boolean {
@@ -117,9 +122,29 @@ function holds(check: (facts: MergeFacts) => boolean, facts: MergeFacts): boolea
   }
 }
 
-/** The conditions that do not hold. Missing facts fail every condition, so a caller that observed nothing gets nothing. */
-export function unmetConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[] {
-  const merge = facts?.merge;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Checks read only a JSON copy: getters, prototypes and holes are gone, and anything that cannot be copied yields no facts.
+function plainMergeFacts(read: () => ConditionFacts | undefined): MergeFacts | undefined {
+  try {
+    const copy: unknown = JSON.parse(JSON.stringify(read() ?? null));
+    const merge = isRecord(copy) ? copy.merge : undefined;
+    return isRecord(merge) ? (merge as unknown as MergeFacts) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Like `unmetConditions`, but reads the facts inside the guard so a throwing accessor fails every condition. */
+export function unmetConditionsOf(conditions: readonly ConditionKind[], read: () => ConditionFacts | undefined): ConditionKind[] {
+  const merge = plainMergeFacts(read);
   if (!merge) return [...conditions];
   return conditions.filter((condition) => !holds(MERGE_CHECKS[condition], merge));
+}
+
+/** The conditions that do not hold. Missing or unreadable facts fail every condition, so a caller that observed nothing gets nothing. */
+export function unmetConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[] {
+  return unmetConditionsOf(conditions, () => facts);
 }

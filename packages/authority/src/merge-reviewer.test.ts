@@ -112,6 +112,14 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a change to packages//x.ts", (f) => { f.changedPaths.push("packages//x.ts"); }, "no-protected-path-change"],
   ["a change to packages/x/..", (f) => { f.changedPaths.push("packages/x/.."); }, "no-protected-path-change"],
   ["a rename whose old side is under .github/", (f) => { f.changedPaths.push(".github/workflows/old.yml", "tools/old.yml"); }, "no-protected-path-change"],
+  ...[".github /x", ".github./x", "CODEOWNERS.", "docs/CODEOWNERS ", "docs./CODEOWNERS"].map(
+    (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
+  ),
+  ["a hole in the changed paths", (f) => { f.changedPaths.length = 2; }, "no-protected-path-change"],
+  ["changed paths that are only a hole", (f) => { f.changedPaths = new Array<string>(1); }, "no-protected-path-change"],
+  ["a required context list that is only a hole", (f) => { f.requiredContexts = new Array<string>(1); }, "required-contexts-green"],
+  ["changed paths given as an array-like object", (f) => { setFact(f, "changedPaths", { 0: "docs/guide.md", length: 1, some: () => false }); }, "no-protected-path-change"],
+  ["a seat grant list given as an object with includes", (f) => { setFact(f, "seatGrants", { includes: () => true }); }, "seat-grants-merge-on-green-approve"],
   ...[".github\u200b/workflows/ci.yml", "CODEOWNERS\n", "docs/CODEOWNERS\u0000", "\uff0egithub/x", ".gitmodules\u007f", "docs/gu\u00efde.md"].map(
     (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
   ),
@@ -126,7 +134,23 @@ const MULTI_REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind[]][] =
   ["an allowed-apps list with a stray string entry", (f) => { setFact(f, "allowedApps", [ACTIONS_APP, String(ACTIONS_APP)]); }, ["required-contexts-green", "no-non-green-run"]],
   ["a NaN allowed app matching a NaN run app", (f) => { f.allowedApps = [Number.NaN]; f.checkRuns[0]!.appId = Number.NaN; }, ["required-contexts-green", "no-non-green-run"]],
   ["a nameless required context matched by a nameless run", (f) => { setFact(f, "requiredContexts", [undefined]); Reflect.deleteProperty(f.checkRuns[0]!, "name"); }, ["required-contexts-green", "no-non-green-run"]],
+  ["a sparse required context list with no check runs", (f) => { f.requiredContexts = new Array<string>(1); f.checkRuns = []; }, ["required-contexts-green"]],
+  ["allowed apps given as an array-like object", (f) => { setFact(f, "allowedApps", { length: 1, every: () => true, includes: () => true }); }, ["required-contexts-green", "no-non-green-run"]],
 ];
+
+const UNREADABLE: [string, () => AuthorityRequest][] = [
+  ["a merge getter that throws", () => ({ ...mergeBy("automation", undefined), facts: { get merge(): MergeFacts { throw new Error("boom"); } } })],
+  ["a facts getter that throws", () => Object.defineProperty(mergeBy("automation", undefined), "facts", { get: () => { throw new Error("boom"); } })],
+  ["a cycle in the facts", () => { const facts = greenFacts(); setFact(facts, "self", facts); return mergeBy("automation", facts); }],
+  ["a BigInt fact", () => mergeBy("automation", patched((f) => { setFact(f, "extra", 1n); }))],
+  ["a changed path getter that throws", () => mergeBy("automation", patched((f) => { Object.defineProperty(f.changedPaths, 0, { get: () => { throw new Error("boom"); } }); }))],
+];
+
+const NOT_UNTAINTED: unknown[] = [true, undefined, null, 0, "", "false", 1, "true"];
+
+function withoutRow(ruleId: string): typeof DEFAULT_TABLE {
+  return { ...DEFAULT_TABLE, rules: DEFAULT_TABLE.rules.filter((rule) => rule.id !== ruleId) };
+}
 
 describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", () => {
   it("allows when every condition holds at the exact head", () => {
@@ -156,6 +180,20 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     const decision = evaluate(DEFAULT_TABLE, mergeBy("automation", greenFacts(), true));
     expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] });
     expect(decision.verdict === "gate" && decision.reason).toContain("MRG-AU-RV skipped: tainted");
+  });
+
+  it.each(NOT_UNTAINTED)("decides a merge tainted %j exactly as the table without MRG-AU-RV does", (tainted) => {
+    const request = { ...mergeBy("automation", greenFacts()), tainted } as AuthorityRequest;
+    const decision = evaluate(DEFAULT_TABLE, request);
+    const { verdict, ruleId } = evaluate(withoutRow("MRG-AU-RV"), request);
+    expect(decision).toMatchObject({ verdict, ruleId });
+    expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] });
+  });
+
+  it.each(UNREADABLE)("gates rather than throws on %s", (_name, request) => {
+    const decision = evaluate(DEFAULT_TABLE, request());
+    expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    expect(decision.verdict === "gate" && decision.reason).toContain(`MRG-AU-RV unmet: ${CONDITION_KINDS.join(", ")}`);
   });
 
   it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md"])("allows a change to the unprotected path %s", (path) => {

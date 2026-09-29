@@ -1,5 +1,5 @@
 import type { ConditionFacts } from "./conditions.js";
-import { unmetConditions } from "./conditions.js";
+import { unmetConditionsOf } from "./conditions.js";
 import type { PolicyTable, Rule } from "./schema.js";
 import type { ActionClass, ActorClass, ResolverClass } from "./vocabulary.js";
 import { RESOLVER_CLASSES } from "./vocabulary.js";
@@ -29,11 +29,11 @@ function findRule(table: PolicyTable, request: AuthorityRequest): RuleMatch {
   const forPair = table.rules.filter((rule) => rule.action === request.action && rule.actor === request.actor.class);
   const unmet: string[] = [];
   for (const rule of forPair.filter((candidate) => candidate.when)) {
-    if (request.tainted) {
-      unmet.push(`${rule.id} skipped: tainted`);
+    if (request.tainted !== false) {
+      unmet.push(`${rule.id} skipped: tainted is not false`);
       continue;
     }
-    const failed = unmetConditions(rule.when ?? [], request.facts);
+    const failed = unmetConditionsOf(rule.when ?? [], () => request.facts);
     if (failed.length === 0) return { rule, unmet: [] };
     unmet.push(`${rule.id} unmet: ${failed.join(", ")}`);
   }

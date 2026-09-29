@@ -21,11 +21,15 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
 - A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
-  `request.facts` and the request is not tainted; otherwise the pair's unconditional rule
+  `request.facts` and `request.tainted` is exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
+  Conditions read a JSON copy of the facts, so array holes become `null` and non-plain
+  objects lose their methods; facts that cannot be copied (a throwing getter, a cycle, a
+  BigInt) fail every condition instead of throwing.
   A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
   `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
-  A non-canonical or non-ASCII changed path counts as protected.
+  A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a
+  dot, counts as protected.
   `allowedApps` is caller-supplied; Shepherd must pin GitHub Actions (app id 15368) itself.
 - `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
   any tainted resolver.
