@@ -78,7 +78,7 @@ describe("loadSeatBook", () => {
 
     const lookup = lookupSeat(book, "acme/shared-kit");
 
-    expect(lookup).toMatchObject({ kind: "seat", seat: { grants: [] } });
+    expect(lookup).toMatchObject({ kind: "seat", seat: { grants: [], paths: { "acme/shared-kit": "~/src/shared-kit" } } });
     expect(resolveEffectivePolicy(lookup).merge).toBe("owner-gate");
   });
 
