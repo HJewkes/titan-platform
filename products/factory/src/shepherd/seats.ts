@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
-const SeatRepoSchema = z.object({ path: z.string().optional(), remote: z.string().optional() });
+const SeatRepoSchema = z.object({ path: z.string().min(1).optional(), remote: z.string().optional() });
 
 /** The autonomy-seat/v1 frontmatter fields Shepherd reads; every other seat field is ignored. */
 const SeatFileSchema = z.object({
@@ -25,6 +25,8 @@ export interface Seat {
   name: string;
   /** `owner/name` remotes this seat owns. */
   remotes: string[];
+  /** Lowercased remote to the seat's local checkout path, as written (`~` unexpanded); the cwd for spawns. */
+  paths: Record<string, string>;
   grants: string[];
 }
 
@@ -77,7 +79,8 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
 function narrowest(seats: Seat[]): Seat {
   if (seats.length === 1) return seats[0]!;
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
-  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], grants };
+  const paths = Object.assign({}, ...seats.map((s) => s.paths)) as Record<string, string>;
+  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants };
 }
 
 type SeatFile = z.infer<typeof SeatFileSchema>;
@@ -103,7 +106,8 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
 
 function toSeat(data: SeatFile): Seat {
   const remotes = data.repos.flatMap((r) => (r.remote ? [r.remote] : []));
-  return { name: data.name, remotes, grants: data.grants_extra };
+  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote.toLowerCase(), r.path]] : [])));
+  return { name: data.name, remotes, paths, grants: data.grants_extra };
 }
 
 /** A deny entry is a path: the same seat's `repos[]` maps it to a remote, else its basename stands for the repo name. */

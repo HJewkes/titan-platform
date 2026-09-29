@@ -112,6 +112,13 @@ describe("loadSeatBook", () => {
     expect(lookupSeat(loadSeatBook({ charterPath: charter }), "acme/dotfiles").kind).toBe("none");
   });
 
+  it("keeps each remote's local checkout path and omits repos with no remote or no path", () => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "gadget.md": GADGET_SEAT }) });
+
+    expect(lookupSeat(book, "Acme/Gadgets")).toMatchObject({ kind: "seat", seat: { paths: { "acme/gadgets": "~/src/gadgets", "acme/shared-kit": "~/src/shared-kit" } } });
+    expect(Object.keys(book.seats[0]!.paths)).toHaveLength(2);
+  });
+
   it("ignores files without the .md extension", () => {
     const book = loadSeatBook({ seatsDir: writeSeats({ "gadget.txt": "not a seat" }) });
 
@@ -123,6 +130,8 @@ describe("loadSeatBook", () => {
     ["another schema", "---\nschema: other/v1\nname: x\n---\n"],
     ["repos that is not a list", GADGET_SEAT.replace(/repos:\n( {2}- .*\n)+/, "repos: x\n")],
     ["unparseable yaml", "---\nschema: [\n---\n"],
+    ["an empty repo path", GADGET_SEAT.replace("path: ~/src/gadgets,", 'path: "",')],
+    ["a non-string repo path", GADGET_SEAT.replace("path: ~/src/gadgets,", "path: 7,")],
   ])("throws, naming the file, when a seat file has %s", (_case, body) => {
     const seatsDir = writeSeats({ "a-good.md": GADGET_SEAT, "z-bad.md": body });
 

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
-const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], grants: ["some-other-grant"] };
-const TRUSTED: Seat = { name: "trusted-seat", remotes: ["acme/gizmos"], grants: ["merge-on-green-approve"] };
+const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], paths: {}, grants: ["some-other-grant"] };
+const TRUSTED: Seat = { name: "trusted-seat", remotes: ["acme/gizmos"], paths: {}, grants: ["merge-on-green-approve"] };
 const BOOK: SeatBook = { seats: [GATED, TRUSTED], denied: ["parked-app", "acme/retired"] };
 
 function effective(repo: string, requested?: unknown) {
