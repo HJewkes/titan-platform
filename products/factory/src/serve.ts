@@ -1,9 +1,11 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
-import { createRegistry, type BaseContext } from "@titan-design/registry";
 import type { WorkflowStatus } from "@titan-design/workflow";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import { createFactoryRegistry, type FactoryContext } from "./registry.js";
+
+export type { FactoryContext } from "./registry.js";
 
 export const FACTORY_PORT = 7410;
 /** Empty so registered commands keep their own names: `shepherd.register` becomes `shepherd__register`, not `factory__shepherd__register`. */
@@ -20,10 +22,6 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   /** Bind address; defaults to 127.0.0.1. */
   hostname?: string;
   logger?: Logger;
-}
-
-export interface FactoryContext extends BaseContext {
-  host: FactoryHost;
 }
 
 export interface FactoryServer {
@@ -55,20 +53,33 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
 
-/** Start, then run until SIGTERM or SIGINT, then close. Resolves after shutdown completes. */
-export async function serveFactoryUntilSignal(options: FactoryServerOptions): Promise<void> {
+/** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
+export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
   const server = await startFactoryServer(options);
-  const signal = await new Promise<NodeJS.Signals>((resolve) => {
-    process.once("SIGTERM", resolve);
-    process.once("SIGINT", resolve);
-  });
-  (options.logger ?? consoleLogger).info({ signal }, "shutting down");
+  const reason = await untilStopped(stop);
+  (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
   await server.close();
+}
+
+function untilStopped(stop?: AbortSignal): Promise<string> {
+  return new Promise((resolve) => {
+    const done = (reason: string): void => {
+      process.off("SIGTERM", done);
+      process.off("SIGINT", done);
+      stop?.removeEventListener("abort", aborted);
+      resolve(reason);
+    };
+    const aborted = (): void => done("abort");
+    process.once("SIGTERM", done);
+    process.once("SIGINT", done);
+    if (stop?.aborted) return done("abort");
+    stop?.addEventListener("abort", aborted, { once: true });
+  });
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions): StartDaemonOptions<FactoryContext> {
   return {
-    registry: createRegistry<FactoryContext>(),
+    registry: createFactoryRegistry(),
     createContext: () => ({ warnings: [], format: "json", host }),
     version: FACTORY_VERSION,
     stateDir: options.stateDir ?? dirname(options.dbPath),
