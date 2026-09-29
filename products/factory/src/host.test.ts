@@ -99,3 +99,19 @@ describe("titan-factory resume and gate resolve", () => {
     expect(shipped.filter((id) => id === runId)).toHaveLength(1);
   });
 });
+
+describe("FactoryHost.adopt", () => {
+  it("keeps driving the runs it claimed after it returns, so a later answer finishes them", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+    const host = openFactoryHost({ dbPath, workflows: [approval], routes, gatePollMs: 10 });
+
+    const adopted = await host.adopt();
+    host.runtime.signal(runId, "approve-publish", { approve: true });
+
+    expect(adopted).toEqual([runId]);
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
+    expect(shipped.filter((id) => id === runId)).toHaveLength(1);
+    host.close();
+  });
+});

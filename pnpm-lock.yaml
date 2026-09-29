@@ -550,12 +550,18 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/daemon':
+        specifier: workspace:^
+        version: link:../../packages/daemon
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
+      '@titan-design/registry':
+        specifier: workspace:^
+        version: link:../../packages/registry
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite

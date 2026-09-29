@@ -8,6 +8,8 @@ export type { GateDecision, GatePolicy, GateTarget, PolicyRule } from "./gate-po
 export { GATE_EVERYTHING_RULE, gateEverything, policyTraceGate } from "./gate-policy.js";
 export type { FactoryHost, FactoryHostOptions, HeldRun, PendingGate, ResumeReport } from "./host.js";
 export { openFactoryHost } from "./host.js";
+export type { FactoryContext, FactoryServer, FactoryServerOptions } from "./serve.js";
+export { FACTORY_PORT, TOOL_PREFIX, factoryHealth, serveFactoryUntilSignal, startFactoryServer } from "./serve.js";
 export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute } from "./routed-runner.js";
 export { routedRunner } from "./routed-runner.js";
 export type { CliDeps, CliIo } from "./cli.js";
