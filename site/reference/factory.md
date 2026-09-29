@@ -37,6 +37,18 @@ titan-factory gate resolve <runId> approve-publish --json '{"approve":true}'
 `resume` drives every unfinished run until it ends or waits on a gate, prints each open gate
 with its resolve command, and exits.
 
+To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. `titan-factory
+service plist` prints the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true)
+and never installs it. The owner installs it:
+
+```sh
+pnpm build
+node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+curl -s http://127.0.0.1:7410/health   # github: ok, or the redacted gh error
+claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
+```
+
 ## What it deliberately does not do
 
 It does not dispatch agents, spawn sessions or create relay items. It holds no allow rule:
