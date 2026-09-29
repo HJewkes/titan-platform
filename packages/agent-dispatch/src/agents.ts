@@ -10,12 +10,17 @@
  * that is still writing its transcript.
  */
 
-import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
+import {
+  DispatchError,
+  PEER_NAME_PATTERN,
+  agentChatEnv,
+  brokerUnavailable,
+  isBrokerUnavailable,
+} from "./dispatch.js";
 import {
   ExecError,
   ExecTimeoutError,
   execSafe,
-  minimalEnv,
   resolveBinaryPath,
   type SafeExecResult,
 } from "./exec.js";
@@ -122,14 +127,14 @@ function isAgentRow(value: unknown): value is AgentRow {
   return REQUIRED_STRINGS.every((key) => typeof row[key] === "string");
 }
 
-function runAgentChat(
+export function runAgentChat(
   binPath: string,
   args: string[],
   timeoutMs: number,
 ): SafeExecResult {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return execSafe(bin, args, minimalEnv(), timeoutMs);
+    return execSafe(bin, args, agentChatEnv(), timeoutMs);
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
     if (err instanceof ExecError) throw new DispatchError(err.message);
@@ -138,7 +143,8 @@ function runAgentChat(
 }
 
 /** Same stream rule as a spawn: a broker refusal is on stdout, a usage error on stderr. */
-function refusal(verb: string, result: SafeExecResult): DispatchError {
+export function refusal(verb: string, result: SafeExecResult): DispatchError {
+  if (isBrokerUnavailable(result)) return brokerUnavailable(verb, result);
   const reason = result.stdout.trim() || result.stderr.trim();
   return new DispatchError(
     reason === ""
