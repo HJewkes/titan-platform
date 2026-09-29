@@ -168,7 +168,7 @@ function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
     const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, input)]]);
     beforeLand();
-    await land(ctx, { repo: REPO, pr: 1 }, shepherdLandOptions(AUTO, (headSha) => reviews.get(headSha)));
+    await land(ctx, { repo: REPO, pr: 1 }, shepherdLandOptions(() => AUTO, (headSha) => reviews.get(headSha)));
   };
   const workflow = defineWorkflow({ name: "shepherd-merge", steps: [...LAND_STEPS, ...REVIEW_STEPS], run });
   const routes = [...landRoutes({ port, now: deps.now, sleep: deps.sleep }), ...reviewRoutes(deps)];

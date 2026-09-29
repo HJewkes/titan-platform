@@ -3,7 +3,7 @@ import type * as Authority from "@titan-design/authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
-import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -93,6 +93,24 @@ describe("shepherdGatePolicy", () => {
   });
 });
 
+describe("stricterPolicy", () => {
+  const policy = (merge: EffectivePolicy["merge"], seat: string, fixer = true): EffectivePolicy => ({ merge, mergeMethod: "rebase", fixer, seat });
+
+  it.each([
+    ["auto", "owner-gate", "owner-gate"],
+    ["owner-gate", "auto", "owner-gate"],
+    ["never", "auto", "never"],
+    ["auto", "never", "never"],
+  ] as const)("narrows %s by %s to %s", (trusted, other, merge) => {
+    expect(stricterPolicy(policy(trusted, "t"), policy(other, "o")).merge).toBe(merge);
+  });
+
+  it("names the seat whose mode won, and keeps a fixer only when both allow one", () => {
+    expect(stricterPolicy(policy("auto", "t"), policy("never", "o", false))).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "o" });
+    expect(stricterPolicy(policy("never", "t", false), policy("never", "o")).seat).toBe("t");
+  });
+});
+
 const HEAD = "d".repeat(40);
 const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 
@@ -163,7 +181,7 @@ describe("shepherdGatePolicy under merge:auto", () => {
 
   it("hands land the evidence record on an allow", () => {
     const evidence = evidenceAt(HEAD);
-    const options = shepherdLandOptions(effective("acme/gizmos"), reviewed(evidence));
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidence));
     const decision = options.policy.decide("merge", { headSha: HEAD });
 
     expect(options.allowEvidence!({ repo: "acme/gizmos", pr: 3, headSha: HEAD, decision })).toEqual(evidence.record);

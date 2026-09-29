@@ -71,6 +71,12 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
   };
 }
 
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, never loosen it. */
+export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
+  const merge = narrower(trusted.merge, other.merge);
+  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat };
+}
+
 function parseRequest(request: unknown): RequestedPolicy {
   const parsed = RequestedPolicySchema.safeParse(request);
   if (!parsed.success) throw new RegistrationRefused(`invalid policy request: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
@@ -93,10 +99,10 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
   };
 }
 
-/** The Shepherd land options: the seat policy, and on an allow the evidence record the PR comment carries. */
-export function shepherdLandOptions(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): LandOptions {
+/** The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries. */
+export function shepherdLandOptions(effective: () => EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): LandOptions {
   return {
-    policy: shepherdGatePolicy(effective, verdictFor),
+    policy: { decide: (action, target) => shepherdGatePolicy(effective(), verdictFor).decide(action, target) },
     allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }),
   };
 }
