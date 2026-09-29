@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeSha, successRun as anyShaRun } from "./fake.js";
 import type { PullRequest, RequiredChecks } from "./port.js";
-import { GITHUB_ACTIONS_APP_ID, mergeReadiness, type MergeReadinessInput } from "./readiness.js";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness, type MergeReadinessInput } from "./readiness.js";
 
 const HEAD = fakeSha("head");
 const OLD = fakeSha("old");
@@ -136,5 +136,16 @@ describe("mergeReadiness", () => {
 
   it("lets a behind head through when the rules do not require it up to date", () => {
     expect(mergeReadiness(input({ pr: { ...pr, behind: true }, rules: { ...rules, strict: false } })).ready).toBe(true);
+  });
+});
+
+describe("headCheckFindings", () => {
+  it("names the missing context, the running run and the red run, and nothing for a green head", () => {
+    const running = { ...successRun("lint", 2), status: "in_progress", conclusion: null };
+    const red = successRun("test", 3, undefined, "failure");
+    const findings = headCheckFindings({ headSha: HEAD, contexts: ["check", "build"], runs: [successRun("check", 1), running, red], requiredApps: [GITHUB_ACTIONS_APP_ID] });
+
+    expect(findings).toEqual([{ kind: "missing", name: "build" }, { kind: "pending", run: running }, { kind: "failed", run: red }]);
+    expect(headCheckFindings({ headSha: HEAD, contexts: ["check"], runs: [successRun("check", 1)], requiredApps: [GITHUB_ACTIONS_APP_ID] })).toEqual([]);
   });
 });

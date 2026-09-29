@@ -370,10 +370,10 @@ Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
-- `readiness`: `mergeReadiness`
+- `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `exec`: `GhError`, `execGh`
-- +40 more in the [reference page](/reference/github)
+- `exec`: `GhError`
+- +43 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
