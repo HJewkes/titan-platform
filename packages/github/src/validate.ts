@@ -65,3 +65,9 @@ export function checkMergeMethod(method: MergeMethod): MergeMethod {
   if (!MERGE_METHODS.includes(method)) throw new GitHubInputError("method", method, `expected one of ${MERGE_METHODS.join(", ")}`);
   return method;
 }
+
+/** An empty marker matches every comment, so the first write would skip forever. */
+export function checkMarker(marker: string): string {
+  if (marker.length === 0) throw new GitHubInputError("marker", marker, "expected a non-empty string");
+  return marker;
+}
