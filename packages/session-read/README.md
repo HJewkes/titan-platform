@@ -31,6 +31,14 @@ Every rule in `LineReader` is stateless across lines. That is what makes reading
 incrementally from a watermark and rebuilding the whole file produce the same events, so
 an index can resume without ever re-deriving history.
 
+## Verdict block
+
+`parseVerdictBlock(text)` reads a reviewer's three-line `Verdict: MERGE|FIX_FIRST`, `PR: owner/name#n`,
+`Head: <40 lowercase hex>` block and returns `{ ok: true, verdict, repo, pr, head, lineOffset }` or
+`{ ok: false, reason }`. It fails closed: two blocks, quoted or fenced blocks, `APPROVE`, `CHANGES` and
+any short, upper-case or over-long head are refused. Rules and reasons are in
+`site/reference/session-read.md`.
+
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
