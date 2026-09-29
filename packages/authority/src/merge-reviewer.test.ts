@@ -295,7 +295,8 @@ type TaintSource = "a prototype" | "a class getter";
 
 // A request that does not own `tainted` and inherits `value` from `source`.
 function inheritingTaint(base: AuthorityRequest, source: TaintSource, value: boolean): AuthorityRequest {
-  const { tainted: _own, ...rest } = base;
+  const rest: Partial<AuthorityRequest> = { ...base };
+  delete rest.tainted;
   if (source === "a prototype") return Object.assign(Object.create({ tainted: value }) as AuthorityRequest, rest);
   class Request {
     get tainted(): boolean { return value; }
