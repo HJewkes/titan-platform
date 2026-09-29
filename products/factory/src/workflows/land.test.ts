@@ -1,12 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeSha, ghCliWire, githubPort, type GhExec } from "@titan-design/github";
+import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type GhExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
-import { MAX_UPDATE_CYCLES, landRoutes } from "./land.js";
+import { MAX_UPDATE_CYCLES, landRoutes, readCi } from "./land.js";
 import type { StepRoute } from "../routed-runner.js";
 
 const FOREIGN = fakeSha("foreign1");
@@ -237,3 +237,53 @@ function rewriteRecords(routes: StepRoute[], match: string, edit: (record: Recor
     return { ...route, runner: { ...route.runner, run } };
   });
 }
+
+const OTHER_APP = 99;
+const EARLY = "2026-01-01T00:00:00Z";
+const LATE = "2026-01-01T00:05:00Z";
+
+/** readCi over one PR at H1 whose required contexts are validate and dag-check, showing `runs`. */
+async function verdictFor(runs: CheckRun[]) {
+  const fake = fakeGitHub({ repo: "octo/demo" });
+  fake.addPr({ headSha: H1 });
+  fake.setRuns(H1, runs);
+  return readCi(githubPort(fake.wire), { repo: "octo/demo", pr: 1, contexts: ["validate", "dag-check"], strict: true });
+}
+
+describe("readCi judges every run at the head", () => {
+  it("is red when a required context has an older red run beside a newer green one", async () => {
+    const snapshot = await verdictFor([successRun("validate", 1, EARLY, "failure"), successRun("validate", 2, LATE), successRun("dag-check", 3)]);
+
+    expect(snapshot).toMatchObject({ verdict: "red", failing: [{ name: "validate", conclusion: "failure", workflowRunId: 1001 }] });
+  });
+
+  it.each(["neutral", "skipped"])("is red when a required context concluded %s", async (conclusion) => {
+    const snapshot = await verdictFor([successRun("validate", 1, EARLY, conclusion), successRun("dag-check", 2)]);
+
+    expect(snapshot).toMatchObject({ verdict: "red", failing: [{ name: "validate", conclusion }] });
+  });
+
+  it("is green when every required context concluded success", async () => {
+    const snapshot = await verdictFor([successRun("validate", 1), successRun("dag-check", 2)]);
+
+    expect(snapshot.verdict).toBe("green");
+  });
+
+  it("ignores a red run of a non-required context from an app outside the allowed set", async () => {
+    const snapshot = await verdictFor([successRun("validate", 1), successRun("dag-check", 2), successRun("codecov", 3, EARLY, "failure", OTHER_APP)]);
+
+    expect(snapshot.verdict).toBe("green");
+  });
+
+  it("is red on a red Actions run of a non-required context, as mergeReadiness is", async () => {
+    const snapshot = await verdictFor([successRun("validate", 1), successRun("dag-check", 2), successRun("lint-extra", 3, EARLY, "failure")]);
+
+    expect(snapshot).toMatchObject({ verdict: "red", failing: [{ name: "lint-extra" }] });
+  });
+
+  it("waits on a required context that only an app outside the allowed set reported", async () => {
+    const snapshot = await verdictFor([successRun("validate", 1, EARLY, "success", OTHER_APP), successRun("dag-check", 2)]);
+
+    expect(snapshot).toMatchObject({ verdict: "pending", waitingOn: ["validate"] });
+  });
+});
