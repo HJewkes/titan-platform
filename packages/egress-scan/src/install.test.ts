@@ -103,7 +103,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
       const found = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf-8" }).stdout.trim();
       fs.symlinkSync(found, path.join(toolDir, tool));
     }
-    const env = { ...process.env, PATH: [extraPathDir, toolDir].filter(Boolean).join(path.delimiter) };
+    const env = { ...process.env, PATH: [extraPathDir, toolDir].filter((part) => part !== undefined).join(path.delimiter) };
     return spawnSync("sh", [hookPath, "origin", "git@example.com:o/r.git"], { cwd, env, input: "stdin-line\n" });
   }
 
@@ -208,6 +208,23 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     fakeScanner(path.join(repo.dir, "node_modules", ".bin", "titan-egress-scan"), 5);
 
     expect(runHook(worktree, hookPath, pathDir).status).toBe(5);
+  });
+
+  it.each([
+    ["a dot segment", "."],
+    ["a leading empty segment", ""],
+    ["a middle empty segment", "/nonexistent-a::/nonexistent-b"],
+  ])("fails closed when PATH has %s that would resolve a scanner planted in the pushed tree", (_name, extraPath) => {
+    const repo = newRepo();
+    const worktree = linkedWorktree(repo);
+    const { hookPath = "" } = installHook(worktree, LOCAL);
+    fakeScanner(path.join(worktree, "titan-egress-scan"), 0);
+
+    const result = runHook(worktree, hookPath, extraPath);
+
+    expect(result.status).toBe(1);
+    expect(String(result.stdout)).toBe("");
+    expect(String(result.stderr)).toContain("It looked in:");
   });
 
   it("never exits 0 when no scanner is found (kills the exit-0-when-none-found mutant)", () => {
