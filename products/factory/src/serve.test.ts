@@ -30,6 +30,7 @@ async function serve(dbPath: string, scenario: LandScenario, overrides: Partial<
     gatePollMs: 10,
     port: 0,
     logger: silentLogger,
+    github: { status: () => "ok", refresh: async () => undefined },
     ...overrides,
   });
   cleanups.push(() => server.close());
@@ -94,5 +95,13 @@ describe("titan-factory serve", () => {
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
     expect(health).toMatchObject({ ok: true, runs: { paused: 1, completed: 0 }, pendingGates: 1 });
+  });
+
+  it("health carries the github probe result", async () => {
+    const server = await serve(dbFile(), landScenario(), { github: { status: () => "gh: HTTP 401", refresh: async () => undefined } });
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.github).toBe("gh: HTTP 401");
   });
 });
