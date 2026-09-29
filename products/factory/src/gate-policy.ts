@@ -13,9 +13,14 @@ export interface GateDecision {
   reason: string;
 }
 
+/** What a gated action acts on; a `merge` names the exact head, so no decision can cover a head it never saw. */
+export interface GateTarget {
+  headSha?: string;
+}
+
 /** The F5 seam: asked before any gated action, such as `publish`, `merge` or `actuate-device`. */
 export interface GatePolicy {
-  decide(action: string): GateDecision;
+  decide(action: string, target?: GateTarget): GateDecision;
 }
 
 export const GATE_EVERYTHING_RULE: PolicyRule = { table: "factory-default", rowId: "gate-all", version: 1 };

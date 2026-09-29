@@ -4,7 +4,7 @@ export type { StepDeclaration, StepKind, WorkflowDefinition } from "./definition
 export { assertDistinctStepIds, declarationFor, defineWorkflow, guardedContext, stepIdMatches } from "./definition.js";
 export type { EvidenceRecord, StepAttempt, TraceRef } from "./evidence.js";
 export { EVIDENCE_VERSION, TRACE_DATA_KEYS, evidenceRecord, traceRef } from "./evidence.js";
-export type { GateDecision, GatePolicy, PolicyRule } from "./gate-policy.js";
+export type { GateDecision, GatePolicy, GateTarget, PolicyRule } from "./gate-policy.js";
 export { GATE_EVERYTHING_RULE, gateEverything, policyTraceGate } from "./gate-policy.js";
 export type { FactoryHost, FactoryHostOptions, HeldRun, PendingGate, ResumeReport } from "./host.js";
 export { openFactoryHost } from "./host.js";

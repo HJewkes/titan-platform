@@ -60,12 +60,16 @@ validation.
   `blocked` keeps it waiting; it is never treated as clean.
 - `update-branch:<n>`: only when the PR is behind, under `expected_head_sha`. After
   `MAX_UPDATE_CYCLES` (3) updates the run opens gate `stuck-behind` (retry or abandon).
-- `approve-merge` (gate): **every merge waits on it.** `GatePolicy` is consulted first; `deny`
-  stops the run, and any other outcome, `allow` included, still opens the gate. The payload
-  must name the head shown (`{ decision, headSha }`), and the gate's stored schema refuses any
-  other head.
-- `merge:<n>`: `sha` is the approved head, or a head this run's own update built on it
-  (GitHub's merge of that head and the base). A head anyone else pushed asks again.
+- `merge-policy:<n>`: before any merge of an untrusted head, `GatePolicy.decide("merge", { headSha })`
+  runs and this step records `{ outcome, headSha, rule, reason }`. The workflow branches on the
+  recorded decision, so a replay after a crash reuses it even if the policy has changed since.
+  `deny` stops the run. `allow` trusts that one head with no hitl gate and stores the caller's
+  `allowEvidence`; an update never extends an allow, so each new head gets a fresh decision.
+- `approve-merge` (gate): opens when the recorded decision is `gate`. The payload must name the
+  head shown (`{ decision, headSha }`), and the gate's stored schema refuses any other head.
+- `merge:<n>`: `sha` is the allowed or approved head, or, after a human approval only, a head
+  this run's own update built on it (GitHub's merge of that head and the base). A head anyone
+  else pushed asks again.
 
 A failed code step stores its error through `redactForEvidence` (`src/redact.ts`). That call
 replaces gh token shapes (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) and
@@ -103,7 +107,7 @@ those keys without a workflow change.
 
 ## F5 seam: `GatePolicy` in `src/gate-policy.ts`
 
-`GatePolicy.decide(action)` returns `{ outcome, rule: { table, rowId, version }, reason }`. The
+`GatePolicy.decide(action, target?)` returns `{ outcome, rule: { table, rowId, version }, reason }`. The
 only implementation, `gateEverything`, sends every action to a human, because the F5 authority
 table is not approved. `policyTraceGate(decision, ref)` renders a decision as a policy gate entry
 with the F3 id `<spanId>#policy:<table>:<rowId>`.
