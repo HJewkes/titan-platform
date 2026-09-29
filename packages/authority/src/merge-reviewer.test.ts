@@ -75,6 +75,7 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a failed run beside the green required one", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }); }, "no-non-green-run"],
   ["a failed run with no headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, conclusion: "failure" } as CheckRunFact); }, "no-non-green-run"],
   ["a failed run with a numeric headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: 1, conclusion: "failure" } as unknown as CheckRunFact); }, "no-non-green-run"],
+  ["a failed run with a string appId", (f) => { f.checkRuns.push({ name: "lint", appId: "third-party", headSha: HEAD, conclusion: "failure" } as unknown as CheckRunFact); }, "no-non-green-run"],
   ["a run with no conclusion field", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD } as CheckRunFact); }, "no-non-green-run"],
   ["a run still in progress", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: null }); }, "no-non-green-run"],
   ["a merge-tree conflict", (f) => { f.mergeTreeClean = false; }, "merge-tree-clean"],
@@ -122,6 +123,7 @@ const MULTI_REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind[]][] =
   ["an empty head on every side", (f) => { atHead(f, ""); }, ["verdict-merge-at-head", "required-contexts-green", "no-non-green-run"]],
   ["a head given as an array on every side", (f) => { const head = [HEAD]; setFact(f, "head", head); setFact(f.verdict, "head", head); for (const run of f.checkRuns) setFact(run, "headSha", head); }, ["verdict-merge-at-head", "required-contexts-green", "no-non-green-run"]],
   ["allowed apps given as a string holding the app id", (f) => { setFact(f, "allowedApps", String(ACTIONS_APP)); }, ["required-contexts-green", "no-non-green-run"]],
+  ["an allowed-apps list with a stray string entry", (f) => { setFact(f, "allowedApps", [ACTIONS_APP, String(ACTIONS_APP)]); }, ["required-contexts-green", "no-non-green-run"]],
   ["a NaN allowed app matching a NaN run app", (f) => { f.allowedApps = [Number.NaN]; f.checkRuns[0]!.appId = Number.NaN; }, ["required-contexts-green", "no-non-green-run"]],
   ["a nameless required context matched by a nameless run", (f) => { setFact(f, "requiredContexts", [undefined]); Reflect.deleteProperty(f.checkRuns[0]!, "name"); }, ["required-contexts-green", "no-non-green-run"]],
 ];
