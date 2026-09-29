@@ -8,7 +8,7 @@ import { landPrWorkflow } from "../workflows/land-pr.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY } from "./policy.js";
+import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 
 const H2 = fakeSha("head2");
@@ -54,11 +54,17 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   return { host, fake, ref, store: ref.get() };
 }
 
-/** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will. */
-function shepherdPr1(w: World): string {
-  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
-  w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
+
+/** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will; an undefined `param` starts it with no policy param. */
+function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectivePolicy | undefined = OWNER_GATE_POLICY): string {
+  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", ...(param && { policy: JSON.stringify(param) }) });
+  w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: registered });
   return runId;
+}
+
+function stepResult(host: FactoryHost, runId: string, stepId: string): unknown {
+  return Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === stepId)?.data;
 }
 
 function stepIds(host: FactoryHost, runId: string): string[] {
@@ -216,17 +222,79 @@ describe("shepherd-pr", () => {
     expect(landed[0]!.data).toMatchObject({ result: { pr: 1, mergeSha: mergedElsewhere ? fakeSha("elsewhere") : expect.any(String) } });
   });
 
-  it("sends NO_REPRO to a fix-proof wake, never to a review wake or a merge", async () => {
-    const { phases, wakes } = fakePhases({ review: () => ({ kind: "NO_REPRO", headSha: H1, result: { class: "vacuous" } }) });
+  it.each([
+    ["FIX_FIRST", { kind: "FIX_FIRST", headSha: H1, text: "missing test" }, "review"],
+    ["NO_REPRO", { kind: "NO_REPRO", headSha: H1, result: { class: "vacuous" } }, "fix-proof"],
+  ] as const)("asks a human, never the merge decision, when the %s wake is unhandled", async (_kind, verdict, wake) => {
+    const { phases, wakes } = fakePhases({ review: () => verdict });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "abandon" });
+    await w.host.runtime.wait(runId);
+
+    expect(wakes.map((request) => request.kind)).toEqual([wake]);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("merge"))).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("lands the head pushed after a human chose to wait on an unhandled FIX_FIRST", async () => {
+    const { phases } = fakePhases({ review: (request) => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "rename" } : { kind: "none" }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" });
+    w.fake.pushHead(1, H2);
+    await approveAndFinish(w.host, runId, H2);
+
+    expect(stepIds(w.host, runId)).not.toContain("merge-policy:0");
+    expect(w.fake.effects.merge).toBe(1);
+  });
+
+  it("ignores a verdict about another head, so a stale FIX_FIRST neither sends back nor reaches the owner", async () => {
+    const { phases, wakes } = fakePhases({ review: () => ({ kind: "FIX_FIRST", headSha: H2, text: "about an older head" }) });
     const w = world(phases);
     w.fake.addPr({ headSha: H1 });
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(wakes.map((wake) => wake.kind)).toEqual(["fix-proof"]);
+    expect(wakes).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).not.toContain("FIX_FIRST");
+  });
+});
+
+describe("the effective merge policy", () => {
+  it.each([
+    ["an absent run param", undefined],
+    ["an owner-gate run param", OWNER_GATE_POLICY],
+  ])("keeps a registration's deny with %s", async (_case, param) => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w, DENY_POLICY, param);
+
+    await w.host.runtime.wait(runId);
+
+    expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "deny", rule: { rowId: "frozen-seat" } } });
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
     expect(w.fake.effects.merge).toBe(0);
-    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("review at this head: NO_REPRO");
+  });
+
+  it("keeps a run param's deny when the registration would gate", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w, OWNER_GATE_POLICY, DENY_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "deny" } });
+    expect(w.fake.effects.merge).toBe(0);
   });
 });
 
@@ -244,13 +312,34 @@ describe("the merge hold", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("refuses every merge when the store is unbound, rather than guessing no PR is held", async () => {
+  it("refuses every merge through factoryRoutesFor when the store is unbound, rather than guessing no PR is held", async () => {
     const fake = fakeGitHub();
     fake.addPr({ headSha: H1 });
-    const port = holdingPort(githubPort(fake.wire), () => shepherdStoreRef().get());
+    const merge = factoryRoutesFor({ port: githubPort(fake.wire), store: shepherdStoreRef() }).find((route) => route.match === "merge")!;
+    const input = { prompt: JSON.stringify({ repo: REPO, pr: 1, sha: H1, method: "squash" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "merge:0" };
 
-    await expect(port.merge(REPO, 1, H1, "squash")).rejects.toThrow(/not bound/);
+    const outcome = await merge.runner.run(input as never);
+
+    expect(outcome).toMatchObject({ ok: false, error: expect.stringMatching(/not bound/) });
     expect(fake.effects.merge).toBe(0);
+  });
+
+  it("holds a land-pr merge of a PR whose branch registration is held before the PR was recorded", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.store.register({ repo: REPO, branch: BRANCH, runId: "run-branch", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    w.store.hold("run-branch", "owner wants a look");
+    const runId = w.host.runtime.start("land-pr", { repo: REPO, pr: "1" });
+
+    await approve(w.host, runId, H1);
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
+    await sleep(100, new AbortController().signal);
+    const whileHeld = { merges: w.fake.effects.merge, status: w.host.runtime.status(runId)?.status };
+    w.store.release("run-branch");
+    await w.host.runtime.wait(runId);
+
+    expect(whileHeld).toEqual({ merges: 0, status: "running" });
+    expect(w.fake.effects.merge).toBe(1);
   });
 
   it("lets a land-pr run on an unregistered PR merge through the same routes", async () => {

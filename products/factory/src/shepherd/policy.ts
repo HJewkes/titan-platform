@@ -69,6 +69,12 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
   };
 }
 
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, never loosen it. */
+export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
+  const merge = narrower(trusted.merge, other.merge);
+  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat };
+}
+
 function parseRequest(request: unknown): RequestedPolicy {
   const parsed = RequestedPolicySchema.safeParse(request);
   if (!parsed.success) throw new RegistrationRefused(`invalid policy request: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);

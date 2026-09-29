@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], paths: {}, grants: ["some-other-grant"] };
@@ -79,5 +79,23 @@ describe("shepherdGatePolicy", () => {
 
     expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
     expect(() => EffectivePolicySchema.parse({ ...policy, autoMerge: true })).toThrow();
+  });
+});
+
+describe("stricterPolicy", () => {
+  const policy = (merge: EffectivePolicy["merge"], seat: string, fixer = true): EffectivePolicy => ({ merge, mergeMethod: "rebase", fixer, seat });
+
+  it.each([
+    ["auto", "owner-gate", "owner-gate"],
+    ["owner-gate", "auto", "owner-gate"],
+    ["never", "auto", "never"],
+    ["auto", "never", "never"],
+  ] as const)("narrows %s by %s to %s", (trusted, other, merge) => {
+    expect(stricterPolicy(policy(trusted, "t"), policy(other, "o")).merge).toBe(merge);
+  });
+
+  it("names the seat whose mode won, and keeps a fixer only when both allow one", () => {
+    expect(stricterPolicy(policy("auto", "t"), policy("never", "o", false))).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "o" });
+    expect(stricterPolicy(policy("never", "t", false), policy("never", "o")).seat).toBe("t");
   });
 });

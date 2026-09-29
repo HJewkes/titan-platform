@@ -2,7 +2,7 @@ import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { configPath, loadConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
-import { holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { sleep } from "./workflows/land.js";
@@ -20,13 +20,14 @@ export interface FactoryRouteDeps extends LandPrDeps {
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
- * PR never reaches the port's merge, whichever workflow lands it.
+ * PR never reaches the port's merge, whichever workflow lands it; an unbound store refuses the merge.
  */
 export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
+  const held = heldCheck(deps.port, holds);
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds) }).map((route) =>
-    route.match === "merge" ? waitWhileHeld(route, holds, { sleep: pause, pollMs: deps.holdPollMs }) : route,
+    route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
   const shepherd = shepherdRoutes({ port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" });
   const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4)], bind: (db) => deps.store.bind(db) };
