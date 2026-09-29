@@ -1,15 +1,42 @@
 #!/bin/sh
 # titan-egress-scan managed pre-push hook; `titan-egress-scan install-hook` rewrites this file.
-# It resolves the scanner from the pushing worktree and fails closed when it is missing.
+# Every linked worktree shares this hook. It looks for the scanner in the pushing worktree, then in
+# the main checkout, then on PATH, and fails closed when none has it.
 top=$(git rev-parse --show-toplevel) || exit 1
-bin="$top/node_modules/.bin/titan-egress-scan"
-if [ -x "$bin" ]; then
-  exec "$bin" pre-push "$1"
-fi
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) ||
+  common=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd) || common=""
+main=""
+[ -n "$common" ] && main=$(dirname "$common")
+
 # pnpm skips the .bin link for a workspace package that was unbuilt at install time.
-script="$top/node_modules/@titan-design/egress-scan/dist/bin.js"
-if [ -f "$script" ]; then
-  exec node "$script" pre-push "$1"
-fi
-echo "titan-egress-scan: not installed in this worktree; run pnpm install (and pnpm build in titan-platform), then push again" >&2
+try_checkout() {
+  [ -n "$1" ] || return 0
+  if [ -x "$1/node_modules/.bin/titan-egress-scan" ]; then
+    exec "$1/node_modules/.bin/titan-egress-scan" pre-push "$2"
+  fi
+  if [ -f "$1/node_modules/@titan-design/egress-scan/dist/bin.js" ]; then
+    exec node "$1/node_modules/@titan-design/egress-scan/dist/bin.js" pre-push "$2"
+  fi
+}
+
+try_checkout "$top" "$1"
+try_checkout "$main" "$1"
+# Only absolute PATH entries count: a "." or empty entry would run a scanner the pushed tree planted.
+# `command -v` cannot be used, since some shells rewrite a relative hit into an absolute path.
+set -f
+IFS=:
+for dir in $PATH; do
+  case "$dir" in
+    /*) if [ -f "$dir/titan-egress-scan" ] && [ -x "$dir/titan-egress-scan" ]; then
+      exec "$dir/titan-egress-scan" pre-push "$1"
+    fi ;;
+  esac
+done
+{
+  echo "titan-egress-scan: scanner not found, so the push is refused. It looked in:"
+  echo "  1. $top/node_modules (.bin link, then @titan-design/egress-scan/dist/bin.js)"
+  echo "  2. ${main:-the main checkout (unresolved)}/node_modules (same two paths)"
+  echo "  3. PATH (titan-egress-scan)"
+  echo "Fix: run 'pnpm install && pnpm build' in titan-platform, or 'npm i -g @titan-design/egress-scan', then push again."
+} >&2
 exit 1
