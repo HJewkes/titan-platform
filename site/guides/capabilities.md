@@ -135,11 +135,12 @@ Tier 0, `@titan-design/authority@0.1.0`. The authority decision table as data: w
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`, `ActorClass`, `EvidenceKind`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`
+- `conditions`: `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +6 more in the [reference page](/reference/authority)
+- +13 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 

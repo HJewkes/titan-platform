@@ -20,10 +20,14 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
+- A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
+  `request.facts`; otherwise the pair's unconditional rule decides and the reason names
+  what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
 - `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
   any tainted resolver.
-- `policyTableSchema`: rejects a table that misses or repeats an action by actor pair, or
-  names anyone but `owner-terminal` or `owner-remote` as a resolver.
+- `policyTableSchema`: rejects a table that misses or repeats the unconditional rule for
+  an action by actor pair, or names anyone but `owner-terminal` or `owner-remote` as a
+  resolver.
 - `DEFAULT_TABLE`: the approved table, also shipped as `@titan-design/authority/table.json`
   for plain-node hooks.
 

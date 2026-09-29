@@ -61,13 +61,14 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-40 allow, 6 gate and 44 deny rows. Each rule also carries an optional `condition` that
+41 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the conditional
+row MRG-AU-RV described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
 | Action | OT | OR | CO | WK | HD | AU |
 |---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR) |
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV |
 | `release` | allow | deny | gate (OT) | deny | deny | allow |
 | `secret-read` | allow | deny | deny | deny | deny | allow |
 | `untrusted-ingest` | allow | allow | allow | allow | allow | allow |
@@ -82,6 +83,36 @@ the enforcing code should record.
 | `spend-over-cap` | allow | deny | allow | allow | allow | allow |
 | `authority-config` | allow | deny | deny | deny | deny | deny |
 | `human-verb` | allow | gate (OR) | deny | deny | deny | deny |
+
+### Conditional rows
+
+A rule with `when` applies only when every listed condition holds on the request's
+`facts`; otherwise `evaluate` falls back to the pair's unconditional rule and names the
+unmet conditions in the reason. Only an `allow` rule may carry `when`, and conditional rows
+do not count toward totality. `unmetConditions(when, facts)` returns the failing ones.
+
+MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
+
+- the verdict's author is the reviewer the run dispatched, matched on agent id and session id;
+- the verdict is `MERGE` and names the exact head;
+- every required context has a `success` check run at that head from an allowed app;
+- no check run at that head from an allowed app is failed, cancelled or still running;
+- the merge-tree is clean and the repo is not frozen;
+- no changed path is under `.github/workflows/` or `.github/actions/`;
+- the seat grants `merge-on-green-approve`.
+
+A request with no `facts` fails every condition, so it gets the MRG-AU gate. The row
+decides; it does not resolve a hitl gate. hitl refuses an `automation` resolver, so a
+caller evaluates first and opens a gate only when the decision is `gate`.
+
+```ts
+evaluate(DEFAULT_TABLE, {
+  action: "merge", actor: { class: "automation", id: "shepherd" }, tainted: false, subject: {},
+  facts: { merge: { head, resolver, dispatchedReviewer, verdict, requiredContexts, allowedApps: [15368],
+    checkRuns, mergeTreeClean: true, repoFrozen: false, changedPaths, seatGrants } },
+});
+// { verdict: "allow", ruleId: "MRG-AU-RV" } when every condition holds
+```
 
 Spend is monitored, not capped: `spend-over-cap` is allowed for every local actor, with
 the spend recorded and a notice to the owner at a threshold. Only raising a cap remotely
@@ -104,6 +135,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-New in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.
