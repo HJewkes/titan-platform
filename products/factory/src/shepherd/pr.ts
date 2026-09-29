@@ -9,6 +9,7 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { POST_MERGE_STEPS, afterStages, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
@@ -24,6 +25,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "sh-landed", kind: "dispatch" },
   ...WAKE_STEPS,
   ...REVIEW_STEPS,
+  ...POST_MERGE_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -154,6 +156,7 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<void> {
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, target: PrTarget, merged: Extract<LandOutcome, { kind: "merged" }>): Promise<LandOutcome> {
   await step(ctx, "sh-landed", { ...target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
+  await shepherdMainCi(ctx, { ...target, mergeSha: merged.mergeSha }, afterStages(ctx));
   return merged;
 }
 
@@ -186,6 +189,7 @@ export function shepherdRoutes(deps: ShepherdDeps): StepRoute[] {
     codeRoute("sh-landed", deps.now, async (input: object) => input),
     ...wakeRoutes(deps),
     ...reviewRoutes(deps),
+    ...postMergeRoutes(deps),
   ];
 }
 
