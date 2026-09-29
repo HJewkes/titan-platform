@@ -29,7 +29,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { dispatchToAgentChat, execSafe, listAgents, minimalEnv, resolveBinaryPath, resumeArgs, retire } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, minimalEnv, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -49,6 +49,14 @@ dispatchToAgentChat(
 
 const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
 retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
+
+try {
+  resumeAgent("/opt/homebrew/bin/agent-chat", "item-42", dataFence("CI log", logTail), 15_000);
+  // { name: "item-42", lines: ["Resumed item-42 on its existing conversation, ...", ...] }
+} catch (err) {
+  if (!(err instanceof BrokerUnavailableError)) throw err;
+  // nothing reached the broker; retry later
+}
 
 const claude = resolveBinaryPath("/opt/homebrew/bin/claude", "claude");
 const turn = execSafe(claude, resumeArgs(sessionId, "CI is red; see the log"), minimalEnv(), 600_000, worktree);
@@ -73,6 +81,14 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   usage error. A row missing a required field is skipped, not guessed at.
 - `retire` throws `DispatchTimeoutError` (a `DispatchError`) when the CLI hangs: the broker
   may already have retired the agent, so read the roster before retrying.
+- `BrokerUnavailableError` is raised only for agent-chat's own unreachable-broker lines on
+  stderr ("could not reach or start the agent-chat broker", a restart's "was NOT sent", or a
+  bare `connect ECONNREFUSED|ENOENT <socket>`). A refusal that quotes that text elsewhere
+  stays a plain `DispatchError`.
+- Calls set `AGENT_CHAT_NO_AUTOSTART=1`. An agent-chat that does not honour it yet still
+  starts a broker when none is running.
+- `resumeAgent` puts the message in argv, where `ps` shows it. Fence untrusted text with
+  `dataFence` and keep secrets out of it.
 - `resumeArgs` puts the message in argv. Resuming a live agent starts a second process on
   the same transcript; check liveness first.
 
@@ -80,4 +96,6 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 
 Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resumeArgs`
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
-its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd.
+its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
+`configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
+brief) by TP-518.
