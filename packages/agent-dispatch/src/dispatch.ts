@@ -65,7 +65,7 @@ import { ExecError, execSafe, minimalEnv, resolveBinaryPath } from "./exec.js";
 export class DispatchError extends Error {}
 
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
-const PEER_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export const PEER_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export interface DispatchRequest {
   agentChatBinPath: string;

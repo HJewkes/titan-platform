@@ -29,7 +29,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { execSafe, dispatchToAgentChat, minimalEnv, resolveBinaryPath, resumeArgs } from "@titan-design/agent-dispatch";
+import { dispatchToAgentChat, execSafe, listAgents, minimalEnv, resolveBinaryPath, resumeArgs, retire } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -46,6 +46,9 @@ dispatchToAgentChat(
   profiles,
 );
 // { peerName: "item-42" } once the broker accepts the spawn
+
+const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
+retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
 
 const claude = resolveBinaryPath("/opt/homebrew/bin/claude", "claude");
 const turn = execSafe(claude, resumeArgs(sessionId, "CI is red; see the log"), minimalEnv(), 600_000, worktree);
@@ -66,6 +69,10 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 - `execSafe` returns a non-zero exit instead of throwing. It throws `ExecTimeoutError` on a
   timeout, because a timed-out child may already have acted, and `ExecError` when the
   binary cannot start.
+- `listAgents` needs an agent-chat with `agent ls --json`; an older one fails with its
+  usage error. A row missing a required field is skipped, not guessed at.
+- `retire` throws `DispatchTimeoutError` (a `DispatchError`) when the CLI hangs: the broker
+  may already have retired the agent, so read the roster before retrying.
 - `resumeArgs` puts the message in argv. Resuming a live agent starts a second process on
   the same transcript; check liveness first.
 
@@ -73,4 +80,4 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 
 Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resumeArgs`
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
-its copy in a follow-up.
+its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd.
