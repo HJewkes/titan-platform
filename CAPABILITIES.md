@@ -32,6 +32,7 @@ Before adding code:
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
+| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, merges, reruns) over REST through the caller's `gh` login, with every write safe to repeat after a crash. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
 | [`messaging`](#cap-messaging) | 1 | A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel. |
@@ -356,6 +357,23 @@ Key exports:
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
 - +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+
+<a id="cap-github"></a>
+
+### [`github`](https://hjewkes.github.io/titan-platform/reference/github)
+
+Tier 1, `@titan-design/github@0.0.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+
+**Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, merges, reruns) over REST through the caller's `gh` login, with every write safe to repeat after a crash. Use `fakeGitHub()` in tests instead of stubbing `gh`.
+
+Key exports:
+
+- `port`: `GitHubConflictError`, `githubPort`
+- `checks`: `evaluateChecks`, `latestPerName`
+- `gh-cli`: `GhError`, `execGh`, `ghCliWire`
+- `validate`: `GitHubInputError`
+- `fake`: `FakeHttpError`, `fakeGitHub`, `fakeSha`, `successRun`
+- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -712,7 +730,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +74 more in `products/factory/src/index.ts`
+- +50 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

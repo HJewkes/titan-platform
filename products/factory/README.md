@@ -41,38 +41,14 @@ killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prin
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/cli.ts`, `src/bin.ts` | commander wiring for `resume` and `gate resolve` |
-| `src/github/port.ts`, `gh-cli.ts`, `checks.ts`, `fake.ts` | The GitHub port (see below) |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
-## GitHub port: `src/github/`
+## GitHub port
 
-`GitHubWire` is one GitHub call per method, unconditional, the way GitHub itself behaves.
-`ghCliWire()` implements it by running `gh api` with an argv array, never a shell, on the
-caller's existing `gh` login; nothing here reads or passes a token. `githubPort(wire)` puts
-check-then-act on top: every write reads first and reports `{ done: false, skipped }` when its
-effect is already in place, so a step that repeats after a crash repeats no effect.
-
-| Write | Reads first | Guard GitHub enforces |
-| --- | --- | --- |
-| `ensureBranch` | the ref | none |
-| `putFile` | the file on the branch; identical content skips | `sha` = expected blob |
-| `openPr` | open, then merged, PRs for the head | none |
-| `updateBranch` | the PR: merged, head moved or not behind skips | `expected_head_sha` |
-| `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
-| `rerunFailed` | the Actions run; not completed skips | none |
-
-`githubPort` validates every argument before any wire call, because each one becomes part of a
-`gh api` path. It checks five things. The repo is `owner/name` of `[A-Za-z0-9._-]`, and neither
-part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?` or `#`. A sha is
-40 lower-case hex characters. A PR number or run id is a positive safe integer. A content path is
-relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value throws
-`GitHubInputError` naming the field, and `gh` never runs.
-
-`requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
-hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
-carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
-`src/github/fake.ts` is an in-memory `GitHubWire` with effect counters, for tests only.
+The land core talks to GitHub through `@titan-design/github` (`githubPort` over `ghCliWire`,
+and `fakeGitHub` in tests). Its README documents the check-then-act writes and the argument
+validation.
 
 ## Land core: `src/workflows/land.ts`
 

@@ -28,6 +28,7 @@
           "packages/messaging",
           "packages/rpc-client",
           "packages/matrix-bus",
+          "packages/github",
           "packages/agent-dispatch"
         ],
         "2": [
@@ -77,6 +78,7 @@
           "packages/messaging",
           "packages/rpc-client",
           "packages/matrix-bus",
+          "packages/github",
           "packages/agent-dispatch"
         ],
         [

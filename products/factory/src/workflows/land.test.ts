@@ -1,13 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fakeSha, ghCliWire, githubPort, type GhExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE, type GatePolicy } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { fakeSha } from "../github/fake.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
-import { ghCliWire, type GhExec } from "../github/gh-cli.js";
-import { githubPort } from "../github/port.js";
 import { MAX_UPDATE_CYCLES, landRoutes } from "./land.js";
 import type { StepRoute } from "../routed-runner.js";
 

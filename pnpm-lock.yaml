@@ -272,6 +272,8 @@ importers:
 
   packages/evidence: {}
 
+  packages/github: {}
+
   packages/hitl:
     dependencies:
       '@titan-design/authority':
@@ -546,6 +548,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
