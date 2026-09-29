@@ -47,6 +47,8 @@ export interface FactoryHost {
   readonly gates: SqliteGateStore;
   /** Hydrate every unfinished run, drive each until it ends or waits on a human, then release them. */
   resume(): Promise<ResumeReport>;
+  /** Claim every unfinished run whose lease is free and keep driving it; the ids it claimed. Leases stay held until `close()`. */
+  adopt(): Promise<string[]>;
   pendingGates(): PendingGate[];
   close(): void;
 }
@@ -66,6 +68,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     gates,
     pendingGates,
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
+    adopt: () => runtime.hydrate(),
     close: () => {
       runtime.shutdown();
       db.close();
