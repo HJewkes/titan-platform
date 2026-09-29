@@ -114,11 +114,12 @@ trusted collector, never the requesting session, must gather them. Its `changedP
 must list both the source and the target of every rename. `evaluate` reads each
 request field exactly once. It copies the facts with `structuredClone` inside a guard and
 rebuilds the copy as plain data on null-prototype objects, so a polluted `Object.prototype`
-cannot supply a missing fact. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition, and array
-holes become `undefined`. A class instance is copied as its own data, without its
+cannot supply a missing fact. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition, and so does
+a sparse array, because a hole would read through to a possibly polluted prototype. The
+rebuild reads own properties only. A class instance is copied as its own data, without its
 prototype. A value the caller did not set as an own property may make a decision more
 restrictive, never less: an inherited or getter-supplied truthy `tainted` still
-escalates a `taintEscalates` row, and inherited `facts` are ignored. A missing or malformed fact fails its condition rather than
+escalates a `taintEscalates` row, and inherited `facts` are ignored. `evaluate` trusts the request object itself: a Proxy request whose traps report an own `tainted: false` is treated as untainted, because a caller that builds such a request is asserting that value. A missing or malformed fact fails its condition rather than
 throwing: booleans must be exactly `true` or `false`, ids
 non-empty strings compared exactly, and lists real arrays matched by exact element. `allowedApps` is caller-supplied: the package
 pins no app id, so Shepherd must pin GitHub Actions (app id 15368) itself. The row

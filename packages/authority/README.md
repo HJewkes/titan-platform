@@ -25,10 +25,11 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
-  throwing, and array holes become `undefined`. A class instance is copied as its own
+  throwing, and so does a sparse array (a hole would read through to the prototype).
+  The rebuild reads own properties only. A class instance is copied as its own
   data, without its prototype. An inherited or getter-supplied `tainted` still escalates
   a `taintEscalates` row when truthy, but never unlocks a conditional row; inherited
-  `facts` are ignored.
+  `facts` are ignored. `evaluate` trusts the request object itself: a Proxy request whose traps report an own `tainted: false` is treated as untainted, because a caller that builds such a request is asserting that value.
   A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
   `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
   A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a

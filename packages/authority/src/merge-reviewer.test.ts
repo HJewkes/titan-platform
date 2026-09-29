@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { CheckRunFact, MergeFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
 import type { AuthorityRequest } from "./evaluate.js";
@@ -115,9 +115,6 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ...[".github /x", ".github./x", "CODEOWNERS.", "docs/CODEOWNERS ", "docs./CODEOWNERS"].map(
     (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
   ),
-  ["a hole in the changed paths", (f) => { f.changedPaths.length = 2; }, "no-protected-path-change"],
-  ["changed paths that are only a hole", (f) => { f.changedPaths = new Array<string>(1); }, "no-protected-path-change"],
-  ["a required context list that is only a hole", (f) => { f.requiredContexts = new Array<string>(1); }, "required-contexts-green"],
   ["changed paths given as an array-like object", (f) => { setFact(f, "changedPaths", { 0: "docs/guide.md", length: 1 }); }, "no-protected-path-change"],
   ...[".github\u200b/workflows/ci.yml", "CODEOWNERS\n", "docs/CODEOWNERS\u0000", "\uff0egithub/x", ".gitmodules\u007f", "docs/gu\u00efde.md"].map(
     (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
@@ -133,7 +130,6 @@ const MULTI_REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind[]][] =
   ["an allowed-apps list with a stray string entry", (f) => { setFact(f, "allowedApps", [ACTIONS_APP, String(ACTIONS_APP)]); }, ["required-contexts-green", "no-non-green-run"]],
   ["a NaN allowed app matching a NaN run app", (f) => { f.allowedApps = [Number.NaN]; f.checkRuns[0]!.appId = Number.NaN; }, ["required-contexts-green", "no-non-green-run"]],
   ["a nameless required context matched by a nameless run", (f) => { setFact(f, "requiredContexts", [undefined]); Reflect.deleteProperty(f.checkRuns[0]!, "name"); }, ["required-contexts-green", "no-non-green-run"]],
-  ["a sparse required context list with no check runs", (f) => { f.requiredContexts = new Array<string>(1); f.checkRuns = []; }, ["required-contexts-green"]],
   ["allowed apps given as an array-like object", (f) => { setFact(f, "allowedApps", { 0: ACTIONS_APP, length: 1 }); }, ["required-contexts-green", "no-non-green-run"]],
 ];
 
@@ -152,6 +148,11 @@ const UNREADABLE: [string, () => AuthorityRequest][] = [
   ["a Map in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Map()); }))],
   ["a Set in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Set()); }))],
   ["a Date in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Date(0)); }))],
+  ["a hole in the changed paths", () => mergeBy("automation", patched((f) => { f.changedPaths.length = 2; }))],
+  ["changed paths that are only a hole", () => mergeBy("automation", patched((f) => { f.changedPaths = new Array<string>(1); }))],
+  ["a required context list that is only a hole", () => mergeBy("automation", patched((f) => { f.requiredContexts = new Array<string>(1); }))],
+  ["a sparse required context list with no check runs", () => mergeBy("automation", patched((f) => { f.requiredContexts = new Array<string>(1); f.checkRuns = []; }))],
+  ["a hole in the check runs", () => mergeBy("automation", patched((f) => { f.checkRuns.length = 3; }))],
   ["a Proxy over the check runs", () => mergeBy("automation", patched((f) => { f.checkRuns = new Proxy(f.checkRuns, {}); }))],
 ];
 
@@ -325,5 +326,39 @@ describe("a tainted value the request does not own", () => {
   it.each(SOURCES)("does not unlock MRG-AU-RV with tainted false inherited through %s", (source) => {
     const request = inheritingTaint(mergeBy("automation", greenFacts()), source, false);
     expect(evaluate(DEFAULT_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+});
+
+const POLLUTED_HOLES: [string, (facts: MergeFacts) => void, unknown][] = [
+  ["changed paths", (f) => { f.changedPaths = new Array<string>(1); }, "src/ok.ts"],
+  ["required contexts", (f) => { f.requiredContexts = new Array<string>(1); }, "check"],
+  ["check runs", (f) => { f.checkRuns = new Array<CheckRunFact>(1); }, { name: "check", appId: ACTIONS_APP, headSha: HEAD, conclusion: "success" }],
+];
+
+const PROTOTYPES: [string, object][] = [["Object.prototype", Object.prototype], ["Array.prototype", Array.prototype]];
+
+describe("a hole that a polluted prototype would fill", () => {
+  afterEach(() => {
+    for (const [, prototype] of PROTOTYPES) Reflect.deleteProperty(prototype, 0);
+  });
+
+  describe.each(PROTOTYPES)("with %s[0] set", (_name, prototype) => {
+    it.each(POLLUTED_HOLES)("fails every condition on a hole in the %s", (_fact, patch, pollution) => {
+      const facts = patched(patch);
+      Reflect.set(prototype, 0, pollution);
+      expect(unmetConditions(CONDITION_KINDS, { merge: facts })).toEqual([...CONDITION_KINDS]);
+      expect(evaluate(DEFAULT_TABLE, mergeBy("automation", facts))).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    });
+  });
+
+  it("keeps a dense list when Array.prototype[0] is an accessor that swallows writes", () => {
+    const facts = patched((f) => { f.changedPaths = [".github/workflows/ci.yml"]; });
+    Object.defineProperty(Array.prototype, 0, { get: () => "src/ok.ts", set: () => undefined, configurable: true });
+    const unmet = unmetConditions(CONDITION_KINDS, { merge: facts }).join();
+    const decision = evaluate(DEFAULT_TABLE, mergeBy("automation", facts));
+    // vitest's own matchers build arrays by assignment, so the accessor comes off before asserting.
+    Reflect.deleteProperty(Array.prototype, 0);
+    expect(unmet).toBe("no-protected-path-change");
+    expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
   });
 });

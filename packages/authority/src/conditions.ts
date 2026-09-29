@@ -128,17 +128,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const LEAF_TYPES = new Set(["string", "number", "boolean", "undefined"]);
 
-function rebuildArray(value: unknown[], seen: Set<object>): unknown[] {
+// A hole would read through to a possibly polluted prototype, and no fact list has a use for one.
+function rebuildArray(value: unknown[], ancestors: Set<object>): unknown[] {
   const copy: unknown[] = [];
-  for (let index = 0; index < value.length; index += 1) copy[index] = toPlainData(value[index], seen);
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) throw new TypeError("fact lists must not be sparse");
+    const item = toPlainData(value[index], ancestors);
+    Object.defineProperty(copy, index, { value: item, writable: true, enumerable: true, configurable: true });
+  }
   return copy;
 }
 
 // Copies onto null-prototype objects, so a polluted Object.prototype cannot supply a missing fact.
-function rebuildRecord(value: object, seen: Set<object>): Record<string, unknown> {
+function rebuildRecord(value: object, ancestors: Set<object>): Record<string, unknown> {
   if (Object.getPrototypeOf(value) !== Object.prototype) throw new TypeError("facts must be plain objects");
   const copy: Record<string, unknown> = Object.create(null);
-  for (const [key, field] of Object.entries(value)) copy[key] = toPlainData(field, seen);
+  for (const [key, field] of Object.entries(value)) copy[key] = toPlainData(field, ancestors);
   return copy;
 }
 
@@ -154,7 +159,7 @@ function toPlainData(value: unknown, ancestors: Set<object>): unknown {
 /**
  * The merge facts as fresh plain data, read once, or undefined when they are not plain data.
  * structuredClone rejects functions (so no toJSON can speak for a value), Proxies and throwing getters;
- * the rebuild then rejects Map, Set, Date, BigInt and cycles, and turns holes into undefined.
+ * the rebuild then reads own properties only and rejects Map, Set, Date, BigInt, cycles and sparse arrays.
  */
 export function plainMergeFacts(read: () => unknown): MergeFacts | undefined {
   try {
