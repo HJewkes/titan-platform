@@ -1,4 +1,5 @@
 import { evaluate } from "@titan-design/authority";
+import type * as Authority from "@titan-design/authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
@@ -6,7 +7,7 @@ import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, she
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@titan-design/authority")>();
+  const actual = await importOriginal<typeof Authority>();
   return { ...actual, evaluate: vi.fn(actual.evaluate) };
 });
 
