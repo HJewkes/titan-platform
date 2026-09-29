@@ -101,6 +101,28 @@ parseReviewVerdicts("Verdict: CHANGES REQUESTED on acme/widgets#248");
 carries only the parsed fields, never the message text. Resolving `repo`/`repoHint` against
 known PRs and filtering by the sender's profile happen downstream, in `session-graph`.
 
+## Verdict block
+
+`parseVerdictBlock(text)` reads the strict block a reviewer sends when a merge hangs on it:
+
+```text
+Verdict: MERGE
+PR: octo/demo#12
+Head: 0123456789abcdef0123456789abcdef01234567
+```
+
+It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffset }` or
+`{ ok: false, reason }`, where `lineOffset` is the zero-based line of the `Verdict:` line.
+It fails closed. The three lines must be consecutive and exact: `Verdict:` is `MERGE` or
+`FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
+suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is exactly 40
+lowercase hex characters with nothing after it. Each line is trimmed on both sides, so
+indentation and CRLF are harmless, but a quoted line (`> Verdict: MERGE`) is not a block and
+lines inside a ``` or ~~~ fence are skipped. A `Status:` line is ignored. Any second line
+starting `Verdict:` outside a fence is a second block and refuses the message, even when
+identical. Refusal reasons are `no_block`, `multiple_blocks`, `bad_verdict`, `missing_pr_line`,
+`bad_pr`, `missing_head_line` and `bad_head`. It shares no grammar with `parseReviewVerdicts`.
+
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
