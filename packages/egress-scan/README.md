@@ -36,7 +36,9 @@ notices and errors to stderr.
   other users prints a notice and still loads.
 - **`TITAN_EGRESS_REQUIRE_TERMS=1` is the agent-hook switch.** It fails closed: `CI` no longer
   skips the list, and a missing, unreadable or term-less list (only comments and blank lines)
-  exits 2 with a message naming the variable. No other variable turns it back into a pass.
+  exits 2 with a message naming the variable. The value is read case-insensitively and trimmed:
+  `1`, `true`, `yes`, `on` are on; empty, `0`, `false`, `no`, `off` are off; anything else exits 2.
+  No other variable turns it back into a pass.
 - **Allow file.** `.egress-allow` at the repo root. A malformed file exits 2.
 - **Hook.** `install-hook` writes `hooks/pre-push` into the directory
   `git rev-parse --git-path hooks` names: `core.hooksPath` when set, otherwise the common git

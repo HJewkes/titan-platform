@@ -179,7 +179,45 @@ describe("private term list", () => {
     });
 
     expect(result.code).toBe(2);
+    expect(result.err).toContain("TITAN_EGRESS_REQUIRE_TERMS");
   });
+
+  it.each(["1", "true", "TRUE", "yes", "on", " 1", "1 "])(
+    "treats REQUIRE_TERMS=%j as on: exits 2 under CI with no list",
+    (value) => {
+      const repo = newRepo();
+      const base = repo.commit("base");
+      const head = commitFile(repo, "a.md", "clean\n");
+
+      const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
+
+      expect(result.code).toBe(2);
+    },
+  );
+
+  it.each(["", "0", "false", "no", "off", "OFF"])("treats REQUIRE_TERMS=%j as off", (value) => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = commitFile(repo, "a.md", "clean\n");
+
+    const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
+
+    expect(result.code).toBe(0);
+  });
+
+  it.each(["2", "tru", "enabled", "y", "1;"])(
+    "exits 2 on the unrecognised REQUIRE_TERMS value %j instead of reading it as off",
+    (value) => {
+      const repo = newRepo();
+      const base = repo.commit("base");
+      const head = commitFile(repo, "a.md", "clean\n");
+
+      const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
+
+      expect(result.code).toBe(2);
+      expect(result.err).toContain("TITAN_EGRESS_REQUIRE_TERMS");
+    },
+  );
 
   it("flags a planted term by its line number without naming it", () => {
     const repo = newRepo();
