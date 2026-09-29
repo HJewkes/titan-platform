@@ -373,7 +373,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`
-- +43 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +44 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
