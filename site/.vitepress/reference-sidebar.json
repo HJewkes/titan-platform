@@ -58,6 +58,10 @@
         "link": "/reference/agent"
       },
       {
+        "text": "agent-dispatch",
+        "link": "/reference/agent-dispatch"
+      },
+      {
         "text": "agent-lifecycle",
         "link": "/reference/agent-lifecycle"
       },

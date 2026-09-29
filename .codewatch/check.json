@@ -27,7 +27,8 @@
           "packages/agent-lifecycle",
           "packages/messaging",
           "packages/rpc-client",
-          "packages/matrix-bus"
+          "packages/matrix-bus",
+          "packages/agent-dispatch"
         ],
         "2": [
           "packages/session-read",
@@ -75,7 +76,8 @@
           "packages/agent-lifecycle",
           "packages/messaging",
           "packages/rpc-client",
-          "packages/matrix-bus"
+          "packages/matrix-bus",
+          "packages/agent-dispatch"
         ],
         [
           "packages/session-read",

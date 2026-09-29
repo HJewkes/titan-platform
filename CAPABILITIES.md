@@ -29,6 +29,7 @@ Before adding code:
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Placeholder: replace with the situation that should send a reader to agent-dispatch, and name the neighbouring unit for the situations that should not. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
@@ -307,6 +308,18 @@ Key exports:
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
 - `failures`: `classifyResult`, `sumModelCost`
 - +81 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent)
+
+<a id="cap-agent-dispatch"></a>
+
+### [`agent-dispatch`](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
+
+Tier 1, `@titan-design/agent-dispatch@0.0.0`. 
+
+**Use this when:** Placeholder: replace with the situation that should send a reader to agent-dispatch, and name the neighbouring unit for the situations that should not.
+
+Key exports:
+
+No library entry point.
 
 <a id="cap-agent-lifecycle"></a>
 
