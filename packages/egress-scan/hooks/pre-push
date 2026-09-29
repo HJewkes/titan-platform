@@ -21,11 +21,17 @@ try_checkout() {
 
 try_checkout "$top" "$1"
 try_checkout "$main" "$1"
-# A relative or empty PATH entry would resolve inside the pushed tree, which the push can plant.
-found=$(command -v titan-egress-scan 2>/dev/null)
-case "$found" in
-  /*) exec "$found" pre-push "$1" ;;
-esac
+# Only absolute PATH entries count: a "." or empty entry would run a scanner the pushed tree planted.
+# `command -v` cannot be used, since some shells rewrite a relative hit into an absolute path.
+set -f
+IFS=:
+for dir in $PATH; do
+  case "$dir" in
+    /*) if [ -f "$dir/titan-egress-scan" ] && [ -x "$dir/titan-egress-scan" ]; then
+      exec "$dir/titan-egress-scan" pre-push "$1"
+    fi ;;
+  esac
+done
 {
   echo "titan-egress-scan: scanner not found, so the push is refused. It looked in:"
   echo "  1. $top/node_modules (.bin link, then @titan-design/egress-scan/dist/bin.js)"
