@@ -1,7 +1,6 @@
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { expect, vi } from "vitest";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
-import { fakeGitHub, fakeSha, successRun, type FakeGitHub } from "../github/fake.js";
-import { githubPort } from "../github/port.js";
 import { gateEverything, type GatePolicy } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import { LAND_STEPS, land, landRoutes, type LandOutcome } from "../workflows/land.js";

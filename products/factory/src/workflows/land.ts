@@ -1,10 +1,9 @@
+import { evaluateChecks, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord } from "../evidence.js";
 import type { GatePolicy } from "../gate-policy.js";
-import { evaluateChecks } from "../github/checks.js";
-import type { GitHubPort, MergeMethod, PullRequest, RepoSlug } from "../github/port.js";
 import { redactForEvidence } from "../redact.js";
 import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
 import { CiSnapshotResult, LandRulesResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
