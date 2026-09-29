@@ -1,5 +1,12 @@
 # @titan-design/style-analyzer
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [8003e54]
+  - @titan-design/style-profile@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

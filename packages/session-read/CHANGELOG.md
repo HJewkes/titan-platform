@@ -1,5 +1,27 @@
 # @titan-design/session-read
 
+## 0.6.0
+
+### Minor Changes
+
+- 2983591: session-read: export `SessionIdentityError`, a `TypeError` subclass with a stable `code` field (`"foreign_native_session"` or `"multiple_parent_sessions"`), thrown instead of a bare `TypeError` when a Claude transcript record belongs to a different native session or a sidechain window names multiple parent sessions. Both message texts are unchanged; consumers matching them by prefix keep working, and can now switch to `instanceof SessionIdentityError` plus `.code` (TP-422).
+- b1e1c70: Add `parseReviewVerdicts`, a pure parser for approve / changes-requested verdicts in a
+  `chat_send` message, and the `review_verdict` event: `readToolUse` emits one per parsed
+  verdict from any tool whose name ends in `__chat_send`, carrying the verdict, the PR
+  reference (an exact repo, a repo hint, or neither) and the tool call's `cwdRepo`. No message
+  text or excerpt is stored on the event. Resolving the repo and filtering by sender profile
+  are session-graph's job.
+- d019c72: session-read: add `assignedTaskIds({ agentName, brief, isKnown })`, which reads the task ids a spawned session was assigned from its agent name and spawn brief and names the rule that found them (`name`, `name-over-brief`, `brief-anchor`, `brief-paragraph` or `none`). Also export `orientationEnd(brief)`, the offset where an agent-chat orientation block ends and the assignment starts, and `ORIENTATION_HEADER`. Pure functions, no I/O; existing exports are unchanged (TP-407).
+- c7d5b1a: The `review_verdict` event carries `ordinal`, the verdict's index among those parsed from its tool use's message, so a consumer can key verdicts stably across chunk boundaries.
+
+### Patch Changes
+
+- 15eaffa: session-read: a `cost-state` line carries no timestamp of its own; `LineReader` now stamps it (and any other timestamp-less line) with the last preceding line's timestamp instead of an empty string (TP-346).
+- d0ce38a: session-read's `SessionUsageAccumulator` and workflow's durable-harness usage now select measurements with agent-protocol's `foldUsage` and no longer carry their own copies of the fold. Results are unchanged (TP-423).
+- Updated dependencies [b8a5614]
+- Updated dependencies [d0ce38a]
+  - @titan-design/agent-protocol@0.3.0
+
 ## 0.5.1
 
 ### Patch Changes

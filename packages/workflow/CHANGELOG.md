@@ -1,5 +1,26 @@
 # @titan-design/workflow
 
+## 0.5.0
+
+### Minor Changes
+
+- c6bb111: Key every memoized call by step id and call index, and record the method that wrote it. `seed` now counts toward the shared per-step counter, so `seed("x")` followed by `assisted("x")` opens a gate instead of returning the seed's result, and a second `seed("x")` runs as a new call. A replay that reaches a recorded call through a different method fails with the new `WorkflowNonDeterminismError`. `StepResult` gains an optional `operation` field. Runs stored by 0.4 and earlier keep their old keys and resume unchanged.
+- 3085355: Add `routedRunner(routes)`: one runner that sends each dispatch step to the runner its route names, with a per-route restart rule. `repeat` redispatches a step interrupted by a crash; `park` leaves the run `recovery_required`. `assertRoutes(workflowName, stepIds)` fails registration on an unrouted step id, and two routes with the same match fail at construction.
+- 8e2d31f: `WorkflowRuntime.signal(runId, stepId, payload, resolvedBy)` forwards an optional `GateResolver` to the gate store, which records it on the gate. A store that refuses the resolver throws `GateResolverRefused` from `signal`, and the run stays paused with its gate pending. Add `gateResolverMigration(n)` from `@titan-design/hitl/sqlite` to your migration list, then pass a resolver to every `signal`: after that migration, a signal with no resolver is refused by the database.
+- d7f09e5: Add typed dispatch output: `ctx.dispatch(stepId, template, { schema })` forwards the zod schema to the runner as `StepRunInput.outputSchema`, parses the output as JSON, and returns it as `StepResult.data` typed as the schema's output. An invalid payload throws the non-retryable `StepOutputInvalidError` after one runner call. Undeclared top-level `titan.trace.*` keys are carried into `data`, which is bounded by the new `maxStepDataBytes` runtime option (default 64 KiB). Replay re-derives `data` from the recorded output and fails a drifted run with `WorkflowSchemaDriftError`.
+
+### Patch Changes
+
+- d0ce38a: session-read's `SessionUsageAccumulator` and workflow's durable-harness usage now select measurements with agent-protocol's `foldUsage` and no longer carry their own copies of the fold. Results are unchanged (TP-423).
+- f160116: Count every attempt's cost in `StepResult.usage`. A step that fails and then succeeds on retry now reports the failed attempts' cost too, and the active step persists that cost as the new optional `ActiveStep.priorUsage` field so a resumed run counts each attempt once. `durableHarnessRunner` now reports `usage` on success from the harness's measurements, and a legacy `attach` recovery keeps the usage its runner reported.
+- 46dfd6c: `agentRunner` forwards a step's `schema` to the agent as its output schema, ahead of `defaults.outputSchema`, and a `schema_invalid` agent failure now ends as a non-retryable `StepOutputInvalidError` through `agentRunner`, `idempotentRunner` and `routedRunner`.
+- Updated dependencies [b8a5614]
+- Updated dependencies [629cdd9]
+- Updated dependencies [d0ce38a]
+  - @titan-design/agent-protocol@0.3.0
+  - @titan-design/hitl@0.3.0
+  - @titan-design/agent@0.4.3
+
 ## 0.4.3
 
 ### Patch Changes

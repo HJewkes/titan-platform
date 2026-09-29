@@ -1,5 +1,17 @@
 # @titan-design/style-checker
 
+## 0.4.0
+
+### Minor Changes
+
+- 8003e54: The ESLint generator now calls `buildNamingConvention` instead of the deprecated `buildNamingConventionRule`, so a naming value typescript-eslint has no format for (e.g. `kebab-case`) is reported in the checker's `skippedRules` output with a reason, instead of being silently dropped. `generateEslintConfig` now returns `{ entries, skippedRules }` instead of a bare array.
+
+### Patch Changes
+
+- Updated dependencies [8003e54]
+  - @titan-design/style-profile@0.3.0
+  - @titan-design/style-analyzer@0.1.2
+
 ## 0.3.1
 
 ### Patch Changes

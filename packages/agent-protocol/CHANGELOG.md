@@ -1,5 +1,12 @@
 # @titan-design/agent-protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- b8a5614: Add the `./trace` subpath: `titan.trace/v1` zod schemas for run, attempt, call, gate, artifact and cost records plus the envelope and `TranscriptSpan`, strict and loose parsers, the id helpers `commitRef`, `policyGateId` and `costId` with id patterns, `TRACE_FIELD_PRIVACY` and `redactTraceRecord`, and fixtures for a synthetic documentation run. `zod` 4 is an optional peer dependency; the root entry is unchanged and never imports it.
+- d0ce38a: agent-protocol: export `foldUsage`, one pure fold that picks the `UsageMeasurement`s describing distinct spend (deltas deduplicated by `responseId` and superseding snapshots; the highest-sequence snapshot per scope, scope ID and epoch; a conversation snapshot superseding other scopes in its epoch) (TP-423).
+
 ## 0.2.0
 
 ### Minor Changes
