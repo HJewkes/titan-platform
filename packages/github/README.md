@@ -20,6 +20,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `updateBranch` | the PR: merged, head moved or not behind skips | `expected_head_sha` |
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
+| `upsertComment` | the PR's comments; one containing the marker skips | none |
 
 `githubPort` validates every argument before any wire call, because each one becomes part of a
 `gh api` path. It checks five things. The repo is `owner/name` of `[A-Za-z0-9._-]`, and neither
@@ -53,6 +54,12 @@ reads `x-ratelimit-*`; below 500 remaining core calls, each call waits the time 
 reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actions job log.
 `listOpenPrs(repo, headPrefix?)` lists open PRs; list rows carry no `behind` or
 `mergeableState`.
+
+`listPrFiles(repo, pr)` returns every changed file of a PR, all pages, with `previousPath` on a
+rename. `compareFiles(repo, base, head)` returns `{ mergeBaseSha, files }` from the compare
+endpoint. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
+when none contains `marker`, an HTML comment the caller builds and also puts in `body`. Each
+read carries the same ETag cache and rate budget as the others.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 

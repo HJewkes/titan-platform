@@ -1,4 +1,4 @@
-export type { CheckRun, Commit, GitHubPort, GitHubWire, HeadRef, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
+export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, MergeMethod, OpenPrRequest, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
 export { GitHubConflictError, githubPort } from "./port.js";
 export type { ChecksVerdict } from "./checks.js";
 export { evaluateChecks, isPassing, latestPerName } from "./checks.js";

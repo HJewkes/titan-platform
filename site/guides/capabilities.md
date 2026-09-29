@@ -374,7 +374,7 @@ Key exports:
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`, `execGh`
 - `gh-cli`: `ghCliWire`
-- +33 more in the [reference page](/reference/github)
+- +36 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 

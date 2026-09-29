@@ -70,6 +70,18 @@ await port.deleteRef("o/r", { branch: "main", repo: "o/r" });                  /
 await port.deleteRef("o/r", { branch: pr.headRef, repo: pr.headRepo });       // { done: true }
 ```
 
+Reading a PR's changes and leaving one evidence comment, on the fake wire:
+
+```ts
+fake.prFiles.set(pr.number, [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]);
+await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]
+await port.compareFiles("o/r", "main", "feat/x"); // { mergeBaseSha, files: [] }
+
+const marker = "<!-- shepherd:evidence -->";
+await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: true }
+await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: false, skipped: "exists" }
+```
+
 ## What it deliberately does not do
 
 - No GraphQL and no `gh pr view`. Every call is `gh api` against REST.
@@ -104,6 +116,10 @@ await port.deleteRef("o/r", { branch: pr.headRef, repo: pr.headRepo });       //
   view until their next response updates it.
 - `listOpenPrs` rows carry `behind: false` and `mergeableState` from the list, not computed
   values. Call `getPr` before deciding anything from them.
+- `upsertComment` never edits. A comment that already holds the marker stays as it is, so put
+  the marker in `body` or the next call posts again.
+- `compareFiles` lists new paths only; a rename appears under its new name. Use `listPrFiles`
+  when the old path matters.
 - `mergeSha` on an open PR is GitHub's test merge. It means the merge commit only once
   `merged` is true.
 
@@ -112,4 +128,5 @@ await port.deleteRef("o/r", { branch: pr.headRef, repo: pr.headRepo });       //
 Extracted unchanged from `products/factory/src/github/` (TP-458), with its tests. The factory
 now depends on this package and its copy is deleted. `appId`, `headRepo`, `jobLogTail`,
 `deleteRef`, `listOpenPrs`, the ETag cache, the rate budget and `mergeReadiness` were added for
-Shepherd, the factory's PR shepherding workflow (TP-459).
+Shepherd, the factory's PR shepherding workflow (TP-459). `listPrFiles`, `compareFiles` and
+`upsertComment` followed for its conflict and evidence steps (TP-517).

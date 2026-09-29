@@ -119,7 +119,9 @@ const ROUTES: [RegExp, unknown][] = [
   [/pulls\/7\/update-branch$/, {}],
   [/pulls\/7$/, pull],
   [/pulls$/, [pull]],
-  [/compare\//, { behind_by: 1 }],
+  [/compare\//, { behind_by: 1, merge_base_commit: { sha: H2 }, files: [] }],
+  [/issues\/7\/comments$/, []],
+  [/pulls\/7\/files$/, []],
   [/git\/ref\/heads\//, { object: { sha: H1 } }],
   [/git\/refs/, undefined],
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
@@ -166,6 +168,9 @@ describe("gh api adapter, REST only", () => {
       updateBranch: () => port.updateBranch(REPO, 7, H1),
       merge: () => port.merge(REPO, 7, H1, "squash"),
       rerunFailed: () => port.rerunFailed(REPO, 55),
+      listPrFiles: () => port.listPrFiles(REPO, 7),
+      compareFiles: () => port.compareFiles(REPO, "main", "topic"),
+      upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
     };
 
     for (const call of Object.values(calls)) await call();

@@ -1,6 +1,6 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { execGh, type GhExec } from "./exec.js";
-import type { CheckRun, Commit, GitHubWire, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
 import { restCaller, type Rest } from "./rest.js";
 
 export interface GhCliOptions {
@@ -38,6 +38,10 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
     merge: async (repo, number, sha, method) => ({ sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, { sha, merge_method: method })).sha }),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
+    listPrFiles: (repo, number) => listPrFiles(api, repo, number),
+    compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
+    listIssueComments: (repo, number) => api.pages(`repos/${repo}/issues/${number}/comments`, { per_page: "100" }, (page: IssueComment[]) => page.map(({ id, body }) => ({ id, body }))),
+    createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
   };
 }
 
@@ -131,4 +135,30 @@ async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<Chec
 function workflowRunIdOf(url: string | null): number | null {
   const match = url ? /\/actions\/runs\/(\d+)/.exec(url) : null;
   return match ? Number(match[1]) : null;
+}
+
+interface GhPrFile {
+  filename: string;
+  previous_filename?: string;
+  status: string;
+}
+
+async function listPrFiles(api: Rest, repo: string, number: number): Promise<PrFile[]> {
+  const files = await api.pages(`repos/${repo}/pulls/${number}/files`, { per_page: "100" }, (page: GhPrFile[]) => page);
+  return files.map((file) => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status }));
+}
+
+interface GhComparePage {
+  merge_base_commit: { sha: string };
+  files?: { filename: string }[];
+}
+
+/** Every page repeats the merge base; the files are split across pages. */
+async function compareFiles(api: Rest, repo: string, base: string, head: string): Promise<CompareResult> {
+  let mergeBaseSha = "";
+  const files = await api.pages(`repos/${repo}/compare/${base}...${head}`, { per_page: "100" }, (page: GhComparePage) => {
+    mergeBaseSha = page.merge_base_commit.sha;
+    return (page.files ?? []).map((file) => file.filename);
+  });
+  return { mergeBaseSha, files };
 }

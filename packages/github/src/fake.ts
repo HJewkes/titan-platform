@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import type { CheckRun, Commit, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CompareResult, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -33,6 +33,12 @@ export interface FakeGitHub {
   /** Job id to full log text, for `getJobLog`. */
   jobLogs: Map<number, string>;
   files: Map<string, { content: string; blobSha: string }>;
+  /** PR number to its changed files, for `listPrFiles`. */
+  prFiles: Map<number, PrFile[]>;
+  /** `base...head` to the compare result; an unset pair compares as no change. */
+  compares: Map<string, CompareResult>;
+  /** PR number to its issue comments, in posting order. */
+  comments: Map<number, IssueComment[]>;
 }
 
 export class FakeHttpError extends Error {
@@ -72,6 +78,9 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
     files: new Map(),
+    prFiles: new Map(),
+    compares: new Map(),
+    comments: new Map(),
     addPr(fields) {
       const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
       prs.set(pr.number, pr);
@@ -127,6 +136,19 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       record("rerunFailedJobs", undefined);
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
+    },
+    listPrFiles: async (_repo, number) => record("listPrFiles", (fake.prFiles.get(number) ?? []).map((file) => ({ ...file }))),
+    compareFiles: async (_repo, base, head) => {
+      const result = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
+      return record("compareFiles", { ...result, files: [...result.files] });
+    },
+    listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
+    createComment: async (_repo, number, body) => {
+      record("createComment", undefined);
+      const list = fake.comments.get(number) ?? [];
+      const comment = { id: 5000 + ++counter, body };
+      fake.comments.set(number, [...list, comment]);
+      return { id: comment.id };
     },
   };
   return fake;

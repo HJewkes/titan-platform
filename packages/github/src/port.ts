@@ -1,5 +1,5 @@
 import { latestPerName } from "./checks.js";
-import { checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
+import { checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -71,6 +71,24 @@ export interface HeadRef {
   repo: RepoSlug | null;
 }
 
+/** One changed file of a PR; a rename carries the path it came from. */
+export interface PrFile {
+  path: string;
+  previousPath?: string;
+  status: string;
+}
+
+export interface CompareResult {
+  mergeBaseSha: string;
+  /** Paths changed between the merge base and `head`. */
+  files: string[];
+}
+
+export interface IssueComment {
+  id: number;
+  body: string;
+}
+
 export interface OpenPrRequest {
   head: string;
   base: string;
@@ -101,6 +119,10 @@ export interface GitHubWire {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<{ sha: string }>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+  listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
+  createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -133,6 +155,12 @@ export interface GitHubPort {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+  /** Every changed file of the PR, all pages; `previousPath` is set on a rename. */
+  listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  /** The merge base of `base` and `head`, and every path changed since it. */
+  compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** Lists the PR's comments first; one containing `marker` skips as `exists`. The body should carry the marker. */
+  upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
 }
 
 /** A write whose precondition no longer holds, such as a blob that changed under an edit. */
@@ -165,6 +193,9 @@ export function githubPort(wire: GitHubWire): GitHubPort {
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
+    listPrFiles: async (repo, number) => wire.listPrFiles(repoOf(repo), pr(number)),
+    compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
+    upsertComment: async (repo, number, marker, body) => upsertComment(wire, repoOf(repo), pr(number), checkMarker(marker), body),
   };
 }
 
@@ -242,6 +273,12 @@ async function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number): Pro
   if (status !== "completed") return { done: false, skipped: "in-progress" };
   await wire.rerunFailedJobs(repo, runId);
   return { done: true };
+}
+
+async function upsertComment(wire: GitHubWire, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
+  const existing = (await wire.listIssueComments(repo, number)).find((comment) => comment.body.includes(marker));
+  if (existing) return { id: existing.id, done: false, skipped: "exists" };
+  return { id: (await wire.createComment(repo, number, body)).id, done: true };
 }
 
 function closedSkip(pr: PullRequest): SkipReason | undefined {
