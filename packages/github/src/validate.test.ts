@@ -26,6 +26,7 @@ const refusals: [string, string, (port: GitHubPort) => Promise<unknown>][] = [
   ["branch", "a leading slash", (port) => port.requiredChecks(REPO, "/main")],
   ["branch", "a control character", (port) => port.getHeadSha(REPO, "topic\nx")],
   ["branch", "a fragment", (port) => port.getHeadSha(REPO, "topic#x")],
+  ["branch", "a percent escape in a deleted branch", (port) => port.deleteRef(REPO, { branch: "topic/%2e%2e/main", repo: REPO })],
   ["head", "a query in the head", (port) => port.findPr(REPO, "topic?state=all")],
   ["base", "a bad base", (port) => port.openPr(REPO, { head: "topic", base: "ma..in", title: "t", body: "b" })],
   ["baseSha", "a short base sha", (port) => port.ensureBranch(REPO, "topic", "abc123")],

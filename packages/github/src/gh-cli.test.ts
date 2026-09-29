@@ -73,8 +73,8 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
   });
 
-  it("follows the next-page link for check runs and takes the Actions run id from the job URL and the app id from app", async () => {
-    const run = (id: number, name: string, app: number) => ({ id, name, status: "completed", conclusion: "success", started_at: "2026-01-01T00:00:00Z", details_url: `https://github.com/octo/demo/actions/runs/55/job/${id}`, html_url: null, app: { id: app } });
+  it("follows the next-page link for check runs and reads the run id from the job URL, the app id and the head sha", async () => {
+    const run = (id: number, name: string, app: number) => ({ id, name, status: "completed", conclusion: "success", started_at: "2026-01-01T00:00:00Z", head_sha: H1, details_url: `https://github.com/octo/demo/actions/runs/55/job/${id}`, html_url: null, app: { id: app } });
     const next = { link: '<https://api.github.com/repositories/9/commits/x/check-runs?per_page=100&page=2>; rel="next"' };
     const gh = scriptedGh({
       "page=2": included(200, {}, { check_runs: [run(2, "dag-check", 999)] }),
@@ -83,7 +83,7 @@ describe("gh api adapter", () => {
 
     const runs = await ghCliWire(gh.exec).listCheckRuns(REPO, H1);
 
-    expect(runs.map((one) => [one.name, one.workflowRunId, one.appId])).toEqual([["validate", 55, 15368], ["dag-check", 55, 999]]);
+    expect(runs.map((one) => [one.name, one.workflowRunId, one.appId, one.headSha])).toEqual([["validate", 55, 15368, H1], ["dag-check", 55, 999, H1]]);
     expect(gh.calls[1]?.args).toEqual(["api", "-i", "-X", "GET", "repositories/9/commits/x/check-runs?per_page=100&page=2"]);
   });
 

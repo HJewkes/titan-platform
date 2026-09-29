@@ -22,7 +22,7 @@ export interface FakeGitHub {
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
   /** The live record, so a test can move the world (behind, mergeable_state) between steps. */
   pr(number: number): PullRequest;
-  /** Stored as given; picking the latest run per name is the port's job. */
+  /** Stored as given, except a run with no `headSha` is stamped with `sha`; picking the latest run per name is the port's job. */
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
@@ -49,8 +49,8 @@ export function fakeSha(tag: string): string {
   return createHash("sha1").update(tag).digest("hex");
 }
 
-export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success", appId = GITHUB_ACTIONS_APP_ID): CheckRun {
-  return { id, name, status: "completed", conclusion, startedAt, appId, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
+export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success", appId = GITHUB_ACTIONS_APP_ID, headSha = ""): CheckRun {
+  return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
 }
 
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
@@ -78,7 +78,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return { ...pr };
     },
     pr: (number) => mustPr(prs, number),
-    setRuns: (sha, list) => runs.set(sha, list),
+    setRuns: (sha, list) => runs.set(sha, list.map((run) => ({ ...run, headSha: run.headSha || sha }))),
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },

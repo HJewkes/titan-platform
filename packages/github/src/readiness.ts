@@ -14,7 +14,7 @@ export interface MergeBlocker {
 export interface MergeReadinessInput {
   pr: PullRequest;
   rules: RequiredChecks;
-  /** Every check run on `pr.headSha`, from any app; only `requiredApps` count. */
+  /** Check runs from any app at any sha; only runs from `requiredApps` at `pr.headSha` count. */
   runs: readonly CheckRun[];
   requiredApps: readonly number[];
   /** The head the approval named; null when nothing is approved. */
@@ -51,16 +51,24 @@ function approvalBlockers(pr: PullRequest, approvedHead: string | null): MergeBl
   return [];
 }
 
-/** A run from any other app never satisfies a context, and a non-green run from an allowed app blocks even when not required. */
+/**
+ * Only runs from an allowed app at the PR head count, as in authority's MRG-AU-RV; among those,
+ * any latest run that is not passing blocks, required or not, finished or not.
+ */
 function checkBlockers({ pr, rules, runs, requiredApps }: MergeReadinessInput): MergeBlocker[] {
   if (pr.merged || pr.state === "closed") return [];
-  const allowed = latestPerName(runs.filter((run) => run.appId !== null && requiredApps.includes(run.appId)));
-  const verdict = evaluateChecks(rules.contexts, allowed);
+  const counted = latestPerName(runs.filter((run) => run.headSha === pr.headSha && run.appId !== null && requiredApps.includes(run.appId)));
+  const verdict = evaluateChecks(rules.contexts, counted);
   const required = new Set(rules.contexts);
-  const optionalRed = allowed.filter((run) => !required.has(run.name) && run.status === "completed" && !isPassing(run));
+  const optional = counted.filter((run) => !required.has(run.name) && !isPassing(run));
   const apps = requiredApps.join(", ") || "none";
   return [
-    ...verdict.pending.map((name) => ({ reason: "check-pending" as const, detail: `${name} has no completed run from app ${apps}` })),
-    ...[...verdict.failing, ...optionalRed].map((run) => ({ reason: "check-failed" as const, detail: `${run.name} concluded ${run.conclusion ?? "none"} (${run.url})` })),
+    ...verdict.pending.map((name) => ({ reason: "check-pending" as const, detail: `${name} has no completed run at ${pr.headSha} from app ${apps}` })),
+    ...verdict.failing.map(failedBlocker),
+    ...optional.map((run) => (run.status === "completed" ? failedBlocker(run) : { reason: "check-pending" as const, detail: `${run.name} is ${run.status} at ${pr.headSha}` })),
   ];
+}
+
+function failedBlocker(run: CheckRun): MergeBlocker {
+  return { reason: "check-failed", detail: `${run.name} concluded ${run.conclusion ?? "none"} (${run.url})` };
 }

@@ -106,6 +106,7 @@ interface GhCheckRun {
   status: string;
   conclusion: string | null;
   started_at: string | null;
+  head_sha: string;
   details_url: string | null;
   html_url: string | null;
   app?: { id: number } | null;
@@ -119,6 +120,7 @@ async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<Chec
     status: run.status,
     conclusion: run.conclusion,
     startedAt: run.started_at,
+    headSha: run.head_sha,
     appId: run.app?.id ?? null,
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
     url: run.html_url ?? run.details_url ?? "",

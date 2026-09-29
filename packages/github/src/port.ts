@@ -42,6 +42,8 @@ export interface CheckRun {
   status: string;
   conclusion: string | null;
   startedAt: string | null;
+  /** The commit the run checked; a run at any other sha says nothing about this head. */
+  headSha: string;
   /** The GitHub App that posted the run; a required context counts only from an allowed app. */
   appId: number | null;
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
