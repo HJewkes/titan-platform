@@ -48,6 +48,7 @@ describe("resolveEffectivePolicy", () => {
     ["a string fixer", { fixer: "false" }],
     ["a non-integer priority", { priority: 1.5 }],
     ["an empty reviewer", { reviewer: "" }],
+    ["a whitespace reviewer", { reviewer: " " }],
     ["an unknown key", { merge: "never", autoMerge: true }],
     ["a request that is not an object", "never"],
   ])("refuses a request with %s instead of passing it through", (_case, requested) => {

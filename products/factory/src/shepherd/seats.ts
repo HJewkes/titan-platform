@@ -3,29 +3,41 @@ import { basename, join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
-const SeatRepoSchema = z.object({ path: z.string().min(1).optional(), remote: z.string().optional() });
+/** A GitHub `owner/name` with no URL, `.git` suffix, all-dot name, extra path segment or whitespace. */
+export function isRepoKey(repo: string): boolean {
+  return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo) && !/\.git$/i.test(repo) && !/\/\.+$/.test(repo);
+}
+
+/** Every repo reference is canonicalised here, so denies and lookups compare one form. */
+const RemoteSchema = z
+  .string()
+  .refine(isRepoKey, "must be a bare owner/name")
+  .transform((remote) => remote.toLowerCase());
+
+const RepoPathSchema = z
+  .string()
+  .min(1)
+  .refine((path) => !path.split("/").some((segment) => segment === "." || segment === ".."), "must not contain . or .. segments")
+  .transform((path) => path.replace(/\/+/g, "/").replace(/(.)\/$/, "$1"));
+
+const SeatRepoSchema = z.object({ path: RepoPathSchema.optional(), remote: RemoteSchema.optional() });
 
 /** The autonomy-seat/v1 frontmatter fields Shepherd reads; every other seat field is ignored. */
 const SeatFileSchema = z.object({
   schema: z.literal("autonomy-seat/v1"),
   name: z.string().min(1),
   repos: z.array(SeatRepoSchema).default([]),
-  deny_repos: z.array(z.string()).default([]),
+  deny_repos: z.array(RepoPathSchema).default([]),
   grants_extra: z.array(z.string()).default([]),
 });
 
-const CharterSchema = z.object({ hard_stops: z.array(z.string()).default([]) });
-
-/** A GitHub `owner/name` with no URL, `.git` suffix, extra path segment or whitespace. */
-export function isRepoKey(repo: string): boolean {
-  return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo) && !/\.git$/i.test(repo);
-}
+const CharterSchema = z.object({ schema: z.literal("autonomy-charter/v1"), hard_stops: z.array(z.string()) });
 
 export interface Seat {
   name: string;
   /** `owner/name` remotes this seat owns. */
   remotes: string[];
-  /** Lowercased remote to the seat's local checkout path, as written (`~` unexpanded); the cwd for spawns. */
+  /** Lowercased remote to the seat's normalised local checkout path (`~` unexpanded); the cwd for spawns. */
   paths: Record<string, string>;
   grants: string[];
 }
@@ -54,11 +66,12 @@ export function frontmatter(text: string): unknown {
   return match ? parse(match[1]!) : undefined;
 }
 
-/** Reads every seat file plus the charter; a missing seats directory is an empty book, any invalid file throws. */
+/** Any invalid seat file or charter throws; a deny path unknown to every seat denies its basename under any owner. */
 export function loadSeatBook(sources: SeatSources): SeatBook {
   const files = readSeatFiles(sources.seatsDir);
-  const seats = files.map(toSeat);
-  const denied = files.flatMap(deniedRemotes);
+  const index = pathIndex(files);
+  const seats = files.map(({ data }) => toSeat(data));
+  const denied = files.flatMap(({ data }) => data.deny_repos.map((path) => index.get(path) ?? basename(path).toLowerCase()));
   const stops = charterHardStops(sources.charterPath);
   for (const [stop, remotes] of Object.entries(sources.hardStopRepos ?? {})) {
     if (stops.includes(stop)) denied.push(...remotes.map((r) => r.toLowerCase()));
@@ -72,7 +85,7 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   const remote = repo.toLowerCase();
   const name = remote.split("/")[1]!;
   if (book.denied.includes(remote) || book.denied.includes(name)) return { kind: "denied", reason: `${repo} is on a seat deny list or a charter hard stop` };
-  const seats = book.seats.filter((s) => s.remotes.some((r) => r.toLowerCase() === remote));
+  const seats = book.seats.filter((s) => s.remotes.includes(remote));
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
 }
 
@@ -85,12 +98,31 @@ function narrowest(seats: Seat[]): Seat {
 
 type SeatFile = z.infer<typeof SeatFileSchema>;
 
-function readSeatFiles(dir: string | undefined): SeatFile[] {
+interface NamedSeatFile {
+  file: string;
+  data: SeatFile;
+}
+
+function readSeatFiles(dir: string | undefined): NamedSeatFile[] {
   if (!dir || !existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .sort()
-    .map((f) => parseFrontmatter(join(dir, f), "seat file", SeatFileSchema));
+    .map((f) => ({ file: join(dir, f), data: parseFrontmatter(join(dir, f), "seat file", SeatFileSchema) }));
+}
+
+/** One path-to-remote map across all seats; a path two seats bind to different remotes is a conflict. */
+function pathIndex(files: NamedSeatFile[]): Map<string, string> {
+  const owners = new Map<string, { remote: string; file: string }>();
+  for (const { file, data } of files) {
+    for (const { path, remote } of data.repos) {
+      if (!path || !remote) continue;
+      const seen = owners.get(path);
+      if (seen && seen.remote !== remote) throw new SeatBookInvalid(`path ${path} maps to ${seen.remote} in ${seen.file} and to ${remote} in ${file}`);
+      owners.set(path, { remote, file });
+    }
+  }
+  return new Map([...owners].map(([path, { remote }]) => [path, remote]));
 }
 
 function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): T {
@@ -106,16 +138,8 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
 
 function toSeat(data: SeatFile): Seat {
   const remotes = data.repos.flatMap((r) => (r.remote ? [r.remote] : []));
-  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote.toLowerCase(), r.path]] : [])));
+  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path]] : [])));
   return { name: data.name, remotes, paths, grants: data.grants_extra };
-}
-
-/** A deny entry is a path: the same seat's `repos[]` maps it to a remote, else its basename stands for the repo name. */
-function deniedRemotes(data: SeatFile): string[] {
-  return data.deny_repos.map((path) => {
-    const remote = data.repos.find((r) => r.path === path)?.remote;
-    return (remote ?? basename(path)).toLowerCase();
-  });
 }
 
 /** No configured charter means no hard stops; a configured one must exist and parse. */

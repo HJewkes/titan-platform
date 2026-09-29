@@ -45,13 +45,17 @@ describe("loadConfig", () => {
   });
 
   it("reads the repos each charter hard stop forbids", () => {
-    const env = xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": ["acme/dotfiles"] } } });
+    const env = xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": ["acme/dotfiles"] } } });
 
     expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
   });
 
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
-    expect(() => loadConfig(configPath(xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
+  });
+
+  it("rejects hard-stop repos configured without a charter path", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": ["acme/dotfiles"] } } })))).toThrow(/charterPath/);
   });
 
   it("rejects an empty shepherd seats directory", () => {

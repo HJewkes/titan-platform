@@ -24,6 +24,10 @@ function writeCharter(fields: string): string {
   return writeCharterBody(`---\nschema: autonomy-charter/v1\n${fields}---\n`);
 }
 
+function seat(name: string, fields: string): string {
+  return `---\nschema: autonomy-seat/v1\nname: ${name}\n${fields}---\n`;
+}
+
 function writeSeats(files: Record<string, string>): string {
   const dir = join(scratch(), "seats");
   mkdirSync(dir);
@@ -96,11 +100,38 @@ describe("loadSeatBook", () => {
     expect(lookupSeat(book, "acme/gadgets").kind).toBe("seat");
   });
 
-  it("maps a deny_repos path to a remote only through the same seat's repos", () => {
-    const book = loadSeatBook({ seatsDir: writeSeats({ "gadget.md": GADGET_SEAT, "sprocket.md": SPROCKET_SEAT }) });
+  it("resolves a deny_repos path through every seat's repos, not only its own", () => {
+    const denier = seat("a-seat", "repos: []\ndeny_repos: [~/p/legacy]\n");
+    const owner = seat("b-seat", "repos:\n  - {path: ~/p/legacy, remote: acme/renamed}\ngrants_extra: [merge-on-green-approve]\n");
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": denier, "b.md": owner }) });
 
-    expect(lookupSeat(book, "acme/gadgets-legacy").kind).toBe("denied");
-    expect(lookupSeat(book, "acme/old-gadgets")).toMatchObject({ kind: "seat", seat: { name: "sprocket-seat" } });
+    expect(lookupSeat(book, "acme/renamed").kind).toBe("denied");
+  });
+
+  it.each([
+    ["a trailing slash on the deny", "~/p/park/", "~/p/park"],
+    ["a trailing slash on the repo path", "~/p/park", "~/p/park//"],
+    ["a doubled slash", "~/p//park", "~/p/park"],
+  ])("matches a deny_repos path to a repo path despite %s", (_case, denyPath, repoPath) => {
+    const denier = seat("a-seat", `repos: []\ndeny_repos: ["${denyPath}"]\n`);
+    const owner = seat("b-seat", `repos:\n  - {path: "${repoPath}", remote: acme/park-renamed}\n`);
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": denier, "b.md": owner }) });
+
+    expect(lookupSeat(book, "acme/park-renamed").kind).toBe("denied");
+  });
+
+  it("throws, naming both files, when one path maps to two remotes across seats", () => {
+    const first = seat("a-seat", "repos:\n  - {path: ~/p/kit, remote: acme/kit}\n");
+    const second = seat("b-seat", "repos:\n  - {path: ~/p/kit/, remote: acme/other-kit}\n");
+
+    expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": first, "b.md": second }) })).toThrow(/a\.md.*b\.md/);
+  });
+
+  it("stores a seat remote in lowercase so a deny and a lookup compare one form", () => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("a-seat", "repos:\n  - {path: ~/p/mixed, remote: Acme/Mixed}\n") }) });
+
+    expect(book.seats[0]!.remotes).toEqual(["acme/mixed"]);
+    expect(lookupSeat(book, "acme/MIXED").kind).toBe("seat");
   });
 
   it("denies a configured hard-stop repo only when the charter carries that hard stop", () => {
@@ -132,6 +163,12 @@ describe("loadSeatBook", () => {
     ["unparseable yaml", "---\nschema: [\n---\n"],
     ["an empty repo path", GADGET_SEAT.replace("path: ~/src/gadgets,", 'path: "",')],
     ["a non-string repo path", GADGET_SEAT.replace("path: ~/src/gadgets,", "path: 7,")],
+    ["a .git remote", GADGET_SEAT.replace("remote: acme/gadgets,", "remote: acme/gadgets.git,")],
+    ["a URL remote", GADGET_SEAT.replace("remote: acme/gadgets,", 'remote: "https://github.com/acme/gadgets",')],
+    ["a remote with a trailing space", GADGET_SEAT.replace("remote: acme/gadgets,", 'remote: "acme/gadgets ",')],
+    ["a repo path with a .. segment", GADGET_SEAT.replace("path: ~/src/gadgets,", "path: ../../etc,")],
+    ["a repo path with a . segment", GADGET_SEAT.replace("path: ~/src/gadgets,", "path: ~/src/./gadgets,")],
+    ["a deny path with a .. segment", GADGET_SEAT.replace("~/src/parked-app", "~/src/../parked-app")],
   ])("throws, naming the file, when a seat file has %s", (_case, body) => {
     const seatsDir = writeSeats({ "a-good.md": GADGET_SEAT, "z-bad.md": body });
 
@@ -143,6 +180,8 @@ describe("loadSeatBook", () => {
     ["has no frontmatter", () => writeCharterBody("# charter\n")],
     ["has a hard_stops that is not a list", () => writeCharter("hard_stops: dotfiles-merge\n")],
     ["has a hard_stops with a non-string entry", () => writeCharter("hard_stops: [dotfiles-merge, 3]\n")],
+    ["has no hard_stops key", () => writeCharter("owner: someone\n")],
+    ["has another schema", () => writeCharterBody("---\nschema: other/v1\nhard_stops: []\n---\n")],
   ])("throws when the configured charter %s", (_case, charterPath) => {
     expect(() => loadSeatBook({ charterPath: charterPath() })).toThrow(/charter/);
   });
@@ -160,6 +199,8 @@ describe("lookupSeat repo keys", () => {
     ["a space", "acme/gadgets "],
     ["no owner", "gadgets"],
     ["an empty string", ""],
+    ["a .. name", "acme/.."],
+    ["a . name", "acme/."],
   ])("refuses a repo key with %s before lookup", (_case, repo) => {
     expect(lookupSeat(book(), repo)).toMatchObject({ kind: "denied", reason: expect.stringMatching(/owner\/name/) });
   });

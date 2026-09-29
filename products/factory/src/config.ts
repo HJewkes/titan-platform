@@ -13,6 +13,7 @@ export const FactoryConfigSchema = z.object({
       charterPath: z.string().min(1).optional(),
       hardStopRepos: z.record(z.string().min(1), z.array(z.string().refine(isRepoKey, "must be an owner/name repo"))).optional(),
     })
+    .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .optional(),
 });
 

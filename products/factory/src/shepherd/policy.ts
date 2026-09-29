@@ -11,7 +11,7 @@ export type MergeMode = (typeof MERGE_ORDER)[number];
 export const RequestedPolicySchema = z.strictObject({
   merge: z.enum(MERGE_ORDER).optional(),
   mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]).optional(),
-  reviewer: z.string().min(1).optional(),
+  reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean().optional(),
 });
