@@ -1,4 +1,5 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import { configPath, loadConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import { holdingPort, waitWhileHeld } from "./shepherd/hold.js";
@@ -32,4 +33,10 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   return Object.assign([...land, ...shepherd], { database });
 }
 
-export const factoryRoutes: FactoryRoutes = factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef() });
+/** The production route set: the post-merge chore comes from the config file, the one place the CLI reads it. */
+export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
+  const { postMerge } = loadConfig(configPath(env));
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, ...overrides });
+}
+
+export const factoryRoutes: FactoryRoutes = configuredRoutes(process.env);
