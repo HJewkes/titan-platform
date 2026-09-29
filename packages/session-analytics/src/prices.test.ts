@@ -36,6 +36,32 @@ describe("findPrice", () => {
     expect(findPrice("<synthetic>", TS)).toMatchObject({ input: 0, output: 0 });
   });
 
+  it("prices claude-opus-5-5 from its own row", () => {
+    expect(findPrice("claude-opus-5-5", TS)).toMatchObject({ modelPrefix: "claude-opus-5-5", input: 4, output: 20 });
+  });
+
+  it("does not let claude-opus-5 match claude-opus-5-5", () => {
+    const table = PRICE_TABLE.filter((row) => row.modelPrefix === "claude-opus-5");
+
+    expect(findPrice("claude-opus-5-5", TS, table)).toBeNull();
+  });
+
+  it("leaves an unlisted claude-opus-5-9 unpriced", () => {
+    expect(findPrice("claude-opus-5-9", TS)).toBeNull();
+  });
+
+  it("still resolves a dated id", () => {
+    expect(findPrice("claude-haiku-4-5-20251001", TS)).toMatchObject({ modelPrefix: "claude-haiku-4-5" });
+  });
+
+  it("opus 5.5 cache read is 0.05 of input and sonnet 5.5 is 0.1", () => {
+    const opus = findPrice("claude-opus-5-5", TS)!;
+    const sonnet = findPrice("claude-sonnet-5-5", TS)!;
+
+    expect(opus.cacheRead / opus.input).toBeCloseTo(0.05, 10);
+    expect(sonnet.cacheRead / sonnet.input).toBeCloseTo(0.1, 10);
+  });
+
   it("carries a table version the report can print", () => {
     expect(PRICE_TABLE_VERSION).toBeGreaterThanOrEqual(1);
     expect(PRICE_TABLE.length).toBeGreaterThan(0);
