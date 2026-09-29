@@ -40,9 +40,22 @@ killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prin
 | `src/evidence.ts` | **The F3 seam** (see below) |
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
 | `src/config.ts` | zod-validated local config and database path resolution |
+| `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
 | `src/cli.ts`, `src/bin.ts` | commander wiring for `resume` and `gate resolve` |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+
+## Shepherd seat paths
+
+A seat path in `repos[].path` or `deny_repos` is accepted only in one of these shapes:
+`~/`, `$HOME/`, `${HOME}/` or `/`, followed by one or more segments of `[A-Za-z0-9._-]`
+that are not `.` or `..`. Any other spelling throws `SeatBookInvalid` naming the file, because
+an unrecognised spelling could only make a deny miss. Paths compare case-insensitively, with
+the home directory unified to `~`.
+
+Symlinks are not resolved: there is no `realpath`, and nothing touches the filesystem. A deny
+written through a symlinked directory does not match a repo path written through its target.
+Spell both the same way.
 
 ## GitHub port
 
