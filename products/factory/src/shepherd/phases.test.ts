@@ -24,9 +24,13 @@ describe("shepherd phase stubs", () => {
     expect(foreign).toEqual([]);
   });
 
-  it("register no routes until the phases are implemented", () => {
+  it("registers no wake routes until the wake phase is implemented", () => {
     expect(wakeRoutes(deps)).toEqual([]);
-    expect(reviewRoutes(deps)).toEqual([]);
+  });
+
+  it("pins sh-await-verdict to review.ts, declared and routed there", () => {
+    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-await-verdict"]);
+    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-await-verdict"]);
   });
 
   it("wakePhase reports the request unhandled with a reason", async () => {
