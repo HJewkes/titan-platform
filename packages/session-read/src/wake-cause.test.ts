@@ -128,6 +128,14 @@ describe("classifyInbound", () => {
     });
   });
 
+  it.each([
+    ["sdk", textRecord("[headless prompt redacted]", { promptSource: "sdk" })],
+    ["typed", textRecord("[typed prompt redacted]", { promptSource: "typed" })],
+    [null, textRecord("[older prompt redacted]")],
+  ])("reports the record's promptSource %s without changing its cause", (promptSource, record) => {
+    expect(classifyInbound(record)).toMatchObject({ cause: "human_typed", promptSource });
+  });
+
   it("names the marker that made a record a hook_or_reminder", () => {
     const [, record] = CASES.find(([cause]) => cause === "hook_or_reminder")!;
     expect(classifyInbound(record).detail).toBe("system_reminder");

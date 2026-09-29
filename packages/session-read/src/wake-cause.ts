@@ -37,6 +37,8 @@ export interface Inbound {
   readonly isError: boolean;
   readonly contentHash: string;
   readonly chars: number;
+  /** The host's own label for who submitted the line: "typed", "system", or "sdk" for a headless `claude -p` or spawned turn. */
+  readonly promptSource: string | null;
 }
 
 /** Rollup pairs a queued arrival with its delivery by this hash, so both sides must agree. */
@@ -73,6 +75,7 @@ export function classifyInbound(record: Json): Inbound {
     isError: result.isError,
     contentHash: contentHash(text),
     chars: text.length,
+    promptSource: str(record, "promptSource") ?? str(queued, "promptSource"),
   };
 }
 
