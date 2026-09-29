@@ -7,6 +7,7 @@ import type { StepRoute } from "../routed-runner.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome } from "./land.js";
+import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
 const TRANSIENT_CONCLUSIONS = new Set(["cancelled", "timed_out"]);
@@ -14,6 +15,7 @@ const TRANSIENT_CONCLUSIONS = new Set(["cancelled", "timed_out"]);
 export const LAND_PR_STEPS: readonly StepDeclaration[] = [
   ...LAND_STEPS,
   ...AWAIT_HEAD_STEPS,
+  ...POST_MERGE_STEPS,
   { id: "snapshot", kind: "dispatch" },
   { id: "rerun", kind: "dispatch" },
   { id: "ci-failed", kind: "assisted" },
@@ -50,6 +52,7 @@ export async function landPr(ctx: WorkflowContext, params: LandPrParams, options
   const state: LandPrState = { round: 0, reruns: 0, waits: 0 };
   for (;;) {
     const outcome = await land(ctx, { repo: params.repo, pr: params.pr, round: state.round }, options);
+    if (outcome.kind === "merged") await postMerge(ctx, { repo: params.repo, pr: params.pr, mergeSha: outcome.mergeSha });
     if (outcome.kind !== "ci-failed") return outcome;
     const stop = await onCiFailed(ctx, params, outcome, state);
     if (stop) return stop;
@@ -95,7 +98,7 @@ async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedH
 const SnapshotResult = z.looseObject({ pr: z.looseObject({ headSha: z.string() }), required: z.array(z.string()) });
 const RerunResult = z.looseObject({ reruns: z.array(z.looseObject({ runId: z.number(), done: z.boolean() })) });
 
-export interface LandPrDeps extends LandDeps {
+export interface LandPrDeps extends LandDeps, PostMergeDeps {
   /** How long a rerun step waits for GitHub to replace the failed checks before land polls CI again. */
   rerunSettleMs?: number;
 }
@@ -109,6 +112,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => rerunFailed(deps.port, input, timing, signal)),
+    postMergeRoute(deps),
   ];
 }
 
