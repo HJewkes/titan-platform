@@ -1,0 +1,186 @@
+import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
+import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
+import type { SourceTextLocator } from "@titan-design/session-read";
+import type { GateDecision, PolicyRule } from "../gate-policy.js";
+
+export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
+
+/** The only rule that lets Shepherd merge without the owner; any other allow still gates. */
+export const MERGE_BY_REVIEWER_RULE = "MRG-AU-RV";
+
+/** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */
+export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
+
+const AUTHORITY_ACTOR = { class: "automation", id: "titan-factory" } as const;
+const AUTHORITY_VERSION = Number.parseInt(DEFAULT_TABLE.version, 10);
+const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
+
+export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
+
+/** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
+export const noFreezeStoreUntilTp523: IsFrozen = async () => false;
+
+export interface MergeEvidenceInput {
+  runId: string;
+  repo: RepoSlug;
+  pr: number;
+  head: string;
+  verdict: { value: "MERGE"; head: string; locator: SourceTextLocator };
+  /** The author of the accepted verdict, read from the sh-await-verdict output. */
+  resolver: AgentIdentity;
+  /** The reviewer this run dispatched, read from the dispatch record, so a mismatch with the resolver gates. */
+  dispatchedReviewer: AgentIdentity;
+  seatGrants: string[];
+}
+
+export interface EvidenceCheckRun {
+  name: string;
+  id: number;
+  appId: number | null;
+  conclusion: string | null;
+}
+
+/** What the PR comment shows and `allowEvidence` stores in `merge-policy`. */
+export interface EvidenceRecord {
+  runId: string;
+  repo: RepoSlug;
+  pr: number;
+  head: string;
+  baseRef: string;
+  testMergeSha: string | null;
+  checkRuns: EvidenceCheckRun[];
+  verdictLocator: SourceTextLocator;
+  reviewer: AgentIdentity;
+  decision: GateDecision;
+}
+
+/** The facts observed at one head, and the record of what they decided there. */
+export interface MergeEvidence {
+  head: string;
+  merge: MergeFacts;
+  record: EvidenceRecord;
+}
+
+/** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
+export interface DecidableEvidence {
+  head: string;
+  merge: MergeFacts;
+  record: Pick<EvidenceRecord, "repo" | "pr">;
+}
+
+function guardRule(rowId: string): PolicyRule {
+  return { table: "shepherd-merge-guard", rowId, version: 1 };
+}
+
+function authorityRule(ruleId: string | null): PolicyRule {
+  return { table: "authority", rowId: ruleId ?? "none", version: AUTHORITY_VERSION };
+}
+
+/** Folds case and trailing dots or spaces, which some filesystems ignore, so `.GitHub.` is still `.github`. */
+export function isGithubPath(path: string): boolean {
+  const first = path.split("/")[0] ?? "";
+  return first.toLowerCase().replace(/[ .]+$/, "") === ".github";
+}
+
+/** The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head allows. */
+export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
+  if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
+  if (evidence.head !== headSha || evidence.merge.head !== headSha) {
+    return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
+  }
+  const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
+  if (workflowPaths.length > 0) return { outcome: "gate", rule: guardRule("github-path"), reason: `the owner decides changes under .github/: ${workflowPaths.join(", ")}` };
+  const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
+  if (decision.verdict === "allow" && decision.ruleId === MERGE_BY_REVIEWER_RULE) {
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${MERGE_BY_REVIEWER_RULE} holds at ${headSha}` };
+  }
+  const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${MERGE_BY_REVIEWER_RULE} merges without the owner` : decision.reason;
+  return { outcome: "gate", rule: authorityRule(decision.ruleId), reason };
+}
+
+/** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */
+export function changedPaths(files: readonly PrFile[]): string[] {
+  return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
+}
+
+/** A truncated list is no list: empty paths fail authority's path condition, so the merge gates. */
+async function prPaths(port: GitHubPort, repo: RepoSlug, pr: number): Promise<string[]> {
+  try {
+    return changedPaths(await port.listPrFiles(repo, pr));
+  } catch (error) {
+    if (error instanceof FileListTruncatedError) return [];
+    throw error;
+  }
+}
+
+/** A run with no app id is counted from no app, so it cannot satisfy a required context. */
+function runFact(run: CheckRun): CheckRunFact {
+  return { name: run.name, appId: run.appId ?? -1, headSha: run.headSha, conclusion: run.conclusion };
+}
+
+/** GitHub's test merge exists and is clean for this very head, not for a head pushed since. */
+function mergeTreeClean(pr: PullRequest, head: string): boolean {
+  return pr.state === "open" && !pr.merged && pr.headSha === head && pr.mergeSha !== null && MERGEABLE.has(pr.mergeableState);
+}
+
+interface Observed {
+  pr: PullRequest;
+  merge: MergeFacts;
+  runs: CheckRun[];
+}
+
+/** Every fact is read from GitHub or the run's own step outputs, never from the reviewer's text. */
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<Observed> {
+  const pr = await port.getPr(input.repo, input.pr);
+  const [required, runs, paths, frozen] = await Promise.all([
+    port.requiredChecks(input.repo, pr.baseRef),
+    port.latestCheckRuns(input.repo, input.head),
+    prPaths(port, input.repo, input.pr),
+    isFrozen(input.repo),
+  ]);
+  const merge: MergeFacts = {
+    head: input.head,
+    resolver: input.resolver,
+    dispatchedReviewer: input.dispatchedReviewer,
+    verdict: { value: input.verdict.value, head: input.verdict.head },
+    requiredContexts: required.contexts,
+    allowedApps: [...ALLOWED_CHECK_APPS],
+    checkRuns: runs.map(runFact),
+    mergeTreeClean: mergeTreeClean(pr, input.head),
+    repoFrozen: frozen,
+    changedPaths: paths,
+    seatGrants: input.seatGrants,
+  };
+  return { pr, merge, runs };
+}
+
+/** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
+export function evidenceMarker(head: string): string {
+  return `<!-- shepherd-evidence:${head} -->`;
+}
+
+export function evidenceComment(record: EvidenceRecord): string {
+  const { decision } = record;
+  const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}`;
+  return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(record, null, 2), "```", ""].join("\n");
+}
+
+/** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs } = await collectMergeFacts(port, input, isFrozen);
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input });
+  const record: EvidenceRecord = {
+    runId: input.runId,
+    repo: input.repo,
+    pr: input.pr,
+    head: input.head,
+    baseRef: pr.baseRef,
+    testMergeSha: pr.mergeSha,
+    checkRuns: runs.map((run) => ({ name: run.name, id: run.id, appId: run.appId, conclusion: run.conclusion })),
+    verdictLocator: input.verdict.locator,
+    reviewer: input.resolver,
+    decision,
+  };
+  const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
+  return { head: input.head, merge, record, commentId: comment.id };
+}

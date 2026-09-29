@@ -1,6 +1,8 @@
 import type { MergeMethod } from "@titan-design/github";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
+import type { LandOptions } from "../workflows/land.js";
+import { decideAutoMerge, type MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
 import type { SeatLookup } from "./seats.js";
 
@@ -76,17 +78,36 @@ function parseRequest(request: unknown): RequestedPolicy {
 }
 
 /**
- * `never` denies and everything else gates; T7 (TP-464) turns `auto` into an allow. `verdictFor` is the review taken
- * at the head being decided; today it only tells the owner what the reviewer said.
+ * `never` denies and `owner-gate` gates. `auto` allows a merge only when authority's MRG-AU-RV holds on the merge facts
+ * the MERGE review collected at the exact head being decided; anything else gates. `verdictFor` is the review taken at
+ * that head.
  */
 export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): GatePolicy {
   const rule: PolicyRule = { table: SHEPHERD_POLICY_TABLE, rowId: effective.seat, version: 1 };
   return {
-    decide: (action, target): GateDecision =>
-      effective.merge === "never"
-        ? { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` }
-        : { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` },
+    decide: (action, target): GateDecision => {
+      if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
+      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor));
+      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
+    },
   };
+}
+
+/** The Shepherd land options: the seat policy, and on an allow the evidence record the PR comment carries. */
+export function shepherdLandOptions(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): LandOptions {
+  return {
+    policy: shepherdGatePolicy(effective, verdictFor),
+    allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }),
+  };
+}
+
+/** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
+function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
+  const verdict = verdictFor(headSha);
+  if (verdict?.kind !== "MERGE") return undefined;
+  const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
+  const wellFormed = typeof evidence?.head === "string" && typeof evidence.merge === "object" && evidence.merge !== null && typeof evidence.record === "object" && evidence.record !== null;
+  return wellFormed ? (evidence as MergeEvidence) : undefined;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

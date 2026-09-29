@@ -550,6 +550,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/authority':
+        specifier: workspace:^
+        version: link:../../packages/authority
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon

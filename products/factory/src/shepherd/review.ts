@@ -1,12 +1,18 @@
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
+import type { WorkflowContext } from "@titan-design/workflow";
+import { z } from "zod";
 import type { StepRoute } from "../routed-runner.js";
 import { deadline } from "../workflows/deadline.js";
-import { codeRoute } from "../workflows/land.js";
-import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
+import { codeRoute, step } from "../workflows/land.js";
+import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 
 export const AWAIT_VERDICT_STEP = "sh-await-verdict";
-export const REVIEW_STEPS: readonly StepDeclaration[] = [{ id: AWAIT_VERDICT_STEP, kind: "dispatch" }];
+export const REVIEW_STEPS: readonly StepDeclaration[] = [
+  { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
+  { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
+];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_POLL_MS = 30_000;
@@ -101,6 +107,7 @@ export async function awaitVerdict(
 export interface ReviewWiring {
   reader: ReviewerReader;
   timeoutMs?: number;
+  isFrozen?: IsFrozen;
 }
 
 /** With no reader wired the step answers `none` at once, so the owner gate decides; the reviewer identity arrives in the step input. */
@@ -110,7 +117,20 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     const input = parseAwaitVerdictInput(raw);
     return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
   };
-  return [codeRoute(AWAIT_VERDICT_STEP, deps.now, run)];
+  const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
+  return [
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, run),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen)),
+  ];
 };
+
+const MergeEvidenceResult = z.looseObject({ head: z.string(), merge: z.looseObject({}), record: z.looseObject({}) });
+
+/** A MERGE verdict at one head, carrying the facts and record collected there once; a replay reuses the step's output. */
+export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
+  const request: MergeEvidenceInput = { ...input, runId: ctx.runId };
+  const evidence = (await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceResult)) as unknown as MergeEvidence;
+  return { kind: "MERGE", headSha: input.head, evidence };
+}
 
 export const reviewPhase: ShepherdPhases["review"] = async () => ({ kind: "none" });
