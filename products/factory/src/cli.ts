@@ -3,7 +3,7 @@ import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
-import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
+import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
@@ -21,7 +21,8 @@ export interface CliIo {
 /** What the CLI hosts; tests swap in their own workflows and host settings. */
 export interface CliDeps {
   workflows: readonly WorkflowDefinition[];
-  routes: readonly StepRoute[];
+  /** A function defers building the routes until a verb opens the host. */
+  routes: readonly StepRoute[] | (() => FactoryRoutes);
   host?: Partial<Omit<FactoryHostOptions, "dbPath" | "workflows" | "routes">>;
   /** The serve verb's logger; defaults to the console. */
   logger?: Logger;
@@ -31,6 +32,7 @@ export interface CliDeps {
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
 const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes };
+const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 const SETTLED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
 interface Verbs {
@@ -50,7 +52,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
   const dbPath = (): string => resolveDbPath({ env: io.env, dbFlag: program.opts<{ db?: string }>().db });
   const setExit = (code: number): void => void (exitCode = code);
   const withHost = async (fn: (host: FactoryHost) => Promise<number> | number): Promise<void> => {
-    const host = openFactoryHost({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: deps.routes });
+    const host = openFactoryHost({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps) });
     try {
       exitCode = await fn(host);
     } finally {
@@ -85,7 +87,7 @@ function registerServe(program: Command, { deps, dbPath }: Verbs): void {
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) =>
-      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: deps.routes, port: opts.port, logger: deps.logger }, deps.stop),
+      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger }, deps.stop),
     );
 }
 

@@ -46,9 +46,17 @@ export function defaultDbPath(env: NodeJS.ProcessEnv): string {
   return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory", "factory.sqlite3");
 }
 
+function parseJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export function loadConfig(path: string): FactoryConfig {
   if (!existsSync(path)) return {};
-  const parsed = FactoryConfigSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
+  const parsed = FactoryConfigSchema.safeParse(parseJson(path));
   if (!parsed.success) throw new Error(`invalid config ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
   return parsed.data;
 }

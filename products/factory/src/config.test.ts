@@ -38,6 +38,13 @@ describe("resolveDbPath", () => {
 });
 
 describe("loadConfig", () => {
+  it("names the config path when the file is not valid JSON", () => {
+    const env = xdg({});
+    writeFileSync(configPath(env), "{ not json");
+
+    expect(() => loadConfig(configPath(env))).toThrow(new RegExp(`invalid config .*${"titan-factory"}.config\\.json`));
+  });
+
   it("reads the shepherd seats directory and charter path", () => {
     const env = xdg({ shepherd: { seatsDir: "/seats", charterPath: "/charter.md" } });
 
