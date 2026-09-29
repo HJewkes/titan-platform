@@ -51,34 +51,51 @@ function approvalBlockers(pr: PullRequest, approvedHead: string | null): MergeBl
   return [];
 }
 
-/**
- * Only runs from an allowed app at the PR head count, as in authority's MRG-AU-RV. Every counted run
- * must be green, superseded or not, and each required context needs a completed run concluding success.
- */
 function checkBlockers({ pr, rules, runs, requiredApps }: MergeReadinessInput): MergeBlocker[] {
   if (pr.merged || pr.state === "closed") return [];
   if (rules.contexts.length === 0) return [{ reason: "no-required-checks", detail: "the rules name no required check context, so nothing proves the head green" }];
-  const counted = runs.filter((run) => run.headSha === pr.headSha && run.appId !== null && requiredApps.includes(run.appId));
   const apps = requiredApps.join(", ") || "none";
-  return [...rules.contexts.flatMap((name) => requiredBlockers(name, counted, pr.headSha, apps)), ...counted.filter((run) => !isPassing(run)).map(runBlocker)];
+  return headCheckFindings({ headSha: pr.headSha, contexts: rules.contexts, runs, requiredApps }).map((finding) => findingBlocker(finding, pr.headSha, apps));
 }
 
-/** Non-green runs are reported by `runBlocker`; this adds only what a missing or merely green required run lacks. */
-function requiredBlockers(name: string, counted: readonly CheckRun[], headSha: string, apps: string): MergeBlocker[] {
+export interface HeadChecksInput {
+  headSha: string;
+  /** Required check contexts; each needs a completed run concluding success. */
+  contexts: readonly string[];
+  /** Check runs from any app at any sha; only runs from `requiredApps` at `headSha` count. */
+  runs: readonly CheckRun[];
+  requiredApps: readonly number[];
+}
+
+/** Why the head is not green yet: a required context with no counted run, a run still going, or a run that did not pass. */
+export type CheckFinding = { kind: "missing"; name: string } | { kind: "pending" | "failed"; run: CheckRun };
+
+/**
+ * Only runs from an allowed app at the head count, as in authority's MRG-AU-RV. Every counted run
+ * must be green, superseded or not, and each required context needs a completed run concluding success.
+ * An empty result means the head is green.
+ */
+export function headCheckFindings({ headSha, contexts, runs, requiredApps }: HeadChecksInput): CheckFinding[] {
+  const counted = runs.filter((run) => run.headSha === headSha && run.appId !== null && requiredApps.includes(run.appId));
+  const nonGreen = counted.filter((run) => !isPassing(run)).map((run): CheckFinding => ({ kind: run.status === "completed" ? "failed" : "pending", run }));
+  return [...contexts.flatMap((name) => requiredFindings(name, counted)), ...nonGreen];
+}
+
+/** Non-green runs are reported separately; this adds only what a missing or merely green required run lacks. */
+function requiredFindings(name: string, counted: readonly CheckRun[]): CheckFinding[] {
   const named = counted.filter((run) => run.name === name);
   if (named.some(isSucceeded)) return [];
-  if (named.length === 0) return [{ reason: "check-pending", detail: `${name} has no completed run at ${headSha} from app ${apps}` }];
-  return named.every(isPassing) ? named.map(failedBlocker) : [];
+  if (named.length === 0) return [{ kind: "missing", name }];
+  return named.every(isPassing) ? named.map((run): CheckFinding => ({ kind: "failed", run })) : [];
+}
+
+function findingBlocker(finding: CheckFinding, headSha: string, apps: string): MergeBlocker {
+  if (finding.kind === "missing") return { reason: "check-pending", detail: `${finding.name} has no completed run at ${headSha} from app ${apps}` };
+  const { run } = finding;
+  if (finding.kind === "pending") return { reason: "check-pending", detail: `${run.name} is ${run.status} at ${run.headSha}` };
+  return { reason: "check-failed", detail: `${run.name} concluded ${run.conclusion ?? "none"} (${run.url})` };
 }
 
 function isSucceeded(run: CheckRun): boolean {
   return run.status === "completed" && run.conclusion === "success";
-}
-
-function runBlocker(run: CheckRun): MergeBlocker {
-  return run.status === "completed" ? failedBlocker(run) : { reason: "check-pending", detail: `${run.name} is ${run.status} at ${run.headSha}` };
-}
-
-function failedBlocker(run: CheckRun): MergeBlocker {
-  return { reason: "check-failed", detail: `${run.name} concluded ${run.conclusion ?? "none"} (${run.url})` };
 }
