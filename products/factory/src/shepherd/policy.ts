@@ -1,6 +1,7 @@
 import type { MergeMethod } from "@titan-design/github";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
+import type { Verdict } from "./phases.js";
 import type { SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
@@ -27,6 +28,19 @@ export interface EffectivePolicy {
   /** The seat that set the ceiling, or `none` for a repo no seat lists. */
   seat: string;
 }
+
+/** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
+export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject({
+  merge: z.enum(MERGE_ORDER),
+  mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]),
+  reviewer: z.string().optional(),
+  priority: z.number().int().optional(),
+  fixer: z.boolean(),
+  seat: z.string(),
+});
+
+/** What a repo no seat lists resolves to: the owner gates every merge. */
+export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" };
 
 export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
@@ -61,13 +75,21 @@ function parseRequest(request: unknown): RequestedPolicy {
   return parsed.data;
 }
 
-/** `never` denies and everything else gates; T7 (TP-464) turns `auto` into an allow. */
-export function shepherdGatePolicy(effective: EffectivePolicy): GatePolicy {
+/**
+ * `never` denies and everything else gates; T7 (TP-464) turns `auto` into an allow. `verdictFor` is the review taken
+ * at the head being decided; today it only tells the owner what the reviewer said.
+ */
+export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): GatePolicy {
   const rule: PolicyRule = { table: SHEPHERD_POLICY_TABLE, rowId: effective.seat, version: 1 };
   return {
-    decide: (action): GateDecision =>
+    decide: (action, target): GateDecision =>
       effective.merge === "never"
         ? { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` }
-        : { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}` },
+        : { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` },
   };
+}
+
+function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
+  const verdict = headSha === undefined ? undefined : verdictFor(headSha);
+  return verdict ? `; review at this head: ${verdict.kind}` : "";
 }
