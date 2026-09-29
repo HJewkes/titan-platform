@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import type { WorkflowStatus } from "@titan-design/workflow";
+import { githubHealth, type GithubHealth } from "./github-health.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, type FactoryContext } from "./registry.js";
 
@@ -22,6 +23,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   /** Bind address; defaults to 127.0.0.1. */
   hostname?: string;
   logger?: Logger;
+  /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
+  github?: GithubHealth;
 }
 
 export interface FactoryServer {
@@ -35,9 +38,11 @@ export interface FactoryServer {
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const host = openFactoryHost(options);
+  const github = options.github ?? githubHealth();
+  void github.refresh();
   let daemon: DaemonHandle;
   try {
-    daemon = await startDaemon(daemonOptions(host, options));
+    daemon = await startDaemon(daemonOptions(host, options, github));
   } catch (err) {
     host.close();
     throw err;
@@ -77,7 +82,7 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
   });
 }
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions): StartDaemonOptions<FactoryContext> {
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth): StartDaemonOptions<FactoryContext> {
   return {
     registry: createFactoryRegistry(),
     createContext: () => ({ warnings: [], format: "json", host }),
@@ -87,7 +92,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions): StartD
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => factoryHealth(host),
+    health: () => ({ ...factoryHealth(host), github: github.status() }),
     logger: options.logger,
   };
 }
