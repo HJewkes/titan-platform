@@ -183,15 +183,19 @@ describe("private term list", () => {
   });
 
   it.each(["1", "true", "TRUE", "yes", "on", " 1", "1 "])(
-    "treats REQUIRE_TERMS=%j as on: exits 2 under CI with no list",
+    "treats REQUIRE_TERMS=%j as on: loads the list under CI so a planted term fails the scan",
     (value) => {
       const repo = newRepo();
       const base = repo.commit("base");
-      const head = commitFile(repo, "a.md", "clean\n");
+      const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
 
-      const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: value });
+      const result = run(repo, ["range", base, head], {
+        CI: "true",
+        TITAN_EGRESS_REQUIRE_TERMS: value,
+        TITAN_EGRESS_TERMS: termFile(PLANTED_TERM),
+      });
 
-      expect(result.code).toBe(2);
+      expect(result.code).toBe(1);
     },
   );
 
