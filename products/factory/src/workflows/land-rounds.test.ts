@@ -152,7 +152,8 @@ describe("land merge policy", () => {
   });
 
   it("on gate, records the gate decision, opens approve-merge, and merges only after the owner answers", async () => {
-    const { host, fake } = roundsHost(once(gateEverything));
+    const hooked: unknown[] = [];
+    const { host, fake } = roundsHost(once(gateEverything, { allowEvidence: (merge) => (hooked.push(merge), {}) }));
     const runId = host.runtime.start("land-rounds");
 
     await gateOpened(host, gateId(runId, "approve-merge"));
@@ -162,7 +163,10 @@ describe("land merge policy", () => {
 
     expect(mergesBeforeAnswer).toBe(0);
     expect(fake.effects.merge).toBe(1);
-    expect(host.runtime.status(runId)!.stepResults["merge-policy:0:0"]!.data).toMatchObject({ result: { outcome: "gate", headSha: H1, rule: GATE_EVERYTHING_RULE } });
+    const record = host.runtime.status(runId)!.stepResults["merge-policy:0:0"]!.data;
+    expect(record).toMatchObject({ result: { outcome: "gate", headSha: H1, rule: GATE_EVERYTHING_RULE } });
+    expect(record).not.toHaveProperty("allowEvidence");
+    expect(hooked).toEqual([]);
   });
 
   it("on deny, records the denial and stops merge-denied with no gate and no merge", async () => {
@@ -234,6 +238,25 @@ describe("land merge policy", () => {
     expect(fake.effects.updateBranch).toBe(MAX_UPDATE_CYCLES);
     expect(fake.effects.merge).toBe(0);
     expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
+  });
+
+  it(`gives a human approval a fresh ${MAX_UPDATE_CYCLES} updates before stuck-behind`, async () => {
+    let racing = false;
+    const world: { fake: FakeGitHub; host: FactoryHost; outcomes: LandOutcome[] } = roundsHost(once(gateEverything));
+    const green = world.fake.onGetPr!;
+    world.fake.onGetPr = (pr, reads) => (green(pr, reads), racing && (pr.behind = true));
+    world.fake.pr(1).behind = true;
+    const runId = world.host.runtime.start("land-rounds");
+
+    await gateOpened(world.host, gateId(runId, "approve-merge"));
+    racing = true;
+    world.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: world.fake.pr(1).headSha });
+    await gateOpened(world.host, gateId(runId, "stuck-behind"));
+    world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" });
+    await world.host.runtime.wait(runId);
+
+    expect(world.fake.effects.updateBranch).toBe(1 + MAX_UPDATE_CYCLES);
+    expect(world.fake.effects.merge).toBe(0);
   });
 
   it("fails the run when the recorded decision names a head other than the one CI reported", async () => {
