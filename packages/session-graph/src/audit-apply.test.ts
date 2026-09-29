@@ -43,7 +43,7 @@ const richLines = (sessionId: string) => [
 function lateKinds(sessionId: string, byteOffset: number): TranscriptDelta {
   const base = { sessionId, ts: "2026-09-01T00:00:05Z", byteOffset, byteLength: 1, blockIndex: 0 };
   const events: SessionEvent[] = [
-    { ...base, kind: "inbound", cause: "tool_result", delivery: "tool_result", detail: null, originServer: null, fromName: null, msgId: null, toolUseId: `tu-${sessionId}`, isError: true, contentHash: "h", chars: 3 },
+    { ...base, kind: "inbound", cause: "tool_result", delivery: "tool_result", detail: null, originServer: null, fromName: null, msgId: null, toolUseId: `tu-${sessionId}`, isError: true, contentHash: "h", chars: 3, promptSource: null },
     { ...base, kind: "context_block", source: "tool_result", toolUseId: `tu-${sessionId}`, attachmentType: null, chars: 3, isMedia: false },
     { ...base, kind: "signal", signal: "commit", detail: null, toolUseId: `tu-${sessionId}` },
   ];

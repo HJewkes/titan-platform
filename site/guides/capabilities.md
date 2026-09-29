@@ -136,11 +136,12 @@ Tier 0, `@titan-design/authority@0.1.0`. The authority decision table as data: w
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`, `ActorClass`, `EvidenceKind`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`
+- `conditions`: `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +6 more in the [reference page](/reference/authority)
+- +13 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -320,11 +321,10 @@ Tier 1, `@titan-design/agent-dispatch@0.0.0`. Start and resume agent-chat agents
 
 Key exports:
 
-- `dispatch`: `DispatchError`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `dispatch`: `BrokerUnavailableError`, `DispatchError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
 - `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `minimalEnv`, `resolveBinaryPath`
-- `resume`: `ResumeError`, `resumeArgs`
-- `agents`: `DispatchTimeoutError`, `buildListAgentsArgs`
-- +9 more in the [reference page](/reference/agent-dispatch)
+- `resume`: `ResumeError`, `buildResumeAgentArgs`
+- +16 more in the [reference page](/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
@@ -590,7 +590,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +74 more in the [reference page](/reference/session-graph)
+- +77 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -730,7 +730,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +59 more in `products/factory/src/index.ts`
+- +73 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

@@ -204,7 +204,7 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 }
 
 /** Code steps take their input as JSON and answer with one evidence record whose `result` the workflow reads. */
-async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
+export async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
   const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
   return done.data!.result;
 }
@@ -222,7 +222,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   ];
 }
 
-function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
+export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
   return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal) }));
 }
 
@@ -346,7 +346,7 @@ interface MergeInput {
   method: MergeMethod;
 }
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(signal.reason);
     const timer = setTimeout(() => (signal.removeEventListener("abort", abort), resolve()), ms);

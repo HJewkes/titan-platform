@@ -60,12 +60,46 @@
  * policy, so the profile allowlist is the caller's `allowedProfiles` argument.
  */
 
-import { ExecError, execSafe, minimalEnv, resolveBinaryPath } from "./exec.js";
+import {
+  ExecError,
+  execSafe,
+  minimalEnv,
+  resolveBinaryPath,
+  type SafeExecResult,
+} from "./exec.js";
 
 export class DispatchError extends Error {}
 
+/** The CLI could not connect to the broker, so nothing was asked of it; retrying later is safe. */
+export class BrokerUnavailableError extends DispatchError {}
+
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
 export const PEER_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/**
+ * Lines agent-chat's CLI prints on stderr when the broker socket is unreachable.
+ * Whole-line anchors keep a refusal that merely quotes one of them a refusal.
+ */
+const BROKER_DOWN_LINES = [
+  // BrokerClient.climbLadder, after the reconnect ladder runs out.
+  /^could not reach or start the agent-chat broker$/m,
+  // brokerRestartingError: the frame never left the client.
+  /^broker restarting: .* was NOT sent; retry it within \d+ s\.$/m,
+  // A bare connect failure on the socket, for a CLI that surfaces the errno.
+  /^(?:Error: )?connect (?:ECONNREFUSED|ENOENT) \S*\.sock$/m,
+];
+
+export function isBrokerUnavailable(result: SafeExecResult): boolean {
+  return (
+    result.status !== 0 &&
+    BROKER_DOWN_LINES.some((pattern) => pattern.test(result.stderr))
+  );
+}
+
+/** Every agent-chat call runs with this; autostart would leave a broker owned by the caller. */
+export function agentChatEnv(): Record<string, string> {
+  return { ...minimalEnv(), AGENT_CHAT_NO_AUTOSTART: "1" };
+}
 
 export interface DispatchRequest {
   agentChatBinPath: string;
@@ -81,6 +115,8 @@ export interface DispatchRequest {
   briefing?: string;
   /** The directory the CLI sends to the broker as the spawn location. */
   cwd: string;
+  /** Claude config directory for the agent, such as a second account's; omitted means agent-chat's default. */
+  configDir?: string;
 }
 
 export interface DispatchResult {
@@ -104,6 +140,7 @@ export function buildSpawnArgs(req: {
   peerName: string;
   profile: string;
   briefing?: string;
+  configDir?: string;
 }): string[] {
   return [
     "agent",
@@ -111,6 +148,7 @@ export function buildSpawnArgs(req: {
     req.peerName,
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
+    ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
     "--brief-stdin",
   ];
 }
@@ -149,7 +187,7 @@ export function dispatchToAgentChat(
     result = execSafe(
       bin,
       buildSpawnArgs(req),
-      minimalEnv(),
+      agentChatEnv(),
       timeoutMs,
       req.cwd,
       req.brief,
@@ -171,6 +209,7 @@ export function dispatchToAgentChat(
     // Reported verbatim either way: relay cannot resolve it, and inventing a
     // friendlier message would hide which of the supervisor's several preflight
     // gates actually refused.
+    if (isBrokerUnavailable(result)) throw brokerUnavailable("agent spawn", result);
     const reason = result.stdout.trim() || result.stderr.trim();
     throw new DispatchError(
       reason === ""
@@ -180,4 +219,13 @@ export function dispatchToAgentChat(
   }
 
   return { peerName: req.peerName };
+}
+
+export function brokerUnavailable(
+  verb: string,
+  result: SafeExecResult,
+): BrokerUnavailableError {
+  return new BrokerUnavailableError(
+    `agent-chat ${verb} could not reach the broker: ${result.stderr.trim()}`,
+  );
 }

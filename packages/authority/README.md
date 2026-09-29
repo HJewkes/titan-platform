@@ -20,10 +20,26 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
+- A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
+  `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
+  decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
+  `evaluate` reads each request field once, then copies the facts with `structuredClone`
+  and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
+  throwing, and so does a sparse array (a hole would read through to the prototype).
+  The rebuild reads own properties only. A class instance is copied as its own
+  data, without its prototype. An inherited or getter-supplied `tainted` still escalates
+  a `taintEscalates` row when truthy, but never unlocks a conditional row; inherited
+  `facts` are ignored. `evaluate` trusts the request object itself: a Proxy request whose traps report an own `tainted: false` is treated as untainted, because a caller that builds such a request is asserting that value.
+  A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
+  `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
+  A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a
+  dot, counts as protected.
+  `allowedApps` is caller-supplied; Shepherd must pin GitHub Actions (app id 15368) itself.
 - `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
   any tainted resolver.
-- `policyTableSchema`: rejects a table that misses or repeats an action by actor pair, or
-  names anyone but `owner-terminal` or `owner-remote` as a resolver.
+- `policyTableSchema`: rejects a table that misses or repeats the unconditional rule for
+  an action by actor pair, or names anyone but `owner-terminal` or `owner-remote` as a
+  resolver.
 - `DEFAULT_TABLE`: the approved table, also shipped as `@titan-design/authority/table.json`
   for plain-node hooks.
 

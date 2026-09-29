@@ -21,7 +21,9 @@ priceRequest(
 ## What it exports
 
 - `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice(model, ts, prices?)` — USD per million
-  tokens by longest model prefix, then the latest row effective at `ts`.
+  tokens by longest model prefix, then the latest row effective at `ts`. A prefix matches only
+  at a model-id boundary (the id, a `-YYYYMMDD` date, or a `[..]` suffix), so `claude-opus-5`
+  never prices `claude-opus-5-5`.
 - `priceRequest(tokens, model, ts, prices?)` — the five cost components, `costUsd` and
   `priced`.
 - `classifySession(facts)` — `agent_spawned`, `human_interactive`, `headless_sdk` or

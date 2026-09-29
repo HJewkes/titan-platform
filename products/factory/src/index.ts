@@ -18,3 +18,7 @@ export { factoryRoutes, factoryWorkflows } from "./workflows.js";
 export { MAX_STORED_ERROR_CHARS, REDACTED, redactForEvidence } from "./redact.js";
 export type { CiSnapshot, FailingCheck, LandDeps, LandInput, LandOptions, LandOutcome } from "./workflows/land.js";
 export { LAND_STEPS, MAX_CI_CYCLES, MAX_UPDATE_CYCLES, land, landRoutes, readCi } from "./workflows/land.js";
+export type { LandPrDeps, LandPrParams } from "./workflows/land-pr.js";
+export { LAND_PR_STEPS, landPr, landPrParams, landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+export type { AwaitHeadDeps, AwaitHeadTarget, AwaitHeadTiming } from "./workflows/await-head.js";
+export { AWAIT_HEAD_POLL_MS, AWAIT_HEAD_STEPS, awaitNewHead, awaitNewHeadRoute } from "./workflows/await-head.js";

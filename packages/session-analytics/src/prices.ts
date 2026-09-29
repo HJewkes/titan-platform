@@ -1,6 +1,6 @@
 /** USD per million tokens. Fitted against 392 `cost-state` rows in the 2026-09-20 audit. */
 export interface PriceRow {
-  /** Matched against the model string by longest prefix. */
+  /** Matched at a model-id boundary: the id itself, or followed by a -YYYYMMDD or [..] suffix. */
   modelPrefix: string;
   /** ISO date. The latest row at or before a request's timestamp wins. */
   effectiveFrom: string;
@@ -12,21 +12,26 @@ export interface PriceRow {
 }
 
 /** Bump on any edit to PRICE_TABLE. The cost report prints it in its footer. */
-export const PRICE_TABLE_VERSION = 1;
+export const PRICE_TABLE_VERSION = 2;
 
 const OPUS = { input: 5.0, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10.0, output: 25.0 };
+const OPUS_5_5 = { input: 4.0, cacheRead: 0.2, cacheWrite5m: 5.0, cacheWrite1h: 8.0, output: 20.0 };
 const SONNET = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.0, output: 10.0 };
 // Fable's cache read is 0.025 of input, not the 0.1 every other model uses. Reading it as
 // 0.1 overstated the 2026-09-20 audit by about $1,700; `fable-cache-read.test` pins the ratio.
 const FABLE = { input: 10.0, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20.0, output: 50.0 };
+const SONNET_5_5 = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.0, output: 10.0 };
 const HAIKU = { input: 1.0, cacheRead: 0.1, cacheWrite5m: 1.25, cacheWrite1h: 2.0, output: 5.0 };
 const FREE = { input: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0 };
 
 const GENESIS = "2026-01-01";
 
 export const PRICE_TABLE: readonly PriceRow[] = [
+  // 5.5 rows: claude-api skill shared/models.md and prompt-caching.md, bundled copy cached 2026-09-25.
+  { modelPrefix: "claude-opus-5-5", effectiveFrom: GENESIS, ...OPUS_5_5 },
   { modelPrefix: "claude-opus-5", effectiveFrom: GENESIS, ...OPUS },
   { modelPrefix: "claude-opus-4-8", effectiveFrom: GENESIS, ...OPUS },
+  { modelPrefix: "claude-sonnet-5-5", effectiveFrom: GENESIS, ...SONNET_5_5 },
   { modelPrefix: "claude-sonnet-5", effectiveFrom: GENESIS, ...SONNET },
   { modelPrefix: "claude-fable-5-1", effectiveFrom: GENESIS, ...FABLE },
   { modelPrefix: "claude-fable-5", effectiveFrom: GENESIS, ...FABLE },
@@ -35,14 +40,14 @@ export const PRICE_TABLE: readonly PriceRow[] = [
 ];
 
 /**
- * The longest prefix that matches the model, then the latest row effective at `ts`.
+ * The longest prefix that matches the model at an id boundary, then the latest row effective at `ts`.
  * Returns null for a model no row covers: an unknown model is unpriced, never defaulted,
  * because a default silently prices a new model at an old model's rate.
  */
 export function findPrice(model: string, ts: string, prices: readonly PriceRow[] = PRICE_TABLE): PriceRow | null {
   let best: PriceRow | null = null;
   for (const row of prices) {
-    if (!model.startsWith(row.modelPrefix)) continue;
+    if (!matchesAtBoundary(model, row.modelPrefix)) continue;
     if (row.effectiveFrom > ts) continue;
     if (best && !isBetterMatch(row, best)) continue;
     best = row;
@@ -53,4 +58,11 @@ export function findPrice(model: string, ts: string, prices: readonly PriceRow[]
 function isBetterMatch(row: PriceRow, best: PriceRow): boolean {
   if (row.modelPrefix.length !== best.modelPrefix.length) return row.modelPrefix.length > best.modelPrefix.length;
   return row.effectiveFrom > best.effectiveFrom;
+}
+
+// A bare startsWith lets claude-opus-5 price claude-opus-5-5 at the older model's rates.
+function matchesAtBoundary(model: string, prefix: string): boolean {
+  if (!model.startsWith(prefix)) return false;
+  const rest = model.slice(prefix.length);
+  return rest === "" || rest.startsWith("[") || /^-\d{8}(\[.*\])?$/.test(rest);
 }

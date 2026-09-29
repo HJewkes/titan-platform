@@ -1,3 +1,5 @@
+import type { ConditionFacts, MergeFacts } from "./conditions.js";
+import { plainMergeFacts, unmetMergeConditions } from "./conditions.js";
 import type { PolicyTable, Rule } from "./schema.js";
 import type { ActionClass, ActorClass, ResolverClass } from "./vocabulary.js";
 import { RESOLVER_CLASSES } from "./vocabulary.js";
@@ -7,6 +9,8 @@ export interface AuthorityRequest {
   actor: { class: ActorClass; id: string };
   tainted: boolean;
   subject: Record<string, string>;
+  /** Observed facts that a conditional rule (one with `when`) checks before it applies. */
+  facts?: ConditionFacts;
 }
 
 export type Decision =
@@ -16,21 +20,62 @@ export type Decision =
 
 const TAINT_RESOLVERS: ResolverClass[] = ["owner-terminal"];
 
-function findRule(table: PolicyTable, action: string, actor: string): Rule | undefined {
-  return table.rules.find((rule) => rule.action === action && rule.actor === actor);
+interface RuleMatch {
+  rule: Rule | undefined;
+  unmet: string[];
+}
+
+interface RequestSnapshot {
+  action: ActionClass;
+  actor: ActorClass;
+  tainted: unknown;
+  ownUntainted: boolean;
+  merge: MergeFacts | undefined;
+}
+
+// Each field is read exactly once; a value the caller did not set as an own property may restrict a decision, never relax it.
+function snapshotOf(request: AuthorityRequest): RequestSnapshot {
+  const tainted: unknown = request.tainted;
+  return {
+    action: request.action,
+    actor: request.actor.class,
+    tainted,
+    ownUntainted: Object.hasOwn(request, "tainted") && tainted === false,
+    merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
+  };
+}
+
+function findRule(table: PolicyTable, snapshot: RequestSnapshot): RuleMatch {
+  const forPair = table.rules.filter((rule) => rule.action === snapshot.action && rule.actor === snapshot.actor);
+  const unmet: string[] = [];
+  for (const rule of forPair.filter((candidate) => candidate.when)) {
+    if (!snapshot.ownUntainted) {
+      unmet.push(`${rule.id} skipped: tainted is not false`);
+      continue;
+    }
+    const failed = unmetMergeConditions(rule.when ?? [], snapshot.merge);
+    if (failed.length === 0) return { rule, unmet: [] };
+    unmet.push(`${rule.id} unmet: ${failed.join(", ")}`);
+  }
+  return { rule: forPair.find((candidate) => !candidate.when), unmet };
+}
+
+function withUnmet(reason: string, unmet: string[]): string {
+  return unmet.length === 0 ? reason : `${reason}; ${unmet.join("; ")}`;
 }
 
 /** Decides one request against a table. Pure: no clock, no environment, and no match means deny. */
 export function evaluate(table: PolicyTable, request: AuthorityRequest): Decision {
-  const { action } = request;
-  const actor = request.actor.class;
-  const rule = findRule(table, action, actor);
+  const snapshot = snapshotOf(request);
+  const { action, actor } = snapshot;
+  const { rule, unmet } = findRule(table, snapshot);
   if (!rule) return { verdict: "deny", ruleId: null, reason: `no rule for ${action} by ${actor}` };
-  if (rule.verdict === "deny") return { verdict: "deny", ruleId: rule.id, reason: `${rule.id} denies ${action} by ${actor}` };
+  if (rule.verdict === "deny") return { verdict: "deny", ruleId: rule.id, reason: withUnmet(`${rule.id} denies ${action} by ${actor}`, unmet) };
   if (rule.verdict === "gate") {
-    return { verdict: "gate", ruleId: rule.id, resolvers: [...(rule.resolvers ?? [])], reason: `${rule.id} gates ${action} by ${actor}` };
+    const reason = withUnmet(`${rule.id} gates ${action} by ${actor}`, unmet);
+    return { verdict: "gate", ruleId: rule.id, resolvers: [...(rule.resolvers ?? [])], reason };
   }
-  if (request.tainted && rule.taintEscalates) {
+  if (snapshot.tainted && rule.taintEscalates) {
     return { verdict: "gate", ruleId: rule.id, resolvers: [...TAINT_RESOLVERS], reason: `${rule.id} gates ${action} by a tainted ${actor}` };
   }
   return { verdict: "allow", ruleId: rule.id };
