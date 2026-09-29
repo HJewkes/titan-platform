@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes } from "./workflows.js";
@@ -67,5 +67,24 @@ describe("configuredRoutes", () => {
 
     expect(argvs).toEqual([]);
     expect(record).toMatchObject({ result: { skipped: NO_COMMAND } });
+  });
+});
+
+describe("factoryRoutes", () => {
+  it("reads the config on first call, not when the module is imported", async () => {
+    const env = configHome(undefined);
+    mkdirSync(join(env.XDG_CONFIG_HOME!, "titan-factory"));
+    writeFileSync(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json"), "{ not json");
+    const saved = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = env.XDG_CONFIG_HOME;
+    try {
+      vi.resetModules();
+      const fresh = await import("./workflows.js");
+
+      expect(() => fresh.factoryRoutes()).toThrow(/invalid config .*config\.json/);
+    } finally {
+      if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = saved;
+    }
   });
 });

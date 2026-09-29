@@ -26,7 +26,7 @@ function dbFile(): string {
 }
 
 /** land-pr against PR #1 on a fake repo whose checks pass; `hangAt` makes that step's runner never settle. */
-function landDeps(hangAt?: string): CliDeps {
+function landDeps(hangAt?: string): CliDeps & { routes: readonly StepRoute[] } {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -49,7 +49,7 @@ async function cli(argv: string[], deps: CliDeps): Promise<{ code: number; out: 
   return { code, out, err };
 }
 
-async function serve(dbPath: string, deps: CliDeps): Promise<FactoryServer> {
+async function serve(dbPath: string, deps: ReturnType<typeof landDeps>): Promise<FactoryServer> {
   const server = await startFactoryServer({ dbPath, workflows: deps.workflows, routes: deps.routes, port: 0, runtimeId: "serve-host", logger: silentLogger, gatePollMs: 5 });
   cleanups.push(() => server.close());
   return server;
