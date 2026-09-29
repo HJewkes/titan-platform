@@ -1,13 +1,16 @@
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
-import type { FactoryHost } from "./host.js";
+import type { FactoryHost, FactoryRoutes } from "./host.js";
+import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
 
 /** The workflow `factory.land` starts. */
 export const LAND_WORKFLOW = "land-pr";
 
 export interface FactoryContext extends BaseContext {
   host: FactoryHost;
+  /** Absent when the host runs routes without the shepherd store; the shepherd commands then refuse. */
+  shepherd?: ShepherdServices;
 }
 
 export interface PrRef {
@@ -138,9 +141,14 @@ const gates = defineCommand<Record<string, never>, { gates: GateSummary[] }, Fac
   }),
 });
 
+/** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
+export function factoryContext(host: FactoryHost, routes: FactoryRoutes): FactoryContext {
+  return { warnings: [], format: "json", host, ...(routes.shepherd && { shepherd: routes.shepherd }) };
+}
+
 /** Resolving a gate is deliberately absent: it stays a local `titan-factory gate resolve`, never a network call. */
 export function createFactoryRegistry(): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates]) registry.register(cmd);
+  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS]) registry.register(cmd);
   return registry;
 }

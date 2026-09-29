@@ -4,7 +4,7 @@ import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logg
 import type { WorkflowStatus } from "@titan-design/workflow";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
-import { createFactoryRegistry, type FactoryContext } from "./registry.js";
+import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -85,7 +85,7 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth): StartDaemonOptions<FactoryContext> {
   return {
     registry: createFactoryRegistry(),
-    createContext: () => ({ warnings: [], format: "json", host }),
+    createContext: () => factoryContext(host, options.routes),
     version: FACTORY_VERSION,
     stateDir: options.stateDir ?? dirname(options.dbPath),
     port: options.port ?? FACTORY_PORT,

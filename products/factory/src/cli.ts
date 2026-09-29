@@ -1,14 +1,16 @@
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
+import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
-import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
+import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, stableNodePath } from "./service.js";
+import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
 export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -40,7 +42,7 @@ interface Verbs {
   io: CliIo;
   deps: CliDeps;
   dbPath: () => string;
-  withHost: (fn: (host: FactoryHost) => Promise<number> | number) => Promise<void>;
+  withHost: (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number) => Promise<void>;
   setExit: (code: number) => void;
 }
 
@@ -52,16 +54,17 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
   let exitCode: number = EXIT.OK;
   const dbPath = (): string => resolveDbPath({ env: io.env, dbFlag: program.opts<{ db?: string }>().db });
   const setExit = (code: number): void => void (exitCode = code);
-  const withHost = async (fn: (host: FactoryHost) => Promise<number> | number): Promise<void> => {
-    const host = openFactoryHost({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps) });
+  const withHost = async (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number): Promise<void> => {
+    const routes = routesOf(deps);
+    const host = openFactoryHost({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes });
     try {
-      exitCode = await fn(host);
+      exitCode = await fn(host, routes);
     } finally {
       host.close();
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -101,6 +104,87 @@ function registerLand(program: Command, verbs: Verbs): void {
     .action((ref: string, opts: { task?: string; port: number }) => landVerb(verbs, ref, opts));
 }
 
+interface ShepherdOpts {
+  port: number;
+  json?: boolean;
+}
+
+type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; policy?: string };
+
+/** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here. */
+function registerShepherd(program: Command, verbs: Verbs): void {
+  const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve stays its own verb and is never a shepherd command");
+  const verb = (spec: string, description: string): Command =>
+    shepherd
+      .command(spec)
+      .description(description)
+      .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+      .option("--json", "print the result as JSON");
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run")
+    .option("--branch <name>", "the PR's head branch")
+    .requiredOption("--task <slug/id>", "the task this PR delivers")
+    .requiredOption("--implementer <name>", "the agent that pushes fixes")
+    .option("--reviewer <name>", "the agent that reviews")
+    .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
+    .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
+    .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts), opts));
+  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
+    .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
+  verb("list", "the watch list")
+    .option("--state <state>", "active, finished or all", "active")
+    .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
+  verb("hold <ref>", "hold owner/repo#N so no merge goes through until release")
+    .requiredOption("--reason <text>", "why it is held")
+    .action((ref: string, opts: ShepherdOpts & { reason: string }) => runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason }), opts));
+  for (const [name, description] of PR_VERBS) {
+    verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
+  }
+}
+
+const PR_VERBS = [
+  ["timeline", "every step and gate the run for owner/repo#N recorded"],
+  ["release", "release the hold on owner/repo#N"],
+  ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
+] as const;
+
+function parseTarget(target: string): { repo: string; pr?: number } {
+  if (target.includes("#")) return parsePrRef(target);
+  if (!isRepoSlug(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
+  return { repo: target };
+}
+
+function registerArgs(target: string, opts: RegisterOpts): Record<string, unknown> {
+  const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
+  if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
+  const { branch, task, implementer, reviewer, kind } = opts;
+  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, policy };
+}
+
+async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
+  let args: object;
+  try {
+    args = argsOf();
+  } catch (err) {
+    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    return verbs.setExit(EXIT.USAGE);
+  }
+  if (await probeHealth(opts.port)) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts.json));
+  await verbs.withHost(async (host, routes) => {
+    const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
+    if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
+    return printShepherd(verbs.io, name, envelope, opts.json);
+  });
+}
+
+function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
+  if (!envelope.ok) {
+    io.stderr(`error: ${envelope.error}\n`);
+    return EXIT.FAILURE;
+  }
+  io.stdout(json ? `${JSON.stringify(envelope.data, null, 2)}\n` : formatShepherd(name, envelope.data));
+  return EXIT.OK;
+}
+
 function registerService(program: Command, { io }: Verbs): void {
   program
     .command("service")
@@ -127,14 +211,18 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 
-/** The server's host starts and owns the run, so this shell can exit while it is still in flight. */
-async function landOnServer(io: CliIo, port: number, args: LandArgs): Promise<number> {
-  const res = await fetch(`http://127.0.0.1:${port}/rpc/factory.land`, {
+async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
+  const res = await fetch(`http://127.0.0.1:${port}/rpc/${name}`, {
     method: "POST",
     headers: { "content-type": "application/json", [CLIENT_HEADER]: "titan-factory" },
     body: JSON.stringify(args),
   });
-  const envelope = (await res.json()) as { ok: true; data: LandStarted } | { ok: false; error: string };
+  return (await res.json()) as JsonEnvelope<T>;
+}
+
+/** The server's host starts and owns the run, so this shell can exit while it is still in flight. */
+async function landOnServer(io: CliIo, port: number, args: LandArgs): Promise<number> {
+  const envelope = await postRpc<LandStarted>(port, "factory.land", args);
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
     return EXIT.FAILURE;

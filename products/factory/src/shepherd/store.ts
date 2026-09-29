@@ -21,6 +21,8 @@ export interface RegistrationInput {
   kind?: string;
 }
 
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind">;
+
 export interface Registration {
   repo: RepoSlug;
   pr: number | null;
@@ -117,6 +119,22 @@ export class ShepherdStore implements HoldLookup {
 
   byBranch(repo: RepoSlug, branch: string): Registration | undefined {
     return this.one("repo = ? AND branch = ?", repoKey(repo), branch);
+  }
+
+  /** Every registration, oldest first. */
+  all(): Registration[] {
+    const rows = this.db.prepare("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all() as Row[];
+    return rows.map(fromRow);
+  }
+
+  /** A repeat registration refreshes who and what the run is for; the run only ever narrows toward the stored policy. */
+  update(runId: string, meta: RegistrationUpdate): Registration {
+    const kind = KindSchema.parse(meta.kind ?? "unknown");
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, updated_at = ? WHERE run_id = ?")
+      .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(meta.policy), kind, this.stamp(), runId).changes;
+    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+    return this.byRun(runId)!;
   }
 
   /** Record the PR a branch registration was waiting for; throws when the run has no registration. */

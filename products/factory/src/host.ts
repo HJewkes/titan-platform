@@ -10,6 +10,7 @@ import {
   type WorkflowEvent,
   type WorkflowRun,
 } from "@titan-design/workflow";
+import type { ShepherdServices } from "./shepherd/commands.js";
 import { assertDistinctStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 import { routedRunner, type StepRoute } from "./routed-runner.js";
 
@@ -21,7 +22,7 @@ export interface DatabaseTenant {
 }
 
 /** Routes travel with the tenant they read, so every caller that passes the routes also opens their tables. */
-export type FactoryRoutes = readonly StepRoute[] & { readonly database?: DatabaseTenant };
+export type FactoryRoutes = readonly StepRoute[] & { readonly database?: DatabaseTenant; readonly shepherd?: ShepherdServices };
 
 export interface FactoryHostOptions {
   dbPath: string;
