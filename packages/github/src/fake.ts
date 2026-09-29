@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
+import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import type { CheckRun, Commit, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
   createRef: number;
+  deleteRef: number;
   putContent: number;
   createPr: number;
   updateBranch: number;
@@ -20,7 +22,7 @@ export interface FakeGitHub {
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
   /** The live record, so a test can move the world (behind, mergeable_state) between steps. */
   pr(number: number): PullRequest;
-  /** Stored as given; picking the latest run per name is the port's job. */
+  /** Stored as given, except a run with no `headSha` is stamped with `sha`; picking the latest run per name is the port's job. */
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
@@ -28,6 +30,8 @@ export interface FakeGitHub {
   onGetPr?: (pr: PullRequest, reads: number) => void;
   commits: Map<string, Commit>;
   refs: Map<string, string>;
+  /** Job id to full log text, for `getJobLog`. */
+  jobLogs: Map<number, string>;
   files: Map<string, { content: string; blobSha: string }>;
 }
 
@@ -45,16 +49,17 @@ export function fakeSha(tag: string): string {
   return createHash("sha1").update(tag).digest("hex");
 }
 
-export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success"): CheckRun {
-  return { id, name, status: "completed", conclusion, startedAt, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
+export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success", appId = GITHUB_ACTIONS_APP_ID, headSha = ""): CheckRun {
+  return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
 }
 
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
-export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): FakeGitHub {
+export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string } = {}): FakeGitHub {
   const base = options.base ?? "main";
+  const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, putContent: 0, createPr: 0, updateBranch: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, merge: 0, rerunFailedJobs: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
@@ -65,14 +70,15 @@ export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): F
     rules: { contexts: ["validate", "dag-check"], strict: true },
     commits: new Map(),
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
+    jobLogs: new Map(),
     files: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
       prs.set(pr.number, pr);
       return { ...pr };
     },
     pr: (number) => mustPr(prs, number),
-    setRuns: (sha, list) => runs.set(sha, list),
+    setRuns: (sha, list) => runs.set(sha, list.map((run) => ({ ...run, headSha: run.headSha || sha }))),
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },
@@ -86,12 +92,19 @@ export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): F
       effects.createRef += 1;
       fake.refs.set(branch, sha);
     },
+    deleteRef: async (_repo, branch) => {
+      record("deleteRef", undefined);
+      if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
+      effects.deleteRef += 1;
+    },
+    getDefaultBranch: async () => record("getDefaultBranch", base),
     getContent: async (_repo, path, ref) => {
       const file = fake.files.get(`${ref}:${path}`);
       return record("getContent", file ? { path, blobSha: file.blobSha, content: file.content } : null);
     },
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
+    listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
     createPr: async (_repo, request) => record("createPr", createPr(fake, request)),
     getPr: async (_repo, number) => {
       const pr = mustPr(prs, number);
@@ -103,6 +116,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string } = {}): F
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [] }),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
+    getJobLog: async (_repo, jobId) => {
+      const log = fake.jobLogs.get(jobId);
+      if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+      return record("getJobLog", log);
+    },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
     merge: async (_repo, number, sha, method) => record("merge", mergePr(fake, mustPr(prs, number), sha, method, nextSha)),
     rerunFailedJobs: async (_repo, runId) => {
