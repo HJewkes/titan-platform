@@ -25,3 +25,5 @@ export const CiSnapshotResult = z.looseObject({
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean() });
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
+
+export const MergePolicyResult = z.looseObject({ outcome: z.literal("allow"), headSha: z.string() });

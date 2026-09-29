@@ -1,0 +1,140 @@
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
+import { afterEach, describe, expect, it } from "vitest";
+import { defineWorkflow } from "../definition.js";
+import { GATE_EVERYTHING_RULE, gateEverything, type GatePolicy } from "../gate-policy.js";
+import { openFactoryHost, type FactoryHost } from "../host.js";
+import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { LAND_STEPS, land, landRoutes, type LandOptions, type LandOutcome } from "./land.js";
+
+const H2 = fakeSha("head2");
+const ALLOW_RULE = { table: "test-table", rowId: "MRG-TEST", version: 3 };
+const allowMerges: GatePolicy = { decide: () => ({ outcome: "allow", rule: ALLOW_RULE, reason: "reviewer verdict MERGE at this head" }) };
+const denyMerges: GatePolicy = { decide: () => ({ outcome: "deny", rule: GATE_EVERYTHING_RULE, reason: "frozen" }) };
+
+const hosts: FactoryHost[] = [];
+afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+
+type Body = (ctx: WorkflowContext, fake: FakeGitHub, outcomes: LandOutcome[]) => Promise<void>;
+
+/** A fake PR whose required check fails on H1 and passes on every other head, and a host running `body`. */
+function roundsHost(body: Body, options: { redOnH1?: boolean } = {}): { host: FactoryHost; fake: FakeGitHub; outcomes: LandOutcome[] } {
+  const fake = fakeGitHub();
+  fake.addPr({ headSha: H1 });
+  const red = (sha: string) => options.redOnH1 === true && sha === H1;
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, red(pr.headSha) ? "failure" : "success"), successRun("dag-check", 2)]);
+  let clock = 0;
+  const routes = landRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
+  const outcomes: LandOutcome[] = [];
+  const workflow = defineWorkflow({ name: "land-rounds", steps: LAND_STEPS, run: (ctx) => body(ctx, fake, outcomes) });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
+  hosts.push(host);
+  return { host, fake, outcomes };
+}
+
+function once(policy: GatePolicy, extra: Partial<LandOptions> = {}): Body {
+  return async (ctx, _fake, outcomes) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1 }, { policy, ...extra }));
+}
+
+function stepIds(host: FactoryHost, runId: string): string[] {
+  return Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+}
+
+describe("land rounds", () => {
+  it("re-entered for a new head, polls CI fresh under step ids that name the round", async () => {
+    const body: Body = async (ctx, fake, outcomes) => {
+      outcomes.push(await land(ctx, { repo: REPO, pr: 1 }, { policy: allowMerges }));
+      if (fake.pr(1).headSha === H1) fake.pushHead(1, H2);
+      outcomes.push(await land(ctx, { repo: REPO, pr: 1, round: 1 }, { policy: allowMerges }));
+    };
+    const { host, outcomes } = roundsHost(body, { redOnH1: true });
+
+    const run = await host.runtime.wait(host.runtime.start("land-rounds"));
+
+    expect(run.status).toBe("completed");
+    expect(outcomes.map((outcome) => [outcome.kind, outcome.headSha])).toEqual([["ci-failed", H1], ["merged", H2]]);
+    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "ci-wait:r1:1", "merge:r1:0"]);
+  });
+
+  it("asks afresh in a later round instead of replaying the earlier round's approve-merge answer", async () => {
+    const body: Body = async (ctx, _fake, outcomes) => {
+      outcomes.push(await land(ctx, { repo: REPO, pr: 1 }, { policy: gateEverything }));
+      outcomes.push(await land(ctx, { repo: REPO, pr: 1, round: 1 }, { policy: gateEverything }));
+    };
+    const { host, fake, outcomes } = roundsHost(body);
+    const runId = host.runtime.start("land-rounds");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 });
+
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    await host.runtime.wait(runId);
+
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual(["stopped", "merged"]);
+    expect(fake.effects.merge).toBe(1);
+  });
+
+  it("refuses a round that is not a non-negative integer", async () => {
+    const { host } = roundsHost(async (ctx) => void (await land(ctx, { repo: REPO, pr: 1, round: -1 }, { policy: gateEverything })));
+
+    const run = await host.runtime.wait(host.runtime.start("land-rounds"));
+
+    expect(run).toMatchObject({ status: "failed", error: expect.stringContaining("round must be a non-negative integer") });
+  });
+});
+
+describe("land merge policy", () => {
+  it("on allow, merges with no hitl gate and records the policy trace and the caller's evidence", async () => {
+    const seen: unknown[] = [];
+    const allowEvidence: LandOptions["allowEvidence"] = (merge) => (seen.push(merge), { reviewer: "reviewer-1", verdictHead: merge.headSha });
+    const { host, fake } = roundsHost(once(allowMerges, { allowEvidence }));
+
+    const run = await host.runtime.wait(host.runtime.start("land-rounds"));
+    const record = host.runtime.status(run.id)!.stepResults["merge-policy:0:0"]!;
+
+    expect(run.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(host.gates.get(gateId(run.id, "approve-merge"))).toBeUndefined();
+    expect(stepIds(host, run.id)).not.toContain("approve-merge");
+    expect(seen).toEqual([{ repo: REPO, pr: 1, headSha: H1, decision: allowMerges.decide("merge") }]);
+    expect(record.data).toMatchObject({
+      result: { outcome: "allow", headSha: H1, rule: ALLOW_RULE },
+      allowEvidence: { reviewer: "reviewer-1", verdictHead: H1 },
+      "titan.trace.gates": [{ gateKind: "policy", verdict: "allow", decidedBy: "policy:test-table", policyRule: ALLOW_RULE, reason: "reviewer verdict MERGE at this head" }],
+    });
+    expect(JSON.parse(record.output!)).toMatchObject({ kind: "land.merge-policy", traceId: run.id });
+  });
+
+  it("on allow with no evidence hook, still records the policy trace with empty evidence", async () => {
+    const { host } = roundsHost(once(allowMerges));
+
+    const run = await host.runtime.wait(host.runtime.start("land-rounds"));
+
+    expect(host.runtime.status(run.id)!.stepResults["merge-policy:0:0"]!.data).toMatchObject({ allowEvidence: {}, "titan.trace.gates": [{ verdict: "allow" }] });
+  });
+
+  it("on gate, opens approve-merge, records no policy step, and merges only after the owner answers", async () => {
+    const { host, fake } = roundsHost(once(gateEverything));
+    const runId = host.runtime.start("land-rounds");
+
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    const mergesBeforeAnswer = fake.effects.merge;
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    await host.runtime.wait(runId);
+
+    expect(mergesBeforeAnswer).toBe(0);
+    expect(fake.effects.merge).toBe(1);
+    expect(stepIds(host, runId).filter((id) => id.startsWith("merge-policy"))).toEqual([]);
+  });
+
+  it("on deny, stops merge-denied with no gate, no policy step and no merge", async () => {
+    const { host, fake, outcomes } = roundsHost(once(denyMerges));
+
+    const run = await host.runtime.wait(host.runtime.start("land-rounds"));
+
+    expect(outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "merge-denied", detail: "frozen" });
+    expect(host.gates.listPending()).toEqual([]);
+    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0"]);
+    expect(fake.calls).not.toContain("merge");
+  });
+});
