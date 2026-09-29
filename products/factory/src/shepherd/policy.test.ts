@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], paths: {}, grants: ["some-other-grant"] };
@@ -64,5 +64,20 @@ describe("shepherdGatePolicy", () => {
     expect(decide("acme/widgets").outcome).toBe("gate");
     expect(decide("acme/gizmos")).toMatchObject({ outcome: "gate", rule: { rowId: "trusted-seat" } });
     expect(decide("acme/unlisted").rule.rowId).toBe("none");
+  });
+
+  it("tells the owner the review at the decided head, and a MERGE review still only gates", () => {
+    const head = "b".repeat(40);
+    const policy = shepherdGatePolicy(effective("acme/gizmos"), (headSha) => (headSha === head ? { kind: "MERGE", headSha, evidence: {} } : undefined));
+
+    expect(policy.decide("merge", { headSha: head })).toMatchObject({ outcome: "gate", reason: expect.stringContaining("review at this head: MERGE") });
+    expect(policy.decide("merge", { headSha: "c".repeat(40) }).reason).not.toContain("review at this head");
+  });
+
+  it("parses an effective policy back from JSON and refuses an unknown key", () => {
+    const policy = effective("acme/gizmos");
+
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
+    expect(() => EffectivePolicySchema.parse({ ...policy, autoMerge: true })).toThrow();
   });
 });

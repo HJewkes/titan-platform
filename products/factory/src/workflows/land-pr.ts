@@ -27,7 +27,7 @@ export interface LandPrParams {
   task?: string;
 }
 
-interface LandPrState {
+export interface LandPrState {
   round: number;
   reruns: number;
   waits: number;
@@ -62,7 +62,7 @@ export async function landPr(ctx: WorkflowContext, params: LandPrParams, options
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
 
-async function onCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<LandOutcome | undefined> {
+export async function onCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<LandOutcome | undefined> {
   if (state.reruns === 0 && isTransient(red.failing)) return rerun(ctx, params, red, state);
   const decision = await askCiFailed(ctx, params, red);
   if (decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha: red.headSha, detail: "a human abandoned the red head" };
