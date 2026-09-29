@@ -368,13 +368,12 @@ Tier 1, `@titan-design/github@0.0.0`. GitHub REST port over the gh CLI: validate
 
 Key exports:
 
-- `port`: `GitHubConflictError`, `githubPort`
+- `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
 - `readiness`: `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`, `execGh`
-- `gh-cli`: `ghCliWire`
-- +36 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +40 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 

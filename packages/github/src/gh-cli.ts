@@ -1,5 +1,6 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { execGh, type GhExec } from "./exec.js";
+import { COMPARE_FILE_CAP } from "./port.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
 import { restCaller, type Rest } from "./rest.js";
 
@@ -40,7 +41,8 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
-    listIssueComments: (repo, number) => api.pages(`repos/${repo}/issues/${number}/comments`, { per_page: "100" }, (page: IssueComment[]) => page.map(({ id, body }) => ({ id, body }))),
+    getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
+    listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
   };
 }
@@ -143,22 +145,36 @@ interface GhPrFile {
   status: string;
 }
 
-async function listPrFiles(api: Rest, repo: string, number: number): Promise<PrFile[]> {
-  const files = await api.pages(`repos/${repo}/pulls/${number}/files`, { per_page: "100" }, (page: GhPrFile[]) => page);
-  return files.map((file) => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status }));
+/** The count comes from the PR itself; a missing one throws, because the port cannot then tell a capped list. */
+async function listPrFiles(api: Rest, repo: string, number: number): Promise<{ files: PrFile[]; changedFiles: number }> {
+  const { changed_files: changedFiles } = await api.get<{ changed_files?: number }>(`repos/${repo}/pulls/${number}`);
+  if (typeof changedFiles !== "number") throw new Error(`pull ${number} on ${repo} reported no changed_files count`);
+  const listed = await api.pages(`repos/${repo}/pulls/${number}/files`, { per_page: "100" }, (page: GhPrFile[]) => page);
+  return { changedFiles, files: listed.map((file) => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status })) };
+}
+
+async function listIssueComments(api: Rest, repo: string, number: number): Promise<IssueComment[]> {
+  const comments = await api.pages(`repos/${repo}/issues/${number}/comments`, { per_page: "100" }, (page: { id: number; body: string; user: { login: string } | null }[]) => page);
+  return comments.map((comment) => ({ id: comment.id, body: comment.body, author: comment.user?.login ?? "" }));
 }
 
 interface GhComparePage {
   merge_base_commit: { sha: string };
+  total_commits?: number;
+  commits?: unknown[];
   files?: { filename: string }[];
 }
 
-/** Every page repeats the merge base; the files are split across pages. */
+/** Every page repeats the merge base and total; files and commits are split across pages. */
 async function compareFiles(api: Rest, repo: string, base: string, head: string): Promise<CompareResult> {
   let mergeBaseSha = "";
+  let totalCommits = 0;
+  let commitsSeen = 0;
   const files = await api.pages(`repos/${repo}/compare/${base}...${head}`, { per_page: "100" }, (page: GhComparePage) => {
     mergeBaseSha = page.merge_base_commit.sha;
+    totalCommits = page.total_commits ?? 0;
+    commitsSeen += page.commits?.length ?? 0;
     return (page.files ?? []).map((file) => file.filename);
   });
-  return { mergeBaseSha, files };
+  return { mergeBaseSha, files, truncated: files.length >= COMPARE_FILE_CAP || totalCommits > commitsSeen };
 }

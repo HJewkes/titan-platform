@@ -111,7 +111,7 @@ describe("gh api adapter", () => {
 });
 
 const H2 = fakeSha("head2");
-const pull = { number: 7, state: "open", merged: false, merge_commit_sha: null, draft: false, mergeable_state: "clean", head: { ref: "topic", sha: H1, repo: { full_name: REPO } }, base: { ref: "main" } };
+const pull = { number: 7, changed_files: 0, state: "open", merged: false, merge_commit_sha: null, draft: false, mergeable_state: "clean", head: { ref: "topic", sha: H1, repo: { full_name: REPO } }, base: { ref: "main" } };
 
 /** Answers by the REST path in argv, the element after `-X <method>`. */
 const ROUTES: [RegExp, unknown][] = [
@@ -121,6 +121,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/pulls$/, [pull]],
   [/compare\//, { behind_by: 1, merge_base_commit: { sha: H2 }, files: [] }],
   [/issues\/7\/comments$/, []],
+  [/^user$/, { login: "octo" }],
   [/pulls\/7\/files$/, []],
   [/git\/ref\/heads\//, { object: { sha: H1 } }],
   [/git\/refs/, undefined],

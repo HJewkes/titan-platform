@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import type { CheckRun, Commit, CompareResult, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_FILES_CAP } from "./port.js";
+import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -33,10 +34,14 @@ export interface FakeGitHub {
   /** Job id to full log text, for `getJobLog`. */
   jobLogs: Map<number, string>;
   files: Map<string, { content: string; blobSha: string }>;
-  /** PR number to its changed files, for `listPrFiles`. */
+  /** The login `createComment` posts as and `getAuthenticatedLogin` answers with. */
+  actor: string;
+  /** PR number to its changed files. `listPrFiles` returns at most 3,000 of them, like GitHub. */
   prFiles: Map<number, PrFile[]>;
-  /** `base...head` to the compare result; an unset pair compares as no change. */
-  compares: Map<string, CompareResult>;
+  /** PR number to the PR's own `changed_files` count; unset means the length of `prFiles`. */
+  prChangedFiles: Map<number, number>;
+  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
+  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
 }
@@ -78,7 +83,9 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
     files: new Map(),
+    actor: "shepherd-bot",
     prFiles: new Map(),
+    prChangedFiles: new Map(),
     compares: new Map(),
     comments: new Map(),
     addPr(fields) {
@@ -137,16 +144,22 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
     },
-    listPrFiles: async (_repo, number) => record("listPrFiles", (fake.prFiles.get(number) ?? []).map((file) => ({ ...file }))),
-    compareFiles: async (_repo, base, head) => {
-      const result = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
-      return record("compareFiles", { ...result, files: [...result.files] });
+    listPrFiles: async (_repo, number) => {
+      const all = fake.prFiles.get(number) ?? [];
+      const files = all.slice(0, PR_FILES_CAP).map((file) => ({ ...file }));
+      return record("listPrFiles", { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length });
     },
+    compareFiles: async (_repo, base, head) => {
+      const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
+      const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
+      return record("compareFiles", { mergeBaseSha: input.mergeBaseSha, files: input.files.slice(0, COMPARE_FILE_CAP), truncated });
+    },
+    getAuthenticatedLogin: async () => record("getAuthenticatedLogin", fake.actor),
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
       record("createComment", undefined);
       const list = fake.comments.get(number) ?? [];
-      const comment = { id: 5000 + ++counter, body };
+      const comment = { id: 5000 + ++counter, body, author: fake.actor };
       fake.comments.set(number, [...list, comment]);
       return { id: comment.id };
     },

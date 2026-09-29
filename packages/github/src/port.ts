@@ -82,11 +82,21 @@ export interface CompareResult {
   mergeBaseSha: string;
   /** Paths changed between the merge base and `head`. */
   files: string[];
+  /** GitHub caps compare at 300 files and 250 commits without saying so; when true, `files` may be missing paths. */
+  truncated: boolean;
 }
+
+/** GitHub's limits for the compare API. */
+export const COMPARE_FILE_CAP = 300;
+export const COMPARE_COMMIT_CAP = 250;
+/** GitHub's limit for `pulls/{n}/files`. */
+export const PR_FILES_CAP = 3000;
 
 export interface IssueComment {
   id: number;
   body: string;
+  /** Login of the commenter. */
+  author: string;
 }
 
 export interface OpenPrRequest {
@@ -119,8 +129,10 @@ export interface GitHubWire {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<{ sha: string }>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
-  listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
+  listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
 }
@@ -155,11 +167,14 @@ export interface GitHubPort {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
-  /** Every changed file of the PR, all pages; `previousPath` is set on a rename. */
+  /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
-  /** The merge base of `base` and `head`, and every path changed since it. */
+  /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
-  /** Lists the PR's comments first; one containing `marker` skips as `exists`. The body should carry the marker. */
+  /**
+   * Lists the PR's comments first; a comment by the authenticated user with `marker` on a line of its own skips as
+   * `exists`. The body should carry the marker. Two concurrent callers can both post; there is no lock.
+   */
   upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
 }
 
@@ -175,6 +190,7 @@ export class GitHubConflictError extends Error {
 export function githubPort(wire: GitHubWire): GitHubPort {
   const repoOf = checkRepo;
   const pr = (number: number) => checkPositiveInt("pr", number);
+  const login = memoizedLogin(wire);
   return {
     getHeadSha: async (repo, branch) => wire.getRef(repoOf(repo), checkRef("branch", branch)),
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
@@ -193,9 +209,9 @@ export function githubPort(wire: GitHubWire): GitHubPort {
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
-    listPrFiles: async (repo, number) => wire.listPrFiles(repoOf(repo), pr(number)),
+    listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
-    upsertComment: async (repo, number, marker, body) => upsertComment(wire, repoOf(repo), pr(number), checkMarker(marker), body),
+    upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
   };
 }
 
@@ -275,8 +291,40 @@ async function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number): Pro
   return { done: true };
 }
 
-async function upsertComment(wire: GitHubWire, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
-  const existing = (await wire.listIssueComments(repo, number)).find((comment) => comment.body.includes(marker));
+/** The list came back shorter than the PR's own count, so a path may be missing. */
+export class FileListTruncatedError extends Error {
+  constructor(
+    readonly expected: number,
+    readonly received: number,
+  ) {
+    super(`GitHub listed ${received} of ${expected} changed files; the PR is past its list cap, so do not decide from a partial list`);
+    this.name = "FileListTruncatedError";
+  }
+}
+
+async function listPrFiles(wire: GitHubWire, repo: RepoSlug, number: number): Promise<PrFile[]> {
+  const { files, changedFiles } = await wire.listPrFiles(repo, number);
+  if (files.length < changedFiles) throw new FileListTruncatedError(changedFiles, files.length);
+  return files;
+}
+
+/** Resolved once per port; a failed lookup is not remembered. */
+function memoizedLogin(wire: GitHubWire): () => Promise<string> {
+  let cached: Promise<string> | undefined;
+  return () => {
+    cached ??= wire.getAuthenticatedLogin().catch((error: unknown) => {
+      cached = undefined;
+      throw error;
+    });
+    return cached;
+  };
+}
+
+const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n/).some((line) => line === marker);
+
+async function upsertComment(wire: GitHubWire, login: () => Promise<string>, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
+  const [self, comments] = await Promise.all([login(), wire.listIssueComments(repo, number)]);
+  const existing = comments.find((comment) => comment.author === self && holdsMarker(comment.body, marker));
   if (existing) return { id: existing.id, done: false, skipped: "exists" };
   return { id: (await wire.createComment(repo, number, body)).id, done: true };
 }

@@ -56,10 +56,18 @@ reset divided by the calls left. `jobLogTail(repo, jobId, lines)` reads an Actio
 `mergeableState`.
 
 `listPrFiles(repo, pr)` returns every changed file of a PR, all pages, with `previousPath` on a
-rename. `compareFiles(repo, base, head)` returns `{ mergeBaseSha, files }` from the compare
-endpoint. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
-when none contains `marker`, an HTML comment the caller builds and also puts in `body`. Each
-read carries the same ETag cache and rate budget as the others.
+rename. GitHub stops that list at 3,000 files without saying so, so the port compares the count
+with the PR's own `changed_files` and throws `FileListTruncatedError` when fewer came back. A
+caller must treat that error as "cannot decide" (for example, hold the PR for a human), never as
+an empty or partial list. `compareFiles(repo, base, head)` returns `{ mergeBaseSha, files,
+truncated }`. GitHub caps compare at 300 files and 250 commits, also silently; `truncated` is
+true when `files` reaches 300 or the commits returned are fewer than `total_commits`. When it is
+true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
+unknown. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
+when none by the authenticated `gh` user has `marker` (an HTML comment the caller builds, also
+put in `body`) alone on a line. Another author's comment or a longer marker never counts. Two
+concurrent callers can both post; there is no lock. Each read carries the same ETag cache and
+rate budget as the others.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
