@@ -59,6 +59,7 @@ export interface DaemonHandle {
 }
 
 const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
+const DEFAULT_HOST = "127.0.0.1";
 
 export class DaemonAlreadyRunningError extends Error {
   constructor(readonly pid: number, readonly port: number) {
@@ -77,7 +78,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
   let ready = false;
   const app = buildHttpApp({ ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready });
-  const server = await listen(app, options.host ?? "127.0.0.1", boundPort, mcpHandler(options, () => boundPort));
+  const server = await listen(app, options.host ?? DEFAULT_HOST, boundPort, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
 
   const watcher = startWatcher(options, hub, log);
@@ -127,7 +128,7 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
 }
 
 function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
-  const host = options.host ?? "127.0.0.1";
+  const host = options.host ?? DEFAULT_HOST;
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
 }
 

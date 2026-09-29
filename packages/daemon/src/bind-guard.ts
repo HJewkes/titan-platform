@@ -30,5 +30,8 @@ function expandV6(address: string): number[] | null {
   const right = tail === undefined || tail === "" ? [] : tail.split(":");
   const fill = tail === undefined ? 0 : 8 - left.length - right.length;
   if (fill < 0 || (tail === undefined && left.length !== 8)) return null;
-  return [...left, ...Array<string>(fill).fill("0"), ...right].map((g) => parseInt(g, 16));
+  const groupsText = [...left, ...Array<string>(fill).fill("0"), ...right];
+  // Anything that is not plain hex (a dotted tail, a zone id) is not understood, so it is refused.
+  if (!groupsText.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return null;
+  return groupsText.map((g) => parseInt(g, 16));
 }

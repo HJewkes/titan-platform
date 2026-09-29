@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { connect } from "node:net";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -54,6 +54,17 @@ describe("startDaemon bind guard", () => {
   it("starts on 0.0.0.0 when the unauthenticated opt-in is set", async () => {
     handle = await startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: true }));
     expect((await fetch(`http://127.0.0.1:${handle.port}/health`)).status).toBe(200);
+  });
+
+  it("treats a truthy but non-true opt-in as not set", async () => {
+    const truthy = "false" as unknown as boolean;
+    await expect(startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: truthy }))).rejects.toBeInstanceOf(NonLoopbackBindError);
+  });
+
+  const lanAddress = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
+  it.skipIf(!lanAddress)("binds loopback only when no host is given", async () => {
+    handle = await startDaemon(options());
+    await expect(fetch(`http://${lanAddress}:${handle.port}/health`)).rejects.toThrow();
   });
 
   it("does not read the opt-in from the environment", async () => {
