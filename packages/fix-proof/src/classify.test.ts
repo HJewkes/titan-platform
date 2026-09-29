@@ -101,6 +101,16 @@ describe("classifyReports", () => {
     expect(result.verdict).toBe("vacuous");
   });
 
+  it("does not credit a reproducing file whose name merely ends with the selected path", () => {
+    const base = report(fileResult("src/data.test.ts", [failing("t")]));
+    const head = report(fileResult("src/data.test.ts", [passing("t")]));
+
+    const result = classifyReports(input(["a.test.ts"], base, head));
+
+    expect(result.verdict).toBe("error");
+    expect(result.files).toEqual([{ file: "a.test.ts", base: "not-collected", head: "not-collected" }]);
+  });
+
   it("ignores results from outside the report root", () => {
     const base = report(fileResult("a.test.ts", [failing("t")], "failed", "/elsewhere"));
     const head = report(fileResult("a.test.ts", [passing("t")]), fileResult("a.test.ts", [passing("t")], "passed", "/elsewhere"));
