@@ -39,4 +39,10 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, ...overrides });
 }
 
-export const factoryRoutes: FactoryRoutes = configuredRoutes(process.env);
+let cachedRoutes: FactoryRoutes | undefined;
+
+/** The production routes, built on first call so a bad config file only fails commands that dispatch steps. */
+export function factoryRoutes(): FactoryRoutes {
+  cachedRoutes ??= configuredRoutes(process.env);
+  return cachedRoutes;
+}
