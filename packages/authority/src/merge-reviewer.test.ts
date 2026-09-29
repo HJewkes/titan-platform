@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MergeFacts } from "./conditions.js";
+import type { CheckRunFact, MergeFacts } from "./conditions.js";
 import { unmetConditions } from "./conditions.js";
 import type { AuthorityRequest } from "./evaluate.js";
 import { evaluate } from "./evaluate.js";
@@ -42,6 +42,10 @@ function atHead(facts: MergeFacts, head: string): void {
   for (const run of facts.checkRuns) run.headSha = head;
 }
 
+function setFact(target: object, key: string, value: unknown): void {
+  Reflect.set(target, key, value);
+}
+
 function patched(patch: (facts: MergeFacts) => void): MergeFacts {
   const facts = greenFacts();
   patch(facts);
@@ -50,13 +54,14 @@ function patched(patch: (facts: MergeFacts) => void): MergeFacts {
 
 const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a verdict from another agent", (f) => { f.resolver.agentId = "someone-else"; }, "resolver-is-dispatched-reviewer"],
+  ["an empty object for resolver and dispatched reviewer", (f) => { setFact(f, "resolver", {}); setFact(f, "dispatchedReviewer", {}); }, "resolver-is-dispatched-reviewer"],
+  ["numeric reviewer ids on both sides", (f) => { for (const side of [f.resolver, f.dispatchedReviewer]) { setFact(side, "agentId", 7); setFact(side, "sessionId", 7); } }, "resolver-is-dispatched-reviewer"],
   ["a verdict from a successor session under the same name", (f) => { f.resolver.sessionId = "session-2"; }, "resolver-is-dispatched-reviewer"],
   ["an empty reviewer identity on both sides", (f) => { f.resolver = { agentId: "", sessionId: "" }; f.dispatchedReviewer = { agentId: "", sessionId: "" }; }, "resolver-is-dispatched-reviewer"],
   ["a FIX_FIRST verdict", (f) => { f.verdict.value = "FIX_FIRST"; }, "verdict-merge-at-head"],
   ["a MERGE verdict at an older head", (f) => { f.verdict.head = OLD_HEAD; }, "verdict-merge-at-head"],
   ["a short sha on every side", (f) => { atHead(f, HEAD.slice(0, 7)); }, "verdict-merge-at-head"],
   ["an upper-case sha on every side", (f) => { atHead(f, HEAD.toUpperCase()); }, "verdict-merge-at-head"],
-  ["an empty head on every side", (f) => { atHead(f, ""); }, "verdict-merge-at-head"],
   ["a verdict naming a prefix of the head", (f) => { f.verdict.head = HEAD.slice(0, 7); }, "verdict-merge-at-head"],
   ["a 41-character sha on every side", (f) => { atHead(f, `${HEAD}a`); }, "verdict-merge-at-head"],
   ["a verdict naming the head in upper case", (f) => { f.verdict.head = HEAD.toUpperCase(); }, "verdict-merge-at-head"],
@@ -68,9 +73,18 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a required context whose only run was skipped", (f) => { f.checkRuns[0]!.conclusion = "skipped"; }, "required-contexts-green"],
   ["no allowed apps", (f) => { f.allowedApps = []; }, "required-contexts-green"],
   ["a failed run beside the green required one", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }); }, "no-non-green-run"],
+  ["a failed run with no headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, conclusion: "failure" } as CheckRunFact); }, "no-non-green-run"],
+  ["a failed run with a numeric headSha", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: 1, conclusion: "failure" } as unknown as CheckRunFact); }, "no-non-green-run"],
+  ["a run with no conclusion field", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD } as CheckRunFact); }, "no-non-green-run"],
   ["a run still in progress", (f) => { f.checkRuns.push({ name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: null }); }, "no-non-green-run"],
   ["a merge-tree conflict", (f) => { f.mergeTreeClean = false; }, "merge-tree-clean"],
+  ["a mergeTreeClean of \"false\"", (f) => { setFact(f, "mergeTreeClean", "false"); }, "merge-tree-clean"],
+  ["a mergeTreeClean of 1", (f) => { setFact(f, "mergeTreeClean", 1); }, "merge-tree-clean"],
   ["a frozen repo", (f) => { f.repoFrozen = true; }, "repo-not-frozen"],
+  ["a missing repoFrozen", (f) => { Reflect.deleteProperty(f, "repoFrozen"); }, "repo-not-frozen"],
+  ["a null repoFrozen", (f) => { setFact(f, "repoFrozen", null); }, "repo-not-frozen"],
+  ["a repoFrozen of 0", (f) => { setFact(f, "repoFrozen", 0); }, "repo-not-frozen"],
+  ["no changed paths", (f) => { f.changedPaths = []; }, "no-protected-path-change"],
   ["a change to .github/workflows/ci.yml", (f) => { f.changedPaths.push(".github/workflows/ci.yml"); }, "no-protected-path-change"],
   ["a change to .github/actions/setup/action.yml", (f) => { f.changedPaths.push(".github/actions/setup/action.yml"); }, "no-protected-path-change"],
   ["a change to .github/CODEOWNERS", (f) => { f.changedPaths.push(".github/CODEOWNERS"); }, "no-protected-path-change"],
@@ -97,7 +111,19 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a change to packages//x.ts", (f) => { f.changedPaths.push("packages//x.ts"); }, "no-protected-path-change"],
   ["a change to packages/x/..", (f) => { f.changedPaths.push("packages/x/.."); }, "no-protected-path-change"],
   ["a rename whose old side is under .github/", (f) => { f.changedPaths.push(".github/workflows/old.yml", "tools/old.yml"); }, "no-protected-path-change"],
+  ...[".github\u200b/workflows/ci.yml", "CODEOWNERS\n", "docs/CODEOWNERS\u0000", "\uff0egithub/x", ".gitmodules\u007f", "docs/gu\u00efde.md"].map(
+    (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
+  ),
+  ["seat grants given as a string", (f) => { setFact(f, "seatGrants", "no-merge-on-green-approve"); }, "seat-grants-merge-on-green-approve"],
   ["a seat without merge-on-green-approve", (f) => { f.seatGrants = ["task-close-on-merged-pr"]; }, "seat-grants-merge-on-green-approve"],
+];
+
+const MULTI_REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind[]][] = [
+  ["an empty head on every side", (f) => { atHead(f, ""); }, ["verdict-merge-at-head", "required-contexts-green", "no-non-green-run"]],
+  ["a head given as an array on every side", (f) => { const head = [HEAD]; setFact(f, "head", head); setFact(f.verdict, "head", head); for (const run of f.checkRuns) setFact(run, "headSha", head); }, ["verdict-merge-at-head", "required-contexts-green", "no-non-green-run"]],
+  ["allowed apps given as a string holding the app id", (f) => { setFact(f, "allowedApps", String(ACTIONS_APP)); }, ["required-contexts-green", "no-non-green-run"]],
+  ["a NaN allowed app matching a NaN run app", (f) => { f.allowedApps = [Number.NaN]; f.checkRuns[0]!.appId = Number.NaN; }, ["required-contexts-green", "no-non-green-run"]],
+  ["a nameless required context matched by a nameless run", (f) => { setFact(f, "requiredContexts", [undefined]); Reflect.deleteProperty(f.checkRuns[0]!, "name"); }, ["required-contexts-green", "no-non-green-run"]],
 ];
 
 describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", () => {
@@ -116,6 +142,12 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     const decision = evaluate(DEFAULT_TABLE, mergeBy("automation", facts));
     expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] });
     expect(decision.verdict === "gate" && decision.reason).toContain(`MRG-AU-RV unmet: ${condition}`);
+  });
+
+  it.each(MULTI_REFUSALS)("gates on %s, failing every condition that reads the fact", (_name, patch, conditions) => {
+    const facts = patched(patch);
+    expect(unmetConditions(CONDITION_KINDS, { merge: facts })).toEqual(conditions);
+    expect(evaluate(DEFAULT_TABLE, mergeBy("automation", facts))).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
   });
 
   it("gates a tainted automation merge even when every fact is green", () => {

@@ -36,40 +36,65 @@ export interface ConditionFacts {
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 const FULL_SHA = /^[0-9a-f]{40}$/;
+const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_DIRS = new Set([".github"]);
 const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".gitmodules"]);
 const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
 
+function isId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 function sameAgent(a: AgentIdentity, b: AgentIdentity): boolean {
-  return a.agentId !== "" && a.sessionId !== "" && a.agentId === b.agentId && a.sessionId === b.sessionId;
+  return isId(a.agentId) && isId(a.sessionId) && a.agentId === b.agentId && a.sessionId === b.sessionId;
 }
 
 function verdictMergeAtHead(facts: MergeFacts): boolean {
-  return facts.verdict.value === "MERGE" && FULL_SHA.test(facts.head) && facts.verdict.head === facts.head;
+  const { head } = facts;
+  return facts.verdict.value === "MERGE" && typeof head === "string" && FULL_SHA.test(head) && facts.verdict.head === head;
 }
 
 // A path we cannot compare exactly could alias a protected one, so it counts as protected.
 function isNonCanonical(path: string): boolean {
-  return path.includes("\\") || path.split("/").some((segment) => NON_CANONICAL_SEGMENTS.has(segment));
+  return !PRINTABLE_ASCII.test(path) || path.includes("\\") || path.split("/").some((segment) => NON_CANONICAL_SEGMENTS.has(segment));
 }
 
-function isProtectedPath(path: string): boolean {
+function isProtectedPath(path: unknown): boolean {
+  if (typeof path !== "string" || isNonCanonical(path)) return true;
   const folded = path.toLowerCase();
-  return isNonCanonical(path) || PROTECTED_FILES.has(folded) || PROTECTED_DIRS.has(folded.split("/")[0]!);
+  return PROTECTED_FILES.has(folded) || PROTECTED_DIRS.has(folded.split("/")[0]!);
+}
+
+function isWellFormedRun(run: CheckRunFact): boolean {
+  return isId(run.name) && Number.isInteger(run.appId) && isId(run.headSha) &&
+    (run.conclusion === null || typeof run.conclusion === "string");
+}
+
+function hasRunFacts(facts: MergeFacts): boolean {
+  return Array.isArray(facts.checkRuns) && Array.isArray(facts.allowedApps) &&
+    facts.allowedApps.every((app) => Number.isInteger(app));
 }
 
 function countedRuns(facts: MergeFacts): CheckRunFact[] {
-  return facts.checkRuns.filter((run) => run.headSha === facts.head && facts.allowedApps.includes(run.appId));
+  return facts.checkRuns.filter((run) => isWellFormedRun(run) && run.headSha === facts.head && facts.allowedApps.includes(run.appId));
 }
 
 function requiredContextsGreen(facts: MergeFacts): boolean {
+  const contexts = facts.requiredContexts;
+  if (!hasRunFacts(facts) || !Array.isArray(contexts) || contexts.length === 0) return false;
   const runs = countedRuns(facts);
-  return facts.requiredContexts.length > 0 &&
-    facts.requiredContexts.every((context) => runs.some((run) => run.name === context && run.conclusion === "success"));
+  return contexts.every((context) => isId(context) && runs.some((run) => run.name === context && run.conclusion === "success"));
 }
 
+// A run we cannot attribute to a head or an app might be a failure at this head, so it gates.
 function noNonGreenRun(facts: MergeFacts): boolean {
-  return countedRuns(facts).every((run) => run.conclusion !== null && GREEN_CONCLUSIONS.has(run.conclusion));
+  return hasRunFacts(facts) && facts.checkRuns.every(isWellFormedRun) &&
+    countedRuns(facts).every((run) => run.conclusion !== null && GREEN_CONCLUSIONS.has(run.conclusion));
+}
+
+function noProtectedPathChange(facts: MergeFacts): boolean {
+  const paths = facts.changedPaths;
+  return Array.isArray(paths) && paths.length > 0 && !paths.some(isProtectedPath);
 }
 
 const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
@@ -77,10 +102,10 @@ const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "verdict-merge-at-head": verdictMergeAtHead,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,
-  "merge-tree-clean": (facts) => facts.mergeTreeClean,
-  "repo-not-frozen": (facts) => !facts.repoFrozen,
-  "no-protected-path-change": (facts) => !facts.changedPaths.some(isProtectedPath),
-  "seat-grants-merge-on-green-approve": (facts) => facts.seatGrants.includes("merge-on-green-approve"),
+  "merge-tree-clean": (facts) => facts.mergeTreeClean === true,
+  "repo-not-frozen": (facts) => facts.repoFrozen === false,
+  "no-protected-path-change": noProtectedPathChange,
+  "seat-grants-merge-on-green-approve": (facts) => Array.isArray(facts.seatGrants) && facts.seatGrants.includes("merge-on-green-approve"),
 };
 
 // Facts arrive from outside the type system, so a malformed fact fails its condition instead of throwing.

@@ -23,7 +23,9 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
   `request.facts` and the request is not tainted; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
-  A malformed fact fails its condition, and a non-canonical changed path counts as protected.
+  A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
+  `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
+  A non-canonical or non-ASCII changed path counts as protected.
   `allowedApps` is caller-supplied; Shepherd must pin GitHub Actions (app id 15368) itself.
 - `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
   any tainted resolver.
