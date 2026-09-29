@@ -158,4 +158,25 @@ describe("shepherd-pr after land", () => {
     const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
     expect(main?.data).toMatchObject({ result: { after: ["deploy", "release"] } });
   });
+
+  it("opens the main-red gate when no run appears at the merge sha", async () => {
+    const w = shepherdWorld(() => []);
+    const runId = await runToMerge(w);
+
+    await gateOpened(w.host, gateId(runId, "main-red"));
+
+    const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
+    expect(main?.data).toMatchObject({ result: { verdict: "none" } });
+  });
+
+  it("fails a malformed after list before any merge, not after it", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)]);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)!.status).toBe("failed");
+    expect(w.fake.calls).not.toContain("merge");
+    expect(stepIds(w, runId)).not.toContain("merge");
+  });
 });
