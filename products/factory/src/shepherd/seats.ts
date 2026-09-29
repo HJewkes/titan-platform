@@ -21,34 +21,44 @@ export interface RepoPath {
   key: string;
 }
 
-/** An unrecognised spelling is refused rather than trimmed, so it can never silently match nothing. */
-function pathProblem(path: string): string | undefined {
-  if (path.replace(/\//g, "") === "") return "is empty or the root";
-  if (path !== path.trim()) return "has surrounding whitespace";
-  if (!/^[\x20-\x7E]+$/.test(path)) return "has non-ASCII or control characters";
-  if (path.split("/").some((segment) => segment === "." || segment === "..")) return "has a . or .. segment";
-  return undefined;
+const PATH_PREFIXES = ["~/", "$HOME/", "${HOME}/", "/"] as const;
+const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
+const PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/** An allowlist: a known prefix then plain segments; any other spelling is refused, since it could only miss a deny. */
+function pathSegments(path: string): { prefix: string; segments: string[] } | undefined {
+  const prefix = PATH_PREFIXES.find((p) => path.startsWith(p));
+  if (prefix === undefined) return undefined;
+  const segments = path.slice(prefix.length).split("/").filter((segment) => segment !== "");
+  const plain = segments.every((segment) => PATH_SEGMENT.test(segment) && segment !== "." && segment !== "..");
+  return segments.length > 0 && plain ? { prefix, segments } : undefined;
 }
 
 /** Lowercased, slashes collapsed, trailing slash dropped, and `$HOME`, `${HOME}` or the home dir spelled `~`. */
-export function repoPathKey(written: string, home: string): string {
-  const lower = written.toLowerCase();
-  const homes = ["$home", "${home}", home.replace(/\/+$/, "").toLowerCase()].filter((prefix) => prefix !== "");
-  const prefix = homes.find((h) => lower === h || lower.startsWith(`${h}/`));
-  return prefix === undefined ? lower : `~${lower.slice(prefix.length)}`;
+function repoPathKey(prefix: string, segments: string[], home: string): string {
+  const rest = segments.join("/").toLowerCase();
+  if (HOME_PREFIXES.includes(prefix)) return `~/${rest}`;
+  const homeKey = `${home.toLowerCase()}/`;
+  const absolute = `/${rest}`;
+  return absolute.startsWith(homeKey) ? `~/${absolute.slice(homeKey.length)}` : absolute;
 }
 
 function repoPathSchema(home: string) {
-  return z
-    .string()
-    .superRefine((path, ctx) => {
-      const problem = pathProblem(path);
-      if (problem) ctx.addIssue({ code: "custom", message: `path ${JSON.stringify(path)} ${problem}` });
-    })
-    .transform((path): RepoPath => {
-      const written = path.replace(/\/+/g, "/").replace(/(.)\/$/, "$1");
-      return { written, key: repoPathKey(written, home) };
-    });
+  return z.string().transform((path, ctx): RepoPath => {
+    const parsed = pathSegments(path);
+    if (!parsed) {
+      ctx.addIssue({ code: "custom", message: `path ${JSON.stringify(path)} is not an allowed path: ~/, $HOME/, \${HOME}/ or / then segments of [A-Za-z0-9._-]` });
+      return z.NEVER;
+    }
+    return { written: parsed.prefix + parsed.segments.join("/"), key: repoPathKey(parsed.prefix, parsed.segments, home) };
+  });
+}
+
+/** The injected home must itself be an allowed absolute path, or home unification would silently match nothing. */
+function checkedHome(home: string): string {
+  const parsed = pathSegments(home);
+  if (!parsed || parsed.prefix !== "/") throw new SeatBookInvalid(`home ${JSON.stringify(home)} must be an absolute directory other than /`);
+  return `/${parsed.segments.join("/")}`;
 }
 
 /** The autonomy-seat/v1 frontmatter fields Shepherd reads; every other seat field is ignored. */
@@ -102,7 +112,7 @@ export function frontmatter(text: string): unknown {
 
 /** Any invalid seat file or charter throws; a deny path unknown to every seat denies its basename under any owner. */
 export function loadSeatBook(sources: SeatSources): SeatBook {
-  const files = readSeatFiles(sources.seatsDir, sources.home ?? homedir());
+  const files = readSeatFiles(sources.seatsDir, checkedHome(sources.home ?? homedir()));
   const index = pathIndex(files);
   const seats = files.map(({ data }) => toSeat(data));
   const denied = files.flatMap(({ file, data }) => data.deny_repos.map((path) => resolveDeny(path, file, index)));

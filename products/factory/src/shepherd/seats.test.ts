@@ -24,6 +24,8 @@ function writeCharter(fields: string): string {
   return writeCharterBody(`---\nschema: autonomy-charter/v1\n${fields}---\n`);
 }
 
+const NOT_ALLOWED = /not an allowed path/;
+
 function seat(name: string, fields: string): string {
   return `---\nschema: autonomy-seat/v1\nname: ${name}\n${fields}---\n`;
 }
@@ -126,10 +128,19 @@ describe("loadSeatBook", () => {
     ["${HOME}/p/legacy", "denied"],
     ["/srv/seat-home/p/legacy", "denied"],
     ["/Srv/Seat-Home/p/legacy/", "denied"],
-    ["~/p/legacy ", /surrounding whitespace/],
-    ["~/p/l\u0435gacy", /non-ASCII/],
-    ["/", /empty or the root/],
-    ["", /empty or the root/],
+    ["~/p/legacy ", NOT_ALLOWED],
+    ["~/p/l\u0435gacy", NOT_ALLOWED],
+    ["/", NOT_ALLOWED],
+    ["", NOT_ALLOWED],
+    ["p/legacy", NOT_ALLOWED],
+    ["~seat-home/p/legacy", NOT_ALLOWED],
+    ["$USER/p/legacy", NOT_ALLOWED],
+    ["/srv/$HOME/p/legacy", NOT_ALLOWED],
+    ["%7E/p/legacy", NOT_ALLOWED],
+    ["$home/p/legacy", NOT_ALLOWED],
+    ["~", NOT_ALLOWED],
+    ["~/", NOT_ALLOWED],
+    ["~/p/leg@cy", NOT_ALLOWED],
   ] as const)("resolves the deny spelling %j to the bound remote or throws", (denyPath, expected) => {
     const denier = seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify(denyPath)}]\n`);
     const owner = seat("b-seat", "repos:\n  - {path: ~/p/legacy, remote: acme/renamed}\ngrants_extra: [merge-on-green-approve]\n");
@@ -139,10 +150,20 @@ describe("loadSeatBook", () => {
     else expect(load).toThrow(expected);
   });
 
-  it.each(["~/p/bad name", "~/p/weird!", "~/p/..."])("throws when the unbound deny path %j has no repo-name basename", (denyPath) => {
-    const seatsDir = writeSeats({ "a.md": seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify(denyPath)}]\n`) });
+  it("throws when the unbound deny path has no repo-name basename", () => {
+    const seatsDir = writeSeats({ "a.md": seat("a-seat", "repos: []\ndeny_repos: [~/p/...]\n") });
 
     expect(() => loadSeatBook({ seatsDir })).toThrow(/a\.md.*not a repo name/);
+  });
+
+  it.each(["p/legacy", "./p/legacy", "~seat-home/p/legacy", "$USER/p/legacy"])("throws, naming the file, when a repo path is %j", (repoPath) => {
+    const seatsDir = writeSeats({ "a.md": seat("a-seat", `repos:\n  - {path: ${JSON.stringify(repoPath)}, remote: acme/renamed}\n`) });
+
+    expect(() => loadSeatBook({ seatsDir })).toThrow(/a\.md.*not an allowed path/);
+  });
+
+  it.each(["seat-home", "srv/seat-home", "/", "", "~/x"])("refuses the injected home %j", (home) => {
+    expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": GADGET_SEAT }), home })).toThrow(/home/);
   });
 
   it("keeps the checkout path's case for spawns while matching it case-insensitively", () => {
