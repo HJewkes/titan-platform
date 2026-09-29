@@ -590,7 +590,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +74 more in the [reference page](/reference/session-graph)
+- +77 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -730,7 +730,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +59 more in `products/factory/src/index.ts`
+- +73 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

@@ -2,10 +2,16 @@ import { contentHash, prefixHash } from "@titan-design/locator";
 import type { UsageMeasurement } from "@titan-design/agent-protocol";
 import { readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
+import { stripInjected } from "./injected-text.js";
 
 export interface IndexedSpan { sourceId: number; byteOffset: number; byteLength: number; field: string; spanId?: number }
 /** One resolver for search and error clustering; never display a raw JSON line. */
 export async function readIndexedText(graph: SessionGraph, span: IndexedSpan): Promise<string | null> {
+  const text = await readSourceText(graph, span);
+  return text !== null && span.field === "prompt" ? stripInjected(text) : text;
+}
+
+async function readSourceText(graph: SessionGraph, span: IndexedSpan): Promise<string | null> {
   const row = graph.db.prepare(`SELECT n.locators FROM normalized_span n JOIN search_span s USING(span_id)
     WHERE s.source_id = ? AND s.byte_offset = ? AND s.field = ?`).get(span.sourceId, span.byteOffset, span.field) as { locators: string } | undefined;
   if (row) {

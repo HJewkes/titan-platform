@@ -71,6 +71,7 @@ export type AuditEvent =
       isError: boolean;
       contentHash: string;
       chars: number;
+      promptSource: string | null;
     })
   | (AuditEventBase & { kind: "context_block"; source: ContextSource; toolUseId: string | null; attachmentType: string | null; chars: number; isMedia: boolean })
   | (AuditEventBase & {
