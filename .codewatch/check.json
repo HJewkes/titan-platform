@@ -28,7 +28,8 @@
           "packages/messaging",
           "packages/rpc-client",
           "packages/matrix-bus",
-          "packages/github"
+          "packages/github",
+          "packages/agent-dispatch"
         ],
         "2": [
           "packages/session-read",
@@ -77,7 +78,8 @@
           "packages/messaging",
           "packages/rpc-client",
           "packages/matrix-bus",
-          "packages/github"
+          "packages/github",
+          "packages/agent-dispatch"
         ],
         [
           "packages/session-read",
