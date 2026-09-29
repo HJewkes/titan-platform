@@ -2,11 +2,11 @@ import { evaluateChecks, type GitHubPort, type MergeMethod, type PullRequest, ty
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { evidenceRecord } from "../evidence.js";
-import type { GatePolicy } from "../gate-policy.js";
+import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
+import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { redactForEvidence } from "../redact.js";
 import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
-import { CiSnapshotResult, LandRulesResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
 export const MAX_UPDATE_CYCLES = 3;
@@ -20,6 +20,7 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "ci-wait", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
+  { id: "merge-policy", kind: "dispatch" },
   { id: "approve-merge", kind: "assisted" },
   { id: "stuck-behind", kind: "assisted" },
 ];
@@ -33,11 +34,27 @@ export interface LandInput {
   repo: RepoSlug;
   pr: number;
   method?: MergeMethod;
+  /** Which entry into `land` this is within one run; a pilot that re-enters after a rerun or a new head passes the next round. */
+  round?: number;
+}
+
+/** What an `allowEvidence` hook learns about the merge the policy allowed. */
+export interface MergeAllowContext {
+  repo: RepoSlug;
+  pr: number;
+  headSha: string;
+  decision: GateDecision;
 }
 
 export interface LandOptions {
-  /** Consulted before the merge gate. Only `deny` changes anything: there is no allow path until F5 is approved. */
+  /**
+   * Consulted with the head before each merge of an untrusted head, and the decision is recorded in a `merge-policy`
+   * step before any branch, so a replay reuses it. `gate` asks the owner through `approve-merge`, `deny` stops
+   * `merge-denied`, and `allow` trusts that one head with no hitl gate, because hitl refuses every automation resolver.
+   */
   policy: GatePolicy;
+  /** Evidence the allowing caller vouches for, stored beside the policy trace in the `merge-policy` step. */
+  allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
 }
 
 export interface FailingCheck {
@@ -86,27 +103,39 @@ interface UpdateResult {
 }
 
 interface LandState {
+  round: number;
   cycle: number;
   updates: number;
   updatesSinceGate: number;
   merges: number;
+  decisions: number;
   /** Heads a resolved approve-merge gate covers: the approved head plus heads this run's updates built on it. */
   trusted: Set<string>;
+  /** A policy allow covers only the head it named, so this run's updates never extend it. */
+  trustedBy: "human" | "policy";
 }
 
 /**
- * Wait for green, keep the branch current, and merge the exact head a human approved. Returns
+ * Wait for green, keep the branch current, and merge the exact head a human or an allowing policy approved. Returns
  * instead of merging on anything else, so the calling pilot decides what a red CI means.
  */
 export async function land(ctx: WorkflowContext, input: LandInput, options: LandOptions): Promise<LandOutcome> {
-  const rules = await step(ctx, "land-rules", { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { cycle: 0, updates: 0, updatesSinceGate: 0, merges: 0, trusted: new Set() };
+  const round = input.round ?? 0;
+  if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
+  const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
+  const state: LandState = { round, cycle: 0, updates: 0, updatesSinceGate: 0, merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
-    const ci = await step(ctx, `ci-wait:${state.cycle++}`, { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
+    const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
     const next = ci.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, ci, state, options);
     if (next) return next;
   }
+}
+
+/** Round 0 keeps the ids runs recorded before rounds existed; later rounds never share an id with an earlier one. */
+function roundId(name: string, round: number, n?: number): string {
+  const parts = [name, ...(round === 0 ? [] : [`r${round}`]), ...(n === undefined ? [] : [String(n)])];
+  return parts.join(":");
 }
 
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
@@ -115,9 +144,9 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
     if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, `behind after ${state.updates} updates`);
     state.updatesSinceGate = 0;
   }
-  const update = await step(ctx, `update-branch:${state.updates++}`, { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
+  const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   state.updatesSinceGate += 1;
-  if (update.own && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
+  if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   return undefined;
 }
 
@@ -126,8 +155,8 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: ci.mergeSha ?? "" };
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
-  if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options.policy);
-  const merge = await step(ctx, `merge:${state.merges++}`, { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" }, MergeResultResult);
+  if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
+  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" }, MergeResultResult);
   if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
@@ -140,17 +169,33 @@ function approveMergeAnswer(headSha: string) {
 const StuckBehindAnswer = z.object({ decision: z.enum(["retry", "abandon"]) });
 
 /** The payload must name the head shown, so an approval can never carry over to a head the human did not see. */
-async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, policy: GatePolicy): Promise<LandOutcome | undefined> {
-  const decision = policy.decide("merge");
+async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
+  const decision = await decideMerge(ctx, input, ci, state, options);
   if (decision.outcome === "deny") return stopped("merge-denied", ci.headSha, decision.reason);
+  if (decision.outcome === "allow") return void trust(state, ci.headSha, "policy");
   const schema = approveMergeAnswer(ci.headSha);
   const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
   const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema })).data);
   if (!answer.success) throw new Error(`approve-merge answer does not approve head ${ci.headSha}: ${answer.error.message}`);
   if (answer.data.decision === "abandon") return stopped("abandoned", ci.headSha, "a human declined the merge");
-  state.trusted = new Set([ci.headSha]);
-  state.updatesSinceGate = 0;
+  trust(state, ci.headSha, "human");
   return undefined;
+}
+
+/** The recorded decision, not a fresh `decide`, drives the branch: a replay must not flip a gate to an allow. */
+async function decideMerge(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<GateDecision> {
+  const decision = options.policy.decide("merge", { headSha: ci.headSha });
+  const evidence = decision.outcome === "allow" ? (options.allowEvidence?.({ repo: input.repo, pr: input.pr, headSha: ci.headSha, decision }) ?? {}) : undefined;
+  const recorded = await step(ctx, roundId("merge-policy", state.round, state.decisions++), { headSha: ci.headSha, decision, evidence }, MergePolicyResult);
+  if (recorded.headSha !== ci.headSha) throw new Error(`merge-policy recorded head ${recorded.headSha}, expected ${ci.headSha}`);
+  return { outcome: recorded.outcome, rule: recorded.rule, reason: recorded.reason };
+}
+
+/** Only a human answer restarts the update count; an allow per head must not let a racing base loop unasked. */
+function trust(state: LandState, headSha: string, by: LandState["trustedBy"]): void {
+  state.trusted = new Set([headSha]);
+  state.trustedBy = by;
+  if (by === "human") state.updatesSinceGate = 0;
 }
 
 function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], headSha: string, detail: string): LandOutcome {
@@ -172,14 +217,20 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps.port, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal)),
     codeRoute("update-branch", now, (input: UpdateInput, signal) => updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal)),
     codeRoute("merge", now, (input: MergeInput) => deps.port.merge(input.repo, input.pr, input.sha, input.method)),
+    recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
   ];
 }
 
 function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
+  return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal) }));
+}
+
+/** Like `codeRoute`, for a step whose record carries trace keys beside `result`. */
+function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: RoutedStepInput) => Promise<object>): StepRoute {
   const run = async (step: RoutedStepInput) => {
     try {
-      const result = await fn(JSON.parse(step.prompt) as I, step.signal);
-      const record = evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), { result });
+      const body = await fn(JSON.parse(step.prompt) as I, step);
+      const record = evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), body);
       return { ok: true as const, output: JSON.stringify(record) };
     } catch (error) {
       return { ok: false as const, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
@@ -273,6 +324,18 @@ async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: T
     if (timing.now() >= deadline) throw new Error(`update-branch: head still ${input.expectedHeadSha} after ${timing.timeoutMs} ms`);
     await timing.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
+}
+
+interface MergePolicyInput {
+  headSha: string;
+  decision: GateDecision;
+  evidence?: Record<string, unknown>;
+}
+
+function mergePolicyRecord(input: MergePolicyInput, step: RoutedStepInput): object {
+  const { outcome, rule, reason } = input.decision;
+  const trace = { [TRACE_DATA_KEYS.gates]: [policyTraceGate(input.decision, traceRef(step))] };
+  return { result: { outcome, headSha: input.headSha, rule, reason }, ...(input.evidence ? { allowEvidence: input.evidence } : {}), ...trace };
 }
 
 interface MergeInput {

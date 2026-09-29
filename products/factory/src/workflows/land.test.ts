@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha, ghCliWire, githubPort, type GhExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { GATE_EVERYTHING_RULE, type GatePolicy } from "../gate-policy.js";
+import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
 import { MAX_UPDATE_CYCLES, landRoutes } from "./land.js";
@@ -29,7 +29,6 @@ function hostFor(scenario: LandScenario, dbPath = ":memory:"): FactoryHost {
   return host;
 }
 
-const allowMerges: GatePolicy = { decide: () => ({ outcome: "allow", rule: { ...GATE_EVERYTHING_RULE, rowId: "test-allow" }, reason: "test row allows it" }) };
 
 describe("land core", () => {
   it("merges with the head its own update-branch produced after the approved head fell behind", async () => {
@@ -76,17 +75,6 @@ describe("land core", () => {
     expect(report.gates.map((pending) => pending.gate.id)).toEqual([gateId(runId, "approve-merge")]);
     expect(scenario.fake.calls).not.toContain("merge");
     expect(scenario.fake.effects.merge).toBe(0);
-  });
-
-  it("opens the merge gate even when the policy row says allow", async () => {
-    const scenario = landScenario({ policy: allowMerges });
-    const host = hostFor(scenario);
-    const runId = host.runtime.start("land-test");
-
-    await gateOpened(host, gateId(runId, "approve-merge"));
-
-    expect(host.runtime.status(runId)?.status).toBe("paused");
-    expect(scenario.fake.calls).not.toContain("merge");
   });
 
   it("stops without a gate or a merge when the policy denies the merge", async () => {
@@ -176,7 +164,7 @@ describe("land core", () => {
 
   it("returns ci-failed with the failing check and its Actions run, without asking to merge", async () => {
     const scenario = landScenario();
-    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, workflowRunId: 77, url: "u" }]);
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, headSha: pr.headSha, appId: 15368, workflowRunId: 77, url: "u" }]);
     const host = hostFor(scenario);
 
     const run = await host.runtime.wait(host.runtime.start("land-test"));
@@ -210,9 +198,9 @@ describe("land core", () => {
     const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.output);
     const records = results.map((result) => JSON.parse(result.output!));
 
-    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.ci-wait", "land.merge"]);
+    expect(records.map((record) => record.kind)).toEqual(["land.land-rules", "land.ci-wait", "land.merge-policy", "land.ci-wait", "land.merge"]);
     expect(records.every((record) => record.v === 1 && record.traceId === runId)).toBe(true);
-    expect(records[3].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
+    expect(records[4].spanId).toBe(`workflow:${runId}:merge%3A0:0:0`);
   });
 
   it("fails a step whose evidence record lacks result, so the branch never reads undefined", async () => {

@@ -17,8 +17,8 @@ function dbFile(): string {
   return join(dir, "factory.sqlite3");
 }
 
-/** The path a behind PR takes: rules, behind, update, green, approval, green again, merge. */
-const STEPS = ["land-rules", "ci-wait:0", "update-branch:0", "ci-wait:1", "ci-wait:2", "merge:0"];
+/** The path a behind PR takes: rules, behind, update, green, recorded decision, approval, green again, merge. */
+const STEPS = ["land-rules", "ci-wait:0", "update-branch:0", "ci-wait:1", "merge-policy:0", "ci-wait:2", "merge:0"];
 
 /** A kill after the step's effect reached GitHub but before the run recorded the step. */
 function hangAfterEffect(routes: readonly StepRoute[], stepId: string, entered: () => void): StepRoute[] {
@@ -65,7 +65,7 @@ describe.each(["before", "after"] as const)("land core killed %s a step's effect
     crash.dispose();
 
     expect(run?.status).toBe("completed");
-    expect(scenario.fake.effects).toEqual({ createRef: 0, putContent: 0, createPr: 0, updateBranch: 1, merge: 1, rerunFailedJobs: 0 });
+    expect(scenario.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 1, merge: 1, rerunFailedJobs: 0 });
     expect(reopened).toBeUndefined();
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: scenario.fake.pr(1).headSha });
   });
