@@ -42,8 +42,13 @@ notices and errors to stderr.
   `git rev-parse --git-path hooks` names: `core.hooksPath` when set, otherwise the common git
   directory, which every linked worktree shares. It never sets `core.hooksPath`, never
   replaces a `pre-push` it did not write (exit 2 with a chaining hint), and does nothing when
-  `CI` is set. The hook runs the pushing worktree's `node_modules/.bin/titan-egress-scan`,
-  falls back to the package's built `dist/bin.js`, and fails closed when neither exists.
+  `CI` is set. The hook runs the first scanner it finds, in this order: (1) the pushing
+  worktree's `node_modules/.bin/titan-egress-scan`, then its
+  `node_modules/@titan-design/egress-scan/dist/bin.js`; (2) the same two paths in the main
+  checkout, the parent of `git rev-parse --git-common-dir`; (3) `titan-egress-scan` on `PATH`.
+  A linked worktree without `node_modules` therefore pushes when the main checkout or `PATH`
+  has the scanner. When none is found the hook exits 1 (fail closed) and names the three places
+  it looked, plus `pnpm install && pnpm build` and `npm i -g @titan-design/egress-scan`.
 
 ## Scanning a push
 
