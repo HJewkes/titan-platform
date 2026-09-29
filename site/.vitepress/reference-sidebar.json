@@ -70,6 +70,10 @@
         "link": "/reference/daemon"
       },
       {
+        "text": "github",
+        "link": "/reference/github"
+      },
+      {
         "text": "hitl",
         "link": "/reference/hitl"
       },

@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/factory",
-  "version": "0.1.0",
-  "description": "Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams",
+  "name": "@titan-design/github",
+  "version": "0.0.0",
+  "description": "GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,27 +21,18 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "products/factory"
+    "directory": "packages/github"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
-  },
-  "dependencies": {
-    "@titan-design/github": "workspace:^",
-    "@titan-design/hitl": "workspace:^",
-    "@titan-design/store-sqlite": "workspace:^",
-    "@titan-design/workflow": "workspace:^",
-    "commander": "^14.0.3",
-    "zod": "^4.4.3"
-  },
-  "private": true,
-  "bin": {
-    "titan-factory": "./dist/bin.js"
   }
 }
