@@ -42,12 +42,30 @@ function readIfPresent(file: string, what: string): string | undefined {
   }
 }
 
+const ON_VALUES = new Set(["1", "true", "yes", "on"]);
+const OFF_VALUES = new Set(["", "0", "false", "no", "off"]);
+
+/** An unrecognised value fails the scan: a typo must never read as off. The value is not echoed. */
 function requiresTerms(env: Env): boolean {
-  return env.TITAN_EGRESS_REQUIRE_TERMS === "1";
+  const value = (env.TITAN_EGRESS_REQUIRE_TERMS ?? "").trim().toLowerCase();
+  if (ON_VALUES.has(value)) return true;
+  if (OFF_VALUES.has(value)) return false;
+  throw new ConfigError("TITAN_EGRESS_REQUIRE_TERMS is not one of 1, true, yes, on, 0, false, no, off");
 }
 
-function missingTerms(env: Env): LoadedTerms {
-  if (requiresTerms(env)) {
+function readTermFile(file: string, required: boolean): string | undefined {
+  try {
+    return readIfPresent(file, "private term list");
+  } catch (error) {
+    if (required && error instanceof ConfigError) {
+      throw new ConfigError("private term list could not be read and TITAN_EGRESS_REQUIRE_TERMS=1");
+    }
+    throw error;
+  }
+}
+
+function missingTerms(required: boolean): LoadedTerms {
+  if (required) {
     throw new ConfigError("private term list not found and TITAN_EGRESS_REQUIRE_TERMS=1");
   }
   return { ...NOT_LOADED, notices: ["private term list not found; generic rules only"] };
@@ -67,14 +85,15 @@ function compileTerms(text: string): readonly TermRule[] {
  * TITAN_EGRESS_REQUIRE_TERMS=1, which always loads and fails on a missing, unreadable or empty list.
  */
 export function loadTerms(env: Env): LoadedTerms {
-  if (isCi(env) && !requiresTerms(env)) return NOT_LOADED;
+  const required = requiresTerms(env);
+  if (isCi(env) && !required) return NOT_LOADED;
   const file = termFilePath(env);
-  const text = file === undefined ? undefined : readIfPresent(file, "private term list");
-  if (file === undefined || text === undefined) return missingTerms(env);
+  const text = file === undefined ? undefined : readTermFile(file, required);
+  if (file === undefined || text === undefined) return missingTerms(required);
   const openToOthers = process.platform !== "win32" && (fs.statSync(file).mode & 0o077) !== 0;
   const notices = openToOthers ? ["private term list is readable by other users; chmod 600 it"] : [];
   const terms = compileTerms(text);
-  if (terms.length === 0 && requiresTerms(env)) {
+  if (terms.length === 0 && required) {
     throw new ConfigError("private term list holds no terms and TITAN_EGRESS_REQUIRE_TERMS=1");
   }
   return { terms, loaded: true, notices };
