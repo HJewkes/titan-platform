@@ -14,3 +14,13 @@ export {
   type SafeExecResult,
 } from "./exec.js";
 export { ResumeError, resumeArgs } from "./resume.js";
+export {
+  DispatchTimeoutError,
+  buildListAgentsArgs,
+  buildRetireArgs,
+  listAgents,
+  parseAgentRows,
+  retire,
+  type AgentRow,
+  type RetireResult,
+} from "./agents.js";

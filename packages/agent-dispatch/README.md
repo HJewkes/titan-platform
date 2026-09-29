@@ -25,6 +25,11 @@ dispatchToAgentChat(
   `DispatchError` carrying the CLI's stdout reason, else its stderr.
 - `resumeArgs(sessionId, message)` returns `claude` argv; run it with `execSafe`. The
   message is in argv here, so callers decide what may go in it.
+- `listAgents(bin, timeoutMs)` reads `agent-chat agent ls --json` and returns typed
+  `AgentRow`s, skipping a row that lacks a field it relies on. `retire(bin, name,
+  timeoutMs, { force })` frees a name and returns the broker's caveats. Both throw
+  `DispatchError`, or `DispatchTimeoutError` when the CLI hangs, since a hung retire may
+  still have happened.
 - `execSafe`, `minimalEnv` and `resolveBinaryPath` never use `PATH` lookup or
   `process.env`, and never a shell.
 
