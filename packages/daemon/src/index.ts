@@ -24,6 +24,7 @@ export type { Logger } from "./logger.js";
 export { consoleLogger, silentLogger } from "./logger.js";
 export type { McpServerOptions, ToolCallOutcome } from "./mcp.js";
 export { attachHandlers, createMcpServer, invokeTool, listTools, runMcpStdio } from "./mcp.js";
+export { NonLoopbackBindError, isLoopbackHost } from "./bind-guard.js";
 export type { DaemonHandle, StartDaemonOptions } from "./daemon.js";
 export { DaemonAlreadyRunningError, runDaemonUntilSignal, startDaemon } from "./daemon.js";
 export type { StaticAppOptions } from "./static-app.js";

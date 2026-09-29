@@ -11,6 +11,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Hono } from "hono";
 import { EXIT, errorEnvelope, type BaseContext } from "@titan-design/registry";
+import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
@@ -27,8 +28,10 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   stateDir: string;
   /** Defaults to 7400. Pass 0 for an ephemeral port; the handle reports the bound one. */
   port?: number;
-  /** Defaults to 127.0.0.1. */
+  /** Defaults to 127.0.0.1. A non-loopback host throws `NonLoopbackBindError` unless the opt-in below is set. */
   host?: string;
+  /** The daemon has no auth: setting this exposes every route to the network the host is on. */
+  allowUnauthenticatedNonLoopback?: boolean;
   /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
   toolPrefix?: string;
   /** MCP handshake identity; defaults to the daemon `name` option or `titan-daemon`. */
@@ -56,6 +59,7 @@ export interface DaemonHandle {
 }
 
 const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
+const DEFAULT_HOST = "127.0.0.1";
 
 export class DaemonAlreadyRunningError extends Error {
   constructor(readonly pid: number, readonly port: number) {
@@ -66,6 +70,7 @@ export class DaemonAlreadyRunningError extends Error {
 
 export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<DaemonHandle> {
   const log = options.logger ?? consoleLogger;
+  assertBindAllowed(options);
   const paths = daemonPaths(options.stateDir);
   await assertNotAlreadyRunning(paths);
 
@@ -73,7 +78,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
   let ready = false;
   const app = buildHttpApp({ ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready });
-  const server = await listen(app, options.host ?? "127.0.0.1", boundPort, mcpHandler(options, () => boundPort));
+  const server = await listen(app, options.host ?? DEFAULT_HOST, boundPort, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
 
   const watcher = startWatcher(options, hub, log);
@@ -120,6 +125,11 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
   const guards = options.guards ?? {};
   if (guards.allowedHosts || !options.host) return guards;
   return { ...guards, allowedHosts: [...DEFAULT_ALLOWED_HOSTS, options.host] };
+}
+
+function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
+  const host = options.host ?? DEFAULT_HOST;
+  if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
 }
 
 async function assertNotAlreadyRunning(paths: DaemonPaths): Promise<void> {
