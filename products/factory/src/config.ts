@@ -1,13 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { isRepoKey } from "./shepherd/seats.js";
 
+/** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
+const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
+
 /** The chore land-pr runs after a merge; strict, so a `shell` or `command` key fails the load instead of being ignored. */
 export const PostMergeConfigSchema = z.strictObject({
-  argv: z.tuple([z.string().min(1, "argv[0] must name a program")], z.string()),
-  cwd: z.string().min(1).optional(),
+  argv: z.tuple([noNul.min(1, "argv[0] must name a program")], noNul),
+  cwd: noNul.refine(isAbsolute, "must be an absolute path").optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 

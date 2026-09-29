@@ -72,6 +72,10 @@ describe("loadConfig", () => {
     ["a negative timeout", { argv: ["chore"], timeoutMs: -1 }, /postMerge\.timeoutMs/],
     ["a fractional timeout", { argv: ["chore"], timeoutMs: 1.5 }, /postMerge\.timeoutMs/],
     ["a shell flag", { argv: ["chore"], shell: true }, /postMerge.*shell/],
+    ["a relative cwd", { argv: ["chore"], cwd: "work/tree" }, /postMerge\.cwd: must be an absolute path/],
+    ["a NUL in the program", { argv: ["chore\0x"] }, /postMerge\.argv\.0: must not contain a NUL/],
+    ["a NUL in an argument", { argv: ["chore", "a\0b"] }, /postMerge\.argv\.1: must not contain a NUL/],
+    ["a NUL in the cwd", { argv: ["chore"], cwd: "/work\0x" }, /postMerge\.cwd: must not contain a NUL/],
   ])("rejects a post-merge command with %s", (_label, postMerge, key) => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
   });

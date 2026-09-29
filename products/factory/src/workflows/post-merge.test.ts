@@ -27,7 +27,7 @@ function fakeChore(result: Partial<Awaited<ReturnType<ChoreExec>>> = {}): Chore 
   const calls: Chore["calls"] = [];
   const exec: ChoreExec = async (argv, options) => {
     calls.push({ argv, options });
-    return { exitCode: 0, signal: null, stdout: "", stderr: "", ...result };
+    return { exitCode: 0, signal: null, timedOut: false, stdout: "", stderr: "", ...result };
   };
   return { calls, exec };
 }
@@ -93,7 +93,7 @@ describe("post-merge step", () => {
     expect(chore.calls[0]!.argv).toEqual(["chore", "--prune"]);
     expect(chore.calls[0]!.options).toMatchObject({ cwd: "/work", timeoutMs: 5_000 });
     expect(chore.calls[0]!.options.env).toMatchObject({ LAND_PR_REPO: REPO, LAND_PR_NUMBER: "1", LAND_PR_MERGE_SHA: fake.pr(1).mergeSha });
-    expect(postMergeRecord(host, runId)).toMatchObject({ result: { exitCode: 0, signal: null, stdoutTail: "", stderrTail: "" } });
+    expect(postMergeRecord(host, runId)).toMatchObject({ result: { exitCode: 0, signal: null, timedOut: false, stdoutTail: "", stderrTail: "" } });
   });
 
   it("records a failing chore with redacted tails and still completes the run", async () => {
@@ -108,6 +108,26 @@ describe("post-merge step", () => {
     expect(record.result.stdoutTail).toHaveLength(TAIL_CHARS);
     expect(record.result.stdoutTail.endsWith("done")).toBe(true);
     expect(record.result.stderrTail).toBe("push failed: [redacted]");
+  });
+
+  it("redacts a token that straddles the tail cut instead of keeping its unmatched suffix", async () => {
+    const chore = fakeChore({ stdout: `ghp_${"Q".repeat(36)}${"y".repeat(TAIL_CHARS - 20)}` });
+
+    const { host, runId } = await landToEnd({ argv: ["chore"] }, chore);
+    const record = postMergeRecord(host, runId) as { result: { stdoutTail: string } };
+
+    expect(record.result.stdoutTail).not.toContain("Q");
+    expect(record.result.stdoutTail.startsWith("[redacted]")).toBe(true);
+  });
+
+  it("records a timed-out chore as timed out and still completes the run as merged", async () => {
+    const chore = fakeChore({ exitCode: null, signal: "SIGKILL", timedOut: true });
+
+    const { host, runId, fake } = await landToEnd({ argv: ["chore"], timeoutMs: 100 }, chore);
+
+    expect(host.runtime.status(runId)?.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(postMergeRecord(host, runId)).toMatchObject({ result: { exitCode: null, signal: "SIGKILL", timedOut: true } });
   });
 
   it("parks the run as recovery_required after a crash mid-chore and never runs the chore again", async () => {
@@ -147,7 +167,7 @@ describe("execChore", () => {
 
     const result = await execChore([process.execPath, "-e", script, "a; echo injected $CHORE_VAR"], options());
 
-    expect(result).toMatchObject({ exitCode: 0, signal: null, stderr: "" });
+    expect(result).toMatchObject({ exitCode: 0, signal: null, timedOut: false, stderr: "" });
     expect(JSON.parse(result.stdout)).toEqual(["a; echo injected $CHORE_VAR", "from-env"]);
   });
 
@@ -164,9 +184,27 @@ describe("execChore", () => {
     expect(result).toMatchObject({ exitCode: null, signal: null, error: expect.stringContaining("ENOENT") });
   });
 
-  it("kills a chore that outlives its timeout and records the signal", async () => {
+  it("kills a chore that outlives its timeout and records it as timed out", async () => {
     const result = await execChore([process.execPath, "-e", "setTimeout(() => {}, 10_000)"], options({ timeoutMs: 100 }));
 
-    expect(result).toMatchObject({ exitCode: null, signal: "SIGTERM" });
+    expect(result).toMatchObject({ exitCode: null, signal: "SIGKILL", timedOut: true });
+  });
+
+  it("kills a chore that traps SIGTERM once its timeout passes", async () => {
+    const started = Date.now();
+
+    const result = await execChore([process.execPath, "-e", "process.on('SIGTERM', () => {}); setTimeout(() => {}, 3_000)"], options({ timeoutMs: 200 }));
+
+    expect(result).toMatchObject({ exitCode: null, signal: "SIGKILL", timedOut: true });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("kills a timed-out chore's background children, which would otherwise hold its output open", async () => {
+    const started = Date.now();
+
+    const result = await execChore(["/bin/sh", "-c", "sleep 3 & wait"], options({ timeoutMs: 200 }));
+
+    expect(result).toMatchObject({ timedOut: true });
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });
