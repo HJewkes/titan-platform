@@ -45,7 +45,7 @@ describe("land-pr", () => {
     expect(host.runtime.status(runId)?.status).toBe("completed");
     expect(fake.effects).toMatchObject({ rerunFailedJobs: 1, merge: 1 });
     expect(host.gates.get(gateId(runId, "ci-failed"))).toBeUndefined();
-    expect(stepIds(host, runId)).toEqual(["snapshot", "land-rules", "ci-wait:0", "rerun:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "approve-merge", "ci-wait:r1:1", "merge:r1:0"]);
+    expect(stepIds(host, runId)).toEqual(["snapshot", "land-rules", "ci-wait:0", "rerun:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "approve-merge", "ci-wait:r1:1", "merge:r1:0", "post-merge"]);
   });
 
   it("opens ci-failed instead of a second rerun when the rerun is cancelled again", async () => {

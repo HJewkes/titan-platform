@@ -19,6 +19,7 @@ slices and register in `src/workflows.ts`.
 ```sh
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
+titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -30,6 +31,27 @@ Owner-specific bindings live in that config file, never in this repo.
 killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prints the run as
 `held ... leased by <runtime> until <time>` and leaves it alone.
 
+## Install as a LaunchAgent
+
+`service plist` prints a plist for `dev.hjewkes.titan-factory`: the absolute node path, the
+built `dist/bin.js` and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
+`$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
+`Background` job is throttled by macOS. The verb only prints. It never touches
+`~/Library/LaunchAgents` or runs `launchctl`, so the owner installs it:
+
+```sh
+pnpm build
+node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+curl -s http://127.0.0.1:7410/health
+claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
+```
+
+`/health` reports `github`: `ok` when `gh api rate_limit` succeeds under the job's
+environment, else the redacted gh error (a LaunchAgent may not reach gh's keychain token).
+`checking` shows until the first probe lands. The probe runs in the background, at most once
+a minute, with a 10 s timeout, so a health request never waits on gh.
+
 ## Files
 
 | File | Role |
@@ -39,9 +61,10 @@ killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prin
 | `src/routed-runner.ts` | Product-side step router, **deleted when `@titan-design/workflow` exports `routedRunner` (TP-416)**. Each route is `{ match, runner, onRestart }`. `repeat` re-dispatches a step a crash interrupted; `park` leaves the run `recovery_required`. A dispatch step with no route fails registration |
 | `src/evidence.ts` | **The F3 seam** (see below) |
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
+| `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist renderer, and the cached `gh api rate_limit` probe behind health's `github` field |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume` and `gate resolve` |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land` and `service plist` |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 

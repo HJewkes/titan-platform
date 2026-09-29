@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
@@ -6,6 +7,7 @@ import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type Pendin
 import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
+import { renderPlist, serviceLogDir } from "./service.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
 export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -56,7 +58,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -94,6 +96,19 @@ function registerLand(program: Command, verbs: Verbs): void {
     .option("--task <slug/id>", "the task this PR delivers")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((ref: string, opts: { task?: string; port: number }) => landVerb(verbs, ref, opts));
+}
+
+function registerService(program: Command, { io }: Verbs): void {
+  program
+    .command("service")
+    .description("launchd service for titan-factory serve")
+    .command("plist")
+    .description("print the LaunchAgent plist; the owner writes it to ~/Library/LaunchAgents and bootstraps it")
+    .option("--port <n>", "port for the serve argument", parsePort)
+    .action((opts: { port?: number }) => {
+      const binPath = fileURLToPath(new URL("./bin.js", import.meta.url));
+      io.stdout(renderPlist({ binPath, nodePath: process.execPath, logDir: serviceLogDir(io.env), port: opts.port }));
+    });
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
