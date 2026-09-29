@@ -12,7 +12,7 @@ const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
   try {
-    execFileSync("pkill", ["-f", MARKER]);
+    execFileSync("pkill", ["-KILL", "-f", MARKER]);
   } catch {
     // pkill exits 1 when nothing matched
   }
@@ -32,7 +32,7 @@ function installHungGh(): void {
   const dir = mkdtempSync(join(tmpdir(), `${MARKER}-`));
   dirs.push(dir);
   const script = join(dir, "gh");
-  writeFileSync(script, `#!${process.execPath}\nsetTimeout(() => undefined, 60000);\n`);
+  writeFileSync(script, `#!${process.execPath}\nprocess.on("SIGTERM", () => {});\nsetTimeout(() => undefined, 60000);\n`);
   chmodSync(script, 0o755);
   process.env.PATH = `${dir}:${savedPath}`;
 }
@@ -47,13 +47,26 @@ describe("execGh timeoutMs", () => {
     expect(pgrepCount()).toBe(0);
   });
 
+  it("rejects with an output-limit error, not a timeout, when output overflows maxBufferBytes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "exec-gh-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "gh"), `#!${process.execPath}\nprocess.stdout.write("x".repeat(4096));\n`);
+    chmodSync(join(dir, "gh"), 0o755);
+    process.env.PATH = `${dir}:${savedPath}`;
+
+    const run = execGh(["api", "big"], undefined, { timeoutMs: 5_000, maxBufferBytes: 64 });
+
+    await expect(run).rejects.toThrow(/output exceeded 64 bytes/);
+    await expect(run).rejects.not.toThrow(/timed out/);
+  });
+
   it("keeps the child running when no timeout is given", async () => {
     installHungGh();
     const pending = execGh(["api", "rate_limit"]);
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     expect(pgrepCount()).toBeGreaterThan(0);
-    execFileSync("pkill", ["-f", MARKER]);
+    execFileSync("pkill", ["-KILL", "-f", MARKER]);
     expect((await pending).code).not.toBe(0);
   });
 
