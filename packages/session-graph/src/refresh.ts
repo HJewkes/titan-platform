@@ -22,6 +22,8 @@ export interface IndexOptions {
   resolveOrigins?: OriginResolver;
   /** Fill PR state, merge, close and review rounds from the caller's forge. Runs once per `refreshCorpus` pass. Absent means transcripts alone. */
   resolvePrs?: PrResolver;
+  /** Index prompts the host labels `promptSource: "sdk"`: spawned agents' briefs, and `claude -p` runs a person typed. Default false. */
+  indexSdkPrompts?: boolean;
 }
 
 export interface RefreshOptions extends IndexOptions {
@@ -77,7 +79,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     // After extraction, never before: a parse failure quarantines the transcript,
     // and purging first would destroy rows we could then no longer rebuild.
     if (rewound) purgeTranscript(graph, row.sourceId);
-    applyDelta(graph, row.sourceId, delta, { account: transcript.account });
+    applyDelta(graph, row.sourceId, delta, { account: transcript.account, indexSdkPrompts: options.indexSdkPrompts });
     advanceFacet(graph.db, row.sourceId, rewound ? 0 : point.start, delta.lastByteOffset);
     const stat = await fs.stat(transcript.absolutePath);
     graph.transcripts.advance(transcript.displayPath, {

@@ -590,7 +590,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +74 more in the [reference page](/reference/session-graph)
+- +77 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
