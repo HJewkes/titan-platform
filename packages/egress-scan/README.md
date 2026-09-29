@@ -32,9 +32,11 @@ notices and errors to stderr.
   exits 2 rather than skipping the scan.
 - **Private term list.** `$TITAN_EGRESS_TERMS`, else
   `${XDG_CONFIG_HOME:-$HOME/.config}/titan-egress/private-terms`. When `CI` is set it is never
-  looked up. Locally a missing list prints a notice and the scan continues;
-  `TITAN_EGRESS_REQUIRE_TERMS=1` makes that exit 2. A list readable by other users prints a
-  notice and still loads.
+  looked up. Locally a missing list prints a notice and the scan continues. A list readable by
+  other users prints a notice and still loads.
+- **`TITAN_EGRESS_REQUIRE_TERMS=1` is the agent-hook switch.** It fails closed: `CI` no longer
+  skips the list, and a missing, unreadable or term-less list (only comments and blank lines)
+  exits 2 with a message naming the variable. No other variable turns it back into a pass.
 - **Allow file.** `.egress-allow` at the repo root. A malformed file exits 2.
 - **Hook.** `install-hook` writes `hooks/pre-push` into the directory
   `git rev-parse --git-path hooks` names: `core.hooksPath` when set, otherwise the common git

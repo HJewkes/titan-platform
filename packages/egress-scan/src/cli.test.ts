@@ -122,6 +122,65 @@ describe("private term list", () => {
     expect(strict.code).toBe(2);
   });
 
+  it("loads the list under CI when TITAN_EGRESS_REQUIRE_TERMS=1, so a planted term fails the scan", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = commitFile(repo, "a.md", `mentions ${PLANTED_TERM}\n`);
+
+    const result = run(repo, ["range", base, head], {
+      CI: "true",
+      TITAN_EGRESS_REQUIRE_TERMS: "1",
+      TITAN_EGRESS_TERMS: termFile(PLANTED_TERM),
+    });
+
+    expect(result.code).toBe(1);
+  });
+
+  it("exits 2 naming the switch under CI when REQUIRE_TERMS=1 and no list exists", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = commitFile(repo, "a.md", "clean\n");
+
+    const result = run(repo, ["range", base, head], { CI: "true", TITAN_EGRESS_REQUIRE_TERMS: "1" });
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("TITAN_EGRESS_REQUIRE_TERMS");
+  });
+
+  it.each([["zero bytes", ""], ["only comments and blanks", "# nothing here\n\n   \n"]])(
+    "exits 2 when REQUIRE_TERMS=1 and the list holds no terms (%s)",
+    (_name, contents) => {
+      const repo = newRepo();
+      const base = repo.commit("base");
+      const head = commitFile(repo, "a.md", "clean\n");
+
+      const strict = run(repo, ["range", base, head], {
+        TITAN_EGRESS_REQUIRE_TERMS: "1",
+        TITAN_EGRESS_TERMS: termFile(contents),
+      });
+      const lenient = run(repo, ["range", base, head], { TITAN_EGRESS_TERMS: termFile(contents) });
+
+      expect(strict.code).toBe(2);
+      expect(strict.err).toContain("TITAN_EGRESS_REQUIRE_TERMS");
+      expect(lenient.code).toBe(0);
+    },
+  );
+
+  it("exits 2 when REQUIRE_TERMS=1 and the list cannot be read", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = commitFile(repo, "a.md", "clean\n");
+    const unreadable = path.join(emptyHome(), "terms-dir");
+    fs.mkdirSync(unreadable);
+
+    const result = run(repo, ["range", base, head], {
+      TITAN_EGRESS_REQUIRE_TERMS: "1",
+      TITAN_EGRESS_TERMS: unreadable,
+    });
+
+    expect(result.code).toBe(2);
+  });
+
   it("flags a planted term by its line number without naming it", () => {
     const repo = newRepo();
     const base = repo.commit("base");
