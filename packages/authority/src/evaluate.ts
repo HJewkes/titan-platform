@@ -29,15 +29,18 @@ interface RequestSnapshot {
   action: ActionClass;
   actor: ActorClass;
   tainted: unknown;
+  ownUntainted: boolean;
   merge: MergeFacts | undefined;
 }
 
-// Each field is read exactly once, so a getter cannot answer one way for matching and another for deciding.
+// Each field is read exactly once; a value the caller did not set as an own property may restrict a decision, never relax it.
 function snapshotOf(request: AuthorityRequest): RequestSnapshot {
+  const tainted: unknown = request.tainted;
   return {
     action: request.action,
     actor: request.actor.class,
-    tainted: Object.hasOwn(request, "tainted") ? request.tainted : undefined,
+    tainted,
+    ownUntainted: Object.hasOwn(request, "tainted") && tainted === false,
     merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
   };
 }
@@ -46,7 +49,7 @@ function findRule(table: PolicyTable, snapshot: RequestSnapshot): RuleMatch {
   const forPair = table.rules.filter((rule) => rule.action === snapshot.action && rule.actor === snapshot.actor);
   const unmet: string[] = [];
   for (const rule of forPair.filter((candidate) => candidate.when)) {
-    if (snapshot.tainted !== false) {
+    if (!snapshot.ownUntainted) {
       unmet.push(`${rule.id} skipped: tainted is not false`);
       continue;
     }

@@ -108,14 +108,17 @@ MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
 - the seat grants `merge-on-green-approve`.
 
 A request with no `facts` fails every condition, and a conditional row matches only when
-`tainted` is exactly `false`; any other value (`true`, missing, `null`, `0`, `""`) is
+`tainted` is an own property set to exactly `false`; an inherited `false`, or any other value (`true`, missing, `null`, `0`, `""`) is
 treated as tainted, so all of these get the MRG-AU gate. Every fact is attested by the caller, so a
 trusted collector, never the requesting session, must gather them. Its `changedPaths`
 must list both the source and the target of every rename. `evaluate` reads each
 request field exactly once. It copies the facts with `structuredClone` inside a guard and
 rebuilds the copy as plain data on null-prototype objects, so a polluted `Object.prototype`
 cannot supply a missing fact. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition, and array
-holes become `undefined`. A missing or malformed fact fails its condition rather than
+holes become `undefined`. A class instance is copied as its own data, without its
+prototype. A value the caller did not set as an own property may make a decision more
+restrictive, never less: an inherited or getter-supplied truthy `tainted` still
+escalates a `taintEscalates` row, and inherited `facts` are ignored. A missing or malformed fact fails its condition rather than
 throwing: booleans must be exactly `true` or `false`, ids
 non-empty strings compared exactly, and lists real arrays matched by exact element. `allowedApps` is caller-supplied: the package
 pins no app id, so Shepherd must pin GitHub Actions (app id 15368) itself. The row

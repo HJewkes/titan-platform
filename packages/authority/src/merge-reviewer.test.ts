@@ -290,3 +290,39 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     expect(evaluate(DEFAULT_TABLE, mergeBy(actor, greenFacts())).verdict).not.toBe("allow");
   });
 });
+
+type TaintSource = "a prototype" | "a class getter";
+
+// A request that does not own `tainted` and inherits `value` from `source`.
+function inheritingTaint(base: AuthorityRequest, source: TaintSource, value: boolean): AuthorityRequest {
+  const { tainted: _own, ...rest } = base;
+  if (source === "a prototype") return Object.assign(Object.create({ tainted: value }) as AuthorityRequest, rest);
+  class Request {
+    get tainted(): boolean { return value; }
+  }
+  return Object.assign(new Request() as AuthorityRequest, rest);
+}
+
+const ESCALATING_TABLE = {
+  ...DEFAULT_TABLE,
+  rules: DEFAULT_TABLE.rules.map((rule) => (rule.id === "DSL-WK" ? { ...rule, taintEscalates: true } : rule)),
+};
+
+const SOURCES: TaintSource[] = ["a prototype", "a class getter"];
+
+describe("a tainted value the request does not own", () => {
+  it.each(SOURCES)("gates a coordinator spawn tainted through %s, as main does", (source) => {
+    const request = inheritingTaint({ action: "spawn", actor: { class: "coordinator", id: "c1" }, tainted: false, subject: {} }, source, true);
+    expect(evaluate(DEFAULT_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "SPN-CO", resolvers: ["owner-terminal"] });
+  });
+
+  it.each(SOURCES)("gates a worker's local destruction on an escalating row tainted through %s", (source) => {
+    const request = inheritingTaint({ action: "destructive-local", actor: { class: "worker", id: "w1" }, tainted: false, subject: {} }, source, true);
+    expect(evaluate(ESCALATING_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "DSL-WK", resolvers: ["owner-terminal"] });
+  });
+
+  it.each(SOURCES)("does not unlock MRG-AU-RV with tainted false inherited through %s", (source) => {
+    const request = inheritingTaint(mergeBy("automation", greenFacts()), source, false);
+    expect(evaluate(DEFAULT_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+});

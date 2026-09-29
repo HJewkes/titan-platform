@@ -21,11 +21,14 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
 - A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
-  `request.facts` and `request.tainted` is exactly `false`; otherwise the pair's unconditional rule
+  `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
-  throwing, and array holes become `undefined`.
+  throwing, and array holes become `undefined`. A class instance is copied as its own
+  data, without its prototype. An inherited or getter-supplied `tainted` still escalates
+  a `taintEscalates` row when truthy, but never unlocks a conditional row; inherited
+  `facts` are ignored.
   A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
   `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
   A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a
