@@ -20,6 +20,7 @@ export interface MergeFacts {
   dispatchedReviewer: AgentIdentity;
   verdict: { value: string; head: string };
   requiredContexts: string[];
+  /** Check-run app ids the caller trusts; the package pins none. */
   allowedApps: number[];
   checkRuns: CheckRunFact[];
   mergeTreeClean: boolean;
