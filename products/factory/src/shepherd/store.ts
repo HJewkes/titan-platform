@@ -37,9 +37,9 @@ export interface Registration {
   updatedAt: string;
 }
 
-/** What the merge guard asks: the reason `repo#pr` is held, or undefined when nothing holds it. */
+/** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it. */
 export interface HoldLookup {
-  heldReason(repo: RepoSlug, pr: number): string | undefined;
+  heldReason(repo: RepoSlug, pr: number, branch?: string): string | undefined;
 }
 
 const TABLE_DDL = `
@@ -134,9 +134,11 @@ export class ShepherdStore implements HoldLookup {
     return this.setHeld(runId, false, null);
   }
 
-  heldReason(repo: RepoSlug, pr: number): string | undefined {
-    const registration = this.byPr(repo, pr);
-    return registration?.held ? (registration.holdReason ?? "held") : undefined;
+  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. */
+  heldReason(repo: RepoSlug, pr: number, branch?: string): string | undefined {
+    const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
+    const held = candidates.find((registration) => registration?.held);
+    return held && (held.holdReason ?? "held");
   }
 
   private setHeld(runId: string, held: boolean, reason: string | null): Registration {

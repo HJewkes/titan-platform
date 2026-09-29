@@ -9,12 +9,24 @@ export class MergeHeldError extends Error {
   override readonly name = "MergeHeldError";
 }
 
+/** Why a merge of `repo#pr` must wait, read fresh; the PR is read for its head branch, so a failed read throws and refuses. */
+export type HeldCheck = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
+
+export function heldCheck(port: GitHubPort, holds: () => HoldLookup): HeldCheck {
+  return async (repo, pr) => {
+    const lookup = holds();
+    const { headRef } = await port.getPr(repo, pr);
+    return lookup.heldReason(repo, pr, headRef);
+  };
+}
+
 /** The port handed to `landRoutes`: its merge refuses a held PR, and an unregistered PR passes straight through. */
 export function holdingPort(port: GitHubPort, holds: () => HoldLookup): GitHubPort {
+  const held = heldCheck(port, holds);
   return {
     ...port,
     merge: async (repo, pr, sha, method) => {
-      const reason = holds().heldReason(repo, pr);
+      const reason = await held(repo, pr);
       if (reason !== undefined) throw new MergeHeldError(`${repo}#${pr} is held: ${reason}`);
       return port.merge(repo, pr, sha, method);
     },
@@ -27,13 +39,13 @@ export interface HoldTiming {
 }
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, holds: () => HoldLookup, timing: HoldTiming): StepRoute {
+export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming): StepRoute {
   return {
     ...route,
     runner: {
       run: async (input) => {
         try {
-          await untilReleased(holds, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          await untilReleased(held, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
@@ -48,10 +60,10 @@ interface MergeTarget {
   pr: number;
 }
 
-async function untilReleased(holds: () => HoldLookup, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<void> {
+async function untilReleased(held: HeldCheck, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<void> {
   for (;;) {
     signal.throwIfAborted();
-    if (holds().heldReason(target.repo, target.pr) === undefined) return;
+    if ((await held(target.repo, target.pr)) === undefined) return;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }
 }

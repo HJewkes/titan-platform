@@ -22,7 +22,9 @@ const input: AwaitVerdictInput = {
   reviewerSessionId: "session-1",
   dispatchedAt: 1_000,
 };
-const locator = { selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } } as unknown as SourceTextLocator;
+const locatorIn = (nativeId: string) =>
+  ({ source: { conversation: { nativeId } }, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } }) as unknown as SourceTextLocator;
+const locator = locatorIn("session-1");
 
 const block = (overrides: { verdict?: string; pr?: string; head?: string } = {}) =>
   `Looked at it.\n\nVerdict: ${overrides.verdict ?? "MERGE"}\nPR: ${overrides.pr ?? "octo/demo#7"}\nHead: ${overrides.head ?? HEAD}\n`;
@@ -62,6 +64,18 @@ describe("acceptVerdict", () => {
 
   it("refuses a message written before dispatch", () => {
     expect(acceptVerdict(input, [message({ writtenAt: 999 })])).toEqual({ kind: "none" });
+  });
+
+  it("refuses a writtenAt that is a numeric string rather than a number", () => {
+    expect(acceptVerdict(input, [message({ writtenAt: "3000" as unknown as number })])).toEqual({ kind: "none" });
+  });
+
+  it("refuses a message whose locator points into another session", () => {
+    expect(acceptVerdict(input, [message({ locator: locatorIn("session-2") })])).toEqual({ kind: "none" });
+  });
+
+  it("refuses a message whose locator names no session", () => {
+    expect(acceptVerdict(input, [message({ locator: { selector: locator.selector } as unknown as SourceTextLocator })])).toEqual({ kind: "none" });
   });
 
   it("refuses a message written at the dispatch instant", () => {

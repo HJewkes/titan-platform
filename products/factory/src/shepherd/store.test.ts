@@ -68,6 +68,17 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 7)).toBeUndefined();
     expect(store.heldReason("octo/demo", 8)).toBeUndefined();
   });
+
+  it("holds any PR whose head branch has a held registration still waiting for its PR", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "feat/a" });
+
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "feat/a")).toBe("owner review");
+    expect(store.heldReason("octo/demo", 12, "feat/b")).toBeUndefined();
+    expect(store.heldReason("octo/demo", 12)).toBeUndefined();
+  });
 });
 
 describe("shepherd store ref", () => {
