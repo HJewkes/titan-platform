@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isInjectedCause, stripInjected } from "./injected-text.js";
+import { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text.js";
 
 const HUMAN = "please rename the widget module";
 
@@ -32,13 +32,38 @@ describe("stripInjected cuts injected blocks and keeps the human's words", () =>
   });
 });
 
+describe("stripInjected keeps a human's words that only mention injected markers", () => {
+  it("keeps prose between two tag mentions inside a sentence", () => {
+    const text = "why does <system-reminder> appear? also the closing </system-reminder> tag";
+
+    expect(stripInjected(text)).toBe(text);
+  });
+
+  it("keeps a block-looking span whose close is followed by more words on its line", () => {
+    const text = "<system-reminder> is odd, see the </system-reminder> tag here";
+
+    expect(stripInjected(text)).toBe(text);
+  });
+
+  it("keeps a typed turn that carries a File Ownership heading", () => {
+    const text = "Draft the brief like this:\n--- File Ownership ---\nOwned (can modify):\n  src/zebra.ts";
+
+    expect(stripInjected(text)).toBe(text);
+  });
+
+  it("cuts a nested same-name block whole, tail included", () => {
+    const text = "A\n<system-reminder>x<system-reminder>y</system-reminder> LEAK </system-reminder>\nB";
+
+    expect(stripInjected(text)).toBe("A\n\nB");
+  });
+});
+
 describe("stripInjected empties a turn nobody typed", () => {
   it.each([
     ["an agent-chat orientation brief", '# Orientation: active-work initiative "demo"\n\nInjected automatically by `agent_spawn`. Your coordinator did not write this section.\n\nBuild the zebra.'],
     ["a predecessor handover", "# Predecessor: old-agent\n\nYou are taking over from old-agent. Build the zebra."],
     ["an isolated-worktree spawn brief", "Build the zebra.\n\nYou are on branch z in an isolated worktree at /tmp/z. Commit your work there; nothing outside it is yours to change."],
     ["a shared-worktree spawn brief", "Build the zebra.\n\nYou are in a worktree assigned to this task at /tmp/z, on branch z. You may be sharing it with other agents, so stay inside the paths you were given."],
-    ["a file-ownership spawn brief", "Build the zebra.\n\n--- File Ownership ---\nOwned (can modify):\n  src/zebra.ts"],
     ["a compaction summary", "This session is being continued from a previous conversation that ran out of context. Zebra summary."],
     ["an image note", "[Image: source: /tmp/zebra.png]"],
     ["a loop wakeup", "[3 prior /loop wakeups] zebra"],
@@ -55,5 +80,16 @@ describe("isInjectedCause", () => {
     expect(isInjectedCause("tool_result")).toBe(false);
     expect(isInjectedCause("hook_or_reminder")).toBe(true);
     expect(isInjectedCause("channel_message")).toBe(true);
+  });
+});
+
+describe("isUntypedPrompt", () => {
+  it("treats a headless sdk prompt as untyped unless the caller keeps sdk prompts", () => {
+    const sdk = { cause: "human_typed", promptSource: "sdk" } as const;
+
+    expect(isUntypedPrompt(sdk)).toBe(true);
+    expect(isUntypedPrompt(sdk, true)).toBe(false);
+    expect(isUntypedPrompt({ cause: "human_typed", promptSource: "typed" })).toBe(false);
+    expect(isUntypedPrompt({ cause: "human_typed", promptSource: null })).toBe(false);
   });
 });

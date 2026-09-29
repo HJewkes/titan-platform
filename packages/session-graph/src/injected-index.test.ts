@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openSessionGraph, type SessionGraph } from "./graph.js";
 import { indexCodexSource } from "./normalized-index.js";
 import { readIndexedText } from "./normalized-query.js";
-import { refreshCorpus } from "./refresh.js";
+import { refreshCorpus, type RefreshOptions } from "./refresh.js";
 
 const SPAWN_BRIEF = '# Orientation: active-work initiative "demo"\n\nInjected automatically by `agent_spawn`. Your coordinator did not write this section.\n\nBuild the briefword feature.';
 const BOOTSTRAP = "SessionStart hook additional context: bootstrapword conventions apply.";
@@ -35,11 +35,11 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-async function indexClaudeFixture(): Promise<void> {
+async function indexClaudeFixture(lines: readonly unknown[] = LINES, options: RefreshOptions = {}): Promise<void> {
   const absolutePath = path.join(dir, "s1.jsonl");
-  writeFileSync(absolutePath, LINES.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  writeFileSync(absolutePath, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
   const transcript: DiscoveredTranscript = { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null, account: null };
-  await refreshCorpus(graph, [transcript]);
+  await refreshCorpus(graph, [transcript], options);
 }
 
 const promptHits = (word: string) => graph.spans.search(word).filter((s) => s.field === "prompt");
@@ -84,6 +84,27 @@ describe("indexing a Claude transcript with injected context", () => {
     const facts = graph.db.prepare("SELECT count(*) AS n FROM fact").get() as { n: number };
 
     expect(facts.n).toBe(LINES.length);
+  });
+});
+
+const BARE_BRIEF = "Implement the barebriefword parser and open a pull request when the tests pass.";
+const SDK_LINES = [
+  user("b1", BARE_BRIEF, { promptSource: "sdk" }),
+  user("b2", "now also handle the typedword edge case", { promptSource: "typed" }),
+];
+
+describe("indexing headless sdk prompts", () => {
+  it("keeps a bare spawn brief out of prompt spans and indexes the typed turn beside it", async () => {
+    await indexClaudeFixture(SDK_LINES);
+
+    expect(promptHits("barebriefword")).toHaveLength(0);
+    expect(promptHits("typedword")).toHaveLength(1);
+  });
+
+  it("indexes sdk prompts when the caller opts in", async () => {
+    await indexClaudeFixture(SDK_LINES, { indexSdkPrompts: true });
+
+    expect(promptHits("barebriefword")).toHaveLength(1);
   });
 });
 

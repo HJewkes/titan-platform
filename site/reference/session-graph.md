@@ -208,19 +208,27 @@ An index built before this rule keeps its old prompt spans until `resetIndex` re
   `tool_result` indexes no prompt. That covers `isMeta` lines (hook and SessionStart
   bootstrap output, skill loads, harness resumes), peer channel messages, task
   notifications, compaction summaries, scheduled wakeups, image notes and local commands.
-- **Blocks cut anywhere.** session-read's closed `INJECTED_MARKERS` (`<system-reminder>`,
-  `<channel source="...">`, `<task-notification>`), plus `<user-prompt-submit-hook>`,
-  `<command-name>`, `<command-message>`, `<local-command-caveat>`,
-  `<local-command-stdout>`, `<local-command-stderr>`, `<bash-stdout>`, `<bash-stderr>`
-  and `[Request interrupted by user…]` notes.
+- **Headless prompts.** A line whose `promptSource` is `sdk` indexes no prompt. The host
+  writes `sdk` for every headless turn, which is how an agent-chat spawn brief with no
+  framing is told apart from a typed prompt. The cost: a person running `claude -p` also
+  writes `sdk` turns, and those are excluded too. Pass `indexSdkPrompts: true` to
+  `refreshCorpus`, `indexTranscript` or `applyDelta` to keep them. `isUntypedPrompt` exposes
+  the rule.
+- **Blocks cut on their own lines.** session-read's closed `INJECTED_MARKERS`
+  (`<system-reminder>`, `<channel source="...">`, `<task-notification>`), plus
+  `<user-prompt-submit-hook>`, `<command-name>`, `<command-message>`,
+  `<local-command-caveat>`, `<local-command-stdout>`, `<local-command-stderr>`,
+  `<bash-stdout>` and `<bash-stderr>`. A block is cut only when its opening tag starts a
+  line and its closing tag ends one (another cut block may follow on the same line). Nested
+  tags of the same name are balanced. A tag quoted inside a sentence stays.
+  `[Request interrupted by user…]` notes are cut wherever they sit.
 - **Kept words.** `<command-args>` and `<bash-input>` lose their tags and keep their
   contents, because the human typed them.
 - **Whole turn by text.** session-read's unclosed markers heading the text (local-command
   output, compaction summary, image note, loop wakeup, the agent-chat orientation header).
-  agent-chat puts no tag around a spawn brief, so a brief is also known by the framing
-  agent-chat writes itself: a `# Predecessor:` handover, the isolated or shared worktree
-  note that ends the brief, or a `--- File Ownership ---` section. A brief with none of
-  these still indexes, because nothing in the line tells it apart from a typed prompt.
+  agent-chat puts no tag around a spawn brief, so a brief typed into a live session is known
+  by the framing agent-chat writes itself: a `# Predecessor:` handover, or the isolated or
+  shared worktree note that ends the brief.
 - **Tool-result echoes.** `tool_result` blocks never enter prompt text; a user line's prompt
   span holds its text blocks only. Background results arrive as `<task-notification>`.
 
