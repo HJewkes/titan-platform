@@ -6,6 +6,7 @@ import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { redactForEvidence } from "../redact.js";
 import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
+import { deadline } from "./deadline.js";
 import { CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
@@ -262,7 +263,7 @@ interface CiInput {
 
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
 async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signal: AbortSignal): Promise<CiSnapshot> {
-  const deadline = timing.now() + timing.timeoutMs;
+  const clock = deadline(timing);
   let last = "no read yet";
   for (;;) {
     try {
@@ -272,8 +273,8 @@ async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signa
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
     }
-    if (timing.now() >= deadline) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
-    await timing.sleep(timing.pollMs, signal);
+    if (clock.expired()) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
+    await clock.sleep(timing.pollMs, signal);
   }
 }
 
@@ -317,12 +318,12 @@ async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing
 }
 
 async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string> {
-  const deadline = timing.now() + timing.timeoutMs;
+  const clock = deadline(timing);
   for (;;) {
     const pr = await port.getPr(input.repo, input.pr);
     if (pr.headSha !== input.expectedHeadSha) return pr.headSha;
-    if (timing.now() >= deadline) throw new Error(`update-branch: head still ${input.expectedHeadSha} after ${timing.timeoutMs} ms`);
-    await timing.sleep(Math.min(timing.pollMs, 5_000), signal);
+    if (clock.expired()) throw new Error(`update-branch: head still ${input.expectedHeadSha} after ${timing.timeoutMs} ms`);
+    await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
 }
 
