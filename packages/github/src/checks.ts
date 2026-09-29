@@ -11,6 +11,10 @@ export interface ChecksVerdict {
   failing: CheckRun[];
 }
 
+export function isPassing(run: CheckRun): boolean {
+  return run.status === "completed" && PASSING.has(run.conclusion ?? "");
+}
+
 /** One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. */
 export function latestPerName(runs: readonly CheckRun[]): CheckRun[] {
   const latest = new Map<string, CheckRun>();
@@ -35,7 +39,7 @@ export function evaluateChecks(required: readonly string[], latestRuns: readonly
   for (const name of required) {
     const run = byName.get(name);
     if (!run || run.status !== "completed") pending.push(name);
-    else if (!PASSING.has(run.conclusion ?? "")) failing.push(run);
+    else if (!isPassing(run)) failing.push(run);
   }
   const state = failing.length > 0 ? "failed" : pending.length > 0 ? "pending" : "passed";
   return { state, pending, failing };

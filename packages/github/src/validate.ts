@@ -14,8 +14,8 @@ export class GitHubInputError extends Error {
 
 const REPO_PART = /^[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
-/** git check-ref-format's forbidden characters, plus the URL delimiters `?` and `#`. */
-const REF_FORBIDDEN = /[ ~^:?*[\\#]/;
+/** git check-ref-format's forbidden characters, plus `?`, `#` and `%`, which a URL path would decode or split on. */
+const REF_FORBIDDEN = /[ ~^:?*[\\#%]/;
 const PATH_FORBIDDEN = /[?#\\]/;
 
 function hasControl(text: string): boolean {

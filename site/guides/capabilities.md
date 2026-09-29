@@ -29,9 +29,10 @@ Before adding code:
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
-| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, merges, reruns) over REST through the caller's `gh` login, with every write safe to repeat after a crash. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
+| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
 | [`messaging`](#cap-messaging) | 1 | A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel. |
@@ -310,6 +311,22 @@ Key exports:
 - `failures`: `classifyResult`, `sumModelCost`
 - +81 more in the [reference page](/reference/agent)
 
+<a id="cap-agent-dispatch"></a>
+
+### [`agent-dispatch`](/reference/agent-dispatch)
+
+Tier 1, `@titan-design/agent-dispatch@0.0.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+
+**Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead.
+
+Key exports:
+
+- `dispatch`: `DispatchError`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `minimalEnv`, `resolveBinaryPath`
+- `resume`: `ResumeError`, `resumeArgs`
+- `agents`: `DispatchTimeoutError`, `buildListAgentsArgs`
+- +9 more in the [reference page](/reference/agent-dispatch)
+
 <a id="cap-agent-lifecycle"></a>
 
 ### [`agent-lifecycle`](/reference/agent-lifecycle)
@@ -348,16 +365,17 @@ Key exports:
 
 Tier 1, `@titan-design/github@0.0.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
-**Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, merges, reruns) over REST through the caller's `gh` login, with every write safe to repeat after a crash. Use `fakeGitHub()` in tests instead of stubbing `gh`.
+**Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
 Key exports:
 
 - `port`: `GitHubConflictError`, `githubPort`
-- `checks`: `evaluateChecks`, `latestPerName`
-- `gh-cli`: `GhError`, `execGh`, `ghCliWire`
-- `validate`: `GitHubInputError`
-- `fake`: `FakeHttpError`, `fakeGitHub`, `fakeSha`, `successRun`
-- +18 more in the [reference page](/reference/github)
+- `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
+- `readiness`: `mergeReadiness`
+- `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
+- `exec`: `GhError`, `execGh`
+- `gh-cli`: `ghCliWire`
+- +33 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
