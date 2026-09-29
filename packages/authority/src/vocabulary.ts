@@ -24,10 +24,23 @@ export const ACTION_CLASSES = [
 export const VERDICTS = ["allow", "gate", "deny"] as const;
 
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
-export const EVIDENCE_KINDS = ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev"] as const;
+export const EVIDENCE_KINDS = ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"] as const;
+
+/** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
+export const CONDITION_KINDS = [
+  "resolver-is-dispatched-reviewer",
+  "verdict-merge-at-head",
+  "required-contexts-green",
+  "no-non-green-run",
+  "merge-tree-clean",
+  "repo-not-frozen",
+  "no-workflow-change",
+  "seat-grants-merge-on-green-approve",
+] as const;
 
 export type ActorClass = (typeof ACTOR_CLASSES)[number];
 export type ResolverClass = (typeof RESOLVER_CLASSES)[number];
 export type ActionClass = (typeof ACTION_CLASSES)[number];
 export type Verdict = (typeof VERDICTS)[number];
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+export type ConditionKind = (typeof CONDITION_KINDS)[number];
