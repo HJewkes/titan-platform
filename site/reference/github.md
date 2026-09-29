@@ -89,8 +89,11 @@ await port.deleteRef("o/r", { branch: pr.headRef, repo: pr.headRepo });       //
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
   `GhError`, whose `status` is the HTTP status when `gh` reported one.
-- `mergeReadiness` counts only runs whose `appId` is in `requiredApps`. Pass the runs for
-  `pr.headSha`; it cannot tell which commit a run belongs to.
+- `mergeReadiness` counts only runs whose `appId` is in `requiredApps` and whose `headSha` is
+  the PR's head, matching authority's MRG-AU-RV. An optional run that is queued or in
+  progress blocks too, so an unfinished extra check holds the merge.
+- Branch names with `%` are refused, because GitHub decodes the path and `%2e%2e` would
+  become `..`.
 - `deleteRef` needs the PR's `headRepo`. A head in a fork, or a deleted fork (`null`), skips as
   `fork-head`, because a same-named branch in the base repo is not the PR's head.
 - `gh api` exits 1 on a 304. The wire reads the status line that `-i` prints instead of the

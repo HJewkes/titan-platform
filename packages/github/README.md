@@ -23,7 +23,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 
 `githubPort` validates every argument before any wire call, because each one becomes part of a
 `gh api` path. It checks five things. The repo is `owner/name` of `[A-Za-z0-9._-]`, and neither
-part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?` or `#`. A sha is
+part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?`, `#` or `%`. A sha is
 40 lower-case hex characters. A PR number or run id is a positive safe integer. A content path is
 relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value throws
 `GitHubInputError` naming the field, and `gh` never runs.
@@ -37,8 +37,9 @@ required name with no run is pending, never passed.
 `mergeReadiness({ pr, rules, runs, requiredApps, approvedHead })` is pure. It is ready only when
 the PR is open, not a draft, not conflicting, up to date when the rules are strict, at exactly
 the approved head, and every required context has a passing latest run from an app in
-`requiredApps` (`GITHUB_ACTIONS_APP_ID`, 15368, on this owner's repos). A run from any other app
-never counts, and a red run from an allowed app blocks even when it is not required. Every
+`requiredApps` (`GITHUB_ACTIONS_APP_ID`, 15368, on this owner's repos) at `pr.headSha`. A run
+from any other app, or at any other sha, never counts. Any latest counted run that is not
+passing blocks, required or not, including one still queued or in progress. Every
 not-ready result lists `blockers`, each with a `reason` and a `detail`.
 
 Every call runs `gh api -i`, so the wire sees the status line and headers. A GET sends the
