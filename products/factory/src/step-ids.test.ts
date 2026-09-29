@@ -29,6 +29,13 @@ describe("step ids (TP-255 guard)", () => {
     }
   });
 
+  it("registers shepherd-pr and routes each step family exactly once, including those it shares with land-pr", () => {
+    const matches = factoryRoutes.map((route) => route.match);
+
+    expect(factoryWorkflows.map((workflow) => workflow.name)).toEqual(expect.arrayContaining(["land-pr", "shepherd-pr"]));
+    expect(matches.filter((match, index) => matches.indexOf(match) !== index)).toEqual([]);
+  });
+
   it("refuses a declaration that gives one id two kinds", () => {
     expect(() => assertDistinctStepIds(docShaped("draft"))).toThrow(/"draft" is declared as both dispatch and assisted/);
   });

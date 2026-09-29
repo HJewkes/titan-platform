@@ -6,7 +6,7 @@ export type { EvidenceRecord, StepAttempt, TraceRef } from "./evidence.js";
 export { EVIDENCE_VERSION, TRACE_DATA_KEYS, evidenceRecord, traceRef } from "./evidence.js";
 export type { GateDecision, GatePolicy, GateTarget, PolicyRule } from "./gate-policy.js";
 export { GATE_EVERYTHING_RULE, gateEverything, policyTraceGate } from "./gate-policy.js";
-export type { FactoryHost, FactoryHostOptions, HeldRun, PendingGate, ResumeReport } from "./host.js";
+export type { DatabaseTenant, FactoryHost, FactoryHostOptions, FactoryRoutes, HeldRun, PendingGate, ResumeReport } from "./host.js";
 export { openFactoryHost } from "./host.js";
 export type { FactoryContext, FactoryServer, FactoryServerOptions } from "./serve.js";
 export { FACTORY_PORT, TOOL_PREFIX, factoryHealth, serveFactoryUntilSignal, startFactoryServer } from "./serve.js";
@@ -14,7 +14,8 @@ export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute
 export { routedRunner } from "./routed-runner.js";
 export type { CliDeps, CliIo } from "./cli.js";
 export { EXIT, formatResume, runCli } from "./cli.js";
-export { factoryRoutes, factoryWorkflows } from "./workflows.js";
+export type { FactoryRouteDeps } from "./workflows.js";
+export { factoryRoutes, factoryRoutesFor, factoryWorkflows } from "./workflows.js";
 export { MAX_STORED_ERROR_CHARS, REDACTED, redactForEvidence } from "./redact.js";
 export type { CiSnapshot, FailingCheck, LandDeps, LandInput, LandOptions, LandOutcome } from "./workflows/land.js";
 export { LAND_STEPS, MAX_CI_CYCLES, MAX_UPDATE_CYCLES, land, landRoutes, readCi } from "./workflows/land.js";
