@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
@@ -7,7 +8,7 @@ import { openFactoryHost, type FactoryHost, type FactoryHostOptions, type Pendin
 import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
-import { renderPlist, serviceLogDir } from "./service.js";
+import { renderPlist, serviceLogDir, stableNodePath } from "./service.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
 export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -105,9 +106,10 @@ function registerService(program: Command, { io }: Verbs): void {
     .command("plist")
     .description("print the LaunchAgent plist; the owner writes it to ~/Library/LaunchAgents and bootstraps it")
     .option("--port <n>", "port for the serve argument", parsePort)
-    .action((opts: { port?: number }) => {
+    .option("--node <path>", "absolute node binary launchd runs; default is this node, mapped off a Homebrew Cellar path", parseAbsolutePath)
+    .action((opts: { port?: number; node?: string }) => {
       const binPath = fileURLToPath(new URL("./bin.js", import.meta.url));
-      io.stdout(renderPlist({ binPath, nodePath: process.execPath, logDir: serviceLogDir(io.env), port: opts.port }));
+      io.stdout(renderPlist({ binPath, nodePath: opts.node ?? stableNodePath(process.execPath), logDir: serviceLogDir(io.env), port: opts.port }));
     });
 }
 
@@ -162,6 +164,11 @@ async function untilSettledOrGated(host: FactoryHost, runId: string, pollMs: num
 
 function describeLand(args: LandArgs, started: LandStarted): string {
   return `run ${started.runId} land-pr ${args.repo}#${args.pr}: ${started.status}${started.created ? "" : " (already unfinished)"}`;
+}
+
+function parseAbsolutePath(value: string): string {
+  if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
+  return value;
 }
 
 function parsePort(value: string): number {

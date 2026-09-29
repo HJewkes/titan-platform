@@ -9,6 +9,7 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
@@ -24,6 +25,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "sh-landed", kind: "dispatch" },
   ...WAKE_STEPS,
   ...REVIEW_STEPS,
+  ...POST_MERGE_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -31,6 +33,8 @@ export interface ShepherdPrParams {
   pr?: number;
   branch?: string;
   policy: EffectivePolicy;
+  /** Parsed before land, so a malformed list fails the run before any merge. */
+  after: AfterStage[];
 }
 
 /** A run with no `policy` param gets the owner gate, the strictest mode that still lets a merge happen. */
@@ -44,7 +48,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
   const rawPolicy = ctx.param("policy");
   const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
-  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy };
+  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx) };
 }
 
 interface PrTarget {
@@ -77,7 +81,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   for (;;) {
     const outcome = await landRound(reviewing, run, options, params.policy);
     const final = outcome && (await afterLand(run, outcome));
-    if (final) return final.kind === "merged" ? landed(ctx, run.target, final) : final;
+    if (final) return final.kind === "merged" ? landed(ctx, run.target, final, params.after) : final;
     run.state.round += 1;
   }
 }
@@ -152,8 +156,9 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<void> {
 }
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
-async function landed(ctx: WorkflowContext, target: PrTarget, merged: Extract<LandOutcome, { kind: "merged" }>): Promise<LandOutcome> {
+async function landed(ctx: WorkflowContext, target: PrTarget, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await step(ctx, "sh-landed", { ...target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
+  await shepherdMainCi(ctx, { ...target, mergeSha: merged.mergeSha }, after);
   return merged;
 }
 
@@ -186,6 +191,7 @@ export function shepherdRoutes(deps: ShepherdDeps): StepRoute[] {
     codeRoute("sh-landed", deps.now, async (input: object) => input),
     ...wakeRoutes(deps),
     ...reviewRoutes(deps),
+    ...postMergeRoutes(deps),
   ];
 }
 

@@ -17,7 +17,7 @@ describe("githubHealth", () => {
     await health.refresh();
 
     expect(health.status()).toBe("ok");
-    expect(exec).toHaveBeenCalledWith(["api", "rate_limit"]);
+    expect(exec).toHaveBeenCalledWith(["api", "rate_limit"], undefined, { timeoutMs: 10_000 });
   });
 
   it("reports the gh error text, redacted, when gh fails", async () => {
@@ -69,6 +69,22 @@ describe("githubHealth", () => {
     const health = githubHealth({ exec: () => new Promise<GhResult>(() => undefined) });
 
     expect(health.status()).toBe("checking");
+  });
+
+  it("asks exec to kill the child at the probe timeout", async () => {
+    const exec = vi.fn<GhExec>().mockResolvedValue(ok);
+
+    await githubHealth({ exec, timeoutMs: 7_000 }).refresh();
+
+    expect(exec.mock.calls[0]![2]).toEqual({ timeoutMs: 7_000 });
+  });
+
+  it("reports a killed probe as the exec error", async () => {
+    const health = githubHealth({ exec: () => Promise.reject(new Error("gh api rate_limit timed out after 10000 ms")) });
+
+    await health.refresh();
+
+    expect(health.status()).toContain("timed out after 10000 ms");
   });
 
   it("times out a hung gh and reports it", async () => {

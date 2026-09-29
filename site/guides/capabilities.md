@@ -356,7 +356,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
-- +37 more in the [reference page](/reference/daemon)
+- +39 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -373,7 +373,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`
-- +43 more in the [reference page](/reference/github)
+- +44 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 

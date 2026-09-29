@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, SERVICE_LABEL } from "./service.js";
+import { renderPlist, SERVICE_LABEL, stableNodePath, type NodeProbe } from "./service.js";
 
 const options = { nodePath: "/opt/node/bin/node", binPath: "/srv/factory/dist/bin.js", logDir: "/var/state/titan-factory" };
 const dirs: string[] = [];
@@ -65,8 +65,68 @@ describe("titan-factory service plist", () => {
 
     expect(code).toBe(0);
     expect(keyValue(out, "ProcessType")).toBe("Interactive");
-    expect(out).toContain(`<string>${process.execPath}</string>`);
+    expect(out).toContain(`<string>${stableNodePath(process.execPath)}</string>`);
     expect(out).toMatch(/<string>\/[^<]*bin\.js<\/string>\s*<string>serve<\/string>/);
     expect(keyValue(out, "StandardOutPath")).toBe("/xdg/state/titan-factory/serve.out.log");
+  });
+
+  it("the CLI verb writes an explicit --node path as given", async () => {
+    let out = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: () => undefined, env: {} };
+
+    expect(await runCli(["service", "plist", "--node", "/custom/bin/node"], io)).toBe(0);
+
+    expect(out).toContain("<string>/custom/bin/node</string>");
+    expect(out).not.toContain(`<string>${stableNodePath(process.execPath)}</string>`);
+  });
+
+  it("the CLI verb refuses a relative --node", async () => {
+    let err = "";
+    const io = { stdout: () => undefined, stderr: (t: string) => void (err += t), env: {} };
+
+    expect(await runCli(["service", "plist", "--node", "bin/node"], io)).toBe(2);
+
+    expect(err).toContain("absolute");
+  });
+});
+
+/** Symlinks map a path to the Cellar binary they point at; anything else is absent, and realpath throws on it like the real one. */
+function probeOf(links: Record<string, string>): NodeProbe {
+  return {
+    exists: (p) => p in links,
+    realpath: (p) => {
+      if (!(p in links)) throw new Error(`ENOENT ${p}`);
+      return links[p]!;
+    },
+  };
+}
+
+describe("stableNodePath", () => {
+  const cellar = "/opt/homebrew/Cellar/node/22.1.0/bin/node";
+
+  it("maps a Cellar path to the prefix bin/node symlink when it resolves to the same binary", () => {
+    expect(stableNodePath(cellar, probeOf({ "/opt/homebrew/bin/node": cellar, [cellar]: cellar }))).toBe("/opt/homebrew/bin/node");
+    const intel = "/usr/local/Cellar/node/22.1.0/bin/node";
+    expect(stableNodePath(intel, probeOf({ "/usr/local/bin/node": intel, [intel]: intel }))).toBe("/usr/local/bin/node");
+  });
+
+  it("maps a versioned formula through the opt symlink", () => {
+    const path = "/usr/local/Cellar/node@20/20.9.0/bin/node";
+
+    expect(stableNodePath(path, probeOf({ "/usr/local/opt/node@20/bin/node": path, [path]: path }))).toBe("/usr/local/opt/node@20/bin/node");
+  });
+
+  it("keeps the Cellar path when the symlink is absent", () => {
+    expect(stableNodePath(cellar, probeOf({ [cellar]: cellar }))).toBe(cellar);
+  });
+
+  it("keeps the Cellar path when the symlink points at a different binary", () => {
+    const other = "/opt/homebrew/Cellar/node/23.0.0/bin/node";
+
+    expect(stableNodePath(cellar, probeOf({ "/opt/homebrew/bin/node": other, [cellar]: cellar, [other]: other }))).toBe(cellar);
+  });
+
+  it("keeps a non-Homebrew path untouched", () => {
+    expect(stableNodePath("/Users/x/.nvm/versions/node/v22/bin/node", probeOf({}))).toBe("/Users/x/.nvm/versions/node/v22/bin/node");
   });
 });

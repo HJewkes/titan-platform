@@ -1,3 +1,4 @@
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +15,23 @@ export interface PlistOptions {
 
 export function serviceLogDir(env: NodeJS.ProcessEnv): string {
   return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory");
+}
+
+export interface NodeProbe {
+  exists: (path: string) => boolean;
+  realpath: (path: string) => string;
+}
+
+const CELLAR_NODE = /^(.+)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/;
+const fsProbe: NodeProbe = { exists: existsSync, realpath: realpathSync };
+
+/** A Homebrew Cellar path names one version and breaks on `brew upgrade`; the prefix symlink follows the upgrade. */
+export function stableNodePath(execPath: string, probe: NodeProbe = fsProbe): string {
+  const match = CELLAR_NODE.exec(execPath);
+  if (!match) return execPath;
+  const [, prefix, formula] = match;
+  const link = formula === "node" ? `${prefix}/bin/node` : `${prefix}/opt/${formula}/bin/node`;
+  return probe.exists(link) && probe.realpath(link) === probe.realpath(execPath) ? link : execPath;
 }
 
 function escapeXml(value: string): string {

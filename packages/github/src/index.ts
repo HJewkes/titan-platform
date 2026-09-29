@@ -6,7 +6,7 @@ export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, Mer
 export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./readiness.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
-export type { GhExec, GhResult } from "./exec.js";
+export type { GhExec, GhExecOptions, GhResult } from "./exec.js";
 export { GhError, execGh } from "./exec.js";
 export type { GhCliOptions } from "./gh-cli.js";
 export { ghCliWire } from "./gh-cli.js";
