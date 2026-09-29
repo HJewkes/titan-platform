@@ -72,7 +72,7 @@ describe("minimalEnv", () => {
 
   it("seeds PATH with this process's own interpreter directory, so a #!/usr/bin/env node script can find node in the child's PATH", () => {
     const env = minimalEnv();
-    expect(env.PATH.split(":")).toContain(dirname(process.execPath));
+    expect((env.PATH ?? "").split(":")).toContain(dirname(process.execPath));
   });
 });
 
