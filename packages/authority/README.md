@@ -23,9 +23,9 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
   `request.facts` and `request.tainted` is exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
-  Conditions read a JSON copy of the facts, so array holes become `null` and non-plain
-  objects lose their methods; facts that cannot be copied (a throwing getter, a cycle, a
-  BigInt) fail every condition instead of throwing.
+  `evaluate` reads each request field once, then copies the facts with `structuredClone`
+  and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
+  throwing, and array holes become `undefined`.
   A missing or wrongly typed fact fails its condition (booleans must be exactly `true` or
   `false`, ids non-empty strings, lists arrays), and so does a check run missing any field.
   A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a

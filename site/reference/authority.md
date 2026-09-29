@@ -111,10 +111,11 @@ A request with no `facts` fails every condition, and a conditional row matches o
 `tainted` is exactly `false`; any other value (`true`, missing, `null`, `0`, `""`) is
 treated as tainted, so all of these get the MRG-AU gate. Every fact is attested by the caller, so a
 trusted collector, never the requesting session, must gather them. Its `changedPaths`
-must list both the source and the target of every rename. Conditions read a JSON copy
-of the facts made inside a guard: array holes become `null`, non-plain objects lose their
-prototypes and methods, and facts that cannot be copied (a throwing getter, a cycle, a
-BigInt) fail every condition. A missing or malformed fact fails its condition rather than
+must list both the source and the target of every rename. `evaluate` reads each
+request field exactly once. It copies the facts with `structuredClone` inside a guard and
+rebuilds the copy as plain data on null-prototype objects, so a polluted `Object.prototype`
+cannot supply a missing fact. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition, and array
+holes become `undefined`. A missing or malformed fact fails its condition rather than
 throwing: booleans must be exactly `true` or `false`, ids
 non-empty strings compared exactly, and lists real arrays matched by exact element. `allowedApps` is caller-supplied: the package
 pins no app id, so Shepherd must pin GitHub Actions (app id 15368) itself. The row

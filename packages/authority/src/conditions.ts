@@ -126,10 +126,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Checks read only a JSON copy: getters, prototypes and holes are gone, and anything that cannot be copied yields no facts.
-function plainMergeFacts(read: () => ConditionFacts | undefined): MergeFacts | undefined {
+const LEAF_TYPES = new Set(["string", "number", "boolean", "undefined"]);
+
+function rebuildArray(value: unknown[], seen: Set<object>): unknown[] {
+  const copy: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) copy[index] = toPlainData(value[index], seen);
+  return copy;
+}
+
+// Copies onto null-prototype objects, so a polluted Object.prototype cannot supply a missing fact.
+function rebuildRecord(value: object, seen: Set<object>): Record<string, unknown> {
+  if (Object.getPrototypeOf(value) !== Object.prototype) throw new TypeError("facts must be plain objects");
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const [key, field] of Object.entries(value)) copy[key] = toPlainData(field, seen);
+  return copy;
+}
+
+function toPlainData(value: unknown, ancestors: Set<object>): unknown {
+  if (value === null || LEAF_TYPES.has(typeof value)) return value;
+  if (typeof value !== "object" || ancestors.has(value)) throw new TypeError("facts must be acyclic JSON-shaped data");
+  ancestors.add(value);
+  const copy = Array.isArray(value) ? rebuildArray(value, ancestors) : rebuildRecord(value, ancestors);
+  ancestors.delete(value);
+  return copy;
+}
+
+/**
+ * The merge facts as fresh plain data, read once, or undefined when they are not plain data.
+ * structuredClone rejects functions (so no toJSON can speak for a value), Proxies and throwing getters;
+ * the rebuild then rejects Map, Set, Date, BigInt and cycles, and turns holes into undefined.
+ */
+export function plainMergeFacts(read: () => unknown): MergeFacts | undefined {
   try {
-    const copy: unknown = JSON.parse(JSON.stringify(read() ?? null));
+    const copy = toPlainData(structuredClone(read()), new Set());
     const merge = isRecord(copy) ? copy.merge : undefined;
     return isRecord(merge) ? (merge as unknown as MergeFacts) : undefined;
   } catch {
@@ -137,14 +166,13 @@ function plainMergeFacts(read: () => ConditionFacts | undefined): MergeFacts | u
   }
 }
 
-/** Like `unmetConditions`, but reads the facts inside the guard so a throwing accessor fails every condition. */
-export function unmetConditionsOf(conditions: readonly ConditionKind[], read: () => ConditionFacts | undefined): ConditionKind[] {
-  const merge = plainMergeFacts(read);
+/** The conditions that do not hold on facts already made plain by `plainMergeFacts`. */
+export function unmetMergeConditions(conditions: readonly ConditionKind[], merge: MergeFacts | undefined): ConditionKind[] {
   if (!merge) return [...conditions];
   return conditions.filter((condition) => !holds(MERGE_CHECKS[condition], merge));
 }
 
-/** The conditions that do not hold. Missing or unreadable facts fail every condition, so a caller that observed nothing gets nothing. */
+/** The conditions that do not hold. Missing or non-plain facts fail every condition, so a caller that observed nothing gets nothing. */
 export function unmetConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[] {
-  return unmetConditionsOf(conditions, () => facts);
+  return unmetMergeConditions(conditions, plainMergeFacts(() => facts));
 }

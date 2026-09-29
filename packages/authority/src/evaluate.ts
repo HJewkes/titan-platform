@@ -1,5 +1,5 @@
-import type { ConditionFacts } from "./conditions.js";
-import { unmetConditionsOf } from "./conditions.js";
+import type { ConditionFacts, MergeFacts } from "./conditions.js";
+import { plainMergeFacts, unmetMergeConditions } from "./conditions.js";
 import type { PolicyTable, Rule } from "./schema.js";
 import type { ActionClass, ActorClass, ResolverClass } from "./vocabulary.js";
 import { RESOLVER_CLASSES } from "./vocabulary.js";
@@ -25,15 +25,32 @@ interface RuleMatch {
   unmet: string[];
 }
 
-function findRule(table: PolicyTable, request: AuthorityRequest): RuleMatch {
-  const forPair = table.rules.filter((rule) => rule.action === request.action && rule.actor === request.actor.class);
+interface RequestSnapshot {
+  action: ActionClass;
+  actor: ActorClass;
+  tainted: unknown;
+  merge: MergeFacts | undefined;
+}
+
+// Each field is read exactly once, so a getter cannot answer one way for matching and another for deciding.
+function snapshotOf(request: AuthorityRequest): RequestSnapshot {
+  return {
+    action: request.action,
+    actor: request.actor.class,
+    tainted: Object.hasOwn(request, "tainted") ? request.tainted : undefined,
+    merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
+  };
+}
+
+function findRule(table: PolicyTable, snapshot: RequestSnapshot): RuleMatch {
+  const forPair = table.rules.filter((rule) => rule.action === snapshot.action && rule.actor === snapshot.actor);
   const unmet: string[] = [];
   for (const rule of forPair.filter((candidate) => candidate.when)) {
-    if (request.tainted !== false) {
+    if (snapshot.tainted !== false) {
       unmet.push(`${rule.id} skipped: tainted is not false`);
       continue;
     }
-    const failed = unmetConditionsOf(rule.when ?? [], () => request.facts);
+    const failed = unmetMergeConditions(rule.when ?? [], snapshot.merge);
     if (failed.length === 0) return { rule, unmet: [] };
     unmet.push(`${rule.id} unmet: ${failed.join(", ")}`);
   }
@@ -46,16 +63,16 @@ function withUnmet(reason: string, unmet: string[]): string {
 
 /** Decides one request against a table. Pure: no clock, no environment, and no match means deny. */
 export function evaluate(table: PolicyTable, request: AuthorityRequest): Decision {
-  const { action } = request;
-  const actor = request.actor.class;
-  const { rule, unmet } = findRule(table, request);
+  const snapshot = snapshotOf(request);
+  const { action, actor } = snapshot;
+  const { rule, unmet } = findRule(table, snapshot);
   if (!rule) return { verdict: "deny", ruleId: null, reason: `no rule for ${action} by ${actor}` };
   if (rule.verdict === "deny") return { verdict: "deny", ruleId: rule.id, reason: withUnmet(`${rule.id} denies ${action} by ${actor}`, unmet) };
   if (rule.verdict === "gate") {
     const reason = withUnmet(`${rule.id} gates ${action} by ${actor}`, unmet);
     return { verdict: "gate", ruleId: rule.id, resolvers: [...(rule.resolvers ?? [])], reason };
   }
-  if (request.tainted && rule.taintEscalates) {
+  if (snapshot.tainted && rule.taintEscalates) {
     return { verdict: "gate", ruleId: rule.id, resolvers: [...TAINT_RESOLVERS], reason: `${rule.id} gates ${action} by a tainted ${actor}` };
   }
   return { verdict: "allow", ruleId: rule.id };

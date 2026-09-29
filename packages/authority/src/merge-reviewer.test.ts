@@ -118,8 +118,7 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a hole in the changed paths", (f) => { f.changedPaths.length = 2; }, "no-protected-path-change"],
   ["changed paths that are only a hole", (f) => { f.changedPaths = new Array<string>(1); }, "no-protected-path-change"],
   ["a required context list that is only a hole", (f) => { f.requiredContexts = new Array<string>(1); }, "required-contexts-green"],
-  ["changed paths given as an array-like object", (f) => { setFact(f, "changedPaths", { 0: "docs/guide.md", length: 1, some: () => false }); }, "no-protected-path-change"],
-  ["a seat grant list given as an object with includes", (f) => { setFact(f, "seatGrants", { includes: () => true }); }, "seat-grants-merge-on-green-approve"],
+  ["changed paths given as an array-like object", (f) => { setFact(f, "changedPaths", { 0: "docs/guide.md", length: 1 }); }, "no-protected-path-change"],
   ...[".github\u200b/workflows/ci.yml", "CODEOWNERS\n", "docs/CODEOWNERS\u0000", "\uff0egithub/x", ".gitmodules\u007f", "docs/gu\u00efde.md"].map(
     (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
   ),
@@ -135,7 +134,7 @@ const MULTI_REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind[]][] =
   ["a NaN allowed app matching a NaN run app", (f) => { f.allowedApps = [Number.NaN]; f.checkRuns[0]!.appId = Number.NaN; }, ["required-contexts-green", "no-non-green-run"]],
   ["a nameless required context matched by a nameless run", (f) => { setFact(f, "requiredContexts", [undefined]); Reflect.deleteProperty(f.checkRuns[0]!, "name"); }, ["required-contexts-green", "no-non-green-run"]],
   ["a sparse required context list with no check runs", (f) => { f.requiredContexts = new Array<string>(1); f.checkRuns = []; }, ["required-contexts-green"]],
-  ["allowed apps given as an array-like object", (f) => { setFact(f, "allowedApps", { length: 1, every: () => true, includes: () => true }); }, ["required-contexts-green", "no-non-green-run"]],
+  ["allowed apps given as an array-like object", (f) => { setFact(f, "allowedApps", { 0: ACTIONS_APP, length: 1 }); }, ["required-contexts-green", "no-non-green-run"]],
 ];
 
 const UNREADABLE: [string, () => AuthorityRequest][] = [
@@ -144,7 +143,46 @@ const UNREADABLE: [string, () => AuthorityRequest][] = [
   ["a cycle in the facts", () => { const facts = greenFacts(); setFact(facts, "self", facts); return mergeBy("automation", facts); }],
   ["a BigInt fact", () => mergeBy("automation", patched((f) => { setFact(f, "extra", 1n); }))],
   ["a changed path getter that throws", () => mergeBy("automation", patched((f) => { Object.defineProperty(f.changedPaths, 0, { get: () => { throw new Error("boom"); } }); }))],
+  ["changed paths whose toJSON hides a .github change", () => mergeBy("automation", patched((f) => { f.changedPaths = [".github/workflows/x.yml"]; setFact(f.changedPaths, "toJSON", () => ["src/x.ts"]); }))],
+  ["a FIX_FIRST verdict whose toJSON claims MERGE", () => mergeBy("automation", patched((f) => { f.verdict.value = "FIX_FIRST"; setFact(f.verdict, "toJSON", () => ({ value: "MERGE", head: HEAD })); }))],
+  ["seat grants whose toJSON adds merge-on-green-approve", () => mergeBy("automation", patched((f) => { f.seatGrants = []; setFact(f.seatGrants, "toJSON", () => ["merge-on-green-approve"]); }))],
+  ["a failed run whose toJSON claims success", () => mergeBy("automation", patched((f) => { const run = { name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }; setFact(run, "toJSON", () => ({ ...run, conclusion: "success" })); f.checkRuns.push(run); }))],
+  ["changed paths given as an array-like object with methods", () => mergeBy("automation", patched((f) => { setFact(f, "changedPaths", { 0: ".github/x", length: 1, some: () => false }); }))],
+  ["seat grants given as an object with includes", () => mergeBy("automation", patched((f) => { setFact(f, "seatGrants", { includes: () => true }); }))],
+  ["a Map in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Map()); }))],
+  ["a Set in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Set()); }))],
+  ["a Date in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Date(0)); }))],
+  ["a Proxy over the check runs", () => mergeBy("automation", patched((f) => { f.checkRuns = new Proxy(f.checkRuns, {}); }))],
 ];
+
+interface CountedRequest {
+  request: AuthorityRequest;
+  reads: () => number;
+}
+
+// A request whose field at `path` answers `first` on the first read and `later` on every read after.
+function shifting(path: "action" | "tainted" | "actor.class", first: unknown, later: unknown, facts?: MergeFacts): CountedRequest {
+  let reads = 0;
+  const request = mergeBy("automation", facts);
+  const target: object = path === "actor.class" ? request.actor : request;
+  Object.defineProperty(target, path.split(".").pop()!, { get: () => (reads++ === 0 ? first : later) });
+  return { request, reads: () => reads };
+}
+
+const SHIFTING: [string, () => CountedRequest, Record<string, unknown>][] = [
+  ["an action that turns into release", () => shifting("action", "merge", "release"), { verdict: "gate", ruleId: "MRG-AU" }],
+  ["an actor class that turns into owner-terminal", () => shifting("actor.class", "automation", "owner-terminal"), { verdict: "gate", ruleId: "MRG-AU" }],
+  ["a taint that turns false", () => shifting("tainted", true, false, greenFacts()), { verdict: "gate", ruleId: "MRG-AU" }],
+];
+
+function withPollutedPrototype(key: string, value: unknown, act: () => void): void {
+  Reflect.set(Object.prototype, key, value);
+  try {
+    act();
+  } finally {
+    Reflect.deleteProperty(Object.prototype, key);
+  }
+}
 
 const NOT_UNTAINTED: unknown[] = [true, undefined, null, 0, "", "false", 1, "true"];
 
@@ -190,10 +228,40 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] });
   });
 
-  it.each(UNREADABLE)("gates rather than throws on %s", (_name, request) => {
+  it.each(UNREADABLE)("fails every condition rather than throwing on %s", (_name, request) => {
     const decision = evaluate(DEFAULT_TABLE, request());
     expect(decision).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
     expect(decision.verdict === "gate" && decision.reason).toContain(`MRG-AU-RV unmet: ${CONDITION_KINDS.join(", ")}`);
+  });
+
+  it.each(SHIFTING)("reads %s once and decides on the first value", (_name, make, expected) => {
+    const { request, reads } = make();
+    expect(evaluate(DEFAULT_TABLE, request)).toMatchObject(expected);
+    expect(reads()).toBe(1);
+  });
+
+  it("ignores a repoFrozen supplied only by Object.prototype", () => {
+    const facts = patched((f) => { Reflect.deleteProperty(f, "repoFrozen"); });
+    withPollutedPrototype("repoFrozen", false, () => {
+      expect(unmetConditions(CONDITION_KINDS, { merge: facts })).toEqual(["repo-not-frozen"]);
+      expect(evaluate(DEFAULT_TABLE, mergeBy("automation", facts))).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    });
+  });
+
+  it("ignores merge facts supplied only by Object.prototype", () => {
+    withPollutedPrototype("merge", greenFacts(), () => {
+      const request = { ...mergeBy("automation", undefined), facts: {} };
+      expect(evaluate(DEFAULT_TABLE, request)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    });
+  });
+
+  it.each(["tainted", "facts"])("ignores a request %s supplied only by Object.prototype", (key) => {
+    const request: Partial<AuthorityRequest> = mergeBy("automation", greenFacts());
+    const inherited = key === "tainted" ? false : { merge: greenFacts() };
+    delete request[key as "tainted" | "facts"];
+    withPollutedPrototype(key, inherited, () => {
+      expect(evaluate(DEFAULT_TABLE, request as AuthorityRequest)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+    });
   });
 
   it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md"])("allows a change to the unprotected path %s", (path) => {
