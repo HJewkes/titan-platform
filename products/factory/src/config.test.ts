@@ -58,6 +58,28 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { hardStopRepos: { "dotfiles-merge": ["acme/dotfiles"] } } })))).toThrow(/charterPath/);
   });
 
+  it("reads the post-merge command as an argv array", () => {
+    const env = xdg({ postMerge: { argv: ["chore", "--prune"], cwd: "/work", timeoutMs: 60_000 } });
+
+    expect(loadConfig(configPath(env)).postMerge).toEqual({ argv: ["chore", "--prune"], cwd: "/work", timeoutMs: 60_000 });
+  });
+
+  it.each([
+    ["a shell string argv", { argv: "chore --prune" }, /postMerge\.argv/],
+    ["an empty argv", { argv: [] }, /postMerge\.argv/],
+    ["an empty program", { argv: ["", "--prune"] }, /postMerge\.argv\.0/],
+    ["a non-string entry", { argv: ["chore", 3] }, /postMerge\.argv\.1/],
+    ["a negative timeout", { argv: ["chore"], timeoutMs: -1 }, /postMerge\.timeoutMs/],
+    ["a fractional timeout", { argv: ["chore"], timeoutMs: 1.5 }, /postMerge\.timeoutMs/],
+    ["a shell flag", { argv: ["chore"], shell: true }, /postMerge.*shell/],
+    ["a relative cwd", { argv: ["chore"], cwd: "work/tree" }, /postMerge\.cwd: must be an absolute path/],
+    ["a NUL in the program", { argv: ["chore\0x"] }, /postMerge\.argv\.0: must not contain a NUL/],
+    ["a NUL in an argument", { argv: ["chore", "a\0b"] }, /postMerge\.argv\.1: must not contain a NUL/],
+    ["a NUL in the cwd", { argv: ["chore"], cwd: "/work\0x" }, /postMerge\.cwd: must not contain a NUL/],
+  ])("rejects a post-merge command with %s", (_label, postMerge, key) => {
+    expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
+  });
+
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
   });
