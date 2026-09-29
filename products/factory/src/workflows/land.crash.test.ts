@@ -65,7 +65,7 @@ describe.each(["before", "after"] as const)("land core killed %s a step's effect
     crash.dispose();
 
     expect(run?.status).toBe("completed");
-    expect(scenario.fake.effects).toEqual({ createRef: 0, putContent: 0, createPr: 0, updateBranch: 1, merge: 1, rerunFailedJobs: 0 });
+    expect(scenario.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 1, merge: 1, rerunFailedJobs: 0 });
     expect(reopened).toBeUndefined();
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: scenario.fake.pr(1).headSha });
   });
