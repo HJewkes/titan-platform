@@ -185,6 +185,42 @@ describe("parseVerdictBlock", () => {
     });
   });
 
+  describe("containers and reopened constructs hide the block", () => {
+    const b = block();
+    it("hides a block inside a fence opened after a list marker", () => {
+      expect(refused(`- \`\`\`\n  ${b.replace(/\n/g, "\n  ")}\n  \`\`\``)).toBe("no_block");
+      expect(refused(`1. \`\`\`\n${b}\n\`\`\``)).toBe("no_block");
+      expect(refused(`* ~~~\n${b}\n~~~`)).toBe("no_block");
+    });
+    it("hides a block inside a fence opened after a blockquote marker", () => {
+      expect(refused(`> \`\`\`\n${b}\n\`\`\``)).toBe("no_block");
+      expect(refused(`>\`\`\`\n${b}\n\`\`\``)).toBe("no_block");
+    });
+    it("hides a block inside a fence opened after nested container markers", () => {
+      expect(refused(`> - 2) \`\`\`\n${b}\n\`\`\``)).toBe("no_block");
+    });
+    it("still reads a block after a fence opened in a list item closes", () => {
+      expect(parseVerdictBlock(`- \`\`\`\nx\n\`\`\`\n${b}`)).toMatchObject({ ok: true, lineOffset: 3 });
+    });
+    it("does not open a fence on a list line that only mentions backticks", () => {
+      expect(parseVerdictBlock(`- use \`\`\`code\`\`\` here\n${b}`)).toMatchObject({ ok: true, lineOffset: 1 });
+    });
+    it("keeps a comment open when its closing line reopens one", () => {
+      expect(refused(`<!--\nx --> <!-- y\n${b}\n-->`)).toBe("no_block");
+    });
+    it("closes a comment whose closing line holds a later closer only", () => {
+      expect(parseVerdictBlock(`<!--\nx --> y --> z\n${b}`)).toMatchObject({ ok: true, lineOffset: 2 });
+    });
+    it("does not read a block indented 4 non-breaking spaces or other Unicode spaces", () => {
+      expect(refused(b.replace(/^/gm, "\u00a0".repeat(4)))).toBe("no_block");
+      expect(refused(b.replace(/^/gm, "\u2003".repeat(4)))).toBe("no_block");
+      expect(refused(b.replace(/^/gm, " \u00a0 \u00a0"))).toBe("no_block");
+    });
+    it("reads a block indented 3 non-breaking spaces", () => {
+      expect(parseVerdictBlock(b.replace(/^/gm, "\u00a0".repeat(3)))).toMatchObject({ ok: true });
+    });
+  });
+
   it("parses a long single-line message in linear time", () => {
     const started = Date.now();
     refused(`Verdict:${" ".repeat(200_000)}x`);

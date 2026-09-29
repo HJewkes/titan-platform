@@ -117,12 +117,13 @@ It fails closed. The three lines must be consecutive and exact: `Verdict:` is `M
 `FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
 suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is exactly 40
 lowercase hex characters with nothing after it. Text that may be someone else's only makes
-the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4), since
+the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
+other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted
-line (`> Verdict: MERGE`) is not a block. A fence opens on 3 or more backticks or tildes and
+line (`> Verdict: MERGE`) is not a block. A fence opens on 3 or more backticks or tildes, also after list or `>` markers, and
 closes only on a bare line of the same character at least as long, as in CommonMark, and an
 unclosed fence hides the rest of the message. Lines that start inside an HTML comment are
-skipped up to the line holding `-->`. A `Status:` line is ignored. Any visible line starting
+skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Status:` line is ignored. Any visible line starting
 `Verdict:` is a second block and refuses the message, even when identical. Refusal reasons are `no_block`, `multiple_blocks`, `bad_verdict`, `missing_pr_line`,
 `bad_pr`, `missing_head_line` and `bad_head`. It shares no grammar with `parseReviewVerdicts`.
 

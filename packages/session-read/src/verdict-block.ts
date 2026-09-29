@@ -2,12 +2,14 @@
  * The three-line reviewer block (TP-520): `Verdict: MERGE|FIX_FIRST`, `PR: owner/name#n`,
  * `Head: <40 lowercase hex>`. It gates merges, so text that may be someone else's only ever
  * makes it stricter. Rules, all per line and in one pass:
- * - A line is read only when indented 0 to 3 spaces (a tab counts 4); an indented-code line
- *   is never a block line. Trailing whitespace and CRLF are harmless.
+ * - A line is read only when indented 0 to 3 spaces (a tab counts 4, and any other character
+ *   `trim` strips, such as U+00A0, counts 1); an indented-code line is never a block line.
+ *   Trailing whitespace and CRLF are harmless.
  * - A quoted line ("> Verdict: MERGE") keeps its marker and never matches.
- * - A fence opens on ``` or ~~~ (3 or more) and closes only on a bare line of the same
- *   character at least as long, as in CommonMark. An unclosed fence hides the rest.
- * - An HTML comment hides every line that starts inside it, until a line holding `-->`.
+ * - A fence opens on ``` or ~~~ (3 or more), also after list or `>` markers, and closes only
+ *   on a bare line of the same character at least as long. An unclosed fence hides the rest.
+ * - An HTML comment hides every line that starts inside it, until a line holding `-->` with
+ *   no `<!--` after its last `-->`.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -30,6 +32,8 @@ export type VerdictBlockResult =
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
 const FENCE = /^(`{3,}|~{3,})/;
+const TRIMMED_SPACE = /[\s\uFEFF]/;
+const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
 
 /** Reads the one Verdict/PR/Head block in `text`; `lineOffset` is the zero-based line of its Verdict line. */
 export function parseVerdictBlock(text: string): VerdictBlockResult {
@@ -54,10 +58,10 @@ function visibleLines(text: string): (string | null)[] {
       return null;
     }
     if (inComment) {
-      if (line.includes("-->")) inComment = false;
+      if (line.includes("-->")) inComment = line.indexOf("<!--", line.lastIndexOf("-->")) >= 0;
       return null;
     }
-    const opener = indentOf(raw) < 4 ? FENCE.exec(line) : null;
+    const opener = indentOf(raw) < 4 ? FENCE.exec(stripContainers(line)) : null;
     if (opener) {
       fence = { char: opener[1]![0]!, length: opener[1]!.length };
       return null;
@@ -65,6 +69,13 @@ function visibleLines(text: string): (string | null)[] {
     inComment = line.lastIndexOf("<!--") > line.lastIndexOf("-->");
     return indentOf(raw) < 4 ? line : null;
   });
+}
+
+/** Drops leading blockquote and list markers, so a fence opened inside a container is still seen. */
+function stripContainers(line: string): string {
+  let rest = line;
+  for (let match = CONTAINER.exec(rest); match; match = CONTAINER.exec(rest)) rest = rest.slice(match[0].length);
+  return rest;
 }
 
 function closesFence(raw: string, line: string, fence: { char: string; length: number }): boolean {
@@ -75,8 +86,8 @@ function closesFence(raw: string, line: string, fence: { char: string; length: n
 function indentOf(raw: string): number {
   let width = 0;
   for (const char of raw) {
-    if (char === " ") width += 1;
-    else if (char === "\t") width += 4;
+    if (char === "\t") width += 4;
+    else if (TRIMMED_SPACE.test(char)) width += 1;
     else break;
   }
   return width;
