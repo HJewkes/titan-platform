@@ -170,9 +170,9 @@ describe("loadSeatBook", () => {
     ["a repo path with a . segment", GADGET_SEAT.replace("path: ~/src/gadgets,", "path: ~/src/./gadgets,")],
     ["a deny path with a .. segment", GADGET_SEAT.replace("~/src/parked-app", "~/src/../parked-app")],
   ])("throws, naming the file, when a seat file has %s", (_case, body) => {
-    const seatsDir = writeSeats({ "a-good.md": GADGET_SEAT, "z-bad.md": body });
+    const seatsDir = writeSeats({ "a-good.md": SPROCKET_SEAT, "z-bad.md": body });
 
-    expect(() => loadSeatBook({ seatsDir })).toThrow(/z-bad\.md/);
+    expect(() => loadSeatBook({ seatsDir })).toThrow(/(invalid|unreadable) seat file .*z-bad\.md/);
   });
 
   it.each([
