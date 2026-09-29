@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveDbPath } from "./config.js";
+import { configPath, loadConfig, resolveDbPath } from "./config.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -34,5 +34,17 @@ describe("resolveDbPath", () => {
 
   it("rejects a config file with the wrong shape", () => {
     expect(() => resolveDbPath({ env: xdg({ dbPath: 3 }) })).toThrow(/invalid config .*dbPath/);
+  });
+});
+
+describe("loadConfig", () => {
+  it("reads the shepherd seats directory and charter path", () => {
+    const env = xdg({ shepherd: { seatsDir: "/seats", charterPath: "/charter.md" } });
+
+    expect(loadConfig(configPath(env)).shepherd).toEqual({ seatsDir: "/seats", charterPath: "/charter.md" });
+  });
+
+  it("rejects an empty shepherd seats directory", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
   });
 });

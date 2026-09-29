@@ -6,6 +6,7 @@ import { z } from "zod";
 /** Owner-specific bindings live here, outside the public repo; later slices add repos, device and post-merge keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
+  shepherd: z.object({ seatsDir: z.string().min(1).optional(), charterPath: z.string().min(1).optional() }).optional(),
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
