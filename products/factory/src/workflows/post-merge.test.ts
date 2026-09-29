@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PostMergeConfig } from "../config.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "../routed-runner.js";
@@ -206,5 +206,23 @@ describe("execChore", () => {
 
     expect(result).toMatchObject({ timedOut: true });
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("settles a timed-out chore whose grandchild left its process group and still holds the output", async () => {
+    const escape = "require('node:child_process').spawn('sleep', ['3'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] })";
+    const started = Date.now();
+
+    const result = await execChore([process.execPath, "-e", escape], options({ timeoutMs: 200 }));
+
+    expect(result).toMatchObject({ timedOut: true });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("leaves no background child of a timed-out chore running", async () => {
+    const result = await execChore(["/bin/sh", "-c", "sleep 30 & echo $!; wait"], options({ timeoutMs: 200 }));
+    const grandchild = Number(result.stdout.trim());
+
+    expect(grandchild).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(() => process.kill(grandchild, 0)).toThrow());
   });
 });
