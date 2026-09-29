@@ -18,7 +18,7 @@ beforeAll(() => {
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 function run(...args: string[]) {
-  const env = { ...process.env, XDG_CONFIG_HOME: join(home, "config"), XDG_STATE_HOME: join(home, "state") };
+  const env: NodeJS.ProcessEnv = { ...process.env, XDG_CONFIG_HOME: join(home, "config"), XDG_STATE_HOME: join(home, "state") };
   delete env.TITAN_FACTORY_DB;
   return spawnSync(process.execPath, [bin, ...args], { env, encoding: "utf8", timeout: 30_000 });
 }
