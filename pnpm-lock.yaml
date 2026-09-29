@@ -274,6 +274,8 @@ importers:
 
   packages/evidence: {}
 
+  packages/fix-proof: {}
+
   packages/github: {}
 
   packages/hitl:
