@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
@@ -14,22 +15,53 @@ const RemoteSchema = z
   .refine(isRepoKey, "must be a bare owner/name")
   .transform((remote) => remote.toLowerCase());
 
-const RepoPathSchema = z
-  .string()
-  .min(1)
-  .refine((path) => !path.split("/").some((segment) => segment === "." || segment === ".."), "must not contain . or .. segments")
-  .transform((path) => path.replace(/\/+/g, "/").replace(/(.)\/$/, "$1"));
+/** A path as written (slashes tidied, case kept, for spawn cwds) and its one comparison key. */
+export interface RepoPath {
+  written: string;
+  key: string;
+}
 
-const SeatRepoSchema = z.object({ path: RepoPathSchema.optional(), remote: RemoteSchema.optional() });
+/** An unrecognised spelling is refused rather than trimmed, so it can never silently match nothing. */
+function pathProblem(path: string): string | undefined {
+  if (path.replace(/\//g, "") === "") return "is empty or the root";
+  if (path !== path.trim()) return "has surrounding whitespace";
+  if (!/^[\x20-\x7E]+$/.test(path)) return "has non-ASCII or control characters";
+  if (path.split("/").some((segment) => segment === "." || segment === "..")) return "has a . or .. segment";
+  return undefined;
+}
+
+/** Lowercased, slashes collapsed, trailing slash dropped, and `$HOME`, `${HOME}` or the home dir spelled `~`. */
+export function repoPathKey(written: string, home: string): string {
+  const lower = written.toLowerCase();
+  const homes = ["$home", "${home}", home.replace(/\/+$/, "").toLowerCase()].filter((prefix) => prefix !== "");
+  const prefix = homes.find((h) => lower === h || lower.startsWith(`${h}/`));
+  return prefix === undefined ? lower : `~${lower.slice(prefix.length)}`;
+}
+
+function repoPathSchema(home: string) {
+  return z
+    .string()
+    .superRefine((path, ctx) => {
+      const problem = pathProblem(path);
+      if (problem) ctx.addIssue({ code: "custom", message: `path ${JSON.stringify(path)} ${problem}` });
+    })
+    .transform((path): RepoPath => {
+      const written = path.replace(/\/+/g, "/").replace(/(.)\/$/, "$1");
+      return { written, key: repoPathKey(written, home) };
+    });
+}
 
 /** The autonomy-seat/v1 frontmatter fields Shepherd reads; every other seat field is ignored. */
-const SeatFileSchema = z.object({
-  schema: z.literal("autonomy-seat/v1"),
-  name: z.string().min(1),
-  repos: z.array(SeatRepoSchema).default([]),
-  deny_repos: z.array(RepoPathSchema).default([]),
-  grants_extra: z.array(z.string()).default([]),
-});
+function seatFileSchema(home: string) {
+  const path = repoPathSchema(home);
+  return z.object({
+    schema: z.literal("autonomy-seat/v1"),
+    name: z.string().min(1),
+    repos: z.array(z.object({ path: path.optional(), remote: RemoteSchema.optional() })).default([]),
+    deny_repos: z.array(path).default([]),
+    grants_extra: z.array(z.string()).default([]),
+  });
+}
 
 const CharterSchema = z.object({ schema: z.literal("autonomy-charter/v1"), hard_stops: z.array(z.string()) });
 
@@ -37,7 +69,7 @@ export interface Seat {
   name: string;
   /** `owner/name` remotes this seat owns. */
   remotes: string[];
-  /** Lowercased remote to the seat's normalised local checkout path (`~` unexpanded); the cwd for spawns. */
+  /** Lowercased remote to the seat's checkout path as written, slashes tidied (`~` unexpanded); the cwd for spawns. */
   paths: Record<string, string>;
   grants: string[];
 }
@@ -55,6 +87,8 @@ export interface SeatSources {
   charterPath?: string;
   /** Charter hard-stop id to the `owner/name` remotes it forbids, e.g. `dotfiles-merge`. */
   hardStopRepos?: Record<string, string[]>;
+  /** The home directory a seat path may spell literally; defaults to the OS home. */
+  home?: string;
 }
 
 export class SeatBookInvalid extends Error {
@@ -68,10 +102,10 @@ export function frontmatter(text: string): unknown {
 
 /** Any invalid seat file or charter throws; a deny path unknown to every seat denies its basename under any owner. */
 export function loadSeatBook(sources: SeatSources): SeatBook {
-  const files = readSeatFiles(sources.seatsDir);
+  const files = readSeatFiles(sources.seatsDir, sources.home ?? homedir());
   const index = pathIndex(files);
   const seats = files.map(({ data }) => toSeat(data));
-  const denied = files.flatMap(({ data }) => data.deny_repos.map((path) => index.get(path) ?? basename(path).toLowerCase()));
+  const denied = files.flatMap(({ file, data }) => data.deny_repos.map((path) => resolveDeny(path, file, index)));
   const stops = charterHardStops(sources.charterPath);
   for (const [stop, remotes] of Object.entries(sources.hardStopRepos ?? {})) {
     if (stops.includes(stop)) denied.push(...remotes.map((r) => r.toLowerCase()));
@@ -96,19 +130,20 @@ function narrowest(seats: Seat[]): Seat {
   return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants };
 }
 
-type SeatFile = z.infer<typeof SeatFileSchema>;
+type SeatFile = z.infer<ReturnType<typeof seatFileSchema>>;
 
 interface NamedSeatFile {
   file: string;
   data: SeatFile;
 }
 
-function readSeatFiles(dir: string | undefined): NamedSeatFile[] {
+function readSeatFiles(dir: string | undefined, home: string): NamedSeatFile[] {
   if (!dir || !existsSync(dir)) return [];
+  const schema = seatFileSchema(home);
   return readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .sort()
-    .map((f) => ({ file: join(dir, f), data: parseFrontmatter(join(dir, f), "seat file", SeatFileSchema) }));
+    .map((f) => ({ file: join(dir, f), data: parseFrontmatter(join(dir, f), "seat file", schema) }));
 }
 
 /** One path-to-remote map across all seats; a path two seats bind to different remotes is a conflict. */
@@ -117,12 +152,21 @@ function pathIndex(files: NamedSeatFile[]): Map<string, string> {
   for (const { file, data } of files) {
     for (const { path, remote } of data.repos) {
       if (!path || !remote) continue;
-      const seen = owners.get(path);
-      if (seen && seen.remote !== remote) throw new SeatBookInvalid(`path ${path} maps to ${seen.remote} in ${seen.file} and to ${remote} in ${file}`);
-      owners.set(path, { remote, file });
+      const seen = owners.get(path.key);
+      if (seen && seen.remote !== remote) throw new SeatBookInvalid(`path ${path.key} maps to ${seen.remote} in ${seen.file} and to ${remote} in ${file}`);
+      owners.set(path.key, { remote, file });
     }
   }
   return new Map([...owners].map(([path, { remote }]) => [path, remote]));
+}
+
+/** A deny resolves through the global index; unbound, its basename must itself be a repo name or the seat book is invalid. */
+function resolveDeny(path: RepoPath, file: string, index: Map<string, string>): string {
+  const remote = index.get(path.key);
+  if (remote !== undefined) return remote;
+  const name = path.key.split("/").pop()!;
+  if (!isRepoKey(`owner/${name}`)) throw new SeatBookInvalid(`deny path ${JSON.stringify(path.written)} in ${file} matches no seat repo and ${JSON.stringify(name)} is not a repo name`);
+  return name;
 }
 
 function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): T {
@@ -138,7 +182,7 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
 
 function toSeat(data: SeatFile): Seat {
   const remotes = data.repos.flatMap((r) => (r.remote ? [r.remote] : []));
-  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path]] : [])));
+  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path.written]] : [])));
   return { name: data.name, remotes, paths, grants: data.grants_extra };
 }
 

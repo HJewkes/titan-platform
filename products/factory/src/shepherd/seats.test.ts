@@ -120,9 +120,40 @@ describe("loadSeatBook", () => {
     expect(lookupSeat(book, "acme/park-renamed").kind).toBe("denied");
   });
 
+  it.each([
+    ["~/P/Legacy", "denied"],
+    ["$HOME/p/legacy", "denied"],
+    ["${HOME}/p/legacy", "denied"],
+    ["/srv/seat-home/p/legacy", "denied"],
+    ["/Srv/Seat-Home/p/legacy/", "denied"],
+    ["~/p/legacy ", /surrounding whitespace/],
+    ["~/p/l\u0435gacy", /non-ASCII/],
+    ["/", /empty or the root/],
+    ["", /empty or the root/],
+  ] as const)("resolves the deny spelling %j to the bound remote or throws", (denyPath, expected) => {
+    const denier = seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify(denyPath)}]\n`);
+    const owner = seat("b-seat", "repos:\n  - {path: ~/p/legacy, remote: acme/renamed}\ngrants_extra: [merge-on-green-approve]\n");
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": denier, "b.md": owner }), home: "/srv/seat-home" });
+
+    if (expected === "denied") expect(lookupSeat(load(), "acme/renamed").kind).toBe("denied");
+    else expect(load).toThrow(expected);
+  });
+
+  it.each(["~/p/bad name", "~/p/weird!", "~/p/..."])("throws when the unbound deny path %j has no repo-name basename", (denyPath) => {
+    const seatsDir = writeSeats({ "a.md": seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify(denyPath)}]\n`) });
+
+    expect(() => loadSeatBook({ seatsDir })).toThrow(/a\.md.*not a repo name/);
+  });
+
+  it("keeps the checkout path's case for spawns while matching it case-insensitively", () => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("a-seat", "repos:\n  - {path: ~/Src/Gadgets/, remote: acme/gadgets}\n") }) });
+
+    expect(book.seats[0]!.paths).toEqual({ "acme/gadgets": "~/Src/Gadgets" });
+  });
+
   it("throws, naming both files, when one path maps to two remotes across seats", () => {
     const first = seat("a-seat", "repos:\n  - {path: ~/p/kit, remote: acme/kit}\n");
-    const second = seat("b-seat", "repos:\n  - {path: ~/p/kit/, remote: acme/other-kit}\n");
+    const second = seat("b-seat", "repos:\n  - {path: ~/P/Kit/, remote: acme/other-kit}\n");
 
     expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": first, "b.md": second }) })).toThrow(/a\.md.*b\.md/);
   });
