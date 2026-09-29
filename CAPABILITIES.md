@@ -591,7 +591,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +74 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
+- +76 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
