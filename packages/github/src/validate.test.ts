@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeSha } from "./fake.js";
-import { ghCliWire, type GhExec } from "./gh-cli.js";
+import type { GhExec } from "./exec.js";
+import { ghCliWire } from "./gh-cli.js";
 import { githubPort, type GitHubPort, type MergeMethod } from "./port.js";
 import { GitHubInputError } from "./validate.js";
 
@@ -9,7 +10,7 @@ const SHA = fakeSha("head1");
 
 function recordingPort(): { port: GitHubPort; calls: string[][] } {
   const calls: string[][] = [];
-  const exec: GhExec = async (args) => (calls.push([...args]), { code: 0, stdout: '{"object":{"sha":"s"}}', stderr: "" });
+  const exec: GhExec = async (args) => (calls.push([...args]), { code: 0, stdout: '{"object":{"sha":"s"},"check_runs":[]}', stderr: "" });
   return { port: githubPort(ghCliWire(exec)), calls };
 }
 
@@ -60,6 +61,6 @@ describe("port input validation", () => {
     await port.getHeadSha("my-org/repo.name_2", "factory/doc-12-abcd1234");
     await port.latestCheckRuns(REPO, SHA);
 
-    expect(calls.map((args) => args[1])).toEqual(["repos/my-org/repo.name_2/git/ref/heads/factory/doc-12-abcd1234", "-X"]);
+    expect(calls.map((args) => args[4])).toEqual(["repos/my-org/repo.name_2/git/ref/heads/factory/doc-12-abcd1234", `repos/octo/demo/commits/${SHA}/check-runs`]);
   });
 });

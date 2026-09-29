@@ -20,6 +20,8 @@ export interface PullRequest {
   mergeSha: string | null;
   headRef: string;
   headSha: string;
+  /** `owner/name` of the repo the head lives in; null when that fork was deleted. */
+  headRepo: RepoSlug | null;
   baseRef: string;
   draft: boolean;
   /** GitHub computes this lazily, so `unknown` is common and never means clean. */
@@ -40,6 +42,8 @@ export interface CheckRun {
   status: string;
   conclusion: string | null;
   startedAt: string | null;
+  /** The GitHub App that posted the run; a required context counts only from an allowed app. */
+  appId: number | null;
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
   workflowRunId: number | null;
   url: string;
@@ -59,6 +63,12 @@ export interface PutFileRequest {
   expectedBlobSha: string | null;
 }
 
+/** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
+export interface HeadRef {
+  branch: string;
+  repo: RepoSlug | null;
+}
+
 export interface OpenPrRequest {
   head: string;
   base: string;
@@ -73,21 +83,25 @@ export interface OpenPrRequest {
 export interface GitHubWire {
   getRef(repo: RepoSlug, branch: string): Promise<string | null>;
   createRef(repo: RepoSlug, branch: string, sha: string): Promise<void>;
+  deleteRef(repo: RepoSlug, branch: string): Promise<void>;
+  getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
+  listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+  getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<{ sha: string }>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
 }
 
-export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress";
+export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
 
 /** A write either happened now or was skipped because its effect is already in place (or can no longer apply). */
 export type WriteResult<T = object> = T & ({ done: true } | { done: false; skipped: SkipReason });
@@ -96,9 +110,13 @@ export type WriteResult<T = object> = T & ({ done: true } | { done: false; skipp
 export interface GitHubPort {
   getHeadSha(repo: RepoSlug, branch: string): Promise<string | null>;
   ensureBranch(repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>>;
+  /** Refuses (skips) the default branch and a head that lives in another repo. */
+  deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
   getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
   putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>>;
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
+  /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
+  listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
@@ -106,6 +124,8 @@ export interface GitHubPort {
   /** The latest run for each check name on `sha`. */
   latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** The last `lines` lines of an Actions job's log. */
+  jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
@@ -126,14 +146,17 @@ export function githubPort(wire: GitHubWire): GitHubPort {
   return {
     getHeadSha: async (repo, branch) => wire.getRef(repoOf(repo), checkRef("branch", branch)),
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
+    deleteRef: async (repo, head) => deleteRef(wire, repoOf(repo), { branch: checkRef("branch", head.branch), repo: head.repo }),
     getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
+    listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
+    jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
@@ -152,6 +175,20 @@ async function ensureBranch(wire: GitHubWire, repo: RepoSlug, branch: string, ba
   if (existing) return { sha: existing, done: false, skipped: "exists" };
   await wire.createRef(repo, branch, baseSha);
   return { sha: baseSha, done: true };
+}
+
+async function deleteRef(wire: GitHubWire, repo: RepoSlug, head: HeadRef): Promise<WriteResult> {
+  if (head.repo === null || head.repo.toLowerCase() !== repo.toLowerCase()) return { done: false, skipped: "fork-head" };
+  if (head.branch === (await wire.getDefaultBranch(repo))) return { done: false, skipped: "default-branch" };
+  if ((await wire.getRef(repo, head.branch)) === null) return { done: false, skipped: "absent" };
+  await wire.deleteRef(repo, head.branch);
+  return { done: true };
+}
+
+function tail(log: string, lines: number): string {
+  const all = log.split(/\r?\n/);
+  if (all.at(-1) === "") all.pop();
+  return all.slice(-lines).join("\n");
 }
 
 async function putFile(wire: GitHubWire, repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>> {

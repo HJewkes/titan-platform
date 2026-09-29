@@ -176,7 +176,7 @@ describe("land core", () => {
 
   it("returns ci-failed with the failing check and its Actions run, without asking to merge", async () => {
     const scenario = landScenario();
-    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, workflowRunId: 77, url: "u" }]);
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, appId: 15368, workflowRunId: 77, url: "u" }]);
     const host = hostFor(scenario);
 
     const run = await host.runtime.wait(host.runtime.start("land-test"));
