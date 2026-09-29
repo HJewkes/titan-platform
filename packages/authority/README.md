@@ -21,8 +21,8 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
 - A rule with `when` (only MRG-AU-RV today) applies only when every condition holds on
-  `request.facts`; otherwise the pair's unconditional rule decides and the reason names
-  what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
+  `request.facts` and the request is not tainted; otherwise the pair's unconditional rule
+  decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
 - `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
   any tainted resolver.
 - `policyTableSchema`: rejects a table that misses or repeats the unconditional rule for

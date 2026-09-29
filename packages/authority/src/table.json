@@ -76,7 +76,7 @@
       "action": "merge",
       "actor": "automation",
       "verdict": "allow",
-      "condition": "Owner decision D-A, all seats: the run-dispatched reviewer's MERGE verdict at the exact head, with required check runs green from the allowed apps, stands in for the owner's tap. Otherwise MRG-AU gates.",
+      "condition": "Owner decision D-A, all seats: the run-dispatched reviewer's MERGE verdict at the exact head, with required check runs green from the allowed apps, stands in for the owner's tap. A trusted collector, never the requester, observes the facts; its changed paths include both sides of every rename. A tainted request never matches. Otherwise MRG-AU gates.",
       "when": [
         "resolver-is-dispatched-reviewer",
         "verdict-merge-at-head",
@@ -84,7 +84,7 @@
         "no-non-green-run",
         "merge-tree-clean",
         "repo-not-frozen",
-        "no-workflow-change",
+        "no-protected-path-change",
         "seat-grants-merge-on-green-approve"
       ],
       "evidence": [

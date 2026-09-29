@@ -94,14 +94,19 @@ do not count toward totality. `unmetConditions(when, facts)` returns the failing
 MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
 
 - the verdict's author is the reviewer the run dispatched, matched on agent id and session id;
-- the verdict is `MERGE` and names the exact head;
+- the verdict is `MERGE` and names the exact head, a full 40-character lower-case sha compared
+  exactly (no prefix or case folding);
 - every required context has a `success` check run at that head from an allowed app;
 - no check run at that head from an allowed app is failed, cancelled or still running;
 - the merge-tree is clean and the repo is not frozen;
-- no changed path is under `.github/workflows/` or `.github/actions/`;
+- no changed path is under `.github/`, or is `CODEOWNERS`, `docs/CODEOWNERS` or
+  `.gitmodules` (a leading `./` is stripped first);
 - the seat grants `merge-on-green-approve`.
 
-A request with no `facts` fails every condition, so it gets the MRG-AU gate. The row
+A request with no `facts` fails every condition, and a tainted request never matches a
+conditional row, so both get the MRG-AU gate. Every fact is attested by the caller, so a
+trusted collector, never the requesting session, must gather them. Its `changedPaths`
+must list both the source and the target of every rename. The row
 decides; it does not resolve a hitl gate. hitl refuses an `automation` resolver, so a
 caller evaluates first and opens a gate only when the decision is `gate`.
 

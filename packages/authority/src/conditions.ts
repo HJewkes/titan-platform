@@ -24,6 +24,7 @@ export interface MergeFacts {
   checkRuns: CheckRunFact[];
   mergeTreeClean: boolean;
   repoFrozen: boolean;
+  /** Every path the pull request touches, including both sides of a rename. */
   changedPaths: string[];
   seatGrants: string[];
 }
@@ -33,10 +34,21 @@ export interface ConditionFacts {
 }
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
-const WORKFLOW_PREFIXES = [".github/workflows/", ".github/actions/"];
+const FULL_SHA = /^[0-9a-f]{40}$/;
+const PROTECTED_PREFIXES = [".github/"];
+const PROTECTED_FILES = new Set(["CODEOWNERS", "docs/CODEOWNERS", ".gitmodules"]);
 
 function sameAgent(a: AgentIdentity, b: AgentIdentity): boolean {
   return a.agentId !== "" && a.sessionId !== "" && a.agentId === b.agentId && a.sessionId === b.sessionId;
+}
+
+function verdictMergeAtHead(facts: MergeFacts): boolean {
+  return facts.verdict.value === "MERGE" && FULL_SHA.test(facts.head) && facts.verdict.head === facts.head;
+}
+
+function isProtectedPath(path: string): boolean {
+  const normalized = path.replace(/^(\.\/)+/, "");
+  return PROTECTED_FILES.has(normalized) || PROTECTED_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 function countedRuns(facts: MergeFacts): CheckRunFact[] {
@@ -55,12 +67,12 @@ function noNonGreenRun(facts: MergeFacts): boolean {
 
 const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "resolver-is-dispatched-reviewer": (facts) => sameAgent(facts.resolver, facts.dispatchedReviewer),
-  "verdict-merge-at-head": (facts) => facts.verdict.value === "MERGE" && facts.head !== "" && facts.verdict.head === facts.head,
+  "verdict-merge-at-head": verdictMergeAtHead,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,
   "merge-tree-clean": (facts) => facts.mergeTreeClean,
   "repo-not-frozen": (facts) => !facts.repoFrozen,
-  "no-workflow-change": (facts) => !facts.changedPaths.some((path) => WORKFLOW_PREFIXES.some((prefix) => path.startsWith(prefix))),
+  "no-protected-path-change": (facts) => !facts.changedPaths.some(isProtectedPath),
   "seat-grants-merge-on-green-approve": (facts) => facts.seatGrants.includes("merge-on-green-approve"),
 };
 

@@ -34,7 +34,7 @@ export const CONDITION_KINDS = [
   "no-non-green-run",
   "merge-tree-clean",
   "repo-not-frozen",
-  "no-workflow-change",
+  "no-protected-path-change",
   "seat-grants-merge-on-green-approve",
 ] as const;
 

@@ -29,6 +29,10 @@ function findRule(table: PolicyTable, request: AuthorityRequest): RuleMatch {
   const forPair = table.rules.filter((rule) => rule.action === request.action && rule.actor === request.actor.class);
   const unmet: string[] = [];
   for (const rule of forPair.filter((candidate) => candidate.when)) {
+    if (request.tainted) {
+      unmet.push(`${rule.id} skipped: tainted`);
+      continue;
+    }
     const failed = unmetConditions(rule.when ?? [], request.facts);
     if (failed.length === 0) return { rule, unmet: [] };
     unmet.push(`${rule.id} unmet: ${failed.join(", ")}`);
