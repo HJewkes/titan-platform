@@ -33,8 +33,10 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@titan-design/daemon": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/registry": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
