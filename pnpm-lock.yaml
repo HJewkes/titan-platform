@@ -552,6 +552,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority

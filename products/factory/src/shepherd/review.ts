@@ -64,7 +64,8 @@ export class ReviewerBrokerDown extends Error {
 /** How Shepherd starts a reviewer; any other throw from `spawn` or `resume` is a refusal. */
 export interface ReviewerDispatch {
   roster(): Promise<readonly ReviewerAgent[]>;
-  spawn(name: string, brief: string): Promise<void>;
+  /** `target` names the repo whose checkout the reviewer starts in. */
+  spawn(name: string, brief: string, target: ReviewTarget): Promise<void>;
   resume(name: string, brief: string): Promise<void>;
 }
 
@@ -294,7 +295,7 @@ async function dispatchReview(deps: ShepherdDeps, wiring: ReviewWiring & { dispa
   const choice = chooseReviewer(target, deps.store.get().byRun(input.runId), roster);
   const brief = reviewerBrief({ ...target, questions: await wiring.questions?.(target) });
   const intent = { head: input.head, reviewer: choice.name, at: deps.now() };
-  await whileBrokerDown(timing, signal, () => (choice.mode === "resume" ? dispatch.resume(choice.name, brief) : dispatch.spawn(choice.name, brief)));
+  await whileBrokerDown(timing, signal, () => (choice.mode === "resume" ? dispatch.resume(choice.name, brief) : dispatch.spawn(choice.name, brief, target)));
   const started = await startedReviewer(dispatch, choice, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${choice.name} did not start one session in time` };
   return { kind: "dispatched", ...intent, mode: choice.mode, agentId: started.agentId, sessionId: started.sessionId };
