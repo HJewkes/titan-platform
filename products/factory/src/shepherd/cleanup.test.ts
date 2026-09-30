@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
-import { runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_GRACE_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
+import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_GRACE_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { lineageMigration, shepherdMigration, ShepherdStore, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
@@ -9,7 +9,7 @@ import { lineageMigration, shepherdMigration, ShepherdStore, type RegistrationIn
 const REPO = "octo/demo";
 const RUN = "run-1";
 const IMPLEMENTER = "impl-a";
-const STANDING = "rv-demo-1";
+const STANDING = "rv-octo-demo-1";
 const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: IMPLEMENTER, policy: OWNER_GATE_POLICY };
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
@@ -139,12 +139,12 @@ describe("sh-cleanup retire", () => {
   const policy: EffectivePolicy = { ...OWNER_GATE_POLICY, reviewer: STANDING };
 
   it("retires successors, then the implementer, then fresh reviewers, and never the standing reviewer", async () => {
-    const names = [IMPLEMENTER, `${IMPLEMENTER}-s1`, `${IMPLEMENTER}-s2`, "rv-demo-1-2", STANDING, "rv-demo-12"];
+    const names = [IMPLEMENTER, `${IMPLEMENTER}-s1`, `${IMPLEMENTER}-s2`, "rv-octo-demo-1-2", STANDING, "rv-octo-demo-12", "x-rv-octo-demo-1", "rv-other-demo-1", `old-${IMPLEMENTER}-s3`, `${IMPLEMENTER}-s1x`];
     const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
 
     const result = await w.run();
 
-    expect(result.retired).toEqual([`${IMPLEMENTER}-s2`, `${IMPLEMENTER}-s1`, IMPLEMENTER, "rv-demo-1-2"]);
+    expect(result.retired).toEqual([`${IMPLEMENTER}-s2`, `${IMPLEMENTER}-s1`, IMPLEMENTER, "rv-octo-demo-1-2"]);
     expect(w.agents.retires.map((retire) => retire.name)).not.toContain(STANDING);
   });
 
@@ -155,7 +155,15 @@ describe("sh-cleanup retire", () => {
     await w.run();
 
     expect(w.agents.retires).toHaveLength(1);
-    expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(exitAt + SH_CLEANUP_GRACE_MS);
+    expect(w.agents.retires[0]!.at).toBe(exitAt + 3 * 60_000);
+  });
+
+  it("retires an agent that is already exited at the moment it is first seen only after the literal 3 minute grace", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+
+    await w.run();
+
+    expect(w.agents.retires.map((retire) => retire.at)).toEqual([180_000]);
   });
 
   it("counts an agent the broker no longer knows as retired", async () => {
@@ -165,6 +173,37 @@ describe("sh-cleanup retire", () => {
 
     expect(result.retired).toEqual([IMPLEMENTER]);
     expect(result.caveats).toEqual([]);
+    expect(w.agents.retires).toHaveLength(1);
+  });
+
+  it("counts an agent the broker reports as already retired as retired, without a second try", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0, refusals: ["Already Retired"] }] });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual([IMPLEMENTER]);
+    expect(w.agents.retires).toHaveLength(1);
+  });
+
+  it("does not take an unrelated refusal that merely mentions an agent for a retired one", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0, refusals: ["worktree of agent named impl-a is dirty"] }] });
+
+    await w.run();
+
+    expect(w.agents.retires).toHaveLength(2);
+  });
+
+  it("still closes the task and retires the agent after a GitHub outage used up its hour", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const port = githubPort(fake.wire);
+    vi.spyOn(port, "getPr").mockRejectedValue(new Error("github is down"));
+    const w = world({ fake, port, agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+
+    const result = await w.run();
+
+    expect(result).toMatchObject({ ref: "unread", task: "done", retired: [IMPLEMENTER] });
+    expect(result.caveats).toEqual(["head ref of #1: github is down"]);
+    expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
   });
 
   it("retries a refusal at most every 10 minutes and finishes with a caveat after an hour", async () => {
@@ -187,6 +226,13 @@ describe("sh-cleanup retire", () => {
     const result = await runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
 
     expect(result).toMatchObject({ ref: "deleted", task: "no cleanup ports wired", retired: [] });
+  });
+});
+
+describe("fresh reviewer names", () => {
+  it("keeps the repo owner, so two owners' same-named repos get distinct names", () => {
+    expect(freshReviewerBase("a/demo", 1)).toBe("rv-a-demo-1");
+    expect(freshReviewerBase("b/demo", 1)).toBe("rv-b-demo-1");
   });
 });
 
