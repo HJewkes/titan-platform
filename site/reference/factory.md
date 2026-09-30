@@ -1,7 +1,13 @@
 # factory
 
 **Product.** Private, never published. Depends on [`workflow`](/reference/workflow),
-[`hitl`](/reference/hitl) and [`store-sqlite`](/reference/store-sqlite).
+[`hitl`](/reference/hitl), [`store-sqlite`](/reference/store-sqlite),
+[`github`](/reference/github), [`authority`](/reference/authority),
+[`registry`](/reference/registry), [`daemon`](/reference/daemon) and
+[`session-read`](/reference/session-read).
+
+To run it, read [Running the factory](/guides/factory) and [Shepherd](/guides/shepherd).
+This page covers what it is and why.
 
 ```sh
 pnpm build
@@ -51,8 +57,11 @@ claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410
 
 ## What it deliberately does not do
 
-It does not dispatch agents, spawn sessions or create relay items. It holds no allow rule:
-until the authority table is approved, its one gate policy sends every action to a human.
+It does not dispatch agents, spawn sessions or create relay items. `land-pr` holds no allow
+rule: its gate policy sends every merge to a human. `shepherd-pr` can allow a merge under
+authority's MRG-AU-RV row, but the review phase that supplies the verdict is a stub, so every
+Shepherd merge also waits for the owner today. See
+[what is not built yet](/guides/shepherd#what-is-not-built-yet).
 
 ## Gotchas
 

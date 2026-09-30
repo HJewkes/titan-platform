@@ -19,9 +19,10 @@ Requirements that apply to all of them:
 
 - **Node 20 or newer**, and **ESM only**. There is no CommonJS build; `require()` will not
   work.
-- **`zod` v4 is a peer dependency** of `registry`, `daemon`, `agent`, `hitl`, `memory`,
-  `workflow`, `chat-protocol`, `messaging`, `code-read`, `session-analytics`, and the three
-  `style-*` packages. Install it yourself so one copy is shared: `npm install zod`.
+- **`zod` v4 is a peer dependency** of `registry`, `daemon`, `agent`, `agent-protocol`,
+  `authority`, `hitl`, `memory`, `workflow`, `chat-protocol`, `messaging`, `code-read`,
+  `session-analytics`, and the three `style-*` packages. Install it yourself so one copy is
+  shared: `npm install zod`.
 - **`web-tree-sitter` is a peer** of `code-parser` and `style-analyzer`.
 - **React 18 or 19 is a peer** of `react-app`, with Vite optional for its `./vite` entry.
 - **`@huggingface/transformers` is an optional peer** of `embed` and `retrieval`. Without
@@ -95,6 +96,20 @@ returns the same envelope the HTTP and MCP surfaces return.
 [The case study](/guides/session-miner) walks through which package does what in that
 pipeline.
 
+## Run the products
+
+Five units in this repo run as programs. All are private, so each runs from a checkout
+after `pnpm install && pnpm build`. Each has a usage guide with every command, where its
+state lives, and how it fails.
+
+| Unit | What it does | Guide |
+| --- | --- | --- |
+| `products/factory` | `titan-factory` lands pull requests with durable runs and human gates | [Factory](/guides/factory), [Shepherd](/guides/shepherd) |
+| `products/session-miner` | `titan-miner` indexes and searches agent transcripts | [Session miner](/guides/session-miner#run-it) |
+| `products/retrieval-eval` | `retrieval-eval` scores retrievers against mined labels | [Retrieval eval](/guides/retrieval-eval) |
+| `apps/code-report` | a browser report over a code-graph snapshot | [Code report](/guides/code-report) |
+| `deploy/hub` | the Matrix homeserver the human queue uses | [Matrix hub](/guides/hub) |
+
 ## Where each package fits
 
 Pick by problem:
@@ -123,6 +138,11 @@ Pick by problem:
 | I need a read API over a code graph that a browser can call | [`code-read`](/reference/code-read) |
 | I need to learn a repo's code style and enforce it | [`style-analyzer`](/reference/style-analyzer), [`style-profile`](/reference/style-profile), [`style-checker`](/reference/style-checker) |
 | I need to check that a model's cited lines really say what it claims | [`evidence`](/reference/evidence) |
+| I need to decide whether an actor may merge, release, or read a secret | [`authority`](/reference/authority) |
+| I need to read and change GitHub through `gh`, with writes that are safe to repeat | [`github`](/reference/github) |
+| I need to prove a fix PR's new tests fail on the base and pass at head | [`fix-proof`](/reference/fix-proof) |
+| I need to stop home paths and private terms from reaching a public repo | [`egress-scan`](/reference/egress-scan) |
+| I need to start or resume an agent-chat agent from code | [`agent-dispatch`](/reference/agent-dispatch) |
 | I need the envelope, routes, and SSE vocabulary a daemon and its clients share | [`rpc-protocol`](/reference/rpc-protocol) |
 | I need a typed daemon client in a browser, live or from a snapshot file | [`rpc-client`](/reference/rpc-client) |
 | I need React hooks and a Vite preset for a daemon-backed app | [`react-app`](/reference/react-app) |
