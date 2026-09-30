@@ -3,20 +3,27 @@
 Code-driven software-factory workflows. Private; never published. Bin: `titan-factory`.
 
 Code owns every workflow transition, retry and evidence record here; a model supplies judgment
-only where a step is routed to one. The product composes `@titan-design/workflow`, `hitl` and
-`store-sqlite`. It never dispatches an agent. Relay and agent-chat keep dispatch.
+only where a step is routed to one. The product composes `@titan-design/workflow`, `hitl`,
+`store-sqlite`, `github`, `authority`, `registry`, `daemon` and `session-read`. It never
+dispatches an agent. Relay and agent-chat keep dispatch.
+
+Usage guides, with every command, where state lives and how each one fails:
+[Running the factory](https://hjewkes.github.io/titan-platform/guides/factory) and [Shepherd](https://hjewkes.github.io/titan-platform/guides/shepherd). This README is the design
+and file map.
 
 **Run `pnpm build` before any test or live run.** Tests and the bin load sibling packages from
 their `dist`, and a stale `dist` behaves like a different release (the `agent` build once
 lacked the `claude-print` harness its source had).
 
 Slice S0 (TP-410) added the host, the step router and the two seams. Slices S1 and S2 (TP-411)
-add the GitHub port and the land core. No workflow is registered yet; the pilots land in later
-slices and register in `src/workflows.ts`.
+added the GitHub port and the land core. Two workflows are registered in `src/workflows.ts`:
+`land-pr` and `shepherd-pr`.
 
 ## Commands
 
 ```sh
+titan-factory serve [--port <n>]                              # own the database; /health, /rpc and /mcp on loopback 7410
+titan-factory land owner/repo#N [--task <t>]                  # start land-pr on serve, or drive it here when none answers
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist, load it, wait for /health
@@ -205,7 +212,8 @@ those keys without a workflow change.
 
 ## F5 seam: `GatePolicy` in `src/gate-policy.ts`
 
-`GatePolicy.decide(action, target?)` returns `{ outcome, rule: { table, rowId, version }, reason }`. The
-only implementation, `gateEverything`, sends every action to a human, because the F5 authority
-table is not approved. `policyTraceGate(decision, ref)` renders a decision as a policy gate entry
+`GatePolicy.decide(action, target?)` returns `{ outcome, rule: { table, rowId, version }, reason }`.
+`gateEverything` sends every action to a human, and `land-pr` uses it. `shepherdGatePolicy`
+(`src/shepherd/policy.ts`) decides from the seat policy and, under `auto`, from authority's
+MRG-AU-RV row on the merge facts collected at the exact head. `policyTraceGate(decision, ref)` renders a decision as a policy gate entry
 with the F3 id `<spanId>#policy:<table>:<rowId>`.

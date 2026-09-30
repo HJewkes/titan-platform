@@ -14,6 +14,8 @@ range in a source file, so the FTS index never copies text.
 [`cluster`](/reference/cluster) and [`embed`](/reference/embed) are the other two
 domain-free primitives: Drain template mining and embeddings with a hash fallback.
 [`retrieval`](/reference/retrieval) fuses FTS, vector, and graph retrievers over them.
+The [retrieval eval](/guides/retrieval-eval) product scores candidate retrievers against
+labels mined from transcripts, so a retrieval change can be measured.
 
 ## Command surfaces
 
@@ -48,6 +50,9 @@ composes all three.
   fenced ownership, for supervisors that must survive a restart.
 - [`agent`](/reference/agent): headless Claude Code and Codex runs with an environment
   scrub, required budgets, a failure taxonomy, and a durable dispatcher.
+- [`agent-dispatch`](/reference/agent-dispatch): a client for the `agent-chat` CLI. It starts
+  an agent under a named profile with the brief on stdin, resumes an ended session, and reads
+  the roster. Use `agent` instead to run one headless turn in process.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
   and `assisted` steps are memoized, with `mapItems` fan-out under a budget.
@@ -80,6 +85,26 @@ end.
   audit runners and normalize their diagnostics.
 - [`evidence`](/reference/evidence): checks that a model's citations name lines it was
   shown and quote them exactly, and scores planted controls.
+
+## Landing a change
+
+These packages decide whether a change may leave the machine and whether a pull request may
+merge. The [factory](/guides/factory) product composes `github`, `authority`, `hitl`, and
+`workflow` into the land and [Shepherd](/guides/shepherd) workflows.
+
+- [`github`](/reference/github): a GitHub REST port over the caller's `gh` login. Every write
+  reads first, so a step that repeats after a crash repeats no effect. `requiredChecks` reads
+  the branch rules, `mergeReadiness` decides without I/O, and `fakeGitHub()` stands in for
+  tests.
+- [`authority`](/reference/authority): the decision table as data, and a pure `evaluate`.
+  For each action class and actor class it answers `allow`, `gate`, or `deny`, and it names
+  who may resolve a gate. `hitl` takes its resolver classes from it.
+- [`fix-proof`](/reference/fix-proof): decides whether a fix pull request's new tests fail on
+  the merge base and pass at head. It plans the overlay and classifies two vitest reports; a
+  runner does the git and test work.
+- [`egress-scan`](/reference/egress-scan): refuses home paths, private-workspace paths, and
+  private terms in a diff bound for a public repo. The `titan-egress-scan` bin backs this
+  repo's pre-push hook and its CI job.
 
 ## Messaging and the human queue
 

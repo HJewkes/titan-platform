@@ -4,7 +4,7 @@ layout: home
 hero:
   name: titan-platform
   text: Shared parts for agentic tools
-  tagline: Thirty published packages in a strict acyclic DAG, and the products composed thinly on top of them.
+  tagline: Thirty-five packages in a strict acyclic DAG, and the products composed thinly on top of them.
   actions:
     - theme: brand
       text: Get started
@@ -72,4 +72,5 @@ rules, the scaffold, the changeset requirement, and the release flow.
 | To know what each package does | [Packages](/reference/) |
 | To understand the tiers and why they are enforced | [Architecture](/guides/architecture) |
 | To see the whole DAG working end to end | [Case study: the session miner](/guides/session-miner) |
+| To run the factory, Shepherd, or another product | [Running the products](/guides/#running-the-products) |
 | To add a package or cut a release | [Working in the repo](/guides/contributing) |
