@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryGateStore } from "./memory-store.js";
-import { SqliteGateStore, gateMigration, gateResolverMigration } from "./sqlite-store.js";
+import { SqliteGateStore, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
@@ -14,8 +14,10 @@ import {
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
+  GateRuleInvalid,
   type GateAuthorize,
   type GateResolver,
+  type GateRule,
   type GateStore,
 } from "./types.js";
 
@@ -34,6 +36,8 @@ interface Harness {
 
 const T0 = Date.UTC(2026, 8, 8, 10, 0, 0);
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
+const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix" };
+const TERMINAL_ONLY: GateRule = { table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] };
 const AGENT_CLASSES = ACTOR_CLASSES.filter((c) => !(RESOLVER_CLASSES as readonly ActorClass[]).includes(c));
 
 function memoryHarness(authorize?: GateAuthorize): Harness {
@@ -51,7 +55,7 @@ function sqliteHarness(authorize?: GateAuthorize): Harness {
   let millis = T0;
   const dir = mkdtempSync(path.join(tmpdir(), "hitl-"));
   const db = openDatabase(path.join(dir, "gates.sqlite3"));
-  runMigrations(db, [gateMigration(1), gateResolverMigration(2)]);
+  runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
   const options = { migrate: false, now: () => millis };
   return {
     store: new SqliteGateStore(db, authorize ? { ...options, authorize } : options),
@@ -335,6 +339,50 @@ describe.each([
     const before = failing.get("g1");
     expect(() => failing.resolve("g1", "ok", OWNER)).toThrow("policy backend down");
     expect(failing.get("g1")).toEqual(before);
+  });
+
+  it("refuses a resolver whose class the gate's rule does not name and leaves the gate pending", () => {
+    store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
+    const error = catchError(() => store.resolve("g1", { approved: true }, REMOTE));
+    expect(error).toBeInstanceOf(GateResolverRefused);
+    expect(error).toMatchObject({ gateId: "g1", actorClass: "owner-remote" });
+    expect(store.get("g1")).toMatchObject({ status: "pending", payload: undefined, resolvedBy: undefined });
+  });
+
+  it("resolves for a class the rule names and reads the rule back unchanged", () => {
+    store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
+    expect(store.resolve("g1", "ok", OWNER)).toMatchObject({ status: "resolved", resolvedBy: OWNER, rule: TERMINAL_ONLY });
+    expect(store.get("g1")?.rule).toEqual(TERMINAL_ONLY);
+  });
+
+  it("lets a gate without a rule resolve for owner-remote as before", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(store.resolve("g1", "ok", REMOTE).resolvedBy).toEqual(REMOTE);
+    expect(store.get("g1")?.rule).toBeUndefined();
+  });
+
+  it("refuses an anonymous resolve of a rule-bound gate", () => {
+    store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
+    expect(() => store.resolve("g1", "ok")).toThrow(GateResolverRefused);
+    expect(store.get("g1")?.status).toBe("pending");
+  });
+
+  it("keeps the stored rule when a caller mutates the rule it passed in or read back", () => {
+    const input: GateRule = { ...TERMINAL_ONLY, resolvers: ["owner-terminal"] };
+    store.create({ id: "g1", prompt: "release?", rule: input });
+    input.resolvers.push("owner-remote");
+    store.get("g1")?.rule?.resolvers.push("owner-remote");
+    expect(store.get("g1")?.rule).toEqual(TERMINAL_ONLY);
+    expect(() => store.resolve("g1", "ok", REMOTE)).toThrow(GateResolverRefused);
+  });
+
+  it.each([
+    ["no resolvers", { ...TERMINAL_ONLY, resolvers: [] }],
+    ["an agent class", { ...TERMINAL_ONLY, resolvers: ["coordinator"] }],
+    ["a missing ruleId", { table: "F5", version: "1.0.0", resolvers: ["owner-terminal"] }],
+  ])("refuses a rule with %s and creates nothing", (_label, rule) => {
+    expect(() => store.create({ id: "g1", prompt: "release?", rule: rule as GateRule })).toThrow(GateRuleInvalid);
+    expect(store.get("g1")).toBeUndefined();
   });
 
   function scoped(extra: Harness): Harness {

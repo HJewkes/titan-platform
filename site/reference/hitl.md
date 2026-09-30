@@ -101,7 +101,7 @@ suite.
 database with domain tables — which is what [`workflow`](/reference/workflow) does. `table`
 renames the table so one database can host several gate spaces.
 
-`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
+`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
 not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare
 Workers isolate. `MemoryGateStore` stays on the root.
 
@@ -141,6 +141,41 @@ After the migration, a writer built on hitl 0.2.x fails when it resolves: SQLite
 statement with a raw error whose message is `hitl: resolvedBy required`. The same trigger
 refuses a direct insert of a resolved row with no resolver. Cancels from an old writer still
 work. The fix is to upgrade that writer so it passes a resolver.
+
+## Rule-bound gates
+
+A gate can carry the authority rule that opened it. Pass `rule` to `create`:
+`{ table, version, ruleId, resolvers }`, where `resolvers` lists the resolver classes the
+rule admits, as `evaluate` from `@titan-design/authority` returns them.
+
+```ts
+store.create({
+  id: "release-approval",
+  prompt: "Publish the release?",
+  rule: { table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] },
+});
+```
+
+The store reads the rule once into a frozen copy, so the caller cannot widen it after
+`create`. A rule that is not a non-empty list of resolver classes throws `GateRuleInvalid`
+and creates nothing. A rule-bound gate refuses a resolver whose class the rule does not
+name, and refuses a resolve that names no resolver. Both throw `GateResolverRefused` and
+leave the gate pending. The check runs after the default class check and before
+`authorize`, so it only narrows. A gate without a rule behaves as before.
+
+On SQLite the rule lives in a `rule` column that `gateRuleMigration(n)` adds, along with a
+trigger that aborts any update resolving a rule-bound row by a class outside its rule, or
+changing the rule, with `hitl: resolver outside the gate rule`. That stops a writer built on
+hitl 0.3.x, which knows nothing of rules, from widening who may answer. The migration is
+idempotent and does not backfill. `migrate: true` runs it as version 3. A store whose table
+lacks the column throws `GateStoreSchemaOutdated` naming `gateRuleMigration` when handed a
+rule, rather than dropping it.
+
+The trigger needs `resolved_by` to know who answered. Until `gateResolverMigration` has run,
+a rule-bound gate can be opened and cancelled but not resolved: the store throws
+`GateStoreSchemaOutdated` naming `gateResolverMigration`, and the trigger aborts every raw
+resolve of the row. Run both migrations in either order; the second one installs the
+class-aware trigger.
 
 ## Gotchas
 

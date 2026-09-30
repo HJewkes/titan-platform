@@ -405,7 +405,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateCancelled`, `GateError`, `GateExpired`, `GateNotFound`
-- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
+- +24 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 

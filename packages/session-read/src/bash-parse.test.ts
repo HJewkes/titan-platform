@@ -102,6 +102,19 @@ describe("commandHeads", () => {
     expect(commandHeads("cd /a && ls; cd b; git status")).toEqual(["ls", "git status"]);
   });
 
+  it("drops the closing subshell paren from the last word", () => {
+    expect(commandHeads("(cd b && ls)")).toEqual(["ls"]);
+  });
+
+  it("looks through builtin and command to the program word", () => {
+    expect(commandHeads("builtin cd x; ls")).toEqual(["ls"]);
+    expect(commandHeads("command cd x; ls")).toEqual(["ls"]);
+  });
+
+  it("gives command -v a head without throwing", () => {
+    expect(commandHeads("command -v git")).toEqual(["git"]);
+  });
+
   it("does not close a command substitution on a quoted paren", () => {
     expect(commandHeads("echo $(echo ')' && x) && ls")).toEqual(["echo", "ls"]);
   });
