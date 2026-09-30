@@ -7,5 +7,4 @@ export {
   gateRuleMigration,
   gateTableDdl,
   resolverRequiredTriggerDdl,
-  ruleResolverTriggerDdl,
 } from "./sqlite-store.js";

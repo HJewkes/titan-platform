@@ -67,6 +67,7 @@ export function gateResolverMigration(version: number, name: string = DEFAULT_GA
     up: (db) => {
       if (!hasResolverColumn(db, name)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_by TEXT`);
       db.exec(resolverRequiredTriggerDdl(name));
+      if (hasColumn(db, name, "rule")) db.exec(ruleTriggerDdl(db, name));
     },
   };
 }
@@ -81,35 +82,34 @@ function hasColumn(db: Db, table: string, column: string): boolean {
 
 /**
  * The trigger that refuses a resolve by a class outside the row's rule, and any
- * change to the rule itself, so a writer that predates `rule` cannot widen it.
+ * change to the rule, so a writer that predates `rule` cannot widen it.
+ * Without `resolved_by` no resolver can be recorded, so it refuses every resolve
+ * of a rule-bound row; whichever migration runs second installs the class-aware form.
  */
-export function ruleResolverTriggerDdl(name: string = DEFAULT_GATE_TABLE): string {
+function ruleTriggerDdl(db: Db, name: string): string {
+  const trigger = quoteIdent(`${name}_rule_resolver`);
+  const outsideRule = hasResolverColumn(db, name)
+    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(OLD.rule, '$.resolvers'))`
+    : "1";
   return `
-    CREATE TRIGGER IF NOT EXISTS ${quoteIdent(`${name}_rule_resolver`)}
+    DROP TRIGGER IF EXISTS ${trigger};
+    CREATE TRIGGER ${trigger}
       BEFORE UPDATE ON ${quoteIdent(name)}
-      FOR EACH ROW WHEN OLD.rule IS NOT NULL AND (
-        NEW.rule IS NOT OLD.rule
-        OR (NEW.status = 'resolved' AND COALESCE(json_extract(NEW.resolved_by, '$.class'), '')
-              NOT IN (SELECT value FROM json_each(OLD.rule, '$.resolvers')))
-      )
+      FOR EACH ROW WHEN OLD.rule IS NOT NULL AND (NEW.rule IS NOT OLD.rule OR (NEW.status = 'resolved' AND ${outsideRule}))
     BEGIN
       SELECT RAISE(ABORT, 'hitl: resolver outside the gate rule');
     END;
   `;
 }
 
-/**
- * Adds `rule` and its trigger. Also adds `resolved_by` when absent, because the
- * trigger reads it and a rule-bound gate always records its resolver. Idempotent, no backfill.
- */
+/** Adds `rule` and its trigger. Idempotent and backfill-free: gates opened before it carry no rule. */
 export function gateRuleMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
   return {
     version,
     name: `hitl:rule:${name}`,
     up: (db) => {
-      if (!hasResolverColumn(db, name)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_by TEXT`);
       if (!hasColumn(db, name, "rule")) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN rule TEXT`);
-      db.exec(ruleResolverTriggerDdl(name));
+      db.exec(ruleTriggerDdl(db, name));
     },
   };
 }

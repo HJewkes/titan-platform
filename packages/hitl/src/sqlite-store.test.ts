@@ -18,6 +18,8 @@ const OLD_UPDATE = `UPDATE "hitl_gate"
             SET status = ?, payload = ?, reason = ?, resolved_at = ?
           WHERE id = ?`;
 
+const RAW_RESOLVE = `UPDATE "hitl_gate" SET status = 'resolved', payload = '"yes"', resolved_at = ?, resolved_by = ? WHERE id = ?`;
+
 const T_CREATED = "2026-09-01T10:00:00.000Z";
 const T_SETTLED = "2026-09-01T11:00:00.000Z";
 
@@ -212,7 +214,7 @@ describe("a store whose table predates the resolver column", () => {
     const store = new SqliteGateStore(db);
     store.create({ id: "g1", prompt: "ship it?" });
     expect(store.resolve("g1", "ok").status).toBe("resolved");
-    expect(triggerNames(db)).toEqual(["hitl_gate_rule_resolver"]);
+    expect(resolverColumnCount(db)).toBe(0);
   });
 });
 
@@ -235,7 +237,6 @@ describe("gateRuleMigration", () => {
     migration.up(db);
     migration.up(db);
     expect(columnCount(db, "rule")).toBe(1);
-    expect(resolverColumnCount(db)).toBe(1);
     expect(triggerNames(db)).toEqual(["hitl_gate_rule_resolver"]);
   });
 
@@ -247,11 +248,44 @@ describe("gateRuleMigration", () => {
     expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_resolver"]);
   });
 
-  it("is run by migrate: true, so a default store can hold a rule-bound gate", () => {
-    const store = new SqliteGateStore(open());
+  it("is run by migrate: true, so a default store holds a rule-bound gate it cannot resolve until the resolver migration", () => {
+    const db = open();
+    const store = new SqliteGateStore(db);
     store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     expect(() => store.resolve("g1", "ok", REMOTE)).toThrow("does not let owner-remote resolve");
+    expect(() => store.resolve("g1", "ok", OWNER)).toThrow(expect.objectContaining({ migration: "gateResolverMigration" }));
+    runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
     expect(store.resolve("g1", "ok", OWNER).rule).toEqual(TERMINAL_ONLY);
+  });
+
+  it.each([
+    ["rule first", [gateMigration(1), gateRuleMigration(3), gateResolverMigration(4)]],
+    ["resolver first", [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]],
+  ])("ends with the class-aware trigger whichever order it runs in beside the resolver migration (%s)", (_label, list) => {
+    const db = open();
+    runMigrations(db, list);
+    const store = new SqliteGateStore(db, { migrate: false });
+    store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
+    expect(() => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(REMOTE), "g1")).toThrow("hitl: resolver outside the gate rule");
+    db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(OWNER), "g1");
+    expect(store.get("g1")).toMatchObject({ status: "resolved", resolvedBy: OWNER });
+  });
+});
+
+describe("an old writer against a rule-bound row on a table without the resolver column", () => {
+  it("is refused when it resolves with the old SQL, and can still cancel", () => {
+    const db = open();
+    runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
+    const store = new SqliteGateStore(db, { migrate: false });
+    store.create({ id: "bound", prompt: "release?", rule: TERMINAL_ONLY });
+    store.create({ id: "free", prompt: "ship it?" });
+    expect(() => db.prepare(OLD_UPDATE).run("resolved", JSON.stringify("yes"), null, T_SETTLED, "bound")).toThrow(
+      "hitl: resolver outside the gate rule",
+    );
+    db.prepare(OLD_UPDATE).run("resolved", JSON.stringify("yes"), null, T_SETTLED, "free");
+    db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "bound");
+    expect(store.get("bound")).toMatchObject({ status: "cancelled", rule: TERMINAL_ONLY });
+    expect(store.get("free")?.status).toBe("resolved");
   });
 });
 
@@ -268,11 +302,9 @@ describe("a store whose table predates the rule column", () => {
 });
 
 describe("the rule trigger against raw SQL", () => {
-  const RAW_RESOLVE = `UPDATE "hitl_gate" SET status = 'resolved', payload = '"yes"', resolved_at = ?, resolved_by = ? WHERE id = ?`;
-
   function ruleDb(): { db: Db; store: SqliteGateStore } {
     const db = open();
-    runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
+    runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
     const store = new SqliteGateStore(db, { migrate: false });
     store.create({ id: "bound", prompt: "release?", rule: TERMINAL_ONLY });
     store.create({ id: "free", prompt: "ship it?" });
@@ -316,7 +348,7 @@ describe("the rule trigger against raw SQL", () => {
 describe("SqliteGateStore rule round trip", () => {
   it("keeps the rule across two stores on one file", () => {
     const dbPath = tempDbPath();
-    runMigrations(open(dbPath), [gateMigration(1), gateRuleMigration(3)]);
+    runMigrations(open(dbPath), [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
     const writer = new SqliteGateStore(open(dbPath), { migrate: false });
     writer.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     const reader = new SqliteGateStore(open(dbPath), { migrate: false });
