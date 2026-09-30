@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -159,10 +160,33 @@ export function evidenceMarker(head: string): string {
   return `<!-- shepherd-evidence:${head} -->`;
 }
 
+/** What a public PR comment may say about a verdict locator: no namespace, path or source id. */
+export interface LocatorReference {
+  sessionId: string;
+  byteOffset?: number;
+  subrecordIndex?: number;
+  textIndex?: number;
+  locatorSha256: string;
+}
+
+type PartialLocator = { source?: { conversation?: { nativeId?: string } }; evidence?: { line?: { byteOffset?: number }; subrecord?: { index?: number } }; selector?: { textIndex?: number } };
+
+/** Enough to find the message in the local store: the session, the record offset, the part, and a hash that checks the full locator. */
+export function locatorReference(locator: SourceTextLocator): LocatorReference {
+  const { source, evidence, selector }: PartialLocator = locator;
+  const position = { byteOffset: evidence?.line?.byteOffset, subrecordIndex: evidence?.subrecord?.index, textIndex: selector?.textIndex };
+  return {
+    sessionId: source?.conversation?.nativeId ?? "unknown",
+    ...Object.fromEntries(Object.entries(position).filter(([, value]) => value !== undefined)),
+    locatorSha256: createHash("sha256").update(JSON.stringify(locator)).digest("hex"),
+  };
+}
+
 export function evidenceComment(record: EvidenceRecord): string {
   const { decision } = record;
   const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}`;
-  return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(record, null, 2), "```", ""].join("\n");
+  const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
+  return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(posted, null, 2), "```", ""].join("\n");
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
