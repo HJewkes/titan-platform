@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport } from "./cost-report.js";
-import { SCENARIO_WINDOW, createFixtureGraph, seedCostScenario, type FixtureGraph } from "./fixture.js";
-import { LIST_PRICE_CAVEAT, renderCostReportText } from "./render-text.js";
+import { SCENARIO_WINDOW, WAKE_WINDOW, createFixtureGraph, seedCostScenario, seedWakeScenario, type FixtureGraph } from "./fixture.js";
+import { LIST_PRICE_CAVEAT, TOP_WAKE_ROWS, renderCostReportText } from "./render-text.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
 
 let fixture: FixtureGraph;
@@ -25,6 +25,8 @@ const SECTIONS = [
   "By initiative",
   "By context band",
   "By wake cause",
+  "Wake episodes of coordinator, worker:coordinator: ",
+  "Wake senders by receiver",
   "Wake cause by gap band",
   "Cold rebuilds: 2 requests",
   "Compactions",
@@ -61,5 +63,23 @@ describe("renderCostReportText", () => {
     expect(text).toContain("By model: none");
     expect(text).toContain("Unpriced models: none");
     expect(text).toContain(LIST_PRICE_CAVEAT);
+  });
+
+  it("lists wake causes by cost per episode, costliest first, with each cause's senders beneath", () => {
+    const wakes = createFixtureGraph();
+    seedWakeScenario(wakes);
+    const report = costReport(wakes.openReadOnly(), WAKE_WINDOW);
+    const lines = renderCostReportText(report).split("\n");
+    const start = lines.findIndex((line) => line.startsWith("Wake episodes of "));
+    const block = lines.slice(start + 2, lines.indexOf("", start));
+    const causes = block.filter((line) => !line.startsWith(" ")).map((line) => line.split(/\s+/)[0]);
+    wakes.close();
+
+    const byCostPerEpisode = [...report.wakeEpisodes.byCause].sort((a, b) => b.costPerEpisode - a.costPerEpisode).map((bucket) => bucket.key);
+    expect(causes).toEqual(byCostPerEpisode.slice(0, TOP_WAKE_ROWS));
+    expect(causes[0]).toBe("human_typed");
+    expect(lines[start]).toContain("no-action means only read-investigate, text-only, other");
+    expect(block.some((line) => line.startsWith("  from broadcast "))).toBe(true);
+    expect(lines.some((line) => /^seat-b\s+broadcast\s+seat-a\s+1\s+0\s/.test(line))).toBe(true);
   });
 });
