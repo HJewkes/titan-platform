@@ -6,7 +6,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { loadSeatBook, type SeatBook } from "./shepherd/seats.js";
-import { shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { lineageMigration, shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
 
@@ -36,7 +36,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
     route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
   const shepherd = shepherdRoutes({ port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" });
-  const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4)], bind: (db) => deps.store.bind(db) };
+  const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: (db) => deps.store.bind(db) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });
 }

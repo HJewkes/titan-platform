@@ -15,6 +15,8 @@ export interface ServicePorts {
   launchctl: (args: readonly string[]) => Promise<CommandResult>;
   /** Resolves undefined when no `claude` binary is on PATH. */
   claude: (args: readonly string[]) => Promise<CommandResult | undefined>;
+  /** The absolute file a bare binary name runs on this machine, or undefined when it is not on PATH. */
+  which: (binary: string) => string | undefined;
   /** The `/health` body, or null when nothing answers. */
   health: (port: number) => Promise<Record<string, unknown> | null>;
   mkdir: (dir: string) => void;
@@ -35,10 +37,14 @@ export interface InstallOptions {
   /** The port `/health` is polled on; the plist carries its own copy. */
   port: number;
   mcp: boolean;
+  /** Binaries the plist's PATH could not cover. */
+  missing: readonly string[];
 }
 
 const POLL_MS = 250;
-const HEALTH_POLLS = 80;
+const HEALTH_POLLS = 120;
+const GITHUB_SETTLE_POLLS = 48;
+const GITHUB_CHECKING = "checking";
 const UNLOAD_POLLS = 40;
 const LOG_TAIL_LINES = 20;
 const FAILURE = 1;
@@ -82,22 +88,34 @@ async function bootoutIfLoaded(ports: ServicePorts, io: ServiceIo, job: JobState
   return false;
 }
 
+type Probe = { state: "up" } | { state: "waiting" | "broken"; why: string };
+
+function githubProbe(health: Record<string, unknown>, port: number): Probe {
+  if (health.github === "ok") return { state: "up" };
+  if (health.github === GITHUB_CHECKING) return { state: "waiting", why: `titan-factory serve on port ${port} did not finish its GitHub check` };
+  return { state: "broken", why: `titan-factory serve answers on port ${port} but its GitHub check failed: ${String(health.github)}` };
+}
+
 /** Health must come from launchd's own process: another serve on the port answers ok while the job crash-loops. */
+async function probeJob(ports: ServicePorts, port: number): Promise<Probe> {
+  const health = await ports.health(port);
+  if (health?.ok !== true) return { state: "waiting", why: `titan-factory serve did not answer /health on port ${port}` };
+  const { pid } = await jobState(ports);
+  if (pid !== undefined && health.pid === pid) return githubProbe(health, port);
+  return { state: "waiting", why: `port ${port} is answered by pid ${String(health.pid)}, not by ${SERVICE_LABEL}; stop that process, then run titan-factory service restart` };
+}
+
+/** A failed GitHub check ends the wait at once: serve caches it for a minute, so polling on cannot change it. */
 async function awaitHealthy(ports: ServicePorts, io: ServiceIo, port: number, logDir: string): Promise<boolean> {
-  let stranger: unknown;
+  let last: Probe = { state: "up" };
   for (let poll = 0; poll < HEALTH_POLLS; poll++) {
-    const health = await ports.health(port);
-    if (health?.ok === true) {
-      if (health.pid === (await jobState(ports)).pid) return true;
-      stranger = health.pid;
-    }
+    last = await probeJob(ports, port);
+    if (last.state !== "waiting") break;
     await ports.sleep(POLL_MS);
   }
-  const waited = `${(HEALTH_POLLS * POLL_MS) / 1000} s`;
-  const reason = stranger === undefined
-    ? `titan-factory serve did not answer /health on port ${port} within ${waited}`
-    : `port ${port} is answered by pid ${String(stranger)}, not by ${SERVICE_LABEL}; stop that process, then run titan-factory service restart`;
-  fail(io, `${reason}\n${errorLogTail(ports, logDir)}`);
+  if (last.state === "up") return true;
+  if (last.state === "broken") fail(io, last.why);
+  else fail(io, `${last.why} within ${(HEALTH_POLLS * POLL_MS) / 1000} s\n${errorLogTail(ports, logDir)}`);
   return false;
 }
 
@@ -109,6 +127,7 @@ function errorLogTail(ports: ServicePorts, logDir: string): string {
 
 export async function installService(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<number> {
   const file = plistPath(ports.home);
+  if (options.missing.includes("gh")) return fail(io, "gh is not on PATH, and titan-factory serve cannot reach GitHub without it; install gh, then rerun");
   if (!(await bootoutIfLoaded(ports, io, await jobState(ports)))) return FAILURE;
   ports.mkdir(options.plist.logDir);
   ports.mkdir(dirname(file));
@@ -143,12 +162,23 @@ export async function uninstallService(ports: ServicePorts, io: ServiceIo): Prom
 
 export async function serviceStatus(ports: ServicePorts, io: ServiceIo, port: number): Promise<number> {
   const job = await jobState(ports);
-  const health = await ports.health(port);
+  const health = await settledHealth(ports, port);
   const healthy = health?.ok === true;
   const running = job.pid === undefined ? "no process" : `pid ${job.pid}`;
   io.stdout(`${SERVICE_LABEL}: ${job.loaded ? `loaded, ${running}` : "not loaded"}\n`);
   io.stdout(`health: ${healthy ? healthSummary(health, port) : `no answer on port ${port}`}\n`);
-  return healthy ? 0 : FAILURE;
+  if (!healthy) return FAILURE;
+  return health.github === "ok" ? 0 : fail(io, `/health answers on port ${port} but its GitHub check is not ok: ${String(health.github)}`);
+}
+
+/** serve reports `checking` until its first gh probe lands, within its 10 s timeout. */
+async function settledHealth(ports: ServicePorts, port: number): Promise<Record<string, unknown> | null> {
+  for (let poll = 0; poll < GITHUB_SETTLE_POLLS; poll++) {
+    const health = await ports.health(port);
+    if (health?.github !== GITHUB_CHECKING) return health;
+    await ports.sleep(POLL_MS);
+  }
+  return ports.health(port);
 }
 
 function healthSummary(health: Record<string, unknown>, port: number): string {
