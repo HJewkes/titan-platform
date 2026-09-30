@@ -43,7 +43,7 @@ any short, upper-case or over-long head are refused. Rules and reasons are in
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 4) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 5) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -66,7 +66,10 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
 - `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
-- `command_heads` is the program and up to two subcommand words of each simple command in a Bash call, joined with `;` (`gh pr checks;git log`), plus `>name` for each file it writes. `cd` is dropped, and `builtin` and `command` are looked through to the program they run.
+- `command_heads` is the program and up to two subcommand words of each simple command in a Bash call, joined with `;` (`gh pr checks;git log`), plus `>dir/name` (the last parent directory and the basename) for each file it writes; a bare filename stays `>name`. `cd` is dropped, and `builtin`, `command`, `timeout N`, `nice`, `nohup` and `env A=1` are looked through to the program they run.
+  Two program shapes keep a path operand's signal:
+  - `gh api` gives the HTTP method (from `-X`/`--method`; otherwise POST when `-f`, `-F` or `--input` adds a body, else GET) and the endpoint's resource words, with owner, repo and item ids dropped: `gh api -X PUT repos/o/r/pulls/5/merge` gives `gh api PUT pulls/merge`. Flag values such as `-f`, `-H` and `--jq` never enter the head.
+  - An interpreter (`python`, `python3`, `node`, `bash`, `sh`, `zsh`, `deno`, `bun`, `ruby`, `perl`) gives the script's basename when its first operand has an extension or a slash: `python3 /x/score.py --seat a` gives `python3 score.py`. `python3 -c …`, `python3 -m …` and `python3 -` stay `python3`, and other operands fall back to subcommand words (`bun test`).
 
 `command_heads` is not secret-free. After a program that is not on the operand-only list, up to two bare
 all-lowercase positionals are kept, so `mycli login hunter2` yields the head `mycli login hunter2`. Collection

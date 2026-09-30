@@ -93,8 +93,8 @@ describe("parseTaskIntent", () => {
 });
 
 describe("commandHeads", () => {
-  it("drops cd, splits every separator and turns an append target into its basename", () => {
-    expect(commandHeads("cd /tmp/repo && gh pr checks 5; echo y >> /tmp/state/log.jsonl")).toEqual(["gh pr checks", "echo", ">log.jsonl"]);
+  it("drops cd, splits every separator and turns an append target into its parent and basename", () => {
+    expect(commandHeads("cd /tmp/repo && gh pr checks 5; echo y >> /tmp/state/log.jsonl")).toEqual(["gh pr checks", "echo", ">state/log.jsonl"]);
     expect(commandHeads("git log --oneline | head -5 || true\nactive-work task edit demo TP-1 status done")).toEqual(["git log", "head", "true", "active-work task edit"]);
   });
 
@@ -124,11 +124,41 @@ describe("commandHeads", () => {
   });
 
   it("treats an fd dup as no target and a tee file as one", () => {
-    expect(commandHeads("pnpm test 2>&1 | tee -a out/run.log")).toEqual(["pnpm test", "tee", ">run.log"]);
+    expect(commandHeads("pnpm test 2>&1 | tee -a out/run.log")).toEqual(["pnpm test", "tee", ">out/run.log"]);
     expect(commandHeads("make build > /dev/null 2>&1")).toEqual(["make build"]);
   });
 
   it("skips heredoc bodies, env assignments and repeated heads", () => {
     expect(commandHeads("cat > notes.md <<'EOF'\nrm -rf x && y\nEOF\nCI=1 pnpm lint && pnpm lint")).toEqual(["cat", ">notes.md", "pnpm lint"]);
+  });
+
+  it("keeps the parent directory of a dated redirect target and leaves a bare filename alone", () => {
+    expect(commandHeads("echo x >> logs/a/$(date +%F).md")).toEqual(["echo", ">a/$(date +%F).md"]);
+    expect(commandHeads("echo x > ./notes.md; echo y > /out.md")).toEqual(["echo", ">notes.md", ">out.md"]);
+  });
+
+  it("gives gh api the method and resource shape, dropping owner, repo, ids and flag values", () => {
+    expect(commandHeads("gh api -X PUT repos/o/r/pulls/5/merge")).toEqual(["gh api PUT pulls/merge"]);
+    expect(commandHeads("gh api repos/o/r/commits/abc/check-runs --jq '.check_runs[]|.name'")).toEqual(["gh api GET commits/check-runs"]);
+    expect(commandHeads("gh api --method=patch /repos/{owner}/{repo}/issues/7 -f state=closed -H 'Accept: x'")).toEqual(["gh api PATCH issues"]);
+    expect(commandHeads('gh api "repos/$REPO/pulls?per_page=100" --paginate')).toEqual(["gh api GET pulls"]);
+  });
+
+  it("gives gh api POST when a field adds a body and no method is named", () => {
+    expect(commandHeads("gh api repos/o/r/issues/5/comments -f body=hello")).toEqual(["gh api POST issues/comments"]);
+    expect(commandHeads("gh api repos/o/r")).toEqual(["gh api GET repos"]);
+  });
+
+  it("keeps an interpreter's script basename only when its first operand looks like a file", () => {
+    expect(commandHeads("python3 /x/y/score.py --seat a")).toEqual(["python3 score.py"]);
+    expect(commandHeads("node dist/cli.js; bash run.sh; bash -x ./deploy")).toEqual(["node cli.js", "bash run.sh", "bash deploy"]);
+    expect(commandHeads("python3 -c 'print(1)'; python3 - <<EOF\nimport x\nEOF")).toEqual(["python3"]);
+    expect(commandHeads("python3 -m http.server; bun test")).toEqual(["python3", "bun test"]);
+  });
+
+  it("looks through timeout, nice, nohup and env to the program they run", () => {
+    expect(commandHeads("timeout 60 python3 s.py")).toEqual(["python3 s.py"]);
+    expect(commandHeads("timeout -s KILL 5m nice -n 10 git status")).toEqual(["git status"]);
+    expect(commandHeads("nohup env -u X CI=1 pnpm test &")).toEqual(["pnpm test"]);
   });
 });

@@ -72,8 +72,9 @@ whose price rows were never synced reports every request as unpriced.
 
 The default action rules are generic. Rules that name a seat's own journal files or scorer
 scripts belong in the caller's config, passed as `actionRules`, never in this package. The
-defaults read session-read's `command_heads` signal, which drops path operands, so
-`gh api repos/o/r/pulls/5/merge` reaches the classifier as `gh api` and is not a merge.
+defaults read session-read's `command_heads` signal, which keeps only a path's shape, so
+`gh api -X PUT repos/o/r/pulls/5/merge` reaches the classifier as `gh api PUT pulls/merge`. No
+default rule matches that head yet, so it is not a merge.
 
 A tool call belongs to the latest request at or before it in its transcript, the request that
 issued it. The `context_contribution` view maps the other way, to the request a block feeds.
