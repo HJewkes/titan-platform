@@ -603,8 +603,8 @@ Key exports:
 - `cost-report`: `costReport`, `costReportSchema`
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
-- `episodes`: `assignmentCount`, `buildEpisodes`
-- +58 more in the [reference page](/reference/session-analytics)
+- `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
+- +75 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 

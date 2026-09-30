@@ -2,11 +2,14 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { classifySession, type SessionClass } from "./classify-session.js";
 import {
+  readAgentNames,
   readCompactions,
   readCostRows,
   readCoverage,
   readPriceTableVersion,
+  readRequestEvents,
   readSessionContexts,
+  readWakeEvents,
   type CompactionRow,
   type CostRow,
   type ReportWindow,
@@ -24,6 +27,15 @@ import {
   type ActionClass,
   type ActionRule,
 } from "./turn-action.js";
+import {
+  DEFAULT_EPISODE_ROLES,
+  DEFAULT_NO_ACTION_CLASSES,
+  buildWakeEpisodes,
+  episodeNames,
+  summarizeWakeEpisodes,
+  wakeEpisodesSchema,
+  type WakeEpisodes,
+} from "./wake-episodes.js";
 
 const count = z.number().int().nonnegative();
 const bucketSchema = z.object({ key: z.string(), requests: count, sessions: count, costUsd: z.number() });
@@ -53,6 +65,8 @@ export const costReportSchema = z.object({
   byInitiative: z.array(bucketSchema),
   byContextBand: z.array(bucketSchema),
   byWakeCause: z.array(wakePartSchema.extend({ parts: z.array(wakePartSchema) })),
+  /** Per wake episode of the episode roles: an arrival and the requests up to the next one, mid-loop deliveries included. */
+  wakeEpisodes: wakeEpisodesSchema,
   wakeCauseByGapBand: z.array(cellSchema),
   coldRebuild: z.object({ requests: count, costUsd: z.number(), byGapBandAndCause: z.array(cellSchema) }),
   compactions: z.object({ total: count, manual: count, auto: count, midLoop: count, droppedTokens: count }),
@@ -96,6 +110,10 @@ export interface CostReportOptions {
   actionRules?: readonly ActionRule[];
   /** Action classes counted as mechanical in `mechanicalShare`. */
   mechanicalClasses?: readonly ActionClass[];
+  /** Report roles whose wakes `wakeEpisodes` cuts into episodes. */
+  episodeRoles?: readonly string[];
+  /** A wake is no-action when every one of its requests falls in these action classes. */
+  noActionClasses?: readonly ActionClass[];
 }
 
 /** AskUserQuestion answers are the human answering, so they count under `human` (decisions Q4). */
@@ -128,6 +146,7 @@ export function costReport(db: Db, options: CostReportOptions = {}): CostReport 
     byAction: roleActions(rows),
     mechanicalShare: mechanicalShare(rows, options.mechanicalClasses ?? DEFAULT_MECHANICAL_CLASSES),
     byWakeCause: wakeCauses(rows),
+    wakeEpisodes: wakeEpisodes(db, window, rows, options),
     wakeCauseByGapBand: gapCells(rows),
     coldRebuild: coldRebuild(rows),
     compactions: compactionCounts(readCompactions(db, window)),
@@ -261,6 +280,17 @@ function wakeCauses(rows: readonly CostRow[]): WakeCauseBucket[] {
       parts: key === "human" ? [...groupRows(members, causeOf)].map(([cause, part]) => wakePart(cause, part)).sort(byCostThenKey) : [],
     }))
     .sort(byCostThenKey);
+}
+
+function wakeEpisodes(db: Db, window: ReportWindow, rows: readonly TaggedRow[], options: CostReportOptions): WakeEpisodes {
+  const roles = options.episodeRoles ?? DEFAULT_EPISODE_ROLES;
+  const noActionClasses = options.noActionClasses ?? DEFAULT_NO_ACTION_CLASSES;
+  const members = rows.filter((row) => roles.includes(row.role));
+  const sessionIds = [...new Set(members.map((row) => row.sessionId))];
+  const eventOf = readRequestEvents(db, window, sessionIds);
+  const requests = members.map((row) => ({ costUsd: row.costUsd, action: row.action, eventKey: eventOf.get(row.requestId) ?? null }));
+  const episodes = buildWakeEpisodes(readWakeEvents(db, window, sessionIds), requests, episodeNames(readAgentNames(db)), noActionClasses);
+  return summarizeWakeEpisodes(episodes, requests, roles, noActionClasses);
 }
 
 function wakePart(key: string, rows: readonly CostRow[]) {

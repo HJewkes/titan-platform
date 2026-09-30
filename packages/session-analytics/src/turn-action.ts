@@ -39,7 +39,7 @@ const INTERPRETER = String.raw`(?:(?:python3?|node|tsx|bash|sh) )?`;
 
 export const DEFAULT_ACTION_RULES: readonly ActionRule[] = [
   { cls: "journal-write", writePath: new RegExp(String.raw`(?:^|/)${JOURNAL_BASENAME}`, "i") },
-  { cls: "journal-write", head: new RegExp(`^>${JOURNAL_BASENAME}`, "i") },
+  { cls: "journal-write", head: new RegExp(`^>(?:[^/]*/)?${JOURNAL_BASENAME}`, "i") },
   { cls: "pr-ci-check", head: /^gh pr (checks|view)\b/ },
   { cls: "pr-ci-check", head: /^gh run\b/ },
   { cls: "pr-ci-check", head: /^git merge-tree\b/ },
