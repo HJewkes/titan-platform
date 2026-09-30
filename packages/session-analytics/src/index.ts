@@ -44,3 +44,5 @@ export type { WorkerFacts, WorkerRole } from "./roles.js";
 export { PROFILE_ROLES, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, roleFromProfile, sessionRole, workerRole } from "./roles.js";
 export { initiativeFromCwd, sessionInitiative } from "./initiative.js";
 export { LIST_PRICE_CAVEAT, renderCostReportText } from "./render-text.js";
+export type { CacheTtlBucket, CacheTtlWhatIf, TtlRequestRow } from "./cache-ttl.js";
+export { REBUILD_GAP_BANDS, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, readTtlRows, renderCacheTtlText } from "./cache-ttl.js";

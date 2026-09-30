@@ -171,7 +171,7 @@ export function resolveWindow(options: CostReportOptions): ReportWindow {
   return { since: new Date(end - options.days * DAY_MS).toISOString(), until };
 }
 
-function tagSessions(contexts: Map<string, SessionContext>): Map<string, SessionTags> {
+export function tagSessions(contexts: Map<string, SessionContext>): Map<string, SessionTags> {
   const tags = new Map<string, SessionTags>();
   for (const [sessionId, context] of contexts) {
     const classification = classifySession(context.facts);
