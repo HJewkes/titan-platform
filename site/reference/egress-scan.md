@@ -111,8 +111,9 @@ notices and errors go to stderr.
   and the message names its position, never its value.
 - **The private term list.** The bin reads `$TITAN_EGRESS_TERMS`, else
   `${XDG_CONFIG_HOME:-$HOME/.config}/titan-egress/private-terms`. When `CI` is set it never
-  looks. Locally a missing list prints a notice and the scan continues, and
-  `TITAN_EGRESS_REQUIRE_TERMS=1` turns that into exit 2.
+  looks, unless `TITAN_EGRESS_REQUIRE_TERMS` is on. Locally a missing list prints a notice and
+  the scan continues. `TITAN_EGRESS_REQUIRE_TERMS=1` is the agent-hook switch: `CI` no longer
+  skips the list, and a missing, unreadable or term-less list exits 2.
 - **The allow file.** The bin reads `.egress-allow` from the repo root; a malformed file exits 2.
 - **The hook.** `install-hook` writes into the directory `git rev-parse --git-path hooks`
   names. That is `core.hooksPath` when set, otherwise the common git directory, which every

@@ -3,6 +3,7 @@ import { costReport, costReportSchema, type CostReport } from "./cost-report.js"
 import { writeEpisodes } from "./episodes.js";
 import { SCENARIO_WINDOW, createFixtureGraph, insertInbound, insertRequest, insertSignal, seedCostScenario, type FixtureGraph } from "./fixture.js";
 import { priceRequest } from "./price-request.js";
+import { PRICE_TABLE_VERSION } from "./prices.js";
 
 let fixture: FixtureGraph;
 let report: CostReport;
@@ -110,7 +111,7 @@ describe("costReport", () => {
     const parsed = costReportSchema.safeParse(JSON.parse(JSON.stringify(report)));
 
     expect(parsed.success).toBe(true);
-    expect(parsed.data?.priceTableVersion).toBe(1);
+    expect(parsed.data?.priceTableVersion).toBe(PRICE_TABLE_VERSION);
     expect(costReportSchema.safeParse({ ...report, totals: { ...report.totals, requests: -1 } }).success).toBe(false);
   });
 });

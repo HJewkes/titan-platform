@@ -33,13 +33,16 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/registry": "workspace:^",
+    "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "private": true,

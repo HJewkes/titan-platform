@@ -22,11 +22,18 @@ function docShaped(approveId: string, callApproveAs = approveId): WorkflowDefini
 
 describe("step ids (TP-255 guard)", () => {
   it("every registered workflow uses each step id for one operation kind and routes every dispatch", () => {
-    const runner = routedRunner(factoryRoutes);
+    const runner = routedRunner(factoryRoutes());
     for (const workflow of factoryWorkflows) {
       expect(() => assertDistinctStepIds(workflow)).not.toThrow();
       expect(() => runner.assertRoutes(workflow)).not.toThrow();
     }
+  });
+
+  it("registers shepherd-pr and routes each step family exactly once, including those it shares with land-pr", () => {
+    const matches = factoryRoutes().map((route) => route.match);
+
+    expect(factoryWorkflows.map((workflow) => workflow.name)).toEqual(expect.arrayContaining(["land-pr", "shepherd-pr"]));
+    expect(matches.filter((match, index) => matches.indexOf(match) !== index)).toEqual([]);
   });
 
   it("refuses a declaration that gives one id two kinds", () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport } from "./cost-report.js";
 import { SCENARIO_WINDOW, createFixtureGraph, seedCostScenario, type FixtureGraph } from "./fixture.js";
 import { LIST_PRICE_CAVEAT, renderCostReportText } from "./render-text.js";
+import { PRICE_TABLE_VERSION } from "./prices.js";
 
 let fixture: FixtureGraph;
 
@@ -27,7 +28,7 @@ const SECTIONS = [
   "Compactions",
   "Top sessions",
   "Unpriced models (counted at zero cost)",
-  "Price table v1. Coverage: 3 transcripts indexed, facet backlog 1.",
+  `Price table v${PRICE_TABLE_VERSION}. Coverage: 3 transcripts indexed, facet backlog 1.`,
 ];
 
 describe("renderCostReportText", () => {

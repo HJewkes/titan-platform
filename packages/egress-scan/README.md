@@ -32,16 +32,27 @@ notices and errors to stderr.
   exits 2 rather than skipping the scan.
 - **Private term list.** `$TITAN_EGRESS_TERMS`, else
   `${XDG_CONFIG_HOME:-$HOME/.config}/titan-egress/private-terms`. When `CI` is set it is never
-  looked up. Locally a missing list prints a notice and the scan continues;
-  `TITAN_EGRESS_REQUIRE_TERMS=1` makes that exit 2. A list readable by other users prints a
-  notice and still loads.
+  looked up. Locally a missing list prints a notice and the scan continues. A list readable by
+  other users prints a notice and still loads.
+- **`TITAN_EGRESS_REQUIRE_TERMS=1` is the agent-hook switch.** It fails closed: `CI` no longer
+  skips the list, and a missing, unreadable or term-less list (only comments and blank lines)
+  exits 2 with a message naming the variable. The value is read case-insensitively and trimmed:
+  `1`, `true`, `yes`, `on` are on; empty, `0`, `false`, `no`, `off` are off; anything else exits 2.
+  No other variable turns it back into a pass.
 - **Allow file.** `.egress-allow` at the repo root. A malformed file exits 2.
 - **Hook.** `install-hook` writes `hooks/pre-push` into the directory
   `git rev-parse --git-path hooks` names: `core.hooksPath` when set, otherwise the common git
   directory, which every linked worktree shares. It never sets `core.hooksPath`, never
   replaces a `pre-push` it did not write (exit 2 with a chaining hint), and does nothing when
-  `CI` is set. The hook runs the pushing worktree's `node_modules/.bin/titan-egress-scan`,
-  falls back to the package's built `dist/bin.js`, and fails closed when neither exists.
+  `CI` is set. The hook runs the first scanner it finds, in this order: (1) the pushing
+  worktree's `node_modules/.bin/titan-egress-scan`, then its
+  `node_modules/@titan-design/egress-scan/dist/bin.js`; (2) the same two paths in the main
+  checkout, the parent of `git rev-parse --git-common-dir`; (3) `titan-egress-scan` on `PATH`,
+  which considers only absolute `PATH` entries, so a `.` or empty segment never runs a
+  scanner planted in the pushed tree.
+  A linked worktree without `node_modules` therefore pushes when the main checkout or `PATH`
+  has the scanner. When none is found the hook exits 1 (fail closed) and names the three places
+  it looked, plus `pnpm install && pnpm build` and `npm i -g @titan-design/egress-scan`.
 
 ## Scanning a push
 

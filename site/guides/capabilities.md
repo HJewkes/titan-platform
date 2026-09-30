@@ -137,11 +137,12 @@ Tier 0, `@titan-design/authority@0.1.0`. The authority decision table as data: w
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`, `ActorClass`, `EvidenceKind`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`, `ActionClass`
+- `conditions`: `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +6 more in the [reference page](/reference/authority)
+- +13 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -373,7 +374,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
-- +37 more in the [reference page](/reference/daemon)
+- +39 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -387,10 +388,10 @@ Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
-- `readiness`: `mergeReadiness`
+- `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `exec`: `GhError`, `execGh`
-- +40 more in the [reference page](/reference/github)
+- `exec`: `GhError`
+- +44 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -607,7 +608,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +74 more in the [reference page](/reference/session-graph)
+- +77 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -623,7 +624,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +178 more in the [reference page](/reference/session-read)
+- +182 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -747,7 +748,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`, `traceRef`
-- +59 more in `products/factory/src/index.ts`
+- +77 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

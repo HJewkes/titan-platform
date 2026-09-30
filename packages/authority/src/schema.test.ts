@@ -20,7 +20,7 @@ function issues(table: unknown): string[] {
 describe("policyTableSchema", () => {
   it("accepts the shipped table.json as is", () => {
     expect(issues(tableJson)).toEqual([]);
-    expect(DEFAULT_TABLE.rules).toHaveLength(90);
+    expect(DEFAULT_TABLE.rules).toHaveLength(91);
   });
 
   it("rejects a table missing one action by actor pair", () => {
@@ -44,5 +44,23 @@ describe("policyTableSchema", () => {
   it("rejects a gate with no resolvers and a non-gate row with resolvers", () => {
     expect(issues(withRule(copyOfDefault(), "MRG-CO", { resolvers: undefined }))).not.toEqual([]);
     expect(issues(withRule(copyOfDefault(), "MRG-WK", { resolvers: ["owner-terminal"] }))).not.toEqual([]);
+  });
+
+  it("does not count a conditional row toward a pair's one unconditional rule", () => {
+    const table = copyOfDefault();
+    table.rules = table.rules.filter((rule) => rule.id !== "MRG-AU");
+    expect(issues(table)).toContain("no rule for merge by automation");
+  });
+
+  it("rejects when conditions on a gate or deny row", () => {
+    expect(issues(withRule(copyOfDefault(), "MRG-WK", { when: ["merge-tree-clean"] }))).toContain("only an allow rule may carry when conditions");
+    expect(issues(withRule(copyOfDefault(), "MRG-AU-RV", { verdict: "gate", resolvers: ["owner-terminal"] }))).not.toEqual([]);
+  });
+
+  it("rejects an unknown condition and a duplicate conditional id", () => {
+    expect(issues(withRule(copyOfDefault(), "MRG-AU-RV", { when: ["looks-fine"] }))).not.toEqual([]);
+    const table = copyOfDefault();
+    table.rules.push({ ...table.rules.find((rule) => rule.id === "MRG-AU-RV")! });
+    expect(issues(table)).toContain("duplicate rule id MRG-AU-RV");
   });
 });

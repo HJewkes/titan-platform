@@ -48,8 +48,8 @@ list. A finding names only `file:line` and the rule, never the text.
 - **The private term list.** Keep it outside every repository, at
   `$XDG_CONFIG_HOME/titan-egress/private-terms` (default `~/.config/titan-egress/private-terms`),
   mode 600, one term per line. `TITAN_EGRESS_TERMS` overrides the path, and
-  `TITAN_EGRESS_REQUIRE_TERMS=1` makes a missing list fail the push. Do not list your GitHub
-  handle: it is in every `package.json`.
+  `TITAN_EGRESS_REQUIRE_TERMS=1` makes a missing, unreadable or empty list fail the push,
+  even when `CI` is set. Do not list your GitHub handle: it is in every `package.json`.
 - **By hand.** `pnpm egress:scan range <base> <head>` scans a range; `pnpm egress:scan tree`
   scans every tracked file.
 

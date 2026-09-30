@@ -2,11 +2,11 @@ export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, 
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_FILES_CAP, githubPort } from "./port.js";
 export type { ChecksVerdict } from "./checks.js";
 export { evaluateChecks, isPassing, latestPerName } from "./checks.js";
-export type { MergeBlocker, MergeBlockReason, MergeReadiness, MergeReadinessInput } from "./readiness.js";
-export { GITHUB_ACTIONS_APP_ID, mergeReadiness } from "./readiness.js";
+export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, MergeReadiness, MergeReadinessInput } from "./readiness.js";
+export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./readiness.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
-export type { GhExec, GhResult } from "./exec.js";
+export type { GhExec, GhExecOptions, GhResult } from "./exec.js";
 export { GhError, execGh } from "./exec.js";
 export type { GhCliOptions } from "./gh-cli.js";
 export { ghCliWire } from "./gh-cli.js";

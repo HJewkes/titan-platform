@@ -1,6 +1,7 @@
 import { conversationRef } from "@titan-design/agent-protocol";
 import { normalizedSearchText, SPAN_TEXT_CAP, scopedConversationItemRef, type NormalizedSessionObservation as Observation, type SourceTextLocator } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
+import { stripInjected } from "./injected-text.js";
 
 /** Persist structural evidence only; prose remains in the source and transient FTS input. */
 export function insertObservation(graph: SessionGraph, transcriptId: number, o: Observation): void {
@@ -22,7 +23,8 @@ export function insertObservation(graph: SessionGraph, transcriptId: number, o: 
 
 export interface ObservationText { field: string; text: string; locator: SourceTextLocator }
 export function observationText(o: Observation): ObservationText[] {
-  if (o.kind === "message") return o.content.map(p => ({ field: o.role === "user" ? "prompt" : "assistant_response", text: p.text.slice(0, SPAN_TEXT_CAP), locator: p.locator }));
+  if (o.kind === "message" && o.role === "user") return o.content.map(p => ({ field: "prompt", text: stripInjected(p.text).slice(0, SPAN_TEXT_CAP), locator: p.locator })).filter(p => p.text);
+  if (o.kind === "message") return o.content.map(p => ({ field: "assistant_response", text: p.text.slice(0, SPAN_TEXT_CAP), locator: p.locator }));
   if (o.kind === "tool_call" && o.inputLocator) return [{ field: "tool_input", text: normalizedSearchText(o.input), locator: o.inputLocator }];
   if (o.kind === "tool_result" && o.outputLocator) return [{ field: "tool_result", text: normalizedSearchText(o.output), locator: o.outputLocator }];
   return [];

@@ -1,4 +1,4 @@
-import { evaluateChecks, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -204,7 +204,7 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 }
 
 /** Code steps take their input as JSON and answer with one evidence record whose `result` the workflow reads. */
-async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
+export async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
   const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
   return done.data!.result;
 }
@@ -222,7 +222,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   ];
 }
 
-function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
+export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
   return recordRoute(match, now, async (input: I, step) => ({ result: await fn(input, step.signal) }));
 }
 
@@ -284,13 +284,20 @@ export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapsh
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind" };
-  const checks = evaluateChecks(input.contexts, await port.latestCheckRuns(input.repo, pr.headSha));
-  if (checks.state === "failed") {
-    const failing = checks.failing.map((run) => ({ name: run.name, conclusion: run.conclusion, url: run.url, workflowRunId: run.workflowRunId }));
-    return { ...base, verdict: "red", failing };
-  }
-  if (checks.state === "pending") return { ...base, verdict: "pending", waitingOn: checks.pending };
+  const runs = await port.checkRuns(input.repo, pr.headSha);
+  const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
+  if (failing.length > 0) return { ...base, verdict: "red", failing };
+  if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
   return { ...base, verdict: mergeVerdict(pr) };
+}
+
+function failingCheck(run: CheckRun): FailingCheck {
+  return { name: run.name, conclusion: run.conclusion, url: run.url, workflowRunId: run.workflowRunId };
+}
+
+function findingName(finding: CheckFinding): string {
+  return finding.kind === "missing" ? finding.name : finding.run.name;
 }
 
 function mergeVerdict(pr: PullRequest): CiVerdict {
@@ -346,7 +353,7 @@ interface MergeInput {
   method: MergeMethod;
 }
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(signal.reason);
     const timer = setTimeout(() => (signal.removeEventListener("abort", abort), resolve()), ms);

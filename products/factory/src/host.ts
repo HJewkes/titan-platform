@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
-import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
   WorkflowRuntime,
   workflowMigration,
@@ -10,13 +10,24 @@ import {
   type WorkflowEvent,
   type WorkflowRun,
 } from "@titan-design/workflow";
+import type { ShepherdServices } from "./shepherd/commands.js";
 import { assertDistinctStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 import { routedRunner, type StepRoute } from "./routed-runner.js";
+
+/** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
+export interface DatabaseTenant {
+  extraMigrations: readonly Migration[];
+  /** Returns the unbind, called before the database closes. */
+  bind(db: Db): () => void;
+}
+
+/** Routes travel with the tenant they read, so every caller that passes the routes also opens their tables. */
+export type FactoryRoutes = readonly StepRoute[] & { readonly database?: DatabaseTenant; readonly shepherd?: ShepherdServices };
 
 export interface FactoryHostOptions {
   dbPath: string;
   workflows: readonly WorkflowDefinition[];
-  routes: readonly StepRoute[];
+  routes: FactoryRoutes;
   now?: () => number;
   leaseMs?: number;
   gatePollMs?: number;
@@ -55,13 +66,15 @@ export interface FactoryHost {
 
 const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
-/** One SQLite file holds runs and gates; the three migrations match the codewatch triage host. */
+/** One SQLite file holds runs, gates and the routes' tenant; the first three migrations match the codewatch triage host. */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)]);
+  const tenant = options.routes.database;
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), ...(tenant?.extraMigrations ?? [])]);
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = createRuntime(db, gates, options);
+  const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
   return {
     runtime,
@@ -71,6 +84,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     adopt: () => runtime.hydrate(),
     close: () => {
       runtime.shutdown();
+      unbind?.();
       db.close();
     },
   };

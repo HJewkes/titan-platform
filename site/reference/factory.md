@@ -37,6 +37,18 @@ titan-factory gate resolve <runId> approve-publish --json '{"approve":true}'
 `resume` drives every unfinished run until it ends or waits on a gate, prints each open gate
 with its resolve command, and exits.
 
+To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. `titan-factory
+service plist` prints the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true)
+and never installs it. The owner installs it:
+
+```sh
+pnpm build
+node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+curl -s http://127.0.0.1:7410/health   # github: ok, or the redacted gh error
+claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
+```
+
 ## What it deliberately does not do
 
 It does not dispatch agents, spawn sessions or create relay items. It holds no allow rule:
@@ -46,8 +58,14 @@ until the authority table is approved, its one gate policy sends every action to
 
 - Run `pnpm build` first. Tests and the bin load sibling packages from their `dist`.
 - A killed run keeps its lease for 30 s. `resume` inside that window reports it as held.
+- Shepherd seat paths must be `~/`, `$HOME/`, `${HOME}/` or `/` then plain segments; anything
+  else throws. Symlinks are not resolved (no `realpath`), so spell a deny and its repo path the
+  same way.
 - Declare every step id with one kind. `seed(x)` and `assisted(x)` share a memo key, so the
   host rejects a workflow that reuses an id across kinds.
+- Pass `factoryRoutes` (or `factoryRoutesFor`) to the host as the same array. Its `database`
+  tenant carries the shepherd migration and store binding; a copied array drops it, and every
+  merge then fails closed because the hold cannot read the store.
 
 ## Where it came from
 
