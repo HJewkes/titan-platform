@@ -1,7 +1,15 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { commitsForRange, commitsForUpdate, parsePrePush, readCommit } from "./git.js";
+import {
+  commitsForRange,
+  commitsForUpdate,
+  MAX_PATCH_BYTES,
+  parsePrePush,
+  PatchTooLargeError,
+  readCommit,
+} from "./git.js";
 import { scan } from "./scan.js";
 import { makeTestRepo, plantedHomePath, tempDir, ZERO_SHA, type TestRepo } from "./test-repo.js";
 
@@ -138,6 +146,36 @@ describe("option injection", () => {
 
     expect(() => commitsForUpdate(repo.dir, "--all", { localSha: sha, remoteSha: ZERO_SHA })).toThrow(
       "remote is not a remote name",
+    );
+  });
+});
+
+describe("the patch size limit", () => {
+  /** The bytes git prints for the commit, measured apart from the scanner's own call. */
+  function patchBytes(repo: TestRepo, sha: string): number {
+    const args = ["show", "-c", "--text", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative"];
+    const prefixes = ["--src-prefix=a/", "--dst-prefix=b/", "--format=%B%x00", sha];
+    return spawnSync("git", [...args, ...prefixes], { cwd: repo.dir }).stdout.length;
+  }
+
+  it("is 128 MiB", () => {
+    expect(MAX_PATCH_BYTES).toBe(128 * 1024 * 1024);
+  });
+
+  it("reads a commit whose patch bytes equal the limit and refuses one byte less", () => {
+    const repo = newRepo();
+    repo.commit("base");
+    repo.write("wide.md", "é".repeat(2000) + "\n");
+    const sha = repo.commit("multibyte, so bytes and characters differ");
+    const bytes = patchBytes(repo, sha);
+
+    expect(readCommit(repo.dir, sha, bytes).files).toHaveLength(1);
+    expect(() => readCommit(repo.dir, sha, bytes - 1)).toThrow(PatchTooLargeError);
+  });
+
+  it("names the short sha and the limit in MiB when the limit is a whole number of them", () => {
+    expect(new PatchTooLargeError("abcdef0123456789", MAX_PATCH_BYTES).message).toBe(
+      "commit abcdef0: patch text is over the scan limit of 128 MiB; refusing it",
     );
   });
 });

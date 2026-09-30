@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as path from "node:path";
 import { ConfigError } from "./config.js";
 import { parseCommit, parseDiff, type ScanSource } from "./diff.js";
@@ -16,8 +16,26 @@ export interface PushUpdate {
   readonly remoteSha: string;
 }
 
+/** A commit whose patch text passes this many bytes is refused: over it, V8 cannot hold the text as one string. */
+export const MAX_PATCH_BYTES = 128 * 1024 * 1024;
+
+/** A commit too large to scan. The message names the short sha and the limit, never the content. */
+export class PatchTooLargeError extends Error {
+  constructor(sha: string, limit: number) {
+    super(`commit ${sha.slice(0, 7)}: patch text is over the scan limit of ${formatBytes(limit)}; refusing it`);
+    this.name = "PatchTooLargeError";
+  }
+}
+
+function formatBytes(bytes: number): string {
+  const mib = 1024 * 1024;
+  return bytes % mib === 0 ? `${bytes / mib} MiB` : `${bytes} bytes`;
+}
+
 // Pinned so user config (prefixes, textconv, relative, external diff) cannot reshape the patch text.
+// `--text` diffs a file git calls binary, so one NUL byte cannot hide the lines around it.
 const PATCH_FLAGS = [
+  "--text",
   "-U0",
   "--no-color",
   "--no-ext-diff",
@@ -51,11 +69,18 @@ function requireRevision(value: string, what: string): void {
   if (!isRevision(value)) throw new ConfigError(`${what} is not a sha or ref name`);
 }
 
-export function git(cwd: string, args: readonly string[], input?: string): string {
-  const result = spawnSync("git", args, { cwd, input, encoding: "utf-8", maxBuffer: MAX_BUFFER });
+function runGit(cwd: string, args: readonly string[], maxBuffer: number, input?: string): SpawnSyncReturns<string> {
+  return spawnSync("git", args, { cwd, input, encoding: "utf-8", maxBuffer });
+}
+
+function stdoutOf(result: SpawnSyncReturns<string>, subcommand: string): string {
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new GitError(args[0] ?? "", result.status);
+  if (result.status !== 0) throw new GitError(subcommand, result.status);
   return result.stdout;
+}
+
+export function git(cwd: string, args: readonly string[], input?: string): string {
+  return stdoutOf(runGit(cwd, args, MAX_BUFFER, input), args[0] ?? "");
 }
 
 function lines(text: string): string[] {
@@ -114,10 +139,19 @@ export function commitsForRange(cwd: string, base: string, head: string): string
   return lines(git(cwd, ["rev-list", "--reverse", END_OF_OPTIONS, `${base}..${head}`]));
 }
 
-/** One commit's message and patch; `-c` makes a merge show the lines it brings in from any parent. */
-export function readCommit(cwd: string, sha: string): ScanSource {
+function isOverBuffer(error: Error | undefined): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === "ENOBUFS";
+}
+
+/**
+ * One commit's message and patch; `-c` makes a merge show the lines it brings in from any parent.
+ * Throws `PatchTooLargeError` when git prints more than `maxPatchBytes` for it.
+ */
+export function readCommit(cwd: string, sha: string, maxPatchBytes = MAX_PATCH_BYTES): ScanSource {
   requireRevision(sha, "commit");
-  return parseCommit(sha, git(cwd, ["show", "-c", ...PATCH_FLAGS, "--format=%B%x00", END_OF_OPTIONS, sha]));
+  const result = runGit(cwd, ["show", "-c", ...PATCH_FLAGS, "--format=%B%x00", END_OF_OPTIONS, sha], maxPatchBytes);
+  if (isOverBuffer(result.error)) throw new PatchTooLargeError(sha, maxPatchBytes);
+  return parseCommit(sha, stdoutOf(result, "show"));
 }
 
 /** Every tracked file at HEAD, as one diff from the empty tree. */

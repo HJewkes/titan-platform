@@ -37,7 +37,13 @@ interface Run {
   err: string;
 }
 
-function run(repo: TestRepo, argv: string[], env: Record<string, string> = {}, stdin = ""): Run {
+function run(
+  repo: TestRepo,
+  argv: string[],
+  env: Record<string, string> = {},
+  stdin = "",
+  maxPatchBytes?: number,
+): Run {
   const out: string[] = [];
   const err: string[] = [];
   const io: CliIo = {
@@ -46,6 +52,7 @@ function run(repo: TestRepo, argv: string[], env: Record<string, string> = {}, s
     readStdin: () => stdin,
     out: (line) => out.push(line),
     err: (line) => err.push(line),
+    maxPatchBytes,
   };
   const code = runCli(argv, io);
   return { code, out: out.join("\n"), err: err.join("\n") };
@@ -295,6 +302,82 @@ describe("pre-push and tree", () => {
   });
 });
 
+describe("files git calls binary", () => {
+  // One NUL byte is enough for git to call a file binary and, without --text, print no lines for it.
+  const ONE_NUL = `the ${PLANTED_TERM} seat\n\0\n`;
+  const RECORDS = ["first", `x ${PLANTED_TERM} y`, "last"].join("\0");
+
+  function terms(): Record<string, string> {
+    return { TITAN_EGRESS_TERMS: termFile(`${PLANTED_TERM}\n`) };
+  }
+
+  it("finds a term in a file with one NUL byte in pre-push, with no binary file skipped", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = commitFile(repo, "blob.dat", ONE_NUL);
+    const stdin = `refs/heads/main ${leak} refs/heads/main ${base}\n`;
+
+    const result = run(repo, ["pre-push", "origin"], terms(), stdin);
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} blob.dat:1 private-term #1`);
+    expect(result.out).toContain("binary files skipped: 0");
+  });
+
+  it("finds a term in a file with one NUL byte in range, with no binary file skipped", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = commitFile(repo, "blob.dat", ONE_NUL);
+
+    const result = run(repo, ["range", base, leak], terms());
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} blob.dat:1 private-term #1`);
+    expect(result.out).toContain("binary files skipped: 0");
+  });
+
+  it("finds a term in a file with one NUL byte in tree, with no binary file skipped", () => {
+    const repo = newRepo();
+    commitFile(repo, "blob.dat", ONE_NUL);
+
+    const result = run(repo, ["tree"], terms());
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("blob.dat:1 private-term #1");
+    expect(result.out).toContain("binary files skipped: 0");
+  });
+
+  it("finds a term inside a NUL-separated record file", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = commitFile(repo, "records.bin", RECORDS);
+
+    const result = run(repo, ["range", base, leak], terms());
+
+    expect((result.out + result.err).includes(PLANTED_TERM)).toBe(false);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} records.bin:1 private-term #1`);
+  });
+
+  it("exits 2 naming the short sha and the limit when a commit's patch is over it", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const big = commitFile(repo, "big.dat", "x".repeat(4096));
+    const stdin = `refs/heads/main ${big} refs/heads/main ${base}\n`;
+
+    const ranged = run(repo, ["range", base, big], terms(), "", 1024);
+    const pushed = run(repo, ["pre-push", "origin"], terms(), stdin, 1024);
+
+    for (const result of [ranged, pushed]) {
+      expect(result.code).toBe(2);
+      expect(result.out).toBe("");
+      expect(result.err).toBe(
+        `titan-egress-scan: commit ${big.slice(0, 7)}: patch text is over the scan limit of 1024 bytes; refusing it`,
+      );
+    }
+  });
+});
+
 describe("argument validation", () => {
   function outputTarget(): string {
     return path.join(emptyHome(), "leaked-output");
@@ -359,6 +442,7 @@ describe("usage", () => {
 
     expect(result.code).toBe(0);
     expect(result.out).toContain("usage: titan-egress-scan");
+    expect(result.out).toContain("scanned as text");
   });
 
   it("exits 2 instead of skipping the scan when a help flag follows the command", () => {
