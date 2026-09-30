@@ -40,6 +40,7 @@
     "@titan-design/memory": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
+    "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-graph": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",

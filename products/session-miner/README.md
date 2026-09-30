@@ -10,7 +10,7 @@ Private (not published). Composes `registry`, `daemon`, `store-sqlite`, `locator
 (TP-19).
 
 ```
-titan-miner refresh            # index new transcript bytes (--full rebuilds from zero)
+titan-miner refresh            # index new transcript bytes (--full rebuilds from zero); also reconciles the graph's price rows with session-analytics' PRICE_TABLE
 titan-miner status             # counts, transcript states, FTS orphan ratio
 titan-miner search "daemon 503 at startup"
 titan-miner session list -n 20

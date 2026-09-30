@@ -635,6 +635,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../../packages/session-graph

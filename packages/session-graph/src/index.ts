@@ -23,7 +23,7 @@ export { enrichPrs, NO_PR_OUTCOMES, prsNeedingOutcome } from "./outcomes.js";
 export type { ReviewerProfilePredicate, ReviewProjection, ReviewRoundOptions } from "./review-rounds.js";
 export { countRounds, isReviewerProfile, projectReviewRounds } from "./review-rounds.js";
 export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
-export { syncPrices, type PriceInput, type SyncPricesOptions } from "./prices.js";
+export { reconcilePrices, syncPrices, type PriceInput, type ReconcileResult, type SyncPricesOptions } from "./prices.js";
 
 export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
 export { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text.js";
