@@ -33,6 +33,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/github": "workspace:^",
