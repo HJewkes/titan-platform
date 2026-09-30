@@ -6,15 +6,29 @@ import { isRepoKey } from "./shepherd/seats.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
+const absolutePath = noNul.refine(isAbsolute, "must be an absolute path");
 
 /** The chore land-pr runs after a merge; strict, so a `shell` or `command` key fails the load instead of being ignored. */
 export const PostMergeConfigSchema = z.strictObject({
   argv: z.tuple([noNul.min(1, "argv[0] must name a program")], noNul),
-  cwd: noNul.refine(isAbsolute, "must be an absolute path").optional(),
+  cwd: absolutePath.optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
+
+/** Reaches the agent-chat argv as one literal argument, so a value that reads as a flag or holds whitespace is refused. */
+const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no leading dash, no whitespace");
+
+/** The reviewer Shepherd dispatches; strict, so a misspelt timeout fails the load instead of leaving the default in force. */
+export const ReviewConfigSchema = z.strictObject({
+  profile: argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or .."),
+  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  verdictTimeoutMs: z.number().int().positive().optional(),
+  sessionStartTimeoutMs: z.number().int().positive().optional(),
+});
+
+export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
@@ -25,8 +39,11 @@ export const FactoryConfigSchema = z.object({
       seatsDir: z.string().min(1).optional(),
       charterPath: z.string().min(1).optional(),
       hardStopRepos: z.record(z.string().min(1), z.array(z.string().refine(isRepoKey, "must be an owner/name repo"))).optional(),
+      agentChatBin: absolutePath.optional(),
+      review: ReviewConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
+    .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 

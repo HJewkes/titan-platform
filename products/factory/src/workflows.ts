@@ -1,11 +1,15 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
-import { configPath, loadConfig } from "./config.js";
+import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import type { IsFrozen } from "./shepherd/merge-facts.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
-import { loadSeatBook, type SeatBook } from "./shepherd/seats.js";
+import type { ReviewWiring } from "./shepherd/review.js";
+import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
+import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
@@ -20,6 +24,10 @@ export interface FactoryRouteDeps extends LandPrDeps {
   agentChatBin?: string;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
   seats?: () => SeatBook;
+  /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
+  review?: Omit<ReviewWiring, "isFrozen">;
+  /** Read by the merge evidence step, which runs only after a wired review; defaults to no repo frozen. */
+  isFrozen?: IsFrozen;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -35,17 +43,33 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
-  const shepherd = shepherdRoutes({ port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" });
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" };
+  const shepherd = shepherdRoutes(shepherdDeps, { review: deps.review && { ...deps.review, isFrozen: deps.isFrozen } });
   const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: (db) => deps.store.bind(db) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });
 }
 
-/** The production route set: the post-merge chore comes from the config file; the seat book is re-read per registration. */
+/** The checkout a seat binds to `repo`, as the seat file writes it; a denied repo or one no seat lists has none. */
+function checkoutPath(book: SeatBook, repo: string): string | undefined {
+  const found = lookupSeat(book, repo);
+  return found.kind === "seat" ? found.seat.paths[repo.toLowerCase()] : undefined;
+}
+
+/** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
+function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook): FactoryRouteDeps["review"] {
+  const { agentChatBin, review } = shepherd ?? {};
+  if (!review || !agentChatBin) return undefined;
+  const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo) });
+  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs };
+}
+
+/** The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per registration and per spawn. */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
-  const { postMerge } = loadConfig(configPath(env));
-  const seats = (): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {});
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, seats, ...overrides });
+  const { postMerge, shepherd } = loadConfig(configPath(env));
+  const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
+  const review = configuredReview(shepherd, seats);
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;
