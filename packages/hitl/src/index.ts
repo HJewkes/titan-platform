@@ -6,6 +6,7 @@ export type {
   GateInput,
   GateRecord,
   GateResolver,
+  GateRule,
   GateStatus,
   GateStore,
   JsonSchema,
@@ -21,10 +22,11 @@ export {
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
+  GateRuleInvalid,
   GateStoreSchemaOutdated,
 } from "./types.js";
 export { BaseGateStore } from "./base-store.js";
 export type { MemoryGateStoreOptions } from "./memory-store.js";
 export { MemoryGateStore } from "./memory-store.js";
-export { defaultResolverRefusal, snapshotResolver } from "./resolver-policy.js";
+export { defaultResolverRefusal, ruleResolverRefusal, snapshotResolver } from "./resolver-policy.js";
 export { checkAgainstJsonSchema } from "./json-schema.js";

@@ -419,7 +419,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateCancelled`, `GateError`, `GateExpired`, `GateNotFound`
-- +21 more in the [reference page](/reference/hitl)
+- +24 more in the [reference page](/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 
@@ -601,8 +601,10 @@ Key exports:
 - `classify-session`: `classifySession`
 - `bands`: `bandOf`, `contextBand`, `gapBand`
 - `cost-report`: `costReport`, `costReportSchema`
-- `episodes`: `assignmentCount`, `buildEpisodes`, `heuristicFor`, `readEpisodeInput`
-- +48 more in the [reference page](/reference/session-analytics)
+- `turn-action`: `classifyRequest`
+- `request-owner`: `readRequestToolCalls`
+- `episodes`: `assignmentCount`, `buildEpisodes`
+- +58 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 

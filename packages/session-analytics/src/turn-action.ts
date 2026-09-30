@@ -33,22 +33,29 @@ export interface ActionRule {
   writePath?: RegExp;
 }
 
-const JOURNAL_PATH = /(log[^/]*\.md|journal|\.jsonl)$/i;
+/** A basename naming a log, journal or event file, so `catalog.md`, `CHANGELOG.md` and `fixture.jsonl` stay out. */
+const JOURNAL_BASENAME = String.raw`(?:(?:[^/]*[-_.])?(?:log|journal|events?)(?:[-_.][^/]*)?\.(?:md|jsonl)|[^/]*journal[^/]*)$`;
+const INTERPRETER = String.raw`(?:(?:python3?|node|tsx|bash|sh) )?`;
 
 export const DEFAULT_ACTION_RULES: readonly ActionRule[] = [
-  { cls: "journal-write", writePath: JOURNAL_PATH },
-  { cls: "journal-write", head: /^>.*(log[^/]*\.md|journal|\.jsonl)$/i },
+  { cls: "journal-write", writePath: new RegExp(String.raw`(?:^|/)${JOURNAL_BASENAME}`, "i") },
+  { cls: "journal-write", head: new RegExp(`^>${JOURNAL_BASENAME}`, "i") },
   { cls: "pr-ci-check", head: /^gh pr (checks|view)\b/ },
   { cls: "pr-ci-check", head: /^gh run\b/ },
-  { cls: "merge", head: /^gh pr merge\b|pulls\/\d+\/merge/ },
+  { cls: "pr-ci-check", head: /^git merge-tree\b/ },
+  { cls: "merge", head: /^gh pr merge\b|^gh api\b.*\bpulls\/\d+\/merge\b/ },
   { cls: "dispatch", tool: /agent_(spawn|resume)$/ },
-  { cls: "retire", head: /\bagent retire\b/ },
+  { cls: "retire", head: /^(agent-chat )?agent retire\b/ },
   { cls: "task-state", head: /^active-work task\b/ },
   { cls: "budget-status", tool: /(session_budget|chat_status)$/ },
-  { cls: "budget-status", head: /\bagent list\b/ },
-  { cls: "scorer", tool: /\bscor/i },
-  { cls: "scorer", head: /\bscor/i },
+  { cls: "budget-status", head: /^(agent-chat )?agent list\b/ },
+  { cls: "budget-status", head: /^(agent-chat )?agent (ls|budget|worktrees)\b/ },
+  { cls: "budget-status", head: /^git worktree list\b/ },
+  { cls: "budget-status", tool: /(agent_list|chat_list|ListAgents)$/ },
+  { cls: "scorer", tool: /(^|__)scor/i },
+  { cls: "scorer", head: new RegExp(`^${INTERPRETER}[\\w.-]*scor`, "i") },
   { cls: "message", tool: /chat_send$/ },
+  { cls: "message", tool: /(chat_ask|chat_inbox|chat_claim|chat_release)$/ },
   { cls: "read-investigate", tool: /^(Read|Grep|Glob)$/ },
   { cls: "read-investigate", head: /^(cat|ls|grep|rg|head|tail|find|wc|git (log|diff|show|status))\b/ },
 ];
