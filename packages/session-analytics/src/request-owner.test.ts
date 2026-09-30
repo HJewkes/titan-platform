@@ -32,10 +32,13 @@ describe("readRequestToolCalls", () => {
     insertToolCall(db, { sessionId: "s", transcriptId: 1, ts: at(0), toolUseId: "tu-1", name: "Bash", offset: 11 });
     insertRequest(db, { sessionId: "s", transcriptId: 2, requestId: "r", ts: at(5), offset: 10 });
     insertToolCall(db, { sessionId: "s", transcriptId: 2, ts: at(5), toolUseId: "tu-1", name: "Bash", offset: 11 });
+    insertRequest(db, { sessionId: "s", transcriptId: 2, requestId: "fork-own", ts: at(6), offset: 20 });
+    insertToolCall(db, { sessionId: "s", transcriptId: 2, ts: at(6), toolUseId: "tu-2", name: "Read", offset: 21 });
 
     const calls = readRequestToolCalls(fixture.openReadOnly(), WINDOW);
 
     expect(calls.get("r")).toEqual([{ tool: "Bash" }]);
+    expect(calls.get("fork-own")).toEqual([{ tool: "Read" }]);
   });
 
   it("attaches the heads and paths session-read extracted for each call", () => {
