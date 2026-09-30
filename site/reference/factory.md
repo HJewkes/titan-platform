@@ -43,17 +43,18 @@ titan-factory gate resolve <runId> approve-publish --json '{"approve":true}'
 `resume` drives every unfinished run until it ends or waits on a gate, prints each open gate
 with its resolve command, and exits.
 
-To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. `titan-factory
-service plist` prints the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true)
-and never installs it. The owner installs it:
+To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. On macOS two
+commands install it:
 
 ```sh
-pnpm build
-node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
-curl -s http://127.0.0.1:7410/health   # github: ok, or the redacted gh error
-claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
+pnpm factory:install                  # install, build, link titan-factory into ~/.local/bin
+titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
 ```
+
+`service install` exits 1 when `/health` never answers or its `github` field is not `ok`.
+`service status`, `restart` and `uninstall` manage the job, and `service plist` only prints
+the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true, a `PATH` that reaches
+`gh`). The [factory guide](/guides/factory#install-as-a-service) has the steps.
 
 ## What it deliberately does not do
 

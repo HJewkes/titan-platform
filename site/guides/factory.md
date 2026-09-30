@@ -21,7 +21,8 @@ The factory never dispatches an agent. For the design and the file map, read the
   `gh api` on your login and reads no token itself (`packages/github`).
 - A base branch that requires at least one status check. `land` waits on required checks
   only, so it refuses a branch that requires none.
-- macOS, only for `service plist`. Every other command runs anywhere Node does.
+- macOS, only for `service install`, `status`, `restart` and `uninstall`, which drive
+  launchd. Every other command, `service plist` included, runs anywhere Node does.
 
 ## Build
 
@@ -36,6 +37,17 @@ node products/factory/dist/bin.js --help
 
 The examples below write `titan-factory` for `node products/factory/dist/bin.js`. Rebuild
 after every pull: the bin loads sibling packages from their `dist`.
+
+To run it by that short name, put it on `PATH`:
+
+```sh
+pnpm factory:install
+```
+
+That installs, builds the factory with its workspace dependencies, and links
+`~/.local/bin/titan-factory` to the built bin. The link survives a rebuild and needs no
+sudo. It leaves a link that points at another checkout alone unless you add `--force`, and
+`--bin-dir <dir>` picks another directory.
 
 ## Where state lives
 
@@ -203,30 +215,88 @@ held ab0f9228-… shepherd-pr: leased by 9fdfad86-… until 2026-09-30T14:42:43.
 A killed process keeps its lease for 30 seconds. A run whose interrupted step may already
 have had its effect (the post-merge chore) is parked as `recovery_required` for a human.
 
-## `service plist`
+## Install as a service
+
+On macOS, one verb installs `titan-factory serve` as the LaunchAgent
+`dev.hjewkes.titan-factory`, so runs stay alive across shells and logins:
+
+```sh
+titan-factory service install          # add --mcp to register the MCP endpoint with Claude Code
+titan-factory service install --port 7411 --mcp
+```
+
+`service install` does these in order:
+
+1. Boots out the job when launchd already holds it, and waits until the label is gone.
+2. Creates the log directory and writes
+   `~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist`.
+3. Runs `launchctl bootstrap gui/<uid> <plist>`.
+4. Polls `/health` for up to 30 seconds. The answer must come from the pid launchd reports
+   for the job, so a `serve` you left running in a shell fails the install. On a timeout
+   the verb prints the last 20 lines of `serve.err.log`.
+5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory
+   http://127.0.0.1:<port>/mcp`. An already registered server counts as success. With no
+   `claude` on `PATH`, or when the command fails, the verb prints the command to run by hand
+   and still exits 0.
+
+| Verb | What it does | Exits 0 when |
+| --- | --- | --- |
+| `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
+| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
+| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
+| `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
+
+A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
+other platform these four verbs fail with one line.
+
+### The job's `PATH`
+
+launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and `serve` runs `gh`,
+`agent-chat` and `claude` by bare name. The plist therefore sets one environment variable,
+`PATH`: the directory each of those three is found in when the verb runs, then the directory
+of the plist's node, then launchd's four, each once. Nothing else is copied from your shell.
+
+A binary that is not found is left out and named in a `warning:` line. `service install`
+refuses to run without `gh`. After you move one of these binaries, run `service install`
+again.
+
+### The GitHub check
+
+`/health` carries a `github` field: `checking` until the first `gh api rate_limit` lands,
+then `ok` or the redacted gh error. `install`, `restart` and `status` wait out `checking`
+and exit 1 with one line when the field settles on anything but `ok`:
+
+```
+error: titan-factory serve answers on port 7410 but its GitHub check failed: gh api rate_limit failed (1): …
+```
+
+The job is still loaded at that point. A LaunchAgent may not reach the keychain token `gh`
+uses in your shell; this check is how that shows. Fix the cause, then run
+`titan-factory service restart`.
+
+### `service plist`: the manual path
 
 ```sh
 titan-factory service plist                                  # print to stdout
 titan-factory service plist --port 7411 --node /usr/local/bin/node
 ```
 
-The verb prints a LaunchAgent plist for the label `dev.hjewkes.titan-factory` and changes
-nothing on disk. The plist runs `<node> <checkout>/products/factory/dist/bin.js serve` with
-`RunAtLoad` and `KeepAlive` true and `ProcessType` `Interactive`. A Homebrew Cellar node
+The verb prints the same plist `service install` writes and changes nothing on disk. The
+plist runs `<node> <checkout>/products/factory/dist/bin.js serve` with `RunAtLoad` and
+`KeepAlive` true, `ProcessType` `Interactive`, and the `PATH` above. A Homebrew Cellar node
 path is mapped to the stable prefix symlink so `brew upgrade` does not break the job;
 `--node` takes any other absolute path (`products/factory/src/service.ts`).
 
-You install it yourself:
+To install it yourself:
 
 ```sh
-node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
+titan-factory service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
 curl -s http://127.0.0.1:7410/health
 ```
 
-The plist names the checkout it was printed from. After you move the checkout or change
-node, print the plist again and bootstrap it again. A LaunchAgent may not reach the keychain
-token `gh` uses in your shell; `/health` shows that as a `github` error.
+The plist names the checkout it came from. After you move the checkout or change node, run
+`service install` again, or print and bootstrap the plist again.
 
 ## How it fails
 
