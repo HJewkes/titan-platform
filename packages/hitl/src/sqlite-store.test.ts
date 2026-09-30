@@ -242,7 +242,7 @@ describe("gateRuleMigration", () => {
     migration.up(db);
     migration.up(db);
     expect(columnCount(db, "rule")).toBe(1);
-    expect(triggerNames(db)).toEqual(["hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
+    expect(triggerNames(db)).toEqual(["hitl_gate_rule_replace", "hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
   });
 
   it("succeeds on a table that already has both columns and sits beside the resolver migration", () => {
@@ -250,7 +250,7 @@ describe("gateRuleMigration", () => {
     db.exec(`ALTER TABLE "hitl_gate" ADD COLUMN rule TEXT`);
     runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
     expect(columnCount(db, "rule")).toBe(1);
-    expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
+    expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_replace", "hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
   });
 
   it("is run by migrate: true, so a default store holds a rule-bound gate it cannot resolve until the resolver migration", () => {
@@ -343,6 +343,43 @@ describe("the rule trigger against raw SQL", () => {
       "hitl: resolver outside the gate rule",
     );
     expect(store.get("bound")).toMatchObject({ status: "pending", rule: TERMINAL_ONLY });
+  });
+
+  it.each([
+    ["REPLACE INTO", RAW_REPLACE],
+    ["INSERT OR REPLACE", RAW_INSERT.replace("INSERT", "INSERT OR REPLACE")],
+  ])("aborts %s of a pending rule-bound id with no rule, without recursive_triggers", (_label, sql) => {
+    const { db, store } = ruleDb();
+    expect(() => db.prepare(sql).run("bound", T_SETTLED, JSON.stringify(REMOTE), null, "resolved")).toThrow(
+      "hitl: a pending rule-bound gate cannot be replaced",
+    );
+    expect(store.get("bound")).toMatchObject({ status: "pending", rule: TERMINAL_ONLY });
+  });
+
+  it("aborts REPLACE INTO of a pending rule-bound id with a different rule", () => {
+    const { db, store } = ruleDb();
+    const widened = JSON.stringify({ ...TERMINAL_ONLY, resolvers: ["owner-terminal", "owner-remote"] });
+    expect(() => db.prepare(RAW_REPLACE).run("bound", T_SETTLED, JSON.stringify(REMOTE), widened, "resolved")).toThrow(
+      "hitl: a pending rule-bound gate cannot be replaced",
+    );
+    expect(store.get("bound")?.rule).toEqual(TERMINAL_ONLY);
+  });
+
+  it("replaces a rule-less id freely, and a rule-bound id that is no longer pending", () => {
+    const { db, store } = ruleDb();
+    db.prepare(RAW_REPLACE).run("free", T_SETTLED, JSON.stringify(REMOTE), null, "resolved");
+    db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "bound");
+    db.prepare(RAW_REPLACE).run("bound", T_SETTLED, JSON.stringify(REMOTE), null, "resolved");
+    expect(store.get("free")?.status).toBe("resolved");
+    expect(store.get("bound")).toMatchObject({ status: "resolved", rule: undefined });
+  });
+
+  it("aborts an update that adds a rule to a rule-less row", () => {
+    const { db, store } = ruleDb();
+    expect(() => db.prepare(`UPDATE "hitl_gate" SET rule = ? WHERE id = 'free'`).run(RULE_JSON)).toThrow(
+      "hitl: resolver outside the gate rule",
+    );
+    expect(store.get("free")?.rule).toBeUndefined();
   });
 
   it("aborts DELETE then INSERT of a rule-bound row as resolved by a class outside the rule", () => {
