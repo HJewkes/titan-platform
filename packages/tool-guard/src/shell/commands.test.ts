@@ -367,7 +367,7 @@ describe("literal text piped into a shell", () => {
     ["a command that is not echo or printf", "cat git push | bash", ["cat", "bash"]],
     ["a pipe into something else", "echo git push | cat", ["echo", "cat"]],
     ["a pipe through another command", "echo git push | cat | bash", ["echo", "cat", "bash"]],
-    ["a ; before the shell", "echo git push; bash", ["echo", "bash"]],
+    ["a ; before the shell", "echo git push | cat; bash", ["echo", "cat", "bash"]],
   ])("runs nothing for %s", (_how, src, names) => {
     expect(extract(src).map((c) => c.name)).toEqual(names);
   });
