@@ -68,6 +68,51 @@ export function shepherdMigration(version = 4): Migration {
   return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
 }
 
+export const AUTHOR_ROLES = ["implementer", "successor"] as const;
+
+export type AuthorRole = (typeof AUTHOR_ROLES)[number];
+
+/** An agent that wrote a run's code: the implementer, or a successor that took the work over from `predecessor`. */
+export interface AuthorInput {
+  agentId: string;
+  name: string;
+  role: AuthorRole;
+  predecessor?: string;
+}
+
+export interface Author {
+  runId: string;
+  agentId: string;
+  name: string;
+  role: AuthorRole;
+  predecessor: string | null;
+  at: string;
+}
+
+const LINEAGE_DDL = `
+  CREATE TABLE shepherd_lineage (
+    run_id      TEXT NOT NULL,
+    agent_id    TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    role        TEXT NOT NULL CHECK (role IN ('implementer', 'successor')),
+    predecessor TEXT,
+    at          TEXT NOT NULL,
+    PRIMARY KEY (run_id, agent_id)
+  );`;
+
+export function lineageMigration(version = 5): Migration {
+  return { version, name: "factory:shepherd_lineage", up: (db) => db.exec(LINEAGE_DDL) };
+}
+
+interface AuthorRow {
+  run_id: string;
+  agent_id: string;
+  name: string;
+  role: AuthorRole;
+  predecessor: string | null;
+  at: string;
+}
+
 interface Row {
   repo: string;
   pr: number | null;
@@ -157,6 +202,19 @@ export class ShepherdStore implements HoldLookup {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
     const held = candidates.find((registration) => registration?.held);
     return held && (held.holdReason ?? "held");
+  }
+
+  /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */
+  recordAuthor(runId: string, agent: AuthorInput): void {
+    this.db
+      .prepare("INSERT OR IGNORE INTO shepherd_lineage (run_id, agent_id, name, role, predecessor, at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(runId, agent.agentId, agent.name, agent.role, agent.predecessor ?? null, this.stamp());
+  }
+
+  /** Every author recorded for the run, earliest first, ties broken by agent id. */
+  authorsOf(runId: string): Author[] {
+    const rows = this.db.prepare("SELECT * FROM shepherd_lineage WHERE run_id = ? ORDER BY at, agent_id").all(runId) as AuthorRow[];
+    return rows.map((row) => ({ runId: row.run_id, agentId: row.agent_id, name: row.name, role: row.role, predecessor: row.predecessor, at: row.at }));
   }
 
   private setHeld(runId: string, held: boolean, reason: string | null): Registration {

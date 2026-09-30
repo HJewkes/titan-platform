@@ -1,7 +1,7 @@
-import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ShepherdStore, shepherdMigration, shepherdStoreRef, type RegistrationInput } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
@@ -78,6 +78,100 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 12, "feat/a")).toBe("owner review");
     expect(store.heldReason("octo/demo", 12, "feat/b")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12)).toBeUndefined();
+  });
+});
+
+function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
+  const db = openDatabase(":memory:");
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+  return new ShepherdStore(db, () => clock.now);
+}
+
+const implementer: AuthorInput = { agentId: "agent-1", name: "impl-a", role: "implementer" };
+const successor: AuthorInput = { agentId: "agent-2", name: "impl-b", role: "successor", predecessor: "agent-1" };
+
+describe("shepherd lineage", () => {
+  it("reads back the authors recorded for a run, with the predecessor of a successor", () => {
+    const store = openLineageStore();
+    store.recordAuthor("run-1", implementer);
+    store.recordAuthor("run-1", successor);
+
+    expect(store.authorsOf("run-1")).toEqual([
+      { runId: "run-1", agentId: "agent-1", name: "impl-a", role: "implementer", predecessor: null, at: "2026-01-01T00:00:00.000Z" },
+      { runId: "run-1", agentId: "agent-2", name: "impl-b", role: "successor", predecessor: "agent-1", at: "2026-01-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("does not show one run's authors to another run", () => {
+    const store = openLineageStore();
+    store.recordAuthor("run-1", implementer);
+    store.recordAuthor("run-2", successor);
+
+    expect(store.authorsOf("run-2").map((a) => a.agentId)).toEqual(["agent-2"]);
+    expect(store.authorsOf("run-3")).toEqual([]);
+  });
+
+  it("keeps one row when the same agent is recorded twice", () => {
+    const store = openLineageStore();
+    store.recordAuthor("run-1", implementer);
+
+    expect(() => store.recordAuthor("run-1", implementer)).not.toThrow();
+
+    expect(store.authorsOf("run-1")).toHaveLength(1);
+  });
+
+  it("keeps the first role, predecessor and time when a repeat record differs", () => {
+    const clock = { now: Date.parse("2026-01-01T00:00:00Z") };
+    const store = openLineageStore(clock);
+    store.recordAuthor("run-1", successor);
+    clock.now = Date.parse("2026-01-02T00:00:00Z");
+
+    store.recordAuthor("run-1", { agentId: "agent-2", name: "renamed", role: "implementer" });
+
+    expect(store.authorsOf("run-1")).toEqual([
+      { runId: "run-1", agentId: "agent-2", name: "impl-b", role: "successor", predecessor: "agent-1", at: "2026-01-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("records the same agent under two runs as two rows", () => {
+    const store = openLineageStore();
+    store.recordAuthor("run-1", implementer);
+    store.recordAuthor("run-2", implementer);
+
+    expect(store.authorsOf("run-1")).toHaveLength(1);
+    expect(store.authorsOf("run-2")).toHaveLength(1);
+  });
+
+  it("lists authors by time, then agent id", () => {
+    const clock = { now: Date.parse("2026-01-02T00:00:00Z") };
+    const store = openLineageStore(clock);
+    store.recordAuthor("run-1", { agentId: "agent-9", name: "late", role: "successor" });
+    clock.now = Date.parse("2026-01-01T00:00:00Z");
+    store.recordAuthor("run-1", { agentId: "agent-b", name: "b", role: "successor" });
+    store.recordAuthor("run-1", { agentId: "agent-a", name: "a", role: "implementer" });
+
+    expect(store.authorsOf("run-1").map((a) => a.agentId)).toEqual(["agent-a", "agent-b", "agent-9"]);
+  });
+
+  it("refuses a role other than implementer or successor", () => {
+    const store = openLineageStore();
+
+    expect(() => store.recordAuthor("run-1", { ...implementer, role: "reviewer" as never })).toThrow(/CHECK/);
+  });
+
+  it("keeps every registration when a database that holds them gains the lineage table", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4)]);
+    const before = new ShepherdStore(db, () => 0);
+    before.register(base);
+    const rows = db.prepare("SELECT * FROM shepherd_registration").all();
+
+    const applied = runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+
+    expect(applied).toEqual([5]);
+    expect(appliedVersions(db)).toEqual([4, 5]);
+    expect(db.prepare("SELECT * FROM shepherd_registration").all()).toEqual(rows);
+    expect(new ShepherdStore(db).byRun("run-1")?.task).toBe("demo/1");
   });
 });
 
