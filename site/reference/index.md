@@ -23,7 +23,7 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |
-| `tool-guard` | POSIX shell tokenizer and command extraction for tool-call guards | none |
+| `tool-guard` | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | none |
 
 ## Tier 1 — engines
 
@@ -76,7 +76,7 @@ Thin compositions of the tiers. Private, not published.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent-dispatch`, `authority`, `daemon`, `github`, `hitl`, `registry`, `session-read`, `store-sqlite`, `workflow` |
+| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent-dispatch`, `authority`, `daemon`, `github`, `hitl`, `registry`, `rpc-client`, `session-read`, `store-sqlite`, `workflow` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `code-report` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
