@@ -1,9 +1,14 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import type { StepRoute } from "../routed-runner.js";
+import { crashAt } from "../test-support/crash.js";
 import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
@@ -22,6 +27,8 @@ import {
   type AwaitVerdictInput,
   type AwaitVerdictResult,
   type ReviewDispatchResult,
+  type ReviewIntent,
+  type ReviewIntentResult,
   type ReviewerAgent,
   type ReviewerDispatch,
   type ReviewerMessage,
@@ -311,16 +318,175 @@ describe("sh-review", () => {
 
   const clockAtStart = () => ({ now: START, sleeps: 0 });
 
-  async function shReview(dispatch: ReviewerDispatch | undefined, options: { registered?: RegistrationInput; repo?: string; wiring?: Partial<ReviewWiring>; clock?: ReturnType<typeof clockAtStart> } = {}) {
+  interface StepOptions {
+    registered?: RegistrationInput;
+    repo?: string;
+    wiring?: Partial<ReviewWiring>;
+    clock?: ReturnType<typeof clockAtStart>;
+  }
+
+  /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
+  function reviewSteps(dispatch: ReviewerDispatch | undefined, options: StepOptions = {}) {
     const clock = options.clock ?? clockAtStart();
     const sleep = async (ms: number) => void ((clock.now += ms), (clock.sleeps += 1));
     const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
-    const route = reviewRoutes(deps, wiring).find((candidate) => candidate.match === "sh-review")!;
-    const prompt = JSON.stringify({ runId: "run-1", repo: options.repo ?? "octo/demo", pr: 7, head: HEAD });
-    const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: `sh-review:${HEAD}` } as never);
-    return { outcome, clock, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as ReviewDispatchResult | undefined };
+    const routes = reviewRoutes(deps, wiring);
+    const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
+    const run = async <R>(match: string, input: object, attempt: number) => {
+      const step = { prompt: JSON.stringify(input), signal: new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
+      const outcome = await routes.find((candidate) => candidate.match === match)!.runner.run(step as never);
+      return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as R | undefined };
+    };
+    return {
+      clock,
+      intent: () => run<ReviewIntentResult>("sh-review-intent", { ...target, runId: "run-1" }, 0),
+      review: (intent: unknown, attempt = 0) => run<ReviewDispatchResult>("sh-review", { ...target, intent }, attempt),
+    };
   }
+
+  /** Both steps as the phase runs them: sh-review takes the intent as its input, and a `none` intent ends the review there. */
+  async function shReview(dispatch: ReviewerDispatch | undefined, options: StepOptions = {}) {
+    const steps = reviewSteps(dispatch, options);
+    const intent = await steps.intent();
+    const { outcome, result } = intent.result?.kind === "intent" ? await steps.review(intent.result) : intent;
+    return { outcome, clock: steps.clock, result: result as ReviewDispatchResult | undefined };
+  }
+
+  const spawnIntent: ReviewIntent = { head: HEAD, reviewer: "rv-demo-7", at: START, mode: "spawn" };
+
+  it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
+    const dispatch = fakeDispatch();
+
+    const { result } = await reviewSteps(dispatch).intent();
+
+    expect(result).toEqual({ kind: "intent", ...spawnIntent });
+    expect(dispatch).toMatchObject({ spawns: [], resumes: [], agents: [] });
+  });
+
+  it("sh-review-intent names the standing reviewer by its agent id, and does not resume it", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+
+    const { result } = await reviewSteps(dispatch, { registered: optIn("rv-standing") }).intent();
+
+    expect(result).toEqual({ kind: "intent", head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing" });
+    expect(dispatch).toMatchObject({ spawns: [], resumes: [] });
+  });
+
+  it.each([0, 1])("adopts the reviewer a lost run of the step spawned, and spawns no second one (attempt %i)", async (attempt) => {
+    const dispatch = fakeDispatch();
+    const steps = reviewSteps(dispatch);
+    const lost = await steps.review(spawnIntent);
+
+    const repeated = await steps.review(spawnIntent, attempt);
+
+    expect(repeated.result).toEqual(lost.result);
+    expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", agentId: "agent-rv-demo-7" });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-7"]);
+    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-demo-7"]);
+  });
+
+  it("spawns on a repeat that finds nobody under the intent's name, because the earlier run died before its spawn", async () => {
+    const dispatch = fakeDispatch();
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent, 1);
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7" });
+    expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  it("keeps the intent's time when the step repeats after the reviewer spoke, so those first words still count", async () => {
+    const steps = reviewSteps(fakeDispatch());
+    await steps.review(spawnIntent);
+    const spokeAt = steps.clock.now + 1;
+    steps.clock.now += 60_000;
+
+    const { result } = await steps.review(spawnIntent, 1);
+
+    expect(result).toMatchObject({ kind: "dispatched", at: START });
+    expect((result as ReviewIntent).at).toBeLessThan(spokeAt);
+  });
+
+  it("spawns under the intent's name, not under the name the roster it reads would yield", async () => {
+    const dispatch = fakeDispatch([agent("rv-demo-7")]);
+    const steps = reviewSteps(dispatch);
+    const intent = (await steps.intent()).result;
+    dispatch.agents.length = 0;
+
+    const { result } = await steps.review(intent);
+
+    expect(intent).toMatchObject({ reviewer: "rv-demo-7-2" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7-2", agentId: "agent-rv-demo-7-2" });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-7-2"]);
+  });
+
+  it("answers none at once and spawns nobody when two agents already hold the intent's name", async () => {
+    const dispatch = fakeDispatch([agent("rv-demo-7"), agent("rv-demo-7", { agentId: "agent-other" })]);
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("rv-demo-7") });
+    expect(dispatch.spawns).toEqual([]);
+    expect(steps.clock.sleeps).toBe(0);
+  });
+
+  it("does not resume the standing reviewer a second time when the step repeats, and adopts it by its agent id", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+    const steps = reviewSteps(dispatch, { registered: optIn("rv-standing") });
+    const intent = (await steps.intent()).result;
+    const lost = await steps.review(intent);
+
+    const repeated = await steps.review(intent, 1);
+
+    expect(repeated.result).toEqual(lost.result);
+    expect(repeated.result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: START });
+    expect(dispatch.resumes).toHaveLength(1);
+    expect(dispatch.spawns).toEqual([]);
+  });
+
+  /** The broker cannot be reached for the first `reads` roster reads. */
+  function rosterDownFor(dispatch: FakeDispatch, reads: number): FakeDispatch {
+    const roster = dispatch.roster;
+    let down = reads;
+    dispatch.roster = async () => (down-- > 0 ? Promise.reject(new ReviewerBrokerDown("could not reach the broker")) : roster());
+    return dispatch;
+  }
+
+  it("sh-review-intent waits while the broker is down, then names the reviewer and stamps the time after the wait", async () => {
+    const steps = reviewSteps(rosterDownFor(fakeDispatch(), 2));
+
+    const { result } = await steps.intent();
+
+    expect(result).toEqual({ kind: "intent", ...spawnIntent, at: START + 20 });
+    expect(steps.clock.sleeps).toBe(2);
+  });
+
+  it("sh-review waits while the broker is down for its first roster read, then spawns the reviewer once", async () => {
+    const dispatch = rosterDownFor(fakeDispatch(), 2);
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", at: START });
+    expect(dispatch.spawns).toHaveLength(1);
+    expect(steps.clock.sleeps).toBe(2);
+  });
+
+  it("sh-review answers none and starts nobody when it is given an intent and no dispatch is wired", async () => {
+    const { result } = await reviewSteps(undefined).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", reason: "no reviewer dispatch is wired" });
+  });
+
+  it("fails sh-review on an intent that names no reviewer, before anything is spawned", async () => {
+    const dispatch = fakeDispatch();
+
+    const { outcome } = await reviewSteps(dispatch).review({ ...spawnIntent, reviewer: "" });
+
+    expect(outcome.ok).toBe(false);
+    expect(dispatch.spawns).toEqual([]);
+  });
 
   it("spawns a fresh reviewer named for the PR and records the head, the reviewer and its agent and session", async () => {
     const dispatch = fakeDispatch();
@@ -554,7 +720,11 @@ describe("reviewPhase", () => {
   const H2 = fakeSha("review-head-2");
   const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
   const hosts: FactoryHost[] = [];
-  afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+  const dirs: string[] = [];
+  afterEach(() => {
+    hosts.splice(0).forEach((host) => host.close());
+    dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  });
 
   /** What an agent said last, attributed to it and its session, in a transcript of that session. */
   const said = (who: ReviewerAgent, text: string, writtenAt: number): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt, text, locator: locatorIn(who.sessionId) });
@@ -588,15 +758,111 @@ describe("reviewPhase", () => {
     const { awaited } = scene;
     const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
-    const routes = Object.assign(swapped, { database: { extraMigrations: [shepherdMigration(4)], bind: store.bind } });
+    const inputs: Record<string, unknown> = {};
+    const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
     store.get().register({ repo: REPO, pr: 1, runId, task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY, ...scene.registered });
     const done = await host.runtime.wait(runId);
-    const stepIds = Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
-    return { verdicts, fake, stepIds, status: done.status };
+    const results = Object.values(host.runtime.status(runId)!.stepResults);
+    const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
+    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, inputs, status: done.status };
   }
+
+  it("runs sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
+    const { stepIds, resultOf, inputs } = await review({ dispatch: fakeDispatch(), policy: AUTO });
+    const intent = { kind: "intent", head: H1, reviewer: "rv-demo-1", at: 10_000, mode: "spawn" };
+
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
+    expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
+  });
+
+  it("returns none after the intent step alone when the roster read is refused", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.roster = async () => Promise.reject(new Error("the roster is not readable"));
+
+    const { verdicts, stepIds, resultOf } = await review({ dispatch });
+
+    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`]);
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the roster is not readable" });
+  });
+
+  /** Kills the host inside one step, before the step's body runs or after it ran and before its output is stored. */
+  function dyingAt(routes: readonly StepRoute[], match: string, when: "before" | "after", died: () => void): StepRoute[] {
+    const die = async (ran: Promise<unknown>) => (await ran, died(), new Promise<never>(() => undefined));
+    const dying = (route: StepRoute): StepRoute => ({ ...route, runner: { run: (step) => die(when === "after" ? route.runner.run(step) : Promise.resolve()) } });
+    return routes.map((route) => (route.match === match ? dying(route) : route));
+  }
+
+  interface Replay {
+    dieIn: string;
+    when: "before" | "after";
+    agents?: ReviewerAgent[];
+    reviewer?: string;
+  }
+
+  /** One host dies in a step and a second replays the run a minute later; the reviewer speaks a millisecond after it is started. */
+  async function replay({ dieIn, when, agents = [], reviewer }: Replay) {
+    let clock = 10_000;
+    let spokeAt: number | undefined;
+    const started = (name: string) => void ((spokeAt = clock + 1), dispatch.agents.some((held) => held.name === name) || dispatch.agents.push(agent(name, { presence: "live" })));
+    const dispatch = fakeDispatch(agents, { onSpawn: started, onResume: started });
+    const store = boundStore();
+    const deps = { store, now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 } as unknown as ShepherdDeps;
+    const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
+    const routes = reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000 });
+    const verdicts: Verdict[] = [];
+    const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1 })) });
+    const dir = mkdtempSync(join(tmpdir(), "factory-review-"));
+    dirs.push(dir);
+    let died!: () => void;
+    const dead = new Promise<void>((resolve) => (died = resolve));
+    // crashAt hangs a step before it runs; `dyingAt` also covers the crash after the step's effect, so crashAt's own hang is unused.
+    const crash = crashAt({ dbPath: join(dir, "factory.sqlite3"), workflows: [workflow], routes: dyingAt(routes, dieIn, when, died), hangAt: "" });
+    const runId = crash.crashed.runtime.start("review-test");
+    store.get().register({ ...registration, pr: 1, runId, ...(reviewer && { policy: { ...OWNER_GATE_POLICY, reviewer } }) });
+    await dead;
+    clock += 60_000;
+    const report = await crash.takeOver(routes).resume();
+    crash.dispose();
+    const dispatched = (Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data as { result: ReviewDispatchResult }).result;
+    return { verdicts, dispatch, dispatched };
+  }
+
+  it.each<[string, Replay, number]>([
+    ["before the intent is stored", { dieIn: "sh-review-intent", when: "before" }, 70_000],
+    ["after the intent is stored and before the spawn", { dieIn: "sh-review", when: "before" }, 10_000],
+    ["after the spawn and before its step output is stored", { dieIn: "sh-review", when: "after" }, 10_000],
+    ["after both outputs are stored", { dieIn: "sh-await-verdict", when: "before" }, 10_000],
+  ])("spawns one reviewer under one name and takes its verdict when the host dies %s", async (_name, window, at) => {
+    const { verdicts, dispatch, dispatched } = await replay(window);
+
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-1"]);
+    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-demo-1"]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-1", agentId: "agent-rv-demo-1", at });
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+  });
+
+  it("resumes the standing reviewer once and takes its verdict when the host dies after the resume and before its step output is stored", async () => {
+    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "after", agents: crew(standing()), reviewer: "rv-standing" });
+
+    expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
+    expect(dispatch.spawns).toEqual([]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: 10_000 });
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+  });
+
+  it("resumes nobody on the replay when the host dies before the resume, so the verdict wait ends in none and the owner gate decides", async () => {
+    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "before", agents: crew(standing()), reviewer: "rv-standing" });
+
+    expect(dispatch.resumes).toEqual([]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
+    expect(verdicts).toEqual([{ kind: "none" }]);
+  });
 
   it("takes the dispatched reviewer's MERGE through the evidence step, where the run's auto policy allows the merge", async () => {
     const dispatch = fakeDispatch();

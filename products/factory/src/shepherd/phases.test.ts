@@ -1,6 +1,7 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
+import { routedRunner } from "../routed-runner.js";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
 import { REVIEW_STEPS, reviewRoutes } from "./review.js";
@@ -33,9 +34,17 @@ describe("shepherd phase step families", () => {
     expect(wakeRoutes(deps)).toEqual([]);
   });
 
-  it("pins sh-review, sh-await-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
-    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-review", "sh-await-verdict", "sh-merge-evidence"]);
-    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-review", "sh-await-verdict", "sh-merge-evidence"]);
+  it("pins sh-review-intent, sh-review, sh-await-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
+    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-review-intent", "sh-review", "sh-await-verdict", "sh-merge-evidence"]);
+    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-review-intent", "sh-review", "sh-await-verdict", "sh-merge-evidence"]);
+    expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");
+  });
+
+  it("routes a call of sh-review-intent to its own route, never to sh-review, which would start a reviewer", () => {
+    const runner = routedRunner(reviewRoutes(deps));
+
+    expect(runner.routeFor(`sh-review-intent:${target.headSha}`)?.match).toBe("sh-review-intent");
+    expect(runner.routeFor(`sh-review:${target.headSha}`)?.match).toBe("sh-review");
   });
 
   it("wakePhase reports the request unhandled with a reason", async () => {
