@@ -38,7 +38,11 @@ export class MemoryGateStore extends BaseGateStore {
   }
 }
 
-/** `resolvedBy` is nested, so a shallow spread would let a caller rewrite the stored resolver. */
+/** `resolvedBy` and `rule` are nested, so a shallow spread would let a caller rewrite what the store holds. */
 function copy(record: GateRecord): GateRecord {
-  return { ...record, resolvedBy: record.resolvedBy && { ...record.resolvedBy } };
+  return {
+    ...record,
+    resolvedBy: record.resolvedBy && { ...record.resolvedBy },
+    rule: record.rule && { ...record.rule, resolvers: [...record.rule.resolvers] },
+  };
 }
