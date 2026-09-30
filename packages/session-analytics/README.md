@@ -120,10 +120,30 @@ log. Pass its lines as `brokerLogLines`; the `from` agent id maps to sessions th
 
 `reviewers` compares `reviewerPrs` reviews (default 10). A fresh reviewer per PR pays its boot
 and its own reads each time. A standing reviewer, priced from the `standingRole` cohort, boots
-once and then reads a context that every earlier PR grew. The requests per PR come from the
-reviewer model with the most sessions.
+once and then reads a context that every earlier PR grew. A row's requests per PR come from the
+reviewer sessions on its own model; a standing model with no reviewers of its own takes the
+pooled mean over every reviewer session (`requestsFrom: "pooled"`).
 
 The report reads a window, so a session that started before it has its boot cut short.
+
+## Cache TTL what-if
+
+`cacheTtlReport(db, { since, until, days })` asks what `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` would
+have saved against the 1h TTL. `cacheTtlWhatIf(rows, prices?)` is the pure core over
+`TtlRequestRow`s, which `readTtlRows(db, window)` reads with the cost report's roles and each
+session's spawn profile. `cacheTtlWhatIfSchema` is its zod schema and `renderCacheTtlText` its
+text form.
+
+- **Reprice.** Every 1h write is priced at the 5m write rate instead, from `findPrice`.
+- **Rebuild.** A request whose gap falls in `REBUILD_GAP_BANDS` (the `gapBand`s from 5 minutes
+  up) finds a 5m cache gone. Its cache read is charged again at the 5m write rate, less the read
+  it no longer pays. Past an hour the 1h cache had expired too, so the read is already near zero
+  and only the reprice applies.
+- **Net.** Per role and per profile: reprice saving less rebuild cost, and the same per session.
+  `lossRoles` lists the roles whose net is negative, typically seats that wait on CI.
+
+The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
+session's previous request on the same thread, which may fall before the window.
 
 ## Things that will bite you
 

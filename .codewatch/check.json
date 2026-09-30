@@ -17,7 +17,8 @@
           "packages/evidence",
           "packages/authority",
           "packages/egress-scan",
-          "packages/fix-proof"
+          "packages/fix-proof",
+          "packages/tool-guard"
         ],
         "1": [
           "packages/retrieval",
@@ -68,7 +69,8 @@
           "packages/evidence",
           "packages/authority",
           "packages/egress-scan",
-          "packages/fix-proof"
+          "packages/fix-proof",
+          "packages/tool-guard"
         ],
         [
           "packages/retrieval",

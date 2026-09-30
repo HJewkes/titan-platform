@@ -162,7 +162,7 @@ function footer(report: CostReport): string {
   return `Price table ${version}${stale}. Coverage: ${transcriptsIndexed} transcripts indexed${discovered}, facet backlog ${facetBacklog}.`;
 }
 
-function table(title: string, head: readonly string[], rows: readonly (readonly Cell[])[]): string {
+export function table(title: string, head: readonly string[], rows: readonly (readonly Cell[])[]): string {
   if (rows.length === 0) return `${title}: none`;
   const text = [head, ...rows].map((row) => row.map(String));
   const widths = head.map((_, i) => Math.max(...text.map((row) => row[i]!.length)));
@@ -176,7 +176,7 @@ function isNumeric(cell: Cell): boolean {
   return typeof cell === "number" || /^\$|%$/.test(cell);
 }
 
-function usd(value: number): string {
+export function usd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 

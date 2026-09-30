@@ -79,6 +79,14 @@ every one of its requests falls in `noActionClasses`, by default `read-investiga
 episode has a sender kind (`seat`, `agent`, `broadcast`, `broker` or `none`), and `pairs` is the
 sender-by-receiver matrix. The text renderer lists the ten costliest causes per episode.
 
+`cacheTtlReport(db, { since, until, days })` answers what a 5-minute cache TTL would save
+against the 1h TTL that Claude Code writes today. The pure core, `cacheTtlWhatIf(rows)`, reprices
+each 1h cache write at the 5m rate. After every request gap of 5 minutes or more (the
+`REBUILD_GAP_BANDS` of `gapBand`), it charges a rebuild: the tokens the 1h cache still served
+as a read, written again at the 5m rate. It reports the net saving per role and per spawn
+profile, and `lossRoles` names the roles whose rebuilds make 5m a loss. `renderCacheTtlText`
+prints both tables.
+
 ## What it deliberately does not do
 
 It does not read a transcript or the network, it never writes the graph, and it does not
