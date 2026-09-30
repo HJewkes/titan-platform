@@ -29,8 +29,17 @@ priceRequest(
 - `classifySession(facts)` — `agent_spawned`, `human_interactive`, `headless_sdk` or
   `other_headless`, plus `coordinator` or `adhoc` for human sessions.
 - `CONTEXT_BANDS`, `GAP_BANDS`, `bandOf`, `contextBand`, `gapBand`.
-- `costReport(db, { since, until, days, top, transcriptsDiscovered, facetVersion })` — the
-  standing cost report as one JSON object, and `costReportSchema`, its zod schema.
+- `costReport(db, { since, until, days, top, transcriptsDiscovered, facetVersion, actionRules,
+  mechanicalClasses })` — the standing cost report as one JSON object, and `costReportSchema`,
+  its zod schema. `byAction` gives each role's cost by action class, and `mechanicalShare` the
+  cost of the `mechanicalClasses` (default `DEFAULT_MECHANICAL_CLASSES`) over the window total,
+  with each role's share over that role's cost.
+- `ACTION_CLASSES`, `DEFAULT_ACTION_RULES`, `DEFAULT_MECHANICAL_CLASSES`,
+  `classifyRequest(calls, rules?)` — one action class per request from its tool calls: the
+  first rule in list order that any call matches, `text-only` with no calls, `other` with no
+  match. Rules match a tool name, a Bash command head, or a read or written path.
+- `readRequestToolCalls(db, window)` — each request's tool calls as `ActionCall`s, with the
+  `command_heads`, `file_read` and `file_write` signals session-read extracted for them.
 - `renderCostReportText(report)` — the same report as plain-text tables, ending with
   `LIST_PRICE_CAVEAT` and the price-table and coverage footer.
 - `roleFromProfile`, `workerRole(facts)`, `sessionRole(classification, facts)` — worker-v1
@@ -60,5 +69,13 @@ report lists such models under `unpricedModels`.
 
 The cost report prices through the graph's `price` table, not through `PRICE_TABLE`. A graph
 whose price rows were never synced reports every request as unpriced.
+
+The default action rules are generic. Rules that name a seat's own journal files or scorer
+scripts belong in the caller's config, passed as `actionRules`, never in this package. The
+defaults read session-read's `command_heads` signal, which drops path operands, so
+`gh api repos/o/r/pulls/5/merge` reaches the classifier as `gh api` and is not a merge.
+
+A tool call belongs to the latest request at or before it in its transcript, the request that
+issued it. The `context_contribution` view maps the other way, to the request a block feeds.
 
 Full reference: `site/reference/session-analytics.md`.
