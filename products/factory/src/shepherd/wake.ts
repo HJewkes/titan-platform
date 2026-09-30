@@ -8,6 +8,7 @@ import type { StepRoute } from "../routed-runner.js";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
+import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
@@ -61,8 +62,10 @@ export interface WakeWiring {
   readWarmth?: (transcriptPath: string) => Promise<Warmth | undefined>;
   limits?: WarmthLimits;
   livePollMs?: number;
-  /** The repo's main checkout, which a successor's worktree is cut from; undefined when none is bound. Defaults to the repo's seat path. */
+  /** The repo's main checkout as configured, which a successor's worktree is cut from; undefined when none is bound. Defaults to the repo's seat path. */
   checkoutFor?: (repo: string) => string | undefined;
+  /** The home a `~/`, `$HOME/` or `${HOME}/` checkout path expands against; defaults to the OS home. */
+  home?: string;
 }
 
 /** The checkout a seat binds to `repo`, re-read per wake as the reviewer's spawn re-reads it. */
@@ -244,10 +247,10 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
-  const cwd = (wiring.checkoutFor ?? seatCheckout())(task.input.repo);
-  if (cwd === undefined) return `no seat binds a checkout of ${task.input.repo}, so a successor has no checkout to start in`;
+  const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
+  if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd };
+  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. */

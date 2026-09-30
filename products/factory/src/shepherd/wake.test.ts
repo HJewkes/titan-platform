@@ -1,10 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
@@ -19,7 +19,10 @@ const H2 = fakeSha("head-2");
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
 const MINUTE = 60_000;
 const FIXER: EffectivePolicy = { ...OWNER_GATE_POLICY, fixer: true, seat: "demo-seat" };
-const MAIN_CHECKOUT = "/repos/demo";
+const SCRATCH = mkdtempSync(join(tmpdir(), "tp549-wake-"));
+const MAIN_CHECKOUT = join(SCRATCH, "repos", "demo");
+mkdirSync(MAIN_CHECKOUT, { recursive: true });
+afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 const registration: RegistrationInput = { repo: REPO, pr: 1, runId: "run-1", task: "demo task", implementer: "impl-a", policy: FIXER };
 
 function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
@@ -27,7 +30,7 @@ function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return { ...base, cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
 }
 
-type Asked = { verb: "resume" | "spawn"; name: string; message: string; cwd?: string };
+type Asked = { verb: "resume" | "spawn"; name: string; message: string; cwd?: string; args: number };
 
 /** An in-memory roster; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
@@ -42,8 +45,8 @@ function fakeAgents(rows: AgentRow[]) {
     asked,
     fail,
     roster: async () => (next("roster"), rows.map((agent) => ({ ...agent }))),
-    resume: async (name, message) => (next("resume"), void asked.push({ verb: "resume", name, message })),
-    spawn: async (name, message, cwd) => (next("spawn"), void asked.push({ verb: "spawn", name, message, cwd })),
+    resume: async (...args: unknown[]) => (next("resume"), void asked.push({ verb: "resume", name: String(args[0]), message: String(args[1]), args: args.length })),
+    spawn: async (name, message, cwd) => (next("spawn"), void asked.push({ verb: "spawn", name, message, cwd, args: 3 })),
   };
   return agents;
 }
@@ -64,6 +67,7 @@ interface Scene {
   agentChatBin?: string;
   noAgents?: boolean;
   checkoutFor?: (repo: string) => string | undefined;
+  home?: string;
   pr?: Partial<PullRequest>;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
 }
@@ -79,7 +83,7 @@ function wakeStep(scene: Scene = {}) {
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat" };
-  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(!scene.noAgents && { agents }) };
+  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1" };
@@ -137,12 +141,49 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked[0]).toMatchObject({ verb: "spawn", cwd: MAIN_CHECKOUT });
   });
 
+  it("sends a resume that carries no cwd, so agent-chat re-creates the parked tree at its own recorded path", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { cwd: join(SCRATCH, "parked-impl-a") })], warmth: { "/transcripts/impl-a.jsonl": warmAt(10) } });
+
+    await run("review", fixFirst("fix it"));
+
+    expect(agents.asked).toHaveLength(1);
+    expect(agents.asked[0]).toMatchObject({ verb: "resume", name: "impl-a", args: 2 });
+    expect(agents.asked[0]).not.toHaveProperty("cwd");
+  });
+
   it("returns unhandled when no checkout of the repo is bound, since a successor has nowhere to start", async () => {
     const scene = wakeStep({ checkoutFor: () => undefined });
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "no seat binds a checkout of octo/demo, so a successor has no checkout to start in" });
+    expect(result).toEqual({ kind: "unhandled", reason: "no checkout path is configured for octo/demo, so a successor has no checkout to start in" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it.each(["~/", "$HOME/", "${HOME}/"])("expands a %s seat path against the home directory for the successor's cwd", async (prefix) => {
+    const { agents, run } = wakeStep({ checkoutFor: () => `${prefix}repos/demo`, home: SCRATCH });
+
+    await run("review", fixFirst("fix it"));
+
+    expect(agents.asked[0]).toMatchObject({ verb: "spawn", cwd: MAIN_CHECKOUT });
+  });
+
+  it("returns unhandled when the bound checkout is not a directory", async () => {
+    const missing = join(SCRATCH, "repos", "gone");
+    const scene = wakeStep({ checkoutFor: () => missing });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: `the checkout path for octo/demo is not a directory: ${missing}, so a successor has no checkout to start in` });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("returns unhandled when the bound checkout is not an absolute path", async () => {
+    const scene = wakeStep({ checkoutFor: () => "repos/demo" });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "the checkout path for octo/demo is not absolute: repos/demo, so a successor has no checkout to start in" });
     expect(scene.agents.asked).toEqual([]);
   });
 
