@@ -242,11 +242,11 @@ describe("configuredRoutes with shepherd.review", () => {
   });
 
   it("spawns the reviewer with the configured Claude config directory", async () => {
-    const scene = reviewScene({ review: { profile: PROFILE, configDir: "/srv/rv-claude" } });
+    const scene = reviewScene({ review: { profile: "rv-other", configDir: "/srv/rv-claude" } });
 
     await reviewWith(scene);
 
-    expect(scene.calls()).toContain(`agent spawn rv-demo-1 ${PROFILE} --config-dir /srv/rv-claude --brief-stdin`);
+    expect(scene.calls()).toContain("agent spawn rv-demo-1 rv-other --config-dir /srv/rv-claude --brief-stdin");
   });
 
   it("gives up on a reviewer that starts no session once shepherd.review.sessionStartTimeoutMs has passed", async () => {

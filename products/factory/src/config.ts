@@ -22,8 +22,8 @@ const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no
 
 /** The reviewer Shepherd dispatches; strict, so a misspelt timeout fails the load instead of leaving the default in force. */
 export const ReviewConfigSchema = z.strictObject({
-  profile: argvWord,
-  configDir: argvWord.optional(),
+  profile: argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or .."),
+  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
 });

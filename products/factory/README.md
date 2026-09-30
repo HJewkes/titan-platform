@@ -160,7 +160,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
   "shepherd": {
     "seatsDir": "/srv/autonomy/seats",
     "agentChatBin": "/usr/local/bin/agent-chat",
-    "review": { "profile": "rv-readonly", "configDir": "/srv/rv-claude", "verdictTimeoutMs": 1800000, "sessionStartTimeoutMs": 300000 }
+    "review": { "profile": "rv-readonly", "configDir": "<agent-home>/.claude-profiles/rv", "verdictTimeoutMs": 1800000, "sessionStartTimeoutMs": 300000 }
   }
 }
 ```
@@ -169,13 +169,15 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | --- | --- |
 | `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` is set |
 | `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
-| `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default |
+| `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
 
 - `agentChatBin` is not an absolute path, or `review` is set without `agentChatBin`.
+- `configDir` is not an absolute path (`~` and relative paths are refused), or `profile` holds a
+  slash or `..`.
 - `profile` or `configDir` is empty, starts with a dash, or holds whitespace or a NUL byte.
   Each reaches the `agent-chat` argv as one literal argument, so a value that reads as a flag
   is refused.
@@ -184,8 +186,9 @@ The load fails, with `invalid config <path>: <reason>`, on any of these:
 With `review` set, `configuredRoutes` (`src/workflows.ts`) builds one
 `agentChatReviewerDispatch` and hands its roster to `transcriptReviewerReader`, so the verdict
 is read from the transcript of the agent that was started. The reviewer starts in the checkout
-that the seat book binds to the PR's repo: `repos[].path` of the seat that lists the remote. A
-repo with no such path, or one on a deny list, gets no reviewer, and `sh-review` records
+that the seat book binds to the PR's repo: `repos[].path` of the seat that lists the remote. When two
+seat files bind the same repo, the later seat file's path wins. A repo with no such path, or
+one on a deny list, gets no reviewer, and `sh-review` records
 `none` with the reason.
 
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`

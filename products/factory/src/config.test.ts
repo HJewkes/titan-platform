@@ -119,6 +119,9 @@ describe("loadConfig", () => {
     ["a tab", "rv\treadonly"],
     ["a newline", "rv\nreadonly"],
     ["a NUL", "rv\0readonly"],
+    ["a slash", "../x"],
+    ["a parent segment", "rv..x"],
+    ["a path", "a/b"],
   ])("rejects a reviewer profile with %s, because it reaches the agent-chat argv as one argument", (_label, profile) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile } } })))).toThrow(/shepherd\.review\.profile: must/);
   });
@@ -129,6 +132,8 @@ describe("loadConfig", () => {
     ["a space", "/srv/rv claude"],
     ["a newline", "/srv/rv\nclaude"],
     ["a NUL", "/srv/rv\0claude"],
+    ["a relative path", "rv-claude"],
+    ["a tilde", "~/rv-claude"],
   ])("rejects a reviewer config directory with %s", (_label, configDir) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv-readonly", configDir } } })))).toThrow(/shepherd\.review\.configDir: must/);
   });
