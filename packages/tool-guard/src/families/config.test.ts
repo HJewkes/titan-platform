@@ -6,7 +6,7 @@ const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 
 function fakeContext(links: Record<string, string> = {}): ClassifyContext {
-  return { home: HOME, readLink: (p) => links[p] ?? null, readScript: () => null };
+  return { home: HOME, readLink: (p) => links[p] ?? null, readHead: () => null, readScript: () => null };
 }
 
 const meta = (toolName: string) => ({ toolName, cwd: REPO, sessionId: null, toolUseId: null });

@@ -7,6 +7,8 @@ export interface ClassifyContext {
   home: string;
   /** Realpath of an existing path, null when it does not exist. */
   readLink(path: string): string | null;
+  /** Current branch of the checkout at `dir`, null when detached or not a checkout. */
+  readHead(dir: string): string | null;
   /** Text of a script run by path, null when it cannot be read. */
   readScript(path: string): string | null;
 }

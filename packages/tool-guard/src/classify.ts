@@ -1,5 +1,8 @@
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
+import { egress } from "./families/egress.js";
+import { merge } from "./families/merge.js";
+import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { scriptTarget } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -10,7 +13,7 @@ import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
-const FAMILIES: readonly Family[] = [secret, config];
+const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
 
 /**
  * What an event would do. Pure: the filesystem is reached only through `ctx`. Throws the
