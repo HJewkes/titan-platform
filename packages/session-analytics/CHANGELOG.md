@@ -1,5 +1,13 @@
 # @titan-design/session-analytics
 
+## 0.4.1
+
+### Patch Changes
+
+- e91b20f: Price `claude-opus-5-5` and `claude-sonnet-5-5` from their own rows, and match a model prefix only at a model-id boundary so `claude-opus-5` no longer prices `claude-opus-5-5` and an unlisted `claude-opus-5-9` is unpriced. `PRICE_TABLE_VERSION` is 2.
+- Updated dependencies [661244b]
+  - @titan-design/session-graph@0.11.0
+
 ## 0.4.0
 
 ### Minor Changes
