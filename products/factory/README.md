@@ -19,6 +19,8 @@ slices and register in `src/workflows.ts`.
 ```sh
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
+titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist, load it, wait for /health
+titan-factory service status|restart|uninstall                # macOS only, like install
 titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
@@ -57,25 +59,53 @@ stays the local `titan-factory gate resolve`.
 
 ## Install as a LaunchAgent
 
-`service plist` prints a plist for `dev.hjewkes.titan-factory`: the absolute node path, the
-built `dist/bin.js` and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
+```sh
+pnpm factory:install                  # pnpm install, build factory and its workspace deps, link the bin
+titan-factory service install --mcp   # write the plist, load it, wait for /health, register the MCP endpoint
+```
+
+`pnpm factory:install` links `~/.local/bin/titan-factory` to `products/factory/dist/bin.js` in
+this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild needs no
+relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
+checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
+script says so when the directory is not on `PATH`.
+
+`service install [--port <n>] [--node <path>] [--mcp]` does these in order:
+
+1. Boots out `dev.hjewkes.titan-factory` when launchd already holds it, and waits until the
+   label is gone.
+2. Creates the log directory and writes `~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist`.
+3. Runs `launchctl bootstrap gui/<uid> <plist>`.
+4. Polls `/health` for 20 s. The answer must come from the pid launchd reports for the job, so
+   a `titan-factory serve` left running in a shell fails the install instead of passing for it.
+   On a timeout the verb prints the last 20 lines of `serve.err.log` and exits 1.
+5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory http://127.0.0.1:<port>/mcp`.
+   A server that is already registered counts as success. With no `claude` on `PATH`, or when
+   the command fails, the verb prints the command to run by hand and still exits 0.
+
+The plist points at the `dist/bin.js` of the checkout the verb ran from, so install from the
+checkout that should serve, not from a worktree that will be removed.
+
+| Verb | What it does | Exit 0 when |
+| --- | --- | --- |
+| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers |
+| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers |
+| `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
+| `service plist [--port <n>] [--node <path>]` | Prints the plist and touches nothing | always |
+
+Every verb except `plist` needs launchd and fails with one line on another platform. A server
+installed with `--port` needs the same `--port` on `status` and `restart`.
+
+The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
+and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
-`Background` job is throttled by macOS. The verb only prints. It never touches
-`~/Library/LaunchAgents` or runs `launchctl`, so the owner installs it.
+`Background` job is throttled by macOS.
 
 The node path is the running node, except that a Homebrew Cellar path (`.../Cellar/node/22.1.0/bin/node`)
 becomes the prefix symlink (`<prefix>/bin/node`, or `<prefix>/opt/node@20/bin/node` for a versioned
 formula) when that symlink resolves to the same binary, so `brew upgrade` does not break the job.
 Pass `--node <absolute path>` to choose another node. After changing node (an upgrade to a different
-major, a version manager switch), re-run `service plist`, rewrite the file and bootstrap it again.
-
-```sh
-pnpm build
-node products/factory/dist/bin.js service plist > ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist
-curl -s http://127.0.0.1:7410/health
-claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
-```
+major, a version manager switch), re-run `service install`.
 
 `/health` reports `github`: `ok` when `gh api rate_limit` succeeds under the job's
 environment, else the redacted gh error (a LaunchAgent may not reach gh's keychain token).
@@ -92,9 +122,10 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/evidence.ts` | **The F3 seam** (see below) |
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
 | `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist renderer, and the cached `gh api rate_limit` probe behind health's `github` field |
+| `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `claude`, `/health`, the filesystem). Tests pass fake ports, so none reaches launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd` and `service plist` |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd` and `service` |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
