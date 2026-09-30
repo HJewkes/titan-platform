@@ -746,9 +746,9 @@ Tier product, private, `products/factory`. Code-driven software-factory workflow
 Key exports:
 
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
-- `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `guardedContext`, `stepIdMatches`
-- `evidence`: `evidenceRecord`, `traceRef`
-- +77 more in `products/factory/src/index.ts`
+- `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
+- `evidence`: `evidenceRecord`
+- +78 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

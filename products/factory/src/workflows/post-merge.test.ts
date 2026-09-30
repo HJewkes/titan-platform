@@ -5,7 +5,7 @@ import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-desi
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PostMergeConfig } from "../config.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, answerPendingGate, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";

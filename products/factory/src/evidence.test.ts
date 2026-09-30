@@ -1,9 +1,8 @@
-import { workflowStepRequestKey } from "@titan-design/workflow";
+import { type StepRoute, workflowStepRequestKey } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { EVIDENCE_VERSION, evidenceRecord, traceRef } from "./evidence.js";
 import { openFactoryHost } from "./host.js";
-import type { StepRoute } from "./routed-runner.js";
 
 describe("evidence records", () => {
   it("carry the version, kind, the run as trace id and the step attempt as span id", () => {

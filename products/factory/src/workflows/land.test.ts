@@ -7,7 +7,7 @@ import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
 import { MAX_UPDATE_CYCLES, landRoutes, readCi } from "./land.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 
 const FOREIGN = fakeSha("foreign1");
 const hosts: FactoryHost[] = [];

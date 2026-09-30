@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { assertDistinctStepIds, defineWorkflow, type WorkflowDefinition } from "./definition.js";
+import { assertDistinctStepIds, defineWorkflow, dispatchStepIds, type WorkflowDefinition } from "./definition.js";
 import { openFactoryHost } from "./host.js";
-import { routedRunner, type StepRoute } from "./routed-runner.js";
+import { routedRunner, type StepRoute } from "@titan-design/workflow";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
 const route: StepRoute = { match: "draft", onRestart: "repeat", runner: { run: async () => ({ ok: true, output: "{}" }) } };
@@ -25,7 +25,7 @@ describe("step ids (TP-255 guard)", () => {
     const runner = routedRunner(factoryRoutes());
     for (const workflow of factoryWorkflows) {
       expect(() => assertDistinctStepIds(workflow)).not.toThrow();
-      expect(() => runner.assertRoutes(workflow)).not.toThrow();
+      expect(() => runner.assertRoutes(workflow.name, dispatchStepIds(workflow))).not.toThrow();
     }
   });
 

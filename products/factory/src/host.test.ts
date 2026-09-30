@@ -6,7 +6,7 @@ import { z } from "zod";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
-import type { StepRoute } from "./routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -113,5 +113,13 @@ describe("FactoryHost.adopt", () => {
     await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
     expect(shipped.filter((id) => id === runId)).toHaveLength(1);
     host.close();
+  });
+});
+
+describe("route coverage", () => {
+  it("refuses to register a workflow whose dispatch step has no route, before any run starts", () => {
+    const create = () => openFactoryHost({ dbPath: ":memory:", workflows: [approval], routes: [] });
+
+    expect(create).toThrow(/no route for ship/);
   });
 });

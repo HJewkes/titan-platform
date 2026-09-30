@@ -30,8 +30,8 @@ export function declarationFor(steps: readonly StepDeclaration[], stepId: string
 }
 
 /**
- * One step id, one operation kind. `seed(x)` and `assisted(x)` share a memo key (TP-255), so a
- * reused id would silently answer a gate with a seed's result.
+ * One step id, one operation kind. Declarations match by id segment, so a reused id would make
+ * the guard and the router disagree about which operation a call belongs to.
  */
 export function assertDistinctStepIds(definition: WorkflowDefinition): void {
   const seen = new Map<string, StepKind>();
@@ -40,6 +40,11 @@ export function assertDistinctStepIds(definition: WorkflowDefinition): void {
     if (earlier) throw new Error(`workflow ${definition.name}: step id "${step.id}" is declared as both ${earlier} and ${step.kind}`);
     seen.set(step.id, step.kind);
   }
+}
+
+/** Step ids of the dispatch steps, the ones a route must cover. */
+export function dispatchStepIds(definition: WorkflowDefinition): string[] {
+  return definition.steps.filter((step) => step.kind === "dispatch").map((step) => step.id);
 }
 
 /** Wraps the runtime context so a call whose id or kind differs from the declaration fails the run. */

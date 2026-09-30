@@ -1,7 +1,6 @@
-import type { WorkflowContext } from "@titan-design/workflow";
+import { routedRunner, type WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
-import { routedRunner } from "../routed-runner.js";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
 import { REVIEW_STEPS, reviewRoutes } from "./review.js";

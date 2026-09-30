@@ -1,5 +1,5 @@
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 
 export const WAKE_STEPS: readonly StepDeclaration[] = [];

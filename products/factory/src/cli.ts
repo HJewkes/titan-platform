@@ -7,7 +7,7 @@ import { resolveDbPath } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import type { StepRoute } from "./routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
