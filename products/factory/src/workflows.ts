@@ -95,7 +95,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const review = configuredReview(shepherd, seats);
   const cleanup = configuredCleanup(shepherd, env);
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, cleanup, ...overrides, seats });
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

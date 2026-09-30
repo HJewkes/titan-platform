@@ -11,6 +11,7 @@ import { DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_ST
 import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
+import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
@@ -285,6 +286,29 @@ describe("configuredRoutes with shepherd.review", () => {
 
     expect(result(MERGE_EVIDENCE)).toMatchObject({ merge: { repoFrozen: true } });
     expect(asked).toEqual([REPO]);
+  });
+});
+
+describe("configuredRoutes with shepherd.agentChatBin", () => {
+  /** The wake step's record for an unregistered run: a configured binary gets as far as the registration read. */
+  async function wakeResult(env: NodeJS.ProcessEnv): Promise<unknown> {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const routes = configuredRoutes(env, { port: githubPort(fake.wire) });
+    const request = { kind: "ci-red" as const, repo: REPO, pr: 1, round: 0, headSha: H1, payload: {} };
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-wiring", steps: WAKE_STEPS, run: async (ctx) => void (await wakePhase(ctx, request)) })], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("wake-wiring");
+    await host.runtime.wait(runId);
+    return (Object.values(host.runtime.status(runId)!.stepResults)[0]?.data as { result?: unknown } | undefined)?.result;
+  }
+
+  it("hands the configured agent-chat binary to the wake step", async () => {
+    expect(await wakeResult(reviewScene().env)).toMatchObject({ kind: "unhandled", reason: expect.stringMatching(/has no shepherd registration$/) });
+  });
+
+  it("leaves every wake unhandled when no binary is configured", async () => {
+    expect(await wakeResult(configHome(undefined))).toEqual({ kind: "unhandled", reason: "shepherd.agentChatBin is not configured" });
   });
 });
 

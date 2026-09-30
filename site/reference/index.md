@@ -23,6 +23,7 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |
+| `tool-guard` | POSIX shell tokenizer and command extraction for tool-call guards | none |
 
 ## Tier 1 — engines
 
