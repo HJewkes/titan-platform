@@ -12,6 +12,7 @@ export interface ReportWindow {
 /** One deduplicated, priced request as the `request_cost` view returns it. */
 export interface CostRow {
   sessionId: string;
+  requestId: string;
   model: string;
   inputTokens: number;
   cacheReadTokens: number;
@@ -60,7 +61,7 @@ const IN_SESSIONS = "session_id IN (SELECT value FROM json_each(@ids))";
 
 // The 5m write column mirrors the view: a split-less write is billed at the 5m rate.
 const COST_ROWS = `
-  SELECT session_id AS sessionId, model,
+  SELECT session_id AS sessionId, request_id AS requestId, model,
     input_tokens AS inputTokens, cache_read_tokens AS cacheReadTokens,
     CASE WHEN cache_creation_5m + cache_creation_1h = 0 THEN cache_creation_tokens ELSE cache_creation_5m END AS cacheWrite5mTokens,
     cache_creation_1h AS cacheWrite1hTokens, output_tokens AS outputTokens,

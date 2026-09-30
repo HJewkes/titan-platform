@@ -67,7 +67,8 @@ process.stdout.write(renderCostReportText(report));
 counts back from `until`, or from now. The report groups cost by token class, account, model,
 session class, role, episode count, initiative, context band and wake cause. It also crosses wake cause
 with gap band and lists cold rebuilds, compactions, top sessions, unpriced models and
-coverage.
+coverage. `byAction` splits each role's cost by the action class of its requests, and
+`mechanicalShare` reports the cost of the `mechanicalClasses` over the window total.
 
 ## What it deliberately does not do
 
@@ -135,6 +136,12 @@ assignment resumed, so a worker idle for 13 hours with one brief stays what it w
 
 **The report reads stored episodes.** `byEpisodeCount` and the standing-peer overlay read the
 `episode` table, so run `writeEpisodes` first; a session never segmented lands under `none`.
+
+**A tool call belongs to the request that issued it.** `readRequestToolCalls` gives each call
+to the latest request at or before it in its transcript, then keeps only requests in
+`request_dedup`, so a fan-out copy's calls drop out with it. The `context_contribution` view
+maps a block the other way, to the request it feeds. Seat-specific action rules (a seat's
+journal files or scorer scripts) are passed as `actionRules`; the package keeps generic ones.
 
 **`bandOf` returns `null`, not a fallback label**, for a value no band covers. A negative
 gap means clock skew upstream and should be reported rather than bucketed.

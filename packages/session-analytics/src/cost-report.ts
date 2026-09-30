@@ -14,12 +14,23 @@ import {
 } from "./cost-report-queries.js";
 import { assignmentCount, heuristicFor } from "./episodes.js";
 import { sessionInitiative } from "./initiative.js";
+import { readRequestToolCalls } from "./request-owner.js";
 import { sessionRole } from "./roles.js";
+import {
+  ACTION_CLASSES,
+  DEFAULT_ACTION_RULES,
+  DEFAULT_MECHANICAL_CLASSES,
+  classifyRequest,
+  type ActionClass,
+  type ActionRule,
+} from "./turn-action.js";
 
 const count = z.number().int().nonnegative();
 const bucketSchema = z.object({ key: z.string(), requests: count, sessions: count, costUsd: z.number() });
 const wakePartSchema = bucketSchema.extend({ midLoopRequests: count, midLoopCostUsd: z.number() });
 const cellSchema = z.object({ wakeCause: z.string(), gapBand: z.string(), requests: count, costUsd: z.number() });
+const fraction = z.number().min(0).max(1);
+const roleShareSchema = z.object({ role: z.string(), costUsd: z.number(), share: fraction });
 
 export const TOKEN_CLASSES = ["input", "cache_read", "cache_write_5m", "cache_write_1h", "output"] as const;
 export type TokenClass = (typeof TOKEN_CLASSES)[number];
@@ -33,6 +44,10 @@ export const costReportSchema = z.object({
   byModel: z.array(bucketSchema),
   byClass: z.array(bucketSchema),
   byRole: z.array(bucketSchema),
+  /** Per role, cost by the action class of each request, from the tool calls it issued. */
+  byAction: z.array(z.object({ role: z.string(), buckets: z.array(bucketSchema) })),
+  /** Cost of the mechanical action classes over the window total; each role's share is over that role's cost. */
+  mechanicalShare: z.object({ classes: z.array(z.enum(ACTION_CLASSES)), costUsd: z.number(), share: fraction, byRole: z.array(roleShareSchema) }),
   /** Sessions by how many episodes their class's heuristic cut them into; `none` when not yet segmented. */
   byEpisodeCount: z.array(bucketSchema),
   byInitiative: z.array(bucketSchema),
@@ -60,6 +75,8 @@ export type CostReport = z.infer<typeof costReportSchema>;
 export type CostBucket = z.infer<typeof bucketSchema>;
 export type WakeCauseBucket = CostReport["byWakeCause"][number];
 export type WakeGapCell = z.infer<typeof cellSchema>;
+export type RoleActions = CostReport["byAction"][number];
+export type MechanicalShare = CostReport["mechanicalShare"];
 
 export interface CostReportOptions {
   /** ISO timestamp or date, inclusive. Overrides `days`. */
@@ -75,6 +92,10 @@ export interface CostReportOptions {
   transcriptsDiscovered?: number;
   /** The extraction version an audit facet must reach to count as current. */
   facetVersion?: number;
+  /** Action rules in precedence order; seat-specific rules belong in the caller's config. */
+  actionRules?: readonly ActionRule[];
+  /** Action classes counted as mechanical in `mechanicalShare`. */
+  mechanicalClasses?: readonly ActionClass[];
 }
 
 /** AskUserQuestion answers are the human answering, so they count under `human` (decisions Q4). */
@@ -92,21 +113,20 @@ interface SessionTags {
   account: string;
 }
 
-type TaggedRow = CostRow & SessionTags;
+type TaggedRow = CostRow & SessionTags & { action: ActionClass };
 
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 export function costReport(db: Db, options: CostReportOptions = {}): CostReport {
   const window = resolveWindow(options);
-  const costRows = readCostRows(db, window);
-  const sessionIds = [...new Set(costRows.map((row) => row.sessionId))];
-  const tags = tagSessions(readSessionContexts(db, sessionIds));
-  const rows = costRows.map((row) => ({ ...row, ...tags.get(row.sessionId)! }));
+  const rows = readTaggedRows(db, window, options.actionRules ?? DEFAULT_ACTION_RULES);
   return {
     window,
     priceTableVersion: readPriceTableVersion(db),
-    totals: { ...sumOf(rows), sessions: sessionIds.length, unpricedRequests: rows.filter((row) => !row.priced).length },
+    totals: { ...sumOf(rows), sessions: new Set(rows.map((row) => row.sessionId)).size, unpricedRequests: rows.filter((row) => !row.priced).length },
     byTokenClass: tokenClasses(rows),
     ...dimensionBuckets(rows),
+    byAction: roleActions(rows),
+    mechanicalShare: mechanicalShare(rows, options.mechanicalClasses ?? DEFAULT_MECHANICAL_CLASSES),
     byWakeCause: wakeCauses(rows),
     wakeCauseByGapBand: gapCells(rows),
     coldRebuild: coldRebuild(rows),
@@ -115,6 +135,13 @@ export function costReport(db: Db, options: CostReportOptions = {}): CostReport 
     unpricedModels: unpricedModels(rows),
     coverage: { ...readCoverage(db, options.facetVersion ?? null), transcriptsDiscovered: options.transcriptsDiscovered ?? null },
   };
+}
+
+function readTaggedRows(db: Db, window: ReportWindow, rules: readonly ActionRule[]): TaggedRow[] {
+  const costRows = readCostRows(db, window);
+  const tags = tagSessions(readSessionContexts(db, [...new Set(costRows.map((row) => row.sessionId))]));
+  const calls = readRequestToolCalls(db, window);
+  return costRows.map((row) => ({ ...row, ...tags.get(row.sessionId)!, action: classifyRequest(calls.get(row.requestId) ?? [], rules) }));
 }
 
 export function resolveWindow(options: CostReportOptions): ReportWindow {
@@ -176,6 +203,30 @@ function dimensionBuckets(rows: readonly TaggedRow[]) {
     byInitiative: bucketsBy(rows, (row) => row.initiative),
     byContextBand: bucketsBy(rows, (row) => row.contextBand),
   };
+}
+
+/** Roles most expensive first, the same order as `byRole`. */
+function roleActions(rows: readonly TaggedRow[]): RoleActions[] {
+  return [...groupRows(rows, (row) => row.role)]
+    .map(([role, members]) => ({ key: role, costUsd: sumOf(members).costUsd, buckets: bucketsBy(members, (row) => row.action) }))
+    .sort(byCostThenKey)
+    .map(({ key, buckets }) => ({ role: key, buckets }));
+}
+
+function mechanicalShare(rows: readonly TaggedRow[], classes: readonly ActionClass[]): MechanicalShare {
+  const isMechanical = (row: TaggedRow) => classes.includes(row.action);
+  const shareOf = (members: readonly TaggedRow[]) => {
+    const costUsd = sumOf(members.filter(isMechanical)).costUsd;
+    return { costUsd, share: ratio(costUsd, sumOf(members).costUsd) };
+  };
+  const byRole = [...groupRows(rows, (row) => row.role)]
+    .map(([role, members]) => ({ role, ...shareOf(members) }))
+    .sort((a, b) => b.costUsd - a.costUsd || a.role.localeCompare(b.role));
+  return { classes: [...classes], ...shareOf(rows), byRole };
+}
+
+function ratio(part: number, whole: number): number {
+  return whole > 0 ? Math.min(part / whole, 1) : 0;
 }
 
 /** Most expensive first; ties by key so the report is stable. */
