@@ -1,7 +1,8 @@
 import { DEFAULT_TABLE, canResolve, evaluate, type ActorClass, type Decision, type PolicyTable } from "@titan-design/authority";
-import type { GateInput, GateRecord, GateResolver, GateRule, JsonSchema } from "@titan-design/hitl";
+import { nowIso } from "@titan-design/store-sqlite";
+import { waitForGate, type GateInput, type GateRecord, type GateResolver, type GateRule, type GateStore, type JsonSchema, type WaitOptions } from "@titan-design/hitl";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
-import { AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult } from "./types.js";
+import { AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
 
 /** The name every authorize gate records as its rule's table. */
 export const AUTHORITY_TABLE_NAME = "F5";
@@ -19,6 +20,33 @@ export type AuthorityOutcome =
   | { verdict: "refused"; ruleId: string; gateId: string; reason: string };
 
 type GateDecision = Extract<Decision, { verdict: "gate" }>;
+
+/** The slice of a run context an authorize step needs to open, announce and await its gate. */
+export interface AuthorityGate {
+  id: string;
+  store: GateStore;
+  wait: WaitOptions<unknown>;
+  opened: (gateId: string, prompt: string) => void;
+  paused: () => void;
+}
+
+/** Resumes onto a gate already at `gate.id` without asking the table, so the decision made before a restart stands. */
+export async function authorityOutcome(authority: Authority, gate: AuthorityGate, request: AuthorizeRequest, options: AuthorizeOptions): Promise<AuthorityOutcome> {
+  if (!gate.store.get(gate.id)) {
+    const decision = decide(authority, request);
+    if (decision.verdict !== "gate") return decisionOutcome(decision);
+    const input = authorityGateInput(gate.id, decision, authority, request, options);
+    gate.store.create(input);
+    gate.opened(gate.id, input.prompt);
+  }
+  gate.paused();
+  await waitForGate(gate.store, gate.id, gate.wait);
+  return gateOutcome(gate.store.get(gate.id), gate.id, request, authority.actor.class);
+}
+
+export function authorityStepResult(stepId: string, iteration: number, outcome: AuthorityOutcome): StepResult {
+  return { stepId, iteration, operation: "authorize", agentId: null, signal: null, completedAt: nowIso(), data: { ...outcome } };
+}
 
 export function requireAuthority(options: WorkflowAuthorityOptions | undefined, stepId: string): Authority {
   if (!options) throw new Error(`authorize("${stepId}") needs the runtime's authority option`);

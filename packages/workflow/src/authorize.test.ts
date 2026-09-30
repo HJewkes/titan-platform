@@ -92,11 +92,9 @@ function gateOpenedCount(events: WorkflowEvent[]): number {
 }
 
 function withMergeByAutomationAllowed(): PolicyTable {
-  const rules = DEFAULT_TABLE.rules.map((rule) => {
-    if (rule.id !== "MRG-AU") return rule;
-    const { resolvers: _dropped, ...rest } = rule;
-    return { ...rest, verdict: "allow" as const };
-  });
+  const rules = DEFAULT_TABLE.rules.map((rule) =>
+    rule.id === "MRG-AU" ? { id: rule.id, action: rule.action, actor: rule.actor, verdict: "allow" as const, evidence: rule.evidence } : rule,
+  );
   return { version: "2.0.0", rules };
 }
 

@@ -1,16 +1,9 @@
 import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
-import {
-  authorityGateInput,
-  authorizeResultOf,
-  decide,
-  decisionOutcome,
-  gateOutcome,
-  requireAuthority,
-  type AuthorityOutcome,
-} from "./authorize.js";
+import { authorityOutcome, authorityStepResult, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
+import { assistedGateId, gateIdFor, gateIsPending, memoKey } from "./gate-ids.js";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
 import { parseStepOutput } from "./step-output.js";
@@ -62,14 +55,7 @@ export interface ContextDeps {
   authority?: WorkflowAuthorityOptions;
 }
 
-export function gateIdFor(runId: string, stepId: string): string {
-  return `${runId}/${stepId}`;
-}
-
-/** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
-export function memoKey(operation: StepOperation, stepId: string, index: number): string {
-  return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
-}
+export { assistedGateId, gateIdFor, gateIsPending, memoKey, pendingGateId, type GatePredicate } from "./gate-ids.js";
 
 interface CompletedStep {
   output: string;
@@ -83,31 +69,6 @@ interface Memo {
   cached: StepResult | undefined;
 }
 
-/**
- * A run paused by 0.2.x inside `assisted(x)` after a `dispatch(x)` has its answer waiting
- * on the bare gate, so adopt that gate instead of orphaning it and asking the human twice.
- */
-export function assistedGateId(run: WorkflowRun, stepId: string, iteration: number, isPending: GatePredicate): string {
-  const legacy = gateIdFor(run.id, stepId);
-  if (iteration === 0) return legacy;
-  if (!run.stepResults[stepId] && isPending(legacy)) return legacy;
-  return gateIdFor(run.id, memoKey("assisted", stepId, iteration));
-}
-
-/** Every recorded result for `stepId` is one earlier call, so the count is the iteration of the gate now waiting. */
-export function pendingGateId(run: WorkflowRun, stepId: string, isPending: GatePredicate): string {
-  const repeat = `${stepId}:`;
-  const calls = Object.keys(run.stepResults).filter(
-    (key) => key === stepId || (key.startsWith(repeat) && /^\d+$/.test(key.slice(repeat.length))),
-  ).length;
-  return assistedGateId(run, stepId, calls, isPending);
-}
-
-export type GatePredicate = (gateId: string) => boolean;
-
-export function gateIsPending(gates: GateStore, gateId: string): boolean {
-  return gates.get(gateId)?.status === "pending";
-}
 
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
 export class RunContext implements WorkflowContext {
@@ -242,28 +203,19 @@ export class RunContext implements WorkflowContext {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
     if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
-    const authority = requireAuthority(this.deps.authority, stepId);
-    const gateId = gateIdFor(this.runId, key);
-    if (!this.deps.gates.get(gateId)) {
-      const decision = decide(authority, request);
-      if (decision.verdict !== "gate") return this.settleAuthority(stepId, iteration, key, decisionOutcome(decision));
-      const input = authorityGateInput(gateId, decision, authority, request, options);
-      this.deps.gates.create(input);
-      this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt: input.prompt });
-    }
-    this.setCurrent(stepId, "paused");
-    await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal });
-    this.run.status = "running";
-    return this.settleAuthority(stepId, iteration, key, gateOutcome(this.deps.gates.get(gateId), gateId, request, authority.actor.class));
-  }
-
-  /** Records the outcome before a deny or refusal throws, so replay throws the same error without asking the table again. */
-  private settleAuthority(stepId: string, iteration: number, key: string, outcome: AuthorityOutcome): AuthorizeResult {
-    const result: StepResult = { stepId, iteration, operation: "authorize", agentId: null, signal: null, completedAt: nowIso(), data: { ...outcome } };
+    const gate: AuthorityGate = {
+      id: gateIdFor(this.runId, key),
+      store: this.deps.gates,
+      wait: { pollMs: this.deps.gatePollMs, signal: this.signal },
+      opened: (gateId, prompt) => this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt }),
+      paused: () => this.setCurrent(stepId, "paused"),
+    };
+    const outcome = await authorityOutcome(requireAuthority(this.deps.authority, stepId), gate, request, options);
+    const result = authorityStepResult(stepId, iteration, outcome);
+    if (this.run.status === "paused") this.run.status = "running";
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: null });
-    this.bump(stepId, result);
-    return authorizeResultOf(stepId, iteration, outcome);
+    return authorizeResultOf(stepId, iteration, this.bump(stepId, result).data as AuthorityOutcome);
   }
 
   private async runWithRetry(
