@@ -205,6 +205,15 @@ const HIDDEN_GIT_PUSH: Array<[string, string]> = [
   ["pnpm exec -c", "pnpm exec -c 'git push'"],
   ["env -S", "env -S 'git push'"],
   ["env --split-string=", "env --split-string='git push'"],
+  ["env -S with the text attached", "env -S'git push'"],
+  ["env with -S ending a short cluster (-iS)", "env -iS 'git push'"],
+  ["env with -S ending a short cluster (-vS)", "env -vS 'git push'"],
+  ["env with -S attached after a cluster", "env -iS'git push'"],
+  ["npm exec with -c ending a short cluster", "npm exec -yc 'git push'"],
+  ["pnpm's global -c before exec", "pnpm -c exec 'git push'"],
+  ["pnpm's global --shell-mode before exec", "pnpm --shell-mode exec 'git push'"],
+  ["pnpm's global -c after another option", "pnpm -r -c exec 'git push'"],
+  ["pnpm's global -c in a cluster", "pnpm -rc exec 'git push'"],
   ["line continuation inside a double-quoted name", '"gi\\\nt" push'],
   ["substitution in a ${x:-...} default", "echo ${x:-$(git push)}"],
   ["backticks in a ${x:-...} default", "echo ${x:-`git push`}"],
@@ -226,6 +235,18 @@ describe("commands hidden from git-safety's parser", () => {
       "origin",
       "it's",
     ]);
+  });
+
+  // npm 11 reads `-c'x'` as an unknown config named `--cx` and runs nothing.
+  it.each([
+    ["npx", "npx -c'git push'"],
+    ["npm exec", "npm exec -c'git push'"],
+  ])("runs nothing for %s with -c's text attached, as npm does", (_how, src) => {
+    expect(extract(src).some((c) => c.name === "git" || c.name?.includes(" "))).toBe(false);
+  });
+
+  it("keeps pnpm's global options as pnpm's when there is no exec", () => {
+    expect(extract("pnpm -c publish").map((c) => c.name)).toEqual(["pnpm"]);
   });
 
   it("reads a word after bash -- as a script path even when it looks like -c", () => {
