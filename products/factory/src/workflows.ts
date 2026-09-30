@@ -1,8 +1,10 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import type { Db } from "@titan-design/store-sqlite";
 import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
+import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
@@ -20,6 +22,7 @@ export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow()
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
   store: ShepherdStoreRef;
+  freeze?: FreezeStoreRef;
   holdPollMs?: number;
   agentChatBin?: string;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
@@ -39,15 +42,22 @@ const NO_SEATS: SeatBook = { seats: [], denied: [] };
 export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
-  const held = heldCheck(deps.port, holds);
-  const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds) }).map((route) =>
+  const freeze = deps.freeze ?? freezeStoreRef(deps.now);
+  const guard = freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now });
+  const held = heldCheck(deps.port, holds, guard);
+  const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" };
-  const shepherd = shepherdRoutes(shepherdDeps, { review: deps.review && { ...deps.review, isFrozen: deps.isFrozen } });
-  const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: (db) => deps.store.bind(db) };
+  const shepherd = shepherdRoutes(shepherdDeps, { review: deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo) => freeze.get().isFrozen(repo)) } });
+  const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5), freezeMigration(6)], bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });
+}
+
+function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => void {
+  const unbinds = refs.map((ref) => ref.bind(db));
+  return () => unbinds.forEach((unbind) => unbind());
 }
 
 /** The checkout a seat binds to `repo`, as the seat file writes it; a denied repo or one no seat lists has none. */

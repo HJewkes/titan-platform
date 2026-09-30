@@ -23,8 +23,18 @@ notices and errors to stderr.
 
 - **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch,
   and for a new branch scans only the commits no ref of that remote has. `range` with an
-  all-zero base scans the head commit alone. Each commit is read with `git show -c`, so a
-  merge commit's combined diff is scanned too.
+  all-zero base scans the head commit alone. A merge commit is diffed against each parent
+  in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
+  both diffs name is reported once. The message is read with `--encoding=UTF-8`, so
+  `i18n.logOutputEncoding` cannot re-encode it past the rules.
+- **Binary files are scanned as text.** Every `git show` and `git diff` passes `--text`, so a
+  file git calls binary (one NUL byte is enough) still yields its lines, and the report's
+  `binary files skipped` stays 0; if git ever prints a file as binary anyway, the scan exits 2.
+  There is no opt-out, since an opt-out would be a bypass.
+  Matching is on the bytes decoded as UTF-8: a term written in UTF-16 or another encoding is
+  not matched.
+- **Size limit.** A commit whose patch text is over 128 MiB (`MAX_PATCH_BYTES`) exits 2 with
+  one line naming its short sha and the limit. GitHub itself refuses a file over 100 MiB.
 - **Arguments.** Shas on pre-push stdin must be full hex shas, a `range` base or head must be
   a hex sha or a ref name, and a remote name must not start with a dash or hold whitespace.
   A bad value exits 2 with its position, never its value. Every revision reaches git after
@@ -59,7 +69,7 @@ notices and errors to stderr.
 ```ts
 import { formatReport, parseAllow, parseCommit, parseTerms, scan } from "@titan-design/egress-scan";
 
-// Each commit's text from `git show -c -U0 --format=%B%x00 --no-color --no-ext-diff <sha>`.
+// Each commit's text from `git show --text -U0 --encoding=UTF-8 --format=%B%x00 --no-color --no-ext-diff <sha>`.
 const sources = commits.map(({ sha, text }) => parseCommit(sha, text));
 const result = scan(sources, { terms: parseTerms(termFileText), allow: parseAllow(allowFileText) });
 for (const line of formatReport(result.findings, { ...result, termsLoaded: true })) console.log(line);
@@ -67,7 +77,10 @@ process.exitCode = result.findings.length > 0 ? 1 : 0;
 ```
 
 `scan` reads added lines, the paths of new, renamed and copied files, and commit messages.
-Removed lines are ignored and binary files are counted and skipped. Scan each commit, not
+Removed lines are ignored. A patch made without `--text` shows a binary file as
+`Binary files ... differ`, which `scan` counts and skips, so pass `--text` as the bin does. A merge's combined diff
+ignores `--text`, so for a merge read the message with `--no-patch --format=%B` and the patch
+with `--diff-merges=separate --format=`, and pass the patch to `parseDiff`. Scan each commit, not
 only the range endpoints: a leak added and then removed is still in the pushed history.
 
 ## Rules
