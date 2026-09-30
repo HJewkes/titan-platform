@@ -1,5 +1,5 @@
 import type { SignalKind } from "./audit-events.js";
-import { parseTaskIntents, type GitIntent } from "./bash-parse.js";
+import { IGNORED_PATH, commandHeads, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { toRepoRelative } from "./refs.js";
 import { str, type Json } from "./text.js";
@@ -17,9 +17,15 @@ const WRAP = /\b(?:active-work|aw)\s+(?:session\s+)?(wrap|record)\b/;
 const PR_CREATE = /\bgh\s+pr\s+create\b/;
 const ACTIVE_WORK_SKILL = /(^|:)active-work$/;
 const MARKDOWN = /\.md$/i;
+const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const DETAIL_CAP = 256;
 
 /** Signals any tool call can carry; Bash command verbs are read separately by `bashSignals`. */
 export function toolUseSignals(name: string, input: Json | null): AuditSignal[] {
+  return [...fileSignals(name, input), ...actSignals(name, input)];
+}
+
+function actSignals(name: string, input: Json | null): AuditSignal[] {
   if (name === "Write") return markdownSignal(str(input, "file_path"));
   if (name === "Skill") return ACTIVE_WORK_SKILL.test(str(input, "skill") ?? "") ? [{ signal: "task_wrap", detail: "skill" }] : [];
   if (name === "Agent" || name === "Task") return [{ signal: "agent_spawn", detail: str(input, "subagent_type") }];
@@ -42,12 +48,32 @@ export function bashSignals(command: string, git: GitIntent | null): AuditSignal
   for (const task of parseTaskIntents(command)) {
     if (task.status === "done") signals.push({ signal: "task_done", detail: task.taskId });
   }
+  const heads = commandHeads(command);
+  if (heads.length > 0) signals.push({ signal: "command_heads", detail: joinCapped(heads) });
   return signals;
 }
 
 export function emitSignals(reader: LineReader, ctx: LineContext, block: Json, blockIndex: number, signals: AuditSignal[]): void {
   const toolUseId = str(block, "id");
   for (const { signal, detail } of signals) reader.emit({ ...reader.base(ctx), kind: "signal", blockIndex, signal, detail, toolUseId });
+}
+
+/** Whole heads only, so a consumer's pattern never matches a truncated head. */
+function joinCapped(heads: readonly string[]): string {
+  let joined = "";
+  for (const head of heads) {
+    const next = joined ? `${joined};${head}` : head;
+    if (next.length > DETAIL_CAP) break;
+    joined = next;
+  }
+  return joined || (heads[0] ?? "").slice(0, DETAIL_CAP);
+}
+
+function fileSignals(name: string, input: Json | null): AuditSignal[] {
+  const signal = name === "Read" ? "file_read" : WRITE_TOOLS.has(name) ? "file_write" : null;
+  const filePath = str(input, "file_path") ?? str(input, "notebook_path");
+  if (!signal || !filePath || IGNORED_PATH.test(filePath)) return [];
+  return [{ signal, detail: toRepoRelative(filePath).path }];
 }
 
 function markdownSignal(filePath: string | null): AuditSignal[] {
