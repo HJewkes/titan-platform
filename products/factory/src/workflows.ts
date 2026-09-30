@@ -3,6 +3,8 @@ import type { Db } from "@titan-design/store-sqlite";
 import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
+import type { CleanupPorts } from "./shepherd/cleanup.js";
+import { activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
@@ -31,6 +33,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   review?: Omit<ReviewWiring, "isFrozen">;
   /** Read by the merge evidence step, which runs only after a wired review; defaults to no repo frozen. */
   isFrozen?: IsFrozen;
+  /** The task and agent ports `sh-cleanup` uses; absent means it deletes the head ref only. */
+  cleanup?: CleanupPorts;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -48,7 +52,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
   const shepherd = shepherdRoutes(shepherdDeps, { review: deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo) => freeze.get().isFrozen(repo)) } });
   const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5), freezeMigration(6)], bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
@@ -74,12 +78,20 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs };
 }
 
+/** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
+function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv): CleanupPorts | undefined {
+  const agentChatBin = shepherd?.agentChatBin;
+  if (!agentChatBin) return undefined;
+  return { agents: agentChatCleanupAgents(agentChatBin), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
+}
+
 /** The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per registration and per spawn. */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge, shepherd } = loadConfig(configPath(env));
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const review = configuredReview(shepherd, seats);
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, ...overrides, seats });
+  const cleanup = configuredCleanup(shepherd, env);
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, cleanup, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

@@ -133,6 +133,19 @@ describe("shepherd-pr after land", () => {
     expect(main?.data).toMatchObject({ result: { verdict: "green", mergeSha: w.fake.pr(1).mergeSha, after: [] } });
   });
 
+  it("cleans up once after green main CI, deleting the merged head branch", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)]);
+    w.fake.pr(1).headRepo = REPO;
+    w.fake.refs.set(w.fake.pr(1).headRef, H1);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const cleanup = Object.values(w.host.runtime.status(runId)!.stepResults).filter((result) => result.stepId === "sh-cleanup");
+    expect(cleanup.map((result) => result.data)).toMatchObject([{ result: { ref: "deleted", task: "no registration" } }]);
+    expect(w.fake.refs.has(w.fake.pr(1).headRef)).toBe(false);
+  });
+
   it("opens the main-red gate for the owner when main is red", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")]);
     const runId = await runToMerge(w);
