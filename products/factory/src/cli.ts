@@ -9,7 +9,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHost
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
-import { renderPlist, serviceLogDir, stableNodePath, type PlistOptions } from "./service.js";
+import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
 import { systemServicePorts } from "./service-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
@@ -196,9 +196,13 @@ interface PlistFlags {
 
 const NODE_FLAG = "absolute node binary launchd runs; default is this node, mapped off a Homebrew Cellar path";
 
-function plistOptions(io: CliIo, opts: PlistFlags): PlistOptions {
+/** The plist, and the binaries its PATH cannot cover; each of those gets a warning line. */
+function plistOptions(io: CliIo, opts: PlistFlags, ports: ServicePorts): { plist: PlistOptions; missing: string[] } {
   const binPath = fileURLToPath(new URL("./bin.js", import.meta.url));
-  return { binPath, nodePath: opts.node ?? stableNodePath(process.execPath), logDir: serviceLogDir(io.env), port: opts.port };
+  const nodePath = opts.node ?? stableNodePath(process.execPath);
+  const { path, missing } = servicePath(ports.which, nodePath);
+  for (const binary of missing) io.stderr(`warning: ${binary} is not on PATH, so the service will not find it\n`);
+  return { plist: { binPath, nodePath, logDir: serviceLogDir(io.env), port: opts.port, path }, missing };
 }
 
 function registerService(program: Command, verbs: Verbs): void {
@@ -208,7 +212,7 @@ function registerService(program: Command, verbs: Verbs): void {
     .description("print the LaunchAgent plist; the owner writes it to ~/Library/LaunchAgents and bootstraps it")
     .option("--port <n>", "port for the serve argument", parsePort)
     .option("--node <path>", NODE_FLAG, parseAbsolutePath)
-    .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts))));
+    .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
 }
 
@@ -223,7 +227,7 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .option("--node <path>", NODE_FLAG, parseAbsolutePath)
     .option("--mcp", "register the MCP endpoint with claude at user scope")
     .action((opts: PlistFlags & { mcp?: boolean }) =>
-      run("install", (ports) => installService(ports, io, { plist: plistOptions(io, opts), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
+      run("install", (ports) => installService(ports, io, { ...plistOptions(io, opts, ports), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
     );
   service.command("uninstall").description("unload the LaunchAgent and remove its plist").action(() => run("uninstall", (ports) => uninstallService(ports, io)));
   service

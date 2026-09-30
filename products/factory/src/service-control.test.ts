@@ -10,6 +10,8 @@ const PLIST = plistPath(HOME);
 const ERR_LOG = "/xdg/state/titan-factory/serve.err.log";
 const MCP_ADD = "claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp";
 const OLD_PID = 100;
+const GH_DOWN = "gh api rate_limit failed (1): gh: command not found";
+const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
 const failed = (code: number, stderr: string): CommandResult => ({ code, stdout: "", stderr });
 
@@ -25,6 +27,12 @@ interface MachineInit {
   lingers?: number;
   claude?: CommandResult;
   files?: Record<string, string>;
+  /** Binaries `which` does not find. */
+  absent?: string[];
+  /** The `github` field of each /health answer in turn; the last one repeats. Defaults to `ok`. */
+  github?: string[];
+  /** launchd reports no pid for the job, and /health carries none either. */
+  pidless?: boolean;
 }
 
 /** A launchd that refuses to bootstrap a loaded label, as the real one does, so an install that skips bootout fails. */
@@ -34,14 +42,15 @@ function fakeMachine(init: MachineInit = {}) {
   const dirs: string[] = [];
   const serves = init.serves ?? true;
   let lingers = 0;
-  let job = init.loaded ? { pid: OLD_PID, healthy: true } : undefined;
+  const github = [...(init.github ?? ["ok"])];
+  let job: { pid?: number; healthy: boolean } | undefined = init.loaded ? { pid: OLD_PID, healthy: true } : undefined;
   const start = (pid: number): CommandResult => {
-    job = { pid, healthy: serves };
+    job = { ...(init.pidless ? {} : { pid }), healthy: serves };
     return ok();
   };
   const verbs: Record<string, () => CommandResult> = {
     print: () => {
-      if (job) return ok(`${TARGET} = {\n\tstate = running\n\tpid = ${job.pid}\n}\n`);
+      if (job) return ok(`${TARGET} = {\n\tstate = running\n${job.pid === undefined ? "" : `\tpid = ${job.pid}\n`}}\n`);
       return lingers-- > 0 ? ok(`${TARGET} = {\n\tstate = not running\n}\n`) : failed(113, `Could not find service "${SERVICE_LABEL}" in domain for user gui: ${UID}`);
     },
     bootout: () => {
@@ -50,7 +59,7 @@ function fakeMachine(init: MachineInit = {}) {
       return ok();
     },
     bootstrap: () => (job || lingers > 0 ? failed(5, "Bootstrap failed: 5: Input/output error") : start(OLD_PID + 1)),
-    kickstart: () => (job ? start(job.pid + 1) : failed(113, "Could not find service")),
+    kickstart: () => (job ? start((job.pid ?? OLD_PID) + 1) : failed(113, "Could not find service")),
   };
   const launchctl = async (args: readonly string[]): Promise<CommandResult> => {
     calls.push(`launchctl ${args.join(" ")}`);
@@ -67,8 +76,10 @@ function fakeMachine(init: MachineInit = {}) {
     },
     health: async (port) => {
       if (init.stranger !== undefined) return { ok: true, pid: init.stranger, port };
-      return job?.healthy ? { ok: true, pid: job.pid, port, version: "0.1.0", github: "ok", pendingGates: 2 } : null;
+      if (!job?.healthy) return null;
+      return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2 };
     },
+    which: (binary) => (init.absent?.includes(binary) ? undefined : TOOLS[binary]),
     mkdir: (dir) => void dirs.push(dir),
     writeFile: (path, text) => void files.set(path, text),
     readFile: (path) => files.get(path),
@@ -167,6 +178,106 @@ describe("titan-factory service install", () => {
     expect(machine.files.get(PLIST)).toMatch(/<string>--port<\/string>\s*<string>7499<\/string>/);
     expect(out).toContain("port 7499");
     expect(machine.calls).toContain("claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7499/mcp");
+  });
+});
+
+describe("titan-factory service install: the job's PATH", () => {
+  const pathOf = (plist: string | undefined): string[] => /<key>PATH<\/key>\s*<string>([^<]*)<\/string>/.exec(plist ?? "")?.[1]?.split(":") ?? [];
+
+  it("writes a plist whose PATH has the directories of gh, agent-chat, claude and node ahead of launchd's own", async () => {
+    const machine = fakeMachine();
+
+    const { code, err } = await service(["install", "--node", "/opt/node/bin/node"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(err).toBe("");
+    expect(pathOf(machine.files.get(PLIST))).toEqual(["/opt/tools/bin", "/srv/agents/bin", "/opt/claude/bin", "/opt/node/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+  });
+
+  it("fails before touching launchd or the plist when gh is not on PATH", async () => {
+    const machine = fakeMachine({ loaded: true, absent: ["gh"] });
+
+    const { code, err } = await service(["install"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("error: gh is not on PATH");
+    expect(machine.calls).toEqual([]);
+    expect(machine.files.size).toBe(0);
+  });
+
+  it("installs with a warning, and without its directory, when a dispatch binary is not on PATH", async () => {
+    const machine = fakeMachine({ absent: ["agent-chat", "claude"] });
+
+    const { code, err } = await service(["install", "--node", "/opt/node/bin/node"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(err).toBe("warning: agent-chat is not on PATH, so the service will not find it\nwarning: claude is not on PATH, so the service will not find it\n");
+    expect(pathOf(machine.files.get(PLIST))).toEqual(["/opt/tools/bin", "/opt/node/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+  });
+});
+
+describe("titan-factory service and the GitHub check", () => {
+  it("install exits non-zero with one line when /health answers but its GitHub check failed", async () => {
+    const machine = fakeMachine({ github: [GH_DOWN] });
+
+    const { code, out, err } = await service(["install", "--mcp"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(out).toBe("");
+    expect(err).toBe(`error: titan-factory serve answers on port 7410 but its GitHub check failed: ${GH_DOWN}\n`);
+    expect(machine.calls.some((call) => call.startsWith("claude"))).toBe(false);
+  });
+
+  it("install waits while serve is still checking GitHub", async () => {
+    const passing = await service(["install"], fakeMachine({ github: ["checking", "checking", "ok"] }));
+    const failing = await service(["install"], fakeMachine({ github: ["checking", GH_DOWN] }));
+
+    expect(passing.code).toBe(EXIT.OK);
+    expect(failing.code).toBe(EXIT.FAILURE);
+    expect(failing.err).toContain(GH_DOWN);
+  });
+
+  it("install fails when the GitHub check never finishes", async () => {
+    const { code, err } = await service(["install"], fakeMachine({ github: ["checking"] }));
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("did not finish its GitHub check within 30 s");
+  });
+
+  it("restart exits non-zero when the restarted job cannot reach GitHub", async () => {
+    const { code, err } = await service(["restart"], fakeMachine({ loaded: true, github: [GH_DOWN] }));
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain(`GitHub check failed: ${GH_DOWN}`);
+  });
+
+  it("status exits non-zero with one line when /health answers but its GitHub check failed", async () => {
+    const { code, out, err } = await service(["status"], fakeMachine({ loaded: true, github: [GH_DOWN] }));
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(out).toContain("health: ok on port 7410");
+    expect(err).toBe(`error: /health answers on port 7410 but its GitHub check is not ok: ${GH_DOWN}\n`);
+  });
+
+  it("status waits out checking, and fails when it never ends", async () => {
+    const settled = await service(["status"], fakeMachine({ loaded: true, github: ["checking", "ok"] }));
+    const stuck = await service(["status"], fakeMachine({ loaded: true, github: ["checking"] }));
+
+    expect(settled.code).toBe(EXIT.OK);
+    expect(settled.out).toContain("github ok");
+    expect(stuck.code).toBe(EXIT.FAILURE);
+    expect(stuck.err).toContain("GitHub check is not ok: checking");
+  });
+});
+
+describe("titan-factory service: whose /health it is", () => {
+  it("does not accept a /health with no pid for a job launchd reports no pid for", async () => {
+    const install = await service(["install"], fakeMachine({ pidless: true }));
+    const restart = await service(["restart"], fakeMachine({ loaded: true, pidless: true }));
+
+    expect(install.code).toBe(EXIT.FAILURE);
+    expect(install.err).toContain(`not by ${SERVICE_LABEL}`);
+    expect(restart.code).toBe(EXIT.FAILURE);
   });
 });
 

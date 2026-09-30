@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const SERVICE_LABEL = "dev.hjewkes.titan-factory";
 
@@ -11,6 +11,25 @@ export interface PlistOptions {
   nodePath: string;
   logDir: string;
   port?: number;
+  /** The job's whole PATH; see `servicePath`. */
+  path: string;
+}
+
+/** What `titan-factory serve` runs by bare name: gh for every GitHub call, the other two for dispatch steps. */
+export const SERVICE_BINARIES = ["gh", "agent-chat", "claude"] as const;
+const LAUNCHD_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+
+export interface ServicePath {
+  path: string;
+  /** The binaries `which` did not find; their directories are not on `path`. */
+  missing: string[];
+}
+
+/** launchd starts a job with its four system directories only. node's directory is there for `#!/usr/bin/env node` bins such as agent-chat. */
+export function servicePath(which: (binary: string) => string | undefined, nodePath: string): ServicePath {
+  const found = SERVICE_BINARIES.map((binary) => ({ binary, file: which(binary) }));
+  const dirs = [...found.flatMap(({ file }) => (file === undefined ? [] : [dirname(file)])), dirname(nodePath), ...LAUNCHD_PATH];
+  return { path: [...new Set(dirs)].join(":"), missing: found.filter(({ file }) => file === undefined).map(({ binary }) => binary) };
 }
 
 export function serviceLogDir(env: NodeJS.ProcessEnv): string {
@@ -63,6 +82,11 @@ export function renderPlist(options: PlistOptions): string {
     "  <true/>",
     "  <key>ProcessType</key>",
     "  <string>Interactive</string>",
+    "  <key>EnvironmentVariables</key>",
+    "  <dict>",
+    "    <key>PATH</key>",
+    `    <string>${escapeXml(options.path)}</string>`,
+    "  </dict>",
     "  <key>StandardOutPath</key>",
     `  <string>${escapeXml(join(options.logDir, "serve.out.log"))}</string>`,
     "  <key>StandardErrorPath</key>",

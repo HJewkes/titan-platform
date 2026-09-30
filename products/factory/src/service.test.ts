@@ -4,9 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, SERVICE_LABEL, stableNodePath, type NodeProbe } from "./service.js";
+import { renderPlist, SERVICE_LABEL, servicePath, stableNodePath, type NodeProbe } from "./service.js";
+import { systemServicePorts } from "./service-ports.js";
 
-const options = { nodePath: "/opt/node/bin/node", binPath: "/srv/factory/dist/bin.js", logDir: "/var/state/titan-factory" };
+const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+const options = { nodePath: "/opt/node/bin/node", binPath: "/srv/factory/dist/bin.js", logDir: "/var/state/titan-factory", path: `/opt/tools/bin:${SYSTEM_PATH}` };
+const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
+const whichWithout = (...absent: string[]) => (binary: string): string | undefined => (absent.includes(binary) ? undefined : TOOLS[binary]);
+const pathOf = (plist: string): string[] => keyValue(plist, "PATH").split(":");
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -31,7 +36,7 @@ describe("titan-factory service plist", () => {
   });
 
   it("launches node on the built bin with serve, and the port when given", () => {
-    const args = (plist: string): string[] => [...plist.matchAll(/^ {4}<string>([^<]*)<\/string>$/gm)].map((m) => m[1]!);
+    const args = (plist: string): string[] => [...(/<array>([^]*?)<\/array>/.exec(plist)?.[1] ?? "").matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]!);
 
     expect(args(renderPlist(options))).toEqual([options.nodePath, options.binPath, "serve"]);
     expect(args(renderPlist({ ...options, port: 7411 }))).toEqual([options.nodePath, options.binPath, "serve", "--port", "7411"]);
@@ -46,6 +51,13 @@ describe("titan-factory service plist", () => {
 
     expect(keyValue(plist, "StandardOutPath")).toBe(join(options.logDir, "serve.out.log"));
     expect(keyValue(plist, "StandardErrorPath")).toBe(join(options.logDir, "serve.err.log"));
+  });
+
+  it("gives the job a PATH, and no other environment variable", () => {
+    const environment = /<key>EnvironmentVariables<\/key>\s*<dict>([^]*?)<\/dict>/.exec(renderPlist(options))?.[1] ?? "";
+
+    expect([...environment.matchAll(/<key>([^<]*)<\/key>/g)].map((m) => m[1])).toEqual(["PATH"]);
+    expect(keyValue(renderPlist(options), "PATH")).toBe(options.path);
   });
 
   it.runIf(process.platform === "darwin")("passes plutil -lint", () => {
@@ -68,6 +80,19 @@ describe("titan-factory service plist", () => {
     expect(out).toContain(`<string>${stableNodePath(process.execPath)}</string>`);
     expect(out).toMatch(/<string>\/[^<]*bin\.js<\/string>\s*<string>serve<\/string>/);
     expect(keyValue(out, "StandardOutPath")).toBe("/xdg/state/titan-factory/serve.out.log");
+  });
+
+  it("the CLI verb resolves the PATH through the service port, with a warning for each binary it cannot find", async () => {
+    let out = "";
+    let err = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
+    const service = { ...systemServicePorts(), which: whichWithout("claude") };
+
+    const code = await runCli(["service", "plist", "--node", "/opt/node/bin/node"], io, { workflows: [], routes: [], service });
+
+    expect(code).toBe(0);
+    expect(pathOf(out)).toEqual(["/opt/tools/bin", "/srv/agents/bin", "/opt/node/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+    expect(err).toBe("warning: claude is not on PATH, so the service will not find it\n");
   });
 
   it("the CLI verb writes an explicit --node path as given", async () => {
@@ -100,6 +125,28 @@ function probeOf(links: Record<string, string>): NodeProbe {
     },
   };
 }
+
+describe("servicePath", () => {
+  it("names the directories of gh, agent-chat, claude and node, then launchd's own", () => {
+    expect(servicePath(whichWithout(), "/opt/node/bin/node")).toEqual({
+      path: `/opt/tools/bin:/srv/agents/bin:/opt/claude/bin:/opt/node/bin:${SYSTEM_PATH}`,
+      missing: [],
+    });
+  });
+
+  it("names a directory once, however many binaries share it", () => {
+    const shared = (binary: string): string => `/usr/bin/${binary}`;
+
+    expect(servicePath(shared, "/usr/bin/node").path).toBe(SYSTEM_PATH);
+  });
+
+  it("leaves out a binary that is not found and reports it", () => {
+    expect(servicePath(whichWithout("gh", "claude"), "/opt/node/bin/node")).toEqual({
+      path: `/srv/agents/bin:/opt/node/bin:${SYSTEM_PATH}`,
+      missing: ["gh", "claude"],
+    });
+  });
+});
 
 describe("stableNodePath", () => {
   const cellar = "/opt/homebrew/Cellar/node/22.1.0/bin/node";
