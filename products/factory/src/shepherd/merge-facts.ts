@@ -169,7 +169,7 @@ export interface LocatorReference {
   locatorSha256: string;
 }
 
-const SESSION_ID = /^[^/@]+$/;
+const SESSION_ID = /^(?!\.\.$)[^/@\\%]{1,64}$/;
 
 function integer(value: unknown): number | undefined {
   return Number.isInteger(value) ? (value as number) : undefined;

@@ -99,8 +99,14 @@ describe("locatorReference", () => {
     expect(JSON.stringify(reference)).not.toContain("srv");
   });
 
-  it.each(["host/a", "user@host", "../s-1", 7])("drops a session id that is not a plain string: %s", (nativeId) => {
+  it.each(["host/a", "user@host", "../s-1", "..", "C:\\work\\s-1", "a%2Fb", "a".repeat(65), 7])("drops a session id that is not a plain string: %s", (nativeId) => {
     expect(locatorReference(withSource({ conversation: { nativeId } })).sessionId).toBe("unknown");
+  });
+
+  it("keeps a UUID session id", () => {
+    const nativeId = "123e4567-e89b-42d3-a456-426614174000";
+
+    expect(locatorReference(withSource({ conversation: { nativeId } })).sessionId).toBe(nativeId);
   });
 
   it("drops positions that are not integers", () => {
