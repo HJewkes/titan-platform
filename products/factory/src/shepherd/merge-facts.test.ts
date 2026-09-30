@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
@@ -79,7 +80,7 @@ describe("evidenceComment", () => {
     expect(body).toContain('"byteOffset": 4096');
     expect(body).toContain('"subrecordIndex": 2');
     expect(body).toContain('"textIndex": 1');
-    expect(body).toMatch(/"locatorSha256": "[0-9a-f]{64}"/);
+    expect(body).toContain(`"locatorSha256": "${createHash("sha256").update(JSON.stringify(hostLocator)).digest("hex")}"`);
   });
 
   it("leaves the stored record's locator whole", async () => {
