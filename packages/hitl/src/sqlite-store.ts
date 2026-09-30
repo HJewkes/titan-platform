@@ -110,7 +110,7 @@ function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, has
     BEGIN
       SELECT RAISE(ABORT, 'hitl: status outside the canonical set') WHERE ${rule} IS NOT NULL AND NEW.status NOT IN (${CANONICAL_STATUSES});
       SELECT RAISE(ABORT, 'hitl: resolver outside the gate rule')
-        WHERE ${ruleChanged} OR (${rule} IS NOT NULL AND NEW.status = 'resolved' AND ${outsideRule});
+        WHERE ${ruleChanged} OR (NEW.status = 'resolved' AND ${outsideRule});
     END;
   `;
 }
