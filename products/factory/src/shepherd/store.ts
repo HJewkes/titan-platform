@@ -207,7 +207,7 @@ export class ShepherdStore implements HoldLookup {
   /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */
   recordAuthor(runId: string, agent: AuthorInput): void {
     this.db
-      .prepare("INSERT OR IGNORE INTO shepherd_lineage (run_id, agent_id, name, role, predecessor, at) VALUES (?, ?, ?, ?, ?, ?)")
+      .prepare("INSERT INTO shepherd_lineage (run_id, agent_id, name, role, predecessor, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, agent_id) DO NOTHING")
       .run(runId, agent.agentId, agent.name, agent.role, agent.predecessor ?? null, this.stamp());
   }
 
