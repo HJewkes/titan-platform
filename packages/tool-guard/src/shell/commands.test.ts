@@ -228,6 +228,10 @@ describe("commands hidden from git-safety's parser", () => {
     ]);
   });
 
+  it("reads a word after bash -- as a script path even when it looks like -c", () => {
+    expect(extract("bash -- -c 'git push'").map((c) => c.name)).toEqual(["bash"]);
+  });
+
   it.each([
     ["single-quoted", "cat <<'EOF'\n$(git push)\nEOF"],
     ["double-quoted", 'cat <<"EOF"\n$(git push)\nEOF'],
