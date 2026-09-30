@@ -282,6 +282,10 @@ describe("wrappers that run their command", () => {
     expect(extract("watch 'ls; git push'").map((c) => c.name)).toEqual(["watch", "ls", "git"]);
   });
 
+  it.each([["watch -x"], ["watch -tx"], ["watch --exec"]])("runs the words after %s directly", (prefix) => {
+    expect(extract(`${prefix} echo 'a; git push'`).map((c) => c.name)).toEqual(["echo"]);
+  });
+
   it.each([
     ["doas git push", "no options"],
     ["doas -u deploy git push", "-u's user"],
