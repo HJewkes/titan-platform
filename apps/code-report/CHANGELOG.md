@@ -1,5 +1,13 @@
 # code-report
 
+## 0.0.10
+
+### Patch Changes
+
+- 6f77fa1: Documentation only. The factory README names the two registered workflows, the `serve` and `land` verbs, the current package list and both gate policies, and links the new usage guides. The code-report README corrects the index time and links its usage guide.
+  - @titan-design/react-app@0.1.1
+  - @titan-design/rpc-client@0.2.0
+
 ## 0.0.9
 
 ### Patch Changes
