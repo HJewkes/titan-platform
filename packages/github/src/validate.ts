@@ -16,7 +16,7 @@ const REPO_PART = /^[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
 /** git check-ref-format's forbidden characters, plus `?`, `#` and `%`, which a URL path would decode or split on. */
 const REF_FORBIDDEN = /[ ~^:?*[\\#%]/;
-const PATH_FORBIDDEN = /[?#\\]/;
+const PATH_FORBIDDEN = /[?#\\%]/;
 
 function hasControl(text: string): boolean {
   return [...text].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f);
@@ -57,7 +57,7 @@ export function checkPositiveInt(field: string, value: number): number {
 
 export function checkPath(path: string): string {
   const bad = path.length === 0 || path.startsWith("/") || PATH_FORBIDDEN.test(path) || hasControl(path) || path.split("/").some((part) => part === ".." || part === "." || part === "");
-  if (bad) throw new GitHubInputError("path", path, "expected a relative path with no ., .. or empty segment, and no ? or #");
+  if (bad) throw new GitHubInputError("path", path, "expected a relative path with no ., .. or empty segment, and no ?, # or %");
   return path;
 }
 
