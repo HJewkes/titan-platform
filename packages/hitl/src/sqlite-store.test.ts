@@ -20,6 +20,11 @@ const OLD_UPDATE = `UPDATE "hitl_gate"
 
 const RAW_RESOLVE = `UPDATE "hitl_gate" SET status = 'resolved', payload = '"yes"', resolved_at = ?, resolved_by = ? WHERE id = ?`;
 
+const RULE_JSON = JSON.stringify(TERMINAL_ONLY);
+const RAW_INSERT = `INSERT INTO "hitl_gate" (id, resolved_at, resolved_by, rule, status, prompt, created_at)
+  VALUES (?, ?, ?, ?, ?, 'release?', '2026-09-01T10:00:00.000Z')`;
+const RAW_REPLACE = RAW_INSERT.replace("INSERT", "REPLACE");
+
 const T_CREATED = "2026-09-01T10:00:00.000Z";
 const T_SETTLED = "2026-09-01T11:00:00.000Z";
 
@@ -237,7 +242,7 @@ describe("gateRuleMigration", () => {
     migration.up(db);
     migration.up(db);
     expect(columnCount(db, "rule")).toBe(1);
-    expect(triggerNames(db)).toEqual(["hitl_gate_rule_resolver"]);
+    expect(triggerNames(db)).toEqual(["hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
   });
 
   it("succeeds on a table that already has both columns and sits beside the resolver migration", () => {
@@ -245,7 +250,7 @@ describe("gateRuleMigration", () => {
     db.exec(`ALTER TABLE "hitl_gate" ADD COLUMN rule TEXT`);
     runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
     expect(columnCount(db, "rule")).toBe(1);
-    expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_resolver"]);
+    expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
   });
 
   it("is run by migrate: true, so a default store holds a rule-bound gate it cannot resolve until the resolver migration", () => {
@@ -330,6 +335,43 @@ describe("the rule trigger against raw SQL", () => {
     expect(() => db.prepare(`UPDATE "hitl_gate" SET rule = ? WHERE id = 'bound'`).run(widened)).toThrow();
     expect(() => db.prepare(`UPDATE "hitl_gate" SET rule = NULL WHERE id = 'bound'`).run()).toThrow();
     expect(store.get("bound")?.rule).toEqual(TERMINAL_ONLY);
+  });
+
+  it("aborts REPLACE INTO of a rule-bound row as resolved by a class outside the rule", () => {
+    const { db, store } = ruleDb();
+    expect(() => db.prepare(RAW_REPLACE).run("bound", T_SETTLED, JSON.stringify(REMOTE), RULE_JSON, "resolved")).toThrow(
+      "hitl: resolver outside the gate rule",
+    );
+    expect(store.get("bound")).toMatchObject({ status: "pending", rule: TERMINAL_ONLY });
+  });
+
+  it("aborts DELETE then INSERT of a rule-bound row as resolved by a class outside the rule", () => {
+    const { db, store } = ruleDb();
+    db.prepare(`DELETE FROM "hitl_gate" WHERE id = 'bound'`).run();
+    expect(() => db.prepare(RAW_INSERT).run("bound", T_SETTLED, JSON.stringify(REMOTE), RULE_JSON, "resolved")).toThrow(
+      "hitl: resolver outside the gate rule",
+    );
+    expect(store.get("bound")).toBeUndefined();
+  });
+
+  it("aborts an insert of a rule-bound resolved row that names no resolver", () => {
+    const { db } = ruleDb();
+    expect(() => db.prepare(RAW_INSERT).run("n1", T_SETTLED, null, RULE_JSON, "resolved")).toThrow();
+  });
+
+  it("admits a rule-bound resolved insert by a class the rule names, and a rule-less one by any class", () => {
+    const { db, store } = ruleDb();
+    db.prepare(RAW_INSERT).run("ok", T_SETTLED, JSON.stringify(OWNER), RULE_JSON, "resolved");
+    db.prepare(RAW_INSERT).run("loose", T_SETTLED, JSON.stringify(REMOTE), null, "resolved");
+    expect(store.get("ok")).toMatchObject({ status: "resolved", resolvedBy: OWNER });
+    expect(store.get("loose")?.status).toBe("resolved");
+  });
+
+  it.each(["RESOLVED", "Resolved", "resolved "])("refuses a rule-bound insert or update with the non-canonical status %j", (status) => {
+    const { db, store } = ruleDb();
+    expect(() => db.prepare(RAW_INSERT).run("s1", T_SETTLED, JSON.stringify(REMOTE), RULE_JSON, status)).toThrow("hitl: status outside");
+    expect(() => db.prepare(`UPDATE "hitl_gate" SET status = ? WHERE id = 'bound'`).run(status)).toThrow("hitl: status outside");
+    expect(store.get("bound")?.status).toBe("pending");
   });
 
   it("leaves a row with no rule alone", () => {
