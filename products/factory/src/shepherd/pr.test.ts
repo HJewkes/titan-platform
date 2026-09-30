@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -9,6 +10,7 @@ import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 
 const H2 = fakeSha("head2");
@@ -55,6 +57,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
 }
 
 const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
+const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 
 /** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will; an undefined `param` starts it with no policy param. */
 function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectivePolicy | undefined = OWNER_GATE_POLICY): string {
@@ -295,6 +298,30 @@ describe("the effective merge policy", () => {
 
     expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "deny" } });
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("under auto, merges on MRG-AU-RV with no hitl gate and stores the evidence record in merge-policy", async () => {
+    const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
+    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const phases: ShepherdPhases = {
+      wake: async () => UNHANDLED,
+      review: async (ctx, request) =>
+        mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] }),
+    };
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({
+      result: { outcome: "allow", headSha: H1, rule: { table: "authority", rowId: "MRG-AU-RV" } },
+      allowEvidence: { runId, head: H1, reviewer, testMergeSha: fakeSha("test-merge"), decision: { outcome: "allow" } },
+    });
+    expect(w.fake.comments.get(1)).toHaveLength(1);
   });
 });
 

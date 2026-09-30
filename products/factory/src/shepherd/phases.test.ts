@@ -7,7 +7,7 @@ import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
-const ALLOWED_PREFIXES = ["sh-wake", "sh-await-new-head", "sh-review", "sh-await-verdict"];
+const ALLOWED_PREFIXES = ["sh-wake", "sh-await-new-head", "sh-review", "sh-await-verdict", "sh-merge-evidence"];
 const ctx = {} as WorkflowContext;
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
 const wakeRequest: WakeRequest = { kind: "ci-red", ...target, payload: {} };
@@ -28,9 +28,9 @@ describe("shepherd phase stubs", () => {
     expect(wakeRoutes(deps)).toEqual([]);
   });
 
-  it("pins sh-await-verdict to review.ts, declared and routed there", () => {
-    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-await-verdict"]);
-    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-await-verdict"]);
+  it("pins sh-await-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
+    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-await-verdict", "sh-merge-evidence"]);
+    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-await-verdict", "sh-merge-evidence"]);
   });
 
   it("wakePhase reports the request unhandled with a reason", async () => {

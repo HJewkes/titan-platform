@@ -8,7 +8,7 @@ import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
@@ -86,7 +86,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
   const run: ShepherdRun = { ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = { policy: { decide: (action, target) => shepherdGatePolicy(run.policy, verdictFor).decide(action, target) } };
+  const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor);
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
