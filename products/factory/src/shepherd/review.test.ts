@@ -26,6 +26,7 @@ import {
   type ReviewerDispatch,
   type ReviewerMessage,
   type ReviewerReader,
+  type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
@@ -268,7 +269,7 @@ const standing = (overrides: Partial<ReviewerAgent> = {}) => agent("rv-standing"
 
 interface FakeDispatch extends ReviewerDispatch {
   agents: ReviewerAgent[];
-  spawns: { name: string; brief: string }[];
+  spawns: { name: string; brief: string; target: ReviewTarget }[];
   resumes: { name: string; brief: string }[];
 }
 
@@ -279,8 +280,8 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
     spawns: [],
     resumes: [],
     roster: async () => [...fake.agents],
-    spawn: async (name, brief) => {
-      fake.spawns.push({ name, brief });
+    spawn: async (name, brief, target) => {
+      fake.spawns.push({ name, brief, target });
       if (hooks.onSpawn) return hooks.onSpawn(name);
       fake.agents.push(agent(name, { presence: "live" }));
     },
@@ -338,6 +339,14 @@ describe("sh-review", () => {
 
     expect(result).toMatchObject({ kind: "dispatched", at: START });
     expect(clock.now).toBe(START + 500);
+  });
+
+  it("hands the spawn the repo, the PR and the head under review, so the port can start the reviewer in that repo's checkout", async () => {
+    const dispatch = fakeDispatch();
+
+    await shReview(dispatch, { repo: "octo/other" });
+
+    expect(dispatch.spawns.map((spawn) => spawn.target)).toEqual([{ repo: "octo/other", pr: 7, head: HEAD }]);
   });
 
   it("briefs the reviewer with the repo, the PR and the head, and with nothing the registration says", async () => {
@@ -465,9 +474,9 @@ describe("sh-review", () => {
     let down = 2;
     const dispatch = fakeDispatch();
     const spawn = dispatch.spawn;
-    dispatch.spawn = async (name, brief) => {
+    dispatch.spawn = async (name, brief, target) => {
       if (down-- > 0) throw new ReviewerBrokerDown("could not reach the broker");
-      return spawn(name, brief);
+      return spawn(name, brief, target);
     };
 
     const { result, clock } = await shReview(dispatch);
