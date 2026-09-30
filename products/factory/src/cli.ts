@@ -9,7 +9,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHost
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "./routed-runner.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
-import { renderPlist, serviceLogDir, stableNodePath, type PlistOptions } from "./service.js";
+import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
 import { systemServicePorts } from "./service-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
@@ -196,9 +196,13 @@ interface PlistFlags {
 
 const NODE_FLAG = "absolute node binary launchd runs; default is this node, mapped off a Homebrew Cellar path";
 
-function plistOptions(io: CliIo, opts: PlistFlags): PlistOptions {
+/** The plist, and the binaries its PATH cannot cover; each of those gets a warning line. */
+function plistOptions(io: CliIo, opts: PlistFlags, ports: ServicePorts): { plist: PlistOptions; missing: string[] } {
   const binPath = fileURLToPath(new URL("./bin.js", import.meta.url));
-  return { binPath, nodePath: opts.node ?? stableNodePath(process.execPath), logDir: serviceLogDir(io.env), port: opts.port };
+  const nodePath = opts.node ?? stableNodePath(process.execPath);
+  const { path, missing } = servicePath(ports.which, nodePath);
+  for (const binary of missing) io.stderr(`warning: ${binary} is not on PATH, so the service will not find it\n`);
+  return { plist: { binPath, nodePath, logDir: serviceLogDir(io.env), port: opts.port, path }, missing };
 }
 
 function registerService(program: Command, verbs: Verbs): void {
@@ -207,8 +211,8 @@ function registerService(program: Command, verbs: Verbs): void {
     .command("plist")
     .description("print the LaunchAgent plist; the owner writes it to ~/Library/LaunchAgents and bootstraps it")
     .option("--port <n>", "port for the serve argument", parsePort)
-    .option("--node <path>", NODE_FLAG, parseAbsolutePath)
-    .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts))));
+    .option("--node <path>", NODE_FLAG, parseNodePath)
+    .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
 }
 
@@ -220,15 +224,15 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .command("install")
     .description("write the LaunchAgent plist, load it (replacing a loaded one) and wait for /health")
     .option("--port <n>", "port titan-factory serve binds", parsePort)
-    .option("--node <path>", NODE_FLAG, parseAbsolutePath)
+    .option("--node <path>", NODE_FLAG, parseNodePath)
     .option("--mcp", "register the MCP endpoint with claude at user scope")
     .action((opts: PlistFlags & { mcp?: boolean }) =>
-      run("install", (ports) => installService(ports, io, { plist: plistOptions(io, opts), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
+      run("install", (ports) => installService(ports, io, { ...plistOptions(io, opts, ports), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
     );
   service.command("uninstall").description("unload the LaunchAgent and remove its plist").action(() => run("uninstall", (ports) => uninstallService(ports, io)));
   service
     .command("status")
-    .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers")
+    .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
   service
@@ -295,8 +299,10 @@ function describeLand(args: LandArgs, started: LandStarted): string {
   return `run ${started.runId} land-pr ${args.repo}#${args.pr}: ${started.status}${started.created ? "" : " (already unfinished)"}`;
 }
 
-function parseAbsolutePath(value: string): string {
+/** node's directory goes on the job's PATH, where ":" separates entries. */
+function parseNodePath(value: string): string {
   if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
+  if (value.includes(":")) throw new InvalidArgumentError('must not contain ":"');
   return value;
 }
 
