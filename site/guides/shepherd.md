@@ -272,7 +272,7 @@ all run today. These parts are stubs on `main`:
 | What you see | Why |
 | --- | --- |
 | `error: registration refused: …` | the repo is on a seat deny list or a charter hard stop |
-| `error: invalid seat file <path>: …` | a seat file or the charter does not parse; no registration succeeds until it does |
+| `error: invalid seat file <path>: …` or `error: invalid charter <path>: …` | a seat file or the charter does not parse; no registration succeeds until it does |
 | `error: Invalid arguments: pr: needs a pr or a branch` | `owner/repo` without `--branch` |
 | `error: Invalid arguments: policy: Unrecognized key: "…"` | an unknown `--policy` key |
 | `error: owner/repo#123 has head <a>, not <b>` | `--branch` is not the pull request's head |

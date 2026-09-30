@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { delimiter, isAbsolute, join } from "node:path";
 import { probeHealth } from "@titan-design/daemon";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 
@@ -18,6 +19,21 @@ export function runCommand(file: string, args: readonly string[]): Promise<Comma
   });
 }
 
+function isExecutableFile(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The file a bare `name` runs from `pathVar`, as found and not resolved, so a Homebrew symlink survives an upgrade. */
+export function findOnPath(name: string, pathVar: string | undefined): string | undefined {
+  const dirs = (pathVar ?? "").split(delimiter).filter((dir) => isAbsolute(dir));
+  return dirs.map((dir) => join(dir, name)).find(isExecutableFile);
+}
+
 function readIfPresent(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
@@ -33,6 +49,7 @@ export function systemServicePorts(): ServicePorts {
     home: homedir(),
     launchctl: async (args) => (await runCommand("launchctl", args)) ?? { code: NOT_FOUND, stdout: "", stderr: "launchctl not found" },
     claude: (args) => runCommand("claude", args),
+    which: (binary) => findOnPath(binary, process.env.PATH),
     health: (port) => probeHealth(port),
     mkdir: (dir) => void mkdirSync(dir, { recursive: true }),
     writeFile: (path, text) => writeFileSync(path, text),
