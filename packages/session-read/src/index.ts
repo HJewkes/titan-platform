@@ -14,7 +14,7 @@ export { parseVerdictBlock } from "./verdict-block.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
-export { IGNORED_PATH, TASK_ID, commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
+export { IGNORED_PATH, TASK_ID, commandCwd, commandHeads, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 export type { DiscoveredTranscript, TranscriptRoot } from "./discover.js";
 export { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
 export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";

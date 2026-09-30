@@ -405,7 +405,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateCancelled`, `GateError`, `GateExpired`, `GateNotFound`
-- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
+- +24 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 
@@ -587,8 +587,10 @@ Key exports:
 - `classify-session`: `classifySession`
 - `bands`: `bandOf`, `contextBand`, `gapBand`
 - `cost-report`: `costReport`, `costReportSchema`
-- `episodes`: `assignmentCount`, `buildEpisodes`, `heuristicFor`, `readEpisodeInput`
-- +48 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
+- `turn-action`: `classifyRequest`
+- `request-owner`: `readRequestToolCalls`
+- `episodes`: `assignmentCount`, `buildEpisodes`
+- +58 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -624,7 +626,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +182 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +183 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

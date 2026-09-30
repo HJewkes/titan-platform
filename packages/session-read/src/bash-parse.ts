@@ -6,6 +6,7 @@
 
 import os from 'node:os';
 import path from 'node:path';
+import { splitCommands, type ShellWord } from './shell-split.js';
 
 /** Build artifacts and vendored trees are never interesting file touches. */
 export const IGNORED_PATH =
@@ -242,4 +243,100 @@ function statusFrom(verb: string | undefined, tail: string | undefined): string 
   if (verb !== 'edit') return null;
   const words = (tail ?? '').trim().split(/\s+/);
   return words[0] === 'status' ? (words[1] ?? null) : null;
+}
+
+/** A word that reads as a subcommand (`pr`, `checks`, `task`), not an operand, number, id or path. */
+const SUBCOMMAND = /^[a-z][a-z0-9_-]*$/;
+const MAX_SUBCOMMANDS = 2;
+/** Programs whose arguments are operands, so `echo y` stays `echo`. */
+const OPERAND_ONLY = new Set([
+  'awk', 'cat', 'chmod', 'cp', 'echo', 'find', 'grep', 'head', 'jq', 'ls', 'mkdir', 'mv',
+  'printf', 'rg', 'rm', 'sed', 'sleep', 'sort', 'tail', 'tee', 'test', 'touch', 'wc',
+]);
+const PREFIX_WORDS = new Set(['(', '{', '!', 'if', 'then', 'else', 'do', 'while', 'until', 'time']);
+/** Subshell and group closers stay glued to the last word of a command. */
+const CLOSERS = /[)}]+$/;
+const LOOK_THROUGH = new Set(['builtin', 'command']);
+const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const OUT_REDIRECT = /^(?:\d+|&)?>[>|]?(.*)$/;
+const IN_REDIRECT = /^\d*<(.*)$/;
+
+/**
+ * The program and up to two subcommand words of each simple command in `raw`
+ * (`gh pr checks`, `git log`), plus `>basename` for every file it writes via a
+ * redirect or `tee`. `cd` is dropped wherever it sits in the chain; duplicates
+ * keep their first position.
+ */
+export function commandHeads(raw: string): string[] {
+  const heads: string[] = [];
+  for (const segment of splitCommands(raw)) {
+    for (const head of segmentHeads(segment)) if (!heads.includes(head)) heads.push(head);
+  }
+  return heads;
+}
+
+function segmentHeads(words: readonly ShellWord[]): string[] {
+  const { command, targets } = separateRedirects(words);
+  const head = headOf(command);
+  const program = head[0];
+  const teeTargets = program === 'tee' ? command.slice(1).filter((w) => !w.text.startsWith('-')).map((w) => w.text) : [];
+  const writes = [...targets, ...teeTargets].filter((t) => t.length > 0 && !t.startsWith('/dev/'));
+  return [...(program && program !== 'cd' ? [head.join(' ')] : []), ...writes.map((t) => `>${path.basename(t)}`)];
+}
+
+interface Redirected {
+  command: ShellWord[];
+  targets: string[];
+}
+
+/** An fd dup such as `2>&1` names no file, so it is neither a target nor part of the command. */
+function separateRedirects(words: readonly ShellWord[]): Redirected {
+  const out: Redirected = { command: [], targets: [] };
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    const output = word.quoted ? null : OUT_REDIRECT.exec(word.text);
+    const input = word.quoted || output ? null : IN_REDIRECT.exec(word.text);
+    const redirect = output ?? input;
+    if (!redirect) {
+      out.command.push(word);
+      continue;
+    }
+    const operand = redirect[1] || words[++i]?.text || '';
+    if (output && !operand.startsWith('&')) out.targets.push(operand);
+  }
+  return out;
+}
+
+/** The program followed by its subcommand words, or empty when the command has no program. */
+function headOf(words: readonly ShellWord[]): string[] {
+  let start = 0;
+  while (start < words.length && !words[start]!.quoted && isPrefix(words[start]!.text)) start++;
+  start = skipLookThrough(words, start);
+  const program = words[start];
+  if (!program || program.quoted) return [];
+  const name = path.basename(program.text.replace(/^\(+/, '').replace(CLOSERS, ''));
+  if (!name) return [];
+  if (OPERAND_ONLY.has(name) || CLOSERS.test(program.text)) return [name];
+  const parts = [name];
+  for (const word of words.slice(start + 1)) {
+    const text = word.text.replace(CLOSERS, '');
+    if (parts.length > MAX_SUBCOMMANDS || word.quoted || !SUBCOMMAND.test(text)) break;
+    parts.push(text);
+    if (text !== word.text) break;
+  }
+  return parts;
+}
+
+/** `builtin` and `command` run the next program, so the head (and the `cd` rule) belongs to that program. */
+function skipLookThrough(words: readonly ShellWord[], from: number): number {
+  let start = from;
+  while (LOOK_THROUGH.has(words[start]?.text ?? '') && !words[start]!.quoted) {
+    start++;
+    while (words[start]?.text.startsWith('-') && !words[start]!.quoted) start++;
+  }
+  return start;
+}
+
+function isPrefix(text: string): boolean {
+  return PREFIX_WORDS.has(text) || ENV_ASSIGN.test(text);
 }
