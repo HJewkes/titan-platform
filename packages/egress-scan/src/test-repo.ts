@@ -12,8 +12,32 @@ export interface TestRepo {
   commit(message: string): string;
 }
 
+/** Drops injected `GIT_CONFIG_*` pairs that set `core.hooksPath`, renumbering the pairs that remain. */
+export function withoutInjectedHooksPath(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const count = Number.parseInt(env.GIT_CONFIG_COUNT ?? "", 10);
+  if (!Number.isInteger(count) || count < 0) return { ...env };
+  const kept: Array<[string | undefined, string | undefined]> = [];
+  for (let i = 0; i < count; i++) {
+    if (env[`GIT_CONFIG_KEY_${i}`]?.toLowerCase() !== "core.hookspath") {
+      kept.push([env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]]);
+    }
+  }
+  const result = { ...env };
+  for (let i = 0; i < count; i++) {
+    delete result[`GIT_CONFIG_KEY_${i}`];
+    delete result[`GIT_CONFIG_VALUE_${i}`];
+  }
+  kept.forEach(([key, value], i) => {
+    result[`GIT_CONFIG_KEY_${i}`] = key;
+    result[`GIT_CONFIG_VALUE_${i}`] = value;
+  });
+  if (kept.length > 0) result.GIT_CONFIG_COUNT = String(kept.length);
+  else delete result.GIT_CONFIG_COUNT;
+  return result;
+}
+
 const ISOLATED_ENV = {
-  ...process.env,
+  ...withoutInjectedHooksPath(process.env),
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_CONFIG_GLOBAL: os.devNull,
   GIT_AUTHOR_NAME: "Test",
