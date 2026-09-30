@@ -211,7 +211,7 @@ function registerService(program: Command, verbs: Verbs): void {
     .command("plist")
     .description("print the LaunchAgent plist; the owner writes it to ~/Library/LaunchAgents and bootstraps it")
     .option("--port <n>", "port for the serve argument", parsePort)
-    .option("--node <path>", NODE_FLAG, parseAbsolutePath)
+    .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
 }
@@ -224,7 +224,7 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .command("install")
     .description("write the LaunchAgent plist, load it (replacing a loaded one) and wait for /health")
     .option("--port <n>", "port titan-factory serve binds", parsePort)
-    .option("--node <path>", NODE_FLAG, parseAbsolutePath)
+    .option("--node <path>", NODE_FLAG, parseNodePath)
     .option("--mcp", "register the MCP endpoint with claude at user scope")
     .action((opts: PlistFlags & { mcp?: boolean }) =>
       run("install", (ports) => installService(ports, io, { ...plistOptions(io, opts, ports), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
@@ -232,7 +232,7 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
   service.command("uninstall").description("unload the LaunchAgent and remove its plist").action(() => run("uninstall", (ports) => uninstallService(ports, io)));
   service
     .command("status")
-    .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers")
+    .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
   service
@@ -299,8 +299,10 @@ function describeLand(args: LandArgs, started: LandStarted): string {
   return `run ${started.runId} land-pr ${args.repo}#${args.pr}: ${started.status}${started.created ? "" : " (already unfinished)"}`;
 }
 
-function parseAbsolutePath(value: string): string {
+/** node's directory goes on the job's PATH, where ":" separates entries. */
+function parseNodePath(value: string): string {
   if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
+  if (value.includes(":")) throw new InvalidArgumentError('must not contain ":"');
   return value;
 }
 

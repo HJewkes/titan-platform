@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { findOnPath, runCommand } from "./service-ports.js";
 
@@ -26,6 +26,12 @@ describe("findOnPath", () => {
     const { second, pathVar } = pathDirs();
 
     expect(findOnPath("gh", pathVar)).toBe(join(second, "gh"));
+  });
+
+  it("skips a relative PATH entry, even one that holds the binary", () => {
+    const { second } = pathDirs();
+
+    expect(findOnPath("gh", relative(process.cwd(), second))).toBeUndefined();
   });
 
   it("finds nothing for a directory, a missing name or an unset PATH", () => {

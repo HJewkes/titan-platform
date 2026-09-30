@@ -115,7 +115,8 @@ launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and serve runs `
 `agent-chat` and `claude` by bare name. So the plist sets `EnvironmentVariables` to one
 variable, `PATH`: the directory each of those three is found in when the verb runs, then the
 directory of the plist's node (`agent-chat` starts with `#!/usr/bin/env node`), then launchd's
-four, each once. Nothing else is copied from the shell. A binary that is not found is left out
+four, each once. Nothing else is copied from the shell. A directory with a `:` in its name is
+refused, `--node` included, because it would split into other entries. A binary that is not found is left out
 and named in a `warning:` line on stderr; `service install` refuses to run without `gh`. After
 moving one of these binaries, re-run `service install`.
 

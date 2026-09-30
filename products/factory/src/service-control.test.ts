@@ -194,6 +194,17 @@ describe("titan-factory service install: the job's PATH", () => {
     expect(pathOf(machine.files.get(PLIST))).toEqual(["/opt/tools/bin", "/srv/agents/bin", "/opt/claude/bin", "/opt/node/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
   });
 
+  it("refuses a --node with a colon before touching launchd or the plist", async () => {
+    const machine = fakeMachine({ loaded: true });
+
+    const { code, err } = await service(["install", "--node", "/opt/x:rel/node"], machine);
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain('must not contain ":"');
+    expect(machine.calls).toEqual([]);
+    expect(machine.files.size).toBe(0);
+  });
+
   it("fails before touching launchd or the plist when gh is not on PATH", async () => {
     const machine = fakeMachine({ loaded: true, absent: ["gh"] });
 

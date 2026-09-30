@@ -25,10 +25,17 @@ export interface ServicePath {
   missing: string[];
 }
 
+/** A ":" inside a directory name would split into entries nobody chose, one of them possibly relative. */
+function pathEntry(file: string): string {
+  const dir = dirname(file);
+  if (dir.includes(":")) throw new Error(`${file} cannot go on the service PATH: its directory contains ":", which separates PATH entries`);
+  return dir;
+}
+
 /** launchd starts a job with its four system directories only. node's directory is there for `#!/usr/bin/env node` bins such as agent-chat. */
 export function servicePath(which: (binary: string) => string | undefined, nodePath: string): ServicePath {
   const found = SERVICE_BINARIES.map((binary) => ({ binary, file: which(binary) }));
-  const dirs = [...found.flatMap(({ file }) => (file === undefined ? [] : [dirname(file)])), dirname(nodePath), ...LAUNCHD_PATH];
+  const dirs = [...found.flatMap(({ file }) => (file === undefined ? [] : [pathEntry(file)])), pathEntry(nodePath), ...LAUNCHD_PATH];
   return { path: [...new Set(dirs)].join(":"), missing: found.filter(({ file }) => file === undefined).map(({ binary }) => binary) };
 }
 

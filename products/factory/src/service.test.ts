@@ -105,6 +105,24 @@ describe("titan-factory service plist", () => {
     expect(out).not.toContain(`<string>${stableNodePath(process.execPath)}</string>`);
   });
 
+  it("escapes XML in PATH", () => {
+    const plist = renderPlist({ ...options, path: `/opt/a&b/<x>/bin:${SYSTEM_PATH}` });
+
+    expect(plist).toContain(`<string>/opt/a&amp;b/&lt;x&gt;/bin:${SYSTEM_PATH}</string>`);
+    expect(plist).not.toContain("a&b");
+  });
+
+  it("the CLI verb refuses a --node with a colon, which would split into PATH entries", async () => {
+    let out = "";
+    let err = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
+
+    expect(await runCli(["service", "plist", "--node", "/opt/x:rel/node"], io)).toBe(2);
+
+    expect(out).toBe("");
+    expect(err).toContain('must not contain ":"');
+  });
+
   it("the CLI verb refuses a relative --node", async () => {
     let err = "";
     const io = { stdout: () => undefined, stderr: (t: string) => void (err += t), env: {} };
@@ -145,6 +163,19 @@ describe("servicePath", () => {
       path: `/srv/agents/bin:/opt/node/bin:${SYSTEM_PATH}`,
       missing: ["gh", "claude"],
     });
+  });
+});
+
+describe("servicePath: a directory with a colon", () => {
+  it("refuses a node path whose directory would split into two PATH entries", () => {
+    expect(() => servicePath(whichWithout(), "/opt/x:rel/node")).toThrow(/\/opt\/x:rel\/node cannot go on the service PATH/);
+    expect(() => servicePath(whichWithout(), "/opt/x:/node")).toThrow(/cannot go on the service PATH/);
+  });
+
+  it("refuses a found binary whose directory has one", () => {
+    const which = (binary: string): string | undefined => (binary === "claude" ? "/opt/cl:aude/bin/claude" : TOOLS[binary]);
+
+    expect(() => servicePath(which, "/opt/node/bin/node")).toThrow(/\/opt\/cl:aude\/bin\/claude cannot go on the service PATH/);
   });
 });
 
