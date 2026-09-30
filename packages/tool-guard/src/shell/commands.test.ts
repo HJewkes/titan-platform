@@ -261,3 +261,108 @@ describe("commands hidden from git-safety's parser", () => {
     expect(extract(src).map((c) => c.name)).toEqual(["cat"]);
   });
 });
+
+const gitArgs = (src: string) => extract(src).filter((c) => c.name === "git").map(values);
+
+describe("wrappers that run their command", () => {
+  it("unwraps coproc", () => {
+    expect(gitArgs("coproc git push")).toEqual([["push"]]);
+  });
+
+  it.each([
+    ["watch git push", "the command words"],
+    ["watch -n 5 -d git push", "-n's interval"],
+    ["watch --interval=5 git push", "an attached interval"],
+    ["watch -x git push", "-x, which runs the words directly"],
+  ])("unwraps %s past %s", (src) => {
+    expect(gitArgs(src)).toEqual([["push"]]);
+  });
+
+  it("reads watch's words as shell text, since it hands them to sh -c", () => {
+    expect(extract("watch 'ls; git push'").map((c) => c.name)).toEqual(["watch", "ls", "git"]);
+  });
+
+  it.each([
+    ["doas git push", "no options"],
+    ["doas -u deploy git push", "-u's user"],
+    ["doas -n -a bsdauth git push", "-a's style"],
+  ])("unwraps %s past %s", (src) => {
+    expect(gitArgs(src)).toEqual([["push"]]);
+  });
+
+  it("does not unwrap doas -C, which only checks the rule", () => {
+    expect(gitArgs("doas -C /etc/doas.conf git push")).toEqual([]);
+  });
+
+  it.each([
+    ["setsid git push", "no options"],
+    ["setsid -f git push", "-f"],
+  ])("unwraps %s past %s", (src) => {
+    expect(gitArgs(src)).toEqual([["push"]]);
+  });
+
+  it.each([
+    ["flock /tmp/l git push", "the lock file"],
+    ["flock -n /tmp/l git push", "-n"],
+    ["flock -w 10 /tmp/l git push", "-w's seconds"],
+    ["flock /tmp/l -c 'git push'", "-c after the lock file"],
+    ["flock -x /tmp/l --command 'git push'", "--command after the lock file"],
+  ])("unwraps %s past %s", (src) => {
+    expect(gitArgs(src)).toEqual([["push"]]);
+  });
+
+  it("unwraps bun x", () => {
+    expect(gitArgs("bun x git push")).toEqual([["push"]]);
+  });
+});
+
+describe("find actions", () => {
+  it("emits the command of find -exec as well as find", () => {
+    expect(extract("find . -exec git push \\;").map((c) => [c.name, values(c)])).toEqual([
+      ["find", [".", "-exec", "git", "push", ";"]],
+      ["git", ["push"]],
+    ]);
+  });
+
+  it.each([
+    ["-exec ... \\;", "find . -exec git push \\; -exec git fetch \\;", [["push"], ["fetch"]]],
+    ["-exec ... {} +", "find . -exec git push {} + -exec git fetch {} +", [["push", "{}"], ["fetch", "{}"]]],
+    ["a + not after {}", "find . -exec git push + {} \\;", [["push", "+", "{}"]]],
+    ["-execdir", "find . -execdir git push \\;", [["push"]]],
+    ["-ok", "find . -name x -ok git push \\;", [["push"]]],
+    ["-okdir", "find . -okdir git push {} +", [["push", "{}"]]],
+  ])("ends each action at its terminator: %s", (_how, src, args) => {
+    expect(gitArgs(src)).toEqual(args);
+  });
+});
+
+describe("literal text piped into a shell", () => {
+  it.each([
+    ["echo", "echo git push | bash"],
+    ["echo, quoted", "echo 'git push' | sh"],
+    ["echo -n", "echo -n git push | zsh"],
+    ["printf", "printf 'git push\\n' | sh"],
+    ["printf with %s", "printf '%s push\\n' git | sh"],
+    ["printf with a reused format", "printf '%s\\n' 'git fetch' 'git push' | bash"],
+    ["a wrapped shell", "echo git push | sudo bash -s"],
+    ["|&", "echo git push |& bash"],
+  ])("runs the text of %s", (_how, src) => {
+    expect(gitArgs(src).at(-1)).toEqual(["push"]);
+  });
+
+  it("decodes echo's escapes unless -E is given", () => {
+    expect(gitArgs("echo 'ls\\ngit push' | sh")).toEqual([["push"]]);
+    expect(gitArgs("echo -E 'ls\\ngit push' | sh")).toEqual([]);
+  });
+
+  it.each([
+    ["a dynamic argument", "echo git $X | bash"],
+    ["a printf format it does not model", "printf '%5s' push | bash"],
+    ["printf -v", "printf -v X 'git push' | bash"],
+    ["a script operand", "echo git push | bash x.sh"],
+    ["a command that is not echo or printf", "cat git push | bash"],
+    ["a pipe into something else", "echo git push | cat"],
+  ])("runs nothing for %s", (_how, src) => {
+    expect(gitArgs(src)).toEqual([]);
+  });
+});
