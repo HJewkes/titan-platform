@@ -10,7 +10,7 @@ import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, t
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
-import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
+import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
@@ -222,14 +222,19 @@ async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSig
   }
 }
 
+export interface ShepherdWiring {
+  /** Absent means the review steps answer `none` and the owner gate decides. */
+  review?: ReviewWiring;
+}
+
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
-export function shepherdRoutes(deps: ShepherdDeps): StepRoute[] {
+export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}): StepRoute[] {
   return [
     codeRoute("sh-await-pr", deps.now, (input: AwaitPrInput, signal) => awaitPr(deps, input, signal)),
     codeRoute("sh-landed", deps.now, async (input: object) => input),
     codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
     ...wakeRoutes(deps),
-    ...reviewRoutes(deps),
+    ...reviewRoutes(deps, wiring.review),
     ...postMergeRoutes(deps),
   ];
 }

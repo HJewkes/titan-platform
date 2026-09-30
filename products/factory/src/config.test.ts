@@ -87,6 +87,62 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ postMerge })))).toThrow(key);
   });
 
+  it("reads the agent-chat binary and the reviewer it dispatches", () => {
+    const review = { profile: "rv-readonly", configDir: "/srv/rv-claude", verdictTimeoutMs: 900_000, sessionStartTimeoutMs: 60_000 };
+    const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } });
+
+    expect(loadConfig(configPath(env)).shepherd).toEqual({ agentChatBin: "/opt/bin/agent-chat", review });
+  });
+
+  it("reads an agent-chat binary with no reviewer, and a reviewer that names only its profile", () => {
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat" } }))).shepherd).toEqual({ agentChatBin: "/opt/bin/agent-chat" });
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv" } } }))).shepherd?.review).toEqual({ profile: "rv" });
+  });
+
+  it.each(["agent-chat", "bin/agent-chat", "./agent-chat", "~/bin/agent-chat", ""])("rejects %j as the agent-chat binary, because it is not an absolute path", (agentChatBin) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin } })))).toThrow(/shepherd\.agentChatBin: must be an absolute path/);
+  });
+
+  it("rejects an agent-chat binary path that holds a NUL", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent\0chat" } })))).toThrow(/shepherd\.agentChatBin: must not contain a NUL/);
+  });
+
+  it("rejects a reviewer configured without an agent-chat binary", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { review: { profile: "rv-readonly" } } })))).toThrow(/shepherd\.agentChatBin: review needs an agentChatBin/);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["a leading dash", "--dangerously-skip-permissions"],
+    ["a space", "rv readonly"],
+    ["a trailing space", "rv-readonly "],
+    ["a tab", "rv\treadonly"],
+    ["a newline", "rv\nreadonly"],
+    ["a NUL", "rv\0readonly"],
+  ])("rejects a reviewer profile with %s, because it reaches the agent-chat argv as one argument", (_label, profile) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile } } })))).toThrow(/shepherd\.review\.profile: must/);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["a leading dash", "--model"],
+    ["a space", "/srv/rv claude"],
+    ["a newline", "/srv/rv\nclaude"],
+    ["a NUL", "/srv/rv\0claude"],
+  ])("rejects a reviewer config directory with %s", (_label, configDir) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv-readonly", configDir } } })))).toThrow(/shepherd\.review\.configDir: must/);
+  });
+
+  it.each([
+    ["no profile", {}, /shepherd\.review\.profile/],
+    ["a zero verdict timeout", { profile: "rv", verdictTimeoutMs: 0 }, /shepherd\.review\.verdictTimeoutMs/],
+    ["a fractional verdict timeout", { profile: "rv", verdictTimeoutMs: 1.5 }, /shepherd\.review\.verdictTimeoutMs/],
+    ["a negative session-start timeout", { profile: "rv", sessionStartTimeoutMs: -1 }, /shepherd\.review\.sessionStartTimeoutMs/],
+    ["a misspelt key", { profile: "rv", verdictTimeout: 60_000 }, /shepherd\.review.*verdictTimeout/],
+  ])("rejects a reviewer with %s", (_label, review, key) => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } })))).toThrow(key);
+  });
+
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
   });
