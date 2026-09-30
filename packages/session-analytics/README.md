@@ -36,9 +36,8 @@ priceRequest(
   `DEFAULT_MECHANICAL_CLASSES`) over the window total, with each role's share over that role's
   cost. `wakeEpisodes` cuts the wakes of the `episodeRoles` (default `DEFAULT_EPISODE_ROLES`:
   `coordinator` and `worker:coordinator`) into episodes; see "Wake episodes" below.
-- `buildWakeEpisodes`, `summarizeWakeEpisodes`, `episodeNames`, `episodeCause`, `fromKindOf`,
-  `wakeEpisodesSchema`, `WAKE_FROM_KINDS`, `DEFAULT_NO_ACTION_CLASSES` — the pure pieces behind
-  `wakeEpisodes`.
+- `buildWakeEpisodes`, `summarizeWakeEpisodes`, `episodeNames`, `wakeEpisodesSchema`,
+  `WAKE_FROM_KINDS`, `DEFAULT_NO_ACTION_CLASSES` — the pure pieces behind `wakeEpisodes`.
 - `ACTION_CLASSES`, `DEFAULT_ACTION_RULES`, `DEFAULT_MECHANICAL_CLASSES`,
   `classifyRequest(calls, rules?)` — one action class per request from its tool calls: the
   first rule in list order that any call matches, `text-only` with no calls, `other` with no

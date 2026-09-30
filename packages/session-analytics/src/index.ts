@@ -15,14 +15,11 @@ export { readRequestToolCalls } from "./request-owner.js";
 export type { EpisodeNames, EpisodeRequestRow, WakeCauseEpisodes, WakeEpisode, WakeEpisodes, WakeFromKind, WakePair } from "./wake-episodes.js";
 export {
   AGENT_LIFECYCLE,
-  BROKER_SENDER,
   DEFAULT_EPISODE_ROLES,
   DEFAULT_NO_ACTION_CLASSES,
   WAKE_FROM_KINDS,
   buildWakeEpisodes,
-  episodeCause,
   episodeNames,
-  fromKindOf,
   summarizeWakeEpisodes,
   wakeEpisodesSchema,
 } from "./wake-episodes.js";
