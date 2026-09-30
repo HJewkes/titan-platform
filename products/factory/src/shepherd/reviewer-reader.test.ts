@@ -45,6 +45,9 @@ const assistantRecord = (sessionId: string, content: readonly Json[], timestamp:
   message: { id: `response-${recordCount}`, role: "assistant", model: "claude-test", content },
 });
 
+/** An assistant record stripped to its content, so no model, id or timestamp can reveal it. */
+const bareRecord = (sessionId: string, message: Json): Json => ({ type: "assistant", sessionId, message: { role: "assistant", ...message } });
+
 const text = (value: string): Json => ({ type: "text", text: value });
 const thinking: Json = { type: "thinking", thinking: "weighing it", signature: "synthetic" };
 const toolUse = (id: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command: "pnpm test" } });
@@ -192,6 +195,9 @@ describe("transcriptReviewerReader", () => {
     ["a user message", [assistant(SESSION, [BLOCK]), user(SESSION, "head moved, review again")]],
     ["a thinking-only record", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [thinking])]],
     ["an empty-text record", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [text("")])]],
+    ["a bare tool call record", [assistant(SESSION, [BLOCK]), bareRecord(SESSION, { content: [toolUse("tool-1")] })]],
+    ["a bare thinking-only record", [assistant(SESSION, [BLOCK]), bareRecord(SESSION, { content: [thinking] })]],
+    ["a bare empty-text record that reports usage", [assistant(SESSION, [BLOCK]), bareRecord(SESSION, { content: [text("")], usage: { input_tokens: 1, output_tokens: 1 } })]],
   ])("returns nothing when the block is followed by %s, because the turn did not end on it", async (_shape, records) => {
     const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), ...records]);
 
