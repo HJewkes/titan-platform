@@ -123,10 +123,9 @@ function teleportTable(h: HandoffThreshold): string {
 }
 
 function reviewerTable(h: HandoffThreshold): string {
-  const r = h.reviewers;
-  const title = `Reviewers over ${r.prs} PRs at ${r.requestsPerPr.toFixed(1)} requests each (${r.requestsFrom ?? "no reviewers"}), boot and reads: fresh per PR against one standing`;
-  const rows = [...r.fresh.map((c) => ["fresh per PR", c.role, c.model, c.sessions, usd(c.costUsd)]), ...r.standing.map((c) => ["standing", c.role, c.model, c.sessions, usd(c.costUsd)])];
-  return table(title, ["reviewer", "role", "model", "sessions", "cost"], rows);
+  const row = (kind: string) => (c: HandoffThreshold["reviewers"]["fresh"][number]) => [kind, c.role, c.model, c.sessions, c.requestsPerPr.toFixed(1), c.requestsFrom, usd(c.costUsd)];
+  const rows = [...h.reviewers.fresh.map(row("fresh per PR")), ...h.reviewers.standing.map(row("standing"))];
+  return table(`Reviewers over ${h.reviewers.prs} PRs, boot and reads: fresh per PR against one standing`, ["reviewer", "role", "model", "sessions", "req/PR", "req/PR from", "cost"], rows);
 }
 
 function kilo(tokens: number): string {

@@ -49,16 +49,19 @@ const teleportSchema = z.object({
   /** Exit fill minus each configured K; positive means the seat left late. */
   overConfigured: z.array(z.object({ k: count, over: z.number() })),
 });
-const reviewerCostSchema = z.object({ role: z.string(), model: z.string(), sessions: count, costUsd: z.number() });
-const reviewerSchema = z.object({
-  prs: count,
-  /** Mean requests after boot of a per-PR reviewer: the work each PR adds to a standing one. */
+/** The pooled mean over every reviewer session, used when a standing model has no reviewer cohort of its own. */
+export const POOLED_REVIEWERS = "pooled";
+const reviewerCostSchema = z.object({
+  role: z.string(),
+  model: z.string(),
+  sessions: count,
+  /** Mean requests after boot of a per-PR reviewer: the work each PR adds. */
   requestsPerPr: z.number(),
-  /** The reviewer model with the most sessions, whose requests give `requestsPerPr`. */
-  requestsFrom: z.string().nullable(),
-  fresh: z.array(reviewerCostSchema),
-  standing: z.array(reviewerCostSchema),
+  /** The reviewer model whose sessions give `requestsPerPr`, or `pooled`. */
+  requestsFrom: z.string(),
+  costUsd: z.number(),
 });
+const reviewerSchema = z.object({ prs: count, fresh: z.array(reviewerCostSchema), standing: z.array(reviewerCostSchema) });
 
 export const handoffThresholdSchema = z.object({
   configuredK: z.array(count),
@@ -260,17 +263,24 @@ function readCost(params: CycleParams, requests: number): number {
 /** Fresh: every PR pays a boot and its own reads. Standing: one boot, then every PR's requests read the context the earlier ones left. */
 function reviewerComparison(sessions: readonly HandoffSession[], reviewerRole: string, standingRole: string, prs: number): ReviewerComparison {
   const cohorts = (role: string) => [...groupBy(sessions.filter((s) => s.role === role), (s) => s.model)].sort(([a], [b]) => a.localeCompare(b));
-  const typical = cohorts(reviewerRole).reduce<[string, HandoffSession[]] | null>((best, cohort) => (best === null || cohort[1].length > best[1].length ? cohort : best), null);
-  const requestsPerPr = typical === null ? 0 : typical[1].reduce((sum, s) => sum + s.requests - s.bootRequests, 0) / typical[1].length;
-  const priced = (role: string, costOf: (params: CycleParams) => number) =>
-    cohorts(role).map(([model, members]) => ({ role, model, sessions: members.length, costUsd: costOf(meanParams(members)) }));
+  const reviewers = cohorts(reviewerRole);
+  const perPr = new Map(reviewers.map(([model, members]) => [model, meanRequestsAfterBoot(members)]));
+  const pooled = meanRequestsAfterBoot(reviewers.flatMap(([, members]) => members));
+  const priced = (role: string, costOf: (params: CycleParams, requests: number) => number) =>
+    cohorts(role).map(([model, members]) => {
+      const own = perPr.get(model);
+      const requestsPerPr = own ?? pooled;
+      return { role, model, sessions: members.length, requestsPerPr, requestsFrom: own === undefined ? POOLED_REVIEWERS : model, costUsd: costOf(meanParams(members), requestsPerPr) };
+    });
   return {
     prs,
-    requestsPerPr,
-    requestsFrom: typical?.[0] ?? null,
-    fresh: priced(reviewerRole, (params) => prs * (params.bootCostUsd + readCost(params, requestsPerPr))),
-    standing: priced(standingRole, (params) => params.bootCostUsd + readCost(params, prs * requestsPerPr)),
+    fresh: priced(reviewerRole, (params, requests) => prs * (params.bootCostUsd + readCost(params, requests))),
+    standing: priced(standingRole, (params, requests) => params.bootCostUsd + readCost(params, prs * requests)),
   };
+}
+
+function meanRequestsAfterBoot(sessions: readonly HandoffSession[]): number {
+  return sessions.length === 0 ? 0 : sessions.reduce((sum, s) => sum + s.requests - s.bootRequests, 0) / sessions.length;
 }
 
 function groupBy<T>(rows: readonly T[], keyOf: (row: T) => string): Map<string, T[]> {

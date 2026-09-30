@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { costReport } from "./cost-report.js";
 import { createFixtureGraph, insertActionCall, insertOrigin, insertPrices, insertRequest, insertSession } from "./fixture.js";
 import {
+  POOLED_REVIEWERS,
   TELEPORT_EVENT,
   costPerRequest,
   handoffThreshold,
@@ -39,6 +40,14 @@ function coordinatorSession(sessionId: string): HandoffRequestRow[] {
     request(sessionId, 42_000),
   ];
 }
+
+/** A reviewer that boots on its first request at 40k, then grows 2k a request for `after` more requests. */
+function reviewerSession(id: string, model: string, after: number): HandoffRequestRow[] {
+  const boot = request(id, 40_000, { role: "worker:reviewer", model, tokens: { outputTokens: outputFor(0.3) }, bootAction: true });
+  return [boot, ...Array.from({ length: after }, (_, i) => request(id, 40_000 + 2_000 * (i + 1), { role: "worker:reviewer", model }))];
+}
+
+const reads = (f0: number, g: number, m: number) => ((m * f0 + (g * m * (m + 1)) / 2) * READ_PER_MTOK) / 1_000_000;
 
 const run = (rows: readonly HandoffRequestRow[], teleports: readonly TeleportEvent[] = [], agents = new Map<string, string[]>()) =>
   handoffThreshold(rows, teleports, agents, { sweep: SWEEP, configuredK: [170_000, 250_000] });
@@ -98,18 +107,25 @@ describe("handoffThreshold", () => {
   });
 
   it("prices fresh per-PR reviewers against one standing reviewer carrying every PR's context", () => {
-    const reviewer = (id: string) => [
-      request(id, 40_000, { role: "worker:reviewer", tokens: { outputTokens: outputFor(0.3) }, bootAction: true }),
-      request(id, 42_000, { role: "worker:reviewer" }),
-      request(id, 44_000, { role: "worker:reviewer" }),
-    ];
     const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
-    const { reviewers } = run([...reviewer("r1"), ...reviewer("r2"), ...standing]);
-    const reads = (f0: number, g: number, m: number) => ((m * f0 + (g * m * (m + 1)) / 2) * READ_PER_MTOK) / 1_000_000;
+    const { reviewers } = run([...reviewerSession("r1", MODEL, 2), ...reviewerSession("r2", MODEL, 2), ...standing]);
 
-    expect(reviewers).toMatchObject({ prs: 10, requestsPerPr: 2, requestsFrom: MODEL });
+    expect(reviewers.prs).toBe(10);
+    expect(reviewers.fresh).toEqual([expect.objectContaining({ model: MODEL, sessions: 2, requestsPerPr: 2, requestsFrom: MODEL })]);
     expect(reviewers.fresh[0]!.costUsd).toBeCloseTo(10 * (0.3 + reads(40_000, 2_000, 2)), 10);
     expect(reviewers.standing[0]!.costUsd).toBeCloseTo(2.25 + reads(50_000, 1_000, 20), 10);
+  });
+
+  it("takes each model's requests per PR from its own reviewers, and the pooled mean for a standing model with none", () => {
+    const old = [1, 2, 3].flatMap((i) => reviewerSession(`old${i}`, "claude-sonnet-5", 5));
+    const standing = (id: string, model: string) => coordinatorSession(id).map((row) => ({ ...row, role: "worker:standing_peer", model }));
+    const { reviewers } = run([...old, ...reviewerSession("new", MODEL, 2), ...standing("peer", MODEL), ...standing("fable", "claude-fable-5-1")]);
+    const by = (rows: typeof reviewers.fresh) => Object.fromEntries(rows.map((r) => [r.model, [r.requestsPerPr, r.requestsFrom]]));
+
+    expect(by(reviewers.fresh)).toEqual({ "claude-sonnet-5": [5, "claude-sonnet-5"], [MODEL]: [2, MODEL] });
+    expect(by(reviewers.standing)).toEqual({ "claude-fable-5-1": [17 / 4, POOLED_REVIEWERS], [MODEL]: [2, MODEL] });
+    expect(reviewers.fresh.find((r) => r.model === MODEL)!.costUsd).toBeCloseTo(10 * (0.3 + reads(40_000, 2_000, 2)), 10);
+    expect(reviewers.standing.find((r) => r.model === MODEL)!.costUsd).toBeCloseTo(2.25 + reads(50_000, 1_000, 20), 10);
   });
 });
 

@@ -30,7 +30,7 @@ const SECTIONS = [
   "Wake senders by receiver",
   "Handoff threshold per role, priced at package table v",
   "Teleport exit fill: 0 matched, 0 unmatched",
-  "Reviewers over 10 PRs at 0.0 requests each (no reviewers)",
+  "Reviewers over 10 PRs, boot and reads: fresh per PR against one standing: none",
   "Wake cause by gap band",
   "Cold rebuilds: 2 requests",
   "Compactions",
