@@ -233,7 +233,9 @@ titan-factory service install --port 7411 --mcp
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
 4. Polls `/health` for up to 30 seconds. The answer must come from the pid launchd reports
    for the job, so a `serve` you left running in a shell fails the install. On a timeout
-   the verb prints the last 20 lines of `serve.err.log`.
+   the verb prints the last 20 lines of `serve.err.log`. The wait covers
+   [the GitHub check](#the-github-check): a `github` field that settles on anything but
+   `ok` fails the install with one line.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory
    http://127.0.0.1:<port>/mcp`. An already registered server counts as success. With no
    `claude` on `PATH`, or when the command fails, the verb prints the command to run by hand
@@ -255,6 +257,7 @@ launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and `serve` runs
 `agent-chat` and `claude` by bare name. The plist therefore sets one environment variable,
 `PATH`: the directory each of those three is found in when the verb runs, then the directory
 of the plist's node, then launchd's four, each once. Nothing else is copied from your shell.
+A directory with a `:` in its name is refused, `--node` included.
 
 A binary that is not found is left out and named in a `warning:` line. `service install`
 refuses to run without `gh`. After you move one of these binaries, run `service install`
@@ -306,7 +309,8 @@ The plist names the checkout it came from. After you move the checkout or change
 | `error: invalid config <path>: …` | the config file is not valid JSON or has an unknown `postMerge` key |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference; `#0` and `#01` are refused too |
 | `error: gh api … failed (4): … gh auth login` | `gh` is not logged in where the command runs |
-| `error: no gate with id <run>/<step>` | the run or step id is wrong, or the gate is already resolved |
+| `error: no gate with id <run>/<step>` | the run or step id is wrong |
+| `error: gate <id> is already <status>` | the gate was answered or cancelled before; `<status>` is `resolved` or `cancelled` |
 | `error: --json must be a JSON object`, exit 2 | the gate payload did not parse as an object |
 | a run `failed` with `ci-wait timed out after 2700000 ms` | required checks did not finish in 45 minutes |
 | a run `failed` with `requires no status checks` | the base branch has no required check |

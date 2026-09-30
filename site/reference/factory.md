@@ -37,7 +37,7 @@ agent-chat; the factory never dispatches one. For the durable-step engine alone,
 
 ```sh
 titan-factory resume
-titan-factory gate resolve <runId> approve-publish --json '{"approve":true}'
+titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","headSha":"<40 hex>"}'
 ```
 
 `resume` drives every unfinished run until it ends or waits on a gate, prints each open gate

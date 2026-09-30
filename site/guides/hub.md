@@ -27,6 +27,7 @@ so Tuwunel knows its namespaces, but nothing uses them yet.
 - Node 22 and a repo-root `pnpm install`, only for the owner-side scripts. A VPS needs
   Docker alone.
 - `openssl`, which `setup.sh` uses to generate tokens.
+- `envsubst` (part of GNU gettext), which `setup.sh` uses to render the config templates.
 - For the remote profile: a DNS name that points at the host, and ports 80 and 443 open.
 
 ## Local run
