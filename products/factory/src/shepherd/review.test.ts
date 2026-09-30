@@ -4,6 +4,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -17,6 +18,7 @@ import {
   reviewPhase,
   reviewRoutes,
   type AwaitVerdictInput,
+  type AwaitVerdictResult,
   type ReviewDispatchResult,
   type ReviewerAgent,
   type ReviewerDispatch,
@@ -327,6 +329,14 @@ describe("sh-review", () => {
     expect(dispatch.resumes).toEqual([]);
   });
 
+  it("does not give a fresh reviewer the implementer's name when the implementer has left the roster", async () => {
+    const dispatch = fakeDispatch();
+
+    const { result } = await shReview(dispatch, { registered: { ...registration, implementer: "rv-demo-7" } });
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7-2", mode: "spawn" });
+  });
+
   it("resumes an exited opt-in reviewer under the fill limit whose stored lineage never meets the implementer's", async () => {
     const dispatch = fakeDispatch(crew(standing()));
 
@@ -505,6 +515,8 @@ describe("reviewPhase", () => {
     dispatch: FakeDispatch;
     /** What the reader returns for the reviewer the step names; the default is that reviewer's MERGE at the asked head. */
     read?: (input: AwaitVerdictInput, dispatch: FakeDispatch) => ReviewerMessage[];
+    /** Stands in for the sh-await-verdict step, to record an output the real step would refuse. */
+    awaited?: (input: AwaitVerdictInput) => AwaitVerdictResult;
     heads?: string[];
     registered?: Partial<RegistrationInput>;
     policy?: EffectivePolicy;
@@ -524,7 +536,10 @@ describe("reviewPhase", () => {
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha }));
     };
-    const routes = Object.assign([...reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 })], { database: { extraMigrations: [shepherdMigration(4)], bind: store.bind } });
+    const { awaited } = scene;
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 });
+    const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
+    const routes = Object.assign(swapped, { database: { extraMigrations: [shepherdMigration(4)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
@@ -553,6 +568,17 @@ describe("reviewPhase", () => {
     const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
 
     expect(evidence.merge.seatGrants).toEqual([]);
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("gates a MERGE recorded for an agent other than the one the dispatch step started, even under an auto policy", async () => {
+    const other = { agentId: "agent-other", sessionId: "session-other" };
+    const awaited: Scene["awaited"] = (input) => ({ kind: "verdict", verdict: "MERGE", head: input.head, locator: locatorIn(other.sessionId), reviewer: other });
+
+    const { verdicts } = await review({ dispatch: fakeDispatch(), awaited, policy: AUTO });
+    const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
+
+    expect(evidence.merge).toMatchObject({ resolver: other, dispatchedReviewer: { agentId: "agent-rv-demo-1", sessionId: "session-rv-demo-1" } });
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 
