@@ -1,3 +1,4 @@
+import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
+import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -43,14 +45,14 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub()): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
@@ -270,6 +272,60 @@ describe("shepherd-pr", () => {
     expect(wakes).toEqual([]);
     expect(w.host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).not.toContain("FIX_FIRST");
+  });
+});
+
+describe("sh-park", () => {
+  /** Phases and a park port that log one shared order of events, so a test can see park land before review. */
+  function parkWorld(park: (name: string) => string[]): { w: World; events: string[] } {
+    const events: string[] = [];
+    const phases: ShepherdPhases = {
+      wake: async () => UNHANDLED,
+      review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "none" }),
+    };
+    const w = world(phases, undefined, undefined, (name) => (events.push(`park ${name}`), { lines: park(name) }));
+    w.fake.addPr({ headSha: H1 });
+    return { w, events };
+  }
+
+  it("parks the registered implementer once CI is green, before the review of that head", async () => {
+    const { w, events } = parkWorld((name) => [`Parked ${name}.`]);
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(events).toEqual(["park impl-a", `review ${H1}`]);
+    expect(stepIds(w.host, runId).indexOf("ci-wait:0")).toBeLessThan(stepIds(w.host, runId).indexOf(`sh-park:${H1}`));
+    expect(stepResult(w.host, runId, `sh-park:${H1}`)).toMatchObject({ result: { kind: "parked", agent: "impl-a", lines: ["Parked impl-a."] } });
+  });
+
+  it("logs a broker refusal of park in the step output and still takes the run to its merge", async () => {
+    const { w, events } = parkWorld(() => {
+      throw new DispatchError("agent-chat refused agent park: Not parked: impl-a is live");
+    });
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(1);
+    expect(events).toEqual(["park impl-a", `review ${H1}`]);
+    expect(stepResult(w.host, runId, `sh-park:${H1}`)).toMatchObject({
+      result: { kind: "not-parked", agent: "impl-a", reason: "agent-chat refused agent park: Not parked: impl-a is live", brokerDown: false },
+    });
+  });
+
+  it("logs a broker that is down as not parked and still takes the run to its merge", async () => {
+    const { w } = parkWorld(() => {
+      throw new BrokerUnavailableError("agent-chat agent park: could not reach or start the agent-chat broker");
+    });
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(1);
+    expect(stepResult(w.host, runId, `sh-park:${H1}`)).toMatchObject({ result: { kind: "not-parked", brokerDown: true } });
   });
 });
 
