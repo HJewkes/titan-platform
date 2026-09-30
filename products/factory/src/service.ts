@@ -17,6 +17,10 @@ export function serviceLogDir(env: NodeJS.ProcessEnv): string {
   return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory");
 }
 
+export function plistPath(home: string): string {
+  return join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
+}
+
 export interface NodeProbe {
   exists: (path: string) => boolean;
   realpath: (path: string) => string;
