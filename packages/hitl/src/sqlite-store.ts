@@ -94,7 +94,23 @@ function ruleTriggerDdl(db: Db, name: string): string {
   const hasResolver = hasResolverColumn(db, name);
   const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule");
   const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0");
-  return `${update}\n${insert}`;
+  return `${update}\n${insert}\n${replaceGuard(name)}`;
+}
+
+/** REPLACE deletes the old row before any delete trigger fires without recursive_triggers, so refuse it up front. */
+function replaceGuard(name: string): string {
+  const trigger = quoteIdent(`${name}_rule_replace`);
+  return `
+    DROP TRIGGER IF EXISTS ${trigger};
+    CREATE TRIGGER ${trigger}
+      BEFORE INSERT ON ${quoteIdent(name)}
+      FOR EACH ROW WHEN EXISTS (
+        SELECT 1 FROM ${quoteIdent(name)} WHERE id = NEW.id AND status = 'pending' AND rule IS NOT NULL AND rule IS NOT NEW.rule
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'hitl: a pending rule-bound gate cannot be replaced');
+    END;
+  `;
 }
 
 function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string): string {
