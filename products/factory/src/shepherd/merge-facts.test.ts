@@ -8,7 +8,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { decideAutoMerge, evidenceComment, evidenceMarker, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
@@ -56,8 +56,8 @@ afterEach(() => vi.mocked(evaluate).mockReset());
 const HOSTNAME = "host-a.example";
 const TRANSCRIPT_PATH = "/srv/agents/sessions/s-1.jsonl";
 const hostLocator = {
-  source: { sourceId: "src-1", path: TRANSCRIPT_PATH, namespace: HOSTNAME, conversation: { harness: "claude-code", namespace: HOSTNAME, nativeId: "s-1" } },
-  evidence: { line: { sourceId: "src-1", byteOffset: 4096, byteLength: 80, contentHash: "abc", lineNumber: 7, nativeOrdinal: null }, subrecord: { index: 2, path: ["message"] } },
+  source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, namespace: HOSTNAME, conversation: { harness: "claude-code", namespace: HOSTNAME, nativeId: "s-1" } },
+  evidence: { line: { sourceId: `claude-code:${HOSTNAME}:s-1`, byteOffset: 4096, byteLength: 80, contentHash: "abc", lineNumber: 7, nativeOrdinal: null }, subrecord: { index: 2, path: ["message"] } },
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"], textIndex: 1 },
 } as unknown as SourceTextLocator;
 
@@ -88,6 +88,30 @@ describe("evidenceComment", () => {
   });
 });
 
+describe("locatorReference", () => {
+  const withSource = (source: object, rest: object = {}) => ({ source: { sourceId: `claude-code:${HOSTNAME}:s-1`, path: TRANSCRIPT_PATH, ...source }, ...rest }) as unknown as SourceTextLocator;
+
+  it("posts unknown for a locator with no nativeId, not its path or source id", () => {
+    const reference = locatorReference(withSource({ conversation: { harness: "claude-code" } }));
+
+    expect(reference.sessionId).toBe("unknown");
+    expect(JSON.stringify(reference)).not.toContain(HOSTNAME);
+    expect(JSON.stringify(reference)).not.toContain("srv");
+  });
+
+  it.each(["host/a", "user@host", "../s-1", 7])("drops a session id that is not a plain string: %s", (nativeId) => {
+    expect(locatorReference(withSource({ conversation: { nativeId } })).sessionId).toBe("unknown");
+  });
+
+  it("drops positions that are not integers", () => {
+    const reference = locatorReference(withSource({ conversation: { nativeId: "s-1" } }, { evidence: { line: { byteOffset: "/srv/x" }, subrecord: { index: 1.5 } }, selector: { textIndex: 3 } }));
+
+    expect(reference).toMatchObject({ sessionId: "s-1", textIndex: 3 });
+    expect(reference).not.toHaveProperty("byteOffset");
+    expect(reference).not.toHaveProperty("subrecordIndex");
+  });
+});
+
 describe("mergeEvidence", () => {
   it("allows by authority/MRG-AU-RV when all eight conditions hold, and posts one comment carrying the record", async () => {
     const fake = world();
@@ -104,6 +128,17 @@ describe("mergeEvidence", () => {
     expect(comments).toHaveLength(1);
     expect(comments[0]!.body.split("\n")[0]).toBe(evidenceMarker(HEAD));
     expect(comments[0]!.body).toContain('"rowId": "MRG-AU-RV"');
+  });
+
+  it("posts the evidence comment body, with the locator reduced to a reference", async () => {
+    const fake = world();
+
+    const evidence = await collect(fake, { verdict: { value: "MERGE", head: HEAD, locator: hostLocator } });
+
+    const body = fake.comments.get(1)![0]!.body;
+    expect(body).toBe(evidenceComment(evidence.record));
+    expect(body).not.toContain(HOSTNAME);
+    expect(body).toContain('"locatorSha256"');
   });
 
   it("posts no second comment when the step repeats or another run collects at the same head", async () => {
