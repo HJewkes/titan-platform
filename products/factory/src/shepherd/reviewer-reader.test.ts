@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
@@ -34,12 +34,29 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const user = (sessionId: string, text: string): Json => ({ type: "user", sessionId, uuid: `user-${text}`, timestamp: DISPATCHED, message: { role: "user", content: text } });
 
-const assistant = (sessionId: string, texts: readonly string[], timestamp: string | null = LATER): Json => ({
+let recordCount = 0;
+
+/** One assistant record as Claude Code writes it: a model on every record, and any mix of content blocks. */
+const assistantRecord = (sessionId: string, content: readonly Json[], timestamp: string | null = LATER): Json => ({
   type: "assistant",
   sessionId,
-  uuid: `assistant-${texts[0]}`,
+  uuid: `assistant-${++recordCount}`,
   ...(timestamp === null ? {} : { timestamp }),
-  message: { id: `response-${texts[0]}`, role: "assistant", model: "claude-test", content: texts.map((text) => ({ type: "text", text })) },
+  message: { id: `response-${recordCount}`, role: "assistant", model: "claude-test", content },
+});
+
+const text = (value: string): Json => ({ type: "text", text: value });
+const thinking: Json = { type: "thinking", thinking: "weighing it", signature: "synthetic" };
+const toolUse = (id: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command: "pnpm test" } });
+
+const assistant = (sessionId: string, texts: readonly string[], timestamp: string | null = LATER): Json => assistantRecord(sessionId, texts.map(text), timestamp);
+
+const toolResult = (sessionId: string, id: string, output: string): Json => ({
+  type: "user",
+  sessionId,
+  uuid: `result-${++recordCount}`,
+  timestamp: LATER,
+  message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: output }] },
 });
 
 /** A transcript named after its session, as Claude Code writes it; `project` keeps two sessions of one name apart. */
@@ -85,7 +102,7 @@ describe("transcriptReviewerReader", () => {
     expect(messages.at(-1)!.locator.source.namespace).toBe(os.hostname());
   });
 
-  it.each(["live", "detached", "spawning"])("returns nothing while the agent is %s, because its turn may be unfinished", async (presence) => {
+  it.each(["live", "detached", "exiting"])("returns nothing while the presence is %s, because only exited proves the turn ended", async (presence) => {
     const transcript = writeTranscript(SESSION, reviewed());
 
     expect(await read([row(transcript, { presence })])).toEqual([]);
@@ -128,6 +145,71 @@ describe("transcriptReviewerReader", () => {
 
     expect(messages.at(-1)).toMatchObject({ text: "On reflection, do not merge.", writtenAt: Number.NaN });
     expect(acceptVerdict(input, messages)).toEqual({ kind: "none" });
+  });
+
+  it("returns messages in file order with each one's own timestamp, even when the timestamps disagree", async () => {
+    const stamps = ["2026-09-30T10:05:00Z", "2026-09-30T10:03:00Z", "2026-09-30T10:04:00Z"];
+    const transcript = writeTranscript(SESSION, stamps.map((stamp, index) => assistant(SESSION, [`message ${index}`], stamp)));
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.map((message) => message.text)).toEqual(["message 0", "message 1", "message 2"]);
+    expect(messages.map((message) => message.writtenAt)).toEqual(stamps.map((stamp) => Date.parse(stamp)));
+  });
+
+  it("gives a malformed timestamp no time at all, so the message cannot count as written after dispatch", async () => {
+    const transcript = writeTranscript(SESSION, [assistant(SESSION, [BLOCK], "not-a-date")]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.map((message) => message.writtenAt)).toEqual([Number.NaN]);
+    expect(acceptVerdict(input, messages)).toEqual({ kind: "none" });
+  });
+
+  it("returns nothing when the transcript ends in a truncated record, because a later message is still being written", async () => {
+    const transcript = writeTranscript(SESSION, reviewed());
+    appendFileSync(transcript, JSON.stringify(assistant(SESSION, ["On reflection: do NOT merge."])).slice(0, 60), "utf8");
+
+    expect(await read([row(transcript)])).toEqual([]);
+  });
+
+  it("returns nothing when the last record is complete but has no trailing newline", async () => {
+    const transcript = writeTranscript(SESSION, reviewed());
+    appendFileSync(transcript, JSON.stringify(assistant(SESSION, ["On reflection: do NOT merge."])), "utf8");
+
+    expect(await read([row(transcript)])).toEqual([]);
+  });
+
+  it.each<[string, readonly Json[]]>([
+    ["a tool call in the same record", [assistantRecord(SESSION, [text(BLOCK), toolUse("tool-1")])]],
+    ["thinking after the text in the same record", [assistantRecord(SESSION, [text(BLOCK), thinking])]],
+    ["a tool call in the next record", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [toolUse("tool-1")])]],
+    ["a tool result", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [toolUse("tool-1")]), toolResult(SESSION, "tool-1", "ok")]],
+    [
+      "a failed tool result and another tool call",
+      [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [toolUse("tool-1")]), toolResult(SESSION, "tool-1", "3 tests FAILED"), assistantRecord(SESSION, [toolUse("tool-2")])],
+    ],
+    ["a user message", [assistant(SESSION, [BLOCK]), user(SESSION, "head moved, review again")]],
+    ["a thinking-only record", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [thinking])]],
+    ["an empty-text record", [assistant(SESSION, [BLOCK]), assistantRecord(SESSION, [text("")])]],
+  ])("returns nothing when the block is followed by %s, because the turn did not end on it", async (_shape, records) => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), ...records]);
+
+    expect(await read([row(transcript)])).toEqual([]);
+  });
+
+  it("still returns the final text when only thinking precedes it and only bookkeeping records follow it", async () => {
+    const bookkeeping: Json[] = [
+      { type: "system", subtype: "stop_hook_summary", sessionId: SESSION, cwd: "/workspace/demo", hookCount: 1, timestamp: LATER },
+      { type: "last-prompt", sessionId: SESSION, lastPrompt: "review it" },
+      { type: "file-history-snapshot", sessionId: SESSION },
+    ];
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, ["Reading."]), assistantRecord(SESSION, [thinking, text(BLOCK)]), ...bookkeeping]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.map((message) => message.text)).toEqual(["Reading.", BLOCK]);
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 
   it.each([{ transcriptExists: false }, { transcriptPath: null }])("returns nothing when the roster has no transcript (%o)", async (missing) => {
