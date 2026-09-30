@@ -1,5 +1,12 @@
 # @titan-design/session-read
 
+## 0.7.0
+
+### Minor Changes
+
+- 661244b: `Inbound` and the `inbound` audit event carry `promptSource`: the record's own label for who submitted the line (`typed`, `system`, or `sdk` for a headless turn), or null when the record has none. No `WakeCause` value changes.
+- 0bf3f20: Add `parseVerdictBlock(text)`, a fail-closed reader for the three-line `Verdict: MERGE|FIX_FIRST`, `PR: owner/name#n`, `Head: <40 lowercase hex>` block a reviewer sends. It finds the block on any line, refuses zero or two blocks, quoted or fenced blocks, `APPROVE`, `CHANGES`, and any short, upper-case or over-long head, and returns `lineOffset` on success.
+
 ## 0.6.0
 
 ### Minor Changes
