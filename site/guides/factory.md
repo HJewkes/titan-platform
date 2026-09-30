@@ -10,7 +10,8 @@ file, and a crash resumes from the last completed step. Two workflows are regist
 - `shepherd-pr` watches a pull request, or a branch that has no pull request yet, and lands
   it under a per-repo policy. It has its own guide: [Shepherd](/guides/shepherd).
 
-The factory never dispatches an agent. For the design and the file map, read the
+The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
+when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
 [factory reference](/reference/factory) and
 [`products/factory/README.md`](https://github.com/HJewkes/titan-platform/blob/main/products/factory/README.md).
 
@@ -74,7 +75,14 @@ stays out of the repo.
   "shepherd": {
     "seatsDir": "/srv/autonomy/seats",
     "charterPath": "/srv/autonomy/charter.md",
-    "hardStopRepos": { "dotfiles-merge": ["owner/dotfiles"] }
+    "hardStopRepos": { "dotfiles-merge": ["owner/dotfiles"] },
+    "agentChatBin": "/usr/local/bin/agent-chat",
+    "review": {
+      "profile": "rv-readonly",
+      "configDir": "<agent-home>/.claude-profiles/rv",
+      "verdictTimeoutMs": 1800000,
+      "sessionStartTimeoutMs": 300000
+    }
   }
 }
 ```
@@ -82,7 +90,16 @@ stays out of the repo.
 - `postMerge` is the chore `land-pr` runs after a merge. It runs `argv` with no shell, with
   `LAND_PR_REPO`, `LAND_PR_NUMBER` and `LAND_PR_MERGE_SHA` in its environment, and is killed
   after `timeoutMs` (default 10 minutes). An unknown key such as `shell` fails the load.
-- `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
+- `shepherd.agentChatBin` is the absolute path of the `agent-chat` executable. It is required
+  when `shepherd.review` is set.
+- `shepherd.review` turns the review phase on. `profile` is the one agent-chat profile the
+  reviewer is spawned with. `configDir` is optional: an absolute path to the reviewer's Claude
+  config directory, under the agent's home. The two timeouts are optional (30 minutes for the
+  verdict, 5 minutes for the session start). With no `review` key no reviewer is started and
+  the owner decides every merge. A `review` block without `agentChatBin`, or an unknown key in
+  it, fails the load. The full key table is in the
+  [factory README](https://github.com/HJewkes/titan-platform/blob/main/products/factory/README.md#shepherd-reviewer-config).
+- The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
@@ -306,7 +323,7 @@ The plist names the checkout it came from. After you move the checkout or change
 | What you see | Why |
 | --- | --- |
 | `error: Daemon already running (pid N, port P)` | a second `serve` on the same database directory; the first keeps serving |
-| `error: invalid config <path>: …` | the config file is not valid JSON or has an unknown `postMerge` key |
+| `error: invalid config <path>: …` | the config file is not valid JSON, has an unknown `postMerge` or `shepherd.review` key, or sets `review` without `agentChatBin` |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference; `#0` and `#01` are refused too |
 | `error: gh api … failed (4): … gh auth login` | `gh` is not logged in where the command runs |
 | `error: no gate with id <run>/<step>` | the run or step id is wrong |

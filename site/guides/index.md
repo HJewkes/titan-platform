@@ -33,7 +33,7 @@ every command with an invocation, where state and logs live, and how it fails.
   the config file.
 - **[Shepherd](/guides/shepherd)** — the factory's PR watcher end to end: register a pull
   request or a branch, phases, seat policy, hold and release, the merge evaluation, the
-  MRG-AU-RV authority row, and what is still a stub.
+  MRG-AU-RV authority row, and what is not built yet.
 - **[Session miner](/guides/session-miner#run-it)** — `titan-miner`: index Claude Code and
   Codex transcripts, search, cluster failures, keep a playbook, serve over MCP and HTTP.
 - **[Retrieval eval](/guides/retrieval-eval)** — `retrieval-eval`: mine query and label

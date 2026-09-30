@@ -30,7 +30,8 @@ have happened.
 
 A software workflow whose transitions, retries and approvals should be owned by code, such as
 landing a pull request or a documentation change. For dispatching an agent, use relay or
-agent-chat; the factory never dispatches one. For the durable-step engine alone, use
+agent-chat. The factory requests one kind of dispatch itself, the Shepherd reviewer, through
+agent-chat via `@titan-design/agent-dispatch`. For the durable-step engine alone, use
 [`workflow`](/reference/workflow).
 
 ## Example
@@ -58,10 +59,12 @@ the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true, a `PATH`
 
 ## What it deliberately does not do
 
-It does not dispatch agents, spawn sessions or create relay items. `land-pr` holds no allow
-rule: its gate policy sends every merge to a human. `shepherd-pr` can allow a merge under
-authority's MRG-AU-RV row, but the review phase that supplies the verdict is a stub, so every
-Shepherd merge also waits for the owner today. See
+It does not create relay items, and it starts no agent except the Shepherd reviewer. That
+reviewer is requested through agent-chat, only when `shepherd.review` is configured. `land-pr`
+holds no allow rule: its gate policy sends every merge to a human. `shepherd-pr` can allow a
+merge under authority's MRG-AU-RV row when the reviewer's verdict supports it. With no
+`shepherd.review` key, or no checkout for the repo, the review phase answers `none` and the
+owner decides every merge. See
 [what is not built yet](/guides/shepherd#what-is-not-built-yet).
 
 ## Gotchas
