@@ -59,6 +59,7 @@ interface Scene {
   warmth?: Record<string, Warmth>;
   agentChatBin?: string;
   noAgents?: boolean;
+  checkouts?: (path: string) => boolean;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
 }
 
@@ -73,7 +74,7 @@ function wakeStep(scene: Scene = {}) {
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat" };
-  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], ...(!scene.noAgents && { agents }) };
+  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], isCheckout: scene.checkouts ?? (() => true), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1" };
@@ -107,6 +108,15 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(spawn!.message).toContain("`feat/demo-fix`");
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
+  });
+
+  it("returns unhandled when the ended agent's tree was parked, since a successor has no checkout to start in", async () => {
+    const scene = wakeStep({ checkouts: (path) => path !== "/work/impl-a" });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's checkout is gone, so a successor has no checkout to start in" });
+    expect(scene.agents.asked).toEqual([]);
   });
 
   it("spawns a successor when a recent implementer holds 200k tokens or more", async () => {
@@ -296,7 +306,7 @@ describe("wakePhase", () => {
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1) })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), isCheckout: () => true })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");

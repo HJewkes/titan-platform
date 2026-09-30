@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat, listAgents, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
@@ -51,7 +52,11 @@ export interface WakeWiring {
   readWarmth?: (transcriptPath: string) => Promise<Warmth | undefined>;
   limits?: WarmthLimits;
   livePollMs?: number;
+  /** Whether a successor can start in `path`; a parked tree is gone. Defaults to a directory check. */
+  isCheckout?: (path: string) => boolean;
 }
+
+const isDirectory = (path: string): boolean => statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
 
 const WakeInputSchema = z.object({
   kind: z.enum(["ci-red", "review", "conflict", "fix-proof"]),
@@ -195,12 +200,14 @@ function successorName(task: WakeTask, roster: readonly AgentRow[]): string {
 
 type Choice = { mode: "resume"; agent: string; message: string; sessionId: string } | { mode: "successor"; agent: string; message: string; cwd: string };
 
-async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[]): Promise<Choice> {
+/** A string is why nobody can be woken. */
+async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[]): Promise<Choice | string> {
   const path = newest.transcriptExists === true && newest.sessionId !== "" ? newest.transcriptPath : null;
   const warmth = typeof path === "string" ? await (wiring.readWarmth ?? readWarmth)(path) : undefined;
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  if (!(wiring.isCheckout ?? isDirectory)(newest.cwd)) return `${newest.name}'s checkout is gone, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
   return { mode: "successor", agent, message: successorBrief(task, newest.name, agent), cwd: newest.cwd };
 }
@@ -256,7 +263,9 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
       await deps.sleep(wiring.livePollMs ?? LIVE_POLL_MS, signal);
       continue;
     }
-    asked = await choose(deps, wiring, task, newest, roster);
+    const choice = await choose(deps, wiring, task, newest, roster);
+    if (typeof choice === "string") return unhandled(choice);
+    asked = choice;
     if (await ask(agents, asked)) return wokenBy(asked);
     await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
   }
