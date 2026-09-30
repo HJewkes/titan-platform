@@ -1,6 +1,16 @@
 import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
+import {
+  authorityGateInput,
+  authorizeResultOf,
+  decide,
+  decisionOutcome,
+  gateOutcome,
+  requireAuthority,
+  type AuthorityOutcome,
+} from "./authorize.js";
+import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
 import { parseStepOutput } from "./step-output.js";
@@ -15,6 +25,9 @@ import {
   workflowStepRequestKey,
   type ActiveStep,
   type AssistedOptions,
+  type AuthorizeOptions,
+  type AuthorizeRequest,
+  type AuthorizeResult,
   type DispatchOptions,
   type DurableStepOutcome,
   type RecoverableActiveStep,
@@ -46,6 +59,7 @@ export interface ContextDeps {
   executionId: () => string;
   save: (run: WorkflowRun) => void;
   recovered: ReadonlyMap<string, RecoveredStep>;
+  authority?: WorkflowAuthorityOptions;
 }
 
 export function gateIdFor(runId: string, stepId: string): string {
@@ -222,6 +236,34 @@ export class RunContext implements WorkflowContext {
     } catch (error) {
       if (!(error instanceof GateAlreadyExists)) throw error;
     }
+  }
+
+  async authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
+    this.throwIfCancelled();
+    const { index: iteration, key, cached } = this.recall("authorize", stepId);
+    if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
+    const authority = requireAuthority(this.deps.authority, stepId);
+    const gateId = gateIdFor(this.runId, key);
+    if (!this.deps.gates.get(gateId)) {
+      const decision = decide(authority, request);
+      if (decision.verdict !== "gate") return this.settleAuthority(stepId, iteration, key, decisionOutcome(decision));
+      const input = authorityGateInput(gateId, decision, authority, request, options);
+      this.deps.gates.create(input);
+      this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt: input.prompt });
+    }
+    this.setCurrent(stepId, "paused");
+    await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal });
+    this.run.status = "running";
+    return this.settleAuthority(stepId, iteration, key, gateOutcome(this.deps.gates.get(gateId), gateId, request, authority.actor.class));
+  }
+
+  /** Records the outcome before a deny or refusal throws, so replay throws the same error without asking the table again. */
+  private settleAuthority(stepId: string, iteration: number, key: string, outcome: AuthorityOutcome): AuthorizeResult {
+    const result: StepResult = { stepId, iteration, operation: "authorize", agentId: null, signal: null, completedAt: nowIso(), data: { ...outcome } };
+    this.record(key, result);
+    this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: null });
+    this.bump(stepId, result);
+    return authorizeResultOf(stepId, iteration, outcome);
   }
 
   private async runWithRetry(
