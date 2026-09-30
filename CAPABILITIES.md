@@ -589,8 +589,8 @@ Key exports:
 - `cost-report`: `costReport`, `costReportSchema`
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
-- `episodes`: `assignmentCount`, `buildEpisodes`
-- +58 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
+- `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
+- +75 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -700,10 +700,9 @@ Tier 2, `@titan-design/workflow@0.5.0`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
-- `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
-- `prompt`: `buildStepVars`
-- +62 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
+- `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
+- +69 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
