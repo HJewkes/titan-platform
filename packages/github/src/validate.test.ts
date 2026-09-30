@@ -70,8 +70,8 @@ describe("port input validation", () => {
   it("lets an ordinary file path through to gh", async () => {
     const { port, calls } = recordingPort();
 
-    await port.getFile(REPO, "docs/guide-1/read_me.md", "main");
+    await port.getFile(REPO, "docs/guide-1/read_me.md", "main").catch(() => undefined);
 
-    expect(calls).toHaveLength(1);
+    expect(calls.map((args) => args[4])).toEqual(["repos/octo/demo/contents/docs/guide-1/read_me.md"]);
   });
 });
