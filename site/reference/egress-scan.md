@@ -103,9 +103,10 @@ notices and errors go to stderr.
 
 - **What a push scans.** `pre-push` skips ref deletions and scans `remote..local` for an
   existing branch. For a new branch it scans only the commits no ref of that remote has.
-  `range` with an all-zero base scans the head commit alone. Each commit is read with
-  `git show -c`, so a merge commit's combined diff is scanned too. After a merge of the main
-  branch, a line already on main can be reported again in a file both sides changed.
+  `range` with an all-zero base scans the head commit alone. A merge commit is diffed
+  against each parent in turn (`--diff-merges=separate`), because git's combined diff ignores
+  `--text` and would skip a binary file an evil merge writes into. After a merge of the main
+  branch, a line already on main can be reported again under the merge.
 - **Arguments.** Shas on pre-push stdin must be full hex shas. A `range` base or head must be
   a hex sha or a ref name, and a remote name must not start with a dash. A bad value exits 2
   and the message names its position, never its value.
@@ -152,7 +153,9 @@ location.
 
 Scan each commit of a push, not the diff between its endpoints. A leak added in one commit
 and removed in the next is still in the pushed history. `parseCommit` expects
-`git show -c -U0 --format=%B%x00` output: the message, a NUL, then the patch.
+`git show --text -U0 --format=%B%x00` output: the message, a NUL, then the patch. For a merge,
+the bin reads the message on its own and passes a `--diff-merges=separate --format=` patch to
+`parseDiff`, which folds each path the parents' diffs repeat into one file.
 
 Combined merge diffs (`diff --cc`) are parsed: a line counts as added when any parent lacks
 it and no column marks it removed.

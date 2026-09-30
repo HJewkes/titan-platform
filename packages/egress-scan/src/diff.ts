@@ -128,9 +128,28 @@ function applyHeaderLine(line: string, file: MutableFile): Hunk | undefined {
   return undefined;
 }
 
+function mergeInto(target: MutableFile, file: DiffFile): void {
+  target.pathAdded ||= file.pathAdded;
+  target.binary ||= file.binary;
+  const seen = new Set(target.lines.map((l) => `${l.line}\n${l.text}`));
+  target.lines.push(...file.lines.filter((l) => !seen.has(`${l.line}\n${l.text}`)));
+}
+
+/** Folds the per-parent diffs of one merge into one entry per path, so a line is reported once. */
+function mergeSamePaths(files: readonly DiffFile[]): DiffFile[] {
+  const byPath = new Map<string, MutableFile>();
+  for (const file of files) {
+    const target = byPath.get(file.path);
+    if (target) mergeInto(target, file);
+    else byPath.set(file.path, { ...file, ordinal: byPath.size + 1, lines: [...file.lines] });
+  }
+  return [...byPath.values()];
+}
+
 /**
  * Parses `git diff -U0` or `git show -U0` patch text into the added lines of each file, with
  * new-file line numbers. Removed lines are dropped; binary files are kept for their path only.
+ * A merge shown with `--diff-merges=separate` names a path once per parent; those fold into one.
  */
 export function parseDiff(text: string): ScanSource {
   const files: MutableFile[] = [];
@@ -147,7 +166,8 @@ export function parseDiff(text: string): ScanSource {
       files.push({ path: headerPath(line), ordinal: files.length + 1, pathAdded: false, binary: false, lines: [] });
     } else if (file) hunk = applyHeaderLine(line, file);
   }
-  return { files, binaryFiles: files.filter((f) => f.binary).length };
+  const merged = mergeSamePaths(files);
+  return { files: merged, binaryFiles: merged.filter((f) => f.binary).length };
 }
 
 /** Parses `git show -U0 --format=%B%x00 <sha>` output: the message, a NUL, then the patch. */

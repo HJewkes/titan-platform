@@ -80,6 +80,36 @@ describe("parseDiff", () => {
   });
 });
 
+describe("parseDiff on a merge diffed against each parent", () => {
+  const againstFirst = ["diff --git a/m.txt b/m.txt", "--- a/m.txt", "+++ b/m.txt", "@@ -1,0 +2,2 @@", "+evil", "+ours"];
+  const againstSecond = ["diff --git a/m.txt b/m.txt", "new file mode 100644", "--- /dev/null", "+++ b/m.txt"];
+  const secondHunk = ["@@ -0,0 +1,2 @@", "+base", "+evil"];
+
+  it("folds one path into one file with each added line once and the path marked new", () => {
+    const { files } = parseDiff([...againstFirst, ...againstSecond, ...secondHunk].join("\n"));
+
+    expect(files).toEqual([
+      {
+        path: "m.txt",
+        ordinal: 1,
+        pathAdded: true,
+        binary: false,
+        lines: [
+          { line: 2, text: "evil" },
+          { line: 3, text: "ours" },
+          { line: 1, text: "base" },
+        ],
+      },
+    ]);
+  });
+
+  it("counts the path as binary when any parent's diff skipped it", () => {
+    const binary = ["diff --git a/m.txt b/m.txt", "Binary files a/m.txt and b/m.txt differ"];
+
+    expect(parseDiff([...againstFirst, ...binary].join("\n")).binaryFiles).toBe(1);
+  });
+});
+
 describe("parseCommit", () => {
   it("splits the message from the patch at the NUL", () => {
     const parsed = parseCommit("abcdef0123456", `Subject\n\nBody line\n\0\n${twoHunks}`);
