@@ -1,11 +1,26 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HOOK_MARKER, hookBody, installHook } from "./install.js";
-import { makeTestRepo, tempDir, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, tempDir, withoutInjectedHooksPath, type TestRepo } from "./test-repo.js";
 
 const dirs: string[] = [];
+const originalEnv = { ...process.env };
+
+// installHook reads the parent env, so an agent-injected core.hooksPath would redirect every fixture install.
+beforeAll(() => {
+  replaceProcessEnv(withoutInjectedHooksPath(originalEnv));
+});
+
+afterAll(() => {
+  replaceProcessEnv(originalEnv);
+});
+
+function replaceProcessEnv(env: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, env);
+}
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -78,6 +93,24 @@ describe("installHook", () => {
 
     expect(result.hookPath).toBe(path.join(repo.dir, ".githooks", "pre-push"));
     expect(fs.existsSync(path.join(repo.dir, ".githooks", "pre-push"))).toBe(true);
+  });
+
+  it("still honours a core.hooksPath injected through the parent env", () => {
+    const repo = newRepo();
+    const injected = tempDir("egress-injected-");
+    dirs.push(injected);
+    replaceProcessEnv({
+      ...process.env,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: injected,
+    });
+
+    try {
+      expect(installHook(repo.dir, LOCAL).hookPath).toBe(path.join(injected, "pre-push"));
+    } finally {
+      replaceProcessEnv(withoutInjectedHooksPath(originalEnv));
+    }
   });
 
   it("does nothing in CI", () => {
