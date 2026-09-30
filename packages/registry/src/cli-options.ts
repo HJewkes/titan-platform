@@ -3,7 +3,14 @@ import { arrayElementKind, fieldSchema, isOptionalField, schemaKind, type Schema
 
 /** `--ship-target` becomes `ship_target`, the snake_case key convention for args schemas. */
 export function flagToKey(long: string): string {
-  return long.replace(/^--/, "").replace(/-/g, "_");
+  return longFlagName(long).replace(/^--/, "").replace(/-/g, "_");
+}
+
+/** Reduce a commander flag spec such as `-s, --spawner <name>` to its bare long flag `--spawner`. */
+function longFlagName(spec: string): string {
+  const withoutPlaceholder = spec.replace(/\s+[<[].*$/, "");
+  const parts = withoutPlaceholder.split(",").map((part) => part.trim());
+  return parts.find((part) => part.startsWith("--")) ?? withoutPlaceholder.trim();
 }
 
 /** commander camelCases long flag names, dropping the leading `--`. */
@@ -18,7 +25,8 @@ export function camelizeFlagKey(flagKey: string): string {
  * so a `--no-*` flag must be read back off its stem. The paired value flag must
  * ignore that `false`, or `--no-notes` would reach `--notes` as a boolean.
  */
-export function readCommanderOption(opts: Record<string, unknown>, long: string): unknown {
+export function readCommanderOption(opts: Record<string, unknown>, spec: string): unknown {
+  const long = longFlagName(spec);
   if (long.startsWith("--no-")) {
     const stem = camelizeFlagKey(flagToKey(`--${long.slice("--no-".length)}`));
     return opts[stem] === false ? true : undefined;

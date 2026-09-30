@@ -51,6 +51,21 @@ describe("flag key mapping", () => {
     expect(camelizeFlagKey("ship_target")).toBe("shipTarget");
   });
 
+  it("drops a trailing required, optional or variadic placeholder", () => {
+    expect(flagToKey("--spawner <name>")).toBe("spawner");
+    expect(flagToKey("--ship-target [name]")).toBe("ship_target");
+    expect(flagToKey("--names <names...>")).toBe("names");
+  });
+
+  it("keys a short alias form by its long flag", () => {
+    expect(flagToKey("-s, --spawner <name>")).toBe("spawner");
+  });
+
+  it("leaves a boolean flag and a --no-* negation unchanged", () => {
+    expect(flagToKey("--dry-run")).toBe("dry_run");
+    expect(flagToKey("--no-loops")).toBe("no_loops");
+  });
+
   it("splits dotted command names into a sub-command path", () => {
     expect(commandPath("task.add")).toEqual(["task", "add"]);
     expect(commandPath("wrap")).toEqual(["wrap"]);
@@ -61,6 +76,16 @@ describe("readCommanderOption", () => {
   it("reads a --no-* flag off commander's negated stem", () => {
     expect(readCommanderOption({ loops: false }, "--no-loops")).toBe(true);
     expect(readCommanderOption({}, "--no-loops")).toBeUndefined();
+  });
+
+  it("reads an option declared with a placeholder or a short alias", () => {
+    expect(readCommanderOption({ spawner: "a" }, "--spawner <name>")).toBe("a");
+    expect(readCommanderOption({ spawner: "a" }, "-s, --spawner [name]")).toBe("a");
+    expect(readCommanderOption({ names: ["a"] }, "--names <names...>")).toEqual(["a"]);
+  });
+
+  it("reads a negation declared with a short alias", () => {
+    expect(readCommanderOption({ loops: false }, "-x, --no-loops")).toBe(true);
   });
 
   it("does not hand the negation's false to the paired value flag", () => {

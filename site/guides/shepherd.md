@@ -247,6 +247,10 @@ app id and conclusion, a reference to the reviewer's verdict (session id, record
 the decision with its rule and reason. On an allow, the same record is stored with the
 `merge-policy` step, with the full locator in place of the reference.
 
+To recompute `locatorSha256`, take the stored locator, run `JSON.stringify` on it with its keys
+in their original insertion order, and take the SHA-256 hex digest. Only the reader that
+produced the locator keeps that key order, so a re-serialized copy may not match.
+
 ## What is not built yet
 
 The land core, the hold, the policy resolution, the gates and the post-merge main CI read

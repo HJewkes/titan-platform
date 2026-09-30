@@ -94,7 +94,8 @@ stays out of the repo.
   when `shepherd.review` is set.
 - `shepherd.review` turns the review phase on. `profile` is the one agent-chat profile the
   reviewer is spawned with. `configDir` is optional: an absolute path to the reviewer's Claude
-  config directory, under the agent's home. The two timeouts are optional (30 minutes for the
+  config directory, under the agent's home. `config.ts` checks only that the path is absolute;
+  agent-chat refuses a config directory outside the home. The two timeouts are optional (30 minutes for the
   verdict, 5 minutes for the session start). With no `review` key no reviewer is started and
   the owner decides every merge. A `review` block without `agentChatBin`, or an unknown key in
   it, fails the load. The full key table is in the

@@ -1,6 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { redactForEvidence } from "../redact.js";
 import type { StepRoute } from "../routed-runner.js";
+import type { FreezeGuard } from "./freeze.js";
 import type { HoldLookup } from "./store.js";
 
 export const HOLD_POLL_MS = 10_000;
@@ -12,17 +13,17 @@ export class MergeHeldError extends Error {
 /** Why a merge of `repo#pr` must wait, read fresh; the PR is read for its head branch, so a failed read throws and refuses. */
 export type HeldCheck = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
 
-export function heldCheck(port: GitHubPort, holds: () => HoldLookup): HeldCheck {
+export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard): HeldCheck {
   return async (repo, pr) => {
     const lookup = holds();
-    const { headRef } = await port.getPr(repo, pr);
-    return lookup.heldReason(repo, pr, headRef);
+    const { headRef, baseRef } = await port.getPr(repo, pr);
+    return lookup.heldReason(repo, pr, headRef) ?? (await freeze?.reason(port, repo, pr, baseRef));
   };
 }
 
-/** The port handed to `landRoutes`: its merge refuses a held PR, and an unregistered PR passes straight through. */
-export function holdingPort(port: GitHubPort, holds: () => HoldLookup): GitHubPort {
-  const held = heldCheck(port, holds);
+/** The port handed to `landRoutes`: its merge refuses a held PR, and any PR of a frozen repo but the fix task's; any other PR passes straight through. */
+export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard): GitHubPort {
+  const held = heldCheck(port, holds, freeze);
   return {
     ...port,
     merge: async (repo, pr, sha, method) => {
