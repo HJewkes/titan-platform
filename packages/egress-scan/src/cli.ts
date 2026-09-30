@@ -21,6 +21,8 @@ export interface CliIo {
   readStdin(): string;
   out(line: string): void;
   err(line: string): void;
+  /** Overrides `MAX_PATCH_BYTES` for tests; the bin never sets it. */
+  readonly maxPatchBytes?: number;
 }
 
 const USAGE = [
@@ -29,20 +31,22 @@ const USAGE = [
   "  range <base> <head>   scan every commit in base..head (CI)",
   "  tree                  scan every tracked file at HEAD",
   "  install-hook          install the pre-push hook into git's hooks directory",
+  "files git calls binary are scanned as text; a commit over 128 MiB of patch text exits 2",
   "exit: 0 clean, 1 findings, 2 usage or configuration error",
 ];
 
 const PREFIX = "titan-egress-scan: ";
 
-function readCommits(root: string, shas: readonly string[]): ScanSource[] {
-  return [...new Set(shas)].map((sha) => readCommit(root, sha));
+function readCommits(root: string, shas: readonly string[], maxPatchBytes?: number): ScanSource[] {
+  return [...new Set(shas)].map((sha) => readCommit(root, sha, maxPatchBytes));
 }
 
-function prePushSources(root: string, remote: string, stdin: string): ScanSource[] {
-  const updates = parsePrePush(stdin);
+function prePushSources(root: string, remote: string, io: CliIo): ScanSource[] {
+  const updates = parsePrePush(io.readStdin());
   return readCommits(
     root,
     updates.flatMap((update) => commitsForUpdate(root, remote, update)),
+    io.maxPatchBytes,
   );
 }
 
@@ -93,11 +97,13 @@ function dispatch(command: string | undefined, args: readonly string[], io: CliI
       // git passes the remote name and its URL; only the name is used.
       expectArgs(command, args, 1, 2);
       expectValid(command, args.slice(0, 1), isRemoteName, "a remote name");
-      return runScan(io, (root) => prePushSources(root, args[0] ?? "", io.readStdin()));
+      return runScan(io, (root) => prePushSources(root, args[0] ?? "", io));
     case "range":
       expectArgs(command, args, 2, 2);
       expectValid(command, args, isRevision, "a sha or ref name");
-      return runScan(io, (root) => readCommits(root, commitsForRange(root, args[0] ?? "", args[1] ?? "")));
+      return runScan(io, (root) =>
+        readCommits(root, commitsForRange(root, args[0] ?? "", args[1] ?? ""), io.maxPatchBytes),
+      );
     case "tree":
       expectArgs(command, args, 0, 0);
       return runScan(io, (root) => [readTree(root)]);

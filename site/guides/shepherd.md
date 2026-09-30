@@ -243,9 +243,13 @@ The `sh-merge-evidence` step collects those facts once per head and posts one co
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
 a replay finds it instead of posting again. It carries a one-line summary and a JSON record:
 the run id, repo, pull request, head, base, GitHub's test-merge sha, each check run with its
-app id and conclusion, the locator of the reviewer's verdict, the reviewer's identity, and
+app id and conclusion, a reference to the reviewer's verdict (session id, record offsets and a hash of the full locator, with no path, host or source id), the reviewer's identity, and
 the decision with its rule and reason. On an allow, the same record is stored with the
-`merge-policy` step.
+`merge-policy` step, with the full locator in place of the reference.
+
+To recompute `locatorSha256`, take the stored locator, run `JSON.stringify` on it with its keys
+in their original insertion order, and take the SHA-256 hex digest. Only the reader that
+produced the locator keeps that key order, so a re-serialized copy may not match.
 
 ## What is not built yet
 

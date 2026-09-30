@@ -41,7 +41,7 @@ export interface EvidenceCheckRun {
   conclusion: string | null;
 }
 
-/** What the PR comment shows and `allowEvidence` stores in `merge-policy`. */
+/** What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`. */
 export interface EvidenceRecord {
   runId: string;
   repo: RepoSlug;
@@ -169,15 +169,23 @@ export interface LocatorReference {
   locatorSha256: string;
 }
 
+const SESSION_ID = /^(?!\.\.$)[^/@\\%]{1,64}$/;
+
+function integer(value: unknown): number | undefined {
+  return Number.isInteger(value) ? (value as number) : undefined;
+}
+
 type PartialLocator = { source?: { conversation?: { nativeId?: string } }; evidence?: { line?: { byteOffset?: number }; subrecord?: { index?: number } }; selector?: { textIndex?: number } };
 
 /** Enough to find the message in the local store: the session, the record offset, the part, and a hash that checks the full locator. */
 export function locatorReference(locator: SourceTextLocator): LocatorReference {
   const { source, evidence, selector }: PartialLocator = locator;
-  const position = { byteOffset: evidence?.line?.byteOffset, subrecordIndex: evidence?.subrecord?.index, textIndex: selector?.textIndex };
+  const position = { byteOffset: integer(evidence?.line?.byteOffset), subrecordIndex: integer(evidence?.subrecord?.index), textIndex: integer(selector?.textIndex) };
+  const nativeId: unknown = source?.conversation?.nativeId;
   return {
-    sessionId: source?.conversation?.nativeId ?? "unknown",
+    sessionId: typeof nativeId === "string" && SESSION_ID.test(nativeId) ? nativeId : "unknown",
     ...Object.fromEntries(Object.entries(position).filter(([, value]) => value !== undefined)),
+    // The hash covers JSON.stringify in the locator's own key order, so only the reader that produced it can recompute it.
     locatorSha256: createHash("sha256").update(JSON.stringify(locator)).digest("hex"),
   };
 }
