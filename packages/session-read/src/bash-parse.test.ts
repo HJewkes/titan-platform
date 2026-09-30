@@ -98,6 +98,14 @@ describe("commandHeads", () => {
     expect(commandHeads("git log --oneline | head -5 || true\nactive-work task edit demo TP-1 status done")).toEqual(["git log", "head", "true", "active-work task edit"]);
   });
 
+  it("drops cd even when its directory looks like a subcommand", () => {
+    expect(commandHeads("cd /a && ls; cd b; git status")).toEqual(["ls", "git status"]);
+  });
+
+  it("does not close a command substitution on a quoted paren", () => {
+    expect(commandHeads("echo $(echo ')' && x) && ls")).toEqual(["echo", "ls"]);
+  });
+
   it("keeps a quoted separator inside one head", () => {
     expect(commandHeads('git commit -m "a && b; c | d"')).toEqual(["git commit"]);
   });

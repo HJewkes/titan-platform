@@ -66,7 +66,17 @@ function joinCapped(heads: readonly string[]): string {
     if (next.length > DETAIL_CAP) break;
     joined = next;
   }
-  return joined || (heads[0] ?? "").slice(0, DETAIL_CAP);
+  return joined || capCodePoints(heads[0] ?? "");
+}
+
+/** Cuts on code points so a surrogate pair is never split. */
+function capCodePoints(text: string): string {
+  let capped = "";
+  for (const char of text) {
+    if (capped.length + char.length > DETAIL_CAP) break;
+    capped += char;
+  }
+  return capped;
 }
 
 function fileSignals(name: string, input: Json | null): AuditSignal[] {

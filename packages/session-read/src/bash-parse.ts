@@ -275,9 +275,10 @@ export function commandHeads(raw: string): string[] {
 function segmentHeads(words: readonly ShellWord[]): string[] {
   const { command, targets } = separateRedirects(words);
   const head = headOf(command);
-  const teeTargets = head === 'tee' ? command.slice(1).filter((w) => !w.text.startsWith('-')).map((w) => w.text) : [];
+  const program = head[0];
+  const teeTargets = program === 'tee' ? command.slice(1).filter((w) => !w.text.startsWith('-')).map((w) => w.text) : [];
   const writes = [...targets, ...teeTargets].filter((t) => t.length > 0 && !t.startsWith('/dev/'));
-  return [...(head && head !== 'cd' ? [head] : []), ...writes.map((t) => `>${path.basename(t)}`)];
+  return [...(program && program !== 'cd' ? [head.join(' ')] : []), ...writes.map((t) => `>${path.basename(t)}`)];
 }
 
 interface Redirected {
@@ -303,20 +304,21 @@ function separateRedirects(words: readonly ShellWord[]): Redirected {
   return out;
 }
 
-function headOf(words: readonly ShellWord[]): string | null {
+/** The program followed by its subcommand words, or empty when the command has no program. */
+function headOf(words: readonly ShellWord[]): string[] {
   let start = 0;
   while (start < words.length && !words[start]!.quoted && isPrefix(words[start]!.text)) start++;
   const program = words[start];
-  if (!program || program.quoted) return null;
+  if (!program || program.quoted) return [];
   const name = path.basename(program.text.replace(/^\(+/, ''));
-  if (!name) return null;
-  if (OPERAND_ONLY.has(name)) return name;
+  if (!name) return [];
+  if (OPERAND_ONLY.has(name)) return [name];
   const parts = [name];
   for (const word of words.slice(start + 1)) {
     if (parts.length > MAX_SUBCOMMANDS || word.quoted || !SUBCOMMAND.test(word.text)) break;
     parts.push(word.text);
   }
-  return parts.join(' ');
+  return parts;
 }
 
 function isPrefix(text: string): boolean {

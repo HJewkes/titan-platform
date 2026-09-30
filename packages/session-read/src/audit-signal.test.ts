@@ -72,6 +72,12 @@ describe("signal emitter", () => {
     expect(signalsAt("2026-07-01T00:00:07Z")).toEqual([]);
   });
 
+  it("command_heads cuts an oversized head on a code point, never inside a surrogate pair", () => {
+    const command = `${"a".repeat(255)}\u{1F600}`;
+    const [signal] = bashSignals(command, parseGitIntent(command));
+    expect(signal).toEqual({ signal: "command_heads", detail: "a".repeat(255) });
+  });
+
   it("command_heads keeps whole heads within 256 characters", () => {
     const command = Array.from({ length: 60 }, (_, i) => `tool${i} sub${i}`).join(" && ");
     const [signal] = bashSignals(command, parseGitIntent(command));

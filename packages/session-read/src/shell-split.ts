@@ -71,11 +71,23 @@ class Scanner {
     this.i += 2;
   }
 
+  /** Quoted spans are skipped, so a `)` inside quotes does not close the substitution. */
   private closingParen(): number {
     let depth = 0;
     for (let j = this.i + 1; j < this.src.length; j++) {
-      if (this.src[j] === "(") depth++;
-      if (this.src[j] === ")" && --depth === 0) return j + 1;
+      const c = this.src[j];
+      if (c === "'" || c === '"') j = this.closingQuote(j);
+      else if (c === "(") depth++;
+      else if (c === ")" && --depth === 0) return j + 1;
+    }
+    return this.src.length;
+  }
+
+  private closingQuote(open: number): number {
+    const q = this.src[open];
+    for (let j = open + 1; j < this.src.length; j++) {
+      if (q === '"' && this.src[j] === "\\") j++;
+      else if (this.src[j] === q) return j;
     }
     return this.src.length;
   }
