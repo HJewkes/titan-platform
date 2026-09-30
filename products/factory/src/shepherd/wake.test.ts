@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
@@ -16,6 +19,7 @@ const H2 = fakeSha("head-2");
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
 const MINUTE = 60_000;
 const FIXER: EffectivePolicy = { ...OWNER_GATE_POLICY, fixer: true, seat: "demo-seat" };
+const MAIN_CHECKOUT = "/repos/demo";
 const registration: RegistrationInput = { repo: REPO, pr: 1, runId: "run-1", task: "demo task", implementer: "impl-a", policy: FIXER };
 
 function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
@@ -59,7 +63,8 @@ interface Scene {
   warmth?: Record<string, Warmth>;
   agentChatBin?: string;
   noAgents?: boolean;
-  checkouts?: (path: string) => boolean;
+  checkoutFor?: (repo: string) => string | undefined;
+  pr?: Partial<PullRequest>;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
 }
 
@@ -68,13 +73,13 @@ const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0
 /** The sh-wake-implementer step run alone over a fake GitHub and a fake roster. */
 function wakeStep(scene: Scene = {}) {
   const fake = fakeGitHub({ repo: REPO });
-  fake.addPr({ headSha: H1, headRef: "feat/demo-fix" });
+  fake.addPr({ headSha: H1, headRef: "feat/demo-fix", ...scene.pr });
   const agents = fakeAgents(scene.rows ?? [row("impl-a")]);
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat" };
-  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], isCheckout: scene.checkouts ?? (() => true), ...(!scene.noAgents && { agents }) };
+  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1" };
@@ -96,27 +101,58 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
   });
 
-  it("spawns a successor naming its predecessor when the implementer went quiet 50 minutes ago", async () => {
+  it("spawns a successor in the repo's main checkout, told to check out the PR branch at its head", async () => {
     const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
     const { result } = await run("review", fixFirst("fix the parser"));
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
     const [spawn] = agents.asked;
-    expect(spawn).toMatchObject({ verb: "spawn", name: "impl-a-s1", cwd: "/work/impl-a" });
+    expect(spawn).toMatchObject({ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT });
     expect(spawn!.message).toContain("taking over octo/demo#1 from impl-a");
-    expect(spawn!.message).toContain("`feat/demo-fix`");
+    expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch \`feat/demo-fix\` and check it out at the PR head ${H1}.`);
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
   });
 
-  it("returns unhandled when the ended agent's tree was parked, since a successor has no checkout to start in", async () => {
-    const scene = wakeStep({ checkouts: (path) => path !== "/work/impl-a" });
+  it("resumes a parked implementer on FIX_FIRST though its tree is gone, since resuming re-creates it at the same path", async () => {
+    const parked = join(tmpdir(), `tp549-parked-${process.pid}-${Date.now()}`);
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { cwd: parked })], warmth: { "/transcripts/impl-a.jsonl": warmAt(10) } });
+
+    const { result } = await run("review", fixFirst("fix the parser"));
+
+    expect(existsSync(parked)).toBe(false);
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
+    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
+    expect(agents.asked[0]!.message).toContain(`An independent review of head ${H1} returned FIX_FIRST.`);
+    expect(agents.asked[0]!.message).toContain("Fix it on branch `feat/demo-fix`");
+  });
+
+  it("never starts a successor in its predecessor's parked tree path", async () => {
+    const parked = join(tmpdir(), `tp549-parked-${process.pid}-${Date.now()}`);
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { cwd: parked })] });
+
+    await run("review", fixFirst("fix it"));
+
+    expect(agents.asked[0]).toMatchObject({ verb: "spawn", cwd: MAIN_CHECKOUT });
+  });
+
+  it("returns unhandled when no checkout of the repo is bound, since a successor has nowhere to start", async () => {
+    const scene = wakeStep({ checkoutFor: () => undefined });
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's checkout is gone, so a successor has no checkout to start in" });
+    expect(result).toEqual({ kind: "unhandled", reason: "no seat binds a checkout of octo/demo, so a successor has no checkout to start in" });
     expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("records the successor in the run's lineage, so the next wake names the one after it", async () => {
+    const scene = wakeStep();
+    scene.agents.spawn = async (name) => void scene.agents.rows.push(row(name, { agentId: `agent-${name}` }));
+
+    await scene.run("review", fixFirst("fix it"));
+
+    expect(scene.store.get().authorsOf("run-1")).toMatchObject([{ agentId: "agent-impl-a-s1", name: "impl-a-s1", role: "successor", predecessor: "impl-a" }]);
   });
 
   it("spawns a successor when a recent implementer holds 200k tokens or more", async () => {
@@ -141,7 +177,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     await run("review", fixFirst("fix it"));
 
-    expect(agents.asked[0]).toMatchObject({ verb: "spawn", name: "impl-a-s3", cwd: "/work/impl-a-s2" });
+    expect(agents.asked[0]).toMatchObject({ verb: "spawn", name: "impl-a-s3", cwd: MAIN_CHECKOUT });
     expect(agents.asked[0]!.message).toContain("from impl-a-s2");
   });
 
@@ -192,6 +228,21 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
     expect(scene.agents.rows.filter((agent) => agent.name === "impl-a-s1")).toHaveLength(1);
+  });
+
+  it("counts a refused re-ask as woken when the timed-out ask landed after the roster was read", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    let resumes = 0;
+    scene.agents.resume = async () => {
+      if (++resumes === 1) throw new DispatchTimeoutError("agent-chat did not answer");
+      scene.agents.rows[0] = row("impl-a", { presence: "live" });
+      throw new DispatchError("agent-chat refused the resume: impl-a is already resuming");
+    };
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(resumes).toBe(2);
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
   });
 
   it("returns unhandled with the refusal text, and the step itself succeeds", async () => {
@@ -255,6 +306,24 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(Buffer.byteLength(fenced)).toBeLessThanOrEqual(LOG_BUDGET_BYTES);
   });
 
+  it.each([
+    [150, "l0:"],
+    [151, "l1:"],
+  ])("sends every one of 150 short lines, well under 8 KB, and no more (%i lines logged)", async (count, first) => {
+    const scene = wakeStep({ warmth: warm });
+    scene.fake.setRuns(H1, [successRun("validate", 11, undefined, "failure")]);
+    scene.fake.jobLogs.set(11, Array.from({ length: count }, (_, i) => `l${i}:`).join("\n"));
+
+    await scene.run("ci-red");
+
+    const message = scene.agents.asked[0]!.message;
+    const fenced = message.slice(message.indexOf("```CI log\n") + 10, message.lastIndexOf("\n```"));
+    const lines = fenced.split("\n").slice(1);
+    expect(lines).toHaveLength(150);
+    expect(lines[0]).toBe(first);
+    expect(lines.at(-1)).toBe(`l${count - 1}:`);
+  });
+
   it("trims long logs to 8 KB in total, keeping each log's end", async () => {
     const scene = wakeStep({ warmth: warm });
     scene.fake.setRuns(H1, [successRun("validate", 11, undefined, "failure"), successRun("dag-check", 12, undefined, "timed_out")]);
@@ -278,7 +347,50 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
 
     await scene.run("conflict", { mergeableState: "dirty" });
 
-    expect(scene.agents.asked[0]!.message).toContain("```conflict candidates\nsrc/b.ts\nsrc/old.ts\n```");
+    const message = scene.agents.asked[0]!.message;
+    expect(message).toContain("```conflict candidates\nsrc/b.ts\nsrc/old.ts\n```");
+    expect(message).toContain("```base branch\nmain\n```");
+    expect(message).not.toContain("generated");
+  });
+
+  function conflictScene(paths: string[]) {
+    const scene = wakeStep({ warmth: warm });
+    scene.fake.prFiles.set(1, paths.map((path) => ({ path, status: "modified" })));
+    scene.fake.prChangedFiles.set(1, paths.length);
+    scene.fake.compares.set(`${H1}...main`, { mergeBaseSha: fakeSha("base"), files: [...paths, "src/c.ts"] });
+    return scene;
+  }
+
+  it("marks a conflict generated-only when every conflicting file is a declared registry", async () => {
+    const registries = ["CAPABILITIES.md", "site/reference/store.md", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"];
+    const scene = conflictScene(registries);
+
+    await scene.run("conflict", { mergeableState: "dirty" });
+
+    const message = scene.agents.asked[0]!.message;
+    expect(message).toContain("The conflict is generated-only");
+    expect(message).toContain("take the base's side of those files, run `pnpm build` then `pnpm capabilities`, commit the regenerated files and push. Do not hand-merge them.");
+    expect(message).toContain(`\`\`\`conflict candidates\n${registries.join("\n")}\n\`\`\``);
+  });
+
+  it("keeps the hand-merge brief for a mixed conflict and names which files are registries", async () => {
+    const scene = conflictScene(["src/b.ts", "CAPABILITIES.md", "site/reference/store.md"]);
+
+    await scene.run("conflict", { mergeableState: "dirty" });
+
+    const message = scene.agents.asked[0]!.message;
+    expect(message).not.toContain("generated-only");
+    expect(message).toContain("The files both sides changed follow. Do not hand-merge a file marked (generated registry)");
+    expect(message).toContain("```conflict candidates\nsrc/b.ts\nCAPABILITIES.md (generated registry)\nsite/reference/store.md (generated registry)\n```");
+  });
+
+  it("returns unhandled when the base branch is not a valid ref name", async () => {
+    const scene = wakeStep({ warmth: warm, pr: { baseRef: "main..evil" } });
+
+    const { result } = await scene.run("conflict", { mergeableState: "dirty" });
+
+    expect(result).toEqual({ kind: "unhandled", reason: "the base branch name of octo/demo#1 is not a valid ref name" });
+    expect(scene.agents.asked).toEqual([]);
   });
 
   it("returns unhandled when a review wake carries no findings", async () => {
@@ -306,7 +418,7 @@ describe("wakePhase", () => {
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), isCheckout: () => true })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");

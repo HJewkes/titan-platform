@@ -1,13 +1,14 @@
-import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat, listAgents, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
 import { z } from "zod";
+import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "../routed-runner.js";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
+import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -28,6 +29,14 @@ export const CLI_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
+/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
+const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
+const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
+
+/** Files a build regenerates from source; a conflict confined to them is settled by regenerating, never by hand-merging. */
+const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"]);
+const REGISTRY_DIR = "site/reference/";
+export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path) || (path.startsWith(REGISTRY_DIR) && path.length > REGISTRY_DIR.length);
 
 /** How the wake step reaches agent-chat. A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface ImplementerAgents {
@@ -52,11 +61,17 @@ export interface WakeWiring {
   readWarmth?: (transcriptPath: string) => Promise<Warmth | undefined>;
   limits?: WarmthLimits;
   livePollMs?: number;
-  /** Whether a successor can start in `path`; a parked tree is gone. Defaults to a directory check. */
-  isCheckout?: (path: string) => boolean;
+  /** The repo's main checkout, which a successor's worktree is cut from; undefined when none is bound. Defaults to the repo's seat path. */
+  checkoutFor?: (repo: string) => string | undefined;
 }
 
-const isDirectory = (path: string): boolean => statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+/** The checkout a seat binds to `repo`, re-read per wake as the reviewer's spawn re-reads it. */
+export function seatCheckout(env: NodeJS.ProcessEnv = process.env): (repo: string) => string | undefined {
+  return (repo) => {
+    const found = lookupSeat(loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
+    return found.kind === "seat" ? found.seat.paths[repo.toLowerCase()] : undefined;
+  };
+}
 
 const WakeInputSchema = z.object({
   kind: z.enum(["ci-red", "review", "conflict", "fix-proof"]),
@@ -107,41 +122,63 @@ function headBytes(text: string, max: number): string {
   return bytes.subarray(0, max).toString("utf8").replace(/�+$/, "");
 }
 
-/** Files the PR changed that the base also changed since the merge base: the likely conflicts. */
-async function conflictCandidates(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<string> {
+interface Conflict {
+  /** Files the PR changed that the base also changed since the merge base: the likely conflicts. */
+  files: string[];
+  truncated: boolean;
+}
+
+async function conflictFiles(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<Conflict> {
   const [prFiles, base] = await Promise.all([port.listPrFiles(input.repo, input.pr), port.compareFiles(input.repo, input.headSha, pr.baseRef)]);
   const moved = new Set(base.files);
   const touched = prFiles.flatMap((file) => [file.path, ...(file.previousPath === undefined ? [] : [file.previousPath])]);
-  const candidates = [...new Set(touched.filter((path) => moved.has(path)))];
-  const lines = candidates.length > 0 ? candidates : ["No file both this PR and the base changed; rebase and resolve what git reports."];
-  return [...lines, ...(base.truncated ? ["GitHub truncated the base comparison, so this list may be missing files."] : [])].join("\n");
+  return { files: [...new Set(touched.filter((path) => moved.has(path)))], truncated: base.truncated };
+}
+
+/** A truncated comparison may hide a hand-written file, so it is never generated-only. */
+const generatedOnly = (conflict: Conflict): boolean => !conflict.truncated && conflict.files.length > 0 && conflict.files.every(isRegistry);
+
+function conflictList(conflict: Conflict): string {
+  const mark = !generatedOnly(conflict) && conflict.files.some(isRegistry);
+  const files = conflict.files.map((path) => (mark && isRegistry(path) ? `${path} (generated registry)` : path));
+  const lines = files.length > 0 ? files : ["No file both this PR and the base changed; rebase and resolve what git reports."];
+  return [...lines, ...(conflict.truncated ? ["GitHub truncated the base comparison, so this list may be missing files."] : [])].join("\n");
+}
+
+const REGENERATE = "run `pnpm build` then `pnpm capabilities`, commit the regenerated files and push";
+
+function conflictReason(input: WakeInput, conflict: Conflict): string {
+  const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below.`;
+  if (generatedOnly(conflict)) {
+    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Merge the base branch from origin, take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
+  }
+  const registries = conflict.files.some(isRegistry) ? ` Do not hand-merge a file marked (generated registry): take the base's side of it, then ${REGENERATE}.` : "";
+  return `${intro} The files both sides changed follow.${registries}`;
 }
 
 const FixFirst = z.looseObject({ text: z.string().min(1) });
 
-async function fencedPayload(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<string> {
+/** Why the agent is woken, and the data that shows it, fenced. */
+async function describe(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<{ reason: string; payload: string }> {
+  const head = input.headSha;
   switch (input.kind) {
     case "ci-red":
-      return dataFence("CI log", await ciLogs(port, input));
+      return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
     case "review":
-      return dataFence("review findings", FixFirst.parse(input.payload).text);
-    case "conflict":
-      return dataFence("conflict candidates", await conflictCandidates(port, input, pr));
+      return { reason: `An independent review of head ${head} returned FIX_FIRST. Its findings follow.`, payload: dataFence("review findings", FixFirst.parse(input.payload).text) };
+    case "conflict": {
+      const conflict = await conflictFiles(port, input, pr);
+      return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
+    }
     case "fix-proof":
-      return dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2));
+      return { reason: `The fix-proof check at head ${head} did not pass. Its result follows.`, payload: dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2)) };
   }
 }
-
-const REASONS: Record<WakeRequest["kind"], (input: WakeInput, pr: PullRequest) => string> = {
-  "ci-red": (input) => `CI failed at head ${input.headSha}. The failing jobs' log tails follow.`,
-  review: (input) => `An independent review of head ${input.headSha} returned FIX_FIRST. Its findings follow.`,
-  conflict: (input, pr) => `Head ${input.headSha} conflicts with ${pr.baseRef}. The files both sides changed follow.`,
-  "fix-proof": (input) => `The fix-proof check at head ${input.headSha} did not pass. Its result follows.`,
-};
 
 interface WakeTask {
   input: WakeInput;
   pr: PullRequest;
+  reason: string;
   payload: string;
   implementer: string;
   /** Successors the store's lineage records, earliest first. */
@@ -152,15 +189,15 @@ const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed
 
 function resumeMessage(task: WakeTask): string {
   const { input, pr } = task;
-  const intro = `Shepherd is waking you on ${input.repo}#${input.pr}. ${REASONS[input.kind](input, pr)}`;
+  const intro = `Shepherd is waking you on ${input.repo}#${input.pr}. ${task.reason}`;
   return `${intro}\n\n${task.payload}\n\nFix it on branch \`${pr.headRef}\`, push, and ${HEAD_LINE}`;
 }
 
 function successorBrief(task: WakeTask, predecessor: string, name: string): string {
   const { input, pr } = task;
   return [
-    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${REASONS[input.kind](input, pr)}`,
-    `Push your fix to the PR's existing head branch \`${pr.headRef}\`: fetch it, commit on top of it and push to it. Do not open a new PR.`,
+    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
+    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
     task.payload,
     `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), then ${HEAD_LINE}`,
   ].join("\n\n");
@@ -198,7 +235,7 @@ function successorName(task: WakeTask, roster: readonly AgentRow[]): string {
   return `${task.implementer}-s${highest + 1}`;
 }
 
-type Choice = { mode: "resume"; agent: string; message: string; sessionId: string } | { mode: "successor"; agent: string; message: string; cwd: string };
+type Choice = { mode: "resume"; agent: string; message: string; sessionId: string } | { mode: "successor"; agent: string; predecessor: string; message: string; cwd: string };
 
 /** A string is why nobody can be woken. */
 async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[]): Promise<Choice | string> {
@@ -207,9 +244,10 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
-  if (!(wiring.isCheckout ?? isDirectory)(newest.cwd)) return `${newest.name}'s checkout is gone, so a successor has no checkout to start in`;
+  const cwd = (wiring.checkoutFor ?? seatCheckout())(task.input.repo);
+  if (cwd === undefined) return `no seat binds a checkout of ${task.input.repo}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, message: successorBrief(task, newest.name, agent), cwd: newest.cwd };
+  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. */
@@ -222,15 +260,33 @@ function wokenBy(choice: Choice): WakeStepResult {
   return { kind: "woken", agent: choice.agent, mode: choice.mode, ...(choice.mode === "resume" && { sessionId: choice.sessionId }) };
 }
 
-/** False when the broker was down or the ask timed out; any other failure is a refusal and throws. */
-async function ask(agents: ImplementerAgents, choice: Choice): Promise<boolean> {
+const sameAsk = (a: Choice | undefined, b: Choice): boolean => a !== undefined && a.mode === b.mode && a.agent === b.agent;
+
+/**
+ * False when the broker was down or the ask timed out; any other failure is a refusal and throws. A refusal of a
+ * re-ask is agent-chat refusing a duplicate once the earlier ask landed, so the roster decides.
+ */
+async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, signal: AbortSignal): Promise<boolean> {
   try {
     await (choice.mode === "resume" ? agents.resume(choice.agent, choice.message) : agents.spawn(choice.agent, choice.message, choice.cwd));
     return true;
   } catch (error) {
     if (brokerDown(error)) return false;
+    if (reask && tookEffect(choice, await rosterWhileBrokerDown(deps, agents, signal))) return true;
     throw error;
   }
+}
+
+/** A successor joins the run's lineage, so the next wake counts it; the broker's id is used once the roster shows it. */
+async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, task: WakeTask, choice: Choice, signal: AbortSignal): Promise<void> {
+  if (choice.mode !== "successor") return;
+  const row = latestRow(choice.agent, await rosterWhileBrokerDown(deps, agents, signal));
+  deps.store.get().recordAuthor(task.input.runId, { agentId: row?.agentId ?? choice.agent, name: choice.agent, role: "successor", predecessor: choice.predecessor });
+}
+
+async function woken(deps: ShepherdDeps, agents: ImplementerAgents, task: WakeTask, choice: Choice, signal: AbortSignal): Promise<WakeStepResult> {
+  await recordSuccessor(deps, agents, task, choice, signal);
+  return wokenBy(choice);
 }
 
 async function rosterWhileBrokerDown(deps: ShepherdDeps, agents: ImplementerAgents, signal: AbortSignal): Promise<readonly AgentRow[]> {
@@ -255,7 +311,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
   let asked: Choice | undefined;
   for (;;) {
     const roster = await rosterWhileBrokerDown(deps, agents, signal);
-    if (asked && tookEffect(asked, roster)) return wokenBy(asked);
+    if (asked && tookEffect(asked, roster)) return woken(deps, agents, task, asked, signal);
     const newest = newestAgent(task, roster);
     if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
     if (newest.presence !== "exited") {
@@ -265,8 +321,9 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     }
     const choice = await choose(deps, wiring, task, newest, roster);
     if (typeof choice === "string") return unhandled(choice);
+    const reask = sameAsk(asked, choice);
     asked = choice;
-    if (await ask(agents, asked)) return wokenBy(asked);
+    if (await ask(deps, agents, asked, reask, signal)) return woken(deps, agents, task, asked, signal);
     await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
   }
 }
@@ -274,9 +331,10 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
 async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Registration): Promise<WakeTask | string> {
   const pr = await deps.port.getPr(input.repo, input.pr);
   if (pr.state !== "open") return `${input.repo}#${input.pr} is no longer open`;
-  if (!BRANCH.test(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
+  if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
+  if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, payload: await fencedPayload(deps.port, input, pr), implementer: registration.implementer, successors };
+  return { input, pr, ...(await describe(deps.port, input, pr)), implementer: registration.implementer, successors };
 }
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
