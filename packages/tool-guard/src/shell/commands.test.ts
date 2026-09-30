@@ -295,7 +295,7 @@ describe("wrappers that run their command", () => {
   });
 
   it("does not unwrap doas -C, which only checks the rule", () => {
-    expect(gitArgs("doas -C /etc/doas.conf git push")).toEqual([]);
+    expect(extract("doas -C /etc/doas.conf git push")).toEqual([]);
   });
 
   it.each([
@@ -360,13 +360,13 @@ describe("literal text piped into a shell", () => {
   });
 
   it.each([
-    ["a dynamic argument", "echo git $X | bash"],
-    ["a printf format it does not model", "printf '%5s' push | bash"],
-    ["printf -v", "printf -v X 'git push' | bash"],
-    ["a script operand", "echo git push | bash x.sh"],
-    ["a command that is not echo or printf", "cat git push | bash"],
-    ["a pipe into something else", "echo git push | cat"],
-  ])("runs nothing for %s", (_how, src) => {
-    expect(gitArgs(src)).toEqual([]);
+    ["a dynamic argument", "echo git $X | bash", ["echo", "bash"]],
+    ["a printf format it does not model", "printf '%.3s' 'git push' | bash", ["printf", "bash"]],
+    ["printf -v", "printf -v X 'git push' | bash", ["printf", "bash"]],
+    ["a script operand", "echo git push | bash x.sh", ["echo", "bash"]],
+    ["a command that is not echo or printf", "cat git push | bash", ["cat", "bash"]],
+    ["a pipe into something else", "echo git push | cat", ["echo", "cat"]],
+  ])("runs nothing for %s", (_how, src, names) => {
+    expect(extract(src).map((c) => c.name)).toEqual(names);
   });
 });
