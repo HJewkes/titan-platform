@@ -153,7 +153,7 @@ describe("commandHeads", () => {
     expect(commandHeads("python3 /x/y/score.py --seat a")).toEqual(["python3 score.py"]);
     expect(commandHeads("node dist/cli.js; bash run.sh; bash -x ./deploy")).toEqual(["node cli.js", "bash run.sh", "bash deploy"]);
     expect(commandHeads("python3 -c 'print(1)'; python3 - <<EOF\nimport x\nEOF")).toEqual(["python3"]);
-    expect(commandHeads("python3 -m http.server; bun test")).toEqual(["python3", "bun test"]);
+    expect(commandHeads("python3 -m http.server; bun run build; node $ENTRY")).toEqual(["python3", "bun run build", "node"]);
   });
 
   it("looks through timeout, nice, nohup and env to the program they run", () => {
