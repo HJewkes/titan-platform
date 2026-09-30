@@ -211,8 +211,18 @@ const agent = (name: string, overrides: Partial<ReviewerAgent> = {}): ReviewerAg
   sessionId: `session-${name}`,
   presence: "exited",
   spawnedBy: null,
+  predecessor: null,
   ...overrides,
 });
+
+/** The same row as a port with no lineage store reports it. */
+function unlinked({ name, agentId, sessionId, presence, spawnedBy, fillTokens }: ReviewerAgent): ReviewerAgent {
+  return { name, agentId, sessionId, presence, spawnedBy, ...(fillTokens !== undefined && { fillTokens }) };
+}
+
+/** A coordinator, the implementer it spawned, and whoever else is in the scene. */
+const crew = (...others: ReviewerAgent[]): ReviewerAgent[] => [agent("coord", { presence: "live" }), agent("impl-a", { spawnedBy: "coord", presence: "live" }), ...others];
+const standing = (overrides: Partial<ReviewerAgent> = {}) => agent("rv-standing", { spawnedBy: "coord", fillTokens: 100_000, ...overrides });
 
 interface FakeDispatch extends ReviewerDispatch {
   agents: ReviewerAgent[];
@@ -317,8 +327,8 @@ describe("sh-review", () => {
     expect(dispatch.resumes).toEqual([]);
   });
 
-  it("resumes the registration's opt-in reviewer when it has exited under the fill limit", async () => {
-    const dispatch = fakeDispatch([agent("rv-standing", { fillTokens: 100_000 })]);
+  it("resumes an exited opt-in reviewer under the fill limit whose stored lineage never meets the implementer's", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
 
     const { result } = await shReview(dispatch, { registered: optIn("rv-standing") });
 
@@ -329,15 +339,15 @@ describe("sh-review", () => {
   });
 
   it.each<[string, string, ReviewerAgent[]]>([
-    ["is still live", "rv-standing", [agent("rv-standing", { presence: "live", fillTokens: 100_000 })]],
-    ["is detached", "rv-standing", [agent("rv-standing", { presence: "detached", fillTokens: 100_000 })]],
-    ["is at the fill limit", "rv-standing", [agent("rv-standing", { fillTokens: MAX_RESUME_FILL_TOKENS })]],
-    ["has an unknown fill", "rv-standing", [agent("rv-standing")]],
-    ["never started a session", "rv-standing", [agent("rv-standing", { sessionId: "", fillTokens: 100_000 })]],
-    ["is the implementer", "impl-a", [agent("impl-a", { fillTokens: 100_000 })]],
-    ["was spawned by the implementer", "rv-standing", [agent("rv-standing", { spawnedBy: "impl-a", fillTokens: 100_000 })]],
-    ["shares its name with another agent", "rv-standing", [agent("rv-standing", { fillTokens: 100_000 }), agent("rv-standing", { agentId: "agent-other", fillTokens: 100_000 })]],
-    ["is not in the roster", "rv-standing", []],
+    ["is still live", "rv-standing", crew(standing({ presence: "live" }))],
+    ["is detached", "rv-standing", crew(standing({ presence: "detached" }))],
+    ["is at the fill limit", "rv-standing", crew(standing({ fillTokens: MAX_RESUME_FILL_TOKENS }))],
+    ["has an unknown fill", "rv-standing", crew(agent("rv-standing", { spawnedBy: "coord" }))],
+    ["never started a session", "rv-standing", crew(standing({ sessionId: "" }))],
+    ["is the implementer", "impl-a", [agent("coord"), agent("impl-a", { spawnedBy: "coord", fillTokens: 100_000 })]],
+    ["was spawned by the implementer", "rv-standing", crew(standing({ spawnedBy: "impl-a" }))],
+    ["shares its name with another agent", "rv-standing", crew(standing(), standing({ agentId: "agent-other" }))],
+    ["is not in the roster", "rv-standing", crew()],
   ])("spawns a fresh reviewer instead of resuming an opt-in reviewer that %s", async (_name, reviewer, roster) => {
     const dispatch = fakeDispatch(roster);
 
@@ -347,9 +357,46 @@ describe("sh-review", () => {
     expect(dispatch.resumes).toEqual([]);
   });
 
+  it.each<[string, string, ReviewerAgent[]]>([
+    ["is the implementer's successor, with no lineage stored for it", "impl-a-2", crew(unlinked(agent("impl-a-2", { spawnedBy: "coord", fillTokens: 100_000 })))],
+    ["is recorded as having taken over from the implementer", "impl-a-2", crew(agent("impl-a-2", { spawnedBy: "coord", predecessor: "impl-a", fillTokens: 100_000 }))],
+    ["is a grandchild of the implementer", "rv-standing", crew(agent("helper", { spawnedBy: "impl-a" }), standing({ spawnedBy: "helper" }))],
+    ["took over from an agent the implementer spawned", "rv-standing", crew(agent("helper", { spawnedBy: "impl-a" }), standing({ predecessor: "helper" }))],
+    ["descends from a spawnedBy cycle", "rv-standing", crew(agent("loop-a", { spawnedBy: "loop-b" }), agent("loop-b", { spawnedBy: "loop-a" }), standing({ spawnedBy: "loop-a" }))],
+    ["was spawned by an agent missing from the roster", "rv-standing", crew(standing({ spawnedBy: "gone" }))],
+    ["has an ancestor with no lineage stored", "rv-standing", crew(unlinked(agent("middle", { spawnedBy: "coord" })), standing({ spawnedBy: "middle" }))],
+    ["cannot be compared with an implementer missing from the roster", "rv-standing", [agent("coord"), standing()]],
+  ])("does not resume an opt-in reviewer that %s", async (_name, reviewer, roster) => {
+    const dispatch = fakeDispatch(roster);
+
+    const { result } = await shReview(dispatch, { registered: optIn(reviewer) });
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(dispatch.resumes).toEqual([]);
+  });
+
+  it("does not resume the agent the registered implementer took over from", async () => {
+    const author = agent("impl-a", { spawnedBy: "coord", fillTokens: 100_000 });
+    const dispatch = fakeDispatch([agent("coord"), author, agent("impl-a-2", { spawnedBy: "coord", predecessor: "impl-a", presence: "live" })]);
+
+    const { result } = await shReview(dispatch, { registered: { ...optIn("impl-a"), implementer: "impl-a-2" } });
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(dispatch.resumes).toEqual([]);
+  });
+
+  it("never resumes from a roster that stores no lineage, which is every roster until the port reports predecessors", async () => {
+    const dispatch = fakeDispatch(crew(standing()).map(unlinked));
+
+    const { result } = await shReview(dispatch, { registered: optIn("rv-standing") });
+
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(dispatch.resumes).toEqual([]);
+  });
+
   it("pins a resumed reviewer by its agent id when another agent appears under its name", async () => {
     const impostor = agent("rv-standing", { agentId: "agent-impostor", sessionId: "session-impostor", presence: "live" });
-    const dispatch = fakeDispatch([agent("rv-standing", { fillTokens: 100_000 })], { onResume: () => void dispatch.agents.unshift(impostor) });
+    const dispatch = fakeDispatch(crew(standing()), { onResume: () => void dispatch.agents.unshift(impostor) });
 
     const { result } = await shReview(dispatch, { registered: optIn("rv-standing") });
 
@@ -542,9 +589,9 @@ describe("reviewPhase", () => {
   });
 
   it("does not accept what a resumed reviewer said before this dispatch", async () => {
-    const standing = agent("rv-standing", { fillTokens: 100_000 });
-    const read: Scene["read"] = (input) => [said(standing, verdictAt(input.head), 9_999)];
-    const dispatch = fakeDispatch([standing]);
+    const reviewer = standing();
+    const read: Scene["read"] = (input) => [said(reviewer, verdictAt(input.head), 9_999)];
+    const dispatch = fakeDispatch(crew(reviewer));
 
     const { verdicts } = await review({ dispatch, read, registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
 
