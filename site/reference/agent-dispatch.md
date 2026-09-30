@@ -29,7 +29,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, minimalEnv, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -49,6 +49,7 @@ dispatchToAgentChat(
 
 const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
 retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
+parkAgent("/opt/homebrew/bin/agent-chat", "item-7"); // { name: "item-7", lines: ["Parked item-7.", ...] }
 
 try {
   resumeAgent("/opt/homebrew/bin/agent-chat", "item-42", dataFence("CI log", logTail), 15_000);
@@ -81,6 +82,9 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   usage error. A row missing a required field is skipped, not guessed at.
 - `retire` throws `DispatchTimeoutError` (a `DispatchError`) when the CLI hangs: the broker
   may already have retired the agent, so read the roster before retrying.
+- `parkAgent` throws `DispatchError` when the broker refuses a live, dirty, unpushed or
+  shared tree. A broker that predates the verb (CC-282) times out on the CLI side and comes
+  back as a refusal naming a broker restart.
 - `BrokerUnavailableError` is raised only for agent-chat's own unreachable-broker lines on
   stderr ("could not reach or start the agent-chat broker", a restart's "was NOT sent", or a
   bare `connect ECONNREFUSED|ENOENT <socket>`). A refusal that quotes that text elsewhere
@@ -98,4 +102,4 @@ Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resum
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
 its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
-brief) by TP-518.
+brief) by TP-518, and `parkAgent` by TP-548.
