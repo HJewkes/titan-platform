@@ -81,11 +81,14 @@ script says so when the directory is not on `PATH`.
 
 1. Boots out `dev.hjewkes.titan-factory` when launchd already holds it, and waits until the
    label is gone.
-2. Creates the log directory and writes `~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist`.
+2. Creates the log directory and writes `~/Library/LaunchAgents/dev.hjewkes.titan-factory.plist`,
+   with the `PATH` described below.
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
-4. Polls `/health` for 20 s. The answer must come from the pid launchd reports for the job, so
+4. Polls `/health`. The answer must come from the pid launchd reports for the job, so
    a `titan-factory serve` left running in a shell fails the install instead of passing for it.
-   On a timeout the verb prints the last 20 lines of `serve.err.log` and exits 1.
+   On a timeout the verb prints the last 20 lines of `serve.err.log` and exits 1. The wait
+   is 30 s and covers serve's first GitHub check: a `github` field other than `ok` exits 1
+   with one line that carries the field.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory http://127.0.0.1:<port>/mcp`.
    A server that is already registered counts as success. With no `claude` on `PATH`, or when
    the command fails, the verb prints the command to run by hand and still exits 0.
@@ -95,8 +98,8 @@ checkout that should serve, not from a worktree that will be removed.
 
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
-| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers |
-| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers |
+| `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
+| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist and touches nothing | always |
 
@@ -107,6 +110,15 @@ The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `
 and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
 `Background` job is throttled by macOS.
+
+launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, and serve runs `gh`,
+`agent-chat` and `claude` by bare name. So the plist sets `EnvironmentVariables` to one
+variable, `PATH`: the directory each of those three is found in when the verb runs, then the
+directory of the plist's node (`agent-chat` starts with `#!/usr/bin/env node`), then launchd's
+four, each once. Nothing else is copied from the shell. A directory with a `:` in its name is
+refused, `--node` included, because it would split into other entries. A binary that is not found is left out
+and named in a `warning:` line on stderr; `service install` refuses to run without `gh`. After
+moving one of these binaries, re-run `service install`.
 
 The node path is the running node, except that a Homebrew Cellar path (`.../Cellar/node/22.1.0/bin/node`)
 becomes the prefix symlink (`<prefix>/bin/node`, or `<prefix>/opt/node@20/bin/node` for a versioned
