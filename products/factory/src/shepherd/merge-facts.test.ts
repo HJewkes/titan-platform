@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
@@ -7,7 +8,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { decideAutoMerge, evidenceMarker, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { decideAutoMerge, evidenceComment, evidenceMarker, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
@@ -51,6 +52,41 @@ async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> 
 }
 
 afterEach(() => vi.mocked(evaluate).mockReset());
+
+const HOSTNAME = "host-a.example";
+const TRANSCRIPT_PATH = "/srv/agents/sessions/s-1.jsonl";
+const hostLocator = {
+  source: { sourceId: "src-1", path: TRANSCRIPT_PATH, namespace: HOSTNAME, conversation: { harness: "claude-code", namespace: HOSTNAME, nativeId: "s-1" } },
+  evidence: { line: { sourceId: "src-1", byteOffset: 4096, byteLength: 80, contentHash: "abc", lineNumber: 7, nativeOrdinal: null }, subrecord: { index: 2, path: ["message"] } },
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"], textIndex: 1 },
+} as unknown as SourceTextLocator;
+
+describe("evidenceComment", () => {
+  const record = async () => (await collect(world(), { verdict: { value: "MERGE", head: HEAD, locator: hostLocator } })).record;
+
+  it("posts neither the hostname, the transcript path nor any substring starting with a slash", async () => {
+    const body = evidenceComment(await record());
+
+    expect(body).not.toContain(HOSTNAME);
+    expect(body).not.toContain(TRANSCRIPT_PATH);
+    expect(body).not.toContain("/srv");
+    expect(body).not.toMatch(/(^|[^\w`<>!-])\/[\w.-]/m);
+  });
+
+  it("names the session, record offset and part so a local reader can find the message, and hashes the full locator", async () => {
+    const body = evidenceComment(await record());
+
+    expect(body).toContain('"sessionId": "s-1"');
+    expect(body).toContain('"byteOffset": 4096');
+    expect(body).toContain('"subrecordIndex": 2');
+    expect(body).toContain('"textIndex": 1');
+    expect(body).toContain(`"locatorSha256": "${createHash("sha256").update(JSON.stringify(hostLocator)).digest("hex")}"`);
+  });
+
+  it("leaves the stored record's locator whole", async () => {
+    expect((await record()).verdictLocator).toBe(hostLocator);
+  });
+});
 
 describe("mergeEvidence", () => {
   it("allows by authority/MRG-AU-RV when all eight conditions hold, and posts one comment carrying the record", async () => {

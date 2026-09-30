@@ -13,9 +13,11 @@ import { reviewerBrief } from "./reviewer-brief.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
 
+export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
 export const AWAIT_VERDICT_STEP = "sh-await-verdict";
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
+  { id: REVIEW_INTENT_STEP, kind: "dispatch" },
   { id: REVIEW_STEP, kind: "dispatch" },
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
@@ -37,9 +39,7 @@ export interface ReviewTarget {
   head: string;
 }
 
-export interface ReviewInput extends ReviewTarget {
-  runId: string;
-}
+export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
 /** One roster row, as the dispatch port reports it. */
 export interface ReviewerAgent {
@@ -69,10 +69,12 @@ export interface ReviewerDispatch {
   resume(name: string, brief: string): Promise<void>;
 }
 
-/** `at` is stamped before the reviewer starts, so only a message written after it can be this review's verdict. */
-export type ReviewDispatchResult =
-  | { kind: "dispatched"; head: string; reviewer: string; at: number; mode: "spawn" | "resume"; agentId: string; sessionId: string }
-  | { kind: "none"; reason: string };
+/** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
+export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
+type NoReview = { kind: "none"; reason: string };
+export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
+export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string } & ReviewIntent) | NoReview;
 
 export interface AwaitVerdictInput {
   repo: string;
@@ -179,19 +181,12 @@ export async function awaitVerdict(
   }
 }
 
-const ReviewInputSchema = z.object({
-  runId: z.string().min(1),
-  repo: z.string().refine(isRepoKey, "must be owner/repo"),
-  pr: z.number().int().positive(),
-  head: z.string().regex(HEAD, "must be 40 lowercase hex characters"),
-});
-
-interface ReviewerChoice {
-  mode: "spawn" | "resume";
-  name: string;
-  /** Known only for a resume; a spawned agent gets its id from the broker. */
-  agentId?: string;
-}
+const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
+const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1) });
+/** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. */
+const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume"]), agentId: z.string().min(1).optional() });
+const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema });
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
 const takeovers: Parents = (agent) => [agent.predecessor];
@@ -241,10 +236,10 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[]): ReviewerChoice {
+function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[]): Omit<ReviewIntent, "head" | "at"> {
   const standing = standingReviewer(registration, roster);
-  if (standing) return { mode: "resume", name: standing.name, agentId: standing.agentId };
-  return { mode: "spawn", name: freshName(target, registration?.implementer, roster) };
+  if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
+  return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
 }
 
 type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
@@ -263,11 +258,12 @@ async function whileBrokerDown<T>(timing: Timing, signal: AbortSignal, ask: () =
 }
 
 /** A resumed reviewer is found by its agent id. A spawned one is the only agent under a name nobody held before. */
-async function startedReviewer(dispatch: ReviewerDispatch, choice: ReviewerChoice, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
+const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentId === undefined ? agent.name === intent.reviewer : agent.agentId === intent.agentId);
+
+async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
   const clock = deadline(timing);
-  const mine = (agent: ReviewerAgent) => (choice.agentId === undefined ? agent.name === choice.name : agent.agentId === choice.agentId);
   for (;;) {
-    const found = (await dispatch.roster().catch(() => [])).filter(mine);
+    const found = (await dispatch.roster().catch(() => [])).filter(holds(intent));
     if (found.length > 1) return undefined;
     if (found[0] && found[0].sessionId !== "") return found[0];
     if (clock.expired()) return undefined;
@@ -286,42 +282,62 @@ export interface ReviewWiring {
   isFrozen?: IsFrozen;
 }
 
-/** The body of the sh-review step; a throw is a refusal. The brief is built from the target alone, so no registration text can reach it. */
-async function dispatchReview(deps: ShepherdDeps, wiring: ReviewWiring & { dispatch: ReviewerDispatch }, input: ReviewInput, signal: AbortSignal): Promise<ReviewDispatchResult> {
-  const { dispatch } = wiring;
-  const target: ReviewTarget = { repo: input.repo, pr: input.pr, head: input.head };
-  const timing = { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS, timeoutMs: wiring.sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS };
-  const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
-  const choice = chooseReviewer(target, deps.store.get().byRun(input.runId), roster);
-  const brief = reviewerBrief({ ...target, questions: await wiring.questions?.(target) });
-  const intent = { head: input.head, reviewer: choice.name, at: deps.now() };
-  await whileBrokerDown(timing, signal, () => (choice.mode === "resume" ? dispatch.resume(choice.name, brief) : dispatch.spawn(choice.name, brief, target)));
-  const started = await startedReviewer(dispatch, choice, timing, signal);
-  if (!started) return { kind: "none", reason: `reviewer ${choice.name} did not start one session in time` };
-  return { kind: "dispatched", ...intent, mode: choice.mode, agentId: started.agentId, sessionId: started.sessionId };
-}
+type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
+const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS });
 
-/** With no reader or dispatch wired the steps answer `none` at once, so the owner gate decides. */
-export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
-  const timing = { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? DEFAULT_POLL_MS, timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
-  const review = async (raw: unknown, signal: AbortSignal): Promise<ReviewDispatchResult> => {
-    const input = ReviewInputSchema.parse(raw);
+type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean) => Promise<T>;
+
+/** A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner gate decides. */
+const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWiring | undefined, schema: z.ZodType<I>, body: BrokerStepBody<I, T>) =>
+  async (raw: unknown, signal: AbortSignal, repeat = false): Promise<T | NoReview> => {
+    const input = schema.parse(raw);
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
-    try {
-      return await dispatchReview(deps, { ...wiring, dispatch }, input, signal);
-    } catch (error) {
+    return body(deps, { ...wiring, dispatch }, input, signal, repeat).catch((error: unknown) => {
       signal.throwIfAborted();
       return { kind: "none", reason: `the reviewer dispatch was refused: ${error instanceof Error ? error.message : String(error)}` };
-    }
+    });
   };
+
+/** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing. */
+const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch }, input, signal) => {
+  const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
+  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster);
+  return { kind: "intent", head: input.head, ...choice, at: deps.now() };
+};
+
+/** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs }, { intent, ...target }, signal, repeat) => {
+  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS };
+  const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
+  // A held name was spawned by an earlier run. A resume leaves no mark on the roster, so only the first run asks for it.
+  const asked = intent.mode === "resume" ? repeat : roster.some(holds(intent));
+  if (!asked) {
+    const brief = reviewerBrief({ ...target, questions: await questions?.(target) });
+    await whileBrokerDown(timing, signal, () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target)));
+  }
+  const started = await startedReviewer(dispatch, intent, timing, signal);
+  if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId };
+};
+
+/** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
+function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal, repeat: boolean) => Promise<object>): StepRoute {
+  const routeFor = (repeat: boolean) => codeRoute(match, now, (input: I, signal) => fn(input, signal, repeat));
+  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0).runner.run(step) } };
+}
+
+/** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
+export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
+  const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
   const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
     const input = parseAwaitVerdictInput(raw);
     return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
   };
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [
-    codeRoute(REVIEW_STEP, deps.now, review),
+    codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
+    repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, run),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen)),
   ];
@@ -337,6 +353,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 }
 
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
+const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent") }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("dispatched"), at: z.number(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
@@ -354,12 +371,14 @@ function seatGrants(ctx: WorkflowContext): string[] {
 }
 
 /**
- * Dispatch one reviewer at this head, wait for its verdict, and take a MERGE through the evidence step. The resolver
- * comes from the verdict step and the dispatched reviewer from the dispatch step, so a mismatch between them gates.
+ * Record which reviewer this head gets, start or adopt it, wait for its verdict, and take a MERGE through the evidence step.
+ * The resolver comes from the verdict step and the dispatched reviewer from the dispatch step, so a mismatch between them gates.
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId }, Dispatched);
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId }, Intended);
+  if (intent.kind !== "intent") return { kind: "none" };
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
