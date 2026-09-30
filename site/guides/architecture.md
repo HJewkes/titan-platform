@@ -6,8 +6,9 @@ A package may import only packages in its own tier or a lower one. Never sideway
 higher tier, never upward. That single constraint is what keeps the packages from
 collapsing back into the one big system they were extracted from.
 
-It is not a convention. `.codewatch/check.json` lists every package under a tier, and CI
-fails any pull request that adds an import against the order. See
+It is not a convention. `.codewatch/check.json` lists every package, product and app under a
+tier in the `$tiers` map of its `package-layers` rule, and CI fails any pull request that adds
+an import against the order. This page takes its tiers from that map. See
 [working in the repo](/guides/contributing) for how to run that check locally.
 
 ## The dependency graph
@@ -27,6 +28,9 @@ graph TD
     codeParser["code-parser"]
     rpcProtocol["rpc-protocol"]
     evidence["evidence"]
+    authority["authority"]
+    egressScan["egress-scan"]
+    fixProof["fix-proof"]
   end
   subgraph T1["Tier 1 · engines"]
     retrieval["retrieval"]
@@ -38,6 +42,8 @@ graph TD
     messaging["messaging"]
     rpcClient["rpc-client"]
     matrixBus["matrix-bus"]
+    github["github"]
+    agentDispatch["agent-dispatch"]
   end
   subgraph T2["Tier 2 · domain"]
     sessionRead["session-read"]
@@ -59,6 +65,7 @@ graph TD
     sessionMiner["session-miner"]
     retrievalEval["retrieval-eval"]
     codeReport["code-report"]
+    factory["factory"]
   end
 
   retrieval --> embed
@@ -68,6 +75,7 @@ graph TD
   registry --> rpcProtocol
   daemon --> registry
   daemon --> rpcProtocol
+  hitl --> authority
   hitl --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
@@ -84,6 +92,7 @@ graph TD
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   workflow --> agent
+  workflow --> agentProtocol
   workflow --> hitl
   workflow --> storeSqlite
   memory --> embed
@@ -120,14 +129,28 @@ graph TD
   codeReport --> reactApp
   codeReport --> rpcClient
   codeReport --> rpcProtocol
+  factory --> authority
+  factory --> daemon
+  factory --> github
+  factory --> hitl
+  factory --> registry
+  factory --> sessionRead
+  factory --> storeSqlite
+  factory --> workflow
 ```
 
 Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic. `store-sqlite`,
 `locator`, `cluster`, `embed`, `agent-protocol`, `chat-protocol`, `code-parser`,
-`rpc-protocol`, `evidence`, `messaging`, `matrix-bus`, and `style-profile` have no titan
-dependencies at all, which is why any of them can be adopted on its own. The
+`rpc-protocol`, `evidence`, `authority`, `egress-scan`, `fix-proof`, `messaging`,
+`matrix-bus`, `github`, `agent-dispatch`, and `style-profile` have no titan dependencies at
+all, which is why any of them can be adopted on its own. The
 [package families](/guides/package-families) guide groups the same packages by job.
+
+Two units sit outside the graph. `code-report` also depends on `@titan-design/react-ui`, the
+design system published from a separate repository. `deploy/hub` is a workspace member that
+depends on `matrix-bus`, but it holds compose files and owner-side scripts, so the
+`package-layers` rule does not list it.
 
 ## What each tier means
 
@@ -137,16 +160,22 @@ token sequences, not about Bash. `embed` knows about vectors. None of them can n
 concept specific to any product. `agent-protocol` shares identity and usage vocabulary
 without importing a harness SDK or runtime. `chat-protocol` and `rpc-protocol` are wire
 contracts in the same spirit, `code-parser` owns tree-sitter parsing, and `evidence` checks
-citations without knowing what was cited. See the [multi-harness ADR](/guides/multi-harness-contracts).
+citations without knowing what was cited. `authority` is a decision table and a pure
+evaluator; it knows actor classes and action classes, not pull requests. `egress-scan` scans
+patch text it is handed, and `fix-proof` classifies two test reports it is handed; neither
+runs git or a test runner in its library entry. See the
+[multi-harness ADR](/guides/multi-harness-contracts).
 
 **Tier 1, engines.** Reusable machinery with a real job but no subject matter.
 `retrieval` fuses ranked lists; it does not know that the things ranked are transcripts.
 `registry` projects command definitions onto surfaces; it does not know what the commands
 do. `daemon` hosts a registry. `agent` runs bounded Claude or Codex executions. `agent-lifecycle` persists authoritative
 execution state and fenced ownership independently of transcript indexes. `hitl` pauses
-work on a human. `messaging` and `matrix-bus` move text to and from a person without
-knowing what the text is about. `rpc-client` calls a daemon from a browser, live or from a
-snapshot file.
+work on a human, and takes the classes that may resolve a gate from `authority`. `messaging` and `matrix-bus`
+move text to and from a person without knowing what the text is about. `rpc-client` calls a
+daemon from a browser, live or from a snapshot file. `github` reads and writes GitHub through
+the caller's `gh` login, with every write safe to repeat. `agent-dispatch` starts and resumes
+agent-chat agents through the `agent-chat` CLI.
 
 **Tier 2, domain.** These know a subject. `session-read` and `session-graph` normalize and index Claude and Codex transcripts. `code-graph` knows TypeScript and Python module structure.
 `memory` knows what a rule with decaying confidence is. `workflow` knows what a durable
@@ -159,7 +188,9 @@ is.
 those live in the separate `@titan-design/react-ui` design system.
 
 **Products.** Thin. A product owns its surface wiring — commander, MCP transports, its own
-command definitions — and gets everything else from the tiers.
+command definitions — and gets everything else from the tiers. There are four in the
+`product` tier: `session-miner`, `retrieval-eval`, `factory`, and the `code-report` app.
+Each has a usage guide under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
