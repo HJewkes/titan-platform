@@ -4,8 +4,10 @@ Code-driven software-factory workflows. Private; never published. Bin: `titan-fa
 
 Code owns every workflow transition, retry and evidence record here; a model supplies judgment
 only where a step is routed to one. The product composes `@titan-design/workflow`, `hitl`,
-`store-sqlite`, `github`, `authority`, `registry`, `daemon` and `session-read`. It never
-dispatches an agent. Relay and agent-chat keep dispatch.
+`store-sqlite`, `github`, `authority`, `registry`, `daemon`, `session-read` and
+`agent-dispatch`. It starts one kind of agent: the Shepherd reviewer, through agent-chat, and
+only when `shepherd.review` is configured (see [Shepherd reviewer config](#shepherd-reviewer-config)).
+Relay and agent-chat keep every other dispatch.
 
 Usage guides, with every command, where state lives and how each one fails:
 [Running the factory](https://hjewkes.github.io/titan-platform/guides/factory) and [Shepherd](https://hjewkes.github.io/titan-platform/guides/shepherd). This README is the design
@@ -148,6 +150,52 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+
+## Shepherd reviewer config
+
+Two keys under `shepherd` in the config file turn the review phase on. Both are optional.
+
+```json
+{
+  "shepherd": {
+    "seatsDir": "/srv/autonomy/seats",
+    "agentChatBin": "/usr/local/bin/agent-chat",
+    "review": { "profile": "rv-readonly", "configDir": "<agent-home>/.claude-profiles/rv", "verdictTimeoutMs": 1800000, "sessionStartTimeoutMs": 300000 }
+  }
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` is set |
+| `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
+| `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
+| `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
+| `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
+
+The load fails, with `invalid config <path>: <reason>`, on any of these:
+
+- `agentChatBin` is not an absolute path, or `review` is set without `agentChatBin`.
+- `configDir` is not an absolute path (`~` and relative paths are refused), or `profile` holds a
+  slash or `..`.
+- `profile` or `configDir` is empty, starts with a dash, or holds whitespace or a NUL byte.
+  Each reaches the `agent-chat` argv as one literal argument, so a value that reads as a flag
+  is refused.
+- `review` holds an unknown key, or a timeout is not a positive integer.
+
+With `review` set, `configuredRoutes` (`src/workflows.ts`) builds one
+`agentChatReviewerDispatch` and hands its roster to `transcriptReviewerReader`, so the verdict
+is read from the transcript of the agent that was started. The reviewer starts in the checkout
+that the seat book binds to the PR's repo: `repos[].path` of the seat that lists the remote. When two
+seat files bind the same repo, the later seat file's path wins. A repo with no such path, or
+one on a deny list, gets no reviewer, and `sh-review` records
+`none` with the reason.
+
+With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
+answers `none`, and the owner gate decides every merge.
+
+The config file is read when the routes are first built, so restart `serve` after a change to
+these keys. The seat book is read again on every spawn.
 
 ## Shepherd seat paths
 
