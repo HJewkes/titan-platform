@@ -168,6 +168,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   return { result: (stepId) => (results.find((found) => found.stepId === stepId)?.data as { result?: unknown } | undefined)?.result, elapsed: clock };
 }
 
+const REVIEW_INTENT = `sh-review-intent:${H1}`;
 const REVIEW = `sh-review:${H1}`;
 const AWAIT_VERDICT = `sh-await-verdict:${H1}`;
 const MERGE_EVIDENCE = `sh-merge-evidence:${H1}`;
@@ -199,7 +200,8 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result } = await reviewWith(scene);
 
-    expect(result(REVIEW)).toMatchObject({ kind: "none" });
+    expect(result(REVIEW_INTENT)).toMatchObject({ kind: "none" });
+    expect(result(REVIEW)).toBeUndefined();
     expect(result(AWAIT_VERDICT)).toBeUndefined();
     expect(scene.calls()).toEqual([]);
   });
@@ -210,7 +212,7 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
-    expect(scene.calls()).toEqual(["agent ls --json"]);
+    expect(scene.calls()).toEqual(["agent ls --json", "agent ls --json"]);
   });
 
   it("spawns nobody for a repo on a seat deny list, though a seat binds it to a checkout", async () => {
@@ -219,7 +221,7 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
-    expect(scene.calls()).toEqual(["agent ls --json"]);
+    expect(scene.calls()).toEqual(["agent ls --json", "agent ls --json"]);
   });
 
   it("finds the checkout of a repo whose name the PR writes in another case", async () => {
