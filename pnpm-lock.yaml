@@ -536,6 +536,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/authority':
+        specifier: workspace:^
+        version: link:../authority
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../hitl

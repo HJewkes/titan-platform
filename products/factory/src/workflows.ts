@@ -9,6 +9,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
+import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
@@ -35,6 +36,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   isFrozen?: IsFrozen;
   /** The task and agent ports `sh-cleanup` uses; absent means it deletes the head ref only. */
   cleanup?: CleanupPorts;
+  /** How `sh-park` parks the implementer's worktree; defaults to `agent-chat agent park`. */
+  park?: ParkPort;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -53,7 +56,8 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
     route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
-  const shepherd = shepherdRoutes(shepherdDeps, { review: deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo) => freeze.get().isFrozen(repo)) } });
+  const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
+  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park });
   const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5), freezeMigration(6)], bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });

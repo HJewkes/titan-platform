@@ -1,7 +1,8 @@
 # workflow
 
 **Tier 2 · domain.** Depends on [`store-sqlite`](/reference/store-sqlite),
-[`agent`](/reference/agent), and [`hitl`](/reference/hitl). `zod` v4 is a peer.
+[`agent`](/reference/agent), [`hitl`](/reference/hitl), and [`authority`](/reference/authority).
+`zod` v4 is a peer.
 
 ```sh
 npm install @titan-design/workflow zod
@@ -112,6 +113,31 @@ active steps. Legacy agent runs without confirmed attachment remain
 All three share one call counter per `stepId`, so `seed("x")` then `assisted("x")` gates on
 `<runId>/x:1`, and every result records the method that wrote it as `StepResult.operation`.
 Runs stored before 0.5 carry no `operation` and keep that release's keys until they finish.
+
+## Authority steps
+
+`ctx.authorize(stepId, request, { prompt?, expiresAt? })` asks the
+[`authority`](/reference/authority) table before a governed action. Give the runtime
+`authority: { actor: { class, id }, table? }`; the table defaults to `DEFAULT_TABLE`, and a run
+without the option fails at its first `authorize`. `allow` returns
+`{ verdict: "allow", ruleId }`. `deny` records the decision and throws `AuthorityDeniedError`
+without opening a gate. `gate` opens a [`hitl`](/reference/hitl) gate at `<runId>/<stepId>`
+bound to the rule (`rule: { table: "F5", version, ruleId, resolvers }`), so the store refuses a
+resolver class the rule does not name. The answer is `{ decision: "approve" | "refuse", subject }`,
+where `subject` repeats the request's subject exactly. An approval returns
+`{ verdict: "approved", ruleId, gateId, resolvedBy }`; a refusal, or a gate resolved with no
+resolver, throws `AuthorityRefusedError`.
+
+```ts
+const runtime = new WorkflowRuntime({ db, gates, runner, authority: { actor: { class: "automation", id: "factory" } } });
+runtime.register("land", async (ctx) => {
+  await ctx.authorize("merge-authorize", { action: "merge", subject: { repo, pr, headSha } });
+  // merge exactly headSha
+});
+```
+
+A restarted run resumes onto the open gate and judges the answer by the rule recorded on it,
+so a table edit during the pause does not flip the decision. Replay never consults the table.
 
 ## Fan-out
 

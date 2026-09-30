@@ -38,6 +38,7 @@
   "dependencies": {
     "@titan-design/agent": "workspace:^",
     "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/authority": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^"
   },
