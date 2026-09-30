@@ -34,7 +34,8 @@ notices and errors to stderr.
   Matching is on the bytes decoded as UTF-8: a term written in UTF-16 or another encoding is
   not matched.
 - **Size limit.** A commit whose patch text is over 128 MiB (`MAX_PATCH_BYTES`) exits 2 with
-  one line naming its short sha and the limit. GitHub itself refuses a file over 100 MiB.
+  one line naming its short sha and the limit. `tree` has the same limit on the whole tree's
+  patch text and exits 2 with one line naming `tree` and the limit. GitHub itself refuses a file over 100 MiB.
 - **Arguments.** Shas on pre-push stdin must be full hex shas, a `range` base or head must be
   a hex sha or a ref name, and a remote name must not start with a dash or hold whitespace.
   A bad value exits 2 with its position, never its value. Every revision reaches git after
