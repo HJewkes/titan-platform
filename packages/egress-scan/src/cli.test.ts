@@ -378,6 +378,17 @@ describe("files git calls binary", () => {
     }
   });
 
+  it("exits 2 naming the tree and the limit when the tree's patch is over it", () => {
+    const repo = newRepo();
+    commitFile(repo, "big.dat", "x".repeat(4096));
+
+    const result = run(repo, ["tree"], terms(), "", 1024);
+
+    expect(result.code).toBe(2);
+    expect(result.out).toBe("");
+    expect(result.err).toBe("titan-egress-scan: tree: patch text is over the scan limit of 1024 bytes; refusing it");
+  });
+
   it("refuses a commit over 128 MiB of patch text when no limit is passed, as the bin runs it", () => {
     const repo = newRepo();
     const base = repo.commit("base");

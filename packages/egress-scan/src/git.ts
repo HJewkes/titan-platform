@@ -16,13 +16,13 @@ export interface PushUpdate {
   readonly remoteSha: string;
 }
 
-/** A commit whose patch text passes this many bytes is refused: over it, V8 cannot hold the text as one string. */
+/** A commit or tree whose patch text passes this many bytes is refused: over it, V8 cannot hold the text as one string. */
 export const MAX_PATCH_BYTES = 128 * 1024 * 1024;
 
-/** A commit too large to scan. The message names the short sha and the limit, never the content. */
+/** A commit or tree too large to scan. The message names the source and the limit, never the content. */
 export class PatchTooLargeError extends Error {
-  constructor(sha: string, limit: number) {
-    super(`commit ${sha.slice(0, 7)}: patch text is over the scan limit of ${formatBytes(limit)}; refusing it`);
+  constructor(sha: string | undefined, limit: number) {
+    super(`${sha === undefined ? "tree" : `commit ${sha.slice(0, 7)}`}: patch text is over the scan limit of ${formatBytes(limit)}; refusing it`);
     this.name = "PatchTooLargeError";
   }
 }
@@ -170,9 +170,11 @@ export function readCommit(cwd: string, sha: string, maxPatchBytes = MAX_PATCH_B
   return requireAllText({ ...patch, sha, message }, `commit ${sha.slice(0, 7)}`);
 }
 
-/** Every tracked file at HEAD, as one diff from the empty tree. */
-export function readTree(cwd: string): ScanSource {
+/** Every tracked file at HEAD, as one diff from the empty tree. Throws `PatchTooLargeError` over `maxPatchBytes`. */
+export function readTree(cwd: string, maxPatchBytes = MAX_PATCH_BYTES): ScanSource {
   const emptyTree = git(cwd, ["hash-object", "-t", "tree", "--stdin"], "").trim();
-  const diff = git(cwd, ["diff", ...PATCH_FLAGS, "--no-renames", END_OF_OPTIONS, emptyTree, "HEAD"]);
-  return requireAllText(parseDiff(diff), "tree");
+  const args = ["diff", ...PATCH_FLAGS, "--no-renames", END_OF_OPTIONS, emptyTree, "HEAD"];
+  const result = runGit(cwd, args, maxPatchBytes);
+  if (isOverBuffer(result.error)) throw new PatchTooLargeError(undefined, maxPatchBytes);
+  return requireAllText(parseDiff(stdoutOf(result, "diff")), "tree");
 }

@@ -31,7 +31,7 @@ const USAGE = [
   "  range <base> <head>   scan every commit in base..head (CI)",
   "  tree                  scan every tracked file at HEAD",
   "  install-hook          install the pre-push hook into git's hooks directory",
-  "files git calls binary are scanned as text; a commit over 128 MiB of patch text exits 2",
+  "files git calls binary are scanned as text; a commit or tree over 128 MiB of patch text exits 2",
   "exit: 0 clean, 1 findings, 2 usage or configuration error",
 ];
 
@@ -106,7 +106,7 @@ function dispatch(command: string | undefined, args: readonly string[], io: CliI
       );
     case "tree":
       expectArgs(command, args, 0, 0);
-      return runScan(io, (root) => [readTree(root)]);
+      return runScan(io, (root) => [readTree(root, io.maxPatchBytes)]);
     case "install-hook":
       expectArgs(command, args, 0, 0);
       return runInstall(io);
