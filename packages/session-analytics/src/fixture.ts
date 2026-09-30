@@ -53,20 +53,27 @@ export interface RequestFixture {
   gapMs?: number | null;
   wakeCause?: string | null;
   wakeDelivery?: string | null;
+  /** Defaults to the next free offset, so rows land in insertion order. */
+  offset?: number;
 }
 
 let nextOffset = 0;
 
+function offsetOf(requested: number | undefined): number {
+  nextOffset += 1;
+  return requested ?? nextOffset;
+}
+
 export function insertRequest(db: Db, request: RequestFixture): void {
   const r = { model: "claude-opus-5", transcriptId: 1, inputTokens: 0, cacheReadTokens: 0, cacheCreation5m: 0, cacheCreation1h: 0, outputTokens: 0, gapMs: null, wakeCause: null, wakeDelivery: null, ...request };
   const creation = r.cacheCreationTokens ?? r.cacheCreation5m + r.cacheCreation1h;
-  nextOffset += 1;
+  const offset = offsetOf(r.offset);
   db.prepare(
     `INSERT INTO request (transcript_id, request_id, byte_offset, session_id, ts, model, input_tokens, cache_read_tokens,
        cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery)
      VALUES (@transcriptId, @requestId, @offset, @sessionId, @ts, @model, @inputTokens, @cacheReadTokens,
        @creation, @cacheCreation5m, @cacheCreation1h, @outputTokens, @context, @gapMs, @wakeCause, @wakeDelivery)`,
-  ).run({ ...r, requestId: r.requestId ?? `req-${nextOffset}`, offset: nextOffset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
+  ).run({ ...r, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
 }
 
 export interface SessionFixture {
@@ -98,12 +105,49 @@ export function insertInbound(db: Db, inbound: { sessionId: string; ts: string; 
   ).run({ delivery: "turn_start", transcriptId: 1, ...inbound, offset: nextOffset });
 }
 
-export function insertSignal(db: Db, signal: { sessionId: string; ts: string; signal: string; transcriptId?: number }): void {
-  nextOffset += 1;
+export interface SignalFixture {
+  sessionId: string;
+  ts: string;
+  signal: string;
+  detail?: string | null;
+  toolUseId?: string | null;
+  transcriptId?: number;
+  offset?: number;
+}
+
+export function insertSignal(db: Db, signal: SignalFixture): void {
   db.prepare(
-    `INSERT INTO session_signal (transcript_id, byte_offset, block_index, session_id, ts, signal)
-     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @signal)`,
-  ).run({ transcriptId: 1, ...signal, offset: nextOffset });
+    `INSERT INTO session_signal (transcript_id, byte_offset, block_index, session_id, ts, signal, detail, tool_use_id)
+     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @signal, @detail, @toolUseId)`,
+  ).run({ transcriptId: 1, detail: null, toolUseId: null, ...signal, offset: offsetOf(signal.offset) });
+}
+
+export interface ToolCallFixture {
+  sessionId: string;
+  ts: string;
+  toolUseId: string;
+  name: string;
+  transcriptId?: number;
+  offset?: number;
+  blockIndex?: number;
+}
+
+/** A tool_use block; with no `offset` it lands after every row inserted so far. */
+export function insertToolCall(db: Db, call: ToolCallFixture): void {
+  db.prepare(
+    `INSERT INTO tool_call (transcript_id, byte_offset, block_index, session_id, ts, tool_use_id, name, family, mcp_server, input_chars)
+     VALUES (@transcriptId, @offset, @blockIndex, @sessionId, @ts, @toolUseId, @name, 'builtin', NULL, 1)`,
+  ).run({ transcriptId: 1, blockIndex: 0, ...call, offset: offsetOf(call.offset) });
+}
+
+let nextToolUse = 0;
+
+/** A tool call after every row so far, carrying one extraction signal when `signal` is set. */
+export function insertActionCall(db: Db, call: { sessionId: string; ts: string; name: string; signal?: string; detail?: string }): void {
+  nextToolUse += 1;
+  const toolUseId = `tu-${nextToolUse}`;
+  insertToolCall(db, { sessionId: call.sessionId, ts: call.ts, toolUseId, name: call.name });
+  if (call.signal) insertSignal(db, { sessionId: call.sessionId, ts: call.ts, signal: call.signal, detail: call.detail ?? null, toolUseId });
 }
 
 export function insertCompaction(db: Db, compaction: { sessionId: string; ts: string; trigger: "manual" | "auto"; midLoop?: boolean; droppedTokens?: number }): void {
@@ -131,7 +175,8 @@ export const SCENARIO_WINDOW = { since: "2026-09-20", until: "2026-09-21" } as c
 
 /**
  * Three sessions inside the window and two requests just outside it. `coord` is a human coordinator,
- * `worker` an implementer, `miner` a headless run on a model with no price row.
+ * `worker` an implementer, `miner` a headless run on a model with no price row. Coord's requests are
+ * a PR check, a read, a text-only reply and a message; the worker's one request writes a session log.
  */
 export function seedCostScenario(fixture: FixtureGraph): void {
   const db = fixture.graph.db;
@@ -153,10 +198,14 @@ export function seedCostScenario(fixture: FixtureGraph): void {
 function seedScenarioRequests(db: Db): void {
   const coord = { sessionId: "coord" };
   insertRequest(db, { ...coord, ts: "2026-09-20T10:00:00Z", inputTokens: 1_000, outputTokens: 500, wakeCause: "human_typed", wakeDelivery: "turn_start" });
+  insertActionCall(db, { ...coord, ts: "2026-09-20T10:00:00Z", name: "Bash", signal: "command_heads", detail: "gh pr checks" });
   insertRequest(db, { ...coord, ts: "2026-09-20T12:00:00Z", cacheReadTokens: 1_000, cacheCreation1h: 50_000, outputTokens: 100, gapMs: 7_200_000, wakeCause: "ask_user_answer", wakeDelivery: "turn_start" });
+  insertActionCall(db, { ...coord, ts: "2026-09-20T12:00:00Z", name: "Read", signal: "file_read", detail: "src/a.ts" });
   insertRequest(db, { ...coord, ts: "2026-09-20T12:01:00Z", model: "claude-fable-5-1", cacheReadTokens: 120_000, outputTokens: 200, gapMs: 60_000, wakeCause: "channel_message", wakeDelivery: "mid_loop" });
   insertRequest(db, { ...coord, ts: "2026-09-20T12:02:00Z", model: "claude-sonnet-5", inputTokens: 10, cacheReadTokens: 60_000, cacheCreationTokens: 2_000, outputTokens: 50, gapMs: 60_000, wakeCause: "channel_message", wakeDelivery: "turn_start" });
+  insertActionCall(db, { ...coord, ts: "2026-09-20T12:02:00Z", name: "mcp__agent-chat__chat_send" });
   insertRequest(db, { sessionId: "worker", ts: "2026-09-20T13:00:00Z", model: "claude-haiku-4-5", inputTokens: 500, cacheCreation5m: 30_000, outputTokens: 1_000, gapMs: 1_000, wakeCause: "tool_result", wakeDelivery: "tool_result" });
+  insertActionCall(db, { sessionId: "worker", ts: "2026-09-20T13:00:00Z", name: "Write", signal: "file_write", detail: "notes/session-log.md" });
   insertRequest(db, { sessionId: "miner", ts: "2026-09-20T14:00:00Z", model: "claude-mystery-9", inputTokens: 100, outputTokens: 10, wakeCause: "human_typed", wakeDelivery: "turn_start" });
   insertRequest(db, { ...coord, ts: "2026-09-19T23:59:59Z", inputTokens: 999_999, wakeCause: "human_typed" });
   insertRequest(db, { ...coord, ts: "2026-09-21T00:00:00Z", inputTokens: 999_999, wakeCause: "human_typed" });
