@@ -19,6 +19,7 @@ Domain-free building blocks. No titan dependencies.
 | [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping and planted-control scoring for model-judged evidence | none |
+| [`fix-proof`](/reference/fix-proof) | Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations | none |

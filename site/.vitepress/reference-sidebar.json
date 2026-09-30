@@ -36,6 +36,10 @@
         "link": "/reference/evidence"
       },
       {
+        "text": "fix-proof",
+        "link": "/reference/fix-proof"
+      },
+      {
         "text": "locator",
         "link": "/reference/locator"
       },
