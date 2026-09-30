@@ -1,3 +1,5 @@
+import type { AuthorityRequest } from "@titan-design/authority";
+import type { GateResolver } from "@titan-design/hitl";
 import type { ZodType } from "zod";
 
 export type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
@@ -19,7 +21,7 @@ export interface StepUsage {
 }
 
 /** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
-export type StepOperation = "seed" | "dispatch" | "assisted";
+export type StepOperation = "seed" | "dispatch" | "assisted" | "authorize";
 
 export interface StepResult<TData extends Record<string, unknown> = Record<string, unknown>> {
   stepId: string;
@@ -99,6 +101,23 @@ export interface AssistedOptions {
   expiresAt?: Date | string;
 }
 
+/** An authority request without the actor, which the runtime supplies; `tainted` defaults to false. */
+export type AuthorizeRequest = Omit<AuthorityRequest, "actor" | "tainted"> & { tainted?: boolean };
+
+export interface AuthorizeOptions {
+  /** Shown to the owner when the table gates the action. */
+  prompt?: string;
+  expiresAt?: Date | string;
+}
+
+/** `allow` came straight from the table; `approved` means an owner answered the rule's gate. */
+export interface AuthorizeResult {
+  verdict: "allow" | "approved";
+  ruleId: string;
+  gateId?: string;
+  resolvedBy?: GateResolver;
+}
+
 /** What a workflow function sees. Every method is memoized, so the function is safe to re-run from the top. */
 export interface WorkflowContext {
   readonly runId: string;
@@ -110,6 +129,8 @@ export interface WorkflowContext {
   seed(stepId: string, fn: () => Promise<SeedResult>): Promise<StepResult>;
   /** Pause on a durable gate until something outside resolves it. */
   assisted(stepId: string, prompt: string, options?: AssistedOptions): Promise<StepResult>;
+  /** Ask the authority table: proceed on allow, wait on a rule-bound gate, throw `AuthorityDeniedError` on deny. */
+  authorize(stepId: string, request: AuthorizeRequest, options?: AuthorizeOptions): Promise<AuthorizeResult>;
   /** How many times `stepId` has completed so far; loop guards read this. */
   iteration(stepId: string): number;
   /** Aborts when the run is cancelled; pass it to anything long-running. */
@@ -226,6 +247,33 @@ export class StepOutputInvalidError extends StepFailedError {
   ) {
     super(stepId, iteration, `output ${kind}: ${issues.join("; ")}`, { retryable: false, usage });
     this.name = "StepOutputInvalidError";
+  }
+}
+
+/** The authority table denied the action; no gate was opened, and repeating the request is denied the same way. */
+export class AuthorityDeniedError extends StepFailedError {
+  constructor(
+    stepId: string,
+    iteration: number,
+    readonly ruleId: string | null,
+    readonly denial: string,
+  ) {
+    super(stepId, iteration, `authority denied: ${denial}`, { retryable: false });
+    this.name = "AuthorityDeniedError";
+  }
+}
+
+/** The rule's gate settled without a valid approval: the owner refused, or the answer's resolver fails the rule. */
+export class AuthorityRefusedError extends StepFailedError {
+  constructor(
+    stepId: string,
+    iteration: number,
+    readonly ruleId: string,
+    readonly gateId: string,
+    readonly refusal: string,
+  ) {
+    super(stepId, iteration, `authority gate ${gateId} refused: ${refusal}`, { retryable: false });
+    this.name = "AuthorityRefusedError";
   }
 }
 

@@ -20,6 +20,7 @@ describe("worker roles", () => {
       "fable-architect": "planner",
       planner: "planner",
       "fable-coordinator": "coordinator",
+      "opus-coordinator": "coordinator",
       peer: "standing_peer",
     };
 

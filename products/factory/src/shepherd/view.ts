@@ -80,6 +80,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-wake": "fixing",
   "await-new-head": "fixing",
   "sh-await-new-head": "fixing",
+  "sh-park": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-merge-evidence": "review",

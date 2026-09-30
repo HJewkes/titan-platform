@@ -101,6 +101,67 @@ export function readCoverage(db: Db, facetVersion: number | null): { transcripts
   return { transcriptsIndexed: indexed.n, facetBacklog: backlog.n };
 }
 
+/** An arrival that opens a wake episode: a turn-start record or a mid-loop `queued_command` delivery. */
+export interface WakeEventRow {
+  key: string;
+  sessionId: string;
+  cause: string;
+  delivery: string;
+  fromName: string | null;
+  /** The same `msg_id` reached more than one session. */
+  broadcast: boolean;
+}
+
+/** One agent-chat identity: the name a session carries and how it came to carry it. */
+export interface AgentNameRow {
+  sessionId: string;
+  agentName: string;
+  originKind: string | null;
+  profile: string | null;
+}
+
+const EPISODE_DELIVERIES = "('turn_start', 'mid_loop')";
+
+// A record with several blocks is one event; its last block decides, as the request rollup does.
+const WAKE_EVENTS = `
+  WITH event AS (
+    SELECT transcript_id, byte_offset, MAX(block_index) AS block_index FROM inbound
+    WHERE ${IN_SESSIONS} AND ${IN_WINDOW} AND delivery IN ${EPISODE_DELIVERIES}
+    GROUP BY transcript_id, byte_offset
+  ), fanout AS (
+    SELECT msg_id, COUNT(DISTINCT session_id) AS receivers FROM inbound
+    WHERE msg_id IN (SELECT i.msg_id FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index))
+    GROUP BY msg_id
+  )
+  SELECT i.transcript_id || ':' || i.byte_offset AS key, i.session_id AS sessionId, i.cause, i.delivery,
+    i.from_name AS fromName, COALESCE(f.receivers, 1) > 1 AS broadcast
+  FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index)
+  LEFT JOIN fanout f ON f.msg_id = i.msg_id
+  ORDER BY i.transcript_id, i.byte_offset`;
+
+const REQUEST_EVENTS = `
+  SELECT d.request_id AS requestId, d.transcript_id || ':' || (
+    SELECT MAX(i.byte_offset) FROM inbound i
+    WHERE i.transcript_id = d.transcript_id AND i.session_id = d.session_id AND i.byte_offset < d.byte_offset
+      AND i.delivery IN ${EPISODE_DELIVERIES}) AS eventKey
+  FROM request_dedup d WHERE d.${IN_SESSIONS} AND (@since IS NULL OR d.ts >= @since) AND (@until IS NULL OR d.ts < @until)`;
+
+export function readWakeEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): WakeEventRow[] {
+  const rows = db.prepare(WAKE_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as (Omit<WakeEventRow, "broadcast"> & { broadcast: number })[];
+  return rows.map((row) => ({ ...row, broadcast: row.broadcast === 1 }));
+}
+
+/** The event each request in the window follows, keyed by `request_id`; null before a transcript's first event. */
+export function readRequestEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): Map<string, string | null> {
+  const rows = db.prepare(REQUEST_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as { requestId: string; eventKey: string | null }[];
+  return new Map(rows.map((row) => [row.requestId, row.eventKey]));
+}
+
+export function readAgentNames(db: Db): AgentNameRow[] {
+  const sql = `SELECT session_id AS sessionId, agent_name AS agentName, origin_kind AS originKind, profile FROM session_origin WHERE agent_name IS NOT NULL`;
+  return db.prepare(sql).all() as AgentNameRow[];
+}
+
 export function readSessionContexts(db: Db, sessionIds: readonly string[]): Map<string, SessionContext> {
   const ids = JSON.stringify(sessionIds);
   const contexts = new Map<string, SessionContext>(sessionIds.map((id) => [id, emptyContext()]));

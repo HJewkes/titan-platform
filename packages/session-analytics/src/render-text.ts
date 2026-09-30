@@ -1,10 +1,14 @@
 import type { CostBucket, CostReport, MechanicalShare, RoleActions, WakeGapCell } from "./cost-report.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
+import type { WakeEpisodes } from "./wake-episodes.js";
 
 export const LIST_PRICE_CAVEAT =
   "List prices, not a bill: the accounts behind these sessions may run on subscription plans. Rankings hold; the absolute figure is not what you paid.";
 
 type Cell = string | number;
+
+/** Wake causes and sender pairs the text shows; the JSON carries all of them. */
+export const TOP_WAKE_ROWS = 10;
 
 /** The same report as plain-text tables, one section per report field, caveat and footer last. */
 export function renderCostReportText(report: CostReport): string {
@@ -21,6 +25,8 @@ export function renderCostReportText(report: CostReport): string {
     bucketTable("By initiative", report.byInitiative, report.totals.costUsd),
     bucketTable("By context band", report.byContextBand, report.totals.costUsd),
     wakeCauseTable(report),
+    episodeTable(report.wakeEpisodes),
+    pairTable(report.wakeEpisodes),
     cellTable("Wake cause by gap band", report.wakeCauseByGapBand),
     cellTable(`Cold rebuilds: ${report.coldRebuild.requests} requests, ${usd(report.coldRebuild.costUsd)}`, report.coldRebuild.byGapBandAndCause),
     compactionTable(report.compactions),
@@ -64,6 +70,26 @@ function wakeCauseTable(report: CostReport): string {
     ...group.parts.map((part) => [`  ${part.key}`, part.requests, usd(part.costUsd), part.midLoopRequests, usd(part.midLoopCostUsd)]),
   ]);
   return table("By wake cause", ["cause", "requests", "cost", "mid-loop", "mid-loop cost"], rows);
+}
+
+/** Q4: the costliest causes per episode first, each with its senders indented beneath. */
+function episodeTable(w: WakeEpisodes): string {
+  const title = `Wake episodes of ${w.roles.join(", ")}: ${w.episodes} episodes, ${w.requests} requests, ${usd(w.costUsd)}; no-action means only ${w.noActionClasses.join(", ")}`;
+  const causes = [...w.byCause].sort((a, b) => b.costPerEpisode - a.costPerEpisode || a.key.localeCompare(b.key)).slice(0, TOP_WAKE_ROWS);
+  const rows = causes.flatMap((c) => [
+    [c.key, c.episodes, c.midLoopEpisodes, c.requests, c.requestsPerEpisode.toFixed(1), usd(c.costUsd), usd(c.costPerEpisode), noActionCell(c)],
+    ...c.byFrom.map((f) => [`  from ${f.key}`, f.episodes, "", f.requests, (f.requests / f.episodes).toFixed(1), usd(f.costUsd), usd(f.costUsd / f.episodes), noActionCell(f)]),
+  ]);
+  return table(title, ["cause", "episodes", "mid-loop", "requests", "req/ep", "cost", "cost/ep", "no-action"], rows);
+}
+
+function noActionCell(bucket: { episodes: number; noActionEpisodes: number }): string {
+  return `${bucket.noActionEpisodes} (${share(bucket.noActionEpisodes, bucket.episodes)})`;
+}
+
+function pairTable(w: WakeEpisodes): string {
+  const rows = w.pairs.slice(0, TOP_WAKE_ROWS).map((p) => [p.from, p.fromKind, p.to, p.episodes, p.requests, usd(p.costUsd), noActionCell(p)]);
+  return table("Wake senders by receiver", ["from", "kind", "to", "episodes", "requests", "cost", "no-action"], rows);
 }
 
 function cellTable(title: string, cells: readonly WakeGapCell[]): string {
