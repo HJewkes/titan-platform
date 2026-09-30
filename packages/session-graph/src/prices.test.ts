@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openSessionGraph, type SessionGraph } from "./graph.js";
-import { syncPrices, type PriceInput } from "./prices.js";
+import { reconcilePrices, syncPrices, type PriceInput } from "./prices.js";
 
 const GENESIS = "2026-01-01";
 const OPUS: PriceInput = { modelPrefix: "claude-opus-5", effectiveFrom: GENESIS, input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 };
@@ -145,5 +145,39 @@ describe("context_contribution", () => {
       { source: "human", request_id: "b", est_tokens: 100 },
       { source: "attachment", request_id: "b", est_tokens: 600 },
     ]);
+  });
+});
+
+describe("reconcilePrices", () => {
+  const OPUS_5_5: PriceInput = { modelPrefix: "claude-opus-5-5", effectiveFrom: GENESIS, input: 4, cacheRead: 0.2, cacheWrite5m: 5, cacheWrite1h: 8, output: 20 };
+
+  it("adds a missing model so request_cost prices it at its own rate after the refresh", () => {
+    addRequest({ request_id: "r1", model: "claude-opus-5-5", input_tokens: 1_000_000 });
+    expect(cost("r1").cost_usd).toBe(5);
+
+    const result = reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 2 });
+
+    expect(result).toEqual({ added: 1, updated: 1 });
+    expect(cost("r1").cost_usd).toBe(4);
+  });
+
+  it("updates a changed rate and stamps the new table version on every row it touches", () => {
+    reconcilePrices(graph, [{ ...OPUS, input: 9 }], { tableVersion: 2 });
+
+    const row = graph.db.prepare("SELECT input_usd_mtok, table_version FROM price WHERE model = 'claude-opus-5'").get();
+    expect(row).toEqual({ input_usd_mtok: 9, table_version: 2 });
+  });
+
+  it("keeps rows the incoming table does not name", () => {
+    reconcilePrices(graph, [OPUS_5_5], { tableVersion: 2 });
+
+    const models = graph.db.prepare("SELECT model FROM price ORDER BY model").all().map((r) => (r as { model: string }).model);
+    expect(models).toEqual(["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-opus-5-5"]);
+  });
+
+  it("writes nothing when the graph already matches the table", () => {
+    reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 });
+
+    expect(reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 })).toEqual({ added: 0, updated: 0 });
   });
 });

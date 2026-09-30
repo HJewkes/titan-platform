@@ -260,7 +260,12 @@ empty tables, so existing rows are untouched.
   session-analytics. A rewritten transcript purges its sessions' episodes.
 - `price` holds USD per million tokens by model prefix and effective date.
   `syncPrices(graph, rows, { tableVersion, source })` replaces the whole table in one
-  transaction.
+  transaction. `reconcilePrices(graph, rows, { tableVersion, source })` upserts instead: it adds
+  missing models, updates changed rates, stamps the table version, and keeps rows the table
+  does not name. It writes nothing when the graph already matches. Pass session-analytics'
+  `PRICE_TABLE` and `PRICE_TABLE_VERSION`; session-graph cannot import that package, so the
+  product does. `titan-miner` reconciles every time it opens the graph, so `titan-miner refresh`
+  brings a live graph's prices current.
 - `request_dedup` collapses fan-out copies of a request to the earliest one. Every cost
   query reads it, never `request`. `request_cost` prices each row by longest model prefix
   and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.
