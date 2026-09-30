@@ -25,6 +25,9 @@ export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
+/** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
+export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
+export const FIX_FIRST_TRUNCATED = "\n[truncated]";
 const DEFAULT_POLL_MS = 30_000;
 const HEAD = /^[0-9a-f]{40}$/;
 
@@ -134,6 +137,11 @@ export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   };
 }
 
+function boundedFindings(text: string): string {
+  if (text.length <= MAX_FIX_FIRST_TEXT_CHARS) return text;
+  return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
+}
+
 /**
  * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
  * this head. The reader's fields are not trusted: the locator must point into the dispatched session too.
@@ -148,7 +156,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none" };
   if (block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) return { kind: "none" };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: final.text };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }
 
 /** Polls until an acceptable block appears; the deadline ends the wait with `none`, and a failed read counts as nothing yet. */

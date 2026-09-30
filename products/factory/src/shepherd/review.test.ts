@@ -9,6 +9,8 @@ import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import {
+  FIX_FIRST_TRUNCATED,
+  MAX_FIX_FIRST_TEXT_CHARS,
   MAX_RESUME_FILL_TOKENS,
   REVIEW_STEPS,
   ReviewerBrokerDown,
@@ -67,6 +69,26 @@ describe("acceptVerdict", () => {
     const text = block({ verdict: "FIX_FIRST" });
 
     expect(acceptVerdict(input, [message({ text })])).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", text });
+  });
+
+  const fixFirstOf = (length: number) => {
+    const verdict = block({ verdict: "FIX_FIRST" });
+    return "x".repeat(length - verdict.length) + verdict;
+  };
+
+  it("keeps a FIX_FIRST message of exactly the cap whole", () => {
+    const text = fixFirstOf(MAX_FIX_FIRST_TEXT_CHARS);
+
+    expect(acceptVerdict(input, [message({ text })])).toMatchObject({ verdict: "FIX_FIRST", text });
+  });
+
+  it("cuts a FIX_FIRST message one character over the cap down to the cap, keeping its start and ending in the marker", () => {
+    const text = fixFirstOf(MAX_FIX_FIRST_TEXT_CHARS + 1);
+
+    const result = acceptVerdict(input, [message({ text })]) as Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }>;
+
+    expect(result.text).toHaveLength(MAX_FIX_FIRST_TEXT_CHARS);
+    expect(result.text).toBe(text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED);
   });
 
   it("refuses a message from another agent id in the same session", () => {
