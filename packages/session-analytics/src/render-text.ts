@@ -1,4 +1,5 @@
 import type { CostBucket, CostReport, MechanicalShare, RoleActions, WakeGapCell } from "./cost-report.js";
+import type { HandoffThreshold } from "./handoff-threshold.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
 import type { WakeEpisodes } from "./wake-episodes.js";
 
@@ -27,6 +28,9 @@ export function renderCostReportText(report: CostReport): string {
     wakeCauseTable(report),
     episodeTable(report.wakeEpisodes),
     pairTable(report.wakeEpisodes),
+    handoffTable(report.handoffThreshold),
+    teleportTable(report.handoffThreshold),
+    reviewerTable(report.handoffThreshold),
     cellTable("Wake cause by gap band", report.wakeCauseByGapBand),
     cellTable(`Cold rebuilds: ${report.coldRebuild.requests} requests, ${usd(report.coldRebuild.costUsd)}`, report.coldRebuild.byGapBandAndCause),
     compactionTable(report.compactions),
@@ -90,6 +94,47 @@ function noActionCell(bucket: { episodes: number; noActionEpisodes: number }): s
 function pairTable(w: WakeEpisodes): string {
   const rows = w.pairs.slice(0, TOP_WAKE_ROWS).map((p) => [p.from, p.fromKind, p.to, p.episodes, p.requests, usd(p.costUsd), noActionCell(p)]);
   return table("Wake senders by receiver", ["from", "kind", "to", "episodes", "requests", "cost", "no-action"], rows);
+}
+
+/** Q2: per role and model, the fitted boot, fill and growth, the best K, and each configured K's extra cost per request. */
+function handoffTable(h: HandoffThreshold): string {
+  const title = `Handoff threshold per role, priced at package table v${PRICE_TABLE_VERSION}: best K over ${kilo(h.sweep.fromK)}-${kilo(h.sweep.toK)}, half-boot K in brackets`;
+  const head = ["role", "model", "sessions", "boot", "boot fill", "growth/req", "read $/MTok", "best K", "$/req", ...h.configuredK.map((k) => `+$/req @${kilo(k)}`)];
+  const rows = h.cohorts.map((c) => [
+    c.role,
+    c.model,
+    c.sessions,
+    usd(c.bootCostUsd),
+    kilo(c.bootFill),
+    Math.round(c.growthPerRequest),
+    c.readPricePerMTok.toFixed(3),
+    `${kiloOrDash(c.bestK)} (${kiloOrDash(c.halfBoot.bestK)})`,
+    c.bestCostPerRequest === null ? "-" : `$${c.bestCostPerRequest.toFixed(4)}`,
+    ...c.atConfigured.map((at) => (at.deltaPerRequest === null ? "-" : `$${at.deltaPerRequest.toFixed(4)}`)),
+  ]);
+  return table(title, head, rows);
+}
+
+function teleportTable(h: HandoffThreshold): string {
+  const title = `Teleport exit fill: ${h.teleports.length} matched, ${h.unmatchedTeleports} unmatched; the latest ${TOP_WAKE_ROWS}`;
+  const head = ["ts", "name", "role", "exit fill", "best K", ...h.configuredK.map((k) => `over ${kilo(k)}`)];
+  const rows = h.teleports.slice(-TOP_WAKE_ROWS).map((t) => [t.ts, t.name ?? "-", t.role, kilo(t.exitFill), kiloOrDash(t.bestK), ...t.overConfigured.map((o) => kilo(o.over))]);
+  return table(title, head, rows);
+}
+
+function reviewerTable(h: HandoffThreshold): string {
+  const r = h.reviewers;
+  const title = `Reviewers over ${r.prs} PRs at ${r.requestsPerPr.toFixed(1)} requests each (${r.requestsFrom ?? "no reviewers"}), boot and reads: fresh per PR against one standing`;
+  const rows = [...r.fresh.map((c) => ["fresh per PR", c.role, c.model, c.sessions, usd(c.costUsd)]), ...r.standing.map((c) => ["standing", c.role, c.model, c.sessions, usd(c.costUsd)])];
+  return table(title, ["reviewer", "role", "model", "sessions", "cost"], rows);
+}
+
+function kilo(tokens: number): string {
+  return `${Math.round(tokens / 1_000)}k`;
+}
+
+function kiloOrDash(tokens: number | null): string {
+  return tokens === null ? "-" : kilo(tokens);
 }
 
 function cellTable(title: string, cells: readonly WakeGapCell[]): string {
