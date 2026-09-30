@@ -5,7 +5,7 @@ function that calls `dispatch`, `seed`, and `assisted`. Completed calls are
 memoized, so replay starts at the function entry without repeating committed
 work. Human gates and in-flight execution identities survive process restarts.
 
-Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `agent`, and `hitl`.
+Tier 2 of the titan-platform DAG. Depends on `store-sqlite`, `agent`, `hitl`, and `authority`.
 
 ```ts
 import {
@@ -114,6 +114,35 @@ the call count, and replay does not check the method. A run that such a release
 paused inside `assisted("x")` after a `dispatch("x")` is still waiting on
 `<runId>/x`, so `assisted` adopts a gate that is still pending there when the
 bare key holds no result.
+
+## Authority steps
+
+`authorize(stepId, request, { prompt?, expiresAt? })` asks the authority table
+before a governed action. The runtime needs `authority: { actor, table? }`; the
+actor is who this runtime acts as, and the table defaults to `DEFAULT_TABLE`
+from `@titan-design/authority`. A run without that option fails at its first
+`authorize`, before any gate. The request is an `AuthorityRequest` without the
+actor; `tainted` defaults to `false`.
+
+- `allow` returns `{ verdict: "allow", ruleId }`.
+- `deny` records the decision and throws `AuthorityDeniedError`, a
+  non-retryable `StepFailedError` with `ruleId`. No gate is opened.
+- `gate` opens a hitl gate at `<runId>/<stepId>`, keyed like `assisted`, bound
+  to the rule: `rule: { table: "F5", version, ruleId, resolvers }`. The store
+  refuses a resolver class outside `resolvers` and the run stays paused. The
+  answer must be `{ decision: "approve" | "refuse", subject, reason? }`, and
+  `subject` must repeat the request's subject exactly, so an approval cannot
+  land on a different head or version. An approval returns
+  `{ verdict: "approved", ruleId, gateId, resolvedBy }`. A refusal, or a gate
+  that reads back resolved with no resolver or one the recorded rule does not
+  name, throws `AuthorityRefusedError`.
+
+A restarted run resumes onto the gate that is already open and judges the
+answer by the rule recorded on it, never by a fresh evaluation, so a table
+edit during the pause does not flip the decision. Replay returns or throws the
+recorded outcome without consulting the table. The resolver's taint is not yet
+known, so the read-side check passes `tainted: false`. On SQLite, a
+rule-bound gate needs both `gateResolverMigration` and `gateRuleMigration`.
 
 ## Fan-out
 

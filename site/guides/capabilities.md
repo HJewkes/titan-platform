@@ -700,10 +700,9 @@ Tier 2, `@titan-design/workflow@0.5.0`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
-- `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`, `parseSignals`
-- `prompt`: `buildStepVars`
-- +62 more in the [reference page](/reference/workflow)
+- `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
+- `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
+- +69 more in the [reference page](/reference/workflow)
 
 ## UI
 

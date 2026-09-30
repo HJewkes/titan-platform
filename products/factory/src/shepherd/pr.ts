@@ -138,6 +138,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: (stepId, prompt, options) => ctx.assisted(stepId, prompt, options),
+    authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
       if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
