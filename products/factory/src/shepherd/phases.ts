@@ -31,7 +31,7 @@ export interface ShepherdPhases {
   review(ctx: WorkflowContext, request: ReviewRequest): Promise<Verdict>;
 }
 
-/** What a phase's routes may need; the stubs take it and ignore it. */
+/** What a phase's routes may need; a phase takes only what it reads. */
 export interface ShepherdDeps {
   port: GitHubPort;
   store: ShepherdStoreRef;
