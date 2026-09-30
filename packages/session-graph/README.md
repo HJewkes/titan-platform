@@ -262,10 +262,14 @@ empty tables, so existing rows are untouched.
   `syncPrices(graph, rows, { tableVersion, source })` replaces the whole table in one
   transaction. `reconcilePrices(graph, rows, { tableVersion, source })` upserts instead: it adds
   missing models, updates changed rates, stamps the table version, and keeps rows the table
-  does not name. It writes nothing when the graph already matches. Pass session-analytics'
+  does not name unless it has a `source`, in which case rows of that source the table dropped
+  are pruned. A stored row from a newer `tableVersion` is never overwritten or pruned, so an
+  older caller cannot downgrade rates. It writes nothing when the graph already matches. Pass session-analytics'
   `PRICE_TABLE` and `PRICE_TABLE_VERSION`; session-graph cannot import that package, so the
   product does. `titan-miner` reconciles every time it opens the graph, so `titan-miner refresh`
-  brings a live graph's prices current.
+  brings a live graph's prices current. Only that entry point reconciles: a graph opened any
+  other way (a read-only connection, another product's bundled graph) keeps whatever rows it
+  stored, and its cost reports price from them. Such a caller must call `reconcilePrices` itself.
 - `request_dedup` collapses fan-out copies of a request to the earliest one. Every cost
   query reads it, never `request`. `request_cost` prices each row by longest model prefix
   and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.

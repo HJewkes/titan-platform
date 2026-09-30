@@ -157,8 +157,9 @@ describe("reconcilePrices", () => {
 
     const result = reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 2 });
 
-    expect(result).toEqual({ added: 1, updated: 1 });
+    expect(result.added).toBe(1);
     expect(cost("r1").cost_usd).toBe(4);
+    expect(cost("r1").price_model).toBe("claude-opus-5-5");
   });
 
   it("updates a changed rate and stamps the new table version on every row it touches", () => {
@@ -178,6 +179,39 @@ describe("reconcilePrices", () => {
   it("writes nothing when the graph already matches the table", () => {
     reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 });
 
-    expect(reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 })).toEqual({ added: 0, updated: 0 });
+    expect(reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 })).toEqual({ added: 0, updated: 0, pruned: 0 });
+  });
+
+  it("leaves rows a newer table version wrote, so an older table never downgrades rates", () => {
+    reconcilePrices(graph, [{ ...OPUS_5_5, input: 3 }], { tableVersion: 5, source: "sa" });
+
+    const result = reconcilePrices(graph, [OPUS_5_5], { tableVersion: 4, source: "sa" });
+
+    expect(result).toEqual({ added: 0, updated: 0, pruned: 0 });
+    expect(graph.db.prepare("SELECT input_usd_mtok, table_version FROM price WHERE model = 'claude-opus-5-5'").get()).toEqual({ input_usd_mtok: 3, table_version: 5 });
+  });
+
+  it("prunes a stale row of the same source whose longer prefix would otherwise win", () => {
+    const stale: PriceInput = { ...OPUS, modelPrefix: "claude-opus-5-5-preview", input: 50 };
+    reconcilePrices(graph, [OPUS, stale], { tableVersion: 1, source: "sa" });
+    addRequest({ request_id: "r2", model: "claude-opus-5-5-preview", input_tokens: 1_000_000 });
+    expect(cost("r2").cost_usd).toBe(50);
+
+    const result = reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 2, source: "sa" });
+
+    expect(result.pruned).toBe(1);
+    expect(cost("r2").cost_usd).toBe(4);
+  });
+
+  it("does not prune when a newer table version owns rows of that source", () => {
+    reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 5, source: "sa" });
+
+    expect(reconcilePrices(graph, [OPUS], { tableVersion: 4, source: "sa" }).pruned).toBe(0);
+  });
+
+  it("never prunes rows of another source", () => {
+    reconcilePrices(graph, [OPUS_5_5], { tableVersion: 2, source: "sa" });
+
+    expect(reconcilePrices(graph, [OPUS], { tableVersion: 2, source: "other" }).pruned).toBe(0);
   });
 });
