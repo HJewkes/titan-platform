@@ -30,10 +30,15 @@ priceRequest(
   `other_headless`, plus `coordinator` or `adhoc` for human sessions.
 - `CONTEXT_BANDS`, `GAP_BANDS`, `bandOf`, `contextBand`, `gapBand`.
 - `costReport(db, { since, until, days, top, transcriptsDiscovered, facetVersion, actionRules,
-  mechanicalClasses })` — the standing cost report as one JSON object, and `costReportSchema`,
-  its zod schema. `byAction` gives each role's cost by action class, and `mechanicalShare` the
-  cost of the `mechanicalClasses` (default `DEFAULT_MECHANICAL_CLASSES`) over the window total,
-  with each role's share over that role's cost.
+  mechanicalClasses, episodeRoles, noActionClasses })` — the standing cost report as one JSON
+  object, and `costReportSchema`, its zod schema. `byAction` gives each role's cost by action
+  class, and `mechanicalShare` the cost of the `mechanicalClasses` (default
+  `DEFAULT_MECHANICAL_CLASSES`) over the window total, with each role's share over that role's
+  cost. `wakeEpisodes` cuts the wakes of the `episodeRoles` (default `DEFAULT_EPISODE_ROLES`:
+  `coordinator` and `worker:coordinator`) into episodes; see "Wake episodes" below.
+- `buildWakeEpisodes`, `summarizeWakeEpisodes`, `episodeNames`, `episodeCause`, `fromKindOf`,
+  `wakeEpisodesSchema`, `WAKE_FROM_KINDS`, `DEFAULT_NO_ACTION_CLASSES` — the pure pieces behind
+  `wakeEpisodes`.
 - `ACTION_CLASSES`, `DEFAULT_ACTION_RULES`, `DEFAULT_MECHANICAL_CLASSES`,
   `classifyRequest(calls, rules?)` — one action class per request from its tool calls: the
   first rule in list order that any call matches, `text-only` with no calls, `other` with no
@@ -58,6 +63,34 @@ const report = costReport(openDatabase(graphPath, { readonly: true }), { days: 7
 process.stdout.write(renderCostReportText(report));
 ```
 
+## Wake episodes
+
+An episode is one arrival that wakes a session and the requests after it, up to the next
+arrival in the same transcript. An arrival is a turn-start record or a mid-loop delivery, the
+`queued_command` that reaches a busy seat inside a tool loop. A tool result is never an arrival.
+Mid-loop deliveries are most of a busy coordinator's events, so leaving them out would show a
+handful of expensive wakes and hide the rest.
+
+`wakeEpisodes.byCause` gives, per cause, episodes, mid-loop episodes, requests, cost,
+`requestsPerEpisode`, `costPerEpisode`, and the no-action count and cost. Causes are
+session-read's, except that `channel_system` is reported as `agent_lifecycle`: agent-chat's
+notice that an agent exited or changed state. Requests in the window whose arrival came before
+it are counted under `unattributed`.
+
+**No-action rule.** An episode is no-action when every one of its requests has an action class
+in `noActionClasses`, by default `read-investigate`, `text-only` and `other`. An episode with no
+requests, such as the second report of a burst, is no-action. Anything else, including a
+journal write, a PR check or a message, counts as action. The rule reads the TP-501 facet
+rather than regexes over tool input, so the default action rules and a seat's own `actionRules`
+decide it the same way they decide `byAction`.
+
+**From.** Each episode has a sender kind. `broker` is agent-chat itself, the sender of the
+lifecycle notice. `broadcast` is a message whose `msg_id` reached more than one session. `seat`
+is a name carried by a top-level session or by a session spawned with a coordinator profile.
+`agent` is any other named sender, and `none` is an arrival with no sender. `pairs` is the
+sender-by-receiver matrix. A seat sender is named, and every other sender collapses to its kind,
+because spawned agents have one-off names.
+
 ## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.
@@ -77,5 +110,13 @@ defaults read session-read's `command_heads` signal, which drops path operands, 
 
 A tool call belongs to the latest request at or before it in its transcript, the request that
 issued it. The `context_contribution` view maps the other way, to the request a block feeds.
+
+session-read keeps `from` and `msg_id` from a channel tag but not its `broadcast` attribute, so
+a broadcast is inferred from its `msg_id` reaching more than one session. A multicast to named
+recipients counts as a broadcast too.
+
+Coordinator seats spawned with the `opus-coordinator` profile report as `worker:coordinator`.
+Before that profile was mapped they fell into `worker:unknown`, and the `coordinator` role held
+only human-driven seats.
 
 Full reference: `site/reference/session-analytics.md`.
