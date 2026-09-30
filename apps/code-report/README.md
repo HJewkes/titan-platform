@@ -19,7 +19,7 @@ One build runs three ways with the same code:
 
 ```sh
 pnpm build                          # the workspace packages the scripts import
-pnpm --filter code-report index     # index titan-platform into .codewatch/graph.db (about a minute)
+pnpm --filter code-report index     # index titan-platform into .codewatch/graph.db (a few minutes)
 pnpm --filter code-report dev
 ```
 
@@ -122,6 +122,11 @@ There is no timeline command in code-read's contract, so a metric's history is r
 answers `EXIT.NOINPUT`, not a null value with a reason, so a consumer assembling a line has
 to read that error as the gap it is. `scripts/fixtures.test.ts` asserts both, along with the
 row, point, and call counts.
+
+## Usage guide
+
+Every command with its output, the settings, where state lives and how each mode fails:
+[Running the code report](https://hjewkes.github.io/titan-platform/guides/code-report).
 
 ## Tests
 

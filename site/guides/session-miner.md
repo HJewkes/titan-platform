@@ -1,24 +1,88 @@
 # Case study: the session miner
 
-The session miner indexes every Claude Code transcript on a machine into a queryable graph,
-searches it, clusters its recurring failures, and serves all of that over a CLI, MCP, and
-HTTP from one command registry. It is the first product on the platform, and it exists as
+The session miner indexes every Claude Code transcript on a machine, and Codex sessions
+when asked, into a queryable graph. It searches that graph, clusters its recurring failures,
+and serves all of that over a CLI, MCP, and HTTP from one command registry. It is the first product on the platform, and it exists as
 much to prove the DAG end to end as to be useful.
 
 It composes ten packages and is about a thousand lines of its own code. It lives at
 `products/session-miner` and is private, so run it from a checkout.
 
-## What it does
+## Run it
+
+The first half of this page is the usage guide. The second half, from
+[a refresh, package by package](#a-refresh-package-by-package), is the case study.
+
+### Prerequisites and build
+
+Node 20 or newer and pnpm 9. The product is private and is not on npm, so run it from a
+checkout. Nothing needs a network or a model.
+
+```sh
+git clone https://github.com/HJewkes/titan-platform
+cd titan-platform
+pnpm install --frozen-lockfile && pnpm build
+node products/session-miner/dist/bin.js --help
+```
+
+The examples write `titan-miner` for `node products/session-miner/dist/bin.js`.
+
+### Commands
 
 ```sh
 titan-miner refresh                          # index new transcript bytes
-titan-miner search "daemon 503 at startup"   # full text, expanded through the graph
-titan-miner session show <session-id>
-titan-miner drain ingest                     # cluster tool errors into templates
-titan-miner playbook recall "release job npm"
-titan-miner serve --port 7400                # /rpc, /mcp, /events on loopback
+titan-miner refresh --full                   # rebuild from byte 0
+titan-miner refresh -n 50 --verify-hashes    # at most 50 transcripts; detect same-length rewrites
+titan-miner status                           # counts, transcript states, FTS orphan ratio
+titan-miner search "daemon 503 at startup" -n 5
+titan-miner session list -n 20 --since 2026-09-01T00:00:00Z
+titan-miner session show <session-id>        # token usage, turns, and relations
+titan-miner drain ingest -n 500              # cluster tool errors into templates
+titan-miner drain templates -n 10            # most frequent first
+titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci --category release
+titan-miner playbook add "Never force-push main" --negative --session <session-id>
+titan-miner playbook recall "release job npm" -n 5
+titan-miner playbook reflect <session-id>    # renders the diary; applies nothing
+titan-miner playbook status
+titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on loopback
 titan-miner mcp                              # MCP over stdio
 ```
+
+Five options go before the command and apply to all of them:
+
+| Option | Environment | Default |
+| --- | --- | --- |
+| `--state <dir>` | `TITAN_MINER_STATE` | `~/.local/state/titan-session-miner` |
+| `--corpus <dir>` | `TITAN_MINER_CORPUS` | `~/.claude/projects` |
+| `--codex-home <dir>` | `TITAN_MINER_CODEX_HOME` | unset; Codex sessions are not indexed |
+| `--namespace <name>` | `TITAN_MINER_NAMESPACE` | the hostname, when a Codex home is set |
+| `--json` | | off; prints the `{ ok, data }` envelope the HTTP and MCP surfaces return |
+
+Pick a stable `--namespace` for each host and account. Moving a Codex source must not rename
+its conversations (`products/session-miner/src/config.ts`).
+
+### Where state lives
+
+Everything is in the state directory: `index.sqlite3` holds the session graph, the Drain
+snapshot and the playbook. While `serve` runs, `daemon.pid` and `daemon.meta.json` sit
+beside it. `serve` logs to stderr. The miner only reads the corpus; the index stores byte
+ranges, not transcript text.
+
+`serve` exposes each command as `POST /rpc/<name>` and as an MCP tool named
+`miner__<name>`, with dots as double underscores (`miner__session__show`). A `/rpc` call
+needs an `Origin` or `X-Titan-Client` header. `GET /health` reports the session count and
+the FTS orphan ratio.
+
+### How it fails
+
+| What you see | Why |
+| --- | --- |
+| `"transcripts": 0` from `refresh`, exit 0 | the corpus directory is empty or missing; that is not an error |
+| `error: no session <id>`, exit 66 | `session show` or `playbook reflect` on an unknown id |
+| `error: unknown command '…'`, exit 64 | a usage error |
+| `error: Daemon already running (pid N, port P)`, exit 70 | a second `serve` on the same state directory |
+| a hit with `"excerpt": null` and a locator | the source bytes changed or the file was pruned after indexing |
+| a name in `degraded` from `search` | one retriever failed; the others still answered |
 
 ## A refresh, package by package
 
@@ -46,15 +110,19 @@ const discovered = await discoverTranscripts(ctx.config.corpusRoot);
 return refreshCorpus(graph, discovered, { full: args.full, verifyHash: args.verify_hashes });
 ```
 
-That is the whole command body. Real output over eight transcripts:
+That is the core of the command. Output over a one-transcript synthetic corpus (one prompt,
+one reply with a `Read` call, one failed tool result):
 
 ```json
 {
-  "transcripts": 8, "indexed": 8, "unchanged": 0, "rewound": 0,
-  "missing": 0, "quarantined": 0, "facts": 1899, "turnsRolledUp": 10,
+  "transcripts": 1, "indexed": 1, "unchanged": 0, "rewound": 0,
+  "missing": 0, "quarantined": 0, "facts": 3, "turnsRolledUp": 1,
   "reconciled": { "prCreates": 0, "prMerges": 0, "subagents": 0 },
   "tasks": { "requested": 0, "applied": 0, "failed": false },
-  "markedMissing": 0
+  "origins": { "requested": 0, "applied": 0, "events": 0, "failed": false },
+  "prs": { "requested": 0, "applied": 0, "failed": false },
+  "reviews": { "resolved": 0, "unresolved": 0, "invalidTimes": 0 },
+  "markedMissing": 0, "facetsBackfilled": 0, "facetBacklog": 0
 }
 ```
 
@@ -89,22 +157,22 @@ const engine = createRetrievalEngine({
 const { results, degraded } = await engine.search(args.query, { limit: args.limit });
 ```
 
-Two hits from a real run, trimmed:
+Two of the three hits from the same synthetic corpus, trimmed:
 
 ```json
 {
   "hits": [
     {
-      "ref": "session:5a24a94a-2a27-4c33-87ea-af1b6761a02d",
+      "ref": "session:11111111-2222-4333-8444-555555555555",
       "score": 0.0164,
       "sources": ["fts"],
-      "locator": { "transcript": "~/.claude/projects/…/5a24a94a….jsonl",
-                   "byteOffset": 760589, "byteLength": 2724, "field": "tool_input" },
-      "excerpt": "/Users/<you>/projects/…/tests/test_logic.py\n  test_cactus_planner, test_layout, …"
+      "locator": { "transcript": "<corpus>/-work-example/11111111-….jsonl",
+                   "byteOffset": 0, "byteLength": 317, "field": "prompt" },
+      "excerpt": "Why does the daemon return 503 at startup?"
     },
     {
-      "ref": "file:farmer-was-replaced/CLAUDE.md",
-      "score": 0.0164,
+      "ref": "file:/work/example/src/daemon.ts",
+      "score": 0.0161,
       "sources": ["graph"],
       "locator": null,
       "excerpt": null
@@ -114,11 +182,11 @@ Two hits from a real run, trimmed:
 }
 ```
 
-The first hit came from full-text search and carries a locator, so the miner read
-2,724 bytes at offset 760,589 out of the original JSONL and projected the same field that
-was indexed. The second hit is a *file*, not a session: the graph retriever took the
-full-text winner as a seed and walked one hop along `session:… touched file:…` edges. A
-graph-only hit has no locator, which is why `excerpt` is null rather than fabricated.
+The first hit came from full-text search and carries a locator, so the miner read 317 bytes
+at offset 0 out of the original JSONL and projected the same field that was indexed. The
+second hit is a *file*, not a session: the graph retriever took the full-text winner as a
+seed and walked one hop along `session:… touched file:…` edges. A graph-only hit has no
+locator, which is why `excerpt` is null rather than fabricated.
 
 `degraded` is empty here. Had the FTS index been locked, it would name the retriever and the
 reason, and the graph results would still have come back. That is `retrieval`'s fail-open
@@ -130,8 +198,11 @@ contract.
 it with `cluster`'s `hasErrorSignal`, and clusters the survivors:
 
 ```json
-{ "candidates": 4, "screened": 3, "clustered": 1, "newTemplates": 1, "templates": 1, "unreadable": 0 }
+{ "candidates": 1, "screened": 0, "clustered": 1, "newTemplates": 1, "templates": 1, "unreadable": 0 }
 ```
+
+`drain templates` then lists the template with its masked signature,
+`Error Error: ENOENT: no such file or directory, open '<PATH>' [<NUM>]`.
 
 Screening matters: successful tool output has unbounded cardinality and would produce one
 template per invocation. The clusterer's snapshot lives in the same database, so template

@@ -45,6 +45,17 @@ export default withMermaid(
             { text: "Working in the repo", link: "/guides/contributing" },
           ],
         },
+        {
+          text: "Running the products",
+          items: [
+            { text: "Factory", link: "/guides/factory" },
+            { text: "Shepherd", link: "/guides/shepherd" },
+            { text: "Session miner", link: "/guides/session-miner#run-it" },
+            { text: "Retrieval eval", link: "/guides/retrieval-eval" },
+            { text: "Code report", link: "/guides/code-report" },
+            { text: "Matrix hub", link: "/guides/hub" },
+          ],
+        },
         { text: "Packages", collapsed: false, items: [{ text: "All packages", link: "/reference/" }, ...referenceSidebar] },
       ],
 

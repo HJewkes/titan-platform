@@ -1,5 +1,12 @@
 # @titan-design/hitl
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [be51d27]
+  - @titan-design/authority@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes
