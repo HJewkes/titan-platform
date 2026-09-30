@@ -8,7 +8,7 @@ export type { ToolFamily, WakeCause };
  * Bumped whenever a classification rule below changes, so a consumer can tell
  * rows extracted under an older rule set apart and re-index them.
  */
-export const EXTRACT_VERSION = 2;
+export const EXTRACT_VERSION = 3;
 
 /** Where the characters in one context block came from. */
 export type ContextSource =
@@ -35,7 +35,10 @@ export type SignalKind =
   | "task_done"
   | "doc_written"
   | "agent_spawn"
-  | "chat_send";
+  | "chat_send"
+  | "command_heads"
+  | "file_read"
+  | "file_write";
 
 /** Audit events locate themselves within a line, not just at it; 0 for whole-line events. */
 export interface AuditEventBase extends EventBase {
