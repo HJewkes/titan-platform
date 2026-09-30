@@ -137,6 +137,24 @@ describe("acceptVerdict", () => {
     expect(acceptVerdict(input, [message(), later])).toEqual({ kind: "none" });
   });
 
+  it("lets a later MERGE decide over an earlier FIX_FIRST for the same head in one read", () => {
+    const messages = [message({ writtenAt: 2_000, text: block({ verdict: "FIX_FIRST" }) }), message({ writtenAt: 3_000 })];
+
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("lets a later FIX_FIRST decide over an earlier MERGE for the same head in one read", () => {
+    const messages = [message({ writtenAt: 2_000 }), message({ writtenAt: 3_000, text: block({ verdict: "FIX_FIRST" }) })];
+
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+  });
+
+  it("refuses a MERGE listed last when a FIX_FIRST in the same read was written after it", () => {
+    const messages = [message({ writtenAt: 3_000, text: block({ verdict: "FIX_FIRST" }) }), message({ writtenAt: 2_000 })];
+
+    expect(acceptVerdict(input, messages)).toEqual({ kind: "none" });
+  });
+
   it("refuses when the final message has no parseable block", () => {
     expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toEqual({ kind: "none" });
   });
@@ -611,6 +629,24 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "FIX_FIRST", headSha: H1, text: expect.stringContaining("The retry loop never ends.") }]);
     expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+  });
+
+  const bothInOnePoll = (first: string, second: string): Scene["read"] => (input, dispatch) => {
+    const reviewer = dispatch.agents[0]!;
+    return [said(reviewer, verdictAt(input.head, first), 20_000), said(reviewer, verdictAt(input.head, second), 21_000)];
+  };
+
+  it("sends the head back when one poll holds a MERGE and then a later FIX_FIRST, and collects no merge evidence", async () => {
+    const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), read: bothInOnePoll("MERGE", "FIX_FIRST"), policy: AUTO });
+
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+  });
+
+  it("takes the MERGE when one poll holds a FIX_FIRST and then a later MERGE", async () => {
+    const { verdicts } = await review({ dispatch: fakeDispatch(), read: bothInOnePoll("FIX_FIRST", "MERGE") });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
   });
 
   it("ignores a MERGE from another agent that took the reviewer's name", async () => {
