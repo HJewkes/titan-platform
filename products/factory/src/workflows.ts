@@ -2,8 +2,10 @@ import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { configPath, loadConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
+import type { ShepherdServices } from "./shepherd/commands.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
+import { loadSeatBook, type SeatBook } from "./shepherd/seats.js";
 import { shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
@@ -16,7 +18,11 @@ export interface FactoryRouteDeps extends LandPrDeps {
   store: ShepherdStoreRef;
   holdPollMs?: number;
   agentChatBin?: string;
+  /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
+  seats?: () => SeatBook;
 }
+
+const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -31,13 +37,15 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   );
   const shepherd = shepherdRoutes({ port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat" });
   const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4)], bind: (db) => deps.store.bind(db) };
-  return Object.assign([...land, ...shepherd], { database });
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
+  return Object.assign([...land, ...shepherd], { database, shepherd: services });
 }
 
-/** The production route set: the post-merge chore comes from the config file, the one place the CLI reads it. */
+/** The production route set: the post-merge chore comes from the config file; the seat book is re-read per registration. */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge } = loadConfig(configPath(env));
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, ...overrides });
+  const seats = (): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {});
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, seats, ...overrides });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

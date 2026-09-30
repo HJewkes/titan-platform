@@ -35,10 +35,11 @@ function landRuns(host: FactoryHost): string[] {
 }
 
 describe("factory registry", () => {
-  it("surfaces exactly land, status and gates as MCP tools, with no prefix doubling and no resolve tool", () => {
+  it("surfaces the factory and shepherd commands as MCP tools, with no prefix doubling and no resolve tool", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__land", "factory__status"]);
+    const shepherd = ["hold", "list", "merge", "register", "release", "status", "timeline"].map((verb) => `shepherd__${verb}`);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__land", "factory__status", ...shepherd]);
   });
 
   it("a second land on the same PR returns the unfinished run instead of starting another", async () => {
