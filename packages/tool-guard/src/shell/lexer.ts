@@ -44,6 +44,8 @@ export interface RedirectToken {
   fd: string | null;
   target: WordToken | null;
   body: string | null;
+  /** Command substitutions in an unquoted heredoc body, which the shell runs before the command. */
+  subs: Token[][];
 }
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
@@ -159,6 +161,7 @@ function readHeredocBodies(s: LexState): void {
       body += `${line}\n`;
     }
     token.body = body;
+    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length);
   }
   s.heredocs = [];
 }
@@ -191,7 +194,7 @@ function readDouble(s: LexState): void {
     const c = s.src[s.i] as string;
     const next = s.src[s.i + 1];
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
-      w.value += next;
+      if (next !== "\n") w.value += next;
       s.i += 2;
     } else if (c === "$") readDollar(s);
     else if (c === "`") readBacktick(s);
@@ -201,13 +204,8 @@ function readDouble(s: LexState): void {
 }
 
 function readBacktick(s: LexState): void {
-  let end = s.i + 1;
-  while (end < s.src.length && s.src[end] !== "`") end += s.src[end] === "\\" ? 2 : 1;
-  if (end >= s.src.length) throw new ParseError("unterminated `");
-  const inner = s.src.slice(s.i + 1, end).replace(/\\([`\\$])/g, "$1");
   const w = markComputed(ensureWord(s));
-  w.subs.push(tokenize(inner));
-  s.i = end + 1;
+  s.i = scanBacktick(s.src, s.i, w.subs) + 1;
 }
 
 function markComputed(w: WordToken): WordToken {
@@ -259,8 +257,35 @@ function readBalanced(s: LexState, w: WordToken, open: string, close: string): v
   const text = s.src.slice(s.i, i + 1);
   const name = BRACED_NAME_RE.exec(text)?.[1];
   if (name) pushRef(w, name, text);
-  else markComputed(w).value += text;
+  else {
+    markComputed(w).value += text;
+    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i));
+  }
   s.i = i + 1;
+}
+
+/** Token lists of every `$(...)` and backtick substitution in `src` between `from` and `to`. */
+export function scanSubstitutions(src: string, from: number, to: number): Token[][] {
+  const found: Token[][] = [];
+  for (let j = from; j < to; j++) {
+    const c = src[j];
+    if (c === "\\") j++;
+    else if (c === "$" && src[j + 1] === "(" && src[j + 2] !== "(") {
+      const inner = newState(src, j + 2, true);
+      lex(inner);
+      found.push(inner.tokens);
+      j = inner.i;
+    } else if (c === "`") j = scanBacktick(src, j, found);
+  }
+  return found;
+}
+
+function scanBacktick(src: string, start: number, found: Token[][]): number {
+  let end = start + 1;
+  while (end < src.length && src[end] !== "`") end += src[end] === "\\" ? 2 : 1;
+  if (end >= src.length) throw new ParseError("unterminated `");
+  found.push(tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1")));
+  return end;
 }
 
 function readAnsiC(s: LexState, w: WordToken): void {
@@ -292,7 +317,7 @@ function readRedirect(s: LexState): void {
     return;
   }
   const heredoc = op === "<<" || op === "<<-";
-  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null };
+  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
   s.tokens.push(token);
   s.redirect = { token, stripTabs: op === "<<-" };
 }

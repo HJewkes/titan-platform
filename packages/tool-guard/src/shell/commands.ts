@@ -8,7 +8,7 @@ import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O"]);
+const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
 /** One simple command the shell would run. */
 export interface SimpleCommand {
@@ -73,7 +73,7 @@ function walk(tokens: Token[], w: Walk): void {
 }
 
 function nestedLists(token: Token): Token[][] {
-  if (token.type === "redirect") return token.target?.subs ?? [];
+  if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
   return token.type === "op" ? [] : token.subs;
 }
 
@@ -116,6 +116,7 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
 
 /** The script text a shell or `eval` runs: a `-c` string, or a heredoc or here-string on stdin. */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[]): string | null {
+  if (cmd.script !== undefined) return cmd.script;
   if (cmd.name === "eval") return cmd.args.map((a) => a.value).join(" ");
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
@@ -128,7 +129,9 @@ function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToke
   for (let i = 0; i < args.length; i++) {
     const v = (args[i] as WordToken).value;
     if (v === "-") break;
+    if (v === "--") return { hasC, positional: args[i + 1] ?? null };
     if (SHELL_VALUE_OPTS.has(v)) i++;
+    else if (v.startsWith("--")) continue;
     else if (/^[-+][A-Za-z]+$/.test(v)) hasC ||= v.startsWith("-") && v.includes("c");
     else return { hasC, positional: args[i] as WordToken };
   }

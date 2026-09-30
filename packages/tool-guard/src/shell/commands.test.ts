@@ -191,3 +191,48 @@ describe("section 3.3 shell spellings", () => {
     expect(namesReaching("F=$(echo ~/.npmrc); cat $F", NPMRC)).toEqual(["echo"]);
   });
 });
+
+// Review gaps on #259: each spelling runs `git push`, and each was missed before its fix.
+const HIDDEN_GIT_PUSH: Array<[string, string]> = [
+  ["bash --norc -c", "bash --norc -c 'git push'"],
+  ["bash --login -c", "bash --login -c 'git push'"],
+  ["bash --rcfile <file> -c", "bash --rcfile x.rc -c 'git push'"],
+  ["bash -c --", "bash -c -- 'git push'"],
+  ["bash -- with a heredoc", "bash -- <<EOF\ngit push\nEOF"],
+  ["npx -c", "npx -c 'git push'"],
+  ["npm exec -c", "npm exec -c 'git push'"],
+  ["npm exec --call=", "npm exec --call='git push'"],
+  ["pnpm exec -c", "pnpm exec -c 'git push'"],
+  ["env -S", "env -S 'git push'"],
+  ["env --split-string=", "env --split-string='git push'"],
+  ["line continuation inside a double-quoted name", '"gi\\\nt" push'],
+  ["substitution in a ${x:-...} default", "echo ${x:-$(git push)}"],
+  ["backticks in a ${x:-...} default", "echo ${x:-`git push`}"],
+  ["substitution in arithmetic", "echo $(( $(git push) ))"],
+  ["substitution in an unquoted heredoc body", "cat <<EOF\n$(git push)\nEOF"],
+  ["backticks in an unquoted heredoc body", "git commit -F - <<EOF\n`git push`\nEOF"],
+];
+
+describe("commands hidden from git-safety's parser", () => {
+  it.each(HIDDEN_GIT_PUSH)("finds git push through %s", (_how, src) => {
+    const git = extract(src).find((c) => c.name === "git");
+
+    expect(values(git)?.[0]).toBe("push");
+  });
+
+  it("appends the words after env -S's string as arguments", () => {
+    expect(values(extract("env -S 'git push' origin \"it's\"").find((c) => c.name === "git"))).toEqual([
+      "push",
+      "origin",
+      "it's",
+    ]);
+  });
+
+  it.each([
+    ["single-quoted", "cat <<'EOF'\n$(git push)\nEOF"],
+    ["double-quoted", 'cat <<"EOF"\n$(git push)\nEOF'],
+    ["backslash-quoted", "cat <<\\EOF\n$(git push)\nEOF"],
+  ])("leaves substitutions in a %s heredoc body unrun", (_how, src) => {
+    expect(extract(src).map((c) => c.name)).toEqual(["cat"]);
+  });
+});
