@@ -5,6 +5,7 @@ import { readSessionContexts, type ReportWindow } from "./cost-report-queries.js
 import { resolveWindow, tagSessions, type CostReportOptions } from "./cost-report.js";
 import { PRICE_TABLE, PRICE_TABLE_VERSION, findPrice, type PriceRow } from "./prices.js";
 import { LIST_PRICE_CAVEAT, table, usd } from "./render-text.js";
+import { scopeFilter } from "./scope.js";
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const MTOK = 1e6;
@@ -148,7 +149,7 @@ const TTL_ROWS = `
 /** Reads the graph and never writes it; roles are the cost report's. */
 export function cacheTtlReport(db: Db, options: CostReportOptions = {}, prices: readonly PriceRow[] = PRICE_TABLE): CacheTtlWhatIf {
   const window = resolveWindow(options);
-  return { window, ...cacheTtlWhatIf(readTtlRows(db, window), prices) };
+  return { window, ...cacheTtlWhatIf(readTtlRows(db, window).filter(scopeFilter(db, options.scope)), prices) };
 }
 
 export function readTtlRows(db: Db, window: ReportWindow): TtlRequestRow[] {
