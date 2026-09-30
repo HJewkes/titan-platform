@@ -66,6 +66,12 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
 - `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+- `command_heads` is the program and up to two subcommand words of each simple command in a Bash call, joined with `;` (`gh pr checks;git log`), plus `>name` for each file it writes. `cd` is dropped, and `builtin` and `command` are looked through to the program they run.
+
+`command_heads` is not secret-free. After a program that is not on the operand-only list, up to two bare
+all-lowercase positionals are kept, so `mycli login hunter2` yields the head `mycli login hunter2`. Collection
+stops at the first flag, path, number-led, uppercase, dotted or quoted word. Treat the signal as
+low-sensitivity, never as redacted.
 
 The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
 `bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.

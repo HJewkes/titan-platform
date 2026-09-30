@@ -254,6 +254,9 @@ const OPERAND_ONLY = new Set([
   'printf', 'rg', 'rm', 'sed', 'sleep', 'sort', 'tail', 'tee', 'test', 'touch', 'wc',
 ]);
 const PREFIX_WORDS = new Set(['(', '{', '!', 'if', 'then', 'else', 'do', 'while', 'until', 'time']);
+/** Subshell and group closers stay glued to the last word of a command. */
+const CLOSERS = /[)}]+$/;
+const LOOK_THROUGH = new Set(['builtin', 'command']);
 const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const OUT_REDIRECT = /^(?:\d+|&)?>[>|]?(.*)$/;
 const IN_REDIRECT = /^\d*<(.*)$/;
@@ -308,17 +311,30 @@ function separateRedirects(words: readonly ShellWord[]): Redirected {
 function headOf(words: readonly ShellWord[]): string[] {
   let start = 0;
   while (start < words.length && !words[start]!.quoted && isPrefix(words[start]!.text)) start++;
+  start = skipLookThrough(words, start);
   const program = words[start];
   if (!program || program.quoted) return [];
-  const name = path.basename(program.text.replace(/^\(+/, ''));
+  const name = path.basename(program.text.replace(/^\(+/, '').replace(CLOSERS, ''));
   if (!name) return [];
-  if (OPERAND_ONLY.has(name)) return [name];
+  if (OPERAND_ONLY.has(name) || CLOSERS.test(program.text)) return [name];
   const parts = [name];
   for (const word of words.slice(start + 1)) {
-    if (parts.length > MAX_SUBCOMMANDS || word.quoted || !SUBCOMMAND.test(word.text)) break;
-    parts.push(word.text);
+    const text = word.text.replace(CLOSERS, '');
+    if (parts.length > MAX_SUBCOMMANDS || word.quoted || !SUBCOMMAND.test(text)) break;
+    parts.push(text);
+    if (text !== word.text) break;
   }
   return parts;
+}
+
+/** `builtin` and `command` run the next program, so the head (and the `cd` rule) belongs to that program. */
+function skipLookThrough(words: readonly ShellWord[], from: number): number {
+  let start = from;
+  while (LOOK_THROUGH.has(words[start]?.text ?? '') && !words[start]!.quoted) {
+    start++;
+    while (words[start]?.text.startsWith('-') && !words[start]!.quoted) start++;
+  }
+  return start;
 }
 
 function isPrefix(text: string): boolean {
