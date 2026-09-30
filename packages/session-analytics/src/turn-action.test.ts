@@ -120,4 +120,9 @@ describe("journal writes match on the file's basename", () => {
     expect(classifyRequest([bash(">CHANGELOG.md")])).toBe("other");
     expect(classifyRequest([bash(">session-log.md")])).toBe("journal-write");
   });
+
+  it("matches a redirect target that keeps its parent directory", () => {
+    expect(classifyRequest([bash(">state/events.jsonl")])).toBe("journal-write");
+    expect(classifyRequest([bash(">docs/CHANGELOG.md")])).toBe("other");
+  });
 });
