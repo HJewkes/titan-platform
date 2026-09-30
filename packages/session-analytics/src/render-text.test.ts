@@ -3,6 +3,7 @@ import { costReport } from "./cost-report.js";
 import { SCENARIO_WINDOW, WAKE_WINDOW, createFixtureGraph, seedCostScenario, seedWakeScenario, type FixtureGraph } from "./fixture.js";
 import { LIST_PRICE_CAVEAT, TOP_WAKE_ROWS, renderCostReportText } from "./render-text.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
+import { handoffThreshold } from "./handoff-threshold.js";
 
 let fixture: FixtureGraph;
 
@@ -27,6 +28,9 @@ const SECTIONS = [
   "By wake cause",
   "Wake episodes of coordinator, worker:coordinator: ",
   "Wake senders by receiver",
+  "Handoff threshold per role, priced at package table v",
+  "Teleport exit fill: 0 matched, 0 unmatched",
+  "Reviewers over 10 PRs, boot and reads: fresh per PR against one standing: none",
   "Wake cause by gap band",
   "Cold rebuilds: 2 requests",
   "Compactions",
@@ -81,5 +85,14 @@ describe("renderCostReportText", () => {
     expect(lines[start]).toContain("no-action means only read-investigate, text-only, other");
     expect(block.some((line) => line.startsWith("  from broadcast "))).toBe(true);
     expect(lines.some((line) => /^seat-b\s+broadcast\s+seat-a\s+1\s+0\s/.test(line))).toBe(true);
+  });
+
+  it("prints each cohort's best K with its half-boot K and the extra cost per request at each configured K", () => {
+    const row = (ts: string, fill: number, bootAction: boolean) => ({ sessionId: "s", role: "worker:coordinator", model: "claude-opus-5-5", ts, fill, tokens: { outputTokens: 112_500 }, bootAction });
+    const handoff = handoffThreshold([row("2026-09-22T00:00:00Z", 50_000, true), row("2026-09-22T00:01:00Z", 51_000, false)], [], new Map(), { configuredK: [250_000] });
+    const text = renderCostReportText({ ...costReport(fixture.openReadOnly(), SCENARIO_WINDOW), handoffThreshold: handoff });
+
+    expect(text).toMatch(/^worker:coordinator\s+claude-opus-5-5\s+1\s+\$2\.25\s+50k\s+1000\s+0\.200\s+200k \(155k\)\s+\$0\.0400\s+\$0\.0013$/m);
+    expect(text).toContain("+$/req @250k");
   });
 });

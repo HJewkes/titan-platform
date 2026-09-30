@@ -6,6 +6,7 @@ import {
   readCompactions,
   readCostRows,
   readCoverage,
+  readAgentSessions,
   readPriceTableVersion,
   readRequestEvents,
   readSessionContexts,
@@ -16,6 +17,7 @@ import {
   type SessionContext,
 } from "./cost-report-queries.js";
 import { assignmentCount, heuristicFor } from "./episodes.js";
+import { handoffThreshold, handoffThresholdSchema, isBootAction, parseTeleportEvents, type HandoffOptions, type HandoffThreshold } from "./handoff-threshold.js";
 import { sessionInitiative } from "./initiative.js";
 import { readRequestToolCalls } from "./request-owner.js";
 import { sessionRole } from "./roles.js";
@@ -67,6 +69,8 @@ export const costReportSchema = z.object({
   byWakeCause: z.array(wakePartSchema.extend({ parts: z.array(wakePartSchema) })),
   /** Per wake episode of the episode roles: an arrival and the requests up to the next one, mid-loop deliveries included. */
   wakeEpisodes: wakeEpisodesSchema,
+  /** Per role and model, the handoff threshold K that minimises boot plus cache-read cost per request. */
+  handoffThreshold: handoffThresholdSchema,
   wakeCauseByGapBand: z.array(cellSchema),
   coldRebuild: z.object({ requests: count, costUsd: z.number(), byGapBandAndCause: z.array(cellSchema) }),
   compactions: z.object({ total: count, manual: count, auto: count, midLoop: count, droppedTokens: count }),
@@ -114,6 +118,9 @@ export interface CostReportOptions {
   episodeRoles?: readonly string[];
   /** A wake is no-action when every one of its requests falls in these action classes. */
   noActionClasses?: readonly ActionClass[];
+  /** The broker log's lines, read by the caller; its teleport starts give each handoff's exit fill. */
+  brokerLogLines?: () => Iterable<string>;
+  handoff?: HandoffOptions;
 }
 
 /** AskUserQuestion answers are the human answering, so they count under `human` (decisions Q4). */
@@ -131,7 +138,7 @@ interface SessionTags {
   account: string;
 }
 
-type TaggedRow = CostRow & SessionTags & { action: ActionClass };
+type TaggedRow = CostRow & SessionTags & { action: ActionClass; bootAction: boolean };
 
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 export function costReport(db: Db, options: CostReportOptions = {}): CostReport {
@@ -147,6 +154,7 @@ export function costReport(db: Db, options: CostReportOptions = {}): CostReport 
     mechanicalShare: mechanicalShare(rows, options.mechanicalClasses ?? DEFAULT_MECHANICAL_CLASSES),
     byWakeCause: wakeCauses(rows),
     wakeEpisodes: wakeEpisodes(db, window, rows, options),
+    handoffThreshold: handoff(db, window, rows, options),
     wakeCauseByGapBand: gapCells(rows),
     coldRebuild: coldRebuild(rows),
     compactions: compactionCounts(readCompactions(db, window)),
@@ -160,7 +168,10 @@ function readTaggedRows(db: Db, window: ReportWindow, rules: readonly ActionRule
   const costRows = readCostRows(db, window);
   const tags = tagSessions(readSessionContexts(db, [...new Set(costRows.map((row) => row.sessionId))]));
   const calls = readRequestToolCalls(db, window);
-  return costRows.map((row) => ({ ...row, ...tags.get(row.sessionId)!, action: classifyRequest(calls.get(row.requestId) ?? [], rules) }));
+  return costRows.map((row) => {
+    const requestCalls = calls.get(row.requestId) ?? [];
+    return { ...row, ...tags.get(row.sessionId)!, action: classifyRequest(requestCalls, rules), bootAction: isBootAction(requestCalls) };
+  });
 }
 
 export function resolveWindow(options: CostReportOptions): ReportWindow {
@@ -291,6 +302,23 @@ function wakeEpisodes(db: Db, window: ReportWindow, rows: readonly TaggedRow[], 
   const requests = members.map((row) => ({ costUsd: row.costUsd, action: row.action, eventKey: eventOf.get(row.requestId) ?? null }));
   const episodes = buildWakeEpisodes(readWakeEvents(db, window, sessionIds), requests, episodeNames(readAgentNames(db)), noActionClasses);
   return summarizeWakeEpisodes(episodes, requests, roles, noActionClasses);
+}
+
+function handoff(db: Db, window: ReportWindow, rows: readonly TaggedRow[], options: CostReportOptions): HandoffThreshold {
+  const inWindow = (ts: string) => (window.since === null || ts >= window.since) && (window.until === null || ts < window.until);
+  const teleports = parseTeleportEvents(options.brokerLogLines?.() ?? []).filter((event) => inWindow(event.ts));
+  const requests = rows
+    .filter((row) => !row.isSidechain)
+    .map((row) => ({
+      sessionId: row.sessionId,
+      role: row.role,
+      model: row.model,
+      ts: row.ts,
+      fill: row.contextTokens,
+      tokens: { inputTokens: row.inputTokens, cacheReadTokens: row.cacheReadTokens, cacheCreation5mTokens: row.cacheWrite5mTokens, cacheCreation1hTokens: row.cacheWrite1hTokens, outputTokens: row.outputTokens },
+      bootAction: row.bootAction,
+    }));
+  return handoffThreshold(requests, teleports, readAgentSessions(db), options.handoff);
 }
 
 function wakePart(key: string, rows: readonly CostRow[]) {

@@ -13,7 +13,11 @@ export interface ReportWindow {
 export interface CostRow {
   sessionId: string;
   requestId: string;
+  ts: string;
   model: string;
+  /** Tokens in context at the request. */
+  contextTokens: number;
+  isSidechain: boolean;
   inputTokens: number;
   cacheReadTokens: number;
   cacheWrite5mTokens: number;
@@ -61,7 +65,7 @@ const IN_SESSIONS = "session_id IN (SELECT value FROM json_each(@ids))";
 
 // The 5m write column mirrors the view: a split-less write is billed at the 5m rate.
 const COST_ROWS = `
-  SELECT session_id AS sessionId, request_id AS requestId, model,
+  SELECT session_id AS sessionId, request_id AS requestId, ts, model, COALESCE(context_tokens, 0) AS contextTokens, is_sidechain AS isSidechain,
     input_tokens AS inputTokens, cache_read_tokens AS cacheReadTokens,
     CASE WHEN cache_creation_5m + cache_creation_1h = 0 THEN cache_creation_tokens ELSE cache_creation_5m END AS cacheWrite5mTokens,
     cache_creation_1h AS cacheWrite1hTokens, output_tokens AS outputTokens,
@@ -73,8 +77,9 @@ const COST_ROWS = `
 `;
 
 export function readCostRows(db: Db, window: ReportWindow): CostRow[] {
-  const rows = db.prepare(COST_ROWS).all(window) as (Omit<CostRow, "priced" | "isCold"> & { priced: number; isCold: number })[];
-  return rows.map((row) => ({ ...row, priced: row.priced === 1, isCold: row.isCold === 1 }));
+  type Row = Omit<CostRow, "priced" | "isCold" | "isSidechain"> & { priced: number; isCold: number; isSidechain: number | null };
+  const rows = db.prepare(COST_ROWS).all(window) as Row[];
+  return rows.map((row) => ({ ...row, priced: row.priced === 1, isCold: row.isCold === 1, isSidechain: row.isSidechain === 1 }));
 }
 
 export function readCompactions(db: Db, window: ReportWindow): CompactionRow[] {
@@ -160,6 +165,14 @@ export function readRequestEvents(db: Db, window: ReportWindow, sessionIds: read
 export function readAgentNames(db: Db): AgentNameRow[] {
   const sql = `SELECT session_id AS sessionId, agent_name AS agentName, origin_kind AS originKind, profile FROM session_origin WHERE agent_name IS NOT NULL`;
   return db.prepare(sql).all() as AgentNameRow[];
+}
+
+/** Each agent-chat agent id to the sessions it ran as; the broker log names agents by id. */
+export function readAgentSessions(db: Db): Map<string, string[]> {
+  const sql = `SELECT agent_id AS agentId, session_id AS sessionId FROM session_origin WHERE agent_id IS NOT NULL`;
+  const sessions = new Map<string, string[]>();
+  for (const row of db.prepare(sql).all() as { agentId: string; sessionId: string }[]) sessions.set(row.agentId, [...(sessions.get(row.agentId) ?? []), row.sessionId]);
+  return sessions;
 }
 
 export function readSessionContexts(db: Db, sessionIds: readonly string[]): Map<string, SessionContext> {
