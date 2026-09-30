@@ -70,6 +70,15 @@ with gap band and lists cold rebuilds, compactions, top sessions, unpriced model
 coverage. `byAction` splits each role's cost by the action class of its requests, and
 `mechanicalShare` reports the cost of the `mechanicalClasses` over the window total.
 
+`wakeEpisodes` answers what wakes a coordinator and what each wake costs. It cuts the wakes of
+the `episodeRoles` (default `coordinator` and `worker:coordinator`) into episodes: one arrival,
+turn-start or mid-loop, and the requests up to the next one. Per wake cause it gives requests
+and cost per episode, and how many episodes took no action. An episode takes no action when
+every one of its requests falls in `noActionClasses`, by default `read-investigate`,
+`text-only` and `other`. The agent lifecycle notice is its own cause, `agent_lifecycle`. Each
+episode has a sender kind (`seat`, `agent`, `broadcast`, `broker` or `none`), and `pairs` is the
+sender-by-receiver matrix. The text renderer lists the ten costliest causes per episode.
+
 ## What it deliberately does not do
 
 It does not read a transcript or the network, it never writes the graph, and it does not
