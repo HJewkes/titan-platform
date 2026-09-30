@@ -153,8 +153,8 @@ describe("option injection", () => {
 describe("the patch size limit", () => {
   /** The bytes git prints for the commit, measured apart from the scanner's own call. */
   function patchBytes(repo: TestRepo, sha: string): number {
-    const args = ["show", "-c", "--text", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative"];
-    const prefixes = ["--src-prefix=a/", "--dst-prefix=b/", "--format=%B%x00", sha];
+    const args = ["show", "--diff-merges=separate", "--format=", "--text", "-U0", "--no-color", "--no-ext-diff"];
+    const prefixes = ["--no-textconv", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/", sha];
     return spawnSync("git", [...args, ...prefixes], { cwd: repo.dir }).stdout.length;
   }
 
@@ -171,6 +171,13 @@ describe("the patch size limit", () => {
 
     expect(readCommit(repo.dir, sha, bytes).files).toHaveLength(1);
     expect(() => readCommit(repo.dir, sha, bytes - 1)).toThrow(PatchTooLargeError);
+  });
+
+  it("fails naming git show when the commit does not exist", () => {
+    const repo = newRepo();
+    repo.commit("base");
+
+    expect(() => readCommit(repo.dir, "deadbeef")).toThrow("git show failed");
   });
 
   it("names the short sha and the limit in MiB when the limit is a whole number of them", () => {

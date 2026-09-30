@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -375,6 +376,101 @@ describe("files git calls binary", () => {
         `titan-egress-scan: commit ${big.slice(0, 7)}: patch text is over the scan limit of 1024 bytes; refusing it`,
       );
     }
+  });
+
+  it("refuses a commit over 128 MiB of patch text when no limit is passed, as the bin runs it", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const big = commitSharedBlob(repo, 130, 1024 * 1024);
+
+    const result = run(repo, ["range", base, big], terms());
+
+    expect(result.code).toBe(2);
+    expect(result.err).toBe(
+      `titan-egress-scan: commit ${big.slice(0, 7)}: patch text is over the scan limit of 128 MiB; refusing it`,
+    );
+  }, 60_000);
+});
+
+/** One commit adding `count` paths that all name one blob, so the patch is large but the repo is not. */
+function commitSharedBlob(repo: TestRepo, count: number, bytes: number): string {
+  repo.write("blob.txt", "y\n".repeat(bytes / 2));
+  const blob = repo.git(["hash-object", "-w", "blob.txt"]).trim();
+  fs.rmSync(path.join(repo.dir, "blob.txt"));
+  const entries = Array.from({ length: count }, (_, i) => `100644 ${blob}\tcopy-${i}.txt`).join("\n");
+  execFileSync("git", ["update-index", "--index-info"], { cwd: repo.dir, input: `${entries}\n` });
+  repo.git(["commit", "-q", "-m", "many copies"]);
+  return repo.git(["rev-parse", "HEAD"]).trim();
+}
+
+describe("evil merges", () => {
+  function terms(): Record<string, string> {
+    return { TITAN_EGRESS_TERMS: termFile(`${PLANTED_TERM}\n`) };
+  }
+
+  /** A merge whose resolution adds a term to a NUL-byte file and to a `-diff` file; neither parent has it. */
+  function evilMerge(repo: TestRepo): { base: string; merge: string } {
+    repo.write(".gitattributes", "a.txt -diff\n");
+    repo.write("a.txt", "a\n");
+    repo.write("m.bin", "x\0\n");
+    const base = repo.commit("base");
+    repo.git(["checkout", "-q", "-b", "side"]);
+    commitFile(repo, "s.txt", "s\n");
+    repo.git(["checkout", "-q", "main"]);
+    commitFile(repo, "o.txt", "o\n");
+    repo.git(["merge", "-q", "--no-commit", "side"]);
+    repo.write("a.txt", `a\n${PLANTED_TERM}\n`);
+    repo.write("m.bin", `x\0\n${PLANTED_TERM}\n`);
+    return { base, merge: repo.commit("merge side") };
+  }
+
+  it("finds the terms a merge resolution adds to binary files in pre-push and range", () => {
+    const repo = newRepo();
+    const { base, merge } = evilMerge(repo);
+    const stdin = `refs/heads/main ${merge} refs/heads/main ${base}\n`;
+
+    const pushed = run(repo, ["pre-push", "origin"], terms(), stdin);
+    const ranged = run(repo, ["range", base, merge], terms());
+
+    for (const result of [pushed, ranged]) {
+      expect(result.code).toBe(1);
+      expect(result.out).toContain(`commit ${merge.slice(0, 7)} a.txt:2 private-term #1`);
+      expect(result.out).toContain(`commit ${merge.slice(0, 7)} m.bin:2 private-term #1`);
+      expect(result.out).toContain("egress-scan: 2 findings");
+      expect(result.out).toContain("binary files skipped: 0");
+    }
+  });
+
+  it("finds a term an octopus merge resolution adds", () => {
+    const repo = newRepo();
+    const base = commitFile(repo, "a.txt", "a\n");
+    for (const branch of ["p", "q"]) {
+      repo.git(["checkout", "-q", "-b", branch, base]);
+      commitFile(repo, `${branch}.txt`, `${branch}\n`);
+    }
+    repo.git(["checkout", "-q", "main"]);
+    repo.git(["merge", "-q", "--no-commit", "p", "q"]);
+    repo.write("a.txt", `a\n${PLANTED_TERM}\n`);
+    const merge = repo.commit("octopus");
+
+    const result = run(repo, ["range", base, merge], terms());
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${merge.slice(0, 7)} a.txt:2 private-term #1`);
+  });
+});
+
+describe("commit messages", () => {
+  it("finds a term in a message when the repo re-encodes log output as UTF-16", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    repo.git(["config", "i18n.logOutputEncoding", "UTF-16"]);
+    const leak = repo.commit(`mention ${PLANTED_TERM}`);
+
+    const result = run(repo, ["range", base, leak], { TITAN_EGRESS_TERMS: termFile(`${PLANTED_TERM}\n`) });
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} message:1 private-term #1`);
   });
 });
 
