@@ -1,9 +1,4 @@
-import {
-  GITHUB_ACTIONS_APP_ID,
-  headCheckFindings,
-  type GitHubPort,
-  type RepoSlug,
-} from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 
 export const FREEZE_RECHECK_MS = 5 * 60_000;
@@ -54,33 +49,20 @@ const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
 /** One freeze row per repo in the factory database; the table comes from `freezeMigration`. */
 export class FreezeStore {
-  constructor(
-    private readonly db: Db,
-    private readonly now: () => number = Date.now
-  ) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now) {}
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string): Freeze {
     const row = this.row(repo);
     if (row && row.thawed_at === null) {
-      if (row.red_sha !== redSha)
-        this.db
-          .prepare(
-            "UPDATE shepherd_freeze SET red_sha = ?, red_count = red_count + 1 WHERE repo = ?"
-          )
-          .run(redSha, repoKey(repo));
+      if (row.red_sha !== redSha) this.db.prepare("UPDATE shepherd_freeze SET red_sha = ?, red_count = red_count + 1 WHERE repo = ?").run(redSha, repoKey(repo));
     } else {
       this.db
         .prepare(
           `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode) VALUES (?, ?, 1, ?, ?)
-           ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL`
+           ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL`,
         )
-        .run(
-          repoKey(repo),
-          redSha,
-          new Date(this.now()).toISOString(),
-          (row?.episode ?? 0) + 1
-        );
+        .run(repoKey(repo), redSha, new Date(this.now()).toISOString(), (row?.episode ?? 0) + 1);
     }
     return this.active(repo)!;
   }
@@ -110,29 +92,17 @@ export class FreezeStore {
   unfreeze(repo: RepoSlug, greenSha: string): boolean {
     const freeze = this.active(repo);
     if (!freeze || freeze.redSha === greenSha) return false;
-    this.db
-      .prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ?")
-      .run(new Date(this.now()).toISOString(), repoKey(repo));
+    this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ?").run(new Date(this.now()).toISOString(), repoKey(repo));
     return true;
   }
 
-  private setField(
-    repo: RepoSlug,
-    column: "fix_task" | "fixer",
-    value: string
-  ): void {
-    const changed = this.db
-      .prepare(
-        `UPDATE shepherd_freeze SET ${column} = ? WHERE repo = ? AND thawed_at IS NULL`
-      )
-      .run(value, repoKey(repo)).changes;
+  private setField(repo: RepoSlug, column: "fix_task" | "fixer", value: string): void {
+    const changed = this.db.prepare(`UPDATE shepherd_freeze SET ${column} = ? WHERE repo = ? AND thawed_at IS NULL`).run(value, repoKey(repo)).changes;
     if (changed === 0) throw new Error(`${repo} is not frozen`);
   }
 
   private row(repo: RepoSlug): Row | undefined {
-    return this.db
-      .prepare("SELECT * FROM shepherd_freeze WHERE repo = ?")
-      .get(repoKey(repo)) as Row | undefined;
+    return this.db.prepare("SELECT * FROM shepherd_freeze WHERE repo = ?").get(repoKey(repo)) as Row | undefined;
   }
 
   private active(repo: RepoSlug): Freeze | undefined {
@@ -164,17 +134,11 @@ export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
   let store: FreezeStore | undefined;
   return {
     get() {
-      if (!store)
-        throw new Error(
-          "the freeze store is not bound to an open factory database"
-        );
+      if (!store) throw new Error("the freeze store is not bound to an open factory database");
       return store;
     },
     bind(db) {
-      if (store)
-        throw new Error(
-          "the freeze store is already bound to an open factory database"
-        );
+      if (store) throw new Error("the freeze store is already bound to an open factory database");
       const bound = new FreezeStore(db, now);
       store = bound;
       return () => void (store === bound && (store = undefined));
@@ -183,17 +147,10 @@ export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
 }
 
 /** The repo's default-branch head, when every run from Actions on it is complete and green and it is not the red sha. */
-export async function greenHead(
-  port: GitHubPort,
-  repo: RepoSlug,
-  baseRef: string,
-  redSha: string
-): Promise<string | undefined> {
+export async function greenHead(port: GitHubPort, repo: RepoSlug, baseRef: string, redSha: string): Promise<string | undefined> {
   const head = await port.getHeadSha(repo, baseRef);
   if (head === null || head === redSha) return undefined;
-  const runs = (await port.latestCheckRuns(repo, head)).filter(
-    (run) => run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID
-  );
+  const runs = (await port.latestCheckRuns(repo, head)).filter((run) => run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID);
   if (runs.length === 0) return undefined;
   return headCheckFindings({
     headSha: head,
@@ -217,12 +174,7 @@ export interface FreezeGuardDeps {
 
 /** Why a merge of `repo#pr` waits on a frozen repo; a blocked read also re-reads the default branch, at most every five minutes per repo. */
 export interface FreezeGuard {
-  reason(
-    port: GitHubPort,
-    repo: RepoSlug,
-    pr: number,
-    baseRef: string
-  ): Promise<string | undefined>;
+  reason(port: GitHubPort, repo: RepoSlug, pr: number, baseRef: string): Promise<string | undefined>;
 }
 
 export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
@@ -233,27 +185,15 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
       const freezes = deps.freezes();
       const freeze = freezes.get(repo);
       if (!freeze) return undefined;
-      if (
-        freeze.fixTask !== null &&
-        deps.registrations().byPr(repo, pr)?.task === freeze.fixTask
-      )
-        return undefined;
-      if (await recheck(port, freezes, repo, baseRef, lastRead, now()))
-        return undefined;
+      if (freeze.fixTask !== null && deps.registrations().byPr(repo, pr)?.task === freeze.fixTask) return undefined;
+      if (await recheck(port, freezes, repo, baseRef, lastRead, now())) return undefined;
       return `${repo} is frozen: main is red at ${freeze.redSha}`;
     },
   };
 }
 
 /** A failed read leaves the freeze in place, because the merge it guards is already blocked. */
-async function recheck(
-  port: GitHubPort,
-  freezes: FreezeStore,
-  repo: RepoSlug,
-  baseRef: string,
-  lastRead: Map<string, number>,
-  at: number
-): Promise<boolean> {
+async function recheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string, lastRead: Map<string, number>, at: number): Promise<boolean> {
   const key = repoKey(repo);
   const previous = lastRead.get(key);
   if (previous !== undefined && at - previous < FREEZE_RECHECK_MS) return false;

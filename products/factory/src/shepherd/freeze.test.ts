@@ -1,41 +1,14 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  fakeGitHub,
-  fakeSha,
-  githubPort,
-  successRun,
-  type FakeGitHub,
-  type GitHubPort,
-} from "@titan-design/github";
-import {
-  appliedVersions,
-  openDatabase,
-  runMigrations,
-} from "@titan-design/store-sqlite";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
+import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
-import {
-  FREEZE_RECHECK_MS,
-  FreezeStore,
-  freezeGuard,
-  freezeMigration,
-  freezeStoreRef,
-} from "./freeze.js";
-import {
-  MergeHeldError,
-  heldCheck,
-  holdingPort,
-  waitWhileHeld,
-} from "./hold.js";
+import { FREEZE_RECHECK_MS, FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import {
-  ShepherdStore,
-  lineageMigration,
-  shepherdMigration,
-  shepherdStoreRef,
-} from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef } from "./store.js";
 
 const RED = fakeSha("red");
 const GREEN = fakeSha("green");
@@ -53,11 +26,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [
-    shepherdMigration(4),
-    lineageMigration(5),
-    freezeMigration(6),
-  ]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -78,11 +47,7 @@ function rig(): Rig {
   };
 }
 
-function openPr(
-  r: Rig,
-  repo: string,
-  task?: string
-): { repo: string; pr: number; sha: string } {
+function openPr(r: Rig, repo: string, task?: string): { repo: string; pr: number; sha: string } {
   const sha = fakeSha(`head-${repo}-${r.fake.calls.length}-${Math.random()}`);
   const { number } = r.fake.addPr({ headSha: sha });
   if (task)
@@ -97,10 +62,7 @@ function openPr(
   return { repo, pr: number, sha };
 }
 
-const land = (
-  r: Rig,
-  { repo, pr, sha }: { repo: string; pr: number; sha: string }
-) => r.guarded.merge(repo, pr, sha, "squash");
+const land = (r: Rig, { repo, pr, sha }: { repo: string; pr: number; sha: string }) => r.guarded.merge(repo, pr, sha, "squash");
 
 describe("the frozen-merge guard", () => {
   it("blocks every PR of the frozen repo and merges a PR of another repo", async () => {
@@ -159,10 +121,7 @@ describe("the frozen-merge guard", () => {
     await expect(land(r, pr)).rejects.toThrow(/frozen/);
 
     r.fake.refs.set("main", GREEN);
-    r.fake.setRuns(GREEN, [
-      successRun("validate", 1),
-      successRun("dag-check", 2),
-    ]);
+    r.fake.setRuns(GREEN, [successRun("validate", 1), successRun("dag-check", 2)]);
     r.clock.at += FREEZE_RECHECK_MS;
     const merged = await land(r, pr);
 
@@ -222,9 +181,7 @@ describe("the frozen-merge guard", () => {
     });
     const port = holdingPort(r.port, () => r.registrations, unbound);
 
-    await expect(port.merge(A, openPr(r, A).pr, RED, "squash")).rejects.toThrow(
-      /not bound/
-    );
+    await expect(port.merge(A, openPr(r, A).pr, RED, "squash")).rejects.toThrow(/not bound/);
     expect(r.fake.effects.merge).toBe(0);
   });
 
@@ -247,15 +204,13 @@ describe("the frozen-merge guard", () => {
         freezes: () => r.freezes,
         registrations: () => r.registrations,
         now: () => r.clock.at,
-      })
+      }),
     );
     const waiting = waitWhileHeld(route as never, held, {
       sleep: async () => control.abort(),
     });
 
-    const result = await (
-      waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>
-    )({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
+    const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
 
     expect(result.ok).toBe(false);
     expect(ran).toBe(false);
@@ -315,11 +270,7 @@ describe("the freeze store", () => {
 
 describe("the freeze migration", () => {
   const dirs: string[] = [];
-  afterEach(() =>
-    dirs
-      .splice(0)
-      .forEach((dir) => rmSync(dir, { recursive: true, force: true }))
-  );
+  afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
   it("creates the freeze table in a database that already has migrations 1 to 5", () => {
     const dir = mkdtempSync(join(tmpdir(), "freeze-"));
