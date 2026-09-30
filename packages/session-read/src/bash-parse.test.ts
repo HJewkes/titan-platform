@@ -146,6 +146,8 @@ describe("commandHeads", () => {
 
   it("gives gh api POST when a field adds a body and no method is named", () => {
     expect(commandHeads("gh api repos/o/r/issues/5/comments -f body=hello")).toEqual(["gh api POST issues/comments"]);
+    expect(commandHeads("gh api repos/o/r/issues/5/comments --raw-field body=hello")).toEqual(["gh api POST issues/comments"]);
+    expect(commandHeads("gh api repos/o/r/issues/5/comments --field body=hello")).toEqual(["gh api POST issues/comments"]);
     expect(commandHeads("gh api repos/o/r")).toEqual(["gh api GET repos"]);
   });
 

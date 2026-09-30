@@ -10,7 +10,10 @@ const RULE_SAMPLES: ActionCall[] = [
   bash("gh pr checks"),
   bash("gh run watch"),
   bash("git merge-tree"),
+  bash("gh api GET commits/check-runs"),
+  bash("gh api GET commits/status"),
   bash("gh pr merge"),
+  bash("gh api PUT pulls/merge"),
   { tool: "mcp__srv__agent_spawn" },
   bash("agent-chat agent retire"),
   bash("active-work task edit"),
@@ -45,8 +48,16 @@ describe("classifyRequest", () => {
     expect(classifyRequest([RULE_SAMPLES[i + 1]!, RULE_SAMPLES[i]!])).toBe(higher);
   });
 
-  it("classifies the pulls merge API as merge", () => {
-    expect(classifyRequest([bash("gh api repos/o/r/pulls/5/merge")])).toBe("merge");
+  it("classifies the gh api pulls merge head as merge", () => {
+    expect(classifyRequest([bash("gh api PUT pulls/merge")])).toBe("merge");
+  });
+
+  it.each(["gh api GET commits/check-runs", "gh api GET commits/status"])("classifies the head %s as pr-ci-check", (head) => {
+    expect(classifyRequest([bash(head)])).toBe("pr-ci-check");
+  });
+
+  it.each(["gh api GET pulls/merge", "gh api GET issues", "gh api POST commits/check-runs", "gh api PUT issues"])("keeps the head %s as other", (head) => {
+    expect(classifyRequest([bash(head)])).toBe("other");
   });
 
   it("classifies a request with no calls as text-only", () => {
