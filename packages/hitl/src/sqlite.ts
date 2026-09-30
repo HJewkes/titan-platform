@@ -4,6 +4,8 @@ export {
   SqliteGateStore,
   gateMigration,
   gateResolverMigration,
+  gateRuleMigration,
   gateTableDdl,
   resolverRequiredTriggerDdl,
+  ruleResolverTriggerDdl,
 } from "./sqlite-store.js";

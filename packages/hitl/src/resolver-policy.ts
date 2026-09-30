@@ -1,5 +1,13 @@
-import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass } from "@titan-design/authority";
-import { GateAuthorizeInvalid, GateResolverRefused, type GateAuthorization, type GateResolver } from "./types.js";
+import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass, type ResolverClass } from "@titan-design/authority";
+import {
+  GateAuthorizeInvalid,
+  GateResolverRefused,
+  GateRuleInvalid,
+  type GateAuthorization,
+  type GateRecord,
+  type GateResolver,
+  type GateRule,
+} from "./types.js";
 
 /**
  * The default refusal: only an owner class may resolve a gate, so an agent or
@@ -8,6 +16,31 @@ import { GateAuthorizeInvalid, GateResolverRefused, type GateAuthorization, type
 export function defaultResolverRefusal(resolver: GateResolver): string | undefined {
   if ((RESOLVER_CLASSES as readonly string[]).includes(resolver.class)) return undefined;
   return `actor class ${resolver.class} may not resolve a gate`;
+}
+
+/**
+ * A rule-bound gate admits only its rule's resolver classes, and never an
+ * anonymous resolve. Runs after the default refusal, so it only narrows.
+ */
+export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver | undefined): string | undefined {
+  if (!record.rule) return undefined;
+  if (!resolver) return `rule ${record.rule.ruleId} requires a resolver`;
+  if ((record.rule.resolvers as readonly string[]).includes(resolver.class)) return undefined;
+  return `rule ${record.rule.ruleId} does not let ${resolver.class} resolve this gate`;
+}
+
+/** Reads each declared rule field once into a frozen copy, so a caller cannot widen the rule after `create`. */
+export function snapshotRule(gateId: string, raw: unknown): Readonly<GateRule> {
+  if (typeof raw !== "object" || raw === null) throw new GateRuleInvalid(gateId, "the rule is not an object");
+  const { table, version, ruleId, resolvers } = raw as Record<string, unknown>;
+  if (typeof table !== "string" || typeof version !== "string" || typeof ruleId !== "string") {
+    throw new GateRuleInvalid(gateId, "the rule's table, version and ruleId must be strings");
+  }
+  const classes = Array.isArray(resolvers) ? [...(resolvers as unknown[])] : [];
+  if (classes.length === 0 || !classes.every(isResolverClass)) {
+    throw new GateRuleInvalid(gateId, "the rule's resolvers must be a non-empty list of resolver classes");
+  }
+  return Object.freeze({ table, version, ruleId, resolvers: Object.freeze(classes) as ResolverClass[] });
 }
 
 /**
@@ -41,6 +74,10 @@ export function readDecision(gateId: string, decision: unknown): GateAuthorizati
   if (typeof allowed !== "boolean") throw new GateAuthorizeInvalid(gateId);
   if (allowed) return { allowed: true };
   return { allowed: false, reason: typeof reason === "string" ? reason : "authorize refused the resolver" };
+}
+
+function isResolverClass(value: unknown): value is ResolverClass {
+  return typeof value === "string" && (RESOLVER_CLASSES as readonly string[]).includes(value);
 }
 
 function isActorClass(value: unknown): value is ActorClass {

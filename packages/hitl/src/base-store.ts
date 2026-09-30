@@ -1,5 +1,5 @@
 import { checkAgainstJsonSchema } from "./json-schema.js";
-import { defaultResolverRefusal, readDecision, snapshotResolver } from "./resolver-policy.js";
+import { defaultResolverRefusal, readDecision, ruleResolverRefusal, snapshotResolver, snapshotRule } from "./resolver-policy.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
@@ -31,6 +31,7 @@ export abstract class BaseGateStore implements GateStore {
 
   create(input: GateInput): GateRecord {
     const id = input.id ?? globalThis.crypto.randomUUID();
+    const rule = input.rule === undefined ? undefined : snapshotRule(id, input.rule);
     if (this.read(id)) throw new GateAlreadyExists(id);
     const record: GateRecord = {
       id,
@@ -43,6 +44,7 @@ export abstract class BaseGateStore implements GateStore {
       resolvedAt: undefined,
       expiresAt: toIso(input.expiresAt),
       resolvedBy: undefined,
+      rule,
     };
     this.insert(record);
     return record;
@@ -88,10 +90,12 @@ export abstract class BaseGateStore implements GateStore {
     return record;
   }
 
-  /** The default check runs first and `authorize` second, so `authorize` can only narrow who may resolve. */
+  /** The default check runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
   private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver> | undefined): void {
     const refusal = resolver ? defaultResolverRefusal(resolver) : undefined;
     if (resolver && refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
+    const ruleRefusal = ruleResolverRefusal(record, resolver);
+    if (ruleRefusal) throw new GateResolverRefused(record.id, resolver?.class, ruleRefusal);
     if (!this.authorize) return;
     if (!resolver) throw new GateResolverRefused(record.id, undefined, "a resolver is required when authorize is installed");
     const decision = readDecision(record.id, this.authorize(Object.freeze({ ...record }), resolver));
