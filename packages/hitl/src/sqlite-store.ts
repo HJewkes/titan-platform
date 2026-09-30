@@ -5,6 +5,7 @@ import {
   type GateAuthorize,
   type GateRecord,
   type GateResolver,
+  type GateRule,
   type GateStatus,
   type JsonSchema,
 } from "./types.js";
@@ -66,17 +67,69 @@ export function gateResolverMigration(version: number, name: string = DEFAULT_GA
     up: (db) => {
       if (!hasResolverColumn(db, name)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_by TEXT`);
       db.exec(resolverRequiredTriggerDdl(name));
+      if (hasColumn(db, name, "rule")) db.exec(ruleTriggerDdl(db, name));
     },
   };
 }
 
 function hasResolverColumn(db: Db, table: string): boolean {
-  return db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = 'resolved_by'").get(table) !== undefined;
+  return hasColumn(db, table, "resolved_by");
+}
+
+function hasColumn(db: Db, table: string, column: string): boolean {
+  return db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column) !== undefined;
+}
+
+const CANONICAL_STATUSES = "'pending', 'resolved', 'cancelled', 'expired'";
+
+/**
+ * The triggers that refuse a resolve by a class outside the row's rule, and any
+ * change to the rule, so a writer that predates `rule` cannot widen it. The
+ * INSERT twin closes REPLACE INTO and DELETE then INSERT, which an UPDATE trigger never sees.
+ * A rule-bound row also refuses a status outside the canonical set, so `RESOLVED` cannot slip past the `resolved` test.
+ * Without `resolved_by` no resolver can be recorded, so they refuse every resolve
+ * of a rule-bound row; whichever migration runs second installs the class-aware form.
+ */
+function ruleTriggerDdl(db: Db, name: string): string {
+  const hasResolver = hasResolverColumn(db, name);
+  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule");
+  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0");
+  return `${update}\n${insert}`;
+}
+
+function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string): string {
+  const trigger = quoteIdent(event === "UPDATE" ? `${name}_rule_resolver` : `${name}_rule_resolver_insert`);
+  const outsideRule = hasResolver
+    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(${rule}, '$.resolvers'))`
+    : "1";
+  return `
+    DROP TRIGGER IF EXISTS ${trigger};
+    CREATE TRIGGER ${trigger}
+      BEFORE ${event} ON ${quoteIdent(name)}
+      FOR EACH ROW WHEN ${rule} IS NOT NULL OR ${ruleChanged}
+    BEGIN
+      SELECT RAISE(ABORT, 'hitl: status outside the canonical set') WHERE ${rule} IS NOT NULL AND NEW.status NOT IN (${CANONICAL_STATUSES});
+      SELECT RAISE(ABORT, 'hitl: resolver outside the gate rule')
+        WHERE ${ruleChanged} OR (NEW.status = 'resolved' AND ${outsideRule});
+    END;
+  `;
+}
+
+/** Adds `rule` and its trigger. Idempotent and backfill-free: gates opened before it carry no rule. */
+export function gateRuleMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:rule:${name}`,
+    up: (db) => {
+      if (!hasColumn(db, name, "rule")) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN rule TEXT`);
+      db.exec(ruleTriggerDdl(db, name));
+    },
+  };
 }
 
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -95,6 +148,8 @@ interface RawGateRow {
   expires_at: string | null;
   /** Absent entirely on a table that has not run `gateResolverMigration`. */
   resolved_by?: string | null;
+  /** Absent entirely on a table that has not run `gateRuleMigration`. */
+  rule?: string | null;
 }
 
 /**
@@ -105,6 +160,7 @@ interface RawGateRow {
 export class SqliteGateStore extends BaseGateStore {
   private readonly table: string;
   private resolverColumnSeen = false;
+  private ruleColumnSeen = false;
 
   constructor(
     private readonly db: Db,
@@ -112,10 +168,14 @@ export class SqliteGateStore extends BaseGateStore {
   ) {
     super(options.now ?? Date.now, options.authorize);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
-    if (options.migrate ?? true) runMigrations(db, [gateMigration(1, this.table)]);
+    if (options.migrate ?? true) runMigrations(db, [gateMigration(1, this.table), gateRuleMigration(3, this.table)]);
   }
 
   protected insert(record: GateRecord): void {
+    if (record.rule) {
+      this.insertWithRule(record, record.rule);
+      return;
+    }
     this.db
       .prepare(
         `INSERT INTO ${quoteIdent(this.table)}
@@ -123,6 +183,18 @@ export class SqliteGateStore extends BaseGateStore {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(...columns(record));
+  }
+
+  /** Refuses rather than dropping the rule when the table has no column to hold it. */
+  private insertWithRule(record: GateRecord, rule: GateRule): void {
+    if (!this.ruleColumnPresent()) throw new GateStoreSchemaOutdated(record.id, this.table, "gateRuleMigration");
+    this.db
+      .prepare(
+        `INSERT INTO ${quoteIdent(this.table)}
+           (id, prompt, schema, status, payload, reason, created_at, resolved_at, expires_at, rule)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(...columns(record), JSON.stringify(rule));
   }
 
   protected read(id: string): GateRecord | undefined {
@@ -173,6 +245,11 @@ export class SqliteGateStore extends BaseGateStore {
     return this.resolverColumnSeen;
   }
 
+  private ruleColumnPresent(): boolean {
+    if (!this.ruleColumnSeen) this.ruleColumnSeen = hasColumn(this.db, this.table, "rule");
+    return this.ruleColumnSeen;
+  }
+
   protected readByStatus(status: GateStatus): GateRecord[] {
     const rows = this.db
       .prepare(`SELECT * FROM ${quoteIdent(this.table)} WHERE status = ? ORDER BY created_at`)
@@ -212,5 +289,6 @@ function toRecord(row: RawGateRow): GateRecord {
     resolvedAt: row.resolved_at ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     resolvedBy: row.resolved_by ? (JSON.parse(row.resolved_by) as GateResolver) : undefined,
+    rule: row.rule ? (JSON.parse(row.rule) as GateRule) : undefined,
   };
 }

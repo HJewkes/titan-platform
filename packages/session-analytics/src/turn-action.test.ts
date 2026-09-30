@@ -9,15 +9,20 @@ const RULE_SAMPLES: ActionCall[] = [
   bash(">events.jsonl"),
   bash("gh pr checks"),
   bash("gh run watch"),
+  bash("git merge-tree"),
   bash("gh pr merge"),
   { tool: "mcp__srv__agent_spawn" },
   bash("agent-chat agent retire"),
   bash("active-work task edit"),
   { tool: "mcp__srv__session_budget" },
   bash("agent-chat agent list"),
+  bash("agent-chat agent budget"),
+  bash("git worktree list"),
+  { tool: "mcp__srv__agent_list" },
   { tool: "mcp__srv__score_turn" },
   bash("python scorer"),
   { tool: "mcp__srv__chat_send" },
+  { tool: "mcp__srv__chat_claim" },
   { tool: "Read", readPaths: ["src/a.ts"] },
   bash("git log"),
 ];
@@ -54,6 +59,33 @@ describe("classifyRequest", () => {
 
   it("uses caller-supplied rules instead of the defaults", () => {
     expect(classifyRequest([bash("deploy")], [{ cls: "merge", head: /^deploy/ }])).toBe("merge");
+  });
+});
+
+describe("agent-chat and git vocabulary", () => {
+  it.each(["agent-chat agent ls", "agent-chat agent budget", "agent-chat agent worktrees", "agent ls", "agent budget", "agent worktrees", "git worktree list"])(
+    "head %s is budget-status",
+    (head) => expect(classifyRequest([bash(head)])).toBe("budget-status"),
+  );
+
+  it.each(["agent_list", "chat_list", "ListAgents", "mcp__plugin_x__agent_list", "mcp__plugin_x__chat_list"])("tool %s is budget-status", (tool) =>
+    expect(classifyRequest([{ tool }])).toBe("budget-status"),
+  );
+
+  it("classifies git merge-tree as pr-ci-check", () => {
+    expect(classifyRequest([bash("git merge-tree")])).toBe("pr-ci-check");
+  });
+
+  it.each(["chat_ask", "chat_inbox", "chat_claim", "chat_release", "mcp__plugin_x__chat_inbox"])("tool %s is message", (tool) =>
+    expect(classifyRequest([{ tool }])).toBe("message"),
+  );
+
+  it("keeps a bare gh api head as other", () => {
+    expect(classifyRequest([bash("gh api")])).toBe("other");
+  });
+
+  it.each(["echo agent budget", "echo git worktree list", "echo git merge-tree", "cat agent-worktrees.md"])("%s does not match by position", (head) => {
+    expect(classifyRequest([bash(head)])).not.toMatch(/budget-status|pr-ci-check/);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ActorClass } from "@titan-design/authority";
+import type { ActorClass, ResolverClass } from "@titan-design/authority";
 
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
 export type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
@@ -20,6 +20,16 @@ export interface GateRecord {
   expiresAt: string | undefined;
   /** Who resolved the gate, as claimed by the caller; unset for gates resolved before stores recorded it. */
   resolvedBy: GateResolver | undefined;
+  /** The authority rule that opened the gate; unset for a gate no rule governs. */
+  rule: GateRule | undefined;
+}
+
+/** Binds a gate to the authority rule that opened it, so only that rule's resolver classes may answer. */
+export interface GateRule {
+  table: string;
+  version: string;
+  ruleId: string;
+  resolvers: ResolverClass[];
 }
 
 /** A claim about who answered a gate. hitl records it and checks its class; it cannot prove it. */
@@ -45,6 +55,7 @@ export interface GateInput {
   prompt: string;
   schema?: JsonSchema;
   expiresAt?: Date | string;
+  rule?: GateRule;
 }
 
 /**
@@ -130,14 +141,23 @@ export class GateResolverRefused extends GateError {
   }
 }
 
-/** The store cannot record a resolver because its table predates the resolver migration. */
+/** The store cannot record a resolver or a rule because its table predates the migration that adds the column. */
 export class GateStoreSchemaOutdated extends GateError {
   constructor(
     gateId: string,
     readonly table: string,
     readonly migration: string,
   ) {
-    super(`gate ${gateId} cannot record its resolver: table ${table} needs ${migration}`, gateId);
+    super(`gate ${gateId} cannot be recorded: table ${table} needs ${migration}`, gateId);
+  }
+}
+
+export class GateRuleInvalid extends GateError {
+  constructor(
+    gateId: string,
+    readonly reason: string,
+  ) {
+    super(`gate ${gateId} has an invalid rule: ${reason}`, gateId);
   }
 }
 
