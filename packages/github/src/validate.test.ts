@@ -41,6 +41,8 @@ const refusals: [string, string, (port: GitHubPort) => Promise<unknown>][] = [
   ["path", "traversal in the path", (port) => port.getFile(REPO, "docs/../../../user", "main")],
   ["path", "a leading slash", (port) => port.putFile(REPO, put({ path: "/etc/passwd" }))],
   ["path", "a query in the path", (port) => port.getFile(REPO, "docs/a.md?ref=x", "main")],
+  ["path", "a percent-encoded dot-dot segment", (port) => port.getFile(REPO, "docs/%2e%2e/secret", "main")],
+  ["path", "a path that is only an encoded slash", (port) => port.getFile(REPO, "%2F", "main")],
   ["ref", "traversal in a ref", (port) => port.getFile(REPO, "docs/a.md", "../main")],
   ["method", "an unknown merge method", (port) => port.merge(REPO, 1, SHA, "force" as MergeMethod)],
 ];
@@ -63,5 +65,13 @@ describe("port input validation", () => {
     await port.latestCheckRuns(REPO, SHA);
 
     expect(calls.map((args) => args[4])).toEqual(["repos/my-org/repo.name_2/git/ref/heads/factory/doc-12-abcd1234", `repos/octo/demo/commits/${SHA}/check-runs`]);
+  });
+
+  it("lets an ordinary file path through to gh", async () => {
+    const { port, calls } = recordingPort();
+
+    await port.getFile(REPO, "docs/guide-1/read_me.md", "main").catch(() => undefined);
+
+    expect(calls.map((args) => args[4])).toEqual(["repos/octo/demo/contents/docs/guide-1/read_me.md"]);
   });
 });
