@@ -17,6 +17,7 @@ afterEach(() => fixture.close());
 
 const keys = (buckets: readonly { key: string }[]) => buckets.map((bucket) => bucket.key).sort();
 const find = <T extends { key: string }>(buckets: readonly T[], key: string) => buckets.find((bucket) => bucket.key === key)!;
+const actionsOf = (source: CostReport, role: string) => source.byAction.find((entry) => entry.role === role)!.buckets;
 
 describe("costReport", () => {
   it("totals equal the sum of the five token classes", () => {
@@ -105,6 +106,43 @@ describe("costReport", () => {
     expect(find(segmented.byEpisodeCount, "1")).toMatchObject({ sessions: 1, requests: 4 });
     expect(find(segmented.byEpisodeCount, "2")).toMatchObject({ sessions: 1, requests: 1 });
     expect(keys(segmented.byRole)).toEqual(["coordinator", "headless_sdk", "worker:standing_peer"]);
+  });
+
+  it("byAction buckets each role's requests by action and sums to the role's cost, text-only included", () => {
+    expect(report.byAction.map((entry) => entry.role)).toEqual(report.byRole.map((bucket) => bucket.key));
+    for (const role of report.byRole) {
+      const buckets = report.byAction.find((entry) => entry.role === role.key)!.buckets;
+      expect(buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0)).toBeCloseTo(role.costUsd, 10);
+      expect(buckets.reduce((sum, bucket) => sum + bucket.requests, 0)).toBe(role.requests);
+    }
+    expect(keys(actionsOf(report, "coordinator"))).toEqual(["message", "pr-ci-check", "read-investigate", "text-only"]);
+    expect(keys(actionsOf(report, "worker:implementer"))).toEqual(["journal-write"]);
+  });
+
+  it("mechanicalShare is the listed classes' cost over the window total", () => {
+    const prCheck = find(actionsOf(report, "coordinator"), "pr-ci-check").costUsd;
+    const journal = find(actionsOf(report, "worker:implementer"), "journal-write").costUsd;
+    const coordinator = find(report.byRole, "coordinator").costUsd;
+
+    expect(report.mechanicalShare.costUsd).toBeCloseTo(prCheck + journal, 10);
+    expect(report.mechanicalShare.share).toBeCloseTo((prCheck + journal) / report.totals.costUsd, 10);
+    expect(report.mechanicalShare.byRole.find((row) => row.role === "coordinator")?.share).toBeCloseTo(prCheck / coordinator, 10);
+    expect(report.mechanicalShare.byRole.find((row) => row.role === "worker:implementer")?.share).toBeCloseTo(1, 10);
+  });
+
+  it("a custom mechanicalClasses list changes the share", () => {
+    const custom = costReport(fixture.openReadOnly(), { ...SCENARIO_WINDOW, mechanicalClasses: ["message"] });
+    const message = find(actionsOf(report, "coordinator"), "message").costUsd;
+
+    expect(custom.mechanicalShare.classes).toEqual(["message"]);
+    expect(custom.mechanicalShare.share).toBeCloseTo(message / report.totals.costUsd, 10);
+    expect(custom.mechanicalShare.share).not.toBeCloseTo(report.mechanicalShare.share, 3);
+  });
+
+  it("caller-supplied action rules replace the defaults", () => {
+    const custom = costReport(fixture.openReadOnly(), { ...SCENARIO_WINDOW, actionRules: [{ cls: "scorer", tool: /^Read$/ }] });
+
+    expect(keys(actionsOf(custom, "coordinator"))).toEqual(["other", "scorer", "text-only"]);
   });
 
   it("JSON output validates against the exported zod schema", () => {

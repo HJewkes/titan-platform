@@ -587,8 +587,10 @@ Key exports:
 - `classify-session`: `classifySession`
 - `bands`: `bandOf`, `contextBand`, `gapBand`
 - `cost-report`: `costReport`, `costReportSchema`
-- `episodes`: `assignmentCount`, `buildEpisodes`, `heuristicFor`, `readEpisodeInput`
-- +48 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
+- `turn-action`: `classifyRequest`
+- `request-owner`: `readRequestToolCalls`
+- `episodes`: `assignmentCount`, `buildEpisodes`
+- +58 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 

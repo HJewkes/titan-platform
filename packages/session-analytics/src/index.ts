@@ -6,9 +6,12 @@ export type { HumanRole, SessionClass, SessionClassification, SessionFacts, Sess
 export { classifySession } from "./classify-session.js";
 export type { Band } from "./bands.js";
 export { CONTEXT_BANDS, GAP_BANDS, bandOf, contextBand, gapBand } from "./bands.js";
-export type { CostBucket, CostReport, CostReportOptions, TokenClass, WakeCauseBucket, WakeGapCell } from "./cost-report.js";
+export type { CostBucket, CostReport, CostReportOptions, MechanicalShare, RoleActions, TokenClass, WakeCauseBucket, WakeGapCell } from "./cost-report.js";
 export { TOKEN_CLASSES, costReport, costReportSchema } from "./cost-report.js";
 export type { ReportWindow } from "./cost-report-queries.js";
+export type { ActionCall, ActionClass, ActionRule } from "./turn-action.js";
+export { ACTION_CLASSES, DEFAULT_ACTION_RULES, DEFAULT_MECHANICAL_CLASSES, classifyRequest } from "./turn-action.js";
+export { readRequestToolCalls } from "./request-owner.js";
 export type { TaskInitiative } from "./initiative.js";
 export type { EpisodeInbound, EpisodeInput, EpisodeRequest, EpisodeSignal, Heuristic, WrittenEpisodes } from "./episodes.js";
 export {

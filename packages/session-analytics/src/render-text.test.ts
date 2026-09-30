@@ -19,6 +19,8 @@ const SECTIONS = [
   "By model",
   "By class",
   "By role",
+  "By action per role",
+  "Mechanical share: ",
   "By episode count",
   "By initiative",
   "By context band",
@@ -40,6 +42,17 @@ describe("renderCostReportText", () => {
     expect(text).toContain(LIST_PRICE_CAVEAT);
     expect(lines.some((line) => line.startsWith("  ask_user_answer "))).toBe(true);
     expect(lines.findIndex((line) => line.startsWith("human"))).toBeLessThan(lines.findIndex((line) => line.startsWith("  human_typed")));
+  });
+
+  it("prints each role's action classes under it and the mechanical share per role", () => {
+    const report = costReport(fixture.openReadOnly(), SCENARIO_WINDOW);
+    const lines = renderCostReportText(report).split("\n");
+    const coordinator = lines.findIndex((line, i) => i > lines.indexOf("By action per role") && line.startsWith("coordinator "));
+
+    expect(lines.slice(coordinator + 1, coordinator + 5).map((line) => line.trim().split(/\s+/)[0]).sort()).toEqual(["message", "pr-ci-check", "read-investigate", "text-only"]);
+    expect(lines.find((line) => line.startsWith("Mechanical share: "))).toContain(`${(report.mechanicalShare.share * 100).toFixed(1)}%`);
+    expect(lines.find((line) => line.startsWith("Mechanical share: "))).toContain("classes journal-write, pr-ci-check");
+    expect(lines.some((line) => /^worker:implementer\s+\$\S+\s+100\.0%$/.test(line))).toBe(true);
   });
 
   it("says none for an empty window instead of printing empty tables", () => {
