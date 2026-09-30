@@ -1,4 +1,6 @@
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
@@ -6,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
+import { shepherdPrWorkflow } from "./shepherd/pr.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
 import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
@@ -15,8 +19,10 @@ import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
+const servers: Server[] = [];
 afterEach(() => {
   vi.unstubAllEnvs();
+  servers.splice(0).forEach((server) => server.close());
   hosts.splice(0).forEach((host) => host.close());
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -322,5 +328,63 @@ describe("factoryRoutes", () => {
       if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = saved;
     }
+  });
+});
+
+/** A loopback active-work daemon that lists `demo/TP-1` as open until `task.done` closes it. */
+async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
+  const calls: string[] = [];
+  let status = "open";
+  const server = createServer((req, res) => {
+    const command = (req.url ?? "").replace("/rpc/", "");
+    calls.push(command);
+    if (command === "task.done") status = "done";
+    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : {};
+    req.resume().on("end", () => res.setHeader("content-type", "application/json").end(JSON.stringify({ ok: true, data })));
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { port: (server.address() as AddressInfo).port, calls };
+}
+
+/** A fake `agent-chat` whose roster holds `impl-a`, exited, until `agent retire` removes it. */
+function fakeRetiringAgentChat(dir: string): string {
+  const bin = join(dir, "agent-chat");
+  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", cwd: dir, sessionId: "session-impl-a" }]);
+  writeFileSync(join(dir, "roster.json"), row);
+  const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" ;;`, `  retire) printf '[]' >"${dir}/roster.json"; echo "Retired $3" ;;`, "esac"];
+  writeFileSync(bin, `${lines.join("\n")}\n`);
+  chmodSync(bin, 0o755);
+  return bin;
+}
+
+describe("configuredRoutes with shepherd.agentChatBin", () => {
+  it("closes the registration's task over loopback rpc and retires its implementer through agent-chat after a merge", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-cleanup-")));
+    dirs.push(dir);
+    mkdirSync(join(dir, "seats"));
+    mkdirSync(join(dir, "titan-factory"));
+    writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ shepherd: { seatsDir: join(dir, "seats"), agentChatBin: fakeRetiringAgentChat(dir) } }));
+    const activeWork = await fakeActiveWork();
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const base = githubPort(fake.wire);
+    const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 5)]), base.checkRuns(repo, sha)) };
+    let clock = 0;
+    const env = { XDG_CONFIG_HOME: dir, AW_PORT: String(activeWork.port) };
+    const routes = configuredRoutes(env, { port, now: () => clock, sleep: async (ms) => void (clock += ms) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    routes.shepherd!.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+
+    await host.runtime.wait(runId);
+
+    expect(activeWork.calls).toEqual(["task.list", "task.done"]);
+    expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
+    expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
   });
 });

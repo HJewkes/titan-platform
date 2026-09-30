@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { StepRoute } from "../routed-runner.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { freshReviewerBase } from "./cleanup.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
@@ -228,8 +229,7 @@ function standingReviewer(registration: Registration | undefined, roster: readon
 /** A name no agent in the roster has held, so a fresh reviewer is never confused with an earlier agent. */
 function freshName(target: ReviewTarget, implementer: string | undefined, roster: readonly ReviewerAgent[]): string {
   const taken = new Set([...roster.map((agent) => agent.name), implementer]);
-  const repoName = (target.repo.split("/")[1] ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const base = `rv-${repoName.slice(0, 32) || "repo"}-${target.pr}`;
+  const base = freshReviewerBase(target.repo, target.pr);
   for (let k = 1; ; k += 1) {
     const name = k === 1 ? base : `${base}-${k}`;
     if (!taken.has(name)) return name;

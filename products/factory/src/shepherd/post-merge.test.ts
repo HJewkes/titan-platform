@@ -4,6 +4,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { CleanupPorts } from "./cleanup.js";
 import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type MainCiInput } from "./post-merge.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -100,17 +101,18 @@ describe("readMainCi", () => {
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[]) {
+function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
   const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, mergeRuns()), base.checkRuns(repo, sha)) };
   let clock = 0;
-  const routes = factoryRoutesFor({ port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
+  const store = shepherdStoreRef();
+  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake };
+  return { host, fake, store };
 }
 
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
@@ -131,6 +133,38 @@ describe("shepherd-pr after land", () => {
 
     const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
     expect(main?.data).toMatchObject({ result: { verdict: "green", mergeSha: w.fake.pr(1).mergeSha, after: [] } });
+  });
+
+  it("cleans up once after green main CI, deleting the merged head branch", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)]);
+    w.fake.pr(1).headRepo = REPO;
+    w.fake.refs.set(w.fake.pr(1).headRef, H1);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const cleanup = Object.values(w.host.runtime.status(runId)!.stepResults).filter((result) => result.stepId === "sh-cleanup");
+    expect(cleanup.map((result) => result.data)).toMatchObject([{ result: { ref: "deleted", task: "no registration" } }]);
+    expect(w.fake.refs.has(w.fake.pr(1).headRef)).toBe(false);
+  });
+
+  it("closes the registration's task and retires its implementer through the wired cleanup ports", async () => {
+    const closed: string[] = [];
+    const retired: string[] = [];
+    const cleanup: CleanupPorts = {
+      tasks: { state: async () => "open", done: async (initiative, id) => void closed.push(`${initiative}/${id}`) },
+      agents: { roster: async () => (retired.includes("impl-a") ? [] : [{ name: "impl-a", presence: "exited", status: "finished" }]), retire: async (name) => void retired.push(name) },
+    };
+    const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+
+    await w.host.runtime.wait(runId);
+
+    expect(closed).toEqual(["demo/TP-1"]);
+    expect(retired).toEqual(["impl-a"]);
   });
 
   it("opens the main-red gate for the owner when main is red", async () => {

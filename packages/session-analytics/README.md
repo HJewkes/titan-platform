@@ -155,7 +155,11 @@ because defaulting bills a new model at an old model's rate without saying so. T
 report lists such models under `unpricedModels`.
 
 The cost report prices through the graph's `price` table, not through `PRICE_TABLE`. A graph
-whose price rows were never synced reports every request as unpriced.
+whose price rows were never synced reports every request as unpriced, and one synced from an
+older `PRICE_TABLE` keeps pricing at the old rates. The cost report takes a caller-opened,
+read-only graph and never writes it. Before reporting, the caller must run session-graph's
+`reconcilePrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION, source: "session-analytics" })`
+through a writable connection; `titan-miner` does so on every open, other openers do not.
 
 The default action rules are generic. Rules that name a seat's own journal files or scorer
 scripts belong in the caller's config, passed as `actionRules`, never in this package. The
