@@ -6,8 +6,9 @@ pull request is not open yet. Shepherd then waits for CI, keeps the branch curre
 the merge decision its policy requires, merges the exact approved head, and reads main CI on
 the merge commit.
 
-Read [what is not built yet](#what-is-not-built-yet) before you rely on it. Today every
-Shepherd merge waits for the owner.
+Read [what is not built yet](#what-is-not-built-yet) before you rely on it. The review phase
+runs only when `shepherd.review` is configured. Without it, every Shepherd merge waits for
+the owner.
 
 ## Prerequisites
 
@@ -249,14 +250,16 @@ the decision with its rule and reason. On an allow, the same record is stored wi
 ## What is not built yet
 
 The land core, the hold, the policy resolution, the gates and the post-merge main CI read
-all run today. These parts are stubs on `main`:
+all run today, and so does the review phase when it is configured. These parts are not built:
 
-- **The review phase.** `reviewPhase` in `products/factory/src/shepherd/review.ts` returns
-  no verdict for every head (TP-521). The verdict reader, the `MRG-AU-RV` decision and the
-  evidence comment are implemented and tested, but the registered workflow never reaches
-  them. Until the review phase is wired, a run under `auto` records
-  `no merge facts were collected at <head>` and opens `approve-merge`. **Every Shepherd
-  merge is approved by the owner.** No evidence comment is posted.
+- **The review phase is opt-in.** With `shepherd.review` set (see the
+  [config file](/guides/factory#the-config-file)), `reviewPhase` in
+  `products/factory/src/shepherd/review.ts` dispatches a reviewer through agent-chat in the
+  checkout the seat book binds to the repo, and reads its verdict from that agent's
+  transcript. A verdict then reaches the `MRG-AU-RV` decision, and the `sh-merge-evidence`
+  step posts the evidence comment. With no `review` key, no checkout for the repo, or a
+  refused dispatch, the phase records `none` with the reason, the run opens `approve-merge`,
+  and the owner decides.
 - **The wake phase.** `wakePhase` in `products/factory/src/shepherd/wake.ts` answers
   `unhandled` to every request. No agent is woken for a red head, a conflict or a review
   send-back. A red head opens `ci-failed`. A conflicting head ends the run as `done`, with
