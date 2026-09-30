@@ -1,4 +1,4 @@
-import type { CostBucket, CostReport, WakeGapCell } from "./cost-report.js";
+import type { CostBucket, CostReport, MechanicalShare, RoleActions, WakeGapCell } from "./cost-report.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
 
 export const LIST_PRICE_CAVEAT =
@@ -15,6 +15,8 @@ export function renderCostReportText(report: CostReport): string {
     bucketTable("By model", report.byModel, report.totals.costUsd),
     bucketTable("By class", report.byClass, report.totals.costUsd),
     bucketTable("By role", report.byRole, report.totals.costUsd),
+    actionTable(report.byAction),
+    mechanicalTable(report.mechanicalShare),
     bucketTable("By episode count", report.byEpisodeCount, report.totals.costUsd),
     bucketTable("By initiative", report.byInitiative, report.totals.costUsd),
     bucketTable("By context band", report.byContextBand, report.totals.costUsd),
@@ -38,6 +40,21 @@ function header(report: CostReport): string {
 function bucketTable(title: string, buckets: readonly CostBucket[], total: number): string {
   const rows = buckets.map((b) => [b.key, b.requests, b.sessions, usd(b.costUsd), share(b.costUsd, total)]);
   return table(title, ["key", "requests", "sessions", "cost", "share"], rows);
+}
+
+/** Each role's row carries its total; its action classes sit indented beneath, sharing that total. */
+function actionTable(roles: readonly RoleActions[]): string {
+  const rows = roles.flatMap(({ role, buckets }) => {
+    const total = buckets.reduce((sum, b) => sum + b.costUsd, 0);
+    const requests = buckets.reduce((sum, b) => sum + b.requests, 0);
+    return [[role, requests, usd(total), share(total, total)], ...buckets.map((b) => [`  ${b.key}`, b.requests, usd(b.costUsd), share(b.costUsd, total)])];
+  });
+  return table("By action per role", ["role / action", "requests", "cost", "share"], rows);
+}
+
+function mechanicalTable(m: MechanicalShare): string {
+  const title = `Mechanical share: ${percent(m.share)} (${usd(m.costUsd)}) of total; classes ${m.classes.join(", ") || "none"}`;
+  return table(title, ["role", "mechanical cost", "share of role"], m.byRole.map((r) => [r.role, usd(r.costUsd), percent(r.share)]));
 }
 
 /** Q4: answers sit under `human`, with typed text and answers indented one level down. */
@@ -94,5 +111,9 @@ function usd(value: number): string {
 }
 
 function share(value: number, total: number): string {
-  return total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "-";
+  return total > 0 ? percent(value / total) : "-";
+}
+
+function percent(fraction: number): string {
+  return `${(fraction * 100).toFixed(1)}%`;
 }

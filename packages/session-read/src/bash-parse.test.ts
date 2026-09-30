@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
+import { commandCwd, commandHeads, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 
 describe("parseGitIntent", () => {
   it("captures a new branch with its start point, plus commit and push", () => {
@@ -89,5 +89,33 @@ describe("parseTaskIntent", () => {
 
   it("does not read a status across a command boundary", () => {
     expect(parseTaskIntents("active-work task edit demo AW-1 notes x; echo status done")).toEqual([{ taskId: "AW-1", status: null }]);
+  });
+});
+
+describe("commandHeads", () => {
+  it("drops cd, splits every separator and turns an append target into its basename", () => {
+    expect(commandHeads("cd /tmp/repo && gh pr checks 5; echo y >> /tmp/state/log.jsonl")).toEqual(["gh pr checks", "echo", ">log.jsonl"]);
+    expect(commandHeads("git log --oneline | head -5 || true\nactive-work task edit demo TP-1 status done")).toEqual(["git log", "head", "true", "active-work task edit"]);
+  });
+
+  it("drops cd even when its directory looks like a subcommand", () => {
+    expect(commandHeads("cd /a && ls; cd b; git status")).toEqual(["ls", "git status"]);
+  });
+
+  it("does not close a command substitution on a quoted paren", () => {
+    expect(commandHeads("echo $(echo ')' && x) && ls")).toEqual(["echo", "ls"]);
+  });
+
+  it("keeps a quoted separator inside one head", () => {
+    expect(commandHeads('git commit -m "a && b; c | d"')).toEqual(["git commit"]);
+  });
+
+  it("treats an fd dup as no target and a tee file as one", () => {
+    expect(commandHeads("pnpm test 2>&1 | tee -a out/run.log")).toEqual(["pnpm test", "tee", ">run.log"]);
+    expect(commandHeads("make build > /dev/null 2>&1")).toEqual(["make build"]);
+  });
+
+  it("skips heredoc bodies, env assignments and repeated heads", () => {
+    expect(commandHeads("cat > notes.md <<'EOF'\nrm -rf x && y\nEOF\nCI=1 pnpm lint && pnpm lint")).toEqual(["cat", ">notes.md", "pnpm lint"]);
   });
 });
