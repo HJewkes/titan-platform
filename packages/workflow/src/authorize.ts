@@ -32,7 +32,11 @@ export interface AuthorityGate {
 
 /** Resumes onto a gate already at `gate.id` without asking the table, so the decision made before a restart stands. */
 export async function authorityOutcome(authority: Authority, gate: AuthorityGate, request: AuthorizeRequest, options: AuthorizeOptions): Promise<AuthorityOutcome> {
-  if (!gate.store.get(gate.id)) {
+  const existing = gate.store.get(gate.id);
+  if (existing) {
+    const mismatch = ruleMismatch(existing, gate.id, authority, request);
+    if (mismatch) return mismatch;
+  } else {
     const decision = decide(authority, request);
     if (decision.verdict !== "gate") return decisionOutcome(decision);
     const input = authorityGateInput(gate.id, decision, authority, request, options);
@@ -42,6 +46,15 @@ export async function authorityOutcome(authority: Authority, gate: AuthorityGate
   gate.paused();
   await waitForGate(gate.store, gate.id, gate.wait);
   return gateOutcome(gate.store.get(gate.id), gate.id, request, authority.actor.class);
+}
+
+/** A gate recorded under another rule than the request maps to now is not this step's gate, so it is refused, not resumed. */
+function ruleMismatch(existing: GateRecord, gateId: string, authority: Authority, request: AuthorizeRequest): AuthorityOutcome | undefined {
+  const recorded = existing.rule?.ruleId;
+  if (recorded === undefined) return undefined;
+  const current = decide(authority, request).ruleId;
+  if (current === recorded) return undefined;
+  return { verdict: "refused", ruleId: recorded, gateId, reason: `the gate was recorded under rule ${recorded}, but ${request.action} maps to ${current ?? "no rule"}` };
 }
 
 export function authorityStepResult(stepId: string, iteration: number, outcome: AuthorityOutcome): StepResult {

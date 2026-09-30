@@ -144,6 +144,42 @@ class AnonymousResolveStore implements GateStore {
   }
 }
 
+/** Reads back a resolved gate with the given answer and resolver, which the real stores would have refused to record. */
+class ForgedResolveStore implements GateStore {
+  private readonly inner = new MemoryGateStore();
+  constructor(
+    private readonly answer: unknown,
+    private readonly resolvedBy: GateResolver,
+  ) {}
+  create(input: GateInput): GateRecord {
+    return this.inner.create(input);
+  }
+  get(id: string): GateRecord | undefined {
+    const record = this.inner.get(id);
+    return record && { ...record, status: "resolved", payload: this.answer, resolvedAt: record.createdAt, resolvedBy: this.resolvedBy };
+  }
+  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+    return this.inner.resolve(id, payload, resolvedBy);
+  }
+  cancel(id: string, reason: string): GateRecord {
+    return this.inner.cancel(id, reason);
+  }
+  listPending(): GateRecord[] {
+    return this.inner.listPending();
+  }
+}
+
+/** Holds a resolved gate at whatever id is asked for, recorded under a rule the request does not map to. */
+class ForeignRuleStore extends MemoryGateStore {
+  override get(id: string): GateRecord | undefined {
+    if (!super.get(id)) {
+      super.create({ id, prompt: "approve?", rule: { table: "F5", version: "1.0.0", ruleId: "MRG-OTHER", resolvers: ["owner-terminal"] } });
+      super.resolve(id, APPROVE, OWNER_TERMINAL);
+    }
+    return super.get(id);
+  }
+}
+
 describe("ctx.authorize", () => {
   it("proceeds on an allow row without a gate, and replays the recorded result without the table", async () => {
     const h = harness(makeDb(), "automation", { request: RELEASE });
@@ -278,5 +314,38 @@ describe("ctx.authorize", () => {
 
     expect(run).toMatchObject({ status: "failed", error: expect.stringContaining("needs the runtime's authority option") });
     expect(gates.listPending()).toEqual([]);
+  });
+
+  it("refuses a pre-existing gate recorded under a different rule than the request maps to", async () => {
+    const gates = new ForeignRuleStore();
+    const h = harness(makeDb(), "automation", { gates });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.results).toEqual([]);
+    expect(h.errors[0]).toBeInstanceOf(AuthorityRefusedError);
+    expect(h.errors[0]).toMatchObject({ ruleId: "MRG-OTHER", refusal: expect.stringContaining("MRG-AU") });
+  });
+
+  it("refuses a resolved record whose resolver class the rule does not allow, even if a store recorded it", async () => {
+    const gates = new ForgedResolveStore(APPROVE, { class: "automation", id: "bot", channel: "chat" });
+    const h = harness(makeDb(), "automation", { gates });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.errors[0]).toMatchObject({ ruleId: "MRG-AU", refusal: expect.stringContaining("does not let automation resolve") });
+  });
+
+  it("refuses a resolved record whose subject echo differs from the request, even if a store recorded it", async () => {
+    const answer = { decision: "approve", subject: { ...SUBJECT, headSha: "d4e5f6" } };
+    const gates = new ForgedResolveStore(answer, OWNER_TERMINAL);
+    const h = harness(makeDb(), "automation", { gates });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.errors[0]).toMatchObject({ ruleId: "MRG-AU", refusal: "the answer does not echo the request's subject" });
   });
 });
