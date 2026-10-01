@@ -44,6 +44,11 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 `resume` drives every unfinished run until it ends or waits on a gate, prints each open gate
 with its resolve command, and exits.
 
+`gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
+`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set resolves as `coordinator`, which hitl refuses,
+so the command exits 1 and the gate stays pending. `CLAUDECODE` does not count, because the owner's
+`!` commands in Claude Code set it too.
+
 To keep runs alive across shells, `titan-factory serve` runs as a LaunchAgent. On macOS two
 commands install it:
 
