@@ -4,7 +4,7 @@ import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoS
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases } from "./phases.js";

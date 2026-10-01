@@ -4,7 +4,7 @@ import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { gateEverything, type GatePolicy } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import { LAND_STEPS, land, landRoutes, type LandOutcome } from "../workflows/land.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 
 export const REPO = "octo/demo";
 export const H1 = fakeSha("head1");

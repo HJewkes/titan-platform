@@ -1,11 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { RepoSlug } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { PostMergeConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { redactCredentials } from "../redact.js";
-import type { StepRoute } from "../routed-runner.js";
 import { codeRoute, step } from "./land.js";
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [{ id: "post-merge", kind: "dispatch" }];

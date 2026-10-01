@@ -1,8 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
-import type { StepRoute } from "../routed-runner.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";

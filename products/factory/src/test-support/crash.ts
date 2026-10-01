@@ -1,6 +1,6 @@
 import type { WorkflowDefinition } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 
 /** Short enough to keep tests fast, long enough that the renewal timer (lease / 3) fires during a test. */
 export const CRASH_LEASE_MS = 3_000;

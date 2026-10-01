@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { redactForEvidence } from "../redact.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import type { FreezeGuard } from "./freeze.js";
 import type { HoldLookup } from "./store.js";
 

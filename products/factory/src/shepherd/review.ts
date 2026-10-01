@@ -1,9 +1,8 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import type { StepRoute } from "../routed-runner.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
