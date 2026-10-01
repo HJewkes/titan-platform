@@ -2,6 +2,10 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, AwaitVerdictTiming, ReviewerMessage, ReviewerReader } from "./review.js";
 
+/** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
+export const DEFAULT_EXIT_GRACE_MS = 60_000;
+/** A broker restart detaches every agent for a moment, so only a long detach counts as the reviewer leaving. */
+export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 export const HEAD = /^[0-9a-f]{40}$/;
 /** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
 export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
@@ -54,18 +58,39 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }
 
-/** Polls until an acceptable block appears; the deadline ends the wait with `none`, and a failed read counts as nothing yet. */
+/** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
+type Roster = () => Promise<readonly { agentId: string; presence: string }[]>;
+
+/** True once the dispatched reviewer has been gone for its grace; an unreadable roster says nothing. */
+function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
+  let gone: { presence: string; since: number } | undefined;
+  return async (input) => {
+    const rows = await roster().catch(() => undefined);
+    if (!rows) return false;
+    const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
+    if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
+    if (gone?.presence !== presence) gone = { presence, since: timing.now() };
+    const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
+    return timing.now() - gone.since >= grace;
+  };
+}
+
+/** Polls until an acceptable block appears; a failed read counts as nothing yet. The deadline, or a reviewer the roster shows gone for its grace, ends the wait with `none`. */
 export async function awaitVerdict(
   reader: ReviewerReader,
   input: AwaitVerdictInput,
   timing: AwaitVerdictTiming,
   signal: AbortSignal,
+  roster?: Roster,
 ): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
+  const silent = roster ? silenceWatch(timing, roster) : async () => false;
+  const poll = async () => acceptVerdict(input, await reader.read(input).catch(() => []));
   for (;;) {
-    const messages = await reader.read(input).catch(() => []);
-    const result = acceptVerdict(input, messages);
+    const result = await poll();
     if (result.kind === "verdict") return result;
+    // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
+    if (await silent(input)) return poll();
     if (clock.expired()) return { kind: "none" };
     await clock.sleep(timing.pollMs, signal);
   }
