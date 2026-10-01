@@ -72,6 +72,32 @@ describe("one fixture per bash.merge spelling", () => {
     expect(spellings(bash(command, "feat/x"))).toEqual(expected);
   });
 
+  it.each([
+    ["; ", "git checkout -b feat/z; git merge x"],
+    ["&&", "git checkout -b feat/z && git merge x"],
+  ])("a branch created from main (%s) leaves the head unknown, since a failed -b stays on main", (_sep, command) => {
+    expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
+  });
+
+  describe("a branch switch changes the head only in its own directory", () => {
+    const MAIN_TREE = "/home/you/projects/app-main";
+    const heads: Record<string, string> = { [REPO]: "feat/x", [MAIN_TREE]: "main" };
+    const ctx: ClassifyContext = { home: HOME, readLink: () => null, readHead: (d) => heads[d] ?? null, readScript: () => null };
+    const run = (command: string) => spellings(classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, ctx));
+
+    it("keeps another checkout's protected head after a switch here", () => {
+      expect(run(`git checkout -b feat/z && git -C ${MAIN_TREE} merge x`)).toEqual(["bash.merge.git-merge-protected"]);
+    });
+
+    it("leaves this directory's protected head after a switch elsewhere", () => {
+      expect(run(`cd ${MAIN_TREE} && git -C /elsewhere checkout -b f; git merge x`)).toEqual(["bash.merge.git-merge-protected"]);
+    });
+
+    it("marks every directory unknown after a switch in a directory it cannot know", () => {
+      expect(run('git -C "$D" checkout -b f; git merge x')).toEqual(["bash.merge.git-merge-protected"]);
+    });
+  });
+
   it("finds a merge chained after other commands and inside a subshell", () => {
     expect(spellings(bash("pnpm test && (gh pr merge 4 --squash)"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
@@ -97,8 +123,8 @@ describe("normal work classifies nothing", () => {
     ["a graphql query that reads merge state", "gh api graphql -f query='{ repository(owner: \"o\", name: \"r\") { pullRequest(number: 1) { mergeable } } }'", "feat/x"],
     ["a curl GET of the merge endpoint", "curl https://api.github.com/repos/o/r/pulls/3/merge", "feat/x"],
     ["a commit message that mentions a merge", "git commit -m 'gh pr merge 12 after review'", "main"],
-    ["a push after creating a feature branch from main", "git checkout -b feat/y && git push -u origin HEAD", "main"],
-    ["a push after git switch -c", "git switch -c feat/y origin/main; git push", "main"],
+    ["a push after creating a branch from a feature branch", "git checkout -b feat/y && git push -u origin HEAD", "feat/x"],
+    ["a push after git switch -c from a feature branch", "git switch -c feat/y origin/main; git push", "feat/x"],
     ["a path restore before a push", "git checkout -- src/a.ts && git push", "feat/x"],
     ["a push of a run-time branch name", 'git push origin "$X"', "main"],
   ])("%s", (_what, command, head) => {

@@ -154,26 +154,36 @@ function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 
 const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--force-create"];
 
-/**
- * The branch a `git checkout`, `git switch` or `gh pr checkout` leaves checked out: the new branch's
- * name when it creates one, else `unknown`. Undefined when the command does not change branch.
- */
-function switchedHead(cmd: SimpleCommand, ctx: ClassifyContext): string | undefined {
-  if (cmd.name === "gh") return /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" ")) ? UNKNOWN : undefined;
+/** The directory a branch switch acts in, null when unknown; undefined when `cmd` does not switch branch. */
+function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | null; created: WordToken | null } | undefined {
+  if (cmd.name === "gh") {
+    return /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" ")) ? { dir: cmd.dir, created: null } : undefined;
+  }
   if (cmd.name !== "git") return undefined;
   const inv = parseGit(cmd.args, cmd.dir, ctx.home);
   if (inv.sub !== "checkout" && inv.sub !== "switch") return undefined;
   const dashes = inv.subArgs.findIndex((a) => a.value === "--");
   const options = readOptions(dashes >= 0 ? inv.subArgs.slice(0, dashes) : inv.subArgs, set(...NEW_BRANCH_OPTS));
   const created = lastValue(options, ...NEW_BRANCH_OPTS);
-  if (created) return created.dynamic ? UNKNOWN : created.value;
-  return options.positionals.length > 0 || hasFlag(options, "--detach") ? UNKNOWN : undefined;
+  if (!created && options.positionals.length === 0 && !hasFlag(options, "--detach")) return undefined;
+  return { dir: inv.otherPaths.length > 0 ? null : inv.dir, created };
 }
 
-/** A branch switch earlier on the line replaces the hook-time head for every later command. */
+/**
+ * The head a branch switch leaves: a created branch's name only when the head it left was unprotected,
+ * since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
+ */
+function switchedHead(dir: string | null, created: WordToken | null, ctx: ClassifyContext): string {
+  if (dir === null || !created || created.dynamic) return UNKNOWN;
+  return isProtected(headOf({ dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : created.value;
+}
+
+/** A branch switch replaces the head later commands on the line see, in its directory, or in every directory when that is unknown. */
 function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
-  const head = switchedHead(cmd, ctx);
-  return head === undefined ? undefined : { ...ctx, readHead: () => head };
+  const sw = switchDir(cmd, ctx);
+  if (!sw) return undefined;
+  const head = switchedHead(sw.dir, sw.created, ctx);
+  return { ...ctx, readHead: (d) => (sw.dir === null || d === sw.dir ? head : ctx.readHead(d)) };
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */
