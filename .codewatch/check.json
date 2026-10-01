@@ -56,7 +56,8 @@
           "products/session-miner",
           "products/retrieval-eval",
           "apps/code-report",
-          "products/factory"
+          "products/factory",
+          "products/evals"
         ]
       },
       "layers": [
@@ -111,7 +112,8 @@
           "products/session-miner",
           "products/retrieval-eval",
           "apps/code-report",
-          "products/factory"
+          "products/factory",
+          "products/evals"
         ]
       ]
     },

@@ -1,0 +1,44 @@
+{
+  "name": "@titan-design/evals",
+  "version": "0.0.0",
+  "description": "Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/evals"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "private": true,
+  "dependencies": {
+    "commander": "^14.0.3",
+    "zod": "^4.4.3"
+  },
+  "bin": {
+    "titan-evals": "./dist/bin.js"
+  }
+}
