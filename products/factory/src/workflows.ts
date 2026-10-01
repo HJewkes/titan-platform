@@ -7,7 +7,8 @@ import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
-import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import { firstReason, heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
@@ -38,6 +39,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   cleanup?: CleanupPorts;
   /** How `sh-park` parks the implementer's worktree; defaults to `agent-chat agent park`. */
   park?: ParkPort;
+  /** Where the release preflight looks packages up; defaults to registry.npmjs.org. */
+  registry?: PackageRegistry;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -53,14 +56,14 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const holds = () => deps.store.get();
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
-  const guard = freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now });
+  const guard = firstReason(freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now));
   const held = heldCheck(deps.port, holds, guard);
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard) }).map((route) =>
-    route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs }) : route,
+    route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs, now: deps.now }) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
-  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park });
+  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });

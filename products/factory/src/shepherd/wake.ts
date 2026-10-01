@@ -37,7 +37,7 @@ const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(
 export interface ImplementerAgents {
   roster(): Promise<readonly AgentRow[]>;
   resume(name: string, message: string): Promise<void>;
-  /** Delivers `message` to a live agent as one chat message. */
+  /** Delivers `message` to a live agent as one chat message, sent as the human until CC-436 adds a `shepherd` wake source. */
   message(name: string, message: string): Promise<void>;
   /** `cwd` is a checkout of the PR's repo, which the successor's own worktree is cut from. */
   spawn(name: string, brief: string, cwd: string): Promise<void>;

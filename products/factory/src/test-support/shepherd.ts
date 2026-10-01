@@ -5,6 +5,7 @@ import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import type { ShepherdPhases } from "../shepherd/phases.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
+import type { PackageRegistry } from "../shepherd/release.js";
 import type { SeatBook } from "../shepherd/seats.js";
 import { shepherdStoreRef } from "../shepherd/store.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -29,6 +30,8 @@ export interface FixtureOptions {
   seats?: SeatBook;
   /** Polls never come back, so a run waiting on `sh-await-pr` stays there after its first read. */
   frozen?: boolean;
+  /** Defaults to a registry that has every package, so no test reaches npm. */
+  registry?: PackageRegistry;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -43,6 +46,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     store: shepherdStoreRef(),
     now: () => clock,
     sleep: options.frozen ? never : tick,
+    registry: options.registry ?? (async () => true),
     ...(options.seats && { seats: () => options.seats! }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };

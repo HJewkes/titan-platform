@@ -10,6 +10,7 @@ import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
+import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
@@ -30,6 +31,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...WAKE_STEPS,
   ...PARK_STEPS,
   ...REVIEW_STEPS,
+  ...RELEASE_STEPS,
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
 ];
@@ -41,6 +43,8 @@ export interface ShepherdPrParams {
   policy: EffectivePolicy;
   /** Parsed before land, so a malformed list fails the run before any merge. */
   after: AfterStage[];
+  /** The changesets Version Packages PR: a release preflight stands in for the reviewer. */
+  release: boolean;
 }
 
 /** A run with no `policy` param gets the owner gate as its ceiling; the registration's policy can only narrow it. */
@@ -54,7 +58,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
   const rawPolicy = ctx.param("policy");
   const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
-  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx) };
+  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
 interface PrTarget {
@@ -72,6 +76,7 @@ interface ShepherdRun {
   /** The run param narrowed by every registration read so far; it only ever tightens. */
   policy: EffectivePolicy;
   policyReads: number;
+  release: boolean;
   lastCi?: CiSnapshot;
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
@@ -99,11 +104,11 @@ class LeaveLand extends Error {
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
   const run: ShepherdRun = {
-    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 },
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
     ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
+  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
@@ -177,7 +182,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
-  if (!run.reviews.has(headSha)) await parkAtGreen(run.ctx, headSha);
+  if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);
@@ -254,6 +259,7 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
 
 /** A verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
+  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
   const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }) });
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
@@ -346,6 +352,8 @@ export interface ShepherdWiring {
   review?: ReviewWiring;
   /** Absent means `agent-chat agent park` through `deps.agentChatBin`. */
   park?: ParkPort;
+  /** Absent means registry.npmjs.org over `fetch`. */
+  registry?: PackageRegistry;
 }
 
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -357,6 +365,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
+    ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps),
     observeRoute(deps.port, deps.now),
   ];

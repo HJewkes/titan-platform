@@ -16,6 +16,7 @@ import {
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
+import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
@@ -89,15 +90,22 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
   }
 }
 
-/** The registration for `repo#pr`, else the one for its head branch; a branch already tied to another PR is refused. */
-function findRegistration(store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
+const FINISHED_RUNS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
+
+/**
+ * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
+ * PR's run is live; a finished run gives the branch up, as the changesets branch is reused by every release.
+ */
+function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
   const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
   if (byPr) return byPr;
   const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (byBranch && pr !== undefined && byBranch.pr !== null && byBranch.pr !== pr) {
-    throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
+  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
+  if (FINISHED_RUNS.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed")) {
+    store.releaseBranch(byBranch.runId);
+    return undefined;
   }
-  return byBranch;
+  throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -139,15 +147,20 @@ function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Regist
 async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services, args);
-  const known = findRegistration(services.store.get(), args.repo, args.pr, args.branch);
+  const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
   if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
   const branch = await headBranch(services, args);
   const store = services.store.get();
-  const existing = findRegistration(store, args.repo, args.pr, branch);
+  const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
   const runId = startRun(ctx, args, branch, policy);
   const registration = store.register({ ...args, branch, runId, policy });
   return { runId, created: true, registration };
+}
+
+/** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
+export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
+  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, policy: { fixer: false } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
