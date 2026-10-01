@@ -92,12 +92,14 @@ export class FreezeStore {
   unfreeze(repo: RepoSlug, greenSha: string): boolean {
     const freeze = this.active(repo);
     if (!freeze || freeze.redSha === greenSha) return false;
-    return this.release(repo);
+    return this.release(repo, freeze.episode);
   }
 
-  /** The owner's override from the main-red-again gate: thaws without a green sha. */
-  release(repo: RepoSlug): boolean {
-    return this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND thawed_at IS NULL").run(new Date(this.now()).toISOString(), repoKey(repo)).changes > 0;
+  /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. */
+  release(repo: RepoSlug, episode: number): boolean {
+    return this.db
+      .prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL")
+      .run(new Date(this.now()).toISOString(), repoKey(repo), episode).changes > 0;
   }
 
   private setField(repo: RepoSlug, column: "fix_task" | "fixer", value: string): void {

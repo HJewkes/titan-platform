@@ -321,6 +321,22 @@ describe("shepherd-pr on a red main", () => {
     expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
+  it("refuses an unfreeze answer from an earlier episode's gate once a later red has frozen the repo again", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, mainRedPorts().mainRed);
+    const runId = await runToMerge(w);
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+    const freezes = w.freezes();
+    freezes.unfreeze(REPO, fakeSha("hand-fix"));
+    freezes.freeze(REPO, EARLIER_RED);
+    freezes.setFixTask(REPO, "demo/FX-2");
+    freezes.setFixer(REPO, FIXER);
+
+    w.host.runtime.signal(runId, "main-frozen", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(freezes.get(REPO)).toMatchObject({ episode: 2, redSha: EARLIER_RED, fixer: FIXER });
+  });
+
   it("thaws on the owner's word when no fix task could be filed", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, { ...mainRedPorts().mainRed, tasks: undefined });
     const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");

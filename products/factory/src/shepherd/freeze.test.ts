@@ -250,6 +250,20 @@ describe("the freeze store", () => {
     });
   });
 
+  it("releases only the episode named, so an override for a thawed episode leaves a later one frozen", () => {
+    const r = rig();
+    const first = r.freezes.freeze(A, RED);
+    r.freezes.unfreeze(A, GREEN);
+    const second = r.freezes.freeze(A, fakeSha("red2"));
+
+    const stale = r.freezes.release(A, first.episode);
+    const current = r.freezes.release(A, second.episode);
+
+    expect(stale).toBe(false);
+    expect(current).toBe(true);
+    expect(r.freezes.isFrozen(A)).toBe(false);
+  });
+
   it("refuses to unfreeze at the red sha and reports the fix task and fixer", () => {
     const r = rig();
     r.freezes.freeze(A, RED);

@@ -72,18 +72,24 @@ export const FreezeResult = z.looseObject({
   state: z.enum(["new", "again", "unwired"]),
   fixTask: z.string().nullable(),
   fixer: z.string().nullable(),
+  episode: z.number().nullable(),
 });
 
 export const FixTaskResult = z.looseObject({ task: z.string().nullable(), detail: z.string() });
 export const FixerResult = z.looseObject({ fixer: z.string().nullable(), detail: z.string() });
 /** `frozen` is whether the repo is still frozen after the step. */
-export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), detail: z.string() });
+export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), episode: z.number().nullable(), detail: z.string() });
 
 export interface RedInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
   runId: string;
+}
+
+/** The episode the gate opened for; a thaw of any other episode is refused. */
+export interface ThawInput extends RedInput {
+  episode: number | null;
 }
 
 export interface FixerInput {
@@ -96,7 +102,7 @@ export interface FixerInput {
 
 /** `again` when the live freeze already has a fixer, so this red came from the fixer's own merge or through it, and the owner decides. */
 export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">): z.infer<typeof FreezeResult> {
-  if (!wiring) return { state: "unwired", fixTask: null, fixer: null };
+  if (!wiring) return { state: "unwired", fixTask: null, fixer: null, episode: null };
   const freezes = wiring.freezes();
   const again = (freezes.get(input.repo)?.fixer ?? null) !== null;
   const frozen = freezes.freeze(input.repo, input.mergeSha);
@@ -209,8 +215,8 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
 export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">): Promise<z.infer<typeof UnfreezeResult>> {
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
-  if (!freezes || !live) return { unfrozen: false, frozen: false, detail: "the repo is not frozen" };
-  const stays = (detail: string) => ({ unfrozen: false, frozen: true, detail });
+  if (!freezes || !live) return { unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" };
+  const stays = (detail: string) => ({ unfrozen: false, frozen: true, episode: live.episode, detail });
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
@@ -219,7 +225,7 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
     return stays(`main could not be read: ${messageOf(error)}`);
   }
   const unfrozen = freezes.unfreeze(input.repo, input.mergeSha);
-  return { unfrozen, frozen: freezes.isFrozen(input.repo), detail: "green after the red sha" };
+  return { unfrozen, frozen: freezes.isFrozen(input.repo), episode: live.episode, detail: "green after the red sha" };
 }
 
 export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefined): StepRoute[] {
@@ -228,6 +234,6 @@ export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefi
     codeRoute("sh-file-fix-task", deps.now, (input: RedInput, signal) => fileFixTask(deps, wiring, input, signal)),
     codeRoute("sh-spawn-fixer", deps.now, (input: FixerInput, signal) => spawnFixer(deps, wiring, input, signal)),
     codeRoute("sh-unfreeze", deps.now, (input: RedInput) => unfreezeStep(deps, wiring, input)),
-    codeRoute("sh-thaw", deps.now, async (input: RedInput) => ({ thawed: wiring?.freezes().release(input.repo) ?? false })),
+    codeRoute("sh-thaw", deps.now, async (input: ThawInput) => ({ thawed: input.episode !== null && (wiring?.freezes().release(input.repo, input.episode) ?? false) })),
   ];
 }

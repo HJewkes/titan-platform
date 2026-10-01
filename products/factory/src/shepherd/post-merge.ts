@@ -5,7 +5,7 @@ import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
-import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput } from "./main-red.js";
+import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type ThawInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
@@ -74,12 +74,13 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
 async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
-  if (frozen.state === "again") return askFrozen(ctx, "main-red-again", red, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
+  const episode = { ...red, episode: frozen.episode };
+  if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
   if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, red.mergeSha);
   const filed = await step(ctx, "sh-file-fix-task", red, FixTaskResult);
-  if (filed.task === null) return askFrozen(ctx, "main-frozen", red, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
+  if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
   const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer }, FixerResult);
-  if (spawned.fixer === null) await askFrozen(ctx, "main-frozen", red, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
+  if (spawned.fixer === null) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
 const NO_FIXER_EXIT = "No PR is exempt from the freeze, so nothing Shepherd merges can clear it. Stay frozen until a green head on main thaws it, or unfreeze now?";
@@ -89,13 +90,13 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   const result = await step(ctx, "sh-unfreeze", red, UnfreezeResult);
   if (!result.frozen) return;
   const prompt = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is green, but the repo stays frozen: ${result.detail}. Only a later green head on main thaws it. Stay frozen, or unfreeze?`;
-  await askFrozen(ctx, "main-frozen", red, prompt);
+  await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
 const FrozenAnswer = z.object({ decision: z.enum(["stay-frozen", "unfreeze"]), mergeSha: z.string() });
 
 /** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
-async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: RedInput, prompt: string): Promise<void> {
+async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: ThawInput, prompt: string): Promise<void> {
   const answer = FrozenAnswer.parse((await ctx.assisted(gate, prompt, { schema: FrozenAnswer })).data);
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
