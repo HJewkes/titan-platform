@@ -1,5 +1,11 @@
 # @titan-design/registry
 
+## 0.3.2
+
+### Patch Changes
+
+- 1712421: `flagToKey` and `readCommanderOption` now drop a trailing `<name>`, `[name]` or variadic `<names...>` placeholder and accept a short alias form such as `-s, --spawner <name>`. Before, `--spawner <name>` keyed as `spawner <name>` and the option was never read.
+
 ## 0.3.1
 
 ### Patch Changes
