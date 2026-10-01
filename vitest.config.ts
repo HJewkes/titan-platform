@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 
-// These stub HOME, which os.homedir() ignores inside a worker thread, so they need a real process.
+// These stub HOME (os.homedir() ignores that in a worker thread) or call process.chdir (unsupported in one).
 const needsProcess = [
+  "packages/code-graph/src/extractors/ts-morph-extractor-type-roots.test.ts",
   "packages/session-read/src/discover-roots.test.ts",
   "products/factory/src/shepherd/reviewer-dispatch.test.ts",
 ];
