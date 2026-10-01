@@ -1,5 +1,6 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
@@ -35,14 +36,17 @@ export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   };
 }
 
-const PACKAGE_FILE = /^(?:[^/]+\/)*(?:package\.json|CHANGELOG\.md)$/;
+const MANIFEST_FILE = /^(?:[^/]+\/)*package\.json$/;
+const CHANGELOG_FILE = /^(?:[^/]+\/)*CHANGELOG\.md$/;
 const CONSUMED_CHANGESET = /^\.changeset\/[^/]+\.md$/;
+const CATALOG_FILES = new Set(["CAPABILITIES.md", "site/guides/capabilities.md"]);
 
-/** What `changeset version` writes: manifests, changelogs, the lockfile, the regenerated catalog, and consumed changesets. */
+/** What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets. */
 export function isReleaseFile(file: PrFile): boolean {
   if (isGithubPath(file.path) || file.previousPath !== undefined) return false;
   if (CONSUMED_CHANGESET.test(file.path)) return file.status === "removed";
-  return PACKAGE_FILE.test(file.path) || file.path === "pnpm-lock.yaml" || file.path === "CAPABILITIES.md";
+  if (MANIFEST_FILE.test(file.path)) return file.status === "modified";
+  return CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path);
 }
 
 export interface ReleaseTarget {
@@ -66,7 +70,9 @@ export async function releasePreflight(port: GitHubPort, registry: PackageRegist
   const files = await port.listPrFiles(target.repo, target.pr);
   const foreign = files.filter((file) => !isReleaseFile(file)).map((file) => file.path);
   if (foreign.length > 0) blockers.push(`it changes files a release does not write: ${foreign.join(", ")}`);
-  const packages = await publicPackages(port, target, files);
+  const manifests = await readManifests(port, target, pr.baseRef, files);
+  blockers.push(...manifests.blockers, ...manifestEditBlockers(manifests.pairs));
+  const packages = publicPackages(manifests.pairs);
   for (const name of packages) blockers.push(...(await registryBlockers(registry, name)));
   return { head: target.head, blockers, packages };
 }
@@ -86,18 +92,71 @@ async function registryBlockers(registry: PackageRegistry, name: string): Promis
   }
 }
 
-const Manifest = z.looseObject({ name: z.string().optional(), private: z.boolean().optional() });
+const Manifest = z.looseObject({ name: z.string().optional(), version: z.string().optional(), private: z.boolean().optional() });
+type Manifest = z.infer<typeof Manifest>;
 
-async function publicPackages(port: GitHubPort, target: ReleaseTarget, files: readonly PrFile[]): Promise<string[]> {
-  const manifests = files.filter((file) => file.status !== "removed" && file.path.split("/").at(-1) === "package.json");
-  const names: string[] = [];
-  for (const file of manifests) {
-    const read = await port.getFile(target.repo, file.path, target.head);
-    const manifest = read && Manifest.safeParse(JSON.parse(read.content));
-    if (!manifest?.success) throw new Error(`${file.path} at ${target.head} is not a readable package manifest`);
-    if (manifest.data.private !== true && manifest.data.name !== undefined) names.push(manifest.data.name);
+interface ManifestPair {
+  path: string;
+  base: Manifest;
+  head: Manifest;
+}
+
+/** Each changed manifest at the merge base and at the head; one that cannot be read blocks the release rather than failing the run. */
+async function readManifests(port: GitHubPort, target: ReleaseTarget, baseRef: string, files: readonly PrFile[]): Promise<{ pairs: ManifestPair[]; blockers: string[] }> {
+  const paths = files.filter((file) => file.status === "modified" && MANIFEST_FILE.test(file.path)).map((file) => file.path);
+  if (paths.length === 0) return { pairs: [], blockers: [] };
+  const { mergeBaseSha } = await port.compareFiles(target.repo, baseRef, target.head);
+  const pairs: ManifestPair[] = [];
+  const blockers: string[] = [];
+  for (const path of paths) {
+    const [base, head] = [await readManifest(port, target.repo, path, mergeBaseSha), await readManifest(port, target.repo, path, target.head)];
+    if (base && head) pairs.push({ path, base, head });
+    else blockers.push(`${path} is not a readable package manifest at ${base ? target.head : mergeBaseSha}`);
   }
-  return names.sort();
+  return { pairs, blockers };
+}
+
+async function readManifest(port: GitHubPort, repo: RepoSlug, path: string, ref: string): Promise<Manifest | null> {
+  const read = await port.getFile(repo, path, ref);
+  if (!read) return null;
+  try {
+    const parsed = Manifest.safeParse(JSON.parse(read.content));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
+
+/** A release may change a manifest's `version`, and a dependency range only for a package this release bumps; any other edit is not changesets'. */
+function manifestEditBlockers(pairs: readonly ManifestPair[]): string[] {
+  const bumped = new Set(pairs.filter((pair) => pair.base.version !== pair.head.version).map((pair) => pair.head.name));
+  return pairs.flatMap((pair) => {
+    const edits = [...outsideDependencyEdits(pair), ...DEPENDENCY_FIELDS.flatMap((field) => dependencyEdits(pair, field, bumped))];
+    return edits.length > 0 ? [`${pair.path} changes more than versions: ${edits.join(", ")}`] : [];
+  });
+}
+
+function outsideDependencyEdits({ base, head }: ManifestPair): string[] {
+  const keys = new Set([...Object.keys(base), ...Object.keys(head)]);
+  return [...keys].filter((key) => key !== "version" && !(DEPENDENCY_FIELDS as readonly string[]).includes(key) && !isDeepStrictEqual(base[key], head[key]));
+}
+
+function dependencyEdits({ base, head }: ManifestPair, field: (typeof DEPENDENCY_FIELDS)[number], bumped: ReadonlySet<string | undefined>): string[] {
+  const [from, to] = [dependencyMap(base[field]), dependencyMap(head[field])];
+  if (!from || !to) return isDeepStrictEqual(base[field], head[field]) ? [] : [field];
+  const names = new Set([...Object.keys(from), ...Object.keys(to)]);
+  return [...names].filter((name) => from[name] !== to[name] && !(bumped.has(name) && name in from && name in to)).map((name) => `${field}.${name}`);
+}
+
+function dependencyMap(value: unknown): Record<string, unknown> | null {
+  if (value === undefined) return {};
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function publicPackages(pairs: readonly ManifestPair[]): string[] {
+  return pairs.flatMap(({ head }) => (head.private !== true && head.name !== undefined ? [head.name] : [])).sort();
 }
 
 interface PreflightInput extends ReleaseTarget {

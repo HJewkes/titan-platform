@@ -449,13 +449,19 @@ describe("the Version Packages PR", () => {
     { path: ".changeset/brave-otters.md", status: "removed" },
   ];
 
+  /** The widget manifest bumped from 1.0.0 at the merge base to 1.1.0 at `head`. */
+  function setWidgetManifest(fake: FakeGitHub, head: string): void {
+    fake.files.set(`${fakeSha("base")}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.0.0" }), blobSha: "b0" });
+    fake.files.set(`${head}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.1.0" }), blobSha: "b1" });
+  }
+
   /** The changesets PR as PR 1, registered the way the release sweep registers it. */
   function releaseWorld(registry: PackageRegistry): { w: World; runId: string; reviews: ReviewRequest[] } {
     const { phases, reviews } = fakePhases({});
     const w = world(phases, undefined, undefined, undefined, registry);
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
-    w.fake.files.set(`${H1}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.1.0" }), blobSha: "b1" });
+    setWidgetManifest(w.fake, H1);
     const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(AUTO_POLICY) });
     w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: AUTO_POLICY });
     return { w, runId, reviews };
@@ -517,7 +523,7 @@ describe("the Version Packages PR", () => {
     w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
     const release = w.fake.addPr({ headSha: H2, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
     w.fake.prFiles.set(release.number, RELEASE_FILES);
-    w.fake.files.set(`${H2}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.1.0" }), blobSha: "b1" });
+    setWidgetManifest(w.fake, H2);
     const releaseRun = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: String(release.number), branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY) });
     w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: releaseRun, task: "demo/version-packages", implementer: "changesets", policy: OWNER_GATE_POLICY });
 
