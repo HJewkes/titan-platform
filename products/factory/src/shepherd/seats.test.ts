@@ -309,3 +309,25 @@ describe("seat paths with inner spaces", () => {
     expect(() => loadSeatBook({ seatsDir })).toThrow(NOT_ALLOWED);
   });
 });
+
+describe("a remote bound to checkout paths by several seats", () => {
+  const bind = (name: string, path: string) => seat(name, `repos:\n  - {path: ${path}, remote: acme/widgets}\n`);
+
+  it("throws, naming both seat files and both paths, when the paths differ", () => {
+    const seatsDir = writeSeats({ "a-first.md": bind("first", "~/src/widgets"), "b-second.md": bind("second", "~/work/widgets") });
+
+    expect(() => loadSeatBook({ seatsDir })).toThrow(/acme\/widgets.*~\/src\/widgets in .*a-first\.md.*~\/work\/widgets in .*b-second\.md/);
+  });
+
+  it("parses when both seats spell the same path differently", () => {
+    const seatsDir = writeSeats({
+      "a-first.md": bind("first", "~/src/widgets/"),
+      "b-second.md": bind("second", "$HOME/src//widgets"),
+      "c-third.md": bind("third", "/opt/tester/src/widgets"),
+    });
+
+    const book = loadSeatBook({ seatsDir, home: "/opt/tester" });
+
+    expect(book.seats.map((s) => s.paths["acme/widgets"])).toEqual(["~/src/widgets", "$HOME/src/widgets", "/opt/tester/src/widgets"]);
+  });
+});

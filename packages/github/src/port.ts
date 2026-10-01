@@ -191,11 +191,19 @@ export class GitHubConflictError extends Error {
   }
 }
 
+export interface GitHubPortOptions {
+  /**
+   * The login `upsertComment` owns comments as, for example `my-app[bot]`. Set it under a GitHub App installation
+   * token: `GET /user` answers 403 there, and `GET /app` needs an App JWT the installation token is not.
+   */
+  login?: string;
+}
+
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
-export function githubPort(wire: GitHubWire): GitHubPort {
+export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): GitHubPort {
   const repoOf = checkRepo;
   const pr = (number: number) => checkPositiveInt("pr", number);
-  const login = memoizedLogin(wire);
+  const login = options.login === undefined ? memoizedLogin(wire) : async () => options.login!;
   return {
     getHeadSha: async (repo, branch) => wire.getRef(repoOf(repo), checkRef("branch", branch)),
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
@@ -326,7 +334,7 @@ function memoizedLogin(wire: GitHubWire): () => Promise<string> {
   };
 }
 
-const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n/).some((line) => line === marker);
+const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n/).some((line) => line.trimEnd() === marker);
 
 async function upsertComment(wire: GitHubWire, login: () => Promise<string>, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
   const [self, comments] = await Promise.all([login(), wire.listIssueComments(repo, number)]);

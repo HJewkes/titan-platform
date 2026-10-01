@@ -1,5 +1,11 @@
 # @titan-design/authority
 
+## 0.2.1
+
+### Patch Changes
+
+- 6e848b7: `evaluate()` now denies a request whose actor is missing, null, not an object, or carries no known actor class, instead of throwing.
+
 ## 0.2.0
 
 ### Minor Changes

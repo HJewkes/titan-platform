@@ -806,6 +806,12 @@ describe("WorkflowRuntime.signal resolver", () => {
     await ctx.assisted("approve", "Approve?");
   };
 
+  /** Leaves the shape a pre-resolver writer left behind, since the current store refuses to open one. */
+  function revertResolverMigration(db: Db): void {
+    db.exec(`DROP TRIGGER hitl_gate_resolver_required; DROP TRIGGER hitl_gate_resolver_required_insert;
+      ALTER TABLE hitl_gate DROP COLUMN resolved_by; DELETE FROM _migration WHERE version = 4;`);
+  }
+
   async function pausedRun(db: Db): Promise<{ rt: WorkflowRuntime; runId: string }> {
     const rt = runtime(db, inlineRunner(() => "ok"));
     rt.register("approval", approval);
@@ -838,13 +844,13 @@ describe("WorkflowRuntime.signal resolver", () => {
   });
 
   it("resumes a run paused before the resolver migration once the database is migrated", async () => {
-    const db = openDatabase(":memory:");
-    const before = [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3)];
-    runMigrations(db, before);
+    const db = makeDb();
     const { rt: first, runId } = await pausedRun(db);
     first.shutdown();
+    revertResolverMigration(db);
+    expect(() => new SqliteGateStore(db, { migrate: false })).toThrow(expect.objectContaining({ migration: "gateResolverMigration" }));
 
-    runMigrations(db, [...before, gateResolverMigration(4)]);
+    runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4)]);
     const events: WorkflowEvent[] = [];
     const second = runtime(db, inlineRunner(() => "ok"), events);
     second.register("approval", approval);

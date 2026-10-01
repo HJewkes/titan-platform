@@ -1,5 +1,17 @@
 # @titan-design/github
 
+## 0.2.0
+
+### Minor Changes
+
+- 679866f: `reviewRulesBypassable(repo, branch)` reports whether the caller can bypass every pull-request rule on a branch, read from `rules/branches` and each ruleset's `current_user_can_bypass`. The fake gains a settable `reviewBypass`.
+- 83e6c69: `githubPort(wire, { login })` takes the bot login that `upsertComment` owns comments as, so it works under a GitHub App installation token where `GET /user` is 403. A marker line with trailing whitespace now counts as a match.
+- 06ffd8c: `Commit` gains an optional `committedAt`, the committer date, which the `gh api` wire reads from `git/commits`. The factory's `land` now refreshes a behind PR in a repo without strict required checks when its base moved after the head's last green run: before a green verdict goes on to approve-merge, `ci-wait` compares the base tip's committer date with the earliest start of the head's latest required GitHub Actions runs. A base tip committed later, or one with no readable date or run start, is treated as moved, so the verdict is `behind` and the existing update-branch path runs under the same update cap before CI is awaited at the new head. A strict repo keeps its behaviour.
+
+### Patch Changes
+
+- ccbdde0: `checkPath` now refuses a path containing `%`, as `checkRef` already did. A segment such as `%2e%2e` or `%2F` passed validation, and a URL layer could decode it into `..` or `/`.
+
 ## 0.1.0
 
 ### Minor Changes

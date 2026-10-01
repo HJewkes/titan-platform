@@ -29,7 +29,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -50,6 +50,7 @@ dispatchToAgentChat(
 const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
 retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
 parkAgent("/opt/homebrew/bin/agent-chat", "item-7"); // { name: "item-7", lines: ["Parked item-7.", ...] }
+messageAgent("/opt/homebrew/bin/agent-chat", "item-9", "CI is red; the log tail follows", 15_000); // a live agent's next turn
 
 try {
   resumeAgent("/opt/homebrew/bin/agent-chat", "item-42", dataFence("CI log", logTail), 15_000);
@@ -93,6 +94,8 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   starts a broker when none is running.
 - `resumeAgent` puts the message in argv, where `ps` shows it. Fence untrusted text with
   `dataFence` and keep secrets out of it.
+- `messageAgent` reaches a live agent only, and the broker delivers the text from the human
+  seat. For an ended agent use `resumeAgent`. The text is in argv.
 - `resumeArgs` puts the message in argv. Resuming a live agent starts a second process on
   the same transcript; check liveness first.
 
@@ -102,4 +105,4 @@ Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resum
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
 its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
-brief) by TP-518, and `parkAgent` by TP-548.
+brief) by TP-518, `parkAgent` by TP-548, and `messageAgent` by TP-728.

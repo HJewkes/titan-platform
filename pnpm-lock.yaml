@@ -166,6 +166,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/agent-surface: {}
+
   packages/authority:
     devDependencies:
       zod:
@@ -259,6 +261,25 @@ importers:
       hono:
         specifier: ^4.12.18
         version: 4.13.7
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/decider:
+    dependencies:
+      '@titan-design/locator':
+        specifier: workspace:^
+        version: link:../locator
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../memory
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -559,6 +580,17 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/worktree: {}
+
+  products/evals:
+    dependencies:
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   products/factory:
     dependencies:
       '@titan-design/agent-dispatch':
@@ -627,6 +659,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator

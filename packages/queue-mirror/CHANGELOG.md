@@ -1,5 +1,16 @@
 # @titan-design/queue-mirror
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [9bef02d]
+- Updated dependencies [9ac05b5]
+- Updated dependencies [9c0aa55]
+- Updated dependencies [8b0e7ed]
+- Updated dependencies [50a7550]
+  - @titan-design/hitl@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

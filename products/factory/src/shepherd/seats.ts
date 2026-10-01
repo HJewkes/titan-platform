@@ -114,6 +114,7 @@ export function frontmatter(text: string): unknown {
 export function loadSeatBook(sources: SeatSources): SeatBook {
   const files = readSeatFiles(sources.seatsDir, checkedHome(sources.home ?? homedir()));
   const index = pathIndex(files);
+  checkRemotePaths(files);
   const seats = files.map(({ data }) => toSeat(data));
   const denied = files.flatMap(({ file, data }) => data.deny_repos.map((path) => resolveDeny(path, file, index)));
   const stops = charterHardStops(sources.charterPath);
@@ -168,6 +169,19 @@ function pathIndex(files: NamedSeatFile[]): Map<string, string> {
     }
   }
   return new Map([...owners].map(([path, { remote }]) => [path, remote]));
+}
+
+/** A remote bound to two checkout paths would let the later seat file silently pick the spawn cwd. */
+function checkRemotePaths(files: NamedSeatFile[]): void {
+  const seen = new Map<string, { path: RepoPath; file: string }>();
+  for (const { file, data } of files) {
+    for (const { path, remote } of data.repos) {
+      if (!path || !remote) continue;
+      const prior = seen.get(remote);
+      if (prior && prior.path.key !== path.key) throw new SeatBookInvalid(`remote ${remote} is bound to ${prior.path.written} in ${prior.file} and to ${path.written} in ${file}`);
+      if (!prior) seen.set(remote, { path, file });
+    }
+  }
 }
 
 /** A deny resolves through the global index; unbound, its basename must itself be a repo name or the seat book is invalid. */

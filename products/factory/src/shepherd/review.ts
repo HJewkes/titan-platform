@@ -1,11 +1,13 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { HEAD, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
+import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
@@ -27,11 +29,8 @@ export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
-/** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
-export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
-export const FIX_FIRST_TRUNCATED = "\n[truncated]";
 const DEFAULT_POLL_MS = 30_000;
-const HEAD = /^[0-9a-f]{40}$/;
+export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 
 export interface ReviewTarget {
   repo: string;
@@ -101,7 +100,7 @@ export interface ReviewerReader {
   read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
 }
 
-interface AcceptedVerdict {
+export interface AcceptedVerdict {
   kind: "verdict";
   head: string;
   locator: SourceTextLocator;
@@ -119,73 +118,12 @@ export interface AwaitVerdictTiming {
   timeoutMs: number;
 }
 
-export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
-  const input = (raw ?? {}) as Record<string, unknown>;
-  const text = (value: unknown, name: string): string => {
-    if (typeof value !== "string" || value === "") throw new Error(`sh-await-verdict: ${name} must be a non-empty string`);
-    return value;
-  };
-  const { pr, dispatchedAt } = input;
-  if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
-  if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
-  const head = text(input.head, "head");
-  if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
-  return {
-    repo: text(input.repo, "repo"),
-    pr,
-    head,
-    reviewerAgentId: text(input.reviewerAgentId, "reviewerAgentId"),
-    reviewerSessionId: text(input.reviewerSessionId, "reviewerSessionId"),
-    dispatchedAt,
-  };
-}
-
-function boundedFindings(text: string): string {
-  if (text.length <= MAX_FIX_FIRST_TEXT_CHARS) return text;
-  return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
-}
-
-/**
- * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
- * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
- * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
- */
-export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
-  const final = messages.at(-1);
-  if (!final) return { kind: "none" };
-  if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
-  if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
-  if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
-  const block = parseVerdictBlock(final.text);
-  if (!block.ok) return { kind: "none" };
-  if (block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) return { kind: "none" };
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
-}
-
-/** Polls until an acceptable block appears; the deadline ends the wait with `none`, and a failed read counts as nothing yet. */
-export async function awaitVerdict(
-  reader: ReviewerReader,
-  input: AwaitVerdictInput,
-  timing: AwaitVerdictTiming,
-  signal: AbortSignal,
-): Promise<AwaitVerdictResult> {
-  const clock = deadline(timing);
-  for (;;) {
-    const messages = await reader.read(input).catch(() => []);
-    const result = acceptVerdict(input, messages);
-    if (result.kind === "verdict") return result;
-    if (clock.expired()) return { kind: "none" };
-    await clock.sleep(timing.pollMs, signal);
-  }
-}
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
-const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1) });
-/** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. */
-const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume"]), agentId: z.string().min(1).optional() });
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional() });
+/** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody. */
+const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional() });
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema });
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
@@ -235,8 +173,11 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[]): Omit<ReviewIntent, "head" | "at"> {
-  const standing = standingReviewer(registration, roster);
+/** A hold that names a reviewer waits for that reviewer; `fresh` skips the standing reviewer, which may be the one that went silent. */
+function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
+  const external = externalReviewer(registration);
+  if (external) return { mode: "external", reviewer: external };
+  const standing = fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
 }
@@ -301,7 +242,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
 /** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing. */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
-  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster);
+  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster, input.fresh);
   return { kind: "intent", head: input.head, ...choice, at: deps.now() };
 };
 
@@ -330,6 +271,7 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
   const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
+    if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
     const input = parseAwaitVerdictInput(raw);
     return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
   };
@@ -352,7 +294,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 }
 
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
-const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent") }), z.looseObject({ kind: z.literal("none") })]);
+const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string() }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("dispatched"), at: z.number(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
@@ -375,15 +317,21 @@ function seatGrants(ctx: WorkflowContext): string[] {
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId }, Intended);
-  if (intent.kind !== "intent") return { kind: "none" };
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }) }, Intended);
+  if (intent.kind !== "intent") return { kind: "none", cause: "no-verdict" };
+  if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { kind: "none" };
+  if (dispatched.kind !== "dispatched") return { kind: "none", cause: "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
+  return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
+};
+
+/** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
+async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: object, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (awaited.kind !== "verdict") return { kind: "none" };
+  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold" };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer, seatGrants: seatGrants(ctx) });
-};
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
+}

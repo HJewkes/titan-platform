@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/github",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake",
   "type": "module",
   "main": "./dist/index.js",

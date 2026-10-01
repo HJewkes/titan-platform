@@ -1,5 +1,25 @@
 # @titan-design/workflow
 
+## 0.6.0
+
+### Minor Changes
+
+- 46b2880: `ctx.authorize(stepId, request, options?)` asks the authority table before a governed action, in one durable step. `allow` returns `{ verdict: "allow", ruleId }`. `deny` records the decision and throws `AuthorityDeniedError` without opening a gate. `gate` opens a hitl gate bound to the rule (`rule: { table: "F5", version, ruleId, resolvers }`) whose answer must be `{ decision: "approve" | "refuse", subject }` echoing the request's subject; an owner approval returns `{ verdict: "approved", ruleId, gateId, resolvedBy }`. A refusal, a resolver outside the recorded rule, or a gate resolved with no resolver throws `AuthorityRefusedError`. A restarted run resumes onto the same gate and judges the answer by the rule recorded on it, so a table edit during the pause does not flip the decision. Replay returns or throws the recorded outcome without consulting the table. The runtime takes `authority: { table?, actor }`; the table defaults to `DEFAULT_TABLE`. `StepOperation` gains `"authorize"`. The factory's step guard (`guardedContext`, `StepKind`) passes `authorize` through its declaration check.
+- 9c0aa55: BREAKING: `WorkflowRuntime.signal(runId, stepId, payload, resolvedBy)` requires the resolver and drops the `{}` default on the payload, following hitl's required resolver. The gate store needs `gateResolverMigration` in the migration list, or its constructor throws `GateStoreSchemaOutdated`.
+
+### Patch Changes
+
+- 101119f: `ctx.authorize` refuses at once a gate at its id that carries no rule or was recorded under another table than F5, instead of pausing on a pending rule-less gate that could only refuse. Tests now cover a resolved rule-less gate.
+- 9f49074: `ctx.authorize` now refuses a gate already recorded at the step's id under a different rule than the request's action maps to, instead of resuming it. The resolution is still judged against the recorded rule.
+- Updated dependencies [6e848b7]
+- Updated dependencies [9bef02d]
+- Updated dependencies [9ac05b5]
+- Updated dependencies [9c0aa55]
+- Updated dependencies [8b0e7ed]
+- Updated dependencies [50a7550]
+  - @titan-design/authority@0.2.1
+  - @titan-design/hitl@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes

@@ -14,7 +14,16 @@ import { OWNER } from "../test-support/resolver.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
+const stray: number[] = [];
+const track = (pid: number) => void (pid > 0 && stray.push(pid));
 afterEach(() => {
+  stray.splice(0).forEach((pid) => {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  });
   hosts.splice(0).forEach((host) => host.close());
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -217,6 +226,26 @@ describe("execChore", () => {
 
     expect(result).toMatchObject({ timedOut: true });
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("settles on the chore's exit plus the pipe grace when a setsid'd daemon holds its output", async () => {
+    const daemon = "const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }); c.unref(); console.log(c.pid)";
+    const started = Date.now();
+
+    const result = await execChore([process.execPath, "-e", daemon], options({ timeoutMs: 5_000, pipeGraceMs: 200 }));
+
+    track(Number(result.stdout.trim()));
+    expect(result).toMatchObject({ exitCode: 0, signal: null, timedOut: false });
+    expect(Date.now() - started).toBeLessThan(2_500);
+  });
+
+  it("never signals the process group once the chore has exited", async () => {
+    const result = await execChore(["/bin/sh", "-c", "sleep 30 & echo $!"], options({ timeoutMs: 200, pipeGraceMs: 1_000 }));
+    const background = Number(result.stdout.trim());
+    track(background);
+
+    expect(result).toMatchObject({ exitCode: 0, timedOut: false });
+    expect(() => process.kill(background, 0)).not.toThrow();
   });
 
   it("leaves no background child of a timed-out chore running", async () => {

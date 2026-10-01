@@ -117,6 +117,29 @@ describe("titan-factory resume and gate resolve", () => {
     expect(shipped.filter((id) => id === runId)).toHaveLength(1);
   });
 
+  it("gate resolve repeated with the same answer after the run took it exits 0 instead of looking for a next gate", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+    await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+    await cli(dbPath, "resume");
+
+    const repeated = await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+
+    expect(repeated).toMatchObject({ code: EXIT.OK, out: `already resolved ${runId}/approve-publish with this answer\n`, err: "" });
+  });
+
+  it("gate resolve repeated with a different answer after the run took it still fails", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+    await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+    await cli(dbPath, "resume");
+
+    const changed = await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true,"note":"again"}');
+
+    expect(changed.code).toBe(EXIT.FAILURE);
+    expect(changed.err).toContain(`no gate with id ${runId}/approve-publish:1`);
+  });
+
   it("gate resolve from an agent-chat agent's shell is refused and the gate stays pending", async () => {
     const dbPath = dbFile();
     const runId = await pausedRun(dbPath);
@@ -160,7 +183,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });
 
