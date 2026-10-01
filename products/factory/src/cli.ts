@@ -194,6 +194,8 @@ interface PlistFlags {
   node?: string;
 }
 
+const collectDir = (value: string, previous: string[]): string[] => [...previous, value];
+
 const NODE_FLAG = "absolute node binary launchd runs; default is this node, mapped off a Homebrew Cellar path";
 
 /** The plist, and the binaries its PATH cannot cover; each of those gets a warning line. */
@@ -226,8 +228,17 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .option("--port <n>", "port titan-factory serve binds", parsePort)
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .option("--mcp", "register the MCP endpoint with claude at user scope")
-    .action((opts: PlistFlags & { mcp?: boolean }) =>
-      run("install", (ports) => installService(ports, io, { ...plistOptions(io, opts, ports), port: opts.port ?? FACTORY_PORT, mcp: opts.mcp === true })),
+    .option("--claude-config-dir <dir>", "with --mcp, register in this Claude config dir too (repeatable); default is the caller's profile", collectDir, [])
+    .action((opts: PlistFlags & { mcp?: boolean; claudeConfigDir: string[] }) =>
+      run("install", (ports) =>
+        installService(ports, io, {
+          ...plistOptions(io, opts, ports),
+          port: opts.port ?? FACTORY_PORT,
+          mcp: opts.mcp === true,
+          claudeConfigDirs: opts.claudeConfigDir,
+          ...(io.env.CLAUDE_CONFIG_DIR ? { callerConfigDir: io.env.CLAUDE_CONFIG_DIR } : {}),
+        }),
+      ),
     );
   service.command("uninstall").description("unload the LaunchAgent and remove its plist").action(() => run("uninstall", (ports) => uninstallService(ports, io)));
   service

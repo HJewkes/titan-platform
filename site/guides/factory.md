@@ -156,6 +156,10 @@ that resolves it. The MCP tool names carry no prefix: `factory__land`, `factory_
 claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
 ```
 
+That registers the profile you run it under. Agents on another Claude profile need their own
+registration: `titan-factory service install --mcp --claude-config-dir <dir>` (repeatable) registers
+the endpoint in each dir and prints the config file it wrote.
+
 No `/rpc` route and no MCP tool resolves a gate. `POST /rpc/gate.resolve` answers 404
 `Unknown command`. That is deliberate: see [`gate resolve`](#gate-resolve).
 
