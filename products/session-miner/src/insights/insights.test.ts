@@ -24,6 +24,7 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+const UTC_WINDOW = { since: "2026-09-10T00:00:00.000Z", until: "2026-09-11T00:00:00.000Z" };
 const WINDOW_FLAGS = ["--since", FIXTURE_WINDOW.since, "--until", FIXTURE_WINDOW.until];
 
 async function cli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -53,7 +54,7 @@ describe.each(INSIGHT_QUESTIONS.map((q) => [q.id, q] as const))("insights questi
     const data = await ask(question.name);
 
     expect(insightResultSchema(question.schema).safeParse(data).success).toBe(true);
-    expect(data).toMatchObject({ question: question.id, caveat: LIST_PRICE_CAVEAT, filters: FIXTURE_WINDOW });
+    expect(data).toMatchObject({ question: question.id, caveat: LIST_PRICE_CAVEAT, filters: UTC_WINDOW });
     expect(data.answer.totals.sessions).toBe(3);
   });
 
@@ -77,6 +78,18 @@ describe.each(INSIGHT_QUESTIONS.map((q) => [q.id, q] as const))("insights questi
     expect((await ask(question.name, ["--since", "2026-09-10T02:30:00Z", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(1);
     expect((await ask(question.name, ["--since", FIXTURE_WINDOW.since, "--until", "2026-09-10T01:35:00Z"])).answer.totals.sessions).toBe(2);
     expect((await ask(question.name, ["--since", FIXTURE_WINDOW.since])).answer.totals.sessions).toBe(3);
+  });
+
+  it("compares an offset timestamp in UTC", async () => {
+    expect((await ask(question.name, ["--since", "2026-09-10T03:00:00+02:00", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(3);
+    expect((await ask(question.name, ["--since", "2026-09-10T03:45:00+02:00", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(2);
+  });
+
+  it.each([["--since"], ["--until"]])("refuses an unparseable %s with a usage error", async (flag) => {
+    const { code, stdout } = await cli(["--json", "insights", question.name, flag, "garbage"]);
+
+    expect(code).toBe(64);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false });
   });
 });
 
@@ -132,6 +145,26 @@ describe("insights surfaces", () => {
         const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/insights.${question.name}`, { method: "POST", headers, body: JSON.stringify(FIXTURE_WINDOW) });
         expect(await res.json()).toMatchObject({ ok: true, data: { question: question.id, caveat: LIST_PRICE_CAVEAT } });
       }
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it.each([
+    ["an unparseable date", { until: "garbage" }, /until/],
+    ["an unknown key", { sessionIds: ["impl-1"] }, /sessionIds/],
+    ["a broker log path", { brokerLog: "/etc/hosts" }, /only on the CLI/],
+  ])("refuses %s over HTTP with 400", async (_case, body, error) => {
+    const handle = await startMiner(config, { port: 0 });
+    try {
+      const res = await fetch(`http://127.0.0.1:${handle.port}/rpc/insights.${handoffThreshold.name}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-titan-client": "test" },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toMatch(error);
     } finally {
       await handle.close();
     }

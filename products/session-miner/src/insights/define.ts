@@ -1,15 +1,20 @@
-import { defineCommand, type AnyCommand, type CliOption } from "@titan-design/registry";
+import { EXIT, defineCommand, type AnyCommand, type CliOption } from "@titan-design/registry";
 import { LIST_PRICE_CAVEAT, type CostReportOptions } from "@titan-design/session-analytics";
 import type { Db } from "@titan-design/store-sqlite";
 import { z, type ZodType } from "zod";
 import type { MinerContext } from "../context.js";
 
+/** A date or ISO timestamp; `run` normalizes it to UTC, since MCP cannot describe a transform. */
+const isoTime = z
+  .string()
+  .refine((value) => /^\d{4}-\d{2}-\d{2}/.test(value) && !Number.isNaN(Date.parse(value)), "expected an ISO date or timestamp");
+
 export const insightFilters = z.object({
   session: z.array(z.string().min(1)).optional().describe("only these session ids"),
   agentPrefix: z.string().min(1).optional().describe("only sessions whose agent-chat name starts with this"),
   role: z.array(z.string().min(1)).optional().describe("only these report roles, as byRole names them"),
-  since: z.string().optional().describe("ISO timestamp or date, inclusive"),
-  until: z.string().optional().describe("ISO timestamp or date, exclusive"),
+  since: isoTime.optional().describe("ISO timestamp or date, inclusive"),
+  until: isoTime.optional().describe("ISO timestamp or date, exclusive"),
 });
 
 export type InsightFilters = z.infer<typeof insightFilters>;
@@ -38,6 +43,8 @@ export interface InsightQuestion<Options extends object = object, Data = unknown
   options: { [K in keyof Options]-?: ZodType<Options[K]> };
   flags: { [K in keyof Options]-?: CliOption };
   schema: ZodType<Data>;
+  /** Options that read the local filesystem; refused on every surface but the CLI. */
+  cliOnly?: readonly (keyof Options & string)[];
   answer(db: Db, report: CostReportOptions, options: Options): InsightAnswer<Data>;
 }
 
@@ -54,7 +61,7 @@ export function insightResultSchema<Data>(schema: ZodType<Data>) {
 }
 
 export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
-  const args = insightFilters.extend(question.options as z.ZodRawShape);
+  const args = insightFilters.extend(question.options as z.ZodRawShape).strict();
   return defineCommand({
     name: `insights.${question.name}`,
     description: `${question.id}: ${question.description}`,
@@ -63,12 +70,23 @@ export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
     cli: { options: { ...FILTER_FLAGS, ...(question.flags as Record<string, CliOption>) } },
     async run(parsed, ctx) {
       const { session, agentPrefix, role, since, until, ...options } = parsed as InsightFilters & Record<string, unknown>;
-      const filters: InsightFilters = { session, agentPrefix, role, since, until };
+      const filters: InsightFilters = { session, agentPrefix, role, since: utc(since), until: utc(until) };
+      refuseCliOnly(question, options, ctx);
       const { data, text } = question.answer(ctx.graph().db, reportOptions(filters), options);
       if (ctx.format === "human") return text;
       return { question: question.id, caveat: LIST_PRICE_CAVEAT, filters, answer: data };
     },
   });
+}
+
+/** Request times are stored as UTC ISO strings and compared as text, so an offset must be resolved first. */
+function utc(time: string | undefined): string | undefined {
+  return time === undefined ? undefined : new Date(time).toISOString();
+}
+
+function refuseCliOnly(question: AnyInsight, options: Record<string, unknown>, ctx: MinerContext): void {
+  const given = (question.cliOnly ?? []).filter((key: string) => options[key] !== undefined);
+  if (given.length > 0 && ctx.surface !== "cli") throw Object.assign(new Error(`${given.join(", ")} is accepted only on the CLI`), { code: EXIT.DATAERR });
 }
 
 function reportOptions(filters: InsightFilters): CostReportOptions {

@@ -52,6 +52,7 @@ export const handoffThreshold = defineInsight<HandoffInsightOptions, z.infer<typ
     brokerLog: { long: "--broker-log", description: "broker log path" },
   },
   schema: handoffSchema,
+  cliOnly: ["brokerLog"],
   answer(db, report, options) {
     const brokerLog = options.brokerLog;
     const brokerLogLines = brokerLog === undefined ? undefined : () => readFileSync(brokerLog, "utf8").split("\n");
