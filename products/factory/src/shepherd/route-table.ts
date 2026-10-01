@@ -48,23 +48,36 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
   return (MERGEABLE_STATES as readonly string[]).includes(raw) ? (raw as MergeableState) : "unknown";
 }
 
-/** Failed review rounds at one task before the owner is asked. */
+/** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
+/** FIX_FIRST reviews at one task before the owner is asked; below it each one is progress, so only a runaway stops. */
+export const MAX_FIX_FIRSTS = 6;
 
 /** The only reasons Shepherd opens approve-merge; the gate's prompt names one. */
 export const ESCALATIONS = {
   conflict: "a merge conflict survived one fixer attempt",
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,
+  "fix-first-runaway": `${MAX_FIX_FIRSTS} FIX_FIRST reviews at this task`,
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
-/** Routes that retry the same head; each one taken is a failed round. */
+/** Why the owner decides one head: which escalation, and what happened there. */
+export interface Escalated {
+  escalation: Escalation;
+  detail: string;
+}
+
+/** Routes that retry the same head because nobody answered; each one taken is a stuck round. */
 const RETRIES: ReadonlySet<Route> = new Set(["fresh-reviewer", "await-external"]);
 
-/** A FIX_FIRST wake is a failed round too, because the head it reviewed will not merge. */
-export function isFailedRound(route: Route, outcome: ReviewOutcome): boolean {
-  return RETRIES.has(route) || (route === "wake-fixer" && outcome === "FIX_FIRST");
+/** `stuck` is silence, a timeout or a conflict; a FIX_FIRST is counted on its own, because the fix it asks for is progress. */
+export type RoundKind = "stuck" | "fix-first" | "progress";
+
+export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
+  if (RETRIES.has(route)) return "stuck";
+  if (route !== "wake-fixer") return "progress";
+  return outcome === "FIX_FIRST" ? "fix-first" : "stuck";
 }
 
 /** The gate reason: which escalation, then the detail. */

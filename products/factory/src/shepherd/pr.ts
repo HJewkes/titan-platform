@@ -12,7 +12,7 @@ import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricter
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { MAX_FAILED_ROUNDS, escalationReason, isFailedRound, routeFor, type ReviewOutcome, type Route } from "./route-table.js";
+import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
@@ -73,14 +73,16 @@ interface ShepherdRun {
   policy: EffectivePolicy;
   policyReads: number;
   lastCi?: CiSnapshot;
-  /** Review rounds at this task that ended without a merge decision. */
+  /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
+  /** FIX_FIRST reviews at this task; each is progress until the runaway cap. */
+  fixFirsts: number;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
-  /** Heads whose merge decision is the owner's after failed rounds, with what failed. */
-  escalations: Map<string, string>;
+  /** Heads whose merge decision is the owner's, with why. */
+  escalations: Map<string, Escalated>;
 }
 
 /** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
@@ -98,7 +100,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 },
-    ...{ failedRounds: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -127,8 +129,9 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return onCiFailed(run.ctx, run.target, outcome, run.state);
   }
-  if (isConflict(run, outcome)) return onConflict(run, outcome.headSha);
-  return outcome;
+  if (!isConflict(run, outcome)) return outcome;
+  run.failedRounds += 1;
+  return onConflict(run, outcome.headSha);
 }
 
 function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
@@ -204,14 +207,24 @@ const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
   "no-verdict": "no reviewer verdict",
   timeout: "no reviewer verdict before the wait ran out",
   "external-hold": "no verdict yet from the reviewer the hold names",
-  FIX_FIRST: "a FIX_FIRST review",
 };
+
+/** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
+function countRound(run: ShepherdRun, { route, outcome, headSha }: Routed): Escalated | undefined {
+  const kind = roundKind(route, outcome);
+  if (kind === "fix-first") return ++run.fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail: `the last at ${headSha}` } : undefined;
+  if (kind !== "stuck") return undefined;
+  run.failedRounds += 1;
+  if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[outcome] ?? outcome}` };
+}
 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
-  if (isFailedRound(route, routed.outcome) && ++run.failedRounds >= MAX_FAILED_ROUNDS) {
-    run.escalations.set(headSha, `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[routed.outcome] ?? routed.outcome}`);
+  const escalated = countRound(run, routed);
+  if (escalated) {
+    run.escalations.set(headSha, escalated);
     return true;
   }
   switch (route) {

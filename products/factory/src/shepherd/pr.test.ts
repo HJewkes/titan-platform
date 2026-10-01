@@ -337,6 +337,47 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  it("counts a FIX_FIRST that yields a new head as progress, so two stuck rounds around it still merge", async () => {
+    const late: { w?: World } = {};
+    const asked: ReviewRequest[] = [];
+    const review: ShepherdPhases["review"] = async (ctx, request) => {
+      asked.push(request);
+      if (!request.fresh) return { kind: "none", cause: "timeout" };
+      return request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "missing test" } : merges(ctx, request);
+    };
+    const w = autoWorld(review, async () => (late.w!.fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }));
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([
+      [H1, false],
+      [H1, true],
+      [H2, false],
+      [H2, true],
+    ]);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("opens approve-merge naming the runaway at the sixth FIX_FIRST, each of which yielded a new head", async () => {
+    const late: { w?: World } = {};
+    const heads: string[] = [];
+    const w = autoWorld(
+      async (_ctx, request) => (heads.push(request.headSha), { kind: "FIX_FIRST", headSha: request.headSha, text: "again" }),
+      async () => (late.w!.fake.pushHead(1, fakeSha(`fix-${heads.length}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(heads).toHaveLength(6);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
   it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {
     const w = autoWorld(async (ctx, request) => merges(ctx, request));
     const runId = shepherdPr1(w);
