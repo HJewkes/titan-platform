@@ -422,6 +422,34 @@ describe("the rule trigger against raw SQL", () => {
     db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "bound");
     expect(store.get("bound")).toMatchObject({ status: "cancelled", rule: TERMINAL_ONLY });
   });
+
+  it.each([
+    ["INSERT ON CONFLICT DO UPDATE", `${RAW_INSERT} ON CONFLICT(id) DO UPDATE SET prompt = excluded.prompt`],
+    ["INSERT ON CONFLICT DO NOTHING", `${RAW_INSERT} ON CONFLICT(id) DO NOTHING`],
+    ["INSERT OR IGNORE", RAW_INSERT.replace("INSERT", "INSERT OR IGNORE")],
+    ["a plain duplicate INSERT", RAW_INSERT],
+  ])("aborts %s of a pending rule-bound id with no rule, before conflict handling", (_label, sql) => {
+    const { db, store } = ruleDb();
+    expect(() => db.prepare(sql).run("bound", null, null, null, "pending")).toThrow(
+      "hitl: a pending rule-bound gate cannot be replaced",
+    );
+    expect(store.get("bound")).toMatchObject({ status: "pending", rule: TERMINAL_ONLY });
+  });
+
+  it("lets a raw REPLACE turn a cancelled rule-bound row into a pending rule-less one, outside the store API", () => {
+    const { db, store } = ruleDb();
+    db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "bound");
+    db.prepare(RAW_REPLACE).run("bound", null, null, null, "pending");
+    expect(store.get("bound")).toMatchObject({ status: "pending", rule: undefined });
+  });
+
+  it("gives the store no path to a pending rule-less row under a cancelled rule-bound id", () => {
+    const { db, store } = ruleDb();
+    store.cancel("bound", "superseded");
+    expect(() => store.create({ id: "bound", prompt: "release?" })).toThrow();
+    expect(db.prepare(`SELECT count(*) AS n FROM "hitl_gate" WHERE id = 'bound'`).get()).toEqual({ n: 1 });
+    expect(store.get("bound")).toMatchObject({ status: "cancelled", rule: TERMINAL_ONLY });
+  });
 });
 
 describe("SqliteGateStore rule round trip", () => {
