@@ -10,7 +10,6 @@ import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, answerPendingGate, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
 import { NO_COMMAND, TAIL_CHARS, execChore, type ChoreExec, type ChoreOptions } from "./post-merge.js";
-import { OWNER } from "../test-support/resolver.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
@@ -49,7 +48,7 @@ async function landToEnd(postMerge: PostMergeConfig | undefined, chore: Chore): 
   hosts.push(host);
   const runId = host.runtime.start("land-pr", { repo: REPO, pr: "1" });
   await gateOpened(host, gateId(runId, "approve-merge"));
-  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
   await host.runtime.wait(runId);
   return { host, runId, fake };
 }

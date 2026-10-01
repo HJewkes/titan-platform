@@ -39,11 +39,6 @@ titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json pri
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
 Owner-specific bindings live in that config file, never in this repo.
 
-`gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
-`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set resolves as `coordinator`, which hitl refuses,
-so the command exits 1 and the gate stays pending. `CLAUDECODE` does not count, because the owner's
-`!` commands in Claude Code set it too.
-
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
 killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prints the run as

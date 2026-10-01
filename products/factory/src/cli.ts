@@ -1,8 +1,6 @@
-import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
-import type { GateResolver } from "@titan-design/hitl";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
@@ -342,14 +340,9 @@ function resolveGate(host: FactoryHost, io: CliIo, runId: string, stepId: string
     io.stderr("error: --json must be a JSON object\n");
     return EXIT.USAGE;
   }
-  host.runtime.signal(runId, stepId, payload, cliResolver(io.env));
+  host.runtime.signal(runId, stepId, payload);
   io.stdout(`resolved ${runId}/${stepId}\n`);
   return EXIT.OK;
-}
-
-/** Owner unless agent-chat spawned this shell; CLAUDECODE is ignored because the owner's `!` commands set it too. A refusal exits FAILURE through `parse`. */
-function cliResolver(env: NodeJS.ProcessEnv): GateResolver {
-  return { class: env.AGENT_CHAT_AGENT_ID ? "coordinator" : "owner-terminal", id: userInfo().username, channel: "factory-cli" };
 }
 
 function parsePayload(json: string): Record<string, unknown> | undefined {

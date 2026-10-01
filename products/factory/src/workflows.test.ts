@@ -16,7 +16,6 @@ import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
 import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
-import { OWNER } from "./test-support/resolver.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
@@ -53,7 +52,7 @@ async function landWith(env: NodeJS.ProcessEnv): Promise<{ argvs: (readonly stri
   hosts.push(host);
   const runId = host.runtime.start("land-pr", { repo: REPO, pr: "1" });
   await gateOpened(host, gateId(runId, "approve-merge"));
-  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
   await host.runtime.wait(runId);
   const record = Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "post-merge")?.data;
   return { argvs, record };
@@ -380,7 +379,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
     const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
     routes.shepherd!.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
     await gateOpened(host, gateId(runId, "approve-merge"));
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
 
     await host.runtime.wait(runId);
 

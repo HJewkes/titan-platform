@@ -9,7 +9,6 @@ import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type MainCiInput } from "./post-merg
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
-import { OWNER } from "../test-support/resolver.js";
 
 const MERGE = fakeSha("merge");
 const OTHER_APP = 999;
@@ -119,7 +118,7 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), ...params });
   await gateOpened(w.host, gateId(runId, "approve-merge"));
-  w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+  w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
   return runId;
 }
 
@@ -160,7 +159,7 @@ describe("shepherd-pr after land", () => {
     const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
     w.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
     await gateOpened(w.host, gateId(runId, "approve-merge"));
-    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
 
     await w.host.runtime.wait(runId);
 
@@ -173,7 +172,7 @@ describe("shepherd-pr after land", () => {
     const runId = await runToMerge(w);
 
     await gateOpened(w.host, gateId(runId, "main-red"));
-    w.host.runtime.signal(runId, "main-red", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    w.host.runtime.signal(runId, "main-red", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha });
     await w.host.runtime.wait(runId);
 
     expect(stepIds(w, runId)).not.toContain("sh-freeze");
@@ -185,7 +184,7 @@ describe("shepherd-pr after land", () => {
 
     await gateOpened(w.host, gateId(runId, "after-stages"));
     const before = stepIds(w, runId);
-    w.host.runtime.signal(runId, "after-stages", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    w.host.runtime.signal(runId, "after-stages", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha });
     await w.host.runtime.wait(runId);
 
     expect(before.filter((id) => /deploy|release|activation/.test(id))).toEqual([]);

@@ -13,7 +13,6 @@ import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
-import { OWNER } from "../test-support/resolver.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
   const actual = await importOriginal<typeof Authority>();
@@ -321,7 +320,7 @@ describe("approve-merge under merge:auto", () => {
 
     expect(fake.effects.merge).toBe(0);
     expect(host.runtime.status(runId)!.stepResults["merge-policy:0:0"]!.data).not.toHaveProperty("allowEvidence");
-    host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: HEAD }, OWNER);
+    host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: HEAD });
     await host.runtime.wait(runId);
   });
 });
