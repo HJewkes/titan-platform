@@ -100,7 +100,7 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
 interface GhRule {
   type: string;
   ruleset_id?: number;
-  parameters?: { strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] };
+  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] };
 }
 
 function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
@@ -109,11 +109,16 @@ function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
   return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true) };
 }
 
+function requiresReview(rule: GhRule): boolean {
+  const p = rule.parameters ?? {};
+  return (p.required_approving_review_count ?? 0) > 0 || p.require_code_owner_review === true || p.required_review_thread_resolution === true || (p.required_reviewers?.length ?? 0) > 0;
+}
+
 const BYPASS_OK = new Set(["always", "pull_requests_only"]);
 
 async function reviewRulesBypassable(api: Rest, repo: string, branch: string): Promise<boolean> {
   const rules = await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`);
-  const ids = new Set(rules.filter((rule) => rule.type === "pull_request").map((rule) => rule.ruleset_id));
+  const ids = new Set(rules.filter((rule) => rule.type === "pull_request" && requiresReview(rule)).map((rule) => rule.ruleset_id));
   for (const id of ids) {
     const ruleset = await api.get<{ current_user_can_bypass?: string }>(`repos/${repo}/rulesets/${id}`);
     if (!BYPASS_OK.has(ruleset.current_user_can_bypass ?? "")) return false;

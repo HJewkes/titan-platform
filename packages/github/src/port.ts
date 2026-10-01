@@ -160,7 +160,7 @@ export interface GitHubPort {
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
   requiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
-  /** True when the caller can bypass every pull-request rule on the branch, or none applies; a read that fails throws. */
+  /** True when the caller can bypass every pull_request rule on the branch that requires review, or none does; a read that fails throws. A rule that requires no review cannot be the block, so it is skipped. */
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
   checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
