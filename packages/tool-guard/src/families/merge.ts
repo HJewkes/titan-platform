@@ -114,10 +114,17 @@ function pushDestination(spec: string, head: string | null): string | null {
   return dest === "" ? null : dest;
 }
 
+/** A refspec's literal text; for `"$X":main` only the literal destination after the last colon is known. */
+function literalSpec(word: WordToken): string | null {
+  if (!word.dynamic) return word.value;
+  const tail = word.value.slice(word.value.lastIndexOf(":") + 1);
+  return word.value.includes(":") && !/[$`]/.test(tail) ? `:${tail}` : null;
+}
+
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
-  const specs = options.positionals.slice(1).filter((s) => !s.dynamic);
-  if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.value.includes("*"))) {
+  const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
+  if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
     return [classified("bash.merge.git-push-all", {})];
   }
   if (options.positionals.length > 1) return pushSpecs(specs, git, ctx);
@@ -126,10 +133,10 @@ function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   return isProtected(head) ? [classified("bash.merge.git-push-implicit", { branch: head as string })] : [];
 }
 
-function pushSpecs(specs: WordToken[], git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
-  const needsHead = specs.some((s) => /^\+?(?:HEAD|@)$/.test(s.value));
+function pushSpecs(specs: string[], git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
+  const needsHead = specs.some((s) => /^\+?(?:HEAD|@)$/.test(s));
   const head = needsHead ? headOf(git, ctx) : null;
-  const dests = specs.map((s) => pushDestination(s.value, head)).filter(isProtected);
+  const dests = specs.map((s) => pushDestination(s, head)).filter(isProtected);
   return [...new Set(dests)].map((branch) => classified("bash.merge.git-push-protected", { branch: branch as string }));
 }
 
@@ -145,5 +152,29 @@ function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   return curlMerge(cmd);
 }
 
+const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--force-create"];
+
+/**
+ * The branch a `git checkout`, `git switch` or `gh pr checkout` leaves checked out: the new branch's
+ * name when it creates one, else `unknown`. Undefined when the command does not change branch.
+ */
+function switchedHead(cmd: SimpleCommand, ctx: ClassifyContext): string | undefined {
+  if (cmd.name === "gh") return /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" ")) ? UNKNOWN : undefined;
+  if (cmd.name !== "git") return undefined;
+  const inv = parseGit(cmd.args, cmd.dir, ctx.home);
+  if (inv.sub !== "checkout" && inv.sub !== "switch") return undefined;
+  const dashes = inv.subArgs.findIndex((a) => a.value === "--");
+  const options = readOptions(dashes >= 0 ? inv.subArgs.slice(0, dashes) : inv.subArgs, set(...NEW_BRANCH_OPTS));
+  const created = lastValue(options, ...NEW_BRANCH_OPTS);
+  if (created) return created.dynamic ? UNKNOWN : created.value;
+  return options.positionals.length > 0 || hasFlag(options, "--detach") ? UNKNOWN : undefined;
+}
+
+/** A branch switch earlier on the line replaces the hook-time head for every later command. */
+function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
+  const head = switchedHead(cmd, ctx);
+  return head === undefined ? undefined : { ...ctx, readHead: () => head };
+}
+
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */
-export const merge: Family = { names: set("gh", "git", "curl", "wget", "http", "https"), bash };
+export const merge: Family = { names: set("gh", "git", "curl", "wget", "http", "https"), bash, after };

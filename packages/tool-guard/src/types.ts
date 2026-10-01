@@ -31,4 +31,6 @@ export interface Family {
   bash?(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[];
   read?(event: ReadEvent, ctx: ClassifyContext): ClassifiedAction[];
   write?(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[];
+  /** The context later commands on the same line see, when `cmd` changes it; undefined leaves it as it is. */
+  after?(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined;
 }

@@ -33,7 +33,11 @@ describe("one fixture per bash.merge spelling", () => {
     ["bash.merge.git-push-protected", "git push origin +refs/heads/master", { branch: "master" }],
     ["bash.merge.git-push-protected", "git push origin feat:release/2.0", { branch: "release/2.0" }],
     ["bash.merge.git-push-protected", "git push origin --delete main", { branch: "main" }],
+    ["bash.merge.git-push-protected", 'git push origin "$X":main', { branch: "main" }],
+    ["bash.merge.git-push-protected", 'git push origin "${B}:main"', { branch: "main" }],
+    ["bash.merge.git-push-protected", 'git push origin +"$X":main', { branch: "main" }],
     ["bash.merge.git-push-all", "git push --all origin", {}],
+    ["bash.merge.git-push-all", "git push --mirror origin", {}],
     ["bash.merge.git-push-all", "git push origin 'refs/heads/*:refs/heads/*'", {}],
   ])("%s: %s", (spelling, command, subject) => {
     expect(bash(command)).toEqual([expect.objectContaining({ action: "merge", spelling, subject })]);
@@ -57,6 +61,15 @@ describe("one fixture per bash.merge spelling", () => {
   it("reads the head of the directory git -C names, and treats a directory it cannot know as protected", () => {
     expect(bash("git -C /elsewhere push", "main")).toEqual([]);
     expect(spellings(bash('cd "$(mktemp -d)" && git push'))).toEqual(["bash.merge.git-push-implicit"]);
+  });
+
+  it.each([
+    ["&&", "git checkout main && git merge feat", ["bash.merge.git-merge-protected"]],
+    ["; and &&", "git switch main; git merge feat && git push", ["bash.merge.git-merge-protected", "bash.merge.git-push-implicit"]],
+    ["||", "git checkout release/2.0 || true\ngit push", ["bash.merge.git-push-implicit"]],
+    ["gh pr checkout", "gh pr checkout 12 && git push", ["bash.merge.git-push-implicit"]],
+  ])("an earlier branch switch on the line (%s) makes the head unknown, so later commands count as protected", (_sep, command, expected) => {
+    expect(spellings(bash(command, "feat/x"))).toEqual(expected);
   });
 
   it("finds a merge chained after other commands and inside a subshell", () => {
@@ -84,6 +97,10 @@ describe("normal work classifies nothing", () => {
     ["a graphql query that reads merge state", "gh api graphql -f query='{ repository(owner: \"o\", name: \"r\") { pullRequest(number: 1) { mergeable } } }'", "feat/x"],
     ["a curl GET of the merge endpoint", "curl https://api.github.com/repos/o/r/pulls/3/merge", "feat/x"],
     ["a commit message that mentions a merge", "git commit -m 'gh pr merge 12 after review'", "main"],
+    ["a push after creating a feature branch from main", "git checkout -b feat/y && git push -u origin HEAD", "main"],
+    ["a push after git switch -c", "git switch -c feat/y origin/main; git push", "main"],
+    ["a path restore before a push", "git checkout -- src/a.ts && git push", "feat/x"],
+    ["a push of a run-time branch name", 'git push origin "$X"', "main"],
   ])("%s", (_what, command, head) => {
     expect(bash(command, head)).toEqual([]);
   });

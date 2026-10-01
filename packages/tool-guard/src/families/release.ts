@@ -24,6 +24,9 @@ const DIST_TAG_WRITES = set("add", "rm", "remove");
 const GH_RELEASE_WRITES = set("create", "edit", "upload", "delete");
 const WRANGLER_DEPLOYS = ["deploy", "publish", "versions deploy", "pages deploy", "pages publish"];
 
+/** A workflow named for shipping, or one named by numeric id or at run time, which could be any workflow. */
+const RELEASE_WORKFLOW_RE = /release|publish|deploy|^\d+$|[$`]/i;
+
 type Rule = (words: string[]) => SpellingId | null;
 
 const npm: Rule = ([sub, verb]) => {
@@ -46,7 +49,7 @@ const wrangler: Rule = (words) => {
 
 const gh: Rule = ([group, verb, target]) => {
   if (group === "release" && verb !== undefined && GH_RELEASE_WRITES.has(verb)) return "bash.release.gh-release";
-  const releaseWorkflow = group === "workflow" && verb === "run" && target !== undefined && /release/i.test(target);
+  const releaseWorkflow = group === "workflow" && verb === "run" && target !== undefined && RELEASE_WORKFLOW_RE.test(target);
   return releaseWorkflow ? "bash.release.gh-workflow-run" : null;
 };
 

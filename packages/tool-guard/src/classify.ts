@@ -28,9 +28,11 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
+  let line = ctx;
   for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
-    out.push(...classifySimple(cmd, ctx));
-    if (followScripts) out.push(...scriptActions(cmd, ctx));
+    out.push(...classifySimple(cmd, line));
+    if (followScripts) out.push(...scriptActions(cmd, line));
+    line = FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
   }
   return unique(out);
 }
