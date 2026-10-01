@@ -88,8 +88,11 @@ Protect the default branch with a ruleset, not with the older branch protection 
   `egress-scan`, `hub-compose` and `validate`.
 - Require a pull request, and set `require_extra_approval_for_unattributed_changes` if you
   want unattributed commits to need a review.
-- Give the ruleset no bypass actors. Not the App, not an admin, not the owner. A merge that
-  passes the checks needs no bypass, and one that cannot pass should not merge.
+- Give the ruleset no bypass actors where you can. Not the App, not an admin, not the owner.
+  A merge that passes the checks needs no bypass, and one that cannot pass should not merge.
+- A ruleset that requires an approving review still asks for one on each release pull
+  request. App attribution only satisfies the unattributed-change rule. Check the first
+  App-opened release pull request to see what your ruleset still requires.
 
 ## The factory service
 
