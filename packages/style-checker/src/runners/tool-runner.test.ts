@@ -1,5 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { EventEmitter } from "node:events";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import * as childProcess from "node:child_process";
 import { runTool } from "./tool-runner.js";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof childProcess>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
+
+function throwingSpawn(code: string): never {
+  throw Object.assign(new Error(`spawn ${code}`), { code });
+}
+
+function fakeFailingChild(code: string): childProcess.ChildProcess {
+  const child = new EventEmitter() as childProcess.ChildProcess;
+  Object.assign(child, { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: vi.fn() });
+  setImmediate(() => child.emit("error", Object.assign(new Error(`spawn ${code}`), { code })));
+  return child;
+}
 
 describe("runTool", () => {
   it("captures stdout from a successful command", async () => {
@@ -35,5 +53,42 @@ describe("runTool", () => {
     await expect(
       runTool("nonexistent-command-xyz", []),
     ).rejects.toThrow(/Failed to spawn/);
+  });
+
+  describe("when the kernel refuses to exec a script another thread just wrote", () => {
+    afterEach(() => {
+      vi.mocked(childProcess.spawn).mockReset();
+    });
+
+    it("retries the spawn after ETXTBSY and returns the successful run", async () => {
+      const real = (await vi.importActual<typeof childProcess>("node:child_process")).spawn;
+      const spawnSpy = vi.mocked(childProcess.spawn);
+      spawnSpy.mockClear();
+      spawnSpy.mockImplementationOnce(() => throwingSpawn("ETXTBSY"));
+      spawnSpy.mockImplementation(real);
+
+      const result = await runTool("echo", ["again"]);
+
+      expect(result.stdout.trim()).toBe("again");
+      expect(spawnSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives up with a spawn failure when ETXTBSY never clears", async () => {
+      const spawnSpy = vi.mocked(childProcess.spawn);
+      spawnSpy.mockClear();
+      spawnSpy.mockImplementation(() => throwingSpawn("ETXTBSY"));
+
+      await expect(runTool("echo", [])).rejects.toThrow(/Failed to spawn echo: spawn ETXTBSY/);
+      expect(spawnSpy.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it("does not retry other spawn errors", async () => {
+      const spawnSpy = vi.mocked(childProcess.spawn);
+      spawnSpy.mockClear();
+      spawnSpy.mockImplementation(() => fakeFailingChild("ENOENT"));
+
+      await expect(runTool("echo", [])).rejects.toThrow(/ENOENT/);
+      expect(spawnSpy).toHaveBeenCalledTimes(1);
+    });
   });
 });
