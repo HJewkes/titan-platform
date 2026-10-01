@@ -217,6 +217,42 @@ describe("mergeEvidence", () => {
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 
+  describe("a blocked PR", () => {
+    function blocked(state: "blocked" | "dirty", bypass: boolean): FakeGitHub {
+      const fake = world();
+      fake.pr(1).mergeableState = state;
+      fake.reviewBypass = bypass;
+      return fake;
+    }
+
+    it("is mergeTreeClean and holds MRG-AU-RV when only a bypassable review rule blocks it", async () => {
+      const evidence = await collect(blocked("blocked", true));
+
+      expect(evidence.merge.mergeTreeClean).toBe(true);
+      expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+    });
+
+    it("is not mergeTreeClean when the review rule cannot be bypassed", async () => {
+      expect((await collect(blocked("blocked", false))).merge.mergeTreeClean).toBe(false);
+    });
+
+    it("is not mergeTreeClean when it conflicts, even if the review rule is bypassable", async () => {
+      expect((await collect(blocked("dirty", true))).merge.mergeTreeClean).toBe(false);
+    });
+
+    it("gates, never allows, when the bypass read throws", async () => {
+      const fake = blocked("blocked", true);
+      fake.wire.reviewRulesBypassable = async () => {
+        throw new Error("rulesets unreadable");
+      };
+
+      const evidence = await collect(fake);
+
+      expect(evidence.merge.mergeTreeClean).toBe(false);
+      expect(evidence.record.decision.outcome).toBe("gate");
+    });
+  });
+
   it("gates a resolver that is not the dispatched reviewer", async () => {
     const evidence = await collect(world(), { resolver: { agentId: "agent-other", sessionId: REVIEWER.sessionId } });
 
