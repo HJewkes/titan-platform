@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { caseHash, judgesHash, suiteHash, unitHash, variantHash } from "./hash.js";
+import { caseHash, judgesHash, pinSuitePrompts, suiteHash, unitHash, variantHash } from "./hash.js";
 import { parseSpec } from "./spec/index.js";
 import type { EvalCase, Scorecard, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
 import { FIXTURE_ROOT, readFixture } from "./test-fixtures.js";
@@ -60,5 +60,23 @@ describe("validateSpec", () => {
     const [here, there] = await Promise.all([validateSpec(scorecard, readFromFixtures), validateSpec(otherHost, readFromFixtures)]);
 
     expect(there.hash).toBe(here.hash);
+  });
+});
+
+describe("judge prompt pinning", () => {
+  const suite = parseSpec(readFixture("suite.json")) as SuiteSpec;
+
+  it("moves the suite and judge hashes when the judge prompt file changes", async () => {
+    const before = await pinSuitePrompts(suite, async () => "Grade the summary.");
+    const after = await pinSuitePrompts(suite, async () => "Grade the summary strictly.");
+
+    expect(suiteHash(after)).not.toBe(suiteHash(before));
+    expect(judgesHash(after)).not.toBe(judgesHash(before));
+  });
+
+  it("reports a suite stale when its judge prompt changed after the digest was stored", async () => {
+    const result = await validateSpec(readFixture("suite.json"), async () => "an edited judge prompt");
+
+    expect(result.stalePrompts).toBe(true);
   });
 });

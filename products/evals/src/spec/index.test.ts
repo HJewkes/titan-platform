@@ -98,3 +98,36 @@ describe("schema edges", () => {
     expect(() => parseSpec(moved)).toThrow(/forward slashes/);
   });
 });
+
+describe("strictness inside nested refs", () => {
+  it("rejects an unknown key inside a prompt ref when strict and keeps it when loose", () => {
+    const variant = readFixture<VariantSpec>("variants/single-pass.json");
+    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const extended = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, encoding: "utf8" } } } };
+
+    expect(() => parseSpec(extended, "strict")).toThrow(/encoding|Unrecognized/);
+    expect(parseSpec(extended, "loose")).toMatchObject({ steps: { summarize: { prompt: { encoding: "utf8" } } } });
+  });
+
+  it("rejects an unknown key inside a judge when strict and keeps it when loose", () => {
+    const suite = readFixture<{ checks: Record<string, unknown>[] }>("suite.json");
+    const judge = suite.checks.find((check) => check.family === "judge") as { judge: Record<string, unknown> };
+    const extended = { ...suite, checks: [{ ...judge, judge: { ...judge.judge, temperature: 0 } }] };
+
+    expect(() => parseSpec(extended, "strict")).toThrow(/temperature|Unrecognized/);
+    expect(parseSpec(extended, "loose")).toMatchObject({ checks: [{ judge: { temperature: 0 } }] });
+  });
+});
+
+describe("model ids", () => {
+  it.each(["sonnet", "sonnet[1m]", "opus[1m]", "Sonnet", " sonnet", "claude-sonnet-latest", "claude-opus-5-5 "])(
+    "refuses %j on write, because it is an alias or not an exact id",
+    (model) => {
+      expect(() => parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict")).toThrow(/model/);
+    },
+  );
+
+  it.each(["claude-opus-5-5", "claude-haiku-4-5-20251001", "gpt-5-codex"])("accepts the exact id %s", (model) => {
+    expect(() => parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict")).not.toThrow();
+  });
+});

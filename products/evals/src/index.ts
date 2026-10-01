@@ -9,7 +9,7 @@ export {
   parseSpec,
 } from "./spec/index.js";
 export type { CheckSpec, EvalCase, Scorecard, Spec, SpecSchemaVersion, StepSpec, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
-export { MODEL_ALIASES, SHA256_PATTERN, SPEC_ID_PATTERN } from "./spec/common.js";
+export { MODEL_ID_PATTERN, SHA256_PATTERN, SPEC_ID_PATTERN } from "./spec/common.js";
 export type { SpecParseMode } from "./spec/common.js";
 export { CHECK_ROLES, DETERMINISTIC_CHECK_TYPES, EFFICIENCY_METRICS } from "./spec/check.js";
 export { CASE_SPLITS } from "./spec/case-suite.js";

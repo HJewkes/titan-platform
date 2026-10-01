@@ -16,7 +16,7 @@ rule everything later depends on.
 
 - **Specs.** zod schemas for a unit (`titan.unit/v1`), a variant (`titan.variant/v1`), a
   case (`titan.case/v1`), a suite with its checks (`titan.suite/v1`) and a scorecard
-  (`titan.scorecard/v1`). Strict on write: unknown keys and model aliases are refused.
+  (`titan.scorecard/v1`). Strict on write: unknown keys and anything but an exact model id (`MODEL_ID_PATTERN`) are refused.
   Loose on read: unknown keys are kept. The same two modes as `agent-protocol`'s `/trace`.
 - **Content hashes.** Canonical JSON (sorted keys, no whitespace), SHA-256. Each hash covers
   every field except the ones listed in `HASH_EXCLUDED_FIELDS`, so a field added later joins

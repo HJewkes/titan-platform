@@ -7,8 +7,8 @@ export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 export const SPEC_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
-/** Aliases resolve to different models over time, so a hashed spec must name the dated id instead. */
-export const MODEL_ALIASES = ["sonnet", "opus", "haiku", "fable", "opusplan", "default", "best"] as const;
+/** An exact id: lowercase, no spaces or brackets, at least one digit, never a moving `-latest` tag. */
+export const MODEL_ID_PATTERN = /^(?!.*-latest$)(?=[^\d]*\d)[a-z0-9][a-z0-9.-]*$/;
 
 export const nonempty = z.string().min(1);
 export const sha256 = z.string().regex(SHA256_PATTERN);
@@ -37,7 +37,7 @@ export function objectFor(mode: SpecParseMode) {
 
 export function modelId(mode: SpecParseMode) {
   if (mode === "loose") return nonempty;
-  return nonempty.refine((model) => !(MODEL_ALIASES as readonly string[]).includes(model), "resolve the model alias to an exact id before hashing");
+  return nonempty.regex(MODEL_ID_PATTERN, "model must be an exact id; resolve aliases such as sonnet or sonnet[1m] before hashing");
 }
 
 export function unitRef(mode: SpecParseMode) {
