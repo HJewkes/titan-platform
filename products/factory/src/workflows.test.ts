@@ -7,7 +7,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/githu
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
-import { DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
+import { DEFAULT_EXIT_GRACE_MS, DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
 import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
@@ -270,12 +270,22 @@ describe("configuredRoutes with shepherd.review", () => {
   });
 
   it("gives up on a reviewer that ends without a verdict once shepherd.review.verdictTimeoutMs has passed", async () => {
-    const scene = reviewScene({ review: { profile: PROFILE, verdictTimeoutMs: 90_000 }, lastWords: "Still reading." });
+    const scene = reviewScene({ review: { profile: PROFILE, verdictTimeoutMs: 30_000 }, lastWords: "Still reading." });
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
-    expect(elapsed).toBeGreaterThanOrEqual(90_000);
+    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none", silence: `gave no verdict for ${H1} within 30000 ms` });
+    expect(elapsed).toBeGreaterThanOrEqual(2 * 30_000);
+    expect(elapsed).toBeLessThan(2 * DEFAULT_EXIT_GRACE_MS);
+  });
+
+  it("gives up one exit grace after the roster shows the reviewer exited with no verdict, long before the verdict timeout", async () => {
+    const scene = reviewScene({ lastWords: "Still reading." });
+
+    const { result, elapsed } = await reviewWith(scene);
+
+    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
+    expect(elapsed).toBeGreaterThanOrEqual(2 * DEFAULT_EXIT_GRACE_MS);
     expect(elapsed).toBeLessThan(DEFAULT_VERDICT_TIMEOUT_MS);
   });
 
