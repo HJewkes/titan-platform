@@ -1,8 +1,14 @@
 import { DEFAULT_TABLE, canResolve, evaluate, type ActorClass, type Decision, type PolicyTable } from "@titan-design/authority";
+import { policyGateId } from "@titan-design/agent-protocol/trace";
 import { nowIso } from "@titan-design/store-sqlite";
 import { waitForGate, type GateInput, type GateRecord, type GateResolver, type GateRule, type GateStore, type JsonSchema, type WaitOptions } from "@titan-design/hitl";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
-import { AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
+import { AuthorityDeniedError, AuthorityRefusedError, workflowStepRequestKey, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
+
+/** The `StepResult.data` key the F3 trace projection reads gate-decision records from. */
+export const TRACE_GATES_KEY = "titan.trace.gates";
+
+const NO_RULE_ROW_ID = "no-rule";
 
 /** The name every authorize gate records as its rule's table. */
 export const AUTHORITY_TABLE_NAME = "F5";
@@ -59,8 +65,57 @@ function ruleMismatch(existing: GateRecord, gateId: string, authority: Authority
   return refused(rule.ruleId, `the gate was recorded under rule ${rule.ruleId}, but ${request.action} maps to ${current ?? "no rule"}`);
 }
 
-export function authorityStepResult(stepId: string, iteration: number, outcome: AuthorityOutcome): StepResult {
-  return { stepId, iteration, operation: "authorize", agentId: null, signal: null, completedAt: nowIso(), data: { ...outcome } };
+export function authorityStepResult(runId: string, stepId: string, iteration: number, outcome: AuthorityOutcome, tableVersion: string): StepResult {
+  const gates = [policyGateRecord(runId, stepId, iteration, outcome, tableVersion)];
+  return { stepId, iteration, operation: "authorize", agentId: null, signal: null, completedAt: nowIso(), data: { ...outcome, [TRACE_GATES_KEY]: gates } };
+}
+
+/** The version the decision was made under: a resumed gate keeps the version it was opened with, not the current table's. */
+export function decisionVersion(outcome: AuthorityOutcome, gates: GateStore, authority: Authority): string {
+  return ("gateId" in outcome ? gates.get(outcome.gateId)?.rule?.version : undefined) ?? authority.table.version;
+}
+
+/** Owner question 2 default: the semver major is the integer `policyRule.version`; the full string stays on the hitl gate's rule. */
+function majorVersion(version: string): number {
+  const major = Number.parseInt(version, 10);
+  return Number.isNaN(major) ? 0 : major;
+}
+
+function policyGateRecord(runId: string, stepId: string, iteration: number, outcome: AuthorityOutcome, tableVersion: string): Record<string, unknown> {
+  const attemptId = workflowStepRequestKey(runId, stepId, iteration, 0);
+  const rowId = outcome.ruleId ?? NO_RULE_ROW_ID;
+  return {
+    schema: "titan.trace/v1",
+    kind: "gate",
+    id: policyGateId(attemptId, AUTHORITY_TABLE_NAME, rowId),
+    runId,
+    attemptId,
+    at: nowIso(),
+    gateKind: "policy",
+    verdict: policyVerdict(outcome),
+    decidedBy: `policy:${AUTHORITY_TABLE_NAME}`,
+    policyRule: { table: AUTHORITY_TABLE_NAME, rowId, version: majorVersion(tableVersion) },
+    reason: policyReason(outcome),
+  };
+}
+
+/** A gate decision is not an allow or deny yet, so it records null; the human's answer is the hitl store's record. */
+function policyVerdict(outcome: AuthorityOutcome): "allow" | "deny" | null {
+  if (outcome.verdict === "allow" || outcome.verdict === "deny") return outcome.verdict;
+  return null;
+}
+
+function policyReason(outcome: AuthorityOutcome): string {
+  switch (outcome.verdict) {
+    case "allow":
+      return `rule ${outcome.ruleId} allows the action`;
+    case "deny":
+      return outcome.reason;
+    case "approved":
+      return `rule ${outcome.ruleId} requires a human gate`;
+    case "refused":
+      return outcome.reason;
+  }
 }
 
 export function requireAuthority(options: WorkflowAuthorityOptions | undefined, stepId: string): Authority {
