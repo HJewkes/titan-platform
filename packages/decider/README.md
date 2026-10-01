@@ -12,5 +12,11 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   unparsed answer that stays out of scoring.
 - `isExcluded(subject, policy)` takes the human-only initiatives, the project-directory
   mapping and the personal-data patterns as data. It never reads a charter or a file.
+- Principles are `@titan-design/memory` bullets (category = domain, provenance = `ledger:<key>`).
+  `feedbackForRow` maps a row and the reflector's verdicts to helpful or harmful feedback;
+  `applyFeedback` records it once per ledger key.
+- `writePrincipleDocs` renders one `<domain>.md` per domain into a directory the caller passes:
+  rule, cited examples, counter-examples, confidence, last confirmed, version and changelog.
+- `ALWAYS_ASK` is the fixed always-ask list; `alwaysAskList(hardStops)` adds the charter's.
 
-Status: slice 1 of TP-695 (TP-696). The store and sources land in TP-697.
+Status: slices 1 (TP-696) and 6 (TP-701) of TP-695. The store and sources land in TP-697.
