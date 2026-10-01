@@ -62,9 +62,10 @@ function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx:
       if (!(error instanceof ParseError)) throw error;
     }
   }
-  const word = { type: "word" as const, value: text, dynamic: false, quoted: true, computed: false, refs: [], subs: [] };
+  const word = { type: "word" as const, value: text, dynamic: false, quoted: true, spliced: false, computed: false, refs: [], subs: [] };
   const name = target.kind === "interpreter" ? cmd.name : null;
-  return classifySimple({ name, args: [word], env: {}, redirects: [], dir: cmd.dir }, ctx);
+  const path = name === null ? null : cmd.path;
+  return classifySimple({ name, path, args: [word], env: {}, redirects: [], dir: cmd.dir, wrapping: [], next: null, prev: null, negated: false, chain: { start: null } }, ctx);
 }
 
 function readScript(ctx: ClassifyContext, path: string): string | null {

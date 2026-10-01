@@ -74,8 +74,35 @@ describe("one fixture per bash.merge spelling", () => {
 
   it.each([
     ["; ", "git checkout -b feat/z; git merge x"],
-    ["&&", "git checkout -b feat/z && git merge x"],
-  ])("a branch created from main (%s) leaves the head unknown, since a failed -b stays on main", (_sep, command) => {
+    ["||", "git checkout -b feat/z || git merge x"],
+    ["newline", "git switch -c feat/z\ngit merge x"],
+    ["a pipe", "git checkout -b feat/z | cat && git merge x"],
+  ])("a branch created from main then %s leaves the head unknown, since a failed -b stays on main", (_sep, command) => {
+    expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
+  });
+
+  it.each([
+    ["git checkout -b", "git checkout -b feat/z && git merge x"],
+    ["git switch -c", "git switch -c feat/z origin/main && git merge x"],
+    ["git checkout --orphan", "git checkout --orphan feat/z && git merge x"],
+    ["git checkout -b, then more && steps", "git checkout -b feat/z && git add . && git merge x"],
+  ])("trusts the branch %s created from main as the head after &&, since the switch succeeded", (_how, command) => {
+    expect(bash(command, "main")).toEqual([]);
+  });
+
+  it.each([
+    ["&& false ||", "git checkout -b feat/z && false || git merge x"],
+    ["&& true ||", "git checkout -b feat/z && true || git merge x"],
+    ["a second merge after ||", "git checkout -b feat/z && git merge x || git merge y"],
+    ["a group then ;", "git checkout -b feat/z && { false; } ; git merge x"],
+    ["a negated switch", "! git checkout -b feat/z && git merge x"],
+    ["a switch run only when || fails", "true || git checkout -b feat/z && git merge x"],
+    ["|| after an assignment", "git checkout -b feat/z && X=1 || git merge x"],
+    ["|| after a cd", "git checkout -b feat/z && cd . || git merge x"],
+    ["a negated pipeline ending in the switch", "! true | git checkout -b feat/z && git merge x"],
+    ["a pipeline ending in the switch", "true | git checkout -b feat/z && git merge x"],
+    ["a |& pipeline ending in the switch", "true |& git checkout -b feat/z && git merge x"],
+  ])("drops the trust in a branch created from main once the && chain breaks: %s", (_how, command) => {
     expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
   });
 

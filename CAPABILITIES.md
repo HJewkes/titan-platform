@@ -328,7 +328,7 @@ Key exports:
 - `spellings`: `SPELLINGS`
 - `classify`: `classify`
 - `shell`: `ParseError`, `tokenize`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
-- +20 more in `packages/tool-guard/src/index.ts`
+- +22 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 

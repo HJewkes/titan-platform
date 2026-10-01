@@ -20,10 +20,14 @@ export interface WordToken {
   value: string;
   dynamic: boolean;
   quoted: boolean;
+  /** Quotes or escapes split the word, or `$'...'` decoded it: `~/".x"`, `.n''x`, `.n\x`. */
+  spliced: boolean;
   computed: boolean;
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
+  /** The text before literal variables were expanded into it; absent when nothing was expanded. */
+  typed?: string;
 }
 
 export interface OpToken {
@@ -107,6 +111,7 @@ function step(s: LexState): void {
   if (c === "&" && s.src[s.i + 1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => s.src.startsWith(o, s.i));
   if (op) return readOperator(s, op);
+  if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
 }
 
@@ -116,7 +121,7 @@ function readBlank(s: LexState): void {
 }
 
 function ensureWord(s: LexState): WordToken {
-  s.word ??= { type: "word", value: "", dynamic: false, quoted: false, computed: false, refs: [], subs: [] };
+  s.word ??= { type: "word", value: "", dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
   return s.word;
 }
 
@@ -173,21 +178,27 @@ function readEscape(s: LexState): void {
     const w = ensureWord(s);
     w.value += next;
     w.quoted = true;
+    w.spliced = true;
   }
 }
 
 function readSingle(s: LexState): void {
   const end = s.src.indexOf("'", s.i + 1);
   if (end === -1) throw new ParseError("unterminated '");
-  const w = ensureWord(s);
+  const w = markQuoted(ensureWord(s));
   w.value += s.src.slice(s.i + 1, end);
-  w.quoted = true;
   s.i = end + 1;
 }
 
-function readDouble(s: LexState): void {
-  const w = ensureWord(s);
+/** A quoted part after other text splits the word. */
+function markQuoted(w: WordToken): WordToken {
+  if (w.value !== "") w.spliced = true;
   w.quoted = true;
+  return w;
+}
+
+function readDouble(s: LexState): void {
+  const w = markQuoted(ensureWord(s));
   s.i++;
   while (s.src[s.i] !== '"') {
     if (s.i >= s.src.length) throw new ParseError('unterminated "');
@@ -294,6 +305,7 @@ function readAnsiC(s: LexState, w: WordToken): void {
   if (end >= s.src.length) throw new ParseError("unterminated $'");
   w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
   w.quoted = true;
+  w.spliced = true;
   s.i = end + 1;
 }
 
