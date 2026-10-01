@@ -5,6 +5,8 @@ import type { WorkflowStatus } from "@titan-design/workflow";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
+import type { ShepherdServices } from "./shepherd/commands.js";
+import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -23,6 +25,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   /** Bind address; defaults to 127.0.0.1. */
   hostname?: string;
   logger?: Logger;
+  /** How often runs waiting on a gate have their PR checked for a merge or close elsewhere; defaults to 5 minutes. */
+  goneSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
 }
@@ -47,11 +51,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
     host.close();
     throw err;
   }
-  const sweep = startAdoptionSweep(host, options.leaseMs ?? DEFAULT_LEASE_MS, options.logger ?? consoleLogger);
+  const log = options.logger ?? consoleLogger;
+  const sweep = startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
+  const services = options.routes.shepherd;
+  const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
+    await goneSweep?.stop();
     await daemon.close();
     host.close();
   };
@@ -103,19 +111,26 @@ export function factoryHealth(host: FactoryHost): Record<string, unknown> {
   return { runs, pendingGates: host.pendingGates().length };
 }
 
-interface AdoptionSweep {
+interface Sweep {
   tick(): Promise<void>;
   stop(): Promise<void>;
 }
 
-/** Picks up runs whose owning process exited without releasing: their lease lapses, and the next tick claims them. */
-function startAdoptionSweep(host: FactoryHost, everyMs: number, log: Logger): AdoptionSweep {
+async function adopt(host: FactoryHost, log: Logger): Promise<void> {
+  const ids = await host.adopt();
+  if (ids.length > 0) log.info({ runs: ids }, "adopted runs");
+}
+
+async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+}
+
+/** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */
+function startSweep(tickOnce: () => Promise<void>, everyMs: number, name: string, log: Logger): Sweep {
   let inFlight: Promise<void> | null = null;
   const tick = (): Promise<void> =>
-    (inFlight ??= host
-      .adopt()
-      .then((ids) => void (ids.length > 0 && log.info({ runs: ids }, "adopted runs")))
-      .catch((err: unknown) => log.error({ err }, "adoption sweep failed"))
+    (inFlight ??= tickOnce()
+      .catch((err: unknown) => log.error({ err }, `${name} failed`))
       .finally(() => (inFlight = null)));
   const timer = setInterval(() => void tick(), everyMs);
   timer.unref();
