@@ -12,7 +12,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   unparsed answer that stays out of scoring.
 - `isExcluded(subject, policy)` takes the human-only initiatives, the project-directory
   mapping and the personal-data patterns as data. It never reads a charter or a file.
-
+- Principles are `@titan-design/memory` bullets (category = domain, provenance = `ledger:<key>`).
+  `feedbackForRow` maps a row and the reflector's verdicts to helpful or harmful feedback;
+  `applyFeedback` records it once per ledger key.
+- `writePrincipleDocs` renders one `<domain>.md` per domain into a directory the caller passes:
+  rule, cited examples, counter-examples, confidence, last confirmed, version and changelog.
+- `ALWAYS_ASK` is the fixed always-ask list; `alwaysAskList(hardStops)` adds the charter's.
 - `LedgerStore` (`openLedgerStore(path)`) is append-only by row key, with a watermark per source
   cursor on `@titan-design/store-sqlite`.
 - `LedgerSource` is the port `{ name, read(since) }`; `extractSource` runs one source, drops
@@ -20,4 +25,4 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `transcriptSource()` reads `AskUserQuestion` calls from Claude Code transcripts through
   `@titan-design/session-read`, ported from active-work's `src/precedent/transcripts.ts`.
 
-Status: slices 1 and 2 of TP-695 (TP-696, TP-697).
+Status: slices 1, 2 and 6 of TP-695 (TP-696, TP-697, TP-701).

@@ -271,6 +271,9 @@ importers:
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../memory
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read
