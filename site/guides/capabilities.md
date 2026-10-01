@@ -29,7 +29,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
-| [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. It decides nothing; the classifier and hook land in later TP-403 slices. |
+| [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a credential read, a permission-config edit) with no actor attached; it decides nothing, and the decision and hook land in later TP-403 slices. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
@@ -313,14 +313,18 @@ Key exports:
 
 ### `tool-guard`
 
-Tier 0, private, `packages/tool-guard`. POSIX shell tokenizer and command extraction for tool-call guards
+Tier 0, private, `packages/tool-guard`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
-**Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. It decides nothing; the classifier and hook land in later TP-403 slices.
+**Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a credential read, a permission-config edit) with no actor attached; it decides nothing, and the decision and hook land in later TP-403 slices.
 
 Key exports:
 
-- `shell`: `ParseError`, `tokenize`, `OpToken`, `RedirectToken`, `SubsToken`, `Token`, `VarRef`, `WordToken`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
-- +4 more in `packages/tool-guard/src/index.ts`
+- `event`: `parseHookEvent`, `HookEvent`, `MalformedEvent`
+- `paths`: `GUARDED_PATHS`
+- `spellings`: `SPELLINGS`
+- `classify`: `classify`
+- `shell`: `ParseError`, `tokenize`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
+- +20 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 
@@ -604,7 +608,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +84 more in the [reference page](/reference/session-analytics)
+- +108 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -624,7 +628,7 @@ Key exports:
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
 - `tasks`: `allTaskIds`
-- +77 more in the [reference page](/reference/session-graph)
+- +79 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 

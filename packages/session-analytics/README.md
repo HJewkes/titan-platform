@@ -30,14 +30,18 @@ priceRequest(
   `other_headless`, plus `coordinator` or `adhoc` for human sessions.
 - `CONTEXT_BANDS`, `GAP_BANDS`, `bandOf`, `contextBand`, `gapBand`.
 - `costReport(db, { since, until, days, top, transcriptsDiscovered, facetVersion, actionRules,
-  mechanicalClasses, episodeRoles, noActionClasses })` — the standing cost report as one JSON
+  mechanicalClasses, episodeRoles, noActionClasses, brokerLogLines, handoff })` — the standing cost report as one JSON
   object, and `costReportSchema`, its zod schema. `byAction` gives each role's cost by action
   class, and `mechanicalShare` the cost of the `mechanicalClasses` (default
   `DEFAULT_MECHANICAL_CLASSES`) over the window total, with each role's share over that role's
   cost. `wakeEpisodes` cuts the wakes of the `episodeRoles` (default `DEFAULT_EPISODE_ROLES`:
   `coordinator` and `worker:coordinator`) into episodes; see "Wake episodes" below.
+  `handoffThreshold` fits the handoff model per role and model; see "Handoff threshold" below.
 - `buildWakeEpisodes`, `summarizeWakeEpisodes`, `episodeNames`, `wakeEpisodesSchema`,
   `WAKE_FROM_KINDS`, `DEFAULT_NO_ACTION_CLASSES` — the pure pieces behind `wakeEpisodes`.
+- `handoffThreshold(rows, teleports, agentSessions, options?)`, `sweepK`, `costPerRequest`,
+  `isBootAction`, `parseTeleportEvents`, `handoffThresholdSchema` — the pure pieces behind
+  `handoffThreshold`.
 - `ACTION_CLASSES`, `DEFAULT_ACTION_RULES`, `DEFAULT_MECHANICAL_CLASSES`,
   `classifyRequest(calls, rules?)` — one action class per request from its tool calls: the
   first rule in list order that any call matches, `text-only` with no calls, `other` with no
@@ -90,6 +94,38 @@ is a name carried by a top-level session or by a session spawned with a coordina
 sender-by-receiver matrix. A seat sender is named, and every other sender collapses to its kind,
 because spawned agents have one-off names.
 
+## Handoff threshold
+
+When should a session hand over to a fresh one? Each session's terms come from its own requests,
+main thread only, priced from `PRICE_TABLE` rather than the graph's stored price table:
+
+- **Boot cost B**: the cost of every request up to and including the first action, a dispatch,
+  a send (`BOOT_TOOL`) or a file write.
+- **Boot fill f0**: the context tokens at that request.
+- **Growth g**: the mean rise in fill per request after boot. Only rises count, so a
+  compaction's drop does not cancel the growth before it.
+- **Read price p**: the model's cache-read rate.
+
+A cycle runs from f0 to the threshold K in n = (K - f0) / g requests, so a request costs
+B / n + p x (f0 + K) / 2. `cohorts` averages the terms over each role and model, sweeps K over
+`DEFAULT_K_SWEEP` and reports the best K, the extra cost per request at each `configuredK`
+(the charter's `teleport_k` and `retire_k`), and the same sweep in `halfBoot`, where only half
+the boot is overhead. `sessions` carries the per-session terms and best K. A session with no
+boot action, or on an unpriced model, counts in `unbootedSessions`.
+
+`teleports` gives the exit fill of each handover: the fill of the outgoing session's last
+request at or before the broker's `teleport_started` line. The package does not open the broker
+log. Pass its lines as `brokerLogLines`; the `from` agent id maps to sessions through
+`session_origin.agent_id`.
+
+`reviewers` compares `reviewerPrs` reviews (default 10). A fresh reviewer per PR pays its boot
+and its own reads each time. A standing reviewer, priced from the `standingRole` cohort, boots
+once and then reads a context that every earlier PR grew. A row's requests per PR come from the
+reviewer sessions on its own model; a standing model with no reviewers of its own takes the
+pooled mean over every reviewer session (`requestsFrom: "pooled"`).
+
+The report reads a window, so a session that started before it has its boot cut short.
+
 ## Cache TTL what-if
 
 `cacheTtlReport(db, { since, until, days })` asks what `CLAUDE_CODE_PROMPT_CACHE_TTL=5m` would
@@ -119,7 +155,11 @@ because defaulting bills a new model at an old model's rate without saying so. T
 report lists such models under `unpricedModels`.
 
 The cost report prices through the graph's `price` table, not through `PRICE_TABLE`. A graph
-whose price rows were never synced reports every request as unpriced.
+whose price rows were never synced reports every request as unpriced, and one synced from an
+older `PRICE_TABLE` keeps pricing at the old rates. The cost report takes a caller-opened,
+read-only graph and never writes it. Before reporting, the caller must run session-graph's
+`reconcilePrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION, source: "session-analytics" })`
+through a writable connection; `titan-miner` does so on every open, other openers do not.
 
 The default action rules are generic. Rules that name a seat's own journal files or scorer
 scripts belong in the caller's config, passed as `actionRules`, never in this package. The

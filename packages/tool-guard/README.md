@@ -1,12 +1,14 @@
 # @titan-design/tool-guard
 
-POSIX shell tokenizer and command extraction for tool-call guards
+Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Status: private and unpublished while TP-403 lands in slices. This slice (TP-488) ships the
-`./shell` entry only; the classifier, hook and bin follow.
+Status: private and unpublished while TP-403 lands in slices. TP-488 shipped the `./shell`
+entry. TP-489 adds `parseHookEvent`, `classify` with the secret and config families,
+`SPELLINGS` and `GUARDED_PATHS`. The merge, release and egress families, the decision, the hook
+and the bin follow.
 
 ## `@titan-design/tool-guard/shell`
 

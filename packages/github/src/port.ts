@@ -54,6 +54,8 @@ export interface CheckRun {
 export interface Commit {
   sha: string;
   parents: string[];
+  /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
+  committedAt?: string;
 }
 
 export interface PutFileRequest {

@@ -528,7 +528,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/tool-guard: {}
+  packages/tool-guard:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/workflow:
     dependencies:
@@ -575,6 +579,9 @@ importers:
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
+      '@titan-design/rpc-client':
+        specifier: workspace:^
+        version: link:../../packages/rpc-client
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -632,6 +639,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../../packages/retrieval
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../../packages/session-graph

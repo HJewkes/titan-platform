@@ -1,7 +1,8 @@
 import { ParseError, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
-import { unwrap } from "./unwrap.js";
+import { printedText } from "./printed.js";
+import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped } from "./unwrap.js";
 import { expandWord, lookup, trackVars } from "./vars.js";
 import type { Vars } from "./vars.js";
@@ -39,6 +40,8 @@ interface Walk {
   out: SimpleCommand[];
   home: string | null;
   depth: number;
+  /** Literal text piped into the command being emitted, as `echo 'git push' | bash` does. */
+  stdin: string | null;
 }
 
 /**
@@ -49,7 +52,7 @@ interface Walk {
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map() };
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0 });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null });
   return out;
 }
 
@@ -59,7 +62,8 @@ function walk(tokens: Token[], w: Walk): void {
   let redirects: RedirectToken[] = [];
   for (const token of tokens) {
     if (token.type === "op") {
-      emit(words, redirects, w);
+      const cmd = emit(words, redirects, w);
+      w.stdin = cmd && (token.value === "|" || token.value === "|&") ? printedText(cmd.name, cmd.args) : null;
       words = [];
       redirects = [];
       scope(token.value, w);
@@ -78,7 +82,8 @@ function nestedLists(token: Token): Token[][] {
 }
 
 function child(w: Walk): Walk {
-  return { ...w, scope: { dir: w.scope.dir, vars: new Map(w.scope.vars) }, stack: [], depth: w.depth + 1 };
+  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars) };
+  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null };
 }
 
 function scope(op: string, w: Walk): void {
@@ -89,11 +94,15 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk): void {
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const cmd = unwrap(rawWords.map(expand));
-  if (!cmd) return;
+  if (cmd) run(cmd, redirects, w);
+  return cmd;
+}
+
+function run(cmd: Unwrapped, redirects: RedirectToken[], w: Walk): void {
   if (cmd.name === null && cmd.args.length === 0) {
     for (const [name, value] of cmd.assigned) w.scope.vars.set(name, value);
     if (redirects.length === 0) return;
@@ -104,8 +113,13 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk): vo
   }
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
   w.out.push({ name: cmd.name, args: cmd.args, env: literalEnv(cmd), redirects, dir: w.scope.dir });
-  const script = inlineScript(cmd, redirects);
+  const script = inlineScript(cmd, redirects, w.stdin);
   if (script !== null) walk(tokenize(script), child(w));
+  if (cmd.name !== "find") return;
+  for (const words of findExecs(cmd.args)) {
+    const exec = unwrap(words);
+    if (exec) run(exec, [], child(w));
+  }
 }
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
@@ -114,14 +128,14 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
   return env;
 }
 
-/** The script text a shell or `eval` runs: a `-c` string, or a heredoc or here-string on stdin. */
-function inlineScript(cmd: Unwrapped, redirects: RedirectToken[]): string | null {
+/** The script text a shell or `eval` runs: a `-c` string, or a heredoc, here-string or literal pipe on stdin. */
+function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): string | null {
   if (cmd.script !== undefined) return cmd.script;
   if (cmd.name === "eval") return cmd.args.map((a) => a.value).join(" ");
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   if (hasC) return positional?.value ?? null;
-  return positional ? null : stdinScript(redirects);
+  return positional ? null : (stdinScript(redirects) ?? stdin);
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
