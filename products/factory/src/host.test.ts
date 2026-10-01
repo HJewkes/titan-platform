@@ -1,12 +1,17 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gateMigration } from "@titan-design/hitl/sqlite";
+import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { workflowMigration, workflowOwnershipMigration } from "@titan-design/workflow";
 import { z } from "zod";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
-import type { StepRoute } from "./routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
+import { OWNER } from "./test-support/resolver.js";
+import { SHEPHERD_MIGRATIONS } from "./workflows.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -35,10 +40,23 @@ const approval = defineWorkflow({
 const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 } };
 
 async function cli(dbPath: string, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+  return cliWithEnv(dbPath, {}, ...argv);
+}
+
+async function cliWithEnv(dbPath: string, env: NodeJS.ProcessEnv, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
-  const code = await runCli(["--db", dbPath, ...argv], { stdout: (t) => (out += t), stderr: (t) => (err += t), env: {} }, deps);
+  const code = await runCli(["--db", dbPath, ...argv], { stdout: (t) => (out += t), stderr: (t) => (err += t), env }, deps);
   return { code, out, err };
+}
+
+function gateAt(dbPath: string, id: string) {
+  const host = openFactoryHost({ dbPath, workflows: [approval], routes });
+  try {
+    return host.gates.get(id);
+  } finally {
+    host.close();
+  }
 }
 
 async function pausedRun(dbPath: string): Promise<string> {
@@ -98,6 +116,75 @@ describe("titan-factory resume and gate resolve", () => {
     expect(again.out).toBe("nothing to resume\n");
     expect(shipped.filter((id) => id === runId)).toHaveLength(1);
   });
+
+  it("gate resolve repeated with the same answer after the run took it exits 0 instead of looking for a next gate", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+    await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+    await cli(dbPath, "resume");
+
+    const repeated = await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+
+    expect(repeated).toMatchObject({ code: EXIT.OK, out: `already resolved ${runId}/approve-publish with this answer\n`, err: "" });
+  });
+
+  it("gate resolve repeated with a different answer after the run took it still fails", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+    await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+    await cli(dbPath, "resume");
+
+    const changed = await cli(dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true,"note":"again"}');
+
+    expect(changed.code).toBe(EXIT.FAILURE);
+    expect(changed.err).toContain(`no gate with id ${runId}/approve-publish:1`);
+  });
+
+  it("gate resolve from an agent-chat agent's shell is refused and the gate stays pending", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+
+    const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("refused a resolution by coordinator");
+    expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it("gate resolve from the owner's terminal records the owner on the factory-cli channel, even with CLAUDECODE set", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+
+    const { code } = await cliWithEnv(dbPath, { CLAUDECODE: "1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+
+    expect(code).toBe(EXIT.OK);
+    expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({
+      status: "resolved",
+      resolvedBy: { class: "owner-terminal", id: userInfo().username, channel: "factory-cli" },
+    });
+  });
+});
+
+describe("gate resolver migration", () => {
+  it("a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it", () => {
+    const dbPath = dbFile();
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const preResolver = openDatabase(dbPath);
+    runMigrations(preResolver, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), ...SHEPHERD_MIGRATIONS]);
+    preResolver.close();
+    const tenantRoutes = Object.assign([...routes], { database: { extraMigrations: SHEPHERD_MIGRATIONS, bind: () => () => undefined } });
+
+    openFactoryHost({ dbPath, workflows: [approval], routes: tenantRoutes }).close();
+
+    const db = openDatabase(dbPath);
+    const column = db.prepare("SELECT 1 FROM pragma_table_info('hitl_gate') WHERE name = 'resolved_by'").get();
+    const triggers = db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%resolver_required%'").all();
+    const versions = appliedVersions(db);
+    db.close();
+    expect(column).toBeDefined();
+    expect(triggers.length).toBeGreaterThan(0);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
 });
 
 describe("FactoryHost.adopt", () => {
@@ -107,11 +194,19 @@ describe("FactoryHost.adopt", () => {
     const host = openFactoryHost({ dbPath, workflows: [approval], routes, gatePollMs: 10 });
 
     const adopted = await host.adopt();
-    host.runtime.signal(runId, "approve-publish", { approve: true });
+    host.runtime.signal(runId, "approve-publish", { approve: true }, OWNER);
 
     expect(adopted).toEqual([runId]);
     await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
     expect(shipped.filter((id) => id === runId)).toHaveLength(1);
     host.close();
+  });
+});
+
+describe("route coverage", () => {
+  it("refuses to register a workflow whose dispatch step has no route, before any run starts", () => {
+    const create = () => openFactoryHost({ dbPath: ":memory:", workflows: [approval], routes: [] });
+
+    expect(create).toThrow(/no route for ship/);
   });
 });

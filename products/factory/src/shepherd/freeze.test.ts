@@ -8,7 +8,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
 import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const RED = fakeSha("red");
 const GREEN = fakeSha("green");
@@ -26,7 +26,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -321,8 +321,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(applied).toEqual([6, 8]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

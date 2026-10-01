@@ -145,7 +145,7 @@ export function gateRuleMigration(version: number, name: string = DEFAULT_GATE_T
 
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -162,8 +162,7 @@ interface RawGateRow {
   created_at: string;
   resolved_at: string | null;
   expires_at: string | null;
-  /** Absent entirely on a table that has not run `gateResolverMigration`. */
-  resolved_by?: string | null;
+  resolved_by: string | null;
   /** Absent entirely on a table that has not run `gateRuleMigration`. */
   rule?: string | null;
 }
@@ -175,7 +174,6 @@ interface RawGateRow {
  */
 export class SqliteGateStore extends BaseGateStore {
   private readonly table: string;
-  private resolverColumnSeen = false;
   private ruleColumnSeen = false;
 
   constructor(
@@ -184,7 +182,9 @@ export class SqliteGateStore extends BaseGateStore {
   ) {
     super(options.now ?? Date.now, options.authorize);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
-    if (options.migrate ?? true) runMigrations(db, [gateMigration(1, this.table), gateRuleMigration(3, this.table)]);
+    if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
+    const missing = missingMigration(db, this.table);
+    if (missing) throw new GateStoreSchemaOutdated("", this.table, missing);
   }
 
   protected insert(record: GateRecord): void {
@@ -221,44 +221,14 @@ export class SqliteGateStore extends BaseGateStore {
   }
 
   protected update(record: GateRecord): void {
-    if (record.resolvedBy) {
-      this.updateWithResolver(record, record.resolvedBy);
-      return;
-    }
-    this.db
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)}
-            SET status = ?, payload = ?, reason = ?, resolved_at = ?
-          WHERE id = ?`,
-      )
-      .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, record.id);
-  }
-
-  /** Refuses rather than dropping the resolver when the table has no column to hold it. */
-  private updateWithResolver(record: GateRecord, resolvedBy: GateResolver): void {
-    if (!this.resolverColumnPresent()) {
-      throw new GateStoreSchemaOutdated(record.id, this.table, "gateResolverMigration");
-    }
+    const resolvedBy = record.resolvedBy ? JSON.stringify(record.resolvedBy) : null;
     this.db
       .prepare(
         `UPDATE ${quoteIdent(this.table)}
             SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
           WHERE id = ?`,
       )
-      .run(
-        record.status,
-        toJson(record.payload),
-        record.reason ?? null,
-        record.resolvedAt ?? null,
-        JSON.stringify(resolvedBy),
-        record.id,
-      );
-  }
-
-  /** Only a positive probe is cached, so a migration run after construction is still noticed. */
-  private resolverColumnPresent(): boolean {
-    if (!this.resolverColumnSeen) this.resolverColumnSeen = hasResolverColumn(this.db, this.table);
-    return this.resolverColumnSeen;
+      .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
   }
 
   private ruleColumnPresent(): boolean {
@@ -272,6 +242,16 @@ export class SqliteGateStore extends BaseGateStore {
       .all(status) as RawGateRow[];
     return rows.map(toRecord);
   }
+}
+
+/** Names the earliest migration the table lacks, so the error points at the step to add. */
+function missingMigration(db: Db, table: string): string | undefined {
+  if (!hasColumn(db, table, "id")) return "gateMigration";
+  return hasResolverColumn(db, table) ? undefined : "gateResolverMigration";
+}
+
+function defaultMigrations(table: string): Migration[] {
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table)];
 }
 
 function columns(record: GateRecord): unknown[] {

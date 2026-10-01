@@ -2,10 +2,11 @@ import { EXIT, defineCommand, type AnyCommand, type CliOption } from "@titan-des
 import { LIST_PRICE_CAVEAT, type CostReportOptions } from "@titan-design/session-analytics";
 import type { Db } from "@titan-design/store-sqlite";
 import { z, type ZodType } from "zod";
+import type { MinerConfig } from "../config.js";
 import type { MinerContext } from "../context.js";
 
 /** A date or ISO timestamp; `run` normalizes it to UTC, since MCP cannot describe a transform. */
-const isoTime = z
+export const isoTime = z
   .string()
   .refine((value) => /^\d{4}-\d{2}-\d{2}/.test(value) && !Number.isNaN(Date.parse(value)), "expected an ISO date or timestamp");
 
@@ -45,7 +46,8 @@ export interface InsightQuestion<Options extends object = object, Data = unknown
   schema: ZodType<Data>;
   /** Options that read the local filesystem; refused on every surface but the CLI. */
   cliOnly?: readonly (keyof Options & string)[];
-  answer(db: Db, report: CostReportOptions, options: Options): InsightAnswer<Data>;
+  /** Reports and filters arrive normalized; `config` locates sources beyond the graph. */
+  answer(db: Db, report: CostReportOptions, options: Options, config: MinerConfig): InsightAnswer<Data> | Promise<InsightAnswer<Data>>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +74,7 @@ export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
       const { session, agentPrefix, role, since, until, ...options } = parsed as InsightFilters & Record<string, unknown>;
       const filters: InsightFilters = { session, agentPrefix, role, since: utc(since), until: utc(until) };
       refuseCliOnly(question, options, ctx);
-      const { data, text } = question.answer(ctx.graph().db, reportOptions(filters), options);
+      const { data, text } = await question.answer(ctx.graph().db, reportOptions(filters), options, ctx.config);
       if (ctx.format === "human") return text;
       return { question: question.id, caveat: LIST_PRICE_CAVEAT, filters, answer: data };
     },

@@ -2,7 +2,7 @@ import type { ConditionFacts, MergeFacts } from "./conditions.js";
 import { plainMergeFacts, unmetMergeConditions } from "./conditions.js";
 import type { PolicyTable, Rule } from "./schema.js";
 import type { ActionClass, ActorClass, ResolverClass } from "./vocabulary.js";
-import { RESOLVER_CLASSES } from "./vocabulary.js";
+import { ACTOR_CLASSES, RESOLVER_CLASSES } from "./vocabulary.js";
 
 export interface AuthorityRequest {
   action: ActionClass;
@@ -27,7 +27,7 @@ interface RuleMatch {
 
 interface RequestSnapshot {
   action: ActionClass;
-  actor: ActorClass;
+  actor: unknown;
   tainted: unknown;
   ownUntainted: boolean;
   merge: MergeFacts | undefined;
@@ -38,11 +38,15 @@ function snapshotOf(request: AuthorityRequest): RequestSnapshot {
   const tainted: unknown = request.tainted;
   return {
     action: request.action,
-    actor: request.actor.class,
+    actor: (request.actor as { class?: unknown } | null | undefined)?.class,
     tainted,
     ownUntainted: Object.hasOwn(request, "tainted") && tainted === false,
     merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
   };
+}
+
+function isActorClass(value: unknown): value is ActorClass {
+  return typeof value === "string" && (ACTOR_CLASSES as readonly string[]).includes(value);
 }
 
 function findRule(table: PolicyTable, snapshot: RequestSnapshot): RuleMatch {
@@ -68,6 +72,7 @@ function withUnmet(reason: string, unmet: string[]): string {
 export function evaluate(table: PolicyTable, request: AuthorityRequest): Decision {
   const snapshot = snapshotOf(request);
   const { action, actor } = snapshot;
+  if (!isActorClass(actor)) return { verdict: "deny", ruleId: null, reason: `no known actor class for ${action}` };
   const { rule, unmet } = findRule(table, snapshot);
   if (!rule) return { verdict: "deny", ruleId: null, reason: `no rule for ${action} by ${actor}` };
   if (rule.verdict === "deny") return { verdict: "deny", ruleId: rule.id, reason: withUnmet(`${rule.id} denies ${action} by ${actor}`, unmet) };

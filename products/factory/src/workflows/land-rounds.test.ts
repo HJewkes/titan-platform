@@ -2,15 +2,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { GATE_EVERYTHING_RULE, gateEverything, type GatePolicy } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { RoutedStepInput, StepRoute } from "../routed-runner.js";
 import { crashAt } from "../test-support/crash.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, MAX_UPDATE_CYCLES, land, landRoutes, type LandOptions, type LandOutcome } from "./land.js";
+import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("head2");
 const ALLOW_RULE = { table: "test-table", rowId: "MRG-TEST", version: 3 };
@@ -94,10 +94,10 @@ describe("land rounds", () => {
     const { host, fake, outcomes } = roundsHost(body);
     const runId = host.runtime.start("land-rounds");
     await gateOpened(host, gateId(runId, "approve-merge"));
-    host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
 
     await gateOpened(host, gateId(runId, "approve-merge", 1));
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await host.runtime.wait(runId);
 
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(["stopped", "merged"]);
@@ -158,7 +158,7 @@ describe("land merge policy", () => {
 
     await gateOpened(host, gateId(runId, "approve-merge"));
     const mergesBeforeAnswer = fake.effects.merge;
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await host.runtime.wait(runId);
 
     expect(mergesBeforeAnswer).toBe(0);
@@ -192,7 +192,7 @@ describe("land merge policy", () => {
     const crash = crashAt({ dbPath: dbFile(), workflows: [workflow], routes, hangAt: "land-rules:r1" });
     const runId = crash.crashed.runtime.start("land-rounds");
     await gateOpened(crash.crashed, gateId(runId, "approve-merge"));
-    crash.crashed.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 });
+    crash.crashed.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
     await crash.reached;
 
     policy = allowMerges;
@@ -232,7 +232,7 @@ describe("land merge policy", () => {
     const runId = world.host.runtime.start("land-rounds");
 
     await gateOpened(world.host, gateId(runId, "stuck-behind"));
-    world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" });
+    world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     await world.host.runtime.wait(runId);
 
     expect(fake.effects.updateBranch).toBe(MAX_UPDATE_CYCLES);
@@ -250,9 +250,9 @@ describe("land merge policy", () => {
 
     await gateOpened(world.host, gateId(runId, "approve-merge"));
     racing = true;
-    world.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: world.fake.pr(1).headSha });
+    world.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: world.fake.pr(1).headSha }, OWNER);
     await gateOpened(world.host, gateId(runId, "stuck-behind"));
-    world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" });
+    world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     await world.host.runtime.wait(runId);
 
     expect(world.fake.effects.updateBranch).toBe(1 + MAX_UPDATE_CYCLES);

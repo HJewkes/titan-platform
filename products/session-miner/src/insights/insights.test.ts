@@ -9,15 +9,17 @@ import { createMinerContext } from "../context.js";
 import { TOOL_PREFIX } from "../registry.js";
 import { startMiner } from "../serve.js";
 import { insightResultSchema } from "./define.js";
-import { FIXTURE_WINDOW, seedInsightGraph } from "./fixture.js";
-import { INSIGHT_QUESTIONS, cacheTtl, handoffThreshold, spendByAction, wakeEconomics } from "./questions.js";
+import { FIXTURE_WINDOW, seedEventsDb, seedInsightGraph } from "./fixture.js";
+import { INSIGHT_QUESTIONS, blockedFlow, cacheTtl, handoffThreshold, spendByAction, wakeEconomics } from "./questions.js";
 
 let dir: string;
 let config: MinerConfig;
+let env: NodeJS.ProcessEnv;
 
 beforeAll(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-miner-insights-"));
-  config = resolveConfig({ stateDir: path.join(dir, "state"), corpusRoot: path.join(dir, "corpus") }, {});
+  env = { TITAN_MINER_EVENTS_DB: seedEventsDb(path.join(dir, "events.db"), []) };
+  config = resolveConfig({ stateDir: path.join(dir, "state"), corpusRoot: path.join(dir, "corpus") }, env);
   const ctx = createMinerContext(config);
   seedInsightGraph(ctx.graph().db);
   ctx.close();
@@ -30,7 +32,7 @@ const WINDOW_FLAGS = ["--since", FIXTURE_WINDOW.since, "--until", FIXTURE_WINDOW
 async function cli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   let stdout = "";
   let stderr = "";
-  const io = { stdout: (t: string) => void (stdout += t), stderr: (t: string) => void (stderr += t), env: {} };
+  const io = { stdout: (t: string) => void (stdout += t), stderr: (t: string) => void (stderr += t), env };
   const code = await runCli(["--state", config.stateDir, "--corpus", config.corpusRoot, ...args], io);
   return { code, stdout, stderr };
 }
@@ -49,7 +51,9 @@ async function ask(name: string, flags: string[] = WINDOW_FLAGS): Promise<Envelo
   return envelope.data;
 }
 
-describe.each(INSIGHT_QUESTIONS.map((q) => [q.id, q] as const))("insights question %s", (_id, question) => {
+const GRAPH_QUESTIONS = INSIGHT_QUESTIONS.filter((q) => q !== blockedFlow);
+
+describe.each(GRAPH_QUESTIONS.map((q) => [q.id, q] as const))("insights question %s", (_id, question) => {
   it("answers in a JSON envelope carrying the caveat, the filters and a schema-valid answer", async () => {
     const data = await ask(question.name);
 

@@ -21,8 +21,12 @@ const summary = await refreshCorpus(graph, await discoverTranscripts());
 `openSessionGraph` takes an optional `schemaVersion`: the highest migration version the
 *caller* owns, checked before any migration runs. A product layering its own tables on this
 graph passes its own top version, since this package's `MIGRATIONS` are one band of a shared
-database rather than the top of it. `products/session-miner` numbers its own from 1000 and
-passes 1002.
+database rather than the top of it. `products/session-miner` numbers its own from 2000 and
+passes 2002, clear of active-work's band at 1001.
+
+`{ readonly: true }` opens a graph another process owns without writing to it. No
+migrations run, and the open throws `SessionGraphNotMigratedError` when the graph lacks any
+migration this package declares, so a reader never meets a table it does not expect.
 
 ## What a refresh does
 

@@ -222,7 +222,7 @@ export class WorkflowRuntime {
   }
 
   /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
-  signal(runId: string, stepId: string, payload: Record<string, unknown> = {}, resolvedBy?: GateResolver): void {
+  signal(runId: string, stepId: string, payload: Record<string, unknown>, resolvedBy: GateResolver): void {
     const run = this.status(runId);
     const isPending = (gateId: string): boolean => gateIsPending(this.options.gates, gateId);
     this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload, resolvedBy);

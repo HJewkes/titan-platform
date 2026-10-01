@@ -29,6 +29,7 @@ export {
   parkAgent,
   type ParkResult,
 } from "./park.js";
+export { buildMessageArgs, messageAgent } from "./message.js";
 export { dataFence } from "./fence.js";
 export {
   DispatchTimeoutError,

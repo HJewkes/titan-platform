@@ -1,7 +1,7 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute, sleep } from "./land.js";
 
 export const AWAIT_HEAD_POLL_MS = 30_000;

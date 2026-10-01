@@ -1,15 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { RepoSlug } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { PostMergeConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { redactCredentials } from "../redact.js";
-import type { StepRoute } from "../routed-runner.js";
 import { codeRoute, step } from "./land.js";
 
 export const POST_MERGE_STEPS: readonly StepDeclaration[] = [{ id: "post-merge", kind: "dispatch" }];
 export const POST_MERGE_TIMEOUT_MS = 10 * 60_000;
+export const POST_MERGE_PIPE_GRACE_MS = 2_000;
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
 /** Output kept per stream before the tail is cut; wide enough that redaction sees any token near the kept tail whole. */
@@ -24,6 +24,8 @@ export interface PostMergeInput {
 export interface ChoreOptions {
   cwd?: string;
   timeoutMs: number;
+  /** How long after the chore exits its output may stay open, held by a daemon it left behind, before the result is taken. */
+  pipeGraceMs?: number;
   env: NodeJS.ProcessEnv;
 }
 
@@ -46,26 +48,35 @@ export function execChore(argv: readonly [string, ...string[]], options: ChoreOp
   return new Promise((resolve) => {
     try {
       const child = spawn(file, args, { cwd: options.cwd, env: options.env, shell: false, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-      watchChore(child, options.timeoutMs, resolve);
+      watchChore(child, options, resolve);
     } catch (error) {
       resolve({ exitCode: null, signal: null, timedOut: false, stdout: "", stderr: "", error: error instanceof Error ? error.message : String(error) });
     }
   });
 }
 
-function watchChore(child: ChildProcess, timeoutMs: number, resolve: (result: ChoreResult) => void): void {
+function watchChore(child: ChildProcess, options: ChoreOptions, resolve: (result: ChoreResult) => void): void {
   const stdout = keptTail(child.stdout!);
   const stderr = keptTail(child.stderr!);
   let timedOut = false;
+  let graceTimer: NodeJS.Timeout | undefined;
   const timer = setTimeout(() => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
     timedOut = true;
     killGroup(child);
-  }, timeoutMs);
+  }, options.timeoutMs);
   const settle = (outcome: Pick<ChoreResult, "exitCode" | "signal" | "error">) => {
     clearTimeout(timer);
+    clearTimeout(graceTimer);
+    child.stdout?.destroy();
+    child.stderr?.destroy();
     resolve({ ...outcome, timedOut, stdout: stdout(), stderr: stderr() });
   };
   child.on("error", (error) => settle({ exitCode: null, signal: null, error: error.message }));
+  child.on("exit", (exitCode, signal) => {
+    clearTimeout(timer);
+    graceTimer = setTimeout(() => settle({ exitCode, signal }), options.pipeGraceMs ?? POST_MERGE_PIPE_GRACE_MS);
+  });
   child.on("close", (exitCode, signal) => settle({ exitCode, signal }));
 }
 

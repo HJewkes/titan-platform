@@ -1,18 +1,19 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
-import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
-  WorkflowRuntime,
+  routedRunner,
+  type StepRoute,
+  type WorkflowEvent,
   workflowMigration,
   workflowOwnershipMigration,
-  type WorkflowEvent,
   type WorkflowRun,
+  WorkflowRuntime,
 } from "@titan-design/workflow";
 import type { ShepherdServices } from "./shepherd/commands.js";
-import { assertDistinctStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
-import { routedRunner, type StepRoute } from "./routed-runner.js";
+import { assertDistinctStepIds, dispatchStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -66,12 +67,12 @@ export interface FactoryHost {
 
 const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
-/** One SQLite file holds runs, gates and the routes' tenant; the first three migrations match the codewatch triage host. */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, and 7 follows the shepherd tenant's 4-6. */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
   const tenant = options.routes.database;
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), ...(tenant?.extraMigrations ?? [])]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), ...(tenant?.extraMigrations ?? [])]);
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
@@ -104,7 +105,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
   });
   for (const definition of options.workflows) {
     assertDistinctStepIds(definition);
-    runner.assertRoutes(definition);
+    runner.assertRoutes(definition.name, dispatchStepIds(definition));
     runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)));
   }
   return runtime;

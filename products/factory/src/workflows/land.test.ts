@@ -7,7 +7,8 @@ import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
 import { MAX_UPDATE_CYCLES, landRoutes, readCi } from "./land.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
+import { OWNER } from "../test-support/resolver.js";
 
 const FOREIGN = fakeSha("foreign1");
 const hosts: FactoryHost[] = [];
@@ -38,7 +39,7 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     scenario.fake.pr(1).behind = true;
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     const run = await host.runtime.wait(runId);
 
     const pr = scenario.fake.pr(1);
@@ -97,7 +98,7 @@ describe("land core", () => {
     const runId = host.runtime.start("land-test");
     await gateOpened(host, gateId(runId, "stuck-behind"));
 
-    host.runtime.signal(runId, "stuck-behind", { decision: "abandon" });
+    host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     const run = await host.runtime.wait(runId);
 
     expect(run.status).toBe("completed");
@@ -125,7 +126,7 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     scenario.fake.pr(1).mergeableState = "unknown";
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     const run = await host.runtime.wait(runId);
 
     expect(run.status).toBe("failed");
@@ -139,7 +140,7 @@ describe("land core", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     scenario.fake.pushHead(1, FOREIGN);
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await gateOpened(host, gateId(runId, "approve-merge", 1));
     const mergesBeforeSecondApproval = scenario.fake.effects.merge;
     await approveUntilSettled(host, runId, scenario.fake);
@@ -155,7 +156,7 @@ describe("land core", () => {
     const runId = host.runtime.start("land-test");
     await gateOpened(host, gateId(runId, "approve-merge"));
 
-    const answer = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: fakeSha("other") });
+    const answer = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: fakeSha("other") }, OWNER);
 
     expect(answer).toThrow(`headSha: expected "${H1}"`);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");

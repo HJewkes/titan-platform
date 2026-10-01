@@ -53,6 +53,10 @@ describe("strict and loose parsing", () => {
     expect(() => parseTraceRecord(cost)).toThrow();
   });
 
+  it("parses an attempt whose step kind is authorize", () => {
+    expect(parseTraceRecord({ ...fixture(ATTEMPT), stepKind: "authorize" })).toMatchObject({ kind: "attempt", stepKind: "authorize" });
+  });
+
   it("keeps an unknown key when consuming", () => {
     expect(parseTraceRecordLoose({ ...fixture(ATTEMPT), extra: 1 })).toMatchObject({ kind: "attempt", extra: 1 });
   });

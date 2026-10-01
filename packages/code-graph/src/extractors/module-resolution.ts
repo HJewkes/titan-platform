@@ -83,3 +83,15 @@ export function remapDistToSrc(abs: string): string {
   }
   return abs;
 }
+
+/**
+ * `node_modules/@types` dirs from `repoRoot` up to the filesystem root: TypeScript's
+ * default type-root walk, anchored at the indexed repo instead of `process.cwd()`.
+ */
+export function repoTypeRoots(repoRoot: string): string[] {
+  const roots: string[] = [];
+  for (let dir = path.resolve(repoRoot); ; dir = path.dirname(dir)) {
+    roots.push(path.join(dir, "node_modules", "@types"));
+    if (path.dirname(dir) === dir) return roots;
+  }
+}

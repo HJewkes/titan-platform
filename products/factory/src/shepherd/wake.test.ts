@@ -9,8 +9,9 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { lineageMigration, shepherdMigration, shepherdStoreRef, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
-import { LIVE_POLL_MS, LOG_BUDGET_BYTES, WAKE_STEPS, tailBytes, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { TURN_START_MS } from "./turn-check.js";
+import { LOG_BUDGET_BYTES, WAKE_STEPS, tailBytes, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
 const REPO = "octo/demo";
@@ -30,12 +31,12 @@ function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return { ...base, cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
 }
 
-type Asked = { verb: "resume" | "spawn"; name: string; message: string; cwd?: string; args: number };
+type Asked = { verb: "resume" | "spawn" | "message"; name: string; message: string; cwd?: string; args: number };
 
-/** An in-memory roster; `fail` throws from the next calls of a verb, one error per call. */
+/** An in-memory roster where a spawn adds a live row; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
   const asked: Asked[] = [];
-  const fail: Partial<Record<"roster" | "resume" | "spawn", Error[]>> = {};
+  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", Error[]>> = {};
   const next = (verb: keyof typeof fail) => {
     const error = fail[verb]?.shift();
     if (error) throw error;
@@ -46,14 +47,15 @@ function fakeAgents(rows: AgentRow[]) {
     fail,
     roster: async () => (next("roster"), rows.map((agent) => ({ ...agent }))),
     resume: async (...args: unknown[]) => (next("resume"), void asked.push({ verb: "resume", name: String(args[0]), message: String(args[1]), args: args.length })),
-    spawn: async (name, message, cwd) => (next("spawn"), void asked.push({ verb: "spawn", name, message, cwd, args: 3 })),
+    spawn: async (name, message, cwd) => (next("spawn"), asked.push({ verb: "spawn", name, message, cwd, args: 3 }), void rows.push(row(name, { presence: "live" }))),
+    message: async (name, message) => (next("message"), void asked.push({ verb: "message", name, message, args: 2 })),
   };
   return agents;
 }
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -70,6 +72,8 @@ interface Scene {
   home?: string;
   pr?: Partial<PullRequest>;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
+  /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
+  turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
 }
 
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
@@ -83,7 +87,8 @@ function wakeStep(scene: Scene = {}) {
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat" };
-  const wiring: WakeWiring = { readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
+  const turnSince = async () => scene.turnSince?.(agents) ?? true;
+  const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1" };
@@ -222,27 +227,80 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked[0]!.message).toContain("from impl-a-s2");
   });
 
-  it("waits on a live implementer, never resuming it, and resumes it once it has ended", async () => {
-    const onSleep = (_ms: number, _fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => {
-      if (agents.rows[0]!.presence === "live" && agents.asked.length === 0) agents.rows[0] = row("impl-a", { presence: "exited" });
-    };
-    const { agents, clock, run } = wakeStep({ rows: [row("impl-a", { presence: "live" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, onSleep });
+  it("messages a live implementer with the findings instead of resuming it", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { presence: "live" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
 
-    const { result } = await run("review", fixFirst("fix it"));
+    const { result } = await run("review", fixFirst("fix the parser"));
 
-    expect(clock.sleeps).toEqual([LIVE_POLL_MS]);
-    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
-    expect(result).toMatchObject({ kind: "woken", mode: "resume" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
+    expect(agents.asked[0]!.message).toContain("fix the parser");
   });
 
-  it("asks nobody when a live implementer pushes a new head while it is waited on", async () => {
-    const onSleep = (_ms: number, fake: FakeGitHub) => fake.pushHead(1, H2);
-    const { agents, run } = wakeStep({ rows: [row("impl-a", { presence: "live" })], onSleep });
+  it("asks nobody when a live implementer already pushed a new head", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { presence: "live" })], pr: { headSha: H2 } });
 
     const { result } = await run("review", fixFirst("fix it"));
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
     expect(agents.asked).toEqual([]);
+  });
+});
+
+describe("sh-wake-implementer: the woken agent must start a turn", () => {
+  const asks = (agents: ReturnType<typeof fakeAgents>) => agents.asked.map((ask) => [ask.verb, ask.name]);
+
+  it("messages a live agent a second time when the first message starts no turn within 5 minutes, as an idle pane agent did", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: (agents) => agents.asked.length >= 2 });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", fallback: "message" });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+    ]);
+    expect(scene.clock.now - T0).toBeGreaterThanOrEqual(TURN_START_MS);
+  });
+
+  it("resumes an agent that ended without starting the turn its resume asked for", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, turnSince: (agents) => agents.asked.length >= 2 });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a", mode: "resume", fallback: "resume" });
+    expect(asks(scene.agents)).toEqual([
+      ["resume", "impl-a"],
+      ["resume", "impl-a"],
+    ]);
+  });
+
+  it("returns unhandled when neither the wake nor its fallback starts a turn", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn within 5 minutes of the wake or of the message fallback" });
+    expect(asks(scene.agents)).toHaveLength(2);
+  });
+
+  it("returns unhandled with the reason when the fallback ask is refused", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
+    scene.agents.fail.message = [undefined as never, new DispatchError('Not delivered: no active session named "impl-a"')];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toMatchObject({ kind: "unhandled", reason: expect.stringContaining("the message fallback failed: Not delivered") });
+  });
+
+  it("counts a pushed head as the turn, without any fallback", async () => {
+    const onSleep = (_ms: number, fake: FakeGitHub) => fake.pushHead(1, H2);
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false, onSleep });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(asks(scene.agents)).toEqual([["message", "impl-a"]]);
   });
 });
 
@@ -459,7 +517,7 @@ describe("wakePhase", () => {
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");

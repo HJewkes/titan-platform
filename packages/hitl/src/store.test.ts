@@ -37,6 +37,8 @@ interface Harness {
 const T0 = Date.UTC(2026, 8, 8, 10, 0, 0);
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
 const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix" };
+/** Stands in for a caller that bypasses the type, such as plain JavaScript. */
+const ANONYMOUS = undefined as unknown as GateResolver;
 const TERMINAL_ONLY: GateRule = { table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] };
 const AGENT_CLASSES = ACTOR_CLASSES.filter((c) => !(RESOLVER_CLASSES as readonly ActorClass[]).includes(c));
 
@@ -305,7 +307,15 @@ describe.each([
     expect((error as Error).message).not.toContain("superuser-invented");
   });
 
-  it("refuses an anonymous resolution when authorize is installed", () => {
+  it("refuses a resolve that names no resolver and leaves the gate pending", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(() => store.resolve("g1", "ok", ANONYMOUS)).toThrow(
+      expect.objectContaining({ name: "GateResolverRefused", gateId: "g1", actorClass: undefined, reason: "a resolver is required" }),
+    );
+    expect(store.get("g1")).toMatchObject({ status: "pending", payload: undefined, resolvedBy: undefined });
+  });
+
+  it("refuses an anonymous resolution before authorize runs", () => {
     let calls = 0;
     const permissive = (_gate: unknown, resolver: GateResolver | undefined) => {
       calls += 1;
@@ -313,7 +323,7 @@ describe.each([
     };
     const guarded = scoped(makeHarness(permissive)).store;
     guarded.create({ id: "g1", prompt: "ship it?" });
-    expect(() => guarded.resolve("g1", "ok")).toThrow(GateResolverRefused);
+    expect(() => guarded.resolve("g1", "ok", ANONYMOUS)).toThrow(GateResolverRefused);
     expect(guarded.get("g1")).toMatchObject({ status: "pending", resolvedBy: undefined });
     expect(calls).toBe(0);
   });
@@ -363,7 +373,7 @@ describe.each([
 
   it("refuses an anonymous resolve of a rule-bound gate", () => {
     store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
-    expect(() => store.resolve("g1", "ok")).toThrow(GateResolverRefused);
+    expect(() => store.resolve("g1", "ok", ANONYMOUS)).toThrow(GateResolverRefused);
     expect(store.get("g1")?.status).toBe("pending");
   });
 

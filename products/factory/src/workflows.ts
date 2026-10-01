@@ -1,5 +1,5 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
-import type { Db } from "@titan-design/store-sqlite";
+import type { Db, Migration } from "@titan-design/store-sqlite";
 import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
@@ -15,7 +15,7 @@ import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
-import { lineageMigration, shepherdMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
 
@@ -42,6 +42,9 @@ export interface FactoryRouteDeps extends LandPrDeps {
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
+/** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8)];
+
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
  * PR never reaches the port's merge, whichever workflow lands it; an unbound store refuses the merge.
@@ -58,7 +61,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park });
-  const database: DatabaseTenant = { extraMigrations: [shepherdMigration(4), lineageMigration(5), freezeMigration(6)], bind: (db) => bindAll(db, deps.store, freeze) };
+  const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });
 }

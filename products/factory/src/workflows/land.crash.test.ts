@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import type { FakeGitHub } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";

@@ -4,10 +4,11 @@ import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
+import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import type { StepRoute } from "./routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
@@ -113,7 +114,7 @@ interface ShepherdOpts {
   json?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; policy?: string };
+type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here. */
 function registerShepherd(program: Command, verbs: Verbs): void {
@@ -130,6 +131,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .requiredOption("--implementer <name>", "the agent that pushes fixes")
     .option("--reviewer <name>", "the agent that reviews")
     .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
+    .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
+    .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts), opts));
   verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
@@ -160,8 +163,8 @@ function parseTarget(target: string): { repo: string; pr?: number } {
 function registerArgs(target: string, opts: RegisterOpts): Record<string, unknown> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, task, implementer, reviewer, kind } = opts;
-  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, policy };
+  const { branch, task, implementer, reviewer, kind, slice } = opts;
+  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
@@ -332,26 +335,6 @@ async function parse(program: Command, argv: string[], io: CliIo, exitCode: () =
     return EXIT.FAILURE;
   }
   return exitCode();
-}
-
-function resolveGate(host: FactoryHost, io: CliIo, runId: string, stepId: string, json: string): number {
-  const payload = parsePayload(json);
-  if (!payload) {
-    io.stderr("error: --json must be a JSON object\n");
-    return EXIT.USAGE;
-  }
-  host.runtime.signal(runId, stepId, payload);
-  io.stdout(`resolved ${runId}/${stepId}\n`);
-  return EXIT.OK;
-}
-
-function parsePayload(json: string): Record<string, unknown> | undefined {
-  try {
-    const value: unknown = JSON.parse(json);
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export function formatResume(report: ResumeReport): string {

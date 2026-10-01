@@ -1,10 +1,9 @@
 import type { GitHubPort, RepoSlug, WriteResult } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
-import type { StepRoute } from "../routed-runner.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome } from "./land.js";

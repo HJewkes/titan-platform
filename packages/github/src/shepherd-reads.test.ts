@@ -269,6 +269,30 @@ describe("upsertComment", () => {
     expect(await githubPort(fake.wire).upsertComment("o/r", pr.number, MARKER, MARKER)).toEqual({ id: 4, done: false, skipped: "exists" });
   });
 
+  it("finds a marker line with trailing whitespace", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: fakeSha("h") });
+    fake.comments.set(pr.number, [{ id: 4, body: `${MARKER} \t\nevidence`, author: fake.actor }]);
+
+    expect(await githubPort(fake.wire).upsertComment("o/r", pr.number, MARKER, MARKER)).toEqual({ id: 4, done: false, skipped: "exists" });
+  });
+
+  it("owns comments as the configured bot login without calling GET /user, which an App token gets 403 on", async () => {
+    const own = { id: 2, body: `${MARKER}\nev`, user: { login: "shepherd[bot]" } };
+    const gh = scripted({ "issues/7/comments": [included({}, [{ id: 1, body: MARKER, user: { login: "mallory" } }, own]), included({}, { id: 99 })] });
+    const port = githubPort(ghCliWire(gh.exec, { budget: rateBudget() }), { login: "shepherd[bot]" });
+
+    expect(await port.upsertComment(REPO, 7, MARKER, MARKER)).toEqual({ id: 2, done: false, skipped: "exists" });
+    expect(gh.calls.some((call) => call.args.includes("user"))).toBe(false);
+  });
+
+  it("posts under the configured login when none of its comments carries the marker", async () => {
+    const gh = scripted({ "issues/7/comments": [included({}, [{ id: 1, body: MARKER, user: { login: "octo" } }]), included({}, { id: 99 })] });
+    const port = githubPort(ghCliWire(gh.exec, { budget: rateBudget() }), { login: "shepherd[bot]" });
+
+    expect(await port.upsertComment(REPO, 7, MARKER, MARKER)).toEqual({ id: 99, done: true });
+  });
+
   it("resolves the authenticated user once across calls", async () => {
     const fake = fakeGitHub();
     const port = githubPort(fake.wire);

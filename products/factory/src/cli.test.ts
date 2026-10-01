@@ -7,7 +7,7 @@ import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
-import type { StepRoute } from "./routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { H1, REPO } from "./test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
