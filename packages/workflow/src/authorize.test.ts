@@ -8,6 +8,7 @@ import {
   MemoryGateStore,
   type GateInput,
   type GateRecord,
+  type GateRule,
   type GateResolver,
   type GateStore,
 } from "@titan-design/hitl";
@@ -180,6 +181,23 @@ class ForeignRuleStore extends MemoryGateStore {
   }
 }
 
+/** Holds a gate at whatever id is asked for, with the given rule (or none) and status. */
+class SeededGateStore extends MemoryGateStore {
+  constructor(
+    private readonly rule: GateRule | undefined,
+    private readonly resolved: boolean,
+  ) {
+    super();
+  }
+  override get(id: string): GateRecord | undefined {
+    if (!super.get(id)) {
+      super.create({ id, prompt: "approve?", ...(this.rule ? { rule: this.rule } : {}) });
+      if (this.resolved) super.resolve(id, APPROVE, OWNER_TERMINAL);
+    }
+    return super.get(id);
+  }
+}
+
 describe("ctx.authorize", () => {
   it("proceeds on an allow row without a gate, and replays the recorded result without the table", async () => {
     const h = harness(makeDb(), "automation", { request: RELEASE });
@@ -347,5 +365,36 @@ describe("ctx.authorize", () => {
 
     expect(run.status).toBe("failed");
     expect(h.errors[0]).toMatchObject({ ruleId: "MRG-AU", refusal: "the answer does not echo the request's subject" });
+  });
+
+  it("refuses a resolved gate that carries no rule, never approving it", async () => {
+    const h = harness(makeDb(), "automation", { gates: new SeededGateStore(undefined, true) });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.results).toEqual([]);
+    expect(h.errors[0]).toBeInstanceOf(AuthorityRefusedError);
+    expect(h.errors[0]).toMatchObject({ ruleId: "unbound", refusal: "the gate carries no authority rule" });
+  });
+
+  it("refuses a pending gate that carries no rule at once, without pausing", async () => {
+    const h = harness(makeDb(), "automation", { gates: new SeededGateStore(undefined, false) });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.errors[0]).toMatchObject({ ruleId: "unbound", refusal: "the gate carries no authority rule" });
+  });
+
+  it("refuses a gate recorded under another table even when its ruleId matches", async () => {
+    const rule: GateRule = { table: "OTHER", version: "1.0.0", ruleId: "MRG-AU", resolvers: ["owner-terminal"] };
+    const h = harness(makeDb(), "automation", { gates: new SeededGateStore(rule, true) });
+
+    const run = await h.rt.wait(h.rt.start("governed"));
+
+    expect(run.status).toBe("failed");
+    expect(h.results).toEqual([]);
+    expect(h.errors[0]).toMatchObject({ ruleId: "MRG-AU", refusal: expect.stringContaining("table OTHER") });
   });
 });
