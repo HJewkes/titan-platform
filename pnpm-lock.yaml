@@ -267,7 +267,14 @@ importers:
         version: 4.5.4
 
   packages/decider:
+    dependencies:
+      '@titan-design/memory':
+        specifier: workspace:^
+        version: link:../memory
     devDependencies:
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
       zod:
         specifier: ^4.4.3
         version: 4.5.4

@@ -35,7 +35,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
   },
+  "dependencies": {
+    "@titan-design/memory": "workspace:^"
+  },
   "devDependencies": {
+    "@titan-design/store-sqlite": "workspace:^",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
