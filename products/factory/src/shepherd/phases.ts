@@ -24,7 +24,8 @@ export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown }
   | { kind: "FIX_FIRST"; headSha: string; text: string }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none" };
+  /** `noVerdict` says why no dispatched reviewer gave a verdict; absent means none was dispatched. */
+  | { kind: "none"; noVerdict?: string };
 
 /** A `none` verdict or `unhandled` wake leaves the decision to the owner gate. */
 export interface ShepherdPhases {

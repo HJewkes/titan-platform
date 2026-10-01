@@ -382,6 +382,22 @@ describe("the effective merge policy", () => {
   });
 });
 
+describe("a review that ends with no reviewer verdict", () => {
+  it("opens approve-merge saying no reviewer verdict and why, not the merge-policy text, even under auto", async () => {
+    const noVerdict = `reviewer rv-1 exited without a verdict for ${H1}; then fresh reviewer rv-1-2 exited without a verdict for ${H1}`;
+    const w = world(fakePhases({ review: () => ({ kind: "none", noVerdict }) }).phases);
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge"))!.prompt;
+
+    expect(prompt).toContain(`Policy shepherd-review/no-verdict: no reviewer verdict at ${H1}: ${noVerdict}`);
+    expect(prompt).not.toMatch(/MRG-AU|no merge facts/);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
 describe("the merge hold", () => {
   it("refuses a held PR at the port and passes an unregistered PR straight through", async () => {
     const w = world(fakePhases({}).phases);

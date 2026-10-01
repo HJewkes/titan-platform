@@ -25,6 +25,10 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
+/** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
+export const DEFAULT_EXIT_GRACE_MS = 60_000;
+/** A broker restart detaches every agent for a moment, so only a long detach counts as the reviewer leaving. */
+export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 /** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
@@ -109,14 +113,16 @@ interface AcceptedVerdict {
   reviewer: AgentIdentity;
 }
 
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string }) | { kind: "none" };
+/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. `silence` says why a dispatched reviewer gave none. */
+export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string }) | { kind: "none"; silence?: string };
 
 export interface AwaitVerdictTiming {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;
   timeoutMs: number;
+  exitGraceMs?: number;
+  detachGraceMs?: number;
 }
 
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
@@ -164,26 +170,51 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }
 
-/** Polls until an acceptable block appears; the deadline ends the wait with `none`, and a failed read counts as nothing yet. */
+type Roster = () => Promise<readonly ReviewerAgent[]>;
+
+/** Why the dispatched reviewer is gone for good, or undefined while it may still answer; an unreadable roster says nothing. */
+function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<string | undefined> {
+  let gone: { presence: string; since: number } | undefined;
+  return async (input) => {
+    const rows = await roster().catch(() => undefined);
+    if (!rows) return undefined;
+    const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
+    if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return void (gone = undefined);
+    if (gone?.presence !== presence) gone = { presence, since: timing.now() };
+    const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
+    if (timing.now() - gone.since < grace) return undefined;
+    return `${presence === "detached" ? "stayed detached" : presence} without a verdict for ${input.head}`;
+  };
+}
+
+/**
+ * Polls until an acceptable block appears; a failed read counts as nothing yet. The deadline, or a reviewer the roster
+ * shows gone for its grace, ends the wait with `none` and says why.
+ */
 export async function awaitVerdict(
   reader: ReviewerReader,
   input: AwaitVerdictInput,
   timing: AwaitVerdictTiming,
   signal: AbortSignal,
+  roster?: Roster,
 ): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
+  const silent = roster ? silenceWatch(timing, roster) : async () => undefined;
   for (;;) {
     const messages = await reader.read(input).catch(() => []);
     const result = acceptVerdict(input, messages);
     if (result.kind === "verdict") return result;
-    if (clock.expired()) return { kind: "none" };
+    const silence = await silent(input);
+    if (silence) return { kind: "none", silence };
+    if (clock.expired()) return { kind: "none", silence: `gave no verdict for ${input.head} within ${timing.timeoutMs} ms` };
     await clock.sleep(timing.pollMs, signal);
   }
 }
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
-const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1) });
+/** `fresh` asks for a reviewer nobody has held, because the last one gave no verdict. */
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional() });
 /** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. */
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume"]), agentId: z.string().min(1).optional() });
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema });
@@ -235,8 +266,8 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[]): Omit<ReviewIntent, "head" | "at"> {
-  const standing = standingReviewer(registration, roster);
+function chooseReviewer(target: ReviewInput, registration: Registration | undefined, roster: readonly ReviewerAgent[]): Omit<ReviewIntent, "head" | "at"> {
+  const standing = target.fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
 }
@@ -278,6 +309,8 @@ export interface ReviewWiring {
   questions?: (target: ReviewTarget) => Promise<readonly string[]>;
   timeoutMs?: number;
   sessionStartTimeoutMs?: number;
+  exitGraceMs?: number;
+  detachGraceMs?: number;
   isFrozen?: IsFrozen;
 }
 
@@ -328,10 +361,11 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
 
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
-  const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
+  const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
   const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
     const input = parseAwaitVerdictInput(raw);
-    return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
+    const roster = wiring?.dispatch && (() => wiring.dispatch!.roster());
+    return wiring ? awaitVerdict(wiring.reader, input, timing, signal, roster) : { kind: "none" };
   };
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [
@@ -354,12 +388,12 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
 const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent") }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("dispatched"), at: z.number(), ...Identity.shape }),
+  z.looseObject({ kind: z.literal("dispatched"), reviewer: z.string(), at: z.number(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 const Awaited = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: z.looseObject({}), reviewer: Identity, text: z.string().optional() }),
-  z.looseObject({ kind: z.literal("none") }),
+  z.looseObject({ kind: z.literal("none"), silence: z.string().optional() }),
 ]);
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
@@ -369,21 +403,35 @@ function seatGrants(ctx: WorkflowContext): string[] {
   return policy.merge === "auto" ? [MERGE_ON_GREEN_GRANT] : [];
 }
 
+/** One reviewer's turn at a head: a verdict ends the review, `silent` earns one fresh reviewer, and `unstarted` means none could be started. */
+type Attempt = { kind: "verdict"; verdict: Verdict } | { kind: "silent" | "unstarted"; reason: string };
+
 /**
  * Record which reviewer this head gets, start or adopt it, wait for its verdict, and take a MERGE through the evidence step.
  * The resolver comes from the verdict step and the dispatched reviewer from the dispatch step, so a mismatch between them gates.
  */
-export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
-  const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId }, Intended);
-  if (intent.kind !== "intent") return { kind: "none" };
+async function reviewOnce(ctx: WorkflowContext, target: ReviewTarget, fresh: boolean): Promise<Attempt> {
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(fresh && { fresh }) }, Intended);
+  if (intent.kind !== "intent") return { kind: "unstarted", reason: String(intent.reason) };
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { kind: "none" };
+  if (dispatched.kind !== "dispatched") return { kind: "unstarted", reason: String(dispatched.reason) };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (awaited.kind !== "verdict") return { kind: "none" };
-  if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
+  if (awaited.kind !== "verdict") return { kind: "silent", reason: `reviewer ${dispatched.reviewer} ${awaited.silence ?? "gave no verdict"}` };
+  if (awaited.verdict === "FIX_FIRST") return { kind: "verdict", verdict: { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" } };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer, seatGrants: seatGrants(ctx) });
+  return { kind: "verdict", verdict: await mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer, seatGrants: seatGrants(ctx) }) };
+}
+
+/** A reviewer that ends silent gets one fresh successor at the same head; only a second silence leaves the owner a `none`, which says why. */
+export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
+  const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
+  const first = await reviewOnce(ctx, target, false);
+  if (first.kind === "verdict") return first.verdict;
+  if (first.kind === "unstarted") return { kind: "none" };
+  const second = await reviewOnce(ctx, target, true);
+  if (second.kind === "verdict") return second.verdict;
+  const then = second.kind === "silent" ? `then fresh ${second.reason}` : `then no fresh reviewer started: ${second.reason}`;
+  return { kind: "none", noVerdict: `${first.reason}; ${then}` };
 };

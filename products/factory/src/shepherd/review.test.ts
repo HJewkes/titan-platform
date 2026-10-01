@@ -205,7 +205,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none" });
+    expect(result).toEqual({ kind: "none", silence: `gave no verdict for ${HEAD} within 250 ms` });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
   });
@@ -214,7 +214,69 @@ describe("awaitVerdict", () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };
 
-    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
+    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toMatchObject({ kind: "none" });
+  });
+
+  const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
+  /** The reviewer's roster row, whose presence `presenceAt` gives by the clock; `down` means the broker cannot be reached. */
+  const rosterBy = (clock: ReturnType<typeof clockAt>, presenceAt: (now: number) => string | "absent" | "down") => async () => {
+    const presence = presenceAt(clock.now());
+    if (presence === "down") throw new ReviewerBrokerDown("broker restarting");
+    return presence === "absent" ? [] : [agent("rv", { agentId: "reviewer-1", sessionId: "session-1", presence })];
+  };
+  const silentReader: ReviewerReader = { read: async () => [] };
+
+  it("ends the wait one grace after the reviewer exits without a verdict, long before the deadline", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
+
+    expect(result).toEqual({ kind: "none", silence: `exited without a verdict for ${HEAD}` });
+    expect(clock.now()).toBe(800);
+  });
+
+  it("ends the wait when the reviewer deregisters and leaves the roster", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
+
+    expect(result).toEqual({ kind: "none", silence: `deregistered without a verdict for ${HEAD}` });
+  });
+
+  it("takes a verdict that lands within the grace after the exit", async () => {
+    const clock = clockAt(0);
+    const reader: ReviewerReader = { read: async () => (clock.now() >= 700 ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("keeps waiting through a broker restart that detaches the reviewer for a moment, and takes the verdict it gives after", async () => {
+    const clock = clockAt(0);
+    const presenceAt = (now: number) => (now < 300 ? "live" : now < 600 ? "down" : now < 1_200 ? "detached" : "live");
+    const reader: ReviewerReader = { read: async () => (clock.now() >= 3_000 ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, rosterBy(clock, presenceAt));
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("ends the wait when the reviewer stays detached past its grace", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
+
+    expect(result).toEqual({ kind: "none", silence: `stayed detached without a verdict for ${HEAD}` });
+    expect(clock.now()).toBe(1_500);
+  });
+
+  it("never ends the wait early while the broker cannot be reached", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
+
+    expect(result).toEqual({ kind: "none", silence: `gave no verdict for ${HEAD} within 2000 ms` });
   });
 });
 
@@ -739,6 +801,9 @@ describe("reviewPhase", () => {
     heads?: string[];
     registered?: Partial<RegistrationInput>;
     policy?: EffectivePolicy;
+    wiring?: Partial<ReviewWiring>;
+    /** Rewrites what the broker reports at a time; it may throw, as a broker that is down does. */
+    roster?: (agents: ReviewerAgent[], now: number) => ReviewerAgent[];
   }
 
   async function review(scene: Scene) {
@@ -756,7 +821,9 @@ describe("reviewPhase", () => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 });
+    const rewrite = scene.roster;
+    const dispatch: ReviewerDispatch = rewrite ? { ...scene.dispatch, roster: async () => rewrite(scene.dispatch.agents, clock) } : scene.dispatch;
+    const wired = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...scene.wiring });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -768,7 +835,8 @@ describe("reviewPhase", () => {
     const done = await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
-    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, inputs, status: done.status };
+    const resultsOf = (stepId: string) => results.filter((result) => result.stepId === stepId).map((result) => (result.data as { result?: unknown }).result);
+    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, resultsOf, inputs, status: done.status };
   }
 
   it("runs sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
@@ -856,12 +924,13 @@ describe("reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
-  it("resumes nobody on the replay when the host dies before the resume, so the verdict wait ends in none and the owner gate decides", async () => {
+  it("resumes nobody on the replay when the host dies before the resume, so the silent wait earns one fresh reviewer whose verdict counts", async () => {
     const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "before", agents: crew(standing()), reviewer: "rv-standing" });
 
     expect(dispatch.resumes).toEqual([]);
     expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
-    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
   it("takes the dispatched reviewer's MERGE through the evidence step, where the run's auto policy allows the merge", async () => {
@@ -932,7 +1001,7 @@ describe("reviewPhase", () => {
 
     const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), read });
 
-    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(verdicts).toMatchObject([{ kind: "none", noVerdict: expect.any(String) }]);
     expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
   });
 
@@ -944,7 +1013,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }, { kind: "none" }]);
     expect(stepIds).toContain(`sh-review:${H2}`);
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2"]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2", "rv-octo-demo-1-3"]);
   });
 
   it("does not accept what a resumed reviewer said before this dispatch", async () => {
@@ -955,16 +1024,22 @@ describe("reviewPhase", () => {
     const { verdicts } = await review({ dispatch, read, registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
 
     expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
-    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(verdicts).toMatchObject([{ kind: "none", noVerdict: expect.stringContaining("rv-standing") }]);
   });
 
-  it("returns none at the deadline when the reviewer says nothing, without dispatching another", async () => {
+  it("dispatches one fresh reviewer at the same head when the first says nothing by the deadline, and gives up after the second", async () => {
     const dispatch = fakeDispatch();
 
-    const { verdicts } = await review({ dispatch, read: () => [] });
+    const { verdicts, stepIds } = await review({ dispatch, read: () => [] });
 
-    expect(verdicts).toEqual([{ kind: "none" }]);
-    expect(dispatch.spawns).toHaveLength(1);
+    expect(dispatch.spawns.map((spawn) => [spawn.name, spawn.target.head])).toEqual([
+      ["rv-octo-demo-1", H1],
+      ["rv-octo-demo-1-2", H1],
+    ]);
+    expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([`sh-await-verdict:${H1}`, `sh-await-verdict:${H1}`]);
+    expect(verdicts).toEqual([
+      { kind: "none", noVerdict: `reviewer rv-octo-demo-1 gave no verdict for ${H1} within 5000 ms; then fresh reviewer rv-octo-demo-1-2 gave no verdict for ${H1} within 5000 ms` },
+    ]);
   });
 
   it("returns none and starts nobody when the dispatch refuses", async () => {
@@ -975,5 +1050,90 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none" }]);
     expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([]);
+  });
+
+  /** Only the reviewer under `fresh` speaks: its MERGE at the asked head. */
+  const onlyFrom =
+    (fresh: string): Scene["read"] =>
+    (input, dispatch) =>
+      dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId && who.name === fresh).map((who) => said(who, verdictAt(input.head), 1e12));
+  const onlyFresh = onlyFrom("rv-octo-demo-1-2");
+
+  it("spawns one fresh reviewer at the same head when the first exits without a verdict, and takes the fresh one's MERGE", async () => {
+    const dispatch = fakeDispatch();
+    let spawned = 0;
+    dispatch.spawn = async (name, brief, target) => {
+      dispatch.spawns.push({ name, brief, target });
+      dispatch.agents.push(agent(name, { presence: spawned++ === 0 ? "exited" : "live" }));
+    };
+
+    const { verdicts, resultsOf, stepIds } = await review({ dispatch, read: onlyFresh, wiring: { exitGraceMs: 1_000, timeoutMs: 60_000 } });
+
+    expect(dispatch.spawns.map((spawn) => [spawn.name, spawn.target.head])).toEqual([
+      ["rv-octo-demo-1", H1],
+      ["rv-octo-demo-1-2", H1],
+    ]);
+    expect(resultsOf(`sh-await-verdict:${H1}`)[0]).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
+    expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([`sh-merge-evidence:${H1}`]);
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+  });
+
+  it("spawns the fresh reviewer under a new name instead of resuming the standing reviewer that went silent", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+
+    const { verdicts, resultsOf } = await review({ dispatch, read: onlyFrom("rv-octo-demo-1"), registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
+
+    expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+    expect(resultsOf(`sh-review-intent:${H1}`)).toMatchObject([{ mode: "resume", reviewer: "rv-standing" }, { mode: "spawn", reviewer: "rv-octo-demo-1" }]);
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+  });
+
+  it("gives up after the fresh reviewer also exits silently, and its none names both reviewers and why", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async (name, brief, target) => void (dispatch.spawns.push({ name, brief, target }), dispatch.agents.push(agent(name, { presence: "exited" })));
+
+    const { verdicts } = await review({ dispatch, read: () => [], wiring: { exitGraceMs: 1_000, timeoutMs: 60_000 } });
+
+    expect(dispatch.spawns).toHaveLength(2);
+    expect(verdicts).toEqual([
+      { kind: "none", noVerdict: `reviewer rv-octo-demo-1 exited without a verdict for ${H1}; then fresh reviewer rv-octo-demo-1-2 exited without a verdict for ${H1}` },
+    ]);
+  });
+
+  it("names the refusal when the fresh reviewer cannot be started after a silent one", async () => {
+    const dispatch = fakeDispatch();
+    const spawn = dispatch.spawn;
+    dispatch.spawn = async (name, brief, target) => (dispatch.spawns.length === 0 ? spawn(name, brief, target) : Promise.reject(new Error("spawn budget exhausted")));
+
+    const { verdicts } = await review({ dispatch, read: () => [] });
+
+    expect(verdicts).toEqual([
+      {
+        kind: "none",
+        noVerdict: `reviewer rv-octo-demo-1 gave no verdict for ${H1} within 5000 ms; then no fresh reviewer started: the reviewer dispatch was refused: spawn budget exhausted`,
+      },
+    ]);
+  });
+
+  it("re-dispatches once when the reviewer survives a broker restart, re-attaches, and then exits silently, well before the verdict timeout", async () => {
+    const dispatch = fakeDispatch();
+    const START = 10_000;
+    /** Live, then the broker restarts and the reviewer re-attaches, then it deregisters without a word. */
+    const restart = (agents: ReviewerAgent[], now: number) => {
+      const first = agents.find((who) => who.name === "rv-octo-demo-1");
+      const age = now - START;
+      if (first && age >= 3_000 && age < 5_000) throw new ReviewerBrokerDown("broker restarting");
+      if (first) first.presence = age < 3_000 ? "live" : age < 6_000 ? "detached" : age < 12_000 ? "live" : "exited";
+      return [...agents];
+    };
+
+    const { verdicts, resultsOf } = await review({ dispatch, read: onlyFresh, roster: restart, wiring: { exitGraceMs: 2_000, timeoutMs: 30 * 60_000 } });
+    const intents = resultsOf(`sh-review-intent:${H1}`) as { at: number }[];
+
+    expect(resultsOf(`sh-await-verdict:${H1}`)[0]).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
+    expect(intents[1]!.at - START).toBeLessThan(20_000);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2"]);
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
   });
 });

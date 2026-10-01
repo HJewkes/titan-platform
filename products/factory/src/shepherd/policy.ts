@@ -50,6 +50,7 @@ export class RegistrationRefused extends Error {
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
+export const NO_VERDICT_RULE: PolicyRule = { table: "shepherd-review", rowId: "no-verdict", version: 1 };
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
   return MERGE_ORDER.indexOf(a) <= MERGE_ORDER.indexOf(b) ? a : b;
@@ -93,6 +94,8 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
+      const silence = noVerdictAt(target?.headSha, verdictFor);
+      if (silence !== undefined) return { outcome: "gate", rule: NO_VERDICT_RULE, reason: `no reviewer verdict at ${target?.headSha}: ${silence}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor));
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
     },
@@ -114,6 +117,11 @@ function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdi
   const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
   const wellFormed = typeof evidence?.head === "string" && typeof evidence.merge === "object" && evidence.merge !== null && typeof evidence.record === "object" && evidence.record !== null;
   return wellFormed ? (evidence as MergeEvidence) : undefined;
+}
+
+function noVerdictAt(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string | undefined {
+  const verdict = headSha === undefined ? undefined : verdictFor(headSha);
+  return verdict?.kind === "none" ? verdict.noVerdict : undefined;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
