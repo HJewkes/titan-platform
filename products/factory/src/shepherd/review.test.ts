@@ -127,6 +127,10 @@ describe("acceptVerdict", () => {
     expect(acceptVerdict(input, [message({ locator: { selector: locator.selector } as unknown as SourceTextLocator })])).toEqual({ kind: "none" });
   });
 
+  it("refuses a message with no locator", () => {
+    expect(acceptVerdict(input, [message({ locator: undefined as unknown as SourceTextLocator })])).toEqual({ kind: "none" });
+  });
+
   it("refuses a message written at the dispatch instant", () => {
     expect(acceptVerdict(input, [message({ writtenAt: 1_000 })])).toEqual({ kind: "none" });
   });

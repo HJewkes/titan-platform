@@ -185,6 +185,25 @@ describe("the frozen-merge guard", () => {
     expect(r.fake.effects.merge).toBe(0);
   });
 
+  it("refuses the merge, never passes it, when the PR read fails", async () => {
+    const r = rig();
+    let merged = 0;
+    const failing = {
+      ...r.port,
+      getPr: async () => {
+        throw new Error("github unavailable");
+      },
+      merge: async () => {
+        merged += 1;
+        return { merged: true };
+      },
+    } as unknown as GitHubPort;
+    const port = holdingPort(failing, () => r.registrations);
+
+    await expect(port.merge(A, 1, RED, "squash")).rejects.toThrow(/github unavailable/);
+    expect(merged).toBe(0);
+  });
+
   it("stops waiting on a frozen repo when the run is aborted, without merging", async () => {
     const r = rig();
     r.freezes.freeze(A, RED);
