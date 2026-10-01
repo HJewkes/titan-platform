@@ -6,6 +6,7 @@ import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import type { ShepherdDeps } from "./phases.js";
+import { MAIN_CI_ROUTES, type MainCiRead } from "./route-table.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -33,6 +34,8 @@ export function afterStages(ctx: WorkflowContext): AfterStage[] {
 export const MainCiResult = z.looseObject({
   verdict: z.enum(["green", "red", "none"]),
   mergeSha: z.string(),
+  /** Set when the verdict was read on a newer main push whose run superseded the merge sha's cancelled one. */
+  readSha: z.string().optional(),
   after: AfterStagesSchema,
   detail: z.string(),
 });
@@ -49,7 +52,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
 
 /** Reads main CI on the merge commit once, records it, gives a red or unread main to the owner, then cleans up. Runs no after stage. */
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[]): Promise<MainCi> {
-  const result = await step(ctx, "sh-main-ci", { repo: target.repo, mergeSha: target.mergeSha, after }, MainCiResult);
+  const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after }, MainCiResult);
   if (result.verdict !== "green") await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, target.mergeSha);
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, target.mergeSha);
   await step(ctx, "sh-cleanup", { repo: target.repo, pr: target.pr, runId: ctx.runId }, CleanupResult);
@@ -63,6 +66,8 @@ async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, me
 
 export interface MainCiInput {
   repo: RepoSlug;
+  /** The merged PR, read for its base branch; absent means a cancelled run is never followed to a newer push. */
+  pr?: number;
   mergeSha: string;
   after: AfterStage[];
 }
@@ -82,18 +87,20 @@ export interface Timing {
   timeoutMs: number;
 }
 
-type Read = { verdict: "green" | "red"; detail: string } | { verdict: "pending"; detail: string };
+type Read = { verdict: "green" | "red" | "pending"; detail: string } | { verdict: "newer"; sha: string; detail: string };
 
-/** Polls until every run at the merge sha has finished. A read error or the deadline is `none`, never green. */
+/** Polls until every run at the merge sha, or at the newer push that superseded it, has finished. A read error or the deadline is `none`, never green. */
 export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: Timing, signal: AbortSignal): Promise<MainCi> {
   const base = { mergeSha: input.mergeSha, after: input.after };
   if (input.mergeSha === "") return { ...base, verdict: "none", detail: "land returned no merge sha" };
   const clock = deadline(timing);
+  let sha = input.mergeSha;
   let last = "no read yet";
   for (;;) {
     try {
-      const read = evaluate(input.mergeSha, await port.checkRuns(input.repo, input.mergeSha));
-      if (read.verdict !== "pending") return { ...base, ...read };
+      const read = await readAt(port, input, sha);
+      if (read.verdict === "newer") sha = read.sha;
+      else if (read.verdict !== "pending") return { ...base, ...(sha !== input.mergeSha && { readSha: sha }), verdict: read.verdict, detail: read.detail };
       last = read.detail;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
@@ -103,13 +110,42 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
   }
 }
 
+/** One read at `sha`, routed by MAIN_CI_ROUTES once it has finished. */
+async function readAt(port: GitHubPort, input: MainCiInput, sha: string): Promise<Read> {
+  const read = evaluate(sha, await port.checkRuns(input.repo, sha));
+  if (read.verdict === "pending") return { verdict: "pending", detail: read.detail };
+  const newer = read.verdict === "cancelled" ? await newerMainPush(port, input, sha) : undefined;
+  const classified: MainCiRead = newer === undefined ? read.verdict : "cancelled-superseded";
+  switch (MAIN_CI_ROUTES[classified]) {
+    case "done":
+      return { verdict: "green", detail: read.detail };
+    case "main-red":
+      return { verdict: "red", detail: read.detail };
+    case "read-newer-run":
+      return { verdict: "newer", sha: newer!, detail: `${read.detail} at ${sha}; reading the run at newer main push ${newer}` };
+  }
+}
+
+/** The base branch's tip when it is a later push that contains `sha`, else undefined. */
+async function newerMainPush(port: GitHubPort, input: MainCiInput, sha: string): Promise<string | undefined> {
+  if (input.pr === undefined) return undefined;
+  const { baseRef } = await port.getPr(input.repo, input.pr);
+  const tip = await port.getHeadSha(input.repo, baseRef);
+  if (tip === null || tip === sha) return undefined;
+  return (await port.compareFiles(input.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
+}
+
+type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded"> | "pending"; detail: string };
+
 /** Only allowed-app runs at the merge sha count, and each counts, so an older red survives a newer green of its name. */
-function evaluate(mergeSha: string, runs: readonly CheckRun[]): Read {
+function evaluate(mergeSha: string, runs: readonly CheckRun[]): Evaluated {
   const counted = runs.filter((run) => run.headSha === mergeSha && run.appId === GITHUB_ACTIONS_APP_ID);
   if (counted.length === 0) return { verdict: "pending", detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const findings = headCheckFindings({ headSha: mergeSha, contexts: [], runs: counted, requiredApps: [GITHUB_ACTIONS_APP_ID] });
-  const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run.name] : []));
-  if (failed.length > 0) return { verdict: "red", detail: `failed: ${failed.join(", ")}` };
+  const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
+  const names = failed.map((run) => run.name).join(", ");
+  if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
+  if (failed.length > 0) return { verdict: "red", detail: `failed: ${names}` };
   if (findings.length > 0) return { verdict: "pending", detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
   return { verdict: "green", detail: `${counted.length} runs passed` };
 }

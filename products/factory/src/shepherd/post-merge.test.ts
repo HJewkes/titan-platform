@@ -81,6 +81,49 @@ describe("readMainCi", () => {
     expect((await read(fake)).verdict).toBe("none");
   });
 
+  describe("a run cancelled by concurrency", () => {
+    const NEWER = fakeSha("newer-main-push");
+    const cancelled = successRun("validate", 1, undefined, "cancelled");
+
+    function superseded(newerConclusion: string): FakeGitHub {
+      const fake = fakeGitHub();
+      fake.addPr({ headSha: H1, baseRef: "main" });
+      fake.setRuns(MERGE, [cancelled]);
+      fake.refs.set("main", NEWER);
+      fake.compares.set(`${MERGE}...${NEWER}`, { mergeBaseSha: MERGE, files: [] });
+      fake.setRuns(NEWER, [successRun("validate", 2, undefined, newerConclusion)]);
+      return fake;
+    }
+
+    it("waits for the newer main push's run when a newer push superseded it, and answers green on that run", async () => {
+      const result = await read(superseded("success"), clockedTiming(), { ...input, pr: 1 });
+
+      expect(result).toMatchObject({ verdict: "green", mergeSha: MERGE, readSha: NEWER });
+    });
+
+    it("answers red when the newer push's run fails", async () => {
+      expect(await read(superseded("failure"), clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "red", readSha: NEWER });
+    });
+
+    it("answers red when main has not moved past the merge sha", async () => {
+      const fake = superseded("success");
+      fake.refs.set("main", MERGE);
+
+      expect(await read(fake, clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "red", detail: "cancelled: validate" });
+    });
+
+    it("answers red when main's tip does not contain the merge sha", async () => {
+      const fake = superseded("success");
+      fake.compares.set(`${MERGE}...${NEWER}`, { mergeBaseSha: fakeSha("elsewhere"), files: [] });
+
+      expect((await read(fake, clockedTiming(), { ...input, pr: 1 })).verdict).toBe("red");
+    });
+
+    it("answers red when the step input names no PR to read the base branch from", async () => {
+      expect((await read(superseded("success"))).verdict).toBe("red");
+    });
+  });
+
   it("answers none for a missing merge sha without reading", async () => {
     const fake = fakeGitHub();
 

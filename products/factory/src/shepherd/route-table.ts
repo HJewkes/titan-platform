@@ -84,3 +84,11 @@ export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
 export function escalationReason(escalation: Escalation, detail: string): string {
   return `${ESCALATIONS[escalation]}: ${detail}`;
 }
+
+/** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled. */
+export const MAIN_CI_READS = ["green", "red", "cancelled", "cancelled-superseded"] as const;
+export type MainCiRead = (typeof MAIN_CI_READS)[number];
+export type MainCiRoute = "done" | "main-red" | "read-newer-run";
+
+/** A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does. */
+export const MAIN_CI_ROUTES: Readonly<Record<MainCiRead, MainCiRoute>> = { green: "done", red: "main-red", cancelled: "main-red", "cancelled-superseded": "read-newer-run" };
