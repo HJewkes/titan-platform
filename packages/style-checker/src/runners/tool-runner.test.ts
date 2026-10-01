@@ -8,6 +8,10 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, spawn: vi.fn(actual.spawn) };
 });
 
+function throwingSpawn(code: string): never {
+  throw Object.assign(new Error(`spawn ${code}`), { code });
+}
+
 function fakeFailingChild(code: string): childProcess.ChildProcess {
   const child = new EventEmitter() as childProcess.ChildProcess;
   Object.assign(child, { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: vi.fn() });
@@ -60,7 +64,7 @@ describe("runTool", () => {
       const real = (await vi.importActual<typeof childProcess>("node:child_process")).spawn;
       const spawnSpy = vi.mocked(childProcess.spawn);
       spawnSpy.mockClear();
-      spawnSpy.mockImplementationOnce(() => fakeFailingChild("ETXTBSY"));
+      spawnSpy.mockImplementationOnce(() => throwingSpawn("ETXTBSY"));
       spawnSpy.mockImplementation(real);
 
       const result = await runTool("echo", ["again"]);
@@ -72,7 +76,7 @@ describe("runTool", () => {
     it("gives up with a spawn failure when ETXTBSY never clears", async () => {
       const spawnSpy = vi.mocked(childProcess.spawn);
       spawnSpy.mockClear();
-      spawnSpy.mockImplementation(() => fakeFailingChild("ETXTBSY"));
+      spawnSpy.mockImplementation(() => throwingSpawn("ETXTBSY"));
 
       await expect(runTool("echo", [])).rejects.toThrow(/Failed to spawn echo: spawn ETXTBSY/);
       expect(spawnSpy.mock.calls.length).toBeGreaterThan(1);
