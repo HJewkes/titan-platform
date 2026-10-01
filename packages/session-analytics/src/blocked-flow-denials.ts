@@ -7,6 +7,8 @@ export interface DenialRecord {
   /** What the refused call was doing, from its tool input; the reason label alone is loose. */
   action: string;
   tool: string;
+  /** The refused call's id; a forked or resumed transcript repeats it, so it is counted once. */
+  toolUseId?: string;
 }
 
 const DENIAL = /^Permission for this action (?:was|has been) denied by the Claude Code auto mode classifier\. Reason: \[([^\]]+)\]/;
@@ -63,10 +65,23 @@ export function parseDenials(lines: Iterable<string>, seat: string): DenialRecor
       const reason = block.type === "tool_result" ? DENIAL.exec(resultText(block.content))?.[1] : undefined;
       if (reason === undefined) continue;
       const call = calls.get(block.tool_use_id ?? "") ?? { tool: "unknown", input: null };
-      denials.push({ seat, at: entry?.timestamp ?? "", reason, action: classifyDeniedAction(call.tool, call.input), tool: call.tool });
+      const toolUseId = block.tool_use_id ? { toolUseId: block.tool_use_id } : {};
+      denials.push({ seat, at: entry?.timestamp ?? "", reason, action: classifyDeniedAction(call.tool, call.input), tool: call.tool, ...toolUseId });
     }
   }
   return denials;
+}
+
+/** One denial per refused call; a record without a tool_use_id cannot be matched and is kept. */
+export function dedupeDenials(denials: readonly DenialRecord[]): DenialRecord[] {
+  const seen = new Set<string>();
+  return denials.filter((d) => {
+    if (d.toolUseId === undefined) return true;
+    const key = `${d.seat}\u0000${d.toolUseId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function parseLine(line: string): TranscriptEntry | null {

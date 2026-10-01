@@ -1,7 +1,7 @@
 import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
-import { authorityOutcome, authorityStepResult, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
+import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import { assistedGateId, gateIdFor, gateIsPending, memoKey } from "./gate-ids.js";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
@@ -210,8 +210,9 @@ export class RunContext implements WorkflowContext {
       opened: (gateId, prompt) => this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt }),
       paused: () => this.setCurrent(stepId, "paused"),
     };
-    const outcome = await authorityOutcome(requireAuthority(this.deps.authority, stepId), gate, request, options);
-    const result = authorityStepResult(stepId, iteration, outcome);
+    const authority = requireAuthority(this.deps.authority, stepId);
+    const outcome = await authorityOutcome(authority, gate, request, options);
+    const result = authorityStepResult(this.runId, stepId, iteration, outcome, decisionVersion(outcome, this.deps.gates, authority));
     if (this.run.status === "paused") this.run.status = "running";
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal: null });

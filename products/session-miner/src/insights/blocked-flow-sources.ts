@@ -12,7 +12,7 @@ import {
   type SeatJournal,
   type VerdictRecord,
 } from "@titan-design/session-analytics";
-import { openDatabase } from "@titan-design/store-sqlite";
+import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 
 interface EventRow {
@@ -23,20 +23,27 @@ interface EventRow {
   body: string;
 }
 
-/** Verdict messages from agent-chat's events table, opened read-only; window bounds are ISO and inclusive-exclusive. */
-export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }): VerdictRecord[] {
+/** Runs `read` over agent-chat's events table opened read-only; nothing is written, not even a WAL pragma. */
+export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
   if (!existsSync(eventsDb)) throw Object.assign(new Error(`agent-chat events db not found: ${eventsDb} (set TITAN_MINER_EVENTS_DB)`), { code: EXIT.DATAERR });
   const db = openDatabase(eventsDb, { readonly: true, foreignKeys: false });
   try {
+    return read(db);
+  } finally {
+    db.close();
+  }
+}
+
+/** Verdict messages from agent-chat's events table; window bounds are ISO and inclusive-exclusive. */
+export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }): VerdictRecord[] {
+  return withEventsDb(eventsDb, (db) => {
     const sql = `SELECT id, ts, actor, target, body FROM events WHERE kind = 'message' AND body LIKE 'Verdict:%' AND ts >= ? AND ts < ? ORDER BY id`;
     const rows = db.prepare(sql).all(window.since ? Date.parse(window.since) : 0, window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER) as EventRow[];
     return rows.flatMap((row) => {
       const parsed = parseVerdict(row.body);
       return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
     });
-  } finally {
-    db.close();
-  }
+  });
 }
 
 const ghPull = z.object({ state: z.enum(["open", "closed"]), merged_at: z.string().nullable(), head: z.object({ sha: z.string() }) });

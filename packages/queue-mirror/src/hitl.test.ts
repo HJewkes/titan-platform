@@ -1,4 +1,4 @@
-import { MemoryGateStore, type GateAuthorize, type GateStore } from "@titan-design/hitl";
+import { GateStoreSchemaOutdated, MemoryGateStore, type GateAuthorize, type GateStore } from "@titan-design/hitl";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import type { MatrixEvent } from "@titan-design/matrix-bus";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -79,7 +79,7 @@ describe("hitlQueueSource with the mirror", () => {
   it("reports closed for a gate settled at the terminal", async () => {
     const { store, source } = await rig();
     const gate = store.create({ prompt: "go?" });
-    store.resolve(gate.id, "from the terminal");
+    store.resolve(gate.id, "from the terminal", { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" });
 
     expect(await source.resolve(gate.id, { verdict: "allow", resolutionEventId: "$x", sender: OWNER })).toEqual({ ok: false, reason: "closed" });
   });
@@ -167,8 +167,18 @@ describe("hitlQueueSource records who resolved the gate", () => {
     expect(hub.edits()).toEqual([]);
   });
 
-  it("a gate table without the resolver column fails the batch loudly and leaves the item untouched", async () => {
-    const { store, hub, state, mirror } = await rig(undefined, new SqliteGateStore(openDatabase(":memory:")));
+  it("a gate store schema fault fails the batch loudly and leaves the item untouched", async () => {
+    const inner = new MemoryGateStore();
+    const outdated: GateStore = {
+      create: (input) => inner.create(input),
+      get: (id) => inner.get(id),
+      listPending: () => inner.listPending(),
+      cancel: (id, reason) => inner.cancel(id, reason),
+      resolve: (id) => {
+        throw new GateStoreSchemaOutdated(id, "hitl_gate", "gateResolverMigration");
+      },
+    };
+    const { store, hub, state, mirror } = await rig(undefined, outdated);
     const gate = store.create({ prompt: "merge?" });
     await mirror.reconcile();
 
