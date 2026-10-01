@@ -364,7 +364,7 @@ Key exports:
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
 - `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `minimalEnv`, `resolveBinaryPath`
 - `resume`: `ResumeError`, `buildResumeAgentArgs`
-- +20 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
+- +22 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
