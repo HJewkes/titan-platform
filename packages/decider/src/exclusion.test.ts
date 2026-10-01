@@ -71,6 +71,12 @@ describe("isExcluded", () => {
     expect(verdict).toEqual({ excluded: true, reason: "personal-data" });
   });
 
+  it("checks option descriptions for personal data", () => {
+    const options = [{ label: "Attach it", description: "Send the payslip along" }];
+
+    expect(isExcluded(subject({ options }), POLICY)).toEqual({ excluded: true, reason: "personal-data" });
+  });
+
   it("resolves a missing initiative from the cwd mapping", () => {
     const verdict = isExcluded(subject({ initiative: null }), POLICY);
 
