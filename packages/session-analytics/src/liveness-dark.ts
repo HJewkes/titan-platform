@@ -34,7 +34,7 @@ interface OpenGap {
 interface SeatState {
   open: OpenGap | null;
   teleportLines: number[];
-  /** An `agent_exited` since the last registration: a later one is a resume, not a dark seat. */
+  /** A clean `agent_exited` since the last registration: a later one is a resume, not a dark seat. */
   exited: boolean;
 }
 
@@ -49,7 +49,7 @@ export function darkGaps(entries: readonly BrokerEntry[], misses: readonly Route
     .sort((a, b) => a.from.localeCompare(b.from) || a.seat.localeCompare(b.seat));
 }
 
-/** Every deregistered-to-registered gap per seat, dropping one where the agent exited without a teleport. */
+/** Every deregistered-to-registered gap per seat, dropping one where the agent exited cleanly without a teleport. */
 function gapsByLifecycle(entries: readonly BrokerEntry[], asOf: string): ClosedGap[] {
   const states = new Map<string, SeatState>();
   const gaps: ClosedGap[] = [];
@@ -69,7 +69,7 @@ function gapsByLifecycle(entries: readonly BrokerEntry[], asOf: string): ClosedG
 
 function step(state: SeatState, entry: BrokerEntry, close: (gap: OpenGap) => void): void {
   if (entry.event === "agent_exited") {
-    state.exited = true;
+    state.exited ||= exitedCleanly(entry);
   } else if (TELEPORT_EVENTS.has(entry.event)) {
     state.teleportLines.push(entry.line);
     state.open?.teleportLines.push(entry.line);
@@ -81,6 +81,11 @@ function step(state: SeatState, entry: BrokerEntry, close: (gap: OpenGap) => voi
     state.teleportLines = [];
     state.exited = false;
   }
+}
+
+/** Code 0 and not inferred, as agent-chat's exitedCleanly reads it; a crash or an inferred exit leaves the seat dark. */
+function exitedCleanly(entry: BrokerEntry): boolean {
+  return entry.fields.code === 0 && entry.fields.inferred !== true;
 }
 
 function toDarkGap(gap: ClosedGap, misses: readonly RouteMiss[], asOf: string): DarkGap {

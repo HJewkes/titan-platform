@@ -103,7 +103,7 @@ numbers come from, and the text ends with the command and field behind each sour
 Q8 also reads outside the graph and takes `--seat` in place of the session filters. It reads
 agent-chat's broker log at `TITAN_MINER_BROKER_LOG` (default `~/.agent-chat/broker.log`) or
 `--broker-log`, and the events table read-only. A seat is dark from a `deregistered` line to its next
-`registered` line. A gap with an `agent_exited` line and no teleport is a clean exit and later
+`registered` line. A gap with an `agent_exited` line of code 0, not inferred, and no teleport is a clean exit and later
 resume, not a dark seat. A gap still open at `--until` is listed only if a route missed the seat during
 it. A `delivered:false` route counts as failed, except one the broker held for a dark seat (`held`) or
 an answer or decision queued in the inbox, which counts as queued. A name left out of `recipients`

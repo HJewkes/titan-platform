@@ -121,6 +121,19 @@ describe("livenessReport", () => {
     expect(livenessReport({ broker, spawns: [], lastEvents: [], asOf: AS_OF }).darkSeats.rows.map((r) => r.seat)).toEqual(["rev-7"]);
   });
 
+  it("keeps a gap dark when the exit was a crash or inferred rather than clean", () => {
+    const broker = parseBrokerLog([
+      log("10:00:00", "deregistered", { name: "coord" }),
+      log("10:00:30", "agent_exited", { agentId: "c1", name: "coord", code: null, inferred: true }),
+      log("10:40:00", "registered", { name: "coord" }),
+      log("11:00:00", "deregistered", { name: "rev-8" }),
+      log("11:00:01", "agent_exited", { agentId: "a8", name: "rev-8", code: 1 }),
+      log("11:20:00", "registered", { name: "rev-8" }),
+    ]);
+
+    expect(livenessReport({ broker, spawns: [], lastEvents: [], asOf: AS_OF }).darkSeats.rows.map((r) => r.seat)).toEqual(["coord", "rev-8"]);
+  });
+
   it("keeps a teleport gap whose old process exited", () => {
     const broker = parseBrokerLog([
       log("10:00:00", "teleport_started", { name: "seat-d" }),

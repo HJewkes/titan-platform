@@ -10,7 +10,7 @@ import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 export const LIVENESS_SOURCES = {
   registrations: {
     command: `grep -nE '"event":"(registered|deregistered|agent_exited|teleport_started|teleport_completed|teleport_failed|teleport_aborted)"' <broker.log>`,
-    field: "ts, event, name; cited as broker.log line numbers; a gap with an agent_exited and no teleport is a resume",
+    field: "ts, event, name; cited as broker.log line numbers; a gap with a clean agent_exited (code 0, not inferred) and no teleport is a resume",
   },
   routes: { command: `grep -n '"event":"route"' <broker.log>`, field: "to, delivered, recipients" },
   exits: { command: `grep -n '"event":"unreported-exit"' <broker.log>`, field: "agentId, name, spawner, lastAction" },
