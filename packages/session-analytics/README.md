@@ -50,6 +50,12 @@ priceRequest(
   `command_heads`, `file_read` and `file_write` signals session-read extracted for them.
 - `renderCostReportText(report)` — the same report as plain-text tables, ending with
   `LIST_PRICE_CAVEAT` and the price-table and coverage footer.
+- `renderCostReportSections(report, sections)`, `COST_REPORT_SECTIONS` — chosen sections of that
+  text under the same header, with the caveat and footer last; one question's answer, not the
+  whole report.
+- `scope` on `costReport` and `cacheTtlReport` options (`ReportScope`: `sessionIds`,
+  `agentPrefix` on agent-chat names, `roles`), and `scopeFilter(db, scope)` behind it — narrows
+  every request-keyed field to some sessions. Compactions and coverage stay window-wide.
 - `roleFromProfile`, `workerRole(facts)`, `sessionRole(classification, facts)` — worker-v1
   roles, including the standing-peer overlay.
 - `buildEpisodes(input, "worker-v1" | "coordinator-v1")` (pure), `readEpisodeInput`,
@@ -122,7 +128,11 @@ log. Pass its lines as `brokerLogLines`; the `from` agent id maps to sessions th
 and its own reads each time. A standing reviewer, priced from the `standingRole` cohort, boots
 once and then reads a context that every earlier PR grew. A row's requests per PR come from the
 reviewer sessions on its own model; a standing model with no reviewers of its own takes the
-pooled mean over every reviewer session (`requestsFrom: "pooled"`).
+mean of the newest reviewer cohort, the model whose latest session ends last; `requestsFrom`
+names that model. With no reviewer session at all it is 0 and `requestsFrom` is `"pooled"`.
+A session with no request after boot does not count toward its cohort's growth. A reviewer's
+review often sits inside its boot (its first write or send comes late), so requests per PR
+count only what follows it and can understate a reviewer that does its work before it writes.
 
 The report reads a window, so a session that started before it has its boot cut short.
 

@@ -87,6 +87,12 @@ as a read, written again at the 5m rate. It reports the net saving per role and 
 profile, and `lossRoles` names the roles whose rebuilds make 5m a loss. `renderCacheTtlText`
 prints both tables.
 
+Both reports take an optional `scope` of `sessionIds`, an agent-chat `agentPrefix` and
+`roles`, which narrows every request-keyed field; compactions and coverage stay window-wide.
+`renderCostReportSections(report, ["byAction", "mechanicalShare"])` prints just those sections
+of the cost report, framed by its header, caveat and footer. The session miner's
+`titan-miner insights <question>` is built from these two pieces.
+
 ## What it deliberately does not do
 
 It does not read a transcript or the network, it never writes the graph, and it does not

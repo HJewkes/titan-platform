@@ -21,6 +21,7 @@ import { handoffThreshold, handoffThresholdSchema, isBootAction, parseTeleportEv
 import { sessionInitiative } from "./initiative.js";
 import { readRequestToolCalls } from "./request-owner.js";
 import { sessionRole } from "./roles.js";
+import { scopeFilter, type ReportScope } from "./scope.js";
 import {
   ACTION_CLASSES,
   DEFAULT_ACTION_RULES,
@@ -121,6 +122,8 @@ export interface CostReportOptions {
   /** The broker log's lines, read by the caller; its teleport starts give each handoff's exit fill. */
   brokerLogLines?: () => Iterable<string>;
   handoff?: HandoffOptions;
+  /** Narrows every request-keyed field to some sessions; absent means all. */
+  scope?: ReportScope;
 }
 
 /** AskUserQuestion answers are the human answering, so they count under `human` (decisions Q4). */
@@ -143,7 +146,7 @@ type TaggedRow = CostRow & SessionTags & { action: ActionClass; bootAction: bool
 /** Reads the graph and never writes it, so a read-only connection is enough. */
 export function costReport(db: Db, options: CostReportOptions = {}): CostReport {
   const window = resolveWindow(options);
-  const rows = readTaggedRows(db, window, options.actionRules ?? DEFAULT_ACTION_RULES);
+  const rows = readTaggedRows(db, window, options.actionRules ?? DEFAULT_ACTION_RULES).filter(scopeFilter(db, options.scope));
   return {
     window,
     priceTableVersion: readPriceTableVersion(db),
