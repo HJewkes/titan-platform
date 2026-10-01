@@ -17,9 +17,12 @@ interface WrapperSpec {
   joined?: boolean;
   /** Options that make a joining wrapper run its words directly. */
   direct?: string[];
+  /** Whether a name word may precede a compound command, as in `coproc NAME { ...; }`. */
+  named?: boolean;
 }
 
 const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "{", "}", "!"]);
+const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "select", "[[", "(("]);
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
 const WRAPPERS: Record<string, WrapperSpec> = {
@@ -36,7 +39,7 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   stdbuf: { values: ["-i", "-o", "-e"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,
-  coproc: {},
+  coproc: { named: true },
   setsid: {},
   doas: { values: ["-a", "-u"], stop: ["-C", "-L"] },
   flock: {
@@ -44,7 +47,9 @@ const WRAPPERS: Record<string, WrapperSpec> = {
     positionals: 1,
     script: ["-c", "--command"],
   },
-  watch: { values: ["-n", "--interval", "-q", "--equexit"], joined: true, direct: ["-x", "--exec"] },
+  watch: {
+    values: ["-n", "--interval", "-q", "--equexit", "-s", "--shotsdir"],
+    joined: true, direct: ["-x", "--exec"] },
 };
 
 const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
@@ -112,7 +117,12 @@ function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
     i += spec.values?.includes(v) ? 2 : 1;
     if (v === "--") break;
   }
+  if (spec.named && isCompoundStart(words[i + 1])) return i + 1;
   return i + (spec.positionals ?? 0);
+}
+
+function isCompoundStart(word: WordToken | undefined): boolean {
+  return word !== undefined && !word.quoted && COMPOUND_STARTS.has(word.value);
 }
 
 /** Shell text given to one of `spec.script`'s options, before or after the positionals (`flock <file> -c`). */

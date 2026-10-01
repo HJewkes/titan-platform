@@ -63,7 +63,7 @@ function walk(tokens: Token[], w: Walk): void {
   for (const token of tokens) {
     if (token.type === "op") {
       const cmd = emit(words, redirects, w);
-      w.stdin = cmd && (token.value === "|" || token.value === "|&") ? printedText(cmd.name, cmd.args) : null;
+      w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
       words = [];
       redirects = [];
       scope(token.value, w);
@@ -74,6 +74,18 @@ function walk(tokens: Token[], w: Walk): void {
     for (const sub of nestedLists(token)) walk(sub, child(w));
   }
   emit(words, redirects, w);
+}
+
+/** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
+function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: string | null): string | null {
+  if (op === "(" && empty) return stdin;
+  if (!cmd || (op !== "|" && op !== "|&")) return null;
+  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
+}
+
+function passesThrough(cmd: Unwrapped): boolean {
+  if (cmd.name === "tee") return true;
+  return cmd.name === "cat" && cmd.args.every((a) => a.value === "-" || /^-[A-Za-z]+$/.test(a.value));
 }
 
 function nestedLists(token: Token): Token[][] {
@@ -128,13 +140,14 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
   return env;
 }
 
-/** The script text a shell or `eval` runs: a `-c` string, or a heredoc, here-string or literal pipe on stdin. */
+/** The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): string | null {
   if (cmd.script !== undefined) return cmd.script;
   if (cmd.name === "eval") return cmd.args.map((a) => a.value).join(" ");
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
-  if (hasC) return positional?.value ?? null;
+  // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
+  if (hasC) return positional?.value ?? stdin;
   return positional ? null : (stdinScript(redirects) ?? stdin);
 }
 

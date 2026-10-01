@@ -22,7 +22,7 @@ function echoText(values: string[]): string {
   return escapes ? decodeAnsiC(text) : text;
 }
 
-/** Handles `%s`, `%b`, `%d`, `%i` and `%%`, reusing the format while arguments remain, as printf does. */
+/** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */
 function printfText(values: string[]): string | null {
   const [format, ...args] = values;
   if (format === undefined || format.startsWith("-")) return null;
@@ -38,14 +38,30 @@ function printfText(values: string[]): string | null {
   return out;
 }
 
+const DIRECTIVE = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
+
 function applyFormat(format: string, args: string[]): { text: string; used: number } | null {
   let used = 0;
   let understood = true;
-  const text = format.replace(/%(.?)/g, (_, directive: string) => {
-    if (directive === "%") return "%";
-    if (!"sbdi".includes(directive) || directive === "") understood = false;
-    const arg = args[used++] ?? "";
-    return directive === "b" ? decodeAnsiC(arg) : arg;
+  const next = () => args[used++] ?? "";
+  const text = format.replace(DIRECTIVE, (whole, flags: string, width: string, precision?: string, conv = "") => {
+    if (whole === "%%") return "%";
+    if (!"sbcdi".includes(conv) || conv === "") understood = false;
+    const w = width === "*" ? next() : width;
+    const p = precision === "*" ? next() : precision;
+    return pad(convert(conv, next(), p), w, flags.includes("-"));
   });
   return understood ? { text, used } : null;
+}
+
+/** `%.3s` truncates to three characters, the one directive that can turn `git push` into `git`. */
+function convert(conv: string, arg: string, precision: string | undefined): string {
+  const value = conv === "b" ? decodeAnsiC(arg) : conv === "c" ? arg.slice(0, 1) : arg;
+  if (precision === undefined || !"sb".includes(conv)) return value;
+  return value.slice(0, Number.parseInt(precision, 10) || 0);
+}
+
+function pad(value: string, width: string, left: boolean): string {
+  const n = Number.parseInt(width, 10) || 0;
+  return left ? value.padEnd(n) : value.padStart(n);
 }

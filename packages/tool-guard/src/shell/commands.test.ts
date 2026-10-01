@@ -270,10 +270,26 @@ describe("wrappers that run their command", () => {
   });
 
   it.each([
+    ["coproc NAME { git push; }", "a brace group"],
+    ["coproc NAME if true; then git push; fi", "an if"],
+  ])("unwraps %s past the name before %s", (src) => {
+    expect(extract(src).map((c) => [c.name, values(c)])).toContainEqual(["git", ["push"]]);
+    expect(extract(src).map((c) => c.name)).not.toContain("NAME");
+  });
+
+  it("keeps a quoted brace as coproc's command word", () => {
+    expect(extract("coproc NAME '{'").map((c) => c.name)).toEqual(["NAME"]);
+  });
+
+  it.each([
     ["watch git push", "the command words"],
     ["watch -n 5 -d git push", "-n's interval"],
     ["watch --interval=5 git push", "an attached interval"],
     ["watch -x git push", "-x, which runs the words directly"],
+    ["watch -s /tmp git push", "-s's screenshot directory"],
+    ["watch --shotsdir /tmp git push", "--shotsdir's directory"],
+    ["watch -q 3 git push", "-q's cycle count"],
+    ["watch --equexit 3 -s /tmp -n 1 git push", "several value options"],
   ])("unwraps %s past %s", (src) => {
     expect(gitArgs(src)).toEqual([["push"]]);
   });
@@ -350,8 +366,23 @@ describe("literal text piped into a shell", () => {
     ["printf with a reused format", "printf '%s\\n' 'git fetch' 'git push' | bash"],
     ["a wrapped shell", "echo git push | sudo bash -s"],
     ["|&", "echo git push |& bash"],
+    ["xargs sh -c", "printf '%s\\n' 'git push' | xargs sh -c"],
+    ["a subshell", "echo git push | (bash)"],
+    ["a nested subshell", "echo git push | ( (sh) )"],
+    ["tee", "echo git push | tee f | bash"],
+    ["cat with no file", "echo git push | cat - | sh"],
+    ["printf %.3s, truncated", "printf '%.3s push\\n' 'gitlab' | bash"],
+    ["printf %c", "printf '%c%c%c push' g i t | bash"],
+    ["printf width and precision from arguments", "printf '%*.*s push' 3 3 'gitx' | bash"],
   ])("runs the text of %s", (_how, src) => {
     expect(gitArgs(src).at(-1)).toEqual(["push"]);
+  });
+
+  it.each([
+    ["truncates to %.3s's precision", "printf '%.3s' 'git push' | bash", []],
+    ["pads to %5s's width without changing the words", "printf '%5s push' git | bash", ["push"]],
+  ])("printf %s", (_how, src, args) => {
+    expect(gitArgs(src)).toEqual([args]);
   });
 
   it("decodes echo's escapes unless -E is given", () => {
@@ -361,13 +392,15 @@ describe("literal text piped into a shell", () => {
 
   it.each([
     ["a dynamic argument", "echo git $X | bash", ["echo", "bash"]],
-    ["a printf format it does not model", "printf '%.3s' 'git push' | bash", ["printf", "bash"]],
+    ["a printf format it does not model", "printf '%q' 'git push' | bash", ["printf", "bash"]],
     ["printf -v", "printf -v X 'git push' | bash", ["printf", "bash"]],
     ["a script operand", "echo git push | bash x.sh", ["echo", "bash"]],
     ["a command that is not echo or printf", "cat git push | bash", ["cat", "bash"]],
     ["a pipe into something else", "echo git push | cat", ["echo", "cat"]],
-    ["a pipe through another command", "echo git push | cat | bash", ["echo", "cat", "bash"]],
+    ["a pipe through another command", "echo git push | wc -l | bash", ["echo", "wc", "bash"]],
+    ["cat reading a file", "echo git push | cat f | bash", ["echo", "cat", "bash"]],
     ["a ; before the shell", "echo git push | cat; bash", ["echo", "cat", "bash"]],
+    ["a ; before a subshell", "echo git push; (bash)", ["echo", "bash"]],
   ])("runs nothing for %s", (_how, src, names) => {
     expect(extract(src).map((c) => c.name)).toEqual(names);
   });
