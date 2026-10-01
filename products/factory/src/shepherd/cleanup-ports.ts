@@ -19,7 +19,8 @@ export function agentChatCleanupAgents(agentChatBin: string, calls: AgentChatCal
 }
 
 type ActiveWorkCommands = {
-  "task.list": { args: { slug: string; status: "all" }; result: { tasks: { id: string; status: string }[] } };
+  "task.list": { args: { slug: string; status: "all" }; result: { tasks: { id: string; status: string; notes?: string }[] } };
+  "task.edit": { args: { slug: string; id: string; field: "notes"; value: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
 
@@ -39,5 +40,11 @@ export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch 
       return found === undefined ? "missing" : found.status === "done" ? "done" : "open";
     },
     done: async (slug, id) => void (await client.call("task.done", { slug, id })),
+    appendNote: async (slug, id, line) => {
+      const { tasks } = await client.call("task.list", { slug, status: "all" });
+      const notes = tasks.find((task) => task.id === id)?.notes ?? "";
+      if (notes.includes(line)) return;
+      await client.call("task.edit", { slug, id, field: "notes", value: notes === "" ? line : `${notes}\n${line}` });
+    },
   };
 }

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { lineageMigration, shepherdMigration, ShepherdStore, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
 const REPO = "octo/demo";
 const RUN = "run-1";
@@ -14,7 +14,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -42,9 +42,10 @@ function fakeAgents(clock: { now: number }, agents: FakeAgent[]): CleanupAgents 
   };
 }
 
-function fakeTasks(state: TaskState): CleanupTasks & { closed: string[] } {
+function fakeTasks(state: TaskState): CleanupTasks & { closed: string[]; notes: string[] } {
   const closed: string[] = [];
-  return { closed, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`) };
+  const notes: string[] = [];
+  return { closed, notes, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
 }
 
 function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput } = {}) {
@@ -64,6 +65,37 @@ function mergedPr(fake: FakeGitHub, head: { headRef: string; headRepo: string | 
   if (!fake.refs.has(head.headRef)) fake.refs.set(head.headRef, fakeSha("head"));
   return fake;
 }
+
+describe("sh-cleanup task", () => {
+  it("closes the task when the registration names no slice", async () => {
+    const w = world();
+
+    const result = await w.run();
+
+    expect(result.task).toBe("done");
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+    expect(w.tasks.notes).toEqual([]);
+  });
+
+  it("notes the landing and leaves the task open when the registration names a slice", async () => {
+    const w = world({ registration: { ...base, slice: "S4" } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("noted");
+    expect(w.tasks.closed).toEqual([]);
+    expect(w.tasks.notes).toEqual([`demo/TP-1: S4 landed in ${REPO}#1 at ${fakeSha("merge")}`]);
+  });
+
+  it("leaves a slice's task alone when it is already done", async () => {
+    const w = world({ registration: { ...base, slice: "S4" }, task: "done" });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("already-done");
+    expect(w.tasks.notes).toEqual([]);
+  });
+});
 
 describe("sh-cleanup head ref", () => {
   it("deletes a same-repo head branch after the merge", async () => {
@@ -262,5 +294,20 @@ describe("cleanup ports", () => {
     expect(states).toEqual(["done", "open", "missing"]);
     expect(bodies.at(-1)).toEqual({ url: "http://127.0.0.1:7400/rpc/task.done", body: { slug: "demo", id: "TP-2" } });
     expect(bodies[0]!.body).toEqual({ slug: "demo", status: "all" });
+  });
+
+  it("appends a note to the task's notes once, through task.edit", async () => {
+    const bodies: { url: string; body: unknown }[] = [];
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      bodies.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2", status: "open", notes: "first" }] } }));
+    });
+    const tasks = activeWorkTasks({ origin: "http://127.0.0.1:7400", fetch });
+
+    await tasks.appendNote("demo", "TP-2", "S1 landed");
+    await tasks.appendNote("demo", "TP-2", "first");
+
+    const edits = bodies.filter((call) => call.url.endsWith("task.edit"));
+    expect(edits).toEqual([{ url: "http://127.0.0.1:7400/rpc/task.edit", body: { slug: "demo", id: "TP-2", field: "notes", value: "first\nS1 landed" } }]);
   });
 });

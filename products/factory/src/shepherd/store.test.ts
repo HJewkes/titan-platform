@@ -1,11 +1,11 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, type AuthorInput, type RegistrationInput } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -18,6 +18,23 @@ describe("shepherd registration store", () => {
     const registration = store.register(base);
 
     expect(registration).toMatchObject({ repo: "octo/demo", pr: 7, branch: null, kind: "unknown", held: false, reviewer: null, policy: OWNER_GATE_POLICY });
+  });
+
+  it("stores the slice label, and none when the registration has no slice", () => {
+    const store = openStore();
+
+    expect(store.register({ ...base, slice: "S4" }).slice).toBe("S4");
+    expect(store.register({ ...base, pr: 8, runId: "run-2" }).slice).toBeNull();
+  });
+
+  it("adds the slice column to a database that already holds registrations", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4)]);
+    db.prepare("INSERT INTO shepherd_registration (repo, pr, run_id, task, implementer, policy, kind, created_at, updated_at) VALUES ('octo/demo', 7, 'run-1', 'demo/1', 'impl-a', ?, 'unknown', 't', 't')").run(JSON.stringify(OWNER_GATE_POLICY));
+
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+
+    expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ pr: 7, slice: null });
   });
 
   it("refuses a kind outside the known set instead of treating it as unknown", () => {
@@ -83,7 +100,7 @@ describe("shepherd registration store", () => {
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
   return new ShepherdStore(db, () => clock.now);
 }
 
@@ -161,15 +178,15 @@ describe("shepherd lineage", () => {
 
   it("keeps every registration when a database that holds them gains the lineage table", () => {
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
     const before = new ShepherdStore(db, () => 0);
     before.register(base);
     const rows = db.prepare("SELECT * FROM shepherd_registration").all();
 
-    const applied = runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+    const applied = runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
 
     expect(applied).toEqual([5]);
-    expect(appliedVersions(db)).toEqual([4, 5]);
+    expect(appliedVersions(db)).toEqual([4, 5, 8]);
     expect(db.prepare("SELECT * FROM shepherd_registration").all()).toEqual(rows);
     expect(new ShepherdStore(db).byRun("run-1")?.task).toBe("demo/1");
   });
@@ -183,7 +200,7 @@ describe("shepherd store ref", () => {
   it("refuses a second bind until the first is released", () => {
     const ref = shepherdStoreRef();
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
     const unbind = ref.bind(db);
 
     expect(() => ref.bind(db)).toThrow(/already bound/);
