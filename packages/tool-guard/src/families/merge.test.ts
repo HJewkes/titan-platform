@@ -99,6 +99,9 @@ describe("one fixture per bash.merge spelling", () => {
     ["a switch run only when || fails", "true || git checkout -b feat/z && git merge x"],
     ["|| after an assignment", "git checkout -b feat/z && X=1 || git merge x"],
     ["|| after a cd", "git checkout -b feat/z && cd . || git merge x"],
+    ["a negated pipeline ending in the switch", "! true | git checkout -b feat/z && git merge x"],
+    ["a pipeline ending in the switch", "true | git checkout -b feat/z && git merge x"],
+    ["a |& pipeline ending in the switch", "true |& git checkout -b feat/z && git merge x"],
   ])("drops the trust in a branch created from main once the && chain breaks: %s", (_how, command) => {
     expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
   });

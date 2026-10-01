@@ -488,6 +488,10 @@ describe("how a command joins its list", () => {
     expect(cmds.map((c) => [c.name, c.prev, c.negated])).toEqual([["a", null, true], ["b", "&&", false], ["c", "||", false]]);
   });
 
+  it("carries ! to every command of the pipeline it negates, and no further", () => {
+    expect(extract("! a | b |& c && d").map((c) => [c.name, c.negated])).toEqual([["a", true], ["b", true], ["c", true], ["d", false]]);
+  });
+
   it("shares a chain only across commands joined by &&", () => {
     const [a, b, c, d] = extract("a && b && c; d");
 

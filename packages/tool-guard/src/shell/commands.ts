@@ -41,7 +41,7 @@ export interface SimpleCommand {
   next: string | null;
   /** The operator joining the previous command on its list to this one, null when none precedes. */
   prev: string | null;
-  /** Whether `!` negates the command's status. */
+  /** Whether `!` negates the status of the pipeline the command is in. */
   negated: boolean;
   chain: Chain;
 }
@@ -75,6 +75,8 @@ interface Walk {
   /** The operator before the command being emitted. */
   prev: string | null;
   chain: Chain;
+  /** Whether `!` negates the pipeline the command being emitted belongs to. */
+  negated: boolean;
 }
 
 /**
@@ -85,7 +87,7 @@ interface Walk {
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null } });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false });
   return out;
 }
 
@@ -100,6 +102,7 @@ function walk(tokens: Token[], w: Walk): void {
       words = [];
       redirects = [];
       w.prev = token.value;
+      if (token.value !== "|" && token.value !== "|&") w.negated = false;
       if (token.value !== "&&") w.chain = { start: token.value };
       scope(token.value, w);
       continue;
@@ -139,7 +142,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
-  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null } };
+  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
 }
 
 function scope(op: string, w: Walk): void {
@@ -171,7 +174,8 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
-  const links = { next, prev: w.prev, negated: cmd.negated === true, chain: w.chain };
+  w.negated ||= cmd.negated === true;
+  const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
   const script = inlineScript(cmd, redirects, w.stdin);
   if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));

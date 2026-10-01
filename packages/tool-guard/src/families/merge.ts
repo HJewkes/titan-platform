@@ -180,9 +180,12 @@ function inChain(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext {
   return held && held.chain !== cmd.chain ? held.fallback : ctx;
 }
 
-/** Whether every later command in the chain runs only when the switch succeeded: joined by `&&`, not negated, not run instead of a `||`. */
+/** Operators before a switch whose status the next `&&` may not see: `||` skips it, a pipe stage's status can be another's. */
+const UNGUARDED_PREV = new Set(["||", "|", "|&"]);
+
+/** Whether every later command in the chain runs only when the switch succeeded: joined by `&&`, not negated, not after `||` or a pipe. */
 function guardsChain(cmd: SimpleCommand): boolean {
-  return cmd.next === "&&" && cmd.prev !== "||" && !cmd.negated;
+  return cmd.next === "&&" && !UNGUARDED_PREV.has(cmd.prev ?? "") && !cmd.negated;
 }
 
 /**
