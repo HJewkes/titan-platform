@@ -54,6 +54,8 @@ export interface CheckRun {
 export interface Commit {
   sha: string;
   parents: string[];
+  /** The tree the commit records; absent when the wire does not report it. */
+  tree?: string;
   /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
   committedAt?: string;
 }
@@ -115,6 +117,9 @@ export interface OpenPrRequest {
 export interface GitHubWire {
   getRef(repo: RepoSlug, branch: string): Promise<string | null>;
   createRef(repo: RepoSlug, branch: string, sha: string): Promise<void>;
+  createCommit(repo: RepoSlug, request: { message: string; tree: string; parents: string[] }): Promise<{ sha: string }>;
+  /** Moves `branch` to `sha`; GitHub refuses a move that is not a fast-forward. */
+  updateRef(repo: RepoSlug, branch: string, sha: string): Promise<void>;
   deleteRef(repo: RepoSlug, branch: string): Promise<void>;
   getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
@@ -170,6 +175,8 @@ export interface GitHubPort {
   /** The last `lines` lines of an Actions job's log. */
   jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
+  /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
+  pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
   merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
@@ -221,6 +228,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
+    pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
@@ -287,6 +295,16 @@ async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, ex
   if (skipped) return { done: false, skipped };
   await wire.updateBranch(repo, number, expectedHeadSha);
   return { done: true };
+}
+
+async function pushEmptyCommit(wire: GitHubWire, repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>> {
+  const head = await wire.getRef(repo, branch);
+  if (head !== expectedHeadSha) return { sha: head ?? "", done: false, skipped: head === null ? "absent" : "head-moved" };
+  const { tree } = await wire.getCommit(repo, expectedHeadSha);
+  if (tree === undefined) throw new Error(`commit ${expectedHeadSha} in ${repo} reports no tree`);
+  const created = await wire.createCommit(repo, { message, tree, parents: [expectedHeadSha] });
+  await wire.updateRef(repo, branch, created.sha);
+  return { sha: created.sha, done: true };
 }
 
 async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>> {

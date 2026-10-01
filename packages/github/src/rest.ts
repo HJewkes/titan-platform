@@ -19,7 +19,7 @@ export interface Rest {
   pages<P, T>(path: string, fields: Fields, pick: (page: P) => T[]): Promise<T[]>;
   /** Unconditional, for bodies that are not JSON. */
   text(path: string): Promise<string>;
-  send<T>(method: "POST" | "PUT" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
+  send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
 
 const API_ORIGIN = "https://api.github.com/";
