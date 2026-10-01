@@ -106,29 +106,56 @@ describe("one fixture per bash.secret spelling", () => {
   });
 });
 
-describe("evasion forms from the plan, each still a secret-read", () => {
+describe("how the command or its path was reached, one id per wrapping", () => {
   it.each([
-    ["here-string", 'base64 <<< "$(cat ~/.npmrc)"'],
-    ["subshell", "(cat ~/.npmrc)"],
-    ["subshell", 'echo "$(cat ~/.npmrc)"'],
-    ["subshell", "echo `cat ~/.npmrc`"],
-    ["absolute", "cat /home/you/.npmrc"],
-    ["home-relative", "cat $HOME/.npmrc"],
-    ["home-relative", "cat ${HOME}/.npmrc"],
-    ["home-relative", "cd ~ && cat .npmrc"],
-    ["quoting", 'cat ~/".npmrc"'],
-    ["quoting", "cat ~/.n''pmrc"],
-    ["quoting", "cat ~/.n\\pmrc"],
-    ["quoting", "cat $'\\x7e/.npmrc'"],
-    ["sh-c", "sh -c 'cat ~/.npmrc'"],
-    ["sh-c", 'eval "cat ~/.npmrc"'],
-    ["heredoc-shell", "bash <<EOF\ncat ~/.npmrc\nEOF"],
-    ["var-indirection", 'F=~/.npmrc; cat "$F"'],
-  ])("bash.secret.%s: %s", (_form, command) => {
+    ["bash.secret.subshell", "(cat ~/.npmrc)"],
+    ["bash.secret.subshell", 'echo "$(cat ~/.npmrc)"'],
+    ["bash.secret.subshell", "echo `cat ~/.npmrc`"],
+    ["bash.secret.subshell", 'base64 <<< "$(cat ~/.npmrc)"'],
+    ["bash.secret.absolute", "cat /home/you/.npmrc"],
+    ["bash.secret.home-relative", "cat $HOME/.npmrc"],
+    ["bash.secret.home-relative", 'cat "${HOME}/.npmrc"'],
+    ["bash.secret.home-relative", "cd ~ && cat .npmrc"],
+    ["bash.secret.quoting", 'cat ~/".npmrc"'],
+    ["bash.secret.quoting", "cat ~/.n''pmrc"],
+    ["bash.secret.quoting", "cat ~/.n\\pmrc"],
+    ["bash.secret.quoting", "cat $'\\x7e/.npmrc'"],
+    ["bash.secret.sh-c", "sh -c 'cat ~/.npmrc'"],
+    ["bash.secret.sh-c", 'eval "cat ~/.npmrc"'],
+    ["bash.secret.sh-c", "env -S 'cat ~/.npmrc'"],
+    ["bash.secret.xargs", "echo ~/.npmrc | xargs cat"],
+    ["bash.secret.xargs", "printf '%s\\n' ~/.npmrc | xargs -I{} cp {} /tmp/x"],
+    ["bash.secret.xargs", "echo 'cat ~/.npmrc' | xargs -tI{} sh -c '{}'"],
+    ["bash.secret.xargs", "echo 'cat ~/.npmrc' | xargs -tI @ sh -c @"],
+    ["bash.secret.heredoc-shell", "bash <<EOF\ncat ~/.npmrc\nEOF"],
+    ["bash.secret.heredoc-shell", "bash <<< 'cat ~/.npmrc'"],
+    ["bash.secret.heredoc-shell", "echo 'cat ~/.npmrc' | sh"],
+    ["bash.secret.var-indirection", 'F=~/.npmrc; cat "$F"'],
+  ])("%s: %s", (spelling, command) => {
     expect(bash(command)).toContainEqual(
-      expect.objectContaining({ action: "secret-read", spelling: "bash.secret.cat", subject: { pattern: "home:.npmrc" } }),
+      expect.objectContaining({ action: "secret-read", spelling, subject: { pattern: "home:.npmrc" } }),
     );
   });
+
+  it("keeps the verb's id for a plain ~/ path typed at the top level", () => {
+    expect(spellings(bash('cat ~/.npmrc "/home/you/projects/app/.env"'))).toEqual(["bash.secret.cat", "bash.secret.absolute"]);
+  });
+
+  it("does not read a relative path outside the home directory as home-relative", () => {
+    expect(spellings(bash("cat .env"))).toEqual(["bash.secret.cat"]);
+  });
+});
+
+describe("a script run by the path typed", () => {
+  const scripts = { "/home/you/projects/app/tools/x.sh": "cat ~/.npmrc\n", "/home/you/projects/app/x.sh": "echo hi\n" };
+  const ctx = fakeContext({}, scripts);
+
+  it.each(["./tools/x.sh", "tools/x.sh", "~/projects/app/tools/x.sh", "/home/you/projects/app/tools/x.sh"])(
+    "resolves %s against the command's directory as a path",
+    (command) => {
+      expect(spellings(bash(command, ctx))).toEqual(["bash.secret.script-by-path"]);
+    },
+  );
 });
 
 describe("safe calls classify nothing", () => {

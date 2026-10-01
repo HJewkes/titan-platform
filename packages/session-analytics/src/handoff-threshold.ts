@@ -61,6 +61,8 @@ const reviewerCostSchema = z.object({
   requestsPerPr: z.number(),
   /** The reviewer model whose sessions give `requestsPerPr`: the row's own, else the newest reviewer cohort; `pooled` with none. */
   requestsFrom: z.string(),
+  /** Sessions in the `requestsFrom` cohort; 1 means the per-PR figure rests on one session. */
+  requestsFromSessions: count,
   costUsd: z.number(),
 });
 const reviewerSchema = z.object({ prs: count, fresh: z.array(reviewerCostSchema), standing: z.array(reviewerCostSchema) });
@@ -278,7 +280,8 @@ function reviewerComparison(sessions: readonly HandoffSession[], reviewerRole: s
     cohorts(role).map(([model, members]) => {
       const from = perPr.has(model) ? model : newest;
       const requestsPerPr = from === null ? 0 : perPr.get(from)!;
-      return { role, model, sessions: members.length, requestsPerPr, requestsFrom: from ?? POOLED_REVIEWERS, costUsd: costOf(meanParams(members), requestsPerPr) };
+      const requestsFromSessions = from === null ? 0 : (reviewers.find(([name]) => name === from)?.[1].length ?? 0);
+      return { role, model, sessions: members.length, requestsPerPr, requestsFrom: from ?? POOLED_REVIEWERS, requestsFromSessions, costUsd: costOf(meanParams(members), requestsPerPr) };
     });
   return {
     prs,
@@ -287,10 +290,11 @@ function reviewerComparison(sessions: readonly HandoffSession[], reviewerRole: s
   };
 }
 
-/** The reviewer model whose latest session is newest; a tie goes to the later model name. */
+/** The reviewer model whose latest session is newest by instant, not by string; a tie goes to the later model name. */
 function newestCohort(reviewers: readonly (readonly [string, readonly HandoffSession[]])[]): string | null {
-  const latest = reviewers.map(([model, members]) => ({ model, ts: members.reduce((max, s) => (s.lastTs > max ? s.lastTs : max), "") }));
-  latest.sort((a, b) => b.ts.localeCompare(a.ts) || b.model.localeCompare(a.model));
+  const epoch = (ts: string) => (Number.isNaN(Date.parse(ts)) ? Number.NEGATIVE_INFINITY : Date.parse(ts));
+  const latest = reviewers.map(([model, members]) => ({ model, at: Math.max(...members.map((s) => epoch(s.lastTs))) }));
+  latest.sort((a, b) => (a.at === b.at ? b.model.localeCompare(a.model) : b.at - a.at));
   return latest[0]?.model ?? null;
 }
 

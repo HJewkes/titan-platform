@@ -138,6 +138,23 @@ describe("reviewers without a cohort of their own", () => {
     expect(reviewers.standing).toEqual([expect.objectContaining({ model: MODEL, requestsPerPr: 2, requestsFrom: "claude-haiku-4-5" })]);
   });
 
+  it("picks the newest reviewer cohort by instant when the timestamps carry different UTC offsets", () => {
+    const at = (ts: string, rows: HandoffRequestRow[]) => rows.map((row) => ({ ...row, ts }));
+    const offsetButOlder = at("2026-09-22T10:00:00+05:00", reviewerSession("a", "claude-sonnet-5", 4));
+    const utcAndNewer = at("2026-09-22T08:00:00Z", [...reviewerSession("b1", "claude-haiku-4-5", 2), ...reviewerSession("b2", "claude-haiku-4-5", 2)]);
+    const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
+    const { reviewers } = run([...offsetButOlder, ...utcAndNewer, ...standing]);
+
+    expect(reviewers.standing).toEqual([expect.objectContaining({ requestsFrom: "claude-haiku-4-5", requestsFromSessions: 2 })]);
+  });
+
+  it("reports the size of the cohort the per-PR figure came from, so a one-session cohort shows", () => {
+    const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
+    const { reviewers } = run([...reviewerSession("only", "claude-haiku-4-5", 2), ...standing]);
+
+    expect(reviewers.standing).toEqual([expect.objectContaining({ requestsFrom: "claude-haiku-4-5", requestsFromSessions: 1 })]);
+  });
+
   it("reports zero requests from `pooled` when there are no reviewer sessions at all", () => {
     const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
 

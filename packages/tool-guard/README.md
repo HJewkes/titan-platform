@@ -19,7 +19,7 @@ const commands = extractCommands('F=~/.x; cd /repo && git -C sub push origin "$F
   cwd: "/work",
   home: "/home/you",
 });
-// [{ name: "git", args: [...], env: {}, redirects: [], dir: "/repo" }]
+// [{ name: "git", path: "git", args: [...], env: {}, redirects: [], dir: "/repo", wrapping: [], next: null }]
 const inv = parseGit(commands[0].args, commands[0].dir, "/home/you");
 // inv.dir === "/repo/sub", inv.sub === "push"
 ```
@@ -28,7 +28,9 @@ const inv = parseGit(commands[0].args, commands[0].dir, "/home/you");
   bodies) and process substitutions. Throws `ParseError` on unterminated quoting.
 - `extractCommands(src, { cwd, home })` returns every simple command the shell would run,
   each with its working directory. Literal assignments (`F=~/.x; cat "$F"`) and `$HOME` are
-  expanded; anything computed stays `dynamic`.
+  expanded; anything computed stays `dynamic`. Each command also records how it was reached
+  (`wrapping`: a subshell, `sh -c`, `eval`, `xargs`, a heredoc or pipe into a shell, `find -exec`),
+  its command word as typed (`path`), and the operator joining it to the next (`next`).
 - `parseGit` and `splitArgs` read git's global options and flag clusters.
 
 Nothing here touches the filesystem, the environment or a clock.

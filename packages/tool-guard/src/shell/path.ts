@@ -19,8 +19,11 @@ export function basename(path: string): string {
 
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 export function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null {
-  if (!word || word.dynamic) return null;
-  const v = word.value;
+  return !word || word.dynamic ? null : resolveValue(dir, word.value, home);
+}
+
+/** Absolute path a literal `v` names from `dir`, or null when the base is unknown. */
+export function resolveValue(dir: string | null, v: string, home: string | null): string | null {
   if (v === "~" || v.startsWith("~/")) return home === null ? null : resolveFrom(home, v.slice(2));
   if (v.startsWith("/")) return resolveFrom("/", v);
   return dir === null ? null : resolveFrom(dir, v);
