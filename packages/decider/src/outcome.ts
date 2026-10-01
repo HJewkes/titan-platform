@@ -37,12 +37,17 @@ function normalize(text: string): string {
   return stripRecommended(text).toLowerCase();
 }
 
+/** A prefix match that ends on a word boundary, so "use a queueing" does not start with "use a queue". */
+function startsWithWord(text: string, label: string): boolean {
+  return text.startsWith(label) && !/^\w/.test(text.slice(label.length));
+}
+
 /** Free text is an amend when it starts with or quotes the recommended label, else a redirect. */
 function amendOrRedirect(answer: string | null, recommended: string | null): Outcome {
   const label = recommended === null ? "" : normalize(recommended);
   if (answer === null || label === "") return "redirect";
   const text = answer.trim().toLowerCase();
-  if (text.startsWith(label)) return "amend";
+  if (startsWithWord(text, label)) return "amend";
   return QUOTES.some(([open, close]) => text.includes(`${open}${label}${close}`))
     ? "amend"
     : "redirect";
@@ -57,16 +62,17 @@ const FROM_PICK_TYPE: Record<PickType, Outcome | "free_text" | null> = {
   none: "none",
 };
 
+/** True when the answer is one whole label or a multi-select of whole labels joined by commas. */
 function isListed(answer: string, options: readonly string[]): boolean {
   const labels = options.map(normalize);
-  // Multi-select answers join the picked labels with ", ".
-  return labels.includes(answer) || answer.split(", ").every((part) => labels.includes(part));
+  if (labels.includes(normalize(answer))) return true;
+  const parts = answer.split(",").map(normalize);
+  return parts.length > 1 && parts.every((part) => labels.includes(part));
 }
 
 function fromAnswer(answer: string, options: readonly string[], recommended: string | null): Outcome {
-  const text = normalize(answer);
-  if (recommended !== null && text === normalize(recommended)) return "accept";
-  return isListed(text, options) ? "other" : amendOrRedirect(answer, recommended);
+  if (recommended !== null && normalize(answer) === normalize(recommended)) return "accept";
+  return isListed(answer, options) ? "other" : amendOrRedirect(answer, recommended);
 }
 
 /** The scored outcome of an answer; null means unparsed, which stays out of scoring. */

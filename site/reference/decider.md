@@ -33,7 +33,7 @@ Verified against 0.1.0.
 import { LedgerRowSchema, classifyOutcome, isExcluded } from "@titan-design/decider";
 
 const options = ["Use a queue (Recommended)", "Use a cron job"];
-classifyOutcome({ answer: "Use a queue, capped at three retries", options, recommended: options[0] });
+classifyOutcome({ answer: "Use a queue, capped at three retries", options, recommended: "Use a queue (Recommended)" });
 // "amend"
 
 const verdict = isExcluded(

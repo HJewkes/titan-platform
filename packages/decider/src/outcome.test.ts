@@ -21,8 +21,17 @@ describe("classifyOutcome from a raw answer", () => {
     expect(outcomeOf("Use a cron job, Do nothing")).toBe("other");
   });
 
+  it("calls a multi-select other in either order when it includes the recommended option", () => {
+    expect(outcomeOf("Use a queue (Recommended), Use a cron job")).toBe("other");
+    expect(outcomeOf("Use a cron job, Use a queue (Recommended)")).toBe("other");
+  });
+
   it("calls free text that starts with the recommended label an amend", () => {
     expect(outcomeOf("Use a queue, but cap retries at three")).toBe("amend");
+  });
+
+  it("calls free text a redirect when the recommended label is only a prefix of a longer word", () => {
+    expect(outcomeOf("Use a queueing library instead")).toBe("redirect");
   });
 
   it("calls free text that quotes the recommended label an amend", () => {
