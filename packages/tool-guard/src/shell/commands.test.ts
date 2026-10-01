@@ -402,6 +402,7 @@ describe("literal text piped into a shell", () => {
     ["a printf format it does not model", "printf '%q' 'git push' | bash", ["printf", "bash"]],
     ["a negative * precision", "printf '%.*s' -1 'git push' | bash", ["printf", "bash"]],
     ["a hex * precision", "printf '%.*s' 0x8 'git push' | bash", ["printf", "bash"]],
+    ["a hex * precision before literal text", "printf '%.*s push' 0x8 git | bash", ["printf", "bash"]],
     ["a hex * width", "printf '%*s' 0x8 'git push' | bash", ["printf", "bash"]],
     ["a non-literal * precision", 'printf \'%.*s\' "$N" \'git push\' | bash', ["printf", "bash"]],
     ["printf -v", "printf -v X 'git push' | bash", ["printf", "bash"]],
