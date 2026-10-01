@@ -33,6 +33,7 @@ Before adding code:
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
+| [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runClaudePrint` in agent instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. |
@@ -41,6 +42,7 @@ Before adding code:
 | [`registry`](#cap-registry) | 1 | You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible. |
 | [`retrieval`](#cap-retrieval) | 1 | You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too. |
 | [`rpc-client`](#cap-rpc-client) | 1 | Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands. |
+| [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
@@ -376,6 +378,24 @@ Key exports:
 - `sqlite-execution-ledger`: `SqliteExecutionLedger`
 - `execution-ledger`: `ApplyExecutionTransitionResult`, `ExecutionLedger`, `SqliteExecutionLedgerOptions`
 
+<a id="cap-agent-surface"></a>
+
+### [`agent-surface`](https://hjewkes.github.io/titan-platform/reference/agent-surface)
+
+Tier 1, `@titan-design/agent-surface@0.0.0`. Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan
+
+**Use this when:** A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runClaudePrint` in agent instead.
+
+Key exports:
+
+- `types`: `isInteractiveSurface`
+- `surfaces`: `surfaceFor`
+- `surfaces/command`: `launchCommand`, `paneCommand`, `relaunchCommand`, `relaunchScript`, `shellQuote`
+- `surfaces/headless`: `headlessSurface`
+- `surfaces/iterm`: `itermSessionPresent`, `itermSurface`
+- `surfaces/launch-check`: `psProbe`, `watchLaunch`
+- +50 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-surface)
+
 <a id="cap-daemon"></a>
 
 ### [`daemon`](https://hjewkes.github.io/titan-platform/reference/daemon)
@@ -512,6 +532,25 @@ Key exports:
 - `client/snapshot`: `SNAPSHOT_FORMAT`, `buildSnapshot`, `parseSnapshot`
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
 - +11 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/rpc-client)
+
+<a id="cap-worktree"></a>
+
+### [`worktree`](https://hjewkes.github.io/titan-platform/reference/worktree)
+
+Tier 1, `@titan-design/worktree@0.0.0`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+
+**Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
+
+Key exports:
+
+- `allocator`: `createWorktreeAllocator`
+- `branch-base`: `resolveBranchBase`
+- `errors`: `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
+- `git`: `findGitRoot`, `gitChildEnv`, `observedPresence`, `runGit`
+- `layout`: `pruneStaleWorktrees`
+- `park`: `parkWorktree`
+- `reattach`: `reattachWorktree`
+- +45 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/worktree)
 
 ## Tier 2 — domain
 
