@@ -1,17 +1,15 @@
-import { routedRunner, type WorkflowContext } from "@titan-design/workflow";
+import { routedRunner } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { fakeGitHub, githubPort } from "@titan-design/github";
-import type { ShepherdDeps, WakeRequest } from "./phases.js";
+import type { ShepherdDeps } from "./phases.js";
 import { REVIEW_STEPS, reviewRoutes } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
+import { WAKE_STEPS, wakeRoutes } from "./wake.js";
 
 const WAKE_FAMILIES = ["sh-wake", "sh-await-new-head"];
 const REVIEW_FAMILIES = ["sh-review", "sh-await-verdict", "sh-merge-evidence"];
-const ctx = {} as WorkflowContext;
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
-const wakeRequest: WakeRequest = { kind: "ci-red", ...target, payload: {} };
 const deps: ShepherdDeps = { port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
 
 /** The declared ids that belong to none of `families`, where a family is its prefix, `prefix:n` or `prefix-name`. */
@@ -29,8 +27,9 @@ describe("shepherd phase step families", () => {
     expect(outside(REVIEW_FAMILIES, REVIEW_STEPS)).toEqual([]);
   });
 
-  it("registers no wake routes until the wake phase is implemented", () => {
-    expect(wakeRoutes(deps)).toEqual([]);
+  it("pins sh-wake-implementer and sh-await-new-head to wake.ts, declared and routed there", () => {
+    expect(WAKE_STEPS.map((step) => step.id)).toEqual(["sh-wake-implementer", "sh-await-new-head"]);
+    expect(wakeRoutes(deps).map((route) => route.match)).toEqual(["sh-wake-implementer", "sh-await-new-head"]);
   });
 
   it("pins sh-review-intent, sh-review, sh-await-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
@@ -44,12 +43,5 @@ describe("shepherd phase step families", () => {
 
     expect(runner.routeFor(`sh-review-intent:${target.headSha}`)?.match).toBe("sh-review-intent");
     expect(runner.routeFor(`sh-review:${target.headSha}`)?.match).toBe("sh-review");
-  });
-
-  it("wakePhase reports the request unhandled with a reason", async () => {
-    const outcome = await wakePhase(ctx, wakeRequest);
-
-    expect(outcome.kind).toBe("unhandled");
-    expect(outcome.kind === "unhandled" && outcome.reason.length).toBeGreaterThan(0);
   });
 });

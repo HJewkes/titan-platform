@@ -4,6 +4,7 @@ import path from "node:path";
 import { invokeCommand } from "@titan-design/registry";
 import { MIGRATION_TABLE_NAME, SchemaTooNewError } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { PRICE_TABLE_VERSION } from "@titan-design/session-analytics";
 import { runCli } from "./cli.js";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
 import { refresh } from "./commands/refresh.js";
@@ -146,5 +147,17 @@ describe("forward-schema guard", () => {
 
     expect(() => reopened.graph()).toThrow(SchemaTooNewError);
     expect(() => reopened.graph()).toThrow(new RegExp(`version ${MINER_SCHEMA_VERSION + 1}`));
+  });
+});
+
+describe("price reconciliation", () => {
+  it("adds the claude-opus-5-5 row to a graph that stored only the older table, when the graph is reopened", async () => {
+    ctx.graph().db.exec("DELETE FROM price WHERE model = 'claude-opus-5-5'");
+    ctx.close();
+
+    await run(refresh, {});
+
+    const row = ctx.graph().db.prepare("SELECT input_usd_mtok, table_version FROM price WHERE model = 'claude-opus-5-5'").get();
+    expect(row).toEqual({ input_usd_mtok: 4, table_version: PRICE_TABLE_VERSION });
   });
 });

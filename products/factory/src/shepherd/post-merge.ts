@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import type { ShepherdDeps } from "./phases.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
@@ -18,6 +19,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   { id: "sh-main-ci", kind: "dispatch" },
   { id: "main-red", kind: "assisted" },
   { id: "after-stages", kind: "assisted" },
+  { id: "sh-cleanup", kind: "dispatch" },
 ];
 
 const AfterStagesSchema = z.array(z.enum(AFTER_STAGES));
@@ -45,11 +47,12 @@ export interface MergedTarget {
 
 const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() });
 
-/** Reads main CI on the merge commit once, records it, and gives a red or unread main to the owner. Runs nothing after it. */
+/** Reads main CI on the merge commit once, records it, gives a red or unread main to the owner, then cleans up. Runs no after stage. */
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[]): Promise<MainCi> {
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, mergeSha: target.mergeSha, after }, MainCiResult);
   if (result.verdict !== "green") await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, target.mergeSha);
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, target.mergeSha);
+  await step(ctx, "sh-cleanup", { repo: target.repo, pr: target.pr, runId: ctx.runId }, CleanupResult);
   return result;
 }
 
@@ -66,7 +69,10 @@ export interface MainCiInput {
 
 export function postMergeRoutes(deps: ShepherdDeps): StepRoute[] {
   const timing = { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? SH_MAIN_CI_POLL_MS, timeoutMs: SH_MAIN_CI_TIMEOUT_MS };
-  return [codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(deps.port, input, timing, signal))];
+  return [
+    codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(deps.port, input, timing, signal)),
+    codeRoute("sh-cleanup", deps.now, (input: CleanupInput, signal) => runCleanup(deps, input, signal)),
+  ];
 }
 
 export interface Timing {

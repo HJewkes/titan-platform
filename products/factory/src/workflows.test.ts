@@ -1,4 +1,6 @@
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
@@ -6,7 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
+import { shepherdPrWorkflow } from "./shepherd/pr.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
+import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
@@ -14,8 +19,10 @@ import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
+const servers: Server[] = [];
 afterEach(() => {
   vi.unstubAllEnvs();
+  servers.splice(0).forEach((server) => server.close());
   hosts.splice(0).forEach((host) => host.close());
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -179,8 +186,8 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result } = await reviewWith(scene);
 
-    expect(result(REVIEW)).toMatchObject({ kind: "dispatched", mode: "spawn", reviewer: "rv-demo-1", head: H1, ...REVIEWER });
-    expect(scene.calls()).toContain(`agent spawn rv-demo-1 ${PROFILE} --brief-stdin`);
+    expect(result(REVIEW)).toMatchObject({ kind: "dispatched", mode: "spawn", reviewer: "rv-octo-demo-1", head: H1, ...REVIEWER });
+    expect(scene.calls()).toContain(`agent spawn rv-octo-demo-1 ${PROFILE} --brief-stdin`);
     expect(readFileSync(join(scene.dir, "spawn-cwd"), "utf8").trim()).toBe(scene.checkout);
     expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: H1 });
     expect(result(MERGE_EVIDENCE)).toMatchObject({ head: H1, merge: { resolver: REVIEWER, dispatchedReviewer: REVIEWER, repoFrozen: false } });
@@ -248,7 +255,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     await reviewWith(scene);
 
-    expect(scene.calls()).toContain("agent spawn rv-demo-1 rv-other --config-dir /srv/rv-claude --brief-stdin");
+    expect(scene.calls()).toContain("agent spawn rv-octo-demo-1 rv-other --config-dir /srv/rv-claude --brief-stdin");
   });
 
   it("gives up on a reviewer that starts no session once shepherd.review.sessionStartTimeoutMs has passed", async () => {
@@ -282,6 +289,29 @@ describe("configuredRoutes with shepherd.review", () => {
   });
 });
 
+describe("configuredRoutes with shepherd.agentChatBin", () => {
+  /** The wake step's record for an unregistered run: a configured binary gets as far as the registration read. */
+  async function wakeResult(env: NodeJS.ProcessEnv): Promise<unknown> {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    const routes = configuredRoutes(env, { port: githubPort(fake.wire) });
+    const request = { kind: "ci-red" as const, repo: REPO, pr: 1, round: 0, headSha: H1, payload: {} };
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-wiring", steps: WAKE_STEPS, run: async (ctx) => void (await wakePhase(ctx, request)) })], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("wake-wiring");
+    await host.runtime.wait(runId);
+    return (Object.values(host.runtime.status(runId)!.stepResults)[0]?.data as { result?: unknown } | undefined)?.result;
+  }
+
+  it("hands the configured agent-chat binary to the wake step", async () => {
+    expect(await wakeResult(reviewScene().env)).toMatchObject({ kind: "unhandled", reason: expect.stringMatching(/has no shepherd registration$/) });
+  });
+
+  it("leaves every wake unhandled when no binary is configured", async () => {
+    expect(await wakeResult(configHome(undefined))).toEqual({ kind: "unhandled", reason: "shepherd.agentChatBin is not configured" });
+  });
+});
+
 describe("factoryRoutes", () => {
   it("reads the config on first call, not when the module is imported", async () => {
     const env = configHome(undefined);
@@ -298,5 +328,63 @@ describe("factoryRoutes", () => {
       if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = saved;
     }
+  });
+});
+
+/** A loopback active-work daemon that lists `demo/TP-1` as open until `task.done` closes it. */
+async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
+  const calls: string[] = [];
+  let status = "open";
+  const server = createServer((req, res) => {
+    const command = (req.url ?? "").replace("/rpc/", "");
+    calls.push(command);
+    if (command === "task.done") status = "done";
+    const data = command === "task.list" ? { tasks: [{ id: "TP-1", status }] } : {};
+    req.resume().on("end", () => res.setHeader("content-type", "application/json").end(JSON.stringify({ ok: true, data })));
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { port: (server.address() as AddressInfo).port, calls };
+}
+
+/** A fake `agent-chat` whose roster holds `impl-a`, exited, until `agent retire` removes it. */
+function fakeRetiringAgentChat(dir: string): string {
+  const bin = join(dir, "agent-chat");
+  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", cwd: dir, sessionId: "session-impl-a" }]);
+  writeFileSync(join(dir, "roster.json"), row);
+  const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" ;;`, `  retire) printf '[]' >"${dir}/roster.json"; echo "Retired $3" ;;`, "esac"];
+  writeFileSync(bin, `${lines.join("\n")}\n`);
+  chmodSync(bin, 0o755);
+  return bin;
+}
+
+describe("configuredRoutes with shepherd.agentChatBin", () => {
+  it("closes the registration's task over loopback rpc and retires its implementer through agent-chat after a merge", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-cleanup-")));
+    dirs.push(dir);
+    mkdirSync(join(dir, "seats"));
+    mkdirSync(join(dir, "titan-factory"));
+    writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ shepherd: { seatsDir: join(dir, "seats"), agentChatBin: fakeRetiringAgentChat(dir) } }));
+    const activeWork = await fakeActiveWork();
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1 });
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const base = githubPort(fake.wire);
+    const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 5)]), base.checkRuns(repo, sha)) };
+    let clock = 0;
+    const env = { XDG_CONFIG_HOME: dir, AW_PORT: String(activeWork.port) };
+    const routes = configuredRoutes(env, { port, now: () => clock, sleep: async (ms) => void (clock += ms) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    routes.shepherd!.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+
+    await host.runtime.wait(runId);
+
+    expect(activeWork.calls).toEqual(["task.list", "task.done"]);
+    expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
+    expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
   });
 });

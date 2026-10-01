@@ -80,24 +80,53 @@ function hasColumn(db: Db, table: string, column: string): boolean {
   return db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column) !== undefined;
 }
 
+const CANONICAL_STATUSES = "'pending', 'resolved', 'cancelled', 'expired'";
+
 /**
- * The trigger that refuses a resolve by a class outside the row's rule, and any
- * change to the rule, so a writer that predates `rule` cannot widen it.
- * Without `resolved_by` no resolver can be recorded, so it refuses every resolve
+ * The triggers that refuse a resolve by a class outside the row's rule, and any
+ * change to the rule, so a writer that predates `rule` cannot widen it. The
+ * INSERT twin closes REPLACE INTO and DELETE then INSERT, which an UPDATE trigger never sees.
+ * A rule-bound row also refuses a status outside the canonical set, so `RESOLVED` cannot slip past the `resolved` test.
+ * Without `resolved_by` no resolver can be recorded, so they refuse every resolve
  * of a rule-bound row; whichever migration runs second installs the class-aware form.
  */
 function ruleTriggerDdl(db: Db, name: string): string {
-  const trigger = quoteIdent(`${name}_rule_resolver`);
-  const outsideRule = hasResolverColumn(db, name)
-    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(OLD.rule, '$.resolvers'))`
+  const hasResolver = hasResolverColumn(db, name);
+  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule");
+  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0");
+  return `${update}\n${insert}\n${replaceGuard(name)}`;
+}
+
+/** REPLACE deletes the old row before any delete trigger fires without recursive_triggers, so refuse it up front. */
+function replaceGuard(name: string): string {
+  const trigger = quoteIdent(`${name}_rule_replace`);
+  return `
+    DROP TRIGGER IF EXISTS ${trigger};
+    CREATE TRIGGER ${trigger}
+      BEFORE INSERT ON ${quoteIdent(name)}
+      FOR EACH ROW WHEN EXISTS (
+        SELECT 1 FROM ${quoteIdent(name)} WHERE id = NEW.id AND status = 'pending' AND rule IS NOT NULL AND rule IS NOT NEW.rule
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'hitl: a pending rule-bound gate cannot be replaced');
+    END;
+  `;
+}
+
+function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string): string {
+  const trigger = quoteIdent(event === "UPDATE" ? `${name}_rule_resolver` : `${name}_rule_resolver_insert`);
+  const outsideRule = hasResolver
+    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(${rule}, '$.resolvers'))`
     : "1";
   return `
     DROP TRIGGER IF EXISTS ${trigger};
     CREATE TRIGGER ${trigger}
-      BEFORE UPDATE ON ${quoteIdent(name)}
-      FOR EACH ROW WHEN OLD.rule IS NOT NULL AND (NEW.rule IS NOT OLD.rule OR (NEW.status = 'resolved' AND ${outsideRule}))
+      BEFORE ${event} ON ${quoteIdent(name)}
+      FOR EACH ROW WHEN ${rule} IS NOT NULL OR ${ruleChanged}
     BEGIN
-      SELECT RAISE(ABORT, 'hitl: resolver outside the gate rule');
+      SELECT RAISE(ABORT, 'hitl: status outside the canonical set') WHERE ${rule} IS NOT NULL AND NEW.status NOT IN (${CANONICAL_STATUSES});
+      SELECT RAISE(ABORT, 'hitl: resolver outside the gate rule')
+        WHERE ${ruleChanged} OR (NEW.status = 'resolved' AND ${outsideRule});
     END;
   `;
 }

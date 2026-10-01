@@ -63,6 +63,17 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
+  it("reads a commit's parents and committer date, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], committer: { date: "2026-02-03T04:05:06Z" } }) });
+    const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
+
+    const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
+    const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
+
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], committedAt: "2026-02-03T04:05:06Z" });
+    expect(withoutDate).toEqual({ sha: H1, parents: [] });
+  });
+
   it("reads required checks from the branch rules, merging every status-check rule", async () => {
     const rules = [
       { type: "pull_request", parameters: { required_approving_review_count: 0 } },
@@ -71,6 +82,57 @@ describe("gh api adapter", () => {
     const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules) });
 
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
+  });
+
+  it("reads the bypass of every ruleset behind a pull_request rule, and is true when each is bypassable", async () => {
+    const review = { required_approving_review_count: 1 };
+    const rules = [{ type: "pull_request", ruleset_id: 11, parameters: review }, { type: "pull_request", ruleset_id: 11, parameters: review }, { type: "required_status_checks", ruleset_id: 12 }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules), "rulesets/11": JSON.stringify({ current_user_can_bypass: "pull_requests_only" }) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(true);
+    expect(gh.calls.filter((call) => call.args.some((arg) => arg.includes("rulesets/")))).toHaveLength(1);
+  });
+
+  it("is false when any ruleset behind a pull_request rule says never", async () => {
+    const review = { required_approving_review_count: 1 };
+    const rules = [{ type: "pull_request", ruleset_id: 11, parameters: review }, { type: "pull_request", ruleset_id: 12, parameters: review }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules), "rulesets/11": JSON.stringify({ current_user_can_bypass: "always" }), "rulesets/12": JSON.stringify({ current_user_can_bypass: "never" }) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(false);
+  });
+
+  it("is true when no pull_request rule applies", async () => {
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(true);
+  });
+
+  describe("with the three pull_request rules of a protected repo", () => {
+    const rulesFor = (noPushCount: number) => [
+      { type: "pull_request", ruleset_id: 23764740, parameters: { required_approving_review_count: 0 } },
+      { type: "pull_request", ruleset_id: 24143885, parameters: { required_approving_review_count: noPushCount } },
+      { type: "pull_request", ruleset_id: 24143887, parameters: { required_approving_review_count: 1 } },
+    ];
+    const bypass = { "rulesets/23764740": JSON.stringify({ current_user_can_bypass: "always" }), "rulesets/24143885": JSON.stringify({ current_user_can_bypass: "never" }), "rulesets/24143887": JSON.stringify({ current_user_can_bypass: "pull_requests_only" }) };
+
+    it("is true when the never-bypass rule requires no review", async () => {
+      const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rulesFor(0)), ...bypass });
+
+      expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(true);
+    });
+
+    it("is false when the never-bypass rule requires one approval", async () => {
+      const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rulesFor(1)), ...bypass });
+
+      expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(false);
+    });
+  });
+
+  it("throws when a ruleset read fails", async () => {
+    const rules = [{ type: "pull_request", ruleset_id: 11, parameters: { required_approving_review_count: 1 } }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules), "rulesets/11": { code: 1, stdout: "", stderr: "gh: HTTP 500" } });
+
+    await expect(ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).rejects.toThrow();
   });
 
   it("follows the next-page link for check runs and reads the run id from the job URL, the app id and the head sha", async () => {
@@ -162,6 +224,7 @@ describe("gh api adapter, REST only", () => {
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
+      reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       getCommit: () => port.getCommit(REPO, H1),

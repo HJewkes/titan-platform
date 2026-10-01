@@ -3,6 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { gateEverything } from "../gate-policy.js";
+import { requireRequiredChecks } from "../required-checks.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome } from "./land.js";
@@ -117,7 +118,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
 
 async function snapshot(port: GitHubPort, input: LandPrParams): Promise<object> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await port.requiredChecks(input.repo, pr.baseRef);
+  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
   const { number, state, merged, draft, headRef, headSha, baseRef } = pr;
   return { pr: { number, state, merged, draft, headRef, headSha, baseRef }, required: required.contexts, strict: required.strict, task: input.task ?? null };
 }

@@ -10,7 +10,7 @@ Private (not published). Composes `registry`, `daemon`, `store-sqlite`, `locator
 (TP-19).
 
 ```
-titan-miner refresh            # index new transcript bytes (--full rebuilds from zero)
+titan-miner refresh            # index new transcript bytes (--full rebuilds from zero); also reconciles the graph's price rows with session-analytics' PRICE_TABLE
 titan-miner status             # counts, transcript states, FTS orphan ratio
 titan-miner search "daemon 503 at startup"
 titan-miner session list -n 20
@@ -21,6 +21,7 @@ titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci --tag release
 titan-miner playbook recall "release job npm"
 titan-miner playbook reflect <session-id>   # renders the diary; applies nothing
 titan-miner playbook status
+titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
 ```
@@ -45,6 +46,39 @@ Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <di
   `/events`), and MCP stdio are projections of the same registry.
 - `playbook` is `memory` over the same database: rules with decaying confidence, curated
   deterministically. See below.
+
+## Insights (TP-507)
+
+`titan-miner insights <question>` answers one cost question from the graph. Each question
+is a pure function in `@titan-design/session-analytics`; the miner only registers it, so
+it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
+`POST /rpc/insights.<question>`.
+
+| Question | Command | Answers | Own options |
+| --- | --- | --- | --- |
+| Q1 | `insights spend-by-action` | each role's spend by turn action, and the mechanical share | `--mechanical <class>` |
+| Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
+| Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
+| Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
+
+Every question takes the same filters, which combine with AND: `--session <id>` and
+`--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
+`--since` (inclusive) and `--until` (exclusive) on request time. Roles are the cost
+report's `byRole` names, such as `coordinator` or `worker:reviewer`. Compactions and
+coverage stay window-wide. Dates must parse and are compared in UTC, so an offset timestamp
+works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it reads a local file.
+
+With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
+`answer` matches the question's zod schema. Without it the question prints its text
+renderer. Both carry `LIST_PRICE_CAVEAT`: the figures are list prices, not a bill.
+
+To add a question, write its analysis in `session-analytics` first: a pure function over
+the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a
+synthetic-fixture test. Then add one `defineInsight({...})` to
+`src/insights/questions.ts` with the plan's id, the subcommand name, the question's own
+options and flags, the schema, and an `answer` that calls the analysis and its renderer.
+Append it to `INSIGHT_QUESTIONS`. The shared tests then cover its envelope, its caveat,
+every filter, and its presence on all three surfaces.
 
 ## The playbook (TP-19)
 

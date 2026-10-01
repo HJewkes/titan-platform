@@ -226,6 +226,138 @@ describe("land core", () => {
   });
 });
 
+const ALLOW = { decide: () => ({ outcome: "allow" as const, rule: GATE_EVERYTHING_RULE, reason: "synthetic allow" }) };
+const GREEN_AT = "2026-01-01T00:00:00Z";
+const PENDING_READS = 2;
+
+/** A behind PR at H1, green since GREEN_AT, whose base tip was committed at `baseCommittedAt`; a new head goes green only after a few reads. */
+function staleBaseScenario(options: { strict: boolean; baseCommittedAt: string }) {
+  const scenario = landScenario({ policy: ALLOW });
+  const { fake } = scenario;
+  fake.rules.strict = options.strict;
+  fake.pr(1).behind = true;
+  const tip = fake.refs.get("main")!;
+  fake.commits.set(tip, { sha: tip, parents: [], committedAt: options.baseCommittedAt });
+  const reads = new Map<string, number>();
+  const greenAtMerge: boolean[] = [];
+  fake.onGetPr = (pr) => {
+    const n = (reads.get(pr.headSha) ?? 0) + 1;
+    reads.set(pr.headSha, n);
+    const status = pr.headSha === H1 || n > PENDING_READS ? "completed" : "in_progress";
+    fake.setRuns(pr.headSha, ["validate", "dag-check"].map((name, i) => ({ ...successRun(name, i + 1, GREEN_AT), status })));
+  };
+  const merge = fake.wire.merge;
+  fake.wire.merge = async (...args) => (greenAtMerge.push((reads.get(args[2]) ?? 0) > PENDING_READS || args[2] === H1), merge(...args));
+  return { ...scenario, greenAtMerge };
+}
+
+describe("land refreshes a head whose base moved after its last green run", () => {
+  it("updates a non-strict branch whose base moved after green, and merges only once the new head is green", async () => {
+    const scenario = staleBaseScenario({ strict: false, baseCommittedAt: "2026-01-01T00:10:00Z" });
+    const host = hostFor(scenario);
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    const head = scenario.fake.pr(1).headSha;
+    expect(run.status).toBe("completed");
+    expect(head).not.toBe(H1);
+    expect(scenario.fake.commits.get(head)?.parents[0]).toBe(H1);
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(scenario.greenAtMerge).toEqual([true]);
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: head });
+  });
+
+  it("merges a non-strict branch without an update when its base has not moved since green", async () => {
+    const scenario = staleBaseScenario({ strict: false, baseCommittedAt: "2025-12-31T23:50:00Z" });
+    const host = hostFor(scenario);
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    expect(run.status).toBe("completed");
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 0, merge: 1 });
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
+  });
+
+  it("still updates a behind branch in a strict repo even when its base has not moved since green", async () => {
+    const scenario = staleBaseScenario({ strict: true, baseCommittedAt: "2025-12-31T23:50:00Z" });
+    const host = hostFor(scenario);
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    expect(run.status).toBe("completed");
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(scenario.greenAtMerge).toEqual([true]);
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: scenario.fake.pr(1).headSha });
+  });
+});
+
+describe("readCi on a blocked head", () => {
+  async function blockedVerdict(options: { bypass: boolean; runs: CheckRun[]; state?: string }) {
+    const fake = fakeGitHub({ repo: "octo/demo" });
+    fake.reviewBypass = options.bypass;
+    fake.addPr({ headSha: H1, mergeableState: options.state ?? "blocked" });
+    fake.setRuns(H1, options.runs);
+    const snapshot = await readCi(githubPort(fake.wire), { repo: "octo/demo", pr: 1, contexts: ["validate", "dag-check"], strict: true });
+    return { snapshot, calls: fake.calls };
+  }
+  const green = [successRun("validate", 1), successRun("dag-check", 2)];
+
+  it("is green when the approval rule is bypassable and every required context is green", async () => {
+    expect((await blockedVerdict({ bypass: true, runs: green })).snapshot.verdict).toBe("green");
+  });
+
+  it("stays pending when the approval rule cannot be bypassed", async () => {
+    expect((await blockedVerdict({ bypass: false, runs: green })).snapshot.verdict).toBe("pending");
+  });
+
+  it("stays pending without reading the bypass while a required context is still pending", async () => {
+    const { snapshot, calls } = await blockedVerdict({ bypass: true, runs: [successRun("validate", 1)] });
+
+    expect(snapshot.verdict).toBe("pending");
+    expect(calls).not.toContain("reviewRulesBypassable");
+  });
+
+  it("stays not-mergeable when dirty, whatever the bypass says", async () => {
+    expect((await blockedVerdict({ bypass: true, runs: green, state: "dirty" })).snapshot.verdict).toBe("not-mergeable");
+  });
+});
+
+describe("readCi on a behind head in a non-strict repo", () => {
+  async function behindVerdict(baseCommit: { committedAt?: string }, runs: CheckRun[]) {
+    const fake = fakeGitHub({ repo: "octo/demo" });
+    fake.rules.strict = false;
+    fake.addPr({ headSha: H1, behind: true });
+    const tip = fake.refs.get("main")!;
+    fake.commits.set(tip, { sha: tip, parents: [], ...baseCommit });
+    fake.setRuns(H1, runs);
+    return (await readCi(githubPort(fake.wire), { repo: "octo/demo", pr: 1, contexts: ["validate", "dag-check"], strict: false })).verdict;
+  }
+
+  it("counts green from the earliest required run, so a base commit between the two runs is untested", async () => {
+    const verdict = await behindVerdict({ committedAt: "2026-01-01T00:02:00Z" }, [successRun("validate", 1, EARLY), successRun("dag-check", 2, LATE)]);
+
+    expect(verdict).toBe("behind");
+  });
+
+  it("treats a base tip with no commit date as moved", async () => {
+    const verdict = await behindVerdict({}, [successRun("validate", 1, LATE), successRun("dag-check", 2, LATE)]);
+
+    expect(verdict).toBe("behind");
+  });
+
+  it("dates the green from Actions runs only, so a later run from another app does not hide a moved base", async () => {
+    const verdict = await behindVerdict({ committedAt: "2026-01-01T00:02:00Z" }, [successRun("validate", 1, EARLY), successRun("dag-check", 2, LATE), successRun("validate", 3, "2026-01-01T00:10:00Z", "success", OTHER_APP)]);
+
+    expect(verdict).toBe("behind");
+  });
+
+  it("is green when the base tip predates every required run", async () => {
+    const verdict = await behindVerdict({ committedAt: "2025-12-31T23:59:00Z" }, [successRun("validate", 1, EARLY), successRun("dag-check", 2, LATE)]);
+
+    expect(verdict).toBe("green");
+  });
+});
+
 /** Rewrites the evidence record a matching code route writes, to stand in for a route that answers differently. */
 function rewriteRecords(routes: StepRoute[], match: string, edit: (record: Record<string, unknown>) => Record<string, unknown>): StepRoute[] {
   return routes.map((route) => {

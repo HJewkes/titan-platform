@@ -1,6 +1,9 @@
 export type {
   ActiveStep,
   AssistedOptions,
+  AuthorizeOptions,
+  AuthorizeRequest,
+  AuthorizeResult,
   DispatchOptions,
   DurableStepOutcome,
   LegacyActiveStep,
@@ -28,6 +31,8 @@ export type {
   WorkflowStatus,
 } from "./types.js";
 export {
+  AuthorityDeniedError,
+  AuthorityRefusedError,
   StepFailedError,
   StepOutputInvalidError,
   WorkflowCancelledError,
@@ -54,7 +59,8 @@ export type { RestartRule, RouteRunner, RoutedRunner, RoutedStepInput, StepRoute
 export { routedRunner } from "./routed-runner.js";
 export type { MapItemFailure, MapItemFn, MapItemResult, MapOptions, MapResult } from "./fan-out.js";
 export { mapItems } from "./fan-out.js";
-export type { WorkflowRuntimeOptions } from "./runtime-options.js";
+export type { WorkflowAuthorityOptions, WorkflowRuntimeOptions } from "./runtime-options.js";
+export { AUTHORITY_TABLE_NAME } from "./authorize.js";
 export { WorkflowRuntime } from "./runtime.js";
 export type { DurableHarnessRunnerOptions } from "./durable-harness-runner.js";
 export { durableHarnessRunner } from "./durable-harness-runner.js";

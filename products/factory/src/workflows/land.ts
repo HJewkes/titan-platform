@@ -1,9 +1,10 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
+import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
@@ -25,7 +26,7 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "stuck-behind", kind: "assisted" },
 ];
 
-/** mergeable_state values that let a merge through; `unknown` and `blocked` mean GitHub has not settled. */
+/** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
 const INPUT_VAR = "LAND_STEP_INPUT";
 const TEMPLATE = `{{${INPUT_VAR}}}`;
@@ -241,7 +242,7 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await port.requiredChecks(input.repo, pr.baseRef);
+  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
   if (required.contexts.length === 0) throw new Error(`${input.repo}@${pr.baseRef} requires no status checks; land waits on required checks only, so it refuses`);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
@@ -288,7 +289,26 @@ export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapsh
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
-  return { ...base, verdict: mergeVerdict(pr) };
+  const verdict = await settledVerdict(port, input, pr);
+  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
+  return { ...base, verdict };
+}
+
+/** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */
+async function baseMovedSinceGreen(port: GitHubPort, input: CiInput, pr: PullRequest, runs: CheckRun[]): Promise<boolean> {
+  const tip = await port.getHeadSha(input.repo, pr.baseRef);
+  if (!tip) return true;
+  const committedAt = Date.parse((await port.getCommit(input.repo, tip)).committedAt ?? "");
+  const greenAt = greenStartedAt(runs, pr.headSha, input.contexts);
+  return Number.isNaN(committedAt) || greenAt === null || committedAt > greenAt;
+}
+
+/** The earliest start among the required runs that made the head green; a pull_request run tests the base as it stood then. */
+function greenStartedAt(runs: CheckRun[], headSha: string, contexts: string[]): number | null {
+  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && contexts.includes(run.name));
+  const starts = latestPerName(required).map((run) => Date.parse(run.startedAt ?? ""));
+  if (starts.length === 0 || starts.some(Number.isNaN)) return null;
+  return Math.min(...starts);
 }
 
 function failingCheck(run: CheckRun): FailingCheck {
@@ -297,6 +317,13 @@ function failingCheck(run: CheckRun): FailingCheck {
 
 function findingName(finding: CheckFinding): string {
   return finding.kind === "missing" ? finding.name : finding.run.name;
+}
+
+/** A blocked PR is green when its only block is an approval rule the caller can bypass, which GitHub reports as blocked all the same. */
+async function settledVerdict(port: GitHubPort, input: CiInput, pr: PullRequest): Promise<CiVerdict> {
+  const verdict = mergeVerdict(pr);
+  if (verdict === "pending" && pr.mergeableState === "blocked" && (await port.reviewRulesBypassable(input.repo, pr.baseRef))) return "green";
+  return verdict;
 }
 
 function mergeVerdict(pr: PullRequest): CiVerdict {

@@ -29,10 +29,12 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
+    reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[] }>(`repos/${repo}/git/commits/${sha}`);
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha) } satisfies Commit;
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const committedAt = commit.committer?.date;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
     },
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
@@ -97,13 +99,31 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
 
 interface GhRule {
   type: string;
-  parameters?: { strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] };
+  ruleset_id?: number;
+  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] };
 }
 
 function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
   const statusRules = rules.filter((rule) => rule.type === "required_status_checks");
   const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
   return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true) };
+}
+
+function requiresReview(rule: GhRule): boolean {
+  const p = rule.parameters ?? {};
+  return (p.required_approving_review_count ?? 0) > 0 || p.require_code_owner_review === true || p.required_review_thread_resolution === true || (p.required_reviewers?.length ?? 0) > 0;
+}
+
+const BYPASS_OK = new Set(["always", "pull_requests_only"]);
+
+async function reviewRulesBypassable(api: Rest, repo: string, branch: string): Promise<boolean> {
+  const rules = await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`);
+  const ids = new Set(rules.filter((rule) => rule.type === "pull_request" && requiresReview(rule)).map((rule) => rule.ruleset_id));
+  for (const id of ids) {
+    const ruleset = await api.get<{ current_user_can_bypass?: string }>(`repos/${repo}/rulesets/${id}`);
+    if (!BYPASS_OK.has(ruleset.current_user_can_bypass ?? "")) return false;
+  }
+  return true;
 }
 
 interface GhCheckRun {

@@ -9,15 +9,23 @@ const RULE_SAMPLES: ActionCall[] = [
   bash(">events.jsonl"),
   bash("gh pr checks"),
   bash("gh run watch"),
+  bash("git merge-tree"),
+  bash("gh api GET commits/check-runs"),
+  bash("gh api GET commits/status"),
   bash("gh pr merge"),
+  bash("gh api PUT pulls/merge"),
   { tool: "mcp__srv__agent_spawn" },
   bash("agent-chat agent retire"),
   bash("active-work task edit"),
   { tool: "mcp__srv__session_budget" },
   bash("agent-chat agent list"),
+  bash("agent-chat agent budget"),
+  bash("git worktree list"),
+  { tool: "mcp__srv__agent_list" },
   { tool: "mcp__srv__score_turn" },
   bash("python scorer"),
   { tool: "mcp__srv__chat_send" },
+  { tool: "mcp__srv__chat_claim" },
   { tool: "Read", readPaths: ["src/a.ts"] },
   bash("git log"),
 ];
@@ -40,8 +48,16 @@ describe("classifyRequest", () => {
     expect(classifyRequest([RULE_SAMPLES[i + 1]!, RULE_SAMPLES[i]!])).toBe(higher);
   });
 
-  it("classifies the pulls merge API as merge", () => {
-    expect(classifyRequest([bash("gh api repos/o/r/pulls/5/merge")])).toBe("merge");
+  it("classifies the gh api pulls merge head as merge", () => {
+    expect(classifyRequest([bash("gh api PUT pulls/merge")])).toBe("merge");
+  });
+
+  it.each(["gh api GET commits/check-runs", "gh api GET commits/status"])("classifies the head %s as pr-ci-check", (head) => {
+    expect(classifyRequest([bash(head)])).toBe("pr-ci-check");
+  });
+
+  it.each(["gh api GET pulls/merge", "gh api GET issues", "gh api POST commits/check-runs", "gh api PUT issues"])("keeps the head %s as other", (head) => {
+    expect(classifyRequest([bash(head)])).toBe("other");
   });
 
   it("classifies a request with no calls as text-only", () => {
@@ -54,6 +70,33 @@ describe("classifyRequest", () => {
 
   it("uses caller-supplied rules instead of the defaults", () => {
     expect(classifyRequest([bash("deploy")], [{ cls: "merge", head: /^deploy/ }])).toBe("merge");
+  });
+});
+
+describe("agent-chat and git vocabulary", () => {
+  it.each(["agent-chat agent ls", "agent-chat agent budget", "agent-chat agent worktrees", "agent ls", "agent budget", "agent worktrees", "git worktree list"])(
+    "head %s is budget-status",
+    (head) => expect(classifyRequest([bash(head)])).toBe("budget-status"),
+  );
+
+  it.each(["agent_list", "chat_list", "ListAgents", "mcp__plugin_x__agent_list", "mcp__plugin_x__chat_list"])("tool %s is budget-status", (tool) =>
+    expect(classifyRequest([{ tool }])).toBe("budget-status"),
+  );
+
+  it("classifies git merge-tree as pr-ci-check", () => {
+    expect(classifyRequest([bash("git merge-tree")])).toBe("pr-ci-check");
+  });
+
+  it.each(["chat_ask", "chat_inbox", "chat_claim", "chat_release", "mcp__plugin_x__chat_inbox"])("tool %s is message", (tool) =>
+    expect(classifyRequest([{ tool }])).toBe("message"),
+  );
+
+  it("keeps a bare gh api head as other", () => {
+    expect(classifyRequest([bash("gh api")])).toBe("other");
+  });
+
+  it.each(["echo agent budget", "echo git worktree list", "echo git merge-tree", "cat agent-worktrees.md"])("%s does not match by position", (head) => {
+    expect(classifyRequest([bash(head)])).not.toMatch(/budget-status|pr-ci-check/);
   });
 });
 
@@ -87,5 +130,10 @@ describe("journal writes match on the file's basename", () => {
   it("applies the same basename rule to redirect targets", () => {
     expect(classifyRequest([bash(">CHANGELOG.md")])).toBe("other");
     expect(classifyRequest([bash(">session-log.md")])).toBe("journal-write");
+  });
+
+  it("matches a redirect target that keeps its parent directory", () => {
+    expect(classifyRequest([bash(">state/events.jsonl")])).toBe("journal-write");
+    expect(classifyRequest([bash(">docs/CHANGELOG.md")])).toBe("other");
   });
 });

@@ -1,7 +1,7 @@
 import type { WorkflowContext, WorkflowFn } from "@titan-design/workflow";
 
-/** The three ways a workflow function touches a step; each keys its memo differently. */
-export type StepKind = "dispatch" | "seed" | "assisted";
+/** The ways a workflow function touches a step; each keys its memo differently. */
+export type StepKind = "dispatch" | "seed" | "assisted" | "authorize";
 
 export interface StepDeclaration {
   /** A bare id, or a family whose calls are `<id>:<suffix>` (for example `ci-wait:2`). */
@@ -64,5 +64,6 @@ export function guardedContext(ctx: WorkflowContext, definition: WorkflowDefinit
     dispatch: async (stepId, template, options) => (check(stepId, "dispatch"), ctx.dispatch(stepId, template, options)),
     seed: async (stepId, fn) => (check(stepId, "seed"), ctx.seed(stepId, fn)),
     assisted: async (stepId, prompt, options) => (check(stepId, "assisted"), ctx.assisted(stepId, prompt, options)),
+    authorize: async (stepId, request, options) => (check(stepId, "authorize"), ctx.authorize(stepId, request, options)),
   };
 }

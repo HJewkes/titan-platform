@@ -37,14 +37,20 @@ export function expandHome(path: string, home: string): string {
   return prefix === undefined ? path : join(home, path.slice(prefix.length));
 }
 
+/** The repo's configured checkout, home-expanded, when it is an absolute directory; otherwise why it cannot be started in. */
+export function resolveCheckout(repo: string, configured: string | undefined, home: string = homedir()): { dir: string } | { problem: string } {
+  if (configured === undefined || configured === "") return { problem: `no checkout path is configured for ${repo}` };
+  const dir = expandHome(configured, home);
+  if (!isAbsolute(dir)) return { problem: `the checkout path for ${repo} is not absolute: ${configured}` };
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return { problem: `the checkout path for ${repo} is not a directory: ${dir}` };
+  return { dir };
+}
+
 /** Throws unless the repo has an absolute checkout path that is a directory, so a reviewer never starts in the factory's own cwd. */
 function checkoutDir(repo: string, cwdFor: AgentChatReviewerDispatchOptions["cwdFor"]): string {
-  const configured = cwdFor(repo);
-  if (configured === undefined || configured === "") throw new Error(`no checkout path is configured for ${repo}`);
-  const dir = expandHome(configured, homedir());
-  if (!isAbsolute(dir)) throw new Error(`the checkout path for ${repo} is not absolute: ${configured}`);
-  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`the checkout path for ${repo} is not a directory: ${dir}`);
-  return dir;
+  const resolved = resolveCheckout(repo, cwdFor(repo));
+  if ("problem" in resolved) throw new Error(resolved.problem);
+  return resolved.dir;
 }
 
 /** Only an unreachable broker is safe to ask again; every other failure, a timeout included, stays a refusal. */

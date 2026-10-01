@@ -50,6 +50,7 @@ export class WorkflowRuntime {
       gatePollMs: options.gatePollMs ?? 250,
       maxStepDataBytes: options.maxStepDataBytes ?? DEFAULT_MAX_STEP_DATA_BYTES,
       executionId: options.executionId ?? randomUUID,
+      authority: options.authority,
     };
   }
 

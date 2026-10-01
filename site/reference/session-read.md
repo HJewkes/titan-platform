@@ -131,7 +131,7 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 4) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 5) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |

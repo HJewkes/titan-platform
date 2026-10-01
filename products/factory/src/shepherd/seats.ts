@@ -23,9 +23,9 @@ export interface RepoPath {
 
 const PATH_PREFIXES = ["~/", "$HOME/", "${HOME}/", "/"] as const;
 const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
-const PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+const PATH_SEGMENT = /^[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*$/;
 
-/** An allowlist: a known prefix then plain segments; any other spelling is refused, since it could only miss a deny. */
+/** An allowlist: a known prefix then plain segments (inner spaces alias nothing); any other spelling is refused, since it could only miss a deny. */
 function pathSegments(path: string): { prefix: string; segments: string[] } | undefined {
   const prefix = PATH_PREFIXES.find((p) => path.startsWith(p));
   if (prefix === undefined) return undefined;
@@ -47,7 +47,7 @@ function repoPathSchema(home: string) {
   return z.string().transform((path, ctx): RepoPath => {
     const parsed = pathSegments(path);
     if (!parsed) {
-      ctx.addIssue({ code: "custom", message: `path ${JSON.stringify(path)} is not an allowed path: ~/, $HOME/, \${HOME}/ or / then segments of [A-Za-z0-9._-]` });
+      ctx.addIssue({ code: "custom", message: `path ${JSON.stringify(path)} is not an allowed path: ~/, $HOME/, \${HOME}/ or / then segments of [A-Za-z0-9._-] with inner spaces` });
       return z.NEVER;
     }
     return { written: parsed.prefix + parsed.segments.join("/"), key: repoPathKey(parsed.prefix, parsed.segments, home) };

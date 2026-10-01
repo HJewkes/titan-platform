@@ -13,7 +13,11 @@ export interface ReportWindow {
 export interface CostRow {
   sessionId: string;
   requestId: string;
+  ts: string;
   model: string;
+  /** Tokens in context at the request. */
+  contextTokens: number;
+  isSidechain: boolean;
   inputTokens: number;
   cacheReadTokens: number;
   cacheWrite5mTokens: number;
@@ -61,7 +65,7 @@ const IN_SESSIONS = "session_id IN (SELECT value FROM json_each(@ids))";
 
 // The 5m write column mirrors the view: a split-less write is billed at the 5m rate.
 const COST_ROWS = `
-  SELECT session_id AS sessionId, request_id AS requestId, model,
+  SELECT session_id AS sessionId, request_id AS requestId, ts, model, COALESCE(context_tokens, 0) AS contextTokens, is_sidechain AS isSidechain,
     input_tokens AS inputTokens, cache_read_tokens AS cacheReadTokens,
     CASE WHEN cache_creation_5m + cache_creation_1h = 0 THEN cache_creation_tokens ELSE cache_creation_5m END AS cacheWrite5mTokens,
     cache_creation_1h AS cacheWrite1hTokens, output_tokens AS outputTokens,
@@ -73,8 +77,9 @@ const COST_ROWS = `
 `;
 
 export function readCostRows(db: Db, window: ReportWindow): CostRow[] {
-  const rows = db.prepare(COST_ROWS).all(window) as (Omit<CostRow, "priced" | "isCold"> & { priced: number; isCold: number })[];
-  return rows.map((row) => ({ ...row, priced: row.priced === 1, isCold: row.isCold === 1 }));
+  type Row = Omit<CostRow, "priced" | "isCold" | "isSidechain"> & { priced: number; isCold: number; isSidechain: number | null };
+  const rows = db.prepare(COST_ROWS).all(window) as Row[];
+  return rows.map((row) => ({ ...row, priced: row.priced === 1, isCold: row.isCold === 1, isSidechain: row.isSidechain === 1 }));
 }
 
 export function readCompactions(db: Db, window: ReportWindow): CompactionRow[] {
@@ -99,6 +104,75 @@ export function readCoverage(db: Db, facetVersion: number | null): { transcripts
     )
     .get({ facet: AUDIT_FACET, version: facetVersion }) as { n: number };
   return { transcriptsIndexed: indexed.n, facetBacklog: backlog.n };
+}
+
+/** An arrival that opens a wake episode: a turn-start record or a mid-loop `queued_command` delivery. */
+export interface WakeEventRow {
+  key: string;
+  sessionId: string;
+  cause: string;
+  delivery: string;
+  fromName: string | null;
+  /** The same `msg_id` reached more than one session. */
+  broadcast: boolean;
+}
+
+/** One agent-chat identity: the name a session carries and how it came to carry it. */
+export interface AgentNameRow {
+  sessionId: string;
+  agentName: string;
+  originKind: string | null;
+  profile: string | null;
+}
+
+const EPISODE_DELIVERIES = "('turn_start', 'mid_loop')";
+
+// A record with several blocks is one event; its last block decides, as the request rollup does.
+const WAKE_EVENTS = `
+  WITH event AS (
+    SELECT transcript_id, byte_offset, MAX(block_index) AS block_index FROM inbound
+    WHERE ${IN_SESSIONS} AND ${IN_WINDOW} AND delivery IN ${EPISODE_DELIVERIES}
+    GROUP BY transcript_id, byte_offset
+  ), fanout AS (
+    SELECT msg_id, COUNT(DISTINCT session_id) AS receivers FROM inbound
+    WHERE msg_id IN (SELECT i.msg_id FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index))
+    GROUP BY msg_id
+  )
+  SELECT i.transcript_id || ':' || i.byte_offset AS key, i.session_id AS sessionId, i.cause, i.delivery,
+    i.from_name AS fromName, COALESCE(f.receivers, 1) > 1 AS broadcast
+  FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index)
+  LEFT JOIN fanout f ON f.msg_id = i.msg_id
+  ORDER BY i.transcript_id, i.byte_offset`;
+
+const REQUEST_EVENTS = `
+  SELECT d.request_id AS requestId, d.transcript_id || ':' || (
+    SELECT MAX(i.byte_offset) FROM inbound i
+    WHERE i.transcript_id = d.transcript_id AND i.session_id = d.session_id AND i.byte_offset < d.byte_offset
+      AND i.delivery IN ${EPISODE_DELIVERIES}) AS eventKey
+  FROM request_dedup d WHERE d.${IN_SESSIONS} AND (@since IS NULL OR d.ts >= @since) AND (@until IS NULL OR d.ts < @until)`;
+
+export function readWakeEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): WakeEventRow[] {
+  const rows = db.prepare(WAKE_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as (Omit<WakeEventRow, "broadcast"> & { broadcast: number })[];
+  return rows.map((row) => ({ ...row, broadcast: row.broadcast === 1 }));
+}
+
+/** The event each request in the window follows, keyed by `request_id`; null before a transcript's first event. */
+export function readRequestEvents(db: Db, window: ReportWindow, sessionIds: readonly string[]): Map<string, string | null> {
+  const rows = db.prepare(REQUEST_EVENTS).all({ ...window, ids: JSON.stringify(sessionIds) }) as { requestId: string; eventKey: string | null }[];
+  return new Map(rows.map((row) => [row.requestId, row.eventKey]));
+}
+
+export function readAgentNames(db: Db): AgentNameRow[] {
+  const sql = `SELECT session_id AS sessionId, agent_name AS agentName, origin_kind AS originKind, profile FROM session_origin WHERE agent_name IS NOT NULL`;
+  return db.prepare(sql).all() as AgentNameRow[];
+}
+
+/** Each agent-chat agent id to the sessions it ran as; the broker log names agents by id. */
+export function readAgentSessions(db: Db): Map<string, string[]> {
+  const sql = `SELECT agent_id AS agentId, session_id AS sessionId FROM session_origin WHERE agent_id IS NOT NULL`;
+  const sessions = new Map<string, string[]>();
+  for (const row of db.prepare(sql).all() as { agentId: string; sessionId: string }[]) sessions.set(row.agentId, [...(sessions.get(row.agentId) ?? []), row.sessionId]);
+  return sessions;
 }
 
 export function readSessionContexts(db: Db, sessionIds: readonly string[]): Map<string, SessionContext> {

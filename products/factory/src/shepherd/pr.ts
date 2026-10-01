@@ -6,6 +6,7 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
@@ -25,6 +26,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "sh-policy", kind: "dispatch" },
   { id: "sh-sent-back", kind: "assisted" },
   ...WAKE_STEPS,
+  ...PARK_STEPS,
   ...REVIEW_STEPS,
   ...POST_MERGE_STEPS,
 ];
@@ -137,6 +139,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: (stepId, prompt, options) => ctx.assisted(stepId, prompt, options),
+    authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
       if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
@@ -152,7 +155,10 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   run.lastCi = ci.data;
   if (ci.data.verdict !== "green") return;
   const { headSha } = ci.data;
-  if (!run.reviews.has(headSha)) run.reviews.set(headSha, await reviewHead(run, headSha));
+  if (!run.reviews.has(headSha)) {
+    await parkAtGreen(run.ctx, headSha);
+    run.reviews.set(headSha, await reviewHead(run, headSha));
+  }
   await sendBack(run, headSha, run.reviews.get(headSha)!);
   await narrowToRegistration(run);
 }
@@ -224,6 +230,8 @@ async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSig
 export interface ShepherdWiring {
   /** Absent means the review steps answer `none` and the owner gate decides. */
   review?: ReviewWiring;
+  /** Absent means `agent-chat agent park` through `deps.agentChatBin`. */
+  park?: ParkPort;
 }
 
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -233,6 +241,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     codeRoute("sh-landed", deps.now, async (input: object) => input),
     codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
     ...wakeRoutes(deps),
+    ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
     ...postMergeRoutes(deps),
   ];

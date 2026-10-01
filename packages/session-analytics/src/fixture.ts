@@ -53,6 +53,7 @@ export interface RequestFixture {
   gapMs?: number | null;
   wakeCause?: string | null;
   wakeDelivery?: string | null;
+  isSidechain?: boolean;
   /** Defaults to the next free offset, so rows land in insertion order. */
   offset?: number;
 }
@@ -65,15 +66,15 @@ function offsetOf(requested: number | undefined): number {
 }
 
 export function insertRequest(db: Db, request: RequestFixture): void {
-  const r = { model: "claude-opus-5", transcriptId: 1, inputTokens: 0, cacheReadTokens: 0, cacheCreation5m: 0, cacheCreation1h: 0, outputTokens: 0, gapMs: null, wakeCause: null, wakeDelivery: null, ...request };
+  const r = { model: "claude-opus-5", transcriptId: 1, inputTokens: 0, cacheReadTokens: 0, cacheCreation5m: 0, cacheCreation1h: 0, outputTokens: 0, gapMs: null, wakeCause: null, wakeDelivery: null, isSidechain: false, ...request };
   const creation = r.cacheCreationTokens ?? r.cacheCreation5m + r.cacheCreation1h;
   const offset = offsetOf(r.offset);
   db.prepare(
     `INSERT INTO request (transcript_id, request_id, byte_offset, session_id, ts, model, input_tokens, cache_read_tokens,
-       cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery)
+       cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery, is_sidechain)
      VALUES (@transcriptId, @requestId, @offset, @sessionId, @ts, @model, @inputTokens, @cacheReadTokens,
-       @creation, @cacheCreation5m, @cacheCreation1h, @outputTokens, @context, @gapMs, @wakeCause, @wakeDelivery)`,
-  ).run({ ...r, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
+       @creation, @cacheCreation5m, @cacheCreation1h, @outputTokens, @context, @gapMs, @wakeCause, @wakeDelivery, @sidechain)`,
+  ).run({ ...r, sidechain: r.isSidechain ? 1 : 0, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
 }
 
 export interface SessionFixture {
@@ -90,19 +91,39 @@ export function insertSession(db: Db, session: SessionFixture): void {
   });
 }
 
-export function insertOrigin(db: Db, origin: { sessionId: string; depth: number; profile?: string | null; parentName?: string | null }): void {
-  db.prepare(
-    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, resolved_at)
-     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, '2026-09-01T00:00:00Z')`,
-  ).run({ profile: null, parentName: null, ...origin });
+export interface OriginFixture {
+  sessionId: string;
+  depth: number;
+  profile?: string | null;
+  parentName?: string | null;
+  agentName?: string | null;
+  agentId?: string | null;
+  originKind?: string | null;
 }
 
-export function insertInbound(db: Db, inbound: { sessionId: string; ts: string; cause: string; delivery?: string; transcriptId?: number }): void {
+export function insertOrigin(db: Db, origin: OriginFixture): void {
+  db.prepare(
+    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, agent_name, agent_id, origin_kind, resolved_at)
+     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, @agentName, @agentId, @originKind, '2026-09-01T00:00:00Z')`,
+  ).run({ profile: null, parentName: null, agentName: null, agentId: null, originKind: null, ...origin });
+}
+
+export interface InboundFixture {
+  sessionId: string;
+  ts: string;
+  cause: string;
+  delivery?: string;
+  transcriptId?: number;
+  fromName?: string | null;
+  msgId?: string | null;
+}
+
+export function insertInbound(db: Db, inbound: InboundFixture): void {
   nextOffset += 1;
   db.prepare(
-    `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, content_hash, chars)
-     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @cause, @delivery, 'h', 1)`,
-  ).run({ delivery: "turn_start", transcriptId: 1, ...inbound, offset: nextOffset });
+    `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, from_name, msg_id, content_hash, chars)
+     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @cause, @delivery, @fromName, @msgId, 'h', 1)`,
+  ).run({ delivery: "turn_start", transcriptId: 1, fromName: null, msgId: null, ...inbound, offset: nextOffset });
 }
 
 export interface SignalFixture {
@@ -143,11 +164,12 @@ export function insertToolCall(db: Db, call: ToolCallFixture): void {
 let nextToolUse = 0;
 
 /** A tool call after every row so far, carrying one extraction signal when `signal` is set. */
-export function insertActionCall(db: Db, call: { sessionId: string; ts: string; name: string; signal?: string; detail?: string }): void {
+export function insertActionCall(db: Db, call: { sessionId: string; ts: string; name: string; signal?: string; detail?: string; transcriptId?: number }): void {
   nextToolUse += 1;
   const toolUseId = `tu-${nextToolUse}`;
-  insertToolCall(db, { sessionId: call.sessionId, ts: call.ts, toolUseId, name: call.name });
-  if (call.signal) insertSignal(db, { sessionId: call.sessionId, ts: call.ts, signal: call.signal, detail: call.detail ?? null, toolUseId });
+  const at = { sessionId: call.sessionId, ts: call.ts, transcriptId: call.transcriptId ?? 1 };
+  insertToolCall(db, { ...at, toolUseId, name: call.name });
+  if (call.signal) insertSignal(db, { ...at, signal: call.signal, detail: call.detail ?? null, toolUseId });
 }
 
 export function insertCompaction(db: Db, compaction: { sessionId: string; ts: string; trigger: "manual" | "auto"; midLoop?: boolean; droppedTokens?: number }): void {
@@ -209,4 +231,53 @@ function seedScenarioRequests(db: Db): void {
   insertRequest(db, { sessionId: "miner", ts: "2026-09-20T14:00:00Z", model: "claude-mystery-9", inputTokens: 100, outputTokens: 10, wakeCause: "human_typed", wakeDelivery: "turn_start" });
   insertRequest(db, { ...coord, ts: "2026-09-19T23:59:59Z", inputTokens: 999_999, wakeCause: "human_typed" });
   insertRequest(db, { ...coord, ts: "2026-09-21T00:00:00Z", inputTokens: 999_999, wakeCause: "human_typed" });
+}
+
+export const WAKE_WINDOW = { since: "2026-09-22", until: "2026-09-23" } as const;
+
+/**
+ * Two seats and one agent. `seat-a` is a spawned coordinator seat, `seat-b` a human coordinator,
+ * `impl` an implementer that also receives `seat-b`'s broadcast. In the window `seat-a` wakes five
+ * times: boot, agent report, lifecycle notice, seat message and broadcast; one request follows an
+ * arrival from before the window.
+ */
+export function seedWakeScenario(fixture: FixtureGraph): void {
+  const db = fixture.graph.db;
+  insertPrices(fixture.graph);
+  for (const sessionId of ["seat-a", "seat-b", "impl"]) insertSession(db, { sessionId });
+  insertOrigin(db, { sessionId: "seat-a", depth: 1, profile: "opus-coordinator", agentName: "seat-a", originKind: "spawned" });
+  insertOrigin(db, { sessionId: "seat-b", depth: 0, agentName: "seat-b", originKind: "adopted" });
+  insertOrigin(db, { sessionId: "impl", depth: 2, profile: "implementer", agentName: "impl", originKind: "spawned" });
+  seedSeatAWakes(db);
+  const seatB = { sessionId: "seat-b", transcriptId: 6 };
+  insertInbound(db, { ...seatB, ts: "2026-09-22T04:00:00Z", cause: "channel_message", fromName: "seat-a", msgId: "m4" });
+  insertRequest(db, { ...seatB, ts: "2026-09-22T04:00:00Z", outputTokens: 1_000 });
+  const impl = { sessionId: "impl", transcriptId: 7 };
+  insertInbound(db, { ...impl, ts: "2026-09-22T03:01:00Z", cause: "channel_message", fromName: "seat-b", msgId: "m3" });
+  insertRequest(db, { ...impl, ts: "2026-09-22T03:01:00Z", outputTokens: 1_000 });
+}
+
+function seedSeatAWakes(db: Db): void {
+  const seat = { sessionId: "seat-a", transcriptId: 5 };
+  const call = (ts: string, name: string, heads?: string) =>
+    insertActionCall(db, { ...seat, ts, name, ...(heads ? { signal: "command_heads", detail: heads } : {}) });
+  insertInbound(db, { ...seat, ts: "2026-09-21T23:50:00Z", cause: "human_typed" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T00:05:00Z", outputTokens: 100 });
+  insertInbound(db, { ...seat, ts: "2026-09-22T01:00:00Z", cause: "human_typed" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T01:00:00Z", outputTokens: 2_000 });
+  call("2026-09-22T01:00:00Z", "Read");
+  insertInbound(db, { ...seat, ts: "2026-09-22T01:00:30Z", cause: "tool_result", delivery: "tool_result" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T01:01:00Z", outputTokens: 2_000 });
+  call("2026-09-22T01:01:00Z", "mcp__agent-chat__agent_spawn");
+  insertInbound(db, { ...seat, ts: "2026-09-22T02:00:00Z", cause: "channel_message", delivery: "mid_loop", fromName: "impl", msgId: "m1" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T02:00:00Z", outputTokens: 400 });
+  call("2026-09-22T02:00:00Z", "Read");
+  insertRequest(db, { ...seat, ts: "2026-09-22T02:01:00Z", outputTokens: 400 });
+  insertInbound(db, { ...seat, ts: "2026-09-22T02:02:00Z", cause: "channel_system", delivery: "mid_loop", fromName: "agent-chat" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T02:02:00Z", outputTokens: 800 });
+  call("2026-09-22T02:02:00Z", "Bash", "gh pr checks");
+  insertInbound(db, { ...seat, ts: "2026-09-22T03:00:00Z", cause: "channel_message", fromName: "seat-b", msgId: "m2" });
+  insertRequest(db, { ...seat, ts: "2026-09-22T03:00:00Z", outputTokens: 1_200 });
+  call("2026-09-22T03:00:00Z", "mcp__agent-chat__chat_send");
+  insertInbound(db, { ...seat, ts: "2026-09-22T03:01:00Z", cause: "channel_message", delivery: "mid_loop", fromName: "seat-b", msgId: "m3" });
 }
