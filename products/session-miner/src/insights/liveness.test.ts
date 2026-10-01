@@ -85,7 +85,7 @@ describe("insights liveness", () => {
     const answer = await ask(WINDOW);
 
     expect(answer.darkSeats.rows).toEqual([
-      { seat: "seat-a", from: "2026-09-12T08:10:00.000Z", to: "2026-09-12T08:30:00.000Z", minutes: 20, teleport: false, failedRoutes: 1, partialRoutes: 0, lines: [2, 4], routeLines: [3] },
+      { seat: "seat-a", from: "2026-09-12T08:10:00.000Z", to: "2026-09-12T08:30:00.000Z", minutes: 20, teleport: false, failedRoutes: 1, partialRoutes: 0, queuedRoutes: 0, lines: [2, 4], routeLines: [3] },
     ]);
     expect(answer.routeFailures.rows).toMatchObject([{ recipient: "seat-a", failed: 1, lines: [3] }]);
   });
@@ -101,9 +101,9 @@ describe("insights liveness", () => {
 
     expect(answer.stalePrompts.rows).toEqual([
       { agent: "rev-1", at: "2026-09-12T10:00:00.000Z", ageMin: 120, tool: "Bash", eventId: 2, resolutionEventId: null },
-      { agent: "rev-2", at: "2026-09-12T10:30:00.000Z", ageMin: 90, tool: "Edit", eventId: 3, resolutionEventId: 4 },
       { agent: "impl-1", at: "2026-09-12T10:40:00.000Z", ageMin: 80, tool: null, eventId: 5, resolutionEventId: null },
     ]);
+    expect(answer.stalePrompts.resolvedRows).toEqual([{ agent: "rev-2", at: "2026-09-12T10:30:00.000Z", ageMin: 90, tool: "Edit", eventId: 3, resolutionEventId: 4 }]);
   });
 
   it("reads --broker-log in place of the configured path", async () => {

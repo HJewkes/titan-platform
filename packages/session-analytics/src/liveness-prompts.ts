@@ -24,7 +24,7 @@ export interface StalePromptRow {
   resolutionEventId: number | null;
 }
 
-/** Agents whose last event is an approval request older than PROMPT_STALE_MIN, oldest first. */
+/** Agents whose last event is an approval request older than PROMPT_STALE_MIN, oldest first; resolved ones included. */
 export function stalePromptRows(lastEvents: readonly LastEventRecord[], asOf: string): StalePromptRow[] {
   return lastEvents
     .filter((e) => e.kind === "approval_request" && e.at < asOf)

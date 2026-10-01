@@ -87,8 +87,8 @@ export type { BlockedFlowInput, BlockedFlowReport, BlockedFlowSource, LatencyRow
 export { ALL_REPOS, BLOCKED_FLOW_SOURCES, blockedFlowReport, blockedFlowSchema, renderBlockedFlowText } from "./blocked-flow.js";
 export type { BrokerEntry } from "./liveness-broker.js";
 export { parseBrokerLog } from "./liveness-broker.js";
-export type { RouteFailureRow, RouteMiss } from "./liveness-routes.js";
-export { routeFailureRows, routeMisses } from "./liveness-routes.js";
+export type { RouteFailureRow, RouteMiss, RouteMissKind } from "./liveness-routes.js";
+export { countMisses, routeFailureRows, routeMisses } from "./liveness-routes.js";
 export type { DarkGap } from "./liveness-dark.js";
 export { DARK_MIN, darkGaps } from "./liveness-dark.js";
 export type { SpawnRecord, UnreportedExit, UnreportedExitRow } from "./liveness-exits.js";

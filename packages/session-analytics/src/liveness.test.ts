@@ -32,12 +32,16 @@ const BROKER = [
   "not json",
   log("12:05:00", "route", { kind: "message", from: "seat-a", to: "impl-2", delivered: false, recipients: [] }),
   log("13:30:00", "route", { kind: "message", from: "seat-a", to: "seat-b", delivered: false, recipients: [] }),
+  log("10:25:00", "route", { kind: "message", from: "impl-1", to: "seat-a", delivered: false, held: "seat_dark" }),
+  log("10:26:00", "route", { kind: "decided", from: "decider", to: "seat-a", delivered: false, provenance: "decided" }),
+  log("10:27:00", "route", { kind: "message", from: "impl-1", to: "tag seat-a", delivered: false, recipients: [] }),
+  log("10:28:00", "route", { kind: "message", from: "impl-1", to: "tag reviewers", delivered: true, recipients: ["seat-b"] }),
 ];
 
 const SPAWNS: SpawnRecord[] = [{ eventId: 7, agentId: "a1", name: "impl-1", profile: "implementer" }];
 
 const prompt = (actor: string, time: string, kind = "approval_request"): LastEventRecord => ({ eventId: actor.length * 10, at: at(time), actor, kind, tool: "Bash", resolutionEventId: null });
-const LAST_EVENTS = [prompt("rev-1", "12:30:00"), prompt("rev-22", "12:55:00"), prompt("impl-333", "12:00:00", "message")];
+const LAST_EVENTS = [prompt("rev-1", "12:30:00"), prompt("rev-22", "12:55:00"), prompt("impl-333", "12:00:00", "message"), { ...prompt("rev-4444", "12:00:00"), resolutionEventId: 99 }];
 
 const AS_OF = at("13:00:00");
 
@@ -50,7 +54,8 @@ describe("parseBrokerLog", () => {
     const entries = parseBrokerLog(BROKER);
 
     expect(entries).toHaveLength(BROKER.length - 1);
-    expect(entries.at(-2)).toMatchObject({ line: 22, event: "route" });
+    expect(entries.map((e) => e.line)).not.toContain(21);
+    expect(entries.at(-1)).toMatchObject({ line: BROKER.length, event: "route" });
   });
 });
 
@@ -60,9 +65,9 @@ describe("livenessReport", () => {
 
     expect([darkSeats.withTeleport, darkSeats.withoutTeleport]).toEqual([1, 2]);
     expect(darkSeats.rows).toEqual([
-      { seat: "seat-a", from: at("10:10:00"), to: at("10:40:00"), minutes: 30, teleport: false, failedRoutes: 2, partialRoutes: 1, lines: [4, 8], routeLines: [5, 6, 7] },
-      { seat: "seat-b", from: at("11:30:30"), to: at("11:45:00"), minutes: 14.5, teleport: true, failedRoutes: 0, partialRoutes: 0, lines: [13, 15, 12, 14], routeLines: [] },
-      { seat: "impl-2", from: at("12:00:00"), to: null, minutes: 60, teleport: false, failedRoutes: 1, partialRoutes: 0, lines: [18], routeLines: [22] },
+      { seat: "seat-a", from: at("10:10:00"), to: at("10:40:00"), minutes: 30, teleport: false, failedRoutes: 1, partialRoutes: 1, queuedRoutes: 3, lines: [4, 8], routeLines: [5, 6, 7, 24, 25] },
+      { seat: "seat-b", from: at("11:30:30"), to: at("11:45:00"), minutes: 14.5, teleport: true, failedRoutes: 0, partialRoutes: 0, queuedRoutes: 0, lines: [13, 15, 12, 14], routeLines: [] },
+      { seat: "impl-2", from: at("12:00:00"), to: null, minutes: 60, teleport: false, failedRoutes: 1, partialRoutes: 0, queuedRoutes: 0, lines: [18], routeLines: [22] },
     ]);
   });
 
@@ -70,13 +75,13 @@ describe("livenessReport", () => {
     expect(report().darkSeats.rows.map((r) => r.seat)).not.toContain("impl-1");
   });
 
-  it("counts routes that missed each recipient, apart from partial deliveries and broadcasts, up to asOf", () => {
+  it("counts dropped routes apart from partial deliveries and held or inbox-queued ones, skipping broadcasts and tag sends", () => {
     const { routeFailures } = report();
 
-    expect(routeFailures).toMatchObject({ failed: 3, partial: 1 });
+    expect(routeFailures).toMatchObject({ failed: 2, partial: 1, queued: 3 });
     expect(routeFailures.rows).toEqual([
-      { recipient: "seat-a", failed: 2, partial: 1, first: at("10:15:00"), last: at("10:20:00"), lines: [5, 6, 7] },
-      { recipient: "impl-2", failed: 1, partial: 0, first: at("12:05:00"), last: at("12:05:00"), lines: [22] },
+      { recipient: "seat-a", failed: 1, partial: 1, queued: 3, first: at("10:15:00"), last: at("10:26:00"), lines: [5, 6, 7, 24, 25] },
+      { recipient: "impl-2", failed: 1, partial: 0, queued: 0, first: at("12:05:00"), last: at("12:05:00"), lines: [22] },
     ]);
   });
 
@@ -90,8 +95,21 @@ describe("livenessReport", () => {
     ]);
   });
 
-  it("lists agents whose last event is a permission prompt over 10 min old", () => {
-    expect(report().stalePrompts.rows).toEqual([{ agent: "rev-1", at: at("12:30:00"), ageMin: 30, tool: "Bash", eventId: 50, resolutionEventId: null }]);
+  it("lists agents whose last event is a permission prompt over 10 min old, resolved ones apart", () => {
+    const { stalePrompts } = report();
+
+    expect(stalePrompts.rows).toEqual([{ agent: "rev-1", at: at("12:30:00"), ageMin: 30, tool: "Bash", eventId: 50, resolutionEventId: null }]);
+    expect(stalePrompts.resolvedRows.map((r) => [r.agent, r.resolutionEventId])).toEqual([["rev-4444", 99]]);
+  });
+
+  it("keeps a prompt raised before --since that is still unanswered at asOf", () => {
+    expect(report({ window: { since: at("12:45:00") } }).stalePrompts.rows.map((r) => r.agent)).toEqual(["rev-1"]);
+  });
+
+  it("marks a gap after an aborted teleport as a teleport gap", () => {
+    const broker = parseBrokerLog([log("10:00:00", "deregistered", { name: "seat-c" }), log("10:00:05", "teleport_aborted", { name: "seat-c" }), log("10:20:00", "registered", { name: "seat-c" })]);
+
+    expect(livenessReport({ broker, spawns: [], lastEvents: [], asOf: AS_OF }).darkSeats.rows).toMatchObject([{ seat: "seat-c", teleport: true }]);
   });
 
   it("keeps findings that start inside the window and concern the named seats", () => {
@@ -109,8 +127,8 @@ describe("livenessReport", () => {
     const text = renderLivenessText(data);
 
     expect(livenessSchema.safeParse(data).success).toBe(true);
-    for (const field of ["darkSeats.rows[]", "routeFailures.rows[]", "unreportedExits.rows[].exits[]", "stalePrompts.rows[]"]) expect(text).toContain(`[${field}]`);
-    expect(text).toContain("broker.log:4,broker.log:8,broker.log:5,broker.log:6 +1");
+    for (const field of ["darkSeats.rows[]", "routeFailures.rows[]", "unreportedExits.rows[].exits[]", "stalePrompts.rows[]", "stalePrompts.resolvedRows[]"]) expect(text).toContain(`[${field}]`);
+    expect(text).toContain("broker.log:4,broker.log:8,broker.log:5,broker.log:6 +3");
     expect(text).toContain("events#7");
   });
 });

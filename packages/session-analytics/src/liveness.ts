@@ -3,7 +3,7 @@ import { stringField, type BrokerEntry } from "./liveness-broker.js";
 import { DARK_MIN, darkGaps } from "./liveness-dark.js";
 import { unreportedExitRows, type SpawnRecord } from "./liveness-exits.js";
 import { PROMPT_STALE_MIN, stalePromptRows, type LastEventRecord } from "./liveness-prompts.js";
-import { routeFailureRows, routeMisses } from "./liveness-routes.js";
+import { countMisses, routeFailureRows, routeMisses } from "./liveness-routes.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 
 /** Where each section's findings come from: the command that re-reads them and the field it reads. */
@@ -32,7 +32,7 @@ export interface LivenessInput {
   lastEvents: readonly LastEventRecord[];
   /** Gaps still open and prompt ages are measured to here; later entries are ignored. */
   asOf: string;
-  /** A finding is kept when it starts inside the window. */
+  /** A finding is kept when it starts inside the window; a prompt still unanswered at asOf is kept however old. */
   window?: { since?: string; until?: string };
   /** Keeps only findings about these names: the dark seat, route recipient, exiting agent or its spawner, prompting agent. */
   seats?: readonly string[];
@@ -50,11 +50,14 @@ const darkRow = z.object({
   teleport: z.boolean(),
   failedRoutes: count,
   partialRoutes: count,
+  queuedRoutes: count,
   lines,
   routeLines: lines,
 });
 
 const exitRow = z.object({ at: z.string(), line: count, agentId: z.string(), name: z.string(), spawner: z.string(), lastAction: z.string(), spawnEventId: count.nullable() });
+
+const promptRow = z.object({ agent: z.string(), at: z.string(), ageMin: z.number(), tool: z.string().nullable(), eventId: count, resolutionEventId: count.nullable() });
 
 export const livenessSchema = z.object({
   asOf: z.string(),
@@ -66,13 +69,11 @@ export const livenessSchema = z.object({
     cites: z.array(source),
     failed: count,
     partial: count,
-    rows: z.array(z.object({ recipient: z.string(), failed: count, partial: count, first: z.string(), last: z.string(), lines })),
+    queued: count,
+    rows: z.array(z.object({ recipient: z.string(), failed: count, partial: count, queued: count, first: z.string(), last: z.string(), lines })),
   }),
   unreportedExits: z.object({ cites: z.array(source), total: count, rows: z.array(z.object({ profile: z.string(), count, exits: z.array(exitRow) })) }),
-  stalePrompts: z.object({
-    cites: z.array(source),
-    rows: z.array(z.object({ agent: z.string(), at: z.string(), ageMin: z.number(), tool: z.string().nullable(), eventId: count, resolutionEventId: count.nullable() })),
-  }),
+  stalePrompts: z.object({ cites: z.array(source), rows: z.array(promptRow), resolvedRows: z.array(promptRow) }),
 });
 
 export type LivenessReport = z.infer<typeof livenessSchema>;
@@ -84,7 +85,9 @@ export function livenessReport(input: LivenessInput): LivenessReport {
   const broker = input.broker.filter((e) => e.ts < input.asOf);
   const misses = routeMisses(broker);
   const dark = darkGaps(broker, misses, input.asOf).filter((g) => keep([g.seat], g.from));
-  const routes = routeFailureRows(misses.filter((m) => keep([m.recipient], m.at)));
+  const routeMissesInScope = misses.filter((m) => keep([m.recipient], m.at));
+  const routes = routeFailureRows(routeMissesInScope);
+  const prompts = stalePromptRows(input.lastEvents, input.asOf).filter((p) => !input.seats || input.seats.includes(p.agent));
   const exits = unreportedExitRows(broker.filter((e) => keep([stringField(e, "name") ?? "", stringField(e, "spawner") ?? ""], e.ts)), input.spawns);
   return {
     asOf: input.asOf,
@@ -92,9 +95,9 @@ export function livenessReport(input: LivenessInput): LivenessReport {
     thresholds: { darkMin: DARK_MIN, promptStaleMin: PROMPT_STALE_MIN },
     sources: LIVENESS_SOURCES,
     darkSeats: { cites: ["registrations", "routes"], withTeleport: dark.filter((g) => g.teleport).length, withoutTeleport: dark.filter((g) => !g.teleport).length, rows: dark },
-    routeFailures: { cites: ["routes"], failed: sum(routes.map((r) => r.failed)), partial: sum(routes.map((r) => r.partial)), rows: routes },
+    routeFailures: { cites: ["routes"], ...countMisses(routeMissesInScope), rows: routes },
     unreportedExits: { cites: ["exits", "spawns"], total: sum(exits.map((r) => r.count)), rows: exits },
-    stalePrompts: { cites: ["prompts"], rows: stalePromptRows(input.lastEvents, input.asOf).filter((p) => keep([p.agent], p.at)) },
+    stalePrompts: { cites: ["prompts"], rows: prompts.filter((p) => p.resolutionEventId === null), resolvedRows: prompts.filter((p) => p.resolutionEventId !== null) },
   };
 }
 
@@ -126,15 +129,16 @@ export function renderLivenessText(report: LivenessReport): string {
 
 function darkTable(report: LivenessReport): string {
   const { rows, withTeleport, withoutTeleport } = report.darkSeats;
-  const cells = rows.map((r) => [r.seat, r.from, r.to ?? "still dark", r.minutes, r.teleport ? "yes" : "no", r.failedRoutes, r.partialRoutes, cite("broker.log:", [...r.lines, ...r.routeLines])]);
+  const cells = rows.map((r) => [r.seat, r.from, r.to ?? "still dark", r.minutes, r.teleport ? "yes" : "no", r.failedRoutes, r.partialRoutes, r.queuedRoutes, cite("broker.log:", [...r.lines, ...r.routeLines])]);
   const title = `Seats dark over ${report.thresholds.darkMin} min, ${withTeleport} with a teleport and ${withoutTeleport} without [darkSeats.rows[]]`;
-  return table(title, ["seat", "from", "to", "min", "teleport", "failed routes", "partial routes", "cites"], cells);
+  return table(title, ["seat", "from", "to", "min", "teleport", "failed routes", "partial routes", "queued routes", "cites"], cells);
 }
 
 function routeTable(report: LivenessReport): string {
-  const { rows, failed, partial } = report.routeFailures;
-  const cells = rows.map((r) => [r.recipient, r.failed, r.partial, r.first, r.last, cite("broker.log:", r.lines)]);
-  return table(`Routes that missed a recipient, ${failed} delivered:false and ${partial} partial [routeFailures.rows[]]`, ["recipient", "failed", "partial", "first", "last", "cites"], cells);
+  const { rows, failed, partial, queued } = report.routeFailures;
+  const cells = rows.map((r) => [r.recipient, r.failed, r.partial, r.queued, r.first, r.last, cite("broker.log:", r.lines)]);
+  const title = `Routes that missed a recipient, ${failed} dropped, ${partial} partial and ${queued} held or queued for later [routeFailures.rows[]]`;
+  return table(title, ["recipient", "failed", "partial", "queued", "first", "last", "cites"], cells);
 }
 
 function exitTable(report: LivenessReport): string {
@@ -144,7 +148,11 @@ function exitTable(report: LivenessReport): string {
 }
 
 function promptTable(report: LivenessReport): string {
-  const cells = report.stalePrompts.rows.map((r) => [r.agent, r.tool ?? "-", r.at, r.ageMin, `events#${r.eventId}`, r.resolutionEventId === null ? "-" : `events#${r.resolutionEventId}`]);
-  const title = `Agents whose last event is a permission prompt over ${report.thresholds.promptStaleMin} min old [stalePrompts.rows[]]`;
-  return table(title, ["agent", "tool", "at", "age min", "prompt", "resolution"], cells);
+  const cells = (rows: LivenessReport["stalePrompts"]["rows"]) => rows.map((r) => [r.agent, r.tool ?? "-", r.at, r.ageMin, `events#${r.eventId}`, r.resolutionEventId === null ? "-" : `events#${r.resolutionEventId}`]);
+  const head = ["agent", "tool", "at", "age min", "prompt", "resolution"];
+  const over = `over ${report.thresholds.promptStaleMin} min old`;
+  return [
+    table(`Agents whose last event is an unresolved permission prompt ${over} [stalePrompts.rows[]]`, head, cells(report.stalePrompts.rows)),
+    table(`Agents silent since a resolved permission prompt ${over} [stalePrompts.resolvedRows[]]`, head, cells(report.stalePrompts.resolvedRows)),
+  ].join("\n\n");
 }

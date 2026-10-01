@@ -1,10 +1,10 @@
 import { minutesBetween, stringField, type BrokerEntry } from "./liveness-broker.js";
-import type { RouteMiss } from "./liveness-routes.js";
+import { countMisses, type RouteMiss } from "./liveness-routes.js";
 
 /** A seat off the broker for longer than this is dark; a teleport hand-off takes seconds. */
 export const DARK_MIN = 5;
 
-const TELEPORT_EVENTS = new Set(["teleport_started", "teleport_completed", "teleport_failed"]);
+const TELEPORT_EVENTS = new Set(["teleport_started", "teleport_completed", "teleport_failed", "teleport_aborted"]);
 
 /** A name deregistered from the broker until it registered again, or until asOf if it never did. */
 export interface DarkGap {
@@ -14,10 +14,12 @@ export interface DarkGap {
   minutes: number;
   /** A teleport of this name started after its last registration and before the gap closed. */
   teleport: boolean;
-  /** Routes to the seat during the gap logged `delivered:false`. */
+  /** Routes to the seat during the gap logged `delivered:false` and dropped. */
   failedRoutes: number;
   /** Routes during the gap that reached other recipients but not the seat. */
   partialRoutes: number;
+  /** Routes the broker held or queued in the seat's inbox for delivery when it returned. */
+  queuedRoutes: number;
   /** The deregistered and registered lines, then any teleport lines. */
   lines: number[];
   routeLines: number[];
@@ -49,7 +51,7 @@ export function darkGaps(entries: readonly BrokerEntry[], misses: readonly Route
   return closed
     .filter((gap) => minutesBetween(gap.from, gap.to ?? asOf) > DARK_MIN)
     .map((gap) => toDarkGap(gap, misses, asOf))
-    .filter((gap) => gap.to !== null || gap.failedRoutes + gap.partialRoutes > 0)
+    .filter((gap) => gap.to !== null || gap.failedRoutes + gap.partialRoutes + gap.queuedRoutes > 0)
     .sort((a, b) => a.from.localeCompare(b.from) || a.seat.localeCompare(b.seat));
 }
 
@@ -69,14 +71,16 @@ function step(state: SeatState, entry: BrokerEntry, close: (gap: OpenGap) => voi
 function toDarkGap(gap: OpenGap & { seat: string; to: string | null; closeLine?: number }, misses: readonly RouteMiss[], asOf: string): DarkGap {
   const end = gap.to ?? asOf;
   const missed = misses.filter((m) => m.recipient === gap.seat && m.at >= gap.from && m.at < end);
+  const counts = countMisses(missed);
   return {
     seat: gap.seat,
     from: gap.from,
     to: gap.to,
     minutes: minutesBetween(gap.from, end),
     teleport: gap.teleportLines.length > 0,
-    failedRoutes: missed.filter((m) => !m.partial).length,
-    partialRoutes: missed.filter((m) => m.partial).length,
+    failedRoutes: counts.failed,
+    partialRoutes: counts.partial,
+    queuedRoutes: counts.queued,
     lines: [...gap.lines, ...(gap.closeLine === undefined ? [] : [gap.closeLine]), ...gap.teleportLines],
     routeLines: missed.map((m) => m.line),
   };
