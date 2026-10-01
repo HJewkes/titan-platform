@@ -19,7 +19,7 @@
     "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
-    "dag:check": "node --max-old-space-size=1536 scripts/dag-check-self.mjs",
+    "dag:check": "node scripts/dag-check-self.mjs",
     "new:package": "node scripts/new-package.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
