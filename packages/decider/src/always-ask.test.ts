@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALWAYS_ASK, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
+import { ALWAYS_ASK, alwaysAskList, isAlwaysAsk, type AlwaysAskEntry } from "./always-ask.js";
 
 describe("ALWAYS_ASK", () => {
   it("holds the fixed categories no principle may answer", () => {
@@ -16,7 +16,7 @@ describe("ALWAYS_ASK", () => {
   });
 
   it("cannot be edited at runtime", () => {
-    expect(() => (ALWAYS_ASK as AlwaysAskMutable).push({ id: "x", description: "x" })).toThrow();
+    expect(() => (ALWAYS_ASK as AlwaysAskEntry[]).push({ id: "x", description: "x" })).toThrow();
     expect(() => {
       (ALWAYS_ASK[0] as { id: string }).id = "renamed";
     }).toThrow();
@@ -38,5 +38,3 @@ describe("ALWAYS_ASK", () => {
     expect(isAlwaysAsk("tech_design")).toBe(false);
   });
 });
-
-type AlwaysAskMutable = { push(entry: { id: string; description: string }): number };
