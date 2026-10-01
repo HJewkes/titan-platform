@@ -11,16 +11,28 @@ const MAX_DEPTH = 8;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
+/**
+ * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
+ * script option, `eval`, `xargs`, a heredoc or here-string fed to a shell, text piped into one, `find -exec`.
+ */
+export type Wrapping = "subshell" | "sh-c" | "eval" | "xargs" | "heredoc-shell" | "piped-shell" | "find-exec";
+
 /** One simple command the shell would run. */
 export interface SimpleCommand {
   /** Null when no word names the command statically: only assignments or redirections, or a dynamic first word. */
   name: string | null;
+  /** The command word as typed, after literal expansion (`./x.sh`, `~/bin/x`); null when `name` is. */
+  path: string | null;
   args: WordToken[];
   /** Literal `NAME=value` prefixes. */
   env: Record<string, string>;
   redirects: RedirectToken[];
   /** Working directory, null when it cannot be known. */
   dir: string | null;
+  /** The wrappings that reached the command, outermost first; empty at the top level. */
+  wrapping: Wrapping[];
+  /** The operator joining the command to the next on its list (`&&`, `||`, `;`, `\n`, `|`, `&`), null when none follows. */
+  next: string | null;
 }
 
 export interface ExtractOptions {
@@ -32,6 +44,13 @@ export interface ExtractOptions {
 interface Scope {
   dir: string | null;
   vars: Vars;
+  wrapping: Wrapping[];
+}
+
+/** Shell text a command runs, and how it reaches the commands in it. */
+interface Inline {
+  text: string;
+  wrap: Wrapping;
 }
 
 interface Walk {
@@ -51,7 +70,7 @@ interface Walk {
  */
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
-  const scope = { dir: options.cwd ?? null, vars: new Map() };
+  const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null });
   return out;
 }
@@ -62,7 +81,7 @@ function walk(tokens: Token[], w: Walk): void {
   let redirects: RedirectToken[] = [];
   for (const token of tokens) {
     if (token.type === "op") {
-      const cmd = emit(words, redirects, w);
+      const cmd = emit(words, redirects, w, token.value);
       w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
       words = [];
       redirects = [];
@@ -71,9 +90,9 @@ function walk(tokens: Token[], w: Walk): void {
     }
     if (token.type === "word") words.push(token);
     if (token.type === "redirect") redirects.push(token);
-    for (const sub of nestedLists(token)) walk(sub, child(w));
+    for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
-  emit(words, redirects, w);
+  emit(words, redirects, w, null);
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
@@ -102,45 +121,63 @@ function nestedLists(token: Token): Token[][] {
   return token.type === "op" ? [] : token.subs;
 }
 
-function child(w: Walk): Walk {
-  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars) };
+function child(w: Walk, wrapping: Wrapping[]): Walk {
+  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
   return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null };
 }
 
 function scope(op: string, w: Walk): void {
   if (op === "(") {
     w.stack.push(w.scope);
-    w.scope = { dir: w.scope.dir, vars: new Map(w.scope.vars) };
+    w.scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
   }
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk): Unwrapped | null {
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const cmd = unwrap(rawWords.map(expand));
-  if (cmd) run(cmd, redirects, w);
+  if (cmd) run(cmd, redirects, w, next);
   return cmd;
 }
 
-function run(cmd: Unwrapped, redirects: RedirectToken[], w: Walk): void {
-  if (cmd.name === null && cmd.args.length === 0) {
-    for (const [name, value] of cmd.assigned) w.scope.vars.set(name, value);
+function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
+  if (raw.name === null && raw.args.length === 0) {
+    for (const [name, value] of raw.assigned) w.scope.vars.set(name, value);
     if (redirects.length === 0) return;
   }
-  if (cmd.name === "cd" || cmd.name === "pushd") {
-    w.scope.dir = changeDir(w.scope.dir, cmd.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
+  if (raw.name === "cd" || raw.name === "pushd") {
+    w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
+  const cmd = { ...raw, args: xargsArgs(raw, w.stdin) };
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
-  w.out.push({ name: cmd.name, args: cmd.args, env: literalEnv(cmd), redirects, dir: w.scope.dir });
+  const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
+  const { name, path, args } = cmd;
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, next });
   const script = inlineScript(cmd, redirects, w.stdin);
-  if (script !== null) walk(tokenize(script), child(w));
+  if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
   for (const words of findExecs(cmd.args)) {
     const exec = unwrap(words);
-    if (exec) run(exec, [], child(w));
+    if (exec) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
   }
+}
+
+/** The arguments `xargs` passes: the piped text in place of its replace string, else the piped words appended. */
+function xargsArgs(cmd: Unwrapped, stdin: string | null): WordToken[] {
+  if (!cmd.xargs || stdin === null) return cmd.args;
+  const { replace } = cmd.xargs;
+  const text = stdin.replace(/\n+$/, "");
+  if (replace !== null) return cmd.args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, text) } : a));
+  // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
+  if (cmd.name !== null && SHELLS.has(cmd.name)) return cmd.args;
+  return [...cmd.args, ...text.split(/\s+/).filter(Boolean).map(literalWord)];
+}
+
+function literalWord(value: string): WordToken {
+  return { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
 }
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
@@ -150,19 +187,15 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
 }
 
 /** The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. */
-function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): string | null {
-  if (cmd.script !== undefined) return cmd.script;
-  if (cmd.name === "eval") return cmd.args.map((a) => a.value).join(" ");
+function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
+  if (cmd.script !== undefined) return { text: cmd.script, wrap: "sh-c" };
+  if (cmd.name === "eval") return { text: cmd.args.map((a) => a.value).join(" "), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  if (hasC) return positional ? replaced(positional.value, cmd.replace, stdin) : stdin;
-  return positional ? null : (stdinScript(redirects) ?? stdin);
-}
-
-/** `xargs -I{} sh -c '{}'`: the piped text stands in for each replace string. */
-function replaced(script: string, replace: string | undefined, stdin: string | null): string {
-  return replace === undefined || stdin === null ? script : script.replaceAll(replace, stdin);
+  const text = hasC ? (positional?.value ?? stdin) : positional ? null : stdinScript(redirects);
+  if (text !== null) return { text, wrap: hasC ? "sh-c" : "heredoc-shell" };
+  return hasC || positional || stdin === null ? null : { text: stdin, wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {

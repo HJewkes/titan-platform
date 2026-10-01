@@ -170,11 +170,12 @@ function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | nu
 }
 
 /**
- * The head a branch switch leaves: a created branch's name only when the head it left was unprotected,
- * since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
+ * The head a branch switch leaves: a created branch's name when `&&` shows the switch succeeded or the head
+ * it left was unprotected, since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
  */
-function switchedHead(dir: string | null, created: WordToken | null, ctx: ClassifyContext): string {
+function switchedHead(dir: string | null, created: WordToken | null, succeeded: boolean, ctx: ClassifyContext): string {
   if (dir === null || !created || created.dynamic) return UNKNOWN;
+  if (succeeded) return created.value;
   return isProtected(headOf({ dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : created.value;
 }
 
@@ -182,7 +183,7 @@ function switchedHead(dir: string | null, created: WordToken | null, ctx: Classi
 function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
   const sw = switchDir(cmd, ctx);
   if (!sw) return undefined;
-  const head = switchedHead(sw.dir, sw.created, ctx);
+  const head = switchedHead(sw.dir, sw.created, cmd.next === "&&", ctx);
   return { ...ctx, readHead: (d) => (sw.dir === null || isProtected(head) || d === sw.dir ? head : ctx.readHead(d)) };
 }
 

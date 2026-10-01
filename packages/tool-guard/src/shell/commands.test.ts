@@ -417,3 +417,66 @@ describe("literal text piped into a shell", () => {
     expect(extract(src).map((c) => c.name)).toEqual(names);
   });
 });
+
+describe("how a command was reached", () => {
+  const reach = (src: string, name: string) => extract(src).find((c) => c.name === name);
+
+  it.each([
+    ["typed at the top level", "cat f", []],
+    ["a ( ) subshell", "(cat f)", ["subshell"]],
+    ["a command substitution", 'echo "$(cat f)"', ["subshell"]],
+    ["a sh -c string", "sh -c 'cat f'", ["sh-c"]],
+    ["a wrapper's script option", "env -S 'cat f'", ["sh-c"]],
+    ["eval", "eval 'cat f'", ["eval"]],
+    ["xargs", "echo f | xargs cat", ["xargs"]],
+    ["a heredoc fed to a shell", "bash <<EOF\ncat f\nEOF", ["heredoc-shell"]],
+    ["a here-string fed to a shell", "bash <<< 'cat f'", ["heredoc-shell"]],
+    ["text piped into a shell", "echo 'cat f' | sh", ["piped-shell"]],
+    ["find -exec", "find . -exec cat {} ;", ["find-exec"]],
+    ["nested wrappings, outermost first", "(sh -c 'echo f | xargs cat')", ["subshell", "sh-c", "xargs"]],
+  ])("records %s", (_how, src, wrapping) => {
+    expect(reach(src, "cat")?.wrapping).toEqual(wrapping);
+  });
+
+  it("leaves the wrapping of a ( ) subshell behind once it closes", () => {
+    expect(extract("(ls); cat f").map((c) => c.wrapping)).toEqual([["subshell"], []]);
+  });
+
+  it.each([
+    ["./x.sh", "./x.sh"],
+    ["a home-relative path", "~/bin/x.sh"],
+    ["an absolute path", "/usr/bin/git"],
+    ["a path from a variable", "D=/opt; $D/x.sh"],
+  ])("keeps the command word as typed: %s", (_how, src) => {
+    const typed = src.replace(/^D=\/opt; \$D/, "/opt");
+
+    expect(extract(src).at(-1)?.path).toBe(typed);
+  });
+
+  it("records the operator joining each command to the next", () => {
+    const src = "a && b || c; d | e |& f\ng & h";
+
+    expect(extract(src).map((c) => [c.name, c.next])).toEqual([
+      ["a", "&&"], ["b", "||"], ["c", ";"], ["d", "|"], ["e", "|&"], ["f", "\n"], ["g", "&"], ["h", null],
+    ]);
+  });
+});
+
+describe("xargs options", () => {
+  it.each([
+    ["-tI{} clustered", "echo git push | xargs -tI{} sh -c '{}'"],
+    ["-tI with a separate string", "echo git push | xargs -tI @ sh -c @"],
+    ["-ti clustered", "echo git push | xargs -ti sh -c '{}'"],
+    ["-I{} into a command's arguments", "echo push | xargs -I{} git {}"],
+  ])("runs the piped text through %s", (_how, src) => {
+    expect(gitArgs(src).at(-1)).toEqual(["push"]);
+  });
+
+  it("appends the piped words to the command's arguments", () => {
+    expect(gitArgs("echo origin main | xargs git push")).toEqual([["push", "origin", "main"]]);
+  });
+
+  it("does not take the value of a clustered option as the command", () => {
+    expect(extract("sudo -Eu root git push").map((c) => c.name)).toEqual(["git"]);
+  });
+});

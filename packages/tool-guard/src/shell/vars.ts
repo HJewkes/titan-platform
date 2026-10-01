@@ -22,7 +22,7 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     value += w.value.slice(last, ref.start) + literal;
     last = ref.end;
   }
-  return { ...w, value: value + w.value.slice(last), dynamic: false, refs: [] };
+  return { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
 }
 
 /** `NAME=value` split into its name and value, the value null when it is only known at run time. */

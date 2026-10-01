@@ -74,9 +74,23 @@ describe("one fixture per bash.merge spelling", () => {
 
   it.each([
     ["; ", "git checkout -b feat/z; git merge x"],
-    ["&&", "git checkout -b feat/z && git merge x"],
-  ])("a branch created from main (%s) leaves the head unknown, since a failed -b stays on main", (_sep, command) => {
+    ["||", "git checkout -b feat/z || git merge x"],
+    ["newline", "git switch -c feat/z\ngit merge x"],
+    ["a pipe", "git checkout -b feat/z | cat && git merge x"],
+  ])("a branch created from main then %s leaves the head unknown, since a failed -b stays on main", (_sep, command) => {
     expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
+  });
+
+  it.each([
+    ["git checkout -b", "git checkout -b feat/z && git merge x"],
+    ["git switch -c", "git switch -c feat/z origin/main && git merge x"],
+    ["git checkout --orphan", "git checkout --orphan feat/z && git merge x"],
+  ])("trusts the branch %s created from main as the head after &&, since the switch succeeded", (_how, command) => {
+    expect(bash(command, "main")).toEqual([]);
+  });
+
+  it("still classifies a merge after && that creates a protected branch name", () => {
+    expect(spellings(bash("git checkout -B release/2 && git merge x", "main"))).toEqual(["bash.merge.git-merge-protected"]);
   });
 
   it.each([
