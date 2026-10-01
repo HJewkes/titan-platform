@@ -17,6 +17,8 @@ export default defineConfig({
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
+    // Pool options are global in vitest 3; per-project values are ignored. minThreads is set because its default exceeds the cap.
+    poolOptions: { threads: { minThreads: 1, maxThreads: 4 }, forks: { minForks: 1, maxForks: 1 } },
     projects: [
       {
         extends: true,
@@ -24,8 +26,6 @@ export default defineConfig({
           name: "threads",
           // Threads die with their parent; forks workers survive it as orphans holding gigabytes.
           pool: "threads",
-          // minThreads is set because its default exceeds the cap.
-          poolOptions: { threads: { minThreads: 1, maxThreads: 4 } },
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
             "products/*/src/**/*.test.{ts,tsx}",
@@ -41,7 +41,6 @@ export default defineConfig({
         test: {
           name: "forks",
           pool: "forks",
-          poolOptions: { forks: { minForks: 1, maxForks: 1 } },
           include: needsProcess,
         },
       },
