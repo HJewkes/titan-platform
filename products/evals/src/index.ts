@@ -18,6 +18,7 @@ export {
   canonicalJson,
   caseHash,
   hashCanonical,
+  HASH_EXCLUDED_FIELDS,
   judgesHash,
   pinSuitePrompts,
   pinVariantPrompts,

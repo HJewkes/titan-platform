@@ -40,27 +40,43 @@ export function hashCanonical(value: unknown): string {
   return sha256Hex(canonicalJson(value));
 }
 
+/**
+ * Fields each hash leaves out; every other field is hashed, so a new schema field joins the identity by default.
+ * Unit: prose, the owner's acceptance ladder and publishing state do not change what a run measures.
+ * Case: names, labels and annotations; the suite, not the case, binds a case to a unit and a split.
+ * Variant: names and lineage. Suite: names and version text. Scorecard key: the environment, which warns rather than splits.
+ * Locations (prompt and fixture paths, skill sources, the topology module path) are dropped inside the hashed fields.
+ */
+export const HASH_EXCLUDED_FIELDS = {
+  unit: ["title", "description", "acceptance", "visibility"],
+  case: ["id", "unit", "split", "tags", "humanMinutes", "solvable", "visibility"],
+  variant: ["id", "notes", "parents"],
+  suite: ["id", "version"],
+  scorecardKey: ["env"],
+} as const satisfies Record<string, readonly string[]>;
+
+function omit(value: object, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+}
+
+/** Hashes expect parsed specs: parsing fills defaults such as `trials` and a check's `scope`. */
 export function unitHash(unit: UnitSpec): string {
-  const { id, version, input, output, artifacts, objective } = unit;
-  return hashCanonical({ id, version, input, output, artifacts, objective });
+  return hashCanonical(omit(unit, HASH_EXCLUDED_FIELDS.unit));
 }
 
 export function caseHash(evalCase: EvalCase): string {
-  const { input, fixture, expected, owner, provenance } = evalCase;
-  return hashCanonical({ input, fixture: fixture && fixtureContent(fixture), expected, owner, labelVersion: provenance.labelVersion });
-}
-
-function fixtureContent(fixture: NonNullable<EvalCase["fixture"]>): unknown {
-  if (fixture.kind === "repo") return { kind: fixture.kind, repo: fixture.repo, sha: fixture.sha };
-  if (fixture.kind === "bundle") return { kind: fixture.kind, sha256: fixture.sha256 };
-  return { kind: fixture.kind, treeSha256: fixture.treeSha256 };
+  const { fixture, provenance } = evalCase;
+  return hashCanonical({
+    ...omit(evalCase, HASH_EXCLUDED_FIELDS.case),
+    fixture: fixture && omit(fixture, ["path"]),
+    provenance: omit(provenance, ["source", "ref"]),
+  });
 }
 
 /** Covers code and content, never locations: a moved prompt or skill keeps its hash. */
 export function variantHash(variant: VariantSpec): string {
-  const { topology, steps } = variant;
-  const stepContent = Object.fromEntries(Object.entries(steps).map(([id, step]) => [id, stepContentOf(step)]));
-  return hashCanonical({ topology: { export: topology.export, sourceSha256: topology.sourceSha256 }, steps: stepContent });
+  const steps = Object.fromEntries(Object.entries(variant.steps).map(([id, step]) => [id, stepContentOf(step)]));
+  return hashCanonical({ ...omit(variant, HASH_EXCLUDED_FIELDS.variant), topology: omit(variant.topology, ["module"]), steps });
 }
 
 function stepContentOf(step: StepSpec): unknown {
@@ -70,14 +86,19 @@ function stepContentOf(step: StepSpec): unknown {
     ...step,
     prompt: step.prompt.sha256,
     systemPrompt: step.systemPrompt?.sha256,
-    skills: step.skills.map(({ name, treeSha256 }) => ({ name, treeSha256 })),
+    skills: step.skills.map((skill) => omit(skill, ["source"])),
   };
 }
 
 export function suiteHash(suite: SuiteSpec): string {
-  const { cases, checks, simulatedOwner, trials } = suite;
+  const { cases, checks, simulatedOwner } = suite;
   const owner = simulatedOwner?.kind === "persona" ? { ...simulatedOwner, prompt: simulatedOwner.prompt.sha256 } : simulatedOwner;
-  return hashCanonical({ cases: [...cases].sort(), checks: checks.map(checkContentOf), simulatedOwner: owner, trials });
+  return hashCanonical({
+    ...omit(suite, HASH_EXCLUDED_FIELDS.suite),
+    cases: [...cases].sort(),
+    checks: checks.map(checkContentOf),
+    simulatedOwner: owner,
+  });
 }
 
 export function judgesHash(suite: SuiteSpec): string {
@@ -89,10 +110,8 @@ function checkContentOf(check: CheckSpec): unknown {
   return { ...check, judge: { ...check.judge, prompt: check.judge.prompt.sha256 } };
 }
 
-/** The environment fingerprint is recorded beside the key, never inside it, so it warns rather than splits. */
 export function scorecardKeyHash(keys: Scorecard["keys"]): string {
-  const { unit, variant, suite, judges } = keys;
-  return hashCanonical({ unit, variant, suite, judges });
+  return hashCanonical(omit(keys, HASH_EXCLUDED_FIELDS.scorecardKey));
 }
 
 async function pinRef<T extends PromptRef | undefined>(ref: T, read: ReadPrompt): Promise<T> {

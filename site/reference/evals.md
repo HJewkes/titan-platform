@@ -19,10 +19,19 @@ rule everything later depends on.
   (`titan.scorecard/v1`). Strict on write: unknown keys and model aliases are refused.
   Loose on read: unknown keys are kept. The same two modes as `agent-protocol`'s `/trace`.
 - **Content hashes.** Canonical JSON (sorted keys, no whitespace), SHA-256. Each hash covers
-  only what changes behaviour: a variant's hash covers its topology source hash, every step,
-  and the content of every prompt file it references, but not its notes or the prompt's
-  path. A scorecard key leaves the environment fingerprint out, so a different host warns
-  rather than splits.
+  every field except the ones listed in `HASH_EXCLUDED_FIELDS`, so a field added later joins
+  the identity by default. Locations never count: a prompt's path, a fixture's path, a
+  skill's source and the topology module path are dropped, and the prompt content is
+  hashed instead. A scorecard key leaves the environment fingerprint out, so a different
+  host warns rather than splits.
+
+| Spec | Left out of the hash |
+|---|---|
+| unit | `title`, `description`, `acceptance`, `visibility` |
+| case | `id`, `unit`, `split`, `tags`, `humanMinutes`, `solvable`, `visibility`, `provenance.source`, `provenance.ref` |
+| variant | `id`, `notes`, `parents` |
+| suite | `id`, `version`; the case list is sorted |
+| scorecard key | `env` |
 
 ## When to reach for it
 
@@ -34,11 +43,14 @@ its own harness, [`retrieval-eval`](/reference/retrieval-eval).
 
 ```ts
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { parseSpec, pinVariantPrompts, variantHash } from "@titan-design/evals";
 
-const variant = parseSpec(JSON.parse(await readFile("variants/single-pass.json", "utf8")));
+// Prompt paths are relative to the unit directory, the one holding unit.json.
+const unitRoot = "fixtures/summarize-note";
+const variant = parseSpec(JSON.parse(await readFile(join(unitRoot, "variants/single-pass.json"), "utf8")));
 if (variant.schema === "titan.variant/v1") {
-  const pinned = await pinVariantPrompts(variant, (path) => readFile(path));
+  const pinned = await pinVariantPrompts(variant, (path) => readFile(join(unitRoot, path)));
   console.log(variantHash(pinned));
 }
 ```
@@ -54,6 +66,8 @@ E3 to E7. Skill trees and topology modules are hashed by their stored digests, n
   `titan-evals validate`, which exits 1 when a stored digest is stale.
 - Prompt paths are relative to the unit directory, the nearest ancestor holding `unit.json`.
   Absolute paths, `~` and `..` are refused, so a spec never names a machine path.
+- Hash a parsed spec, not raw JSON. Parsing fills defaults such as a suite's `trials` and a
+  check's `scope`, so a raw spec that omits them hashes differently.
 - Array order is significant. A suite's case list is the one exception: it is sorted before
   hashing.
 

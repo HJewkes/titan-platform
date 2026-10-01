@@ -44,6 +44,18 @@ describe("titan-evals", () => {
     expect(output()).toMatch(/^[0-9a-f]{64} {2}titan\.variant\/v1/m);
   });
 
+  it("reports a missing file and a schema error by name and exits 1 instead of throwing", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    writeFileSync(join(scratch, "bad.json"), JSON.stringify({ schema: "titan.unit/v1", id: "Not Kebab" }));
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
+
+    const code = await runCli(["validate", join(scratch, "missing.json"), join(scratch, "bad.json")]);
+
+    expect(code).toBe(1);
+    expect(errors).toEqual([expect.stringMatching(/missing\.json: .*ENOENT/), expect.stringMatching(/bad\.json: /)]);
+  });
+
   it("exits 1 and marks the spec stale when a prompt file was edited", async () => {
     scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
     cpSync(FIXTURE_ROOT, scratch, { recursive: true });

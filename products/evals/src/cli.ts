@@ -21,14 +21,22 @@ function validateCommand(): Command {
     .argument("<files...>", "unit, variant, case, suite or scorecard JSON files")
     .action(async (files: string[]) => {
       let failed = false;
-      for (const file of files) {
-        const root = unitRootOf(file);
-        const result = await validateSpec(JSON.parse(readFileSync(file, "utf8")), (path) => readFile(join(root, path)));
-        console.log(`${result.hash}  ${result.schema}  ${file}${result.stalePrompts ? "  STALE prompt digest" : ""}`);
-        failed ||= result.stalePrompts;
-      }
+      for (const file of files) failed = !(await validateFile(file)) || failed;
       if (failed) process.exitCode = 1;
     });
+}
+
+/** Reports one file's result; a missing file, bad JSON or a schema error is reported, not thrown. */
+async function validateFile(file: string): Promise<boolean> {
+  try {
+    const root = unitRootOf(file);
+    const result = await validateSpec(JSON.parse(readFileSync(file, "utf8")), (path) => readFile(join(root, path)));
+    console.log(`${result.hash}  ${result.schema}  ${file}${result.stalePrompts ? "  STALE prompt digest" : ""}`);
+    return !result.stalePrompts;
+  } catch (error) {
+    console.error(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 }
 
 export function buildProgram(): Command {
