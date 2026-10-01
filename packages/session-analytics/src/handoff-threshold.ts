@@ -28,6 +28,8 @@ const sessionSchema = paramsSchema.extend({
   requests: count,
   bootRequests: count,
   exitFill: count,
+  /** Timestamp of the session's last request; orders reviewer cohorts by recency. */
+  lastTs: z.string(),
   bestK: count.nullable(),
 });
 const cohortSchema = paramsSchema.extend({
@@ -49,7 +51,7 @@ const teleportSchema = z.object({
   /** Exit fill minus each configured K; positive means the seat left late. */
   overConfigured: z.array(z.object({ k: count, over: z.number() })),
 });
-/** The pooled mean over every reviewer session, used when a standing model has no reviewer cohort of its own. */
+/** `requestsFrom` when the report has no reviewer session at all, so requests per PR is 0. */
 export const POOLED_REVIEWERS = "pooled";
 const reviewerCostSchema = z.object({
   role: z.string(),
@@ -57,7 +59,7 @@ const reviewerCostSchema = z.object({
   sessions: count,
   /** Mean requests after boot of a per-PR reviewer: the work each PR adds. */
   requestsPerPr: z.number(),
-  /** The reviewer model whose sessions give `requestsPerPr`, or `pooled`. */
+  /** The reviewer model whose sessions give `requestsPerPr`: the row's own, else the newest reviewer cohort; `pooled` with none. */
   requestsFrom: z.string(),
   costUsd: z.number(),
 });
@@ -192,8 +194,8 @@ function fitSession(unsorted: readonly HandoffRequestRow[], prices: readonly Pri
     readPricePerMTok: price.cacheRead,
   };
   const { sessionId, role, model } = first;
-  const exitFill = requests[requests.length - 1]!.fill;
-  return { sessionId, role, model, requests: requests.length, bootRequests: bootIndex + 1, exitFill, ...params, bestK: sweepK(params, sweep, []).bestK };
+  const last = requests[requests.length - 1]!;
+  return { sessionId, role, model, requests: requests.length, bootRequests: bootIndex + 1, exitFill: last.fill, lastTs: last.ts, ...params, bestK: sweepK(params, sweep, []).bestK };
 }
 
 /** Rises only, so a compaction's drop does not cancel the growth before it; zero with no request after boot. */
@@ -226,9 +228,15 @@ function meanParams(sessions: readonly HandoffSession[]): CycleParams {
   return {
     bootCostUsd: mean((s) => s.bootCostUsd),
     bootFill: mean((s) => s.bootFill),
-    growthPerRequest: mean((s) => s.growthPerRequest),
+    growthPerRequest: meanGrowthOf(sessions),
     readPricePerMTok: mean((s) => s.readPricePerMTok),
   };
+}
+
+/** Sessions with no request after boot have g = 0; counting them would dilute the growth of those that grew. */
+function meanGrowthOf(sessions: readonly HandoffSession[]): number {
+  const grown = sessions.filter((s) => s.growthPerRequest > 0);
+  return grown.length === 0 ? 0 : grown.reduce((sum, s) => sum + s.growthPerRequest, 0) / grown.length;
 }
 
 /** The fill of the outgoing session's last request at or before the teleport. */
@@ -265,18 +273,25 @@ function reviewerComparison(sessions: readonly HandoffSession[], reviewerRole: s
   const cohorts = (role: string) => [...groupBy(sessions.filter((s) => s.role === role), (s) => s.model)].sort(([a], [b]) => a.localeCompare(b));
   const reviewers = cohorts(reviewerRole);
   const perPr = new Map(reviewers.map(([model, members]) => [model, meanRequestsAfterBoot(members)]));
-  const pooled = meanRequestsAfterBoot(reviewers.flatMap(([, members]) => members));
+  const newest = newestCohort(reviewers);
   const priced = (role: string, costOf: (params: CycleParams, requests: number) => number) =>
     cohorts(role).map(([model, members]) => {
-      const own = perPr.get(model);
-      const requestsPerPr = own ?? pooled;
-      return { role, model, sessions: members.length, requestsPerPr, requestsFrom: own === undefined ? POOLED_REVIEWERS : model, costUsd: costOf(meanParams(members), requestsPerPr) };
+      const from = perPr.has(model) ? model : newest;
+      const requestsPerPr = from === null ? 0 : perPr.get(from)!;
+      return { role, model, sessions: members.length, requestsPerPr, requestsFrom: from ?? POOLED_REVIEWERS, costUsd: costOf(meanParams(members), requestsPerPr) };
     });
   return {
     prs,
     fresh: priced(reviewerRole, (params, requests) => prs * (params.bootCostUsd + readCost(params, requests))),
     standing: priced(standingRole, (params, requests) => params.bootCostUsd + readCost(params, prs * requests)),
   };
+}
+
+/** The reviewer model whose latest session is newest; a tie goes to the later model name. */
+function newestCohort(reviewers: readonly (readonly [string, readonly HandoffSession[]])[]): string | null {
+  const latest = reviewers.map(([model, members]) => ({ model, ts: members.reduce((max, s) => (s.lastTs > max ? s.lastTs : max), "") }));
+  latest.sort((a, b) => b.ts.localeCompare(a.ts) || b.model.localeCompare(a.model));
+  return latest[0]?.model ?? null;
 }
 
 function meanRequestsAfterBoot(sessions: readonly HandoffSession[]): number {
