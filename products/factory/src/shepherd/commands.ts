@@ -251,19 +251,21 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
 
 interface HoldResult {
   runId: string;
-  held: { reason: string } | null;
+  held: { reason: string; reviewer?: string } | null;
 }
 
-const holdCommand = defineCommand<PrRefArgs & { reason: string }, HoldResult, FactoryContext>({
+const HoldArgs = PrRefArgs.extend({ reason: z.string().min(1), reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+
+const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
-  description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release",
-  args: PrRefArgs.extend({ reason: z.string().min(1) }),
+  description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release; --reviewer names the reviewer whose verdict the run waits for",
+  args: HoldArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, reason }, ctx) {
+  async run({ repo, pr, reason, reviewer }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason);
-    return { runId, held: { reason: held.holdReason ?? reason } };
+    const held = services.store.get().hold(runId, reason, reviewer);
+    return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
 

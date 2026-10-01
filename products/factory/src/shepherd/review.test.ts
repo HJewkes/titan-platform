@@ -38,7 +38,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
-import { shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -307,7 +307,7 @@ const optIn = (reviewer: string): RegistrationInput => ({ ...registration, polic
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -746,6 +746,8 @@ describe("reviewPhase", () => {
     policy?: EffectivePolicy;
     /** A shepherd hold placed on the run with this reason, before the review starts. */
     hold?: string;
+    /** The hold's `--reviewer`. */
+    holdReviewer?: string;
     fresh?: boolean;
   }
 
@@ -768,12 +770,12 @@ describe("reviewPhase", () => {
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
     store.get().register({ repo: REPO, pr: 1, runId, task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY, ...scene.registered });
-    if (scene.hold) store.get().hold(runId, scene.hold);
+    if (scene.hold) store.get().hold(runId, scene.hold, scene.holdReviewer);
     const done = await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
@@ -978,13 +980,13 @@ describe("reviewPhase", () => {
 
   describe("a run held for an external reviewer", () => {
     const external = agent("sec-audit-review", { spawnedBy: "coord" });
-    const HOLD = "security: awaiting sec-audit-review";
+    const HOLD = "security: awaiting the audit";
 
     it("spawns no reviewer and takes the FIX_FIRST the hold's reviewer gave at this head", async () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H1, "FIX_FIRST"), 5_000), said(external, "Sent the verdict to the coordinator.", 6_000)];
 
-      const { verdicts, stepIds } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts, stepIds } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
 
       expect(dispatch.spawns).toEqual([]);
       expect(dispatch.resumes).toEqual([]);
@@ -996,7 +998,7 @@ describe("reviewPhase", () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H2), 5_000)];
 
-      const { verdicts } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
 
       expect(dispatch.spawns).toEqual([]);
       expect(verdicts).toEqual([{ kind: "none", cause: "external-hold" }]);
@@ -1006,11 +1008,29 @@ describe("reviewPhase", () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H1), 5_000)];
 
-      const { verdicts, resultOf } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts, resultOf } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
       const identity = { agentId: external.agentId, sessionId: external.sessionId };
 
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
+    });
+
+    it("reviews as usual when the hold's reason text names a reviewer but --reviewer was not given", async () => {
+      const dispatch = fakeDispatch(crew(external));
+
+      const { verdicts } = await review({ dispatch, hold: `security: awaiting ${external.name}` });
+
+      expect(dispatch.spawns).toHaveLength(1);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
+    it("does not wait on the registration's reviewer when the hold has no --reviewer", async () => {
+      const dispatch = fakeDispatch(crew(external));
+
+      const { verdicts, stepIds } = await review({ dispatch, hold: "owner wants a look", registered: { reviewer: external.name } });
+
+      expect(stepIds).toContain(`sh-review:${H1}`);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
     it("reviews as usual when the hold names no reviewer", async () => {

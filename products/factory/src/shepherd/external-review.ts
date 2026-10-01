@@ -3,13 +3,10 @@ import { deadline } from "../workflows/deadline.js";
 import type { AwaitVerdictResult, AwaitVerdictTiming, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
 
-/** A bd-reviewer's peer name as coordinators spell it: `<anything>-review`, optionally `-r<N>` for a later round. */
-const REVIEWER_NAME = /\b[a-z0-9][a-z0-9-]*-review(?:-r\d+)?\b/;
-
-/** The reviewer a hold waits on: one named in its reason, else the registration's reviewer; undefined when the run is not held for one. */
+/** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
   if (!registration?.held) return undefined;
-  return registration.holdReason?.match(REVIEWER_NAME)?.[0] ?? registration.reviewer ?? undefined;
+  return registration.holdReviewer ?? undefined;
 }
 
 export interface ExternalVerdictInput {
