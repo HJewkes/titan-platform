@@ -53,6 +53,7 @@ export interface RequestFixture {
   gapMs?: number | null;
   wakeCause?: string | null;
   wakeDelivery?: string | null;
+  isSidechain?: boolean;
   /** Defaults to the next free offset, so rows land in insertion order. */
   offset?: number;
 }
@@ -65,15 +66,15 @@ function offsetOf(requested: number | undefined): number {
 }
 
 export function insertRequest(db: Db, request: RequestFixture): void {
-  const r = { model: "claude-opus-5", transcriptId: 1, inputTokens: 0, cacheReadTokens: 0, cacheCreation5m: 0, cacheCreation1h: 0, outputTokens: 0, gapMs: null, wakeCause: null, wakeDelivery: null, ...request };
+  const r = { model: "claude-opus-5", transcriptId: 1, inputTokens: 0, cacheReadTokens: 0, cacheCreation5m: 0, cacheCreation1h: 0, outputTokens: 0, gapMs: null, wakeCause: null, wakeDelivery: null, isSidechain: false, ...request };
   const creation = r.cacheCreationTokens ?? r.cacheCreation5m + r.cacheCreation1h;
   const offset = offsetOf(r.offset);
   db.prepare(
     `INSERT INTO request (transcript_id, request_id, byte_offset, session_id, ts, model, input_tokens, cache_read_tokens,
-       cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery)
+       cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery, is_sidechain)
      VALUES (@transcriptId, @requestId, @offset, @sessionId, @ts, @model, @inputTokens, @cacheReadTokens,
-       @creation, @cacheCreation5m, @cacheCreation1h, @outputTokens, @context, @gapMs, @wakeCause, @wakeDelivery)`,
-  ).run({ ...r, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
+       @creation, @cacheCreation5m, @cacheCreation1h, @outputTokens, @context, @gapMs, @wakeCause, @wakeDelivery, @sidechain)`,
+  ).run({ ...r, sidechain: r.isSidechain ? 1 : 0, requestId: r.requestId ?? `req-${offset}`, offset, creation, context: r.inputTokens + r.cacheReadTokens + creation });
 }
 
 export interface SessionFixture {
@@ -96,14 +97,15 @@ export interface OriginFixture {
   profile?: string | null;
   parentName?: string | null;
   agentName?: string | null;
+  agentId?: string | null;
   originKind?: string | null;
 }
 
 export function insertOrigin(db: Db, origin: OriginFixture): void {
   db.prepare(
-    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, agent_name, origin_kind, resolved_at)
-     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, @agentName, @originKind, '2026-09-01T00:00:00Z')`,
-  ).run({ profile: null, parentName: null, agentName: null, originKind: null, ...origin });
+    `INSERT INTO session_origin (session_id, origin_system, depth, profile, parent_name, agent_name, agent_id, origin_kind, resolved_at)
+     VALUES (@sessionId, 'agent-chat', @depth, @profile, @parentName, @agentName, @agentId, @originKind, '2026-09-01T00:00:00Z')`,
+  ).run({ profile: null, parentName: null, agentName: null, agentId: null, originKind: null, ...origin });
 }
 
 export interface InboundFixture {

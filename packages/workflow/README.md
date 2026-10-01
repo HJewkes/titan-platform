@@ -135,7 +135,9 @@ actor; `tainted` defaults to `false`.
   land on a different head or version. An approval returns
   `{ verdict: "approved", ruleId, gateId, resolvedBy }`. A refusal, or a gate
   that reads back resolved with no resolver or one the recorded rule does not
-  name, throws `AuthorityRefusedError`.
+  name, throws `AuthorityRefusedError`. So does a gate already at that id
+  that carries no rule or was recorded under a table other than `F5`, pending or
+  resolved: it is refused at once and never awaited.
 
 A restarted run resumes onto the gate that is already open and judges the
 answer by the rule recorded on it, never by a fresh evaluation, so a table
