@@ -9,9 +9,9 @@ const COMMAND_TIMEOUT_MS = 30_000;
 const NOT_FOUND = 127;
 
 /** Resolves with the exit code instead of rejecting, and with undefined when the binary is not on PATH. */
-export function runCommand(file: string, args: readonly string[]): Promise<CommandResult | undefined> {
+export function runCommand(file: string, args: readonly string[], env?: Readonly<Record<string, string>>): Promise<CommandResult | undefined> {
   return new Promise((resolve) => {
-    execFile(file, [...args], { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS }, (error, stdout, stderr) => {
+    execFile(file, [...args], { encoding: "utf8", timeout: COMMAND_TIMEOUT_MS, ...(env ? { env: { ...process.env, ...env } } : {}) }, (error, stdout, stderr) => {
       if (error?.code === "ENOENT") return resolve(undefined);
       const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
       resolve({ code, stdout, stderr: stderr || error?.message || "" });
@@ -34,6 +34,14 @@ export function findOnPath(name: string, pathVar: string | undefined): string | 
   return dirs.map((dir) => join(dir, name)).find(isExecutableFile);
 }
 
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function readIfPresent(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
@@ -48,7 +56,8 @@ export function systemServicePorts(): ServicePorts {
     uid: process.getuid?.() ?? -1,
     home: homedir(),
     launchctl: async (args) => (await runCommand("launchctl", args)) ?? { code: NOT_FOUND, stdout: "", stderr: "launchctl not found" },
-    claude: (args) => runCommand("claude", args),
+    claude: (args, env) => runCommand("claude", args, env),
+    isDirectory,
     which: (binary) => findOnPath(binary, process.env.PATH),
     health: (port) => probeHealth(port),
     mkdir: (dir) => void mkdirSync(dir, { recursive: true }),
