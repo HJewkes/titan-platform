@@ -35,6 +35,8 @@ export interface Registered {
   /** False when `repo#pr`, or the PR's head branch, was already registered and its run came back instead. */
   created: boolean;
   registration: Registration;
+  /** Set when a failed run was replaced: the run this registration pointed at before. */
+  previousRunId?: string;
 }
 
 export interface MergeEvaluation {
@@ -110,18 +112,31 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
   return { runId, created: false, registration: store.byRun(runId)! };
 }
 
+function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): string {
+  const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
+  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task });
+}
+
+/** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
+function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
+  if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
+  const previousRunId = known.runId;
+  const runId = startRun(ctx, args, known.branch ?? undefined, policy);
+  store.repoint(previousRunId, runId);
+  return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
+}
+
 /** No await between the last lookup and the start, so two registers in this process cannot both start a run. */
 async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services, args);
   const known = findRegistration(services.store.get(), args.repo, args.pr, args.branch);
-  if (known) return refresh(services.store.get(), known, args, policy);
+  if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
   const branch = await headBranch(services, args);
   const store = services.store.get();
   const existing = findRegistration(store, args.repo, args.pr, branch);
-  if (existing) return refresh(store, existing, args, policy);
-  const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
-  const runId = ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task });
+  if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
+  const runId = startRun(ctx, args, branch, policy);
   const registration = store.register({ ...args, branch, runId, policy });
   return { runId, created: true, registration };
 }
@@ -189,7 +204,7 @@ const FINISHED: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: register,

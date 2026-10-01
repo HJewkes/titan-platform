@@ -20,9 +20,14 @@ export function formatShepherd(name: string, data: unknown): string {
   }
 }
 
-function formatRegistered({ runId, created, registration }: Registered): string {
+function formatRegistered({ runId, created, registration, previousRunId }: Registered): string {
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
-  return `run ${runId} shepherd-pr ${target}: ${created ? "started" : "already registered, metadata updated"}; policy ${registration.policy.merge}\n`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(created, previousRunId)}; policy ${registration.policy.merge}\n`;
+}
+
+function registerOutcome(created: boolean, previousRunId: string | undefined): string {
+  if (previousRunId) return `restarted after failed run ${previousRunId}`;
+  return created ? "started" : "already registered, metadata updated";
 }
 
 function rowLine(row: WatchRow): string {
