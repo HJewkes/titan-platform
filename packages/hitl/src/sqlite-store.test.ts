@@ -175,7 +175,7 @@ describe("an old writer against a migrated table", () => {
     expect(store.get("legacy")?.resolvedBy).toBeUndefined();
   });
 
-  it("turns the trigger's refusal of an anonymous resolve into GateResolverRefused", () => {
+  it("refuses the new store's own anonymous resolve before the statement reaches the trigger", () => {
     const db = migratedWithLegacyRows();
     const store = new SqliteGateStore(db, { migrate: false });
     const anonymous = undefined as unknown as GateResolver;
@@ -192,6 +192,12 @@ describe("a store whose table predates the resolver column", () => {
     expect(() => new SqliteGateStore(db, { migrate: false })).toThrow(GateStoreSchemaOutdated);
     expect(() => new SqliteGateStore(db, { migrate: false })).toThrow(
       expect.objectContaining({ gateId: "", table: "hitl_gate", migration: "gateResolverMigration" }),
+    );
+  });
+
+  it("names gateMigration when the table does not exist at all", () => {
+    expect(() => new SqliteGateStore(open(), { migrate: false })).toThrow(
+      expect.objectContaining({ gateId: "", table: "hitl_gate", migration: "gateMigration" }),
     );
   });
 

@@ -120,7 +120,7 @@ agent or automation never answers a gate. It throws `GateResolverRefused` and th
 pending. The store reads each declared resolver field once into a frozen copy, and checks and stores
 only that copy. A store's `authorize` option runs after the class check and can refuse more,
 never fewer. It must return `{ allowed }` synchronously, or the store throws
-`GateAuthorizeInvalid`. With `authorize` installed, a resolve that names no resolver is refused.
+`GateAuthorizeInvalid`.
 Refusals name the gate id and the actor class, never the resolver's other fields.
 
 hitl records a claim about the resolver; it cannot prove one. Any process that can write
@@ -131,15 +131,15 @@ along with a trigger that refuses any resolve naming no resolver. `migrate: true
 version 2; with `migrate: false`, add it to your own migration list after `gateMigration`. It
 is idempotent and does not backfill: gates resolved before it read back with `resolvedBy`
 undefined. `SqliteGateStore` checks for the column when it is constructed and throws
-`GateStoreSchemaOutdated` naming `gateResolverMigration` when it is missing. That error
-carries an empty `gateId`, because no gate is involved yet.
+`GateStoreSchemaOutdated` naming `gateResolverMigration` when it is missing, or naming
+`gateMigration` when the table does not exist. That error carries an empty `gateId`,
+because no gate is involved yet.
 
 After the migration, a writer built on hitl 0.2.x fails when it resolves: SQLite aborts the
 statement with a raw error whose message is `hitl: resolvedBy required`. The same trigger
 refuses a direct insert of a resolved row with no resolver. Cancels from an old writer still
 work. The fix is to upgrade that writer so it passes a resolver. A caller on this release
-that bypasses the type gets `GateResolverRefused` with the reason `a resolver is required`
-instead of the raw error.
+never reaches the trigger: every store refuses a resolve with no resolver first.
 
 ## Upgrading to 0.4
 
@@ -158,7 +158,8 @@ instead of the raw error.
    each resolve with SQLite's `hitl: resolvedBy required` once the migration has run.
 
 A caller that bypasses the type and resolves with no resolver gets `GateResolverRefused`
-with the reason `a resolver is required`.
+with the reason `a resolver is required` from every store, memory or SQLite, and the gate
+stays pending.
 
 ## Rule-bound gates
 

@@ -151,8 +151,11 @@ export class GateStoreSchemaOutdated extends GateError {
     readonly table: string,
     readonly migration: string,
   ) {
-    const subject = gateId === "" ? `gate store on ${table}` : `gate ${gateId}`;
-    super(`${subject} cannot be recorded: table ${table} needs ${migration}`, gateId);
+    const message =
+      gateId === ""
+        ? `cannot open a gate store on table ${table}: it needs ${migration}`
+        : `gate ${gateId} cannot be recorded: table ${table} needs ${migration}`;
+    super(message, gateId);
   }
 }
 

@@ -307,7 +307,15 @@ describe.each([
     expect((error as Error).message).not.toContain("superuser-invented");
   });
 
-  it("refuses an anonymous resolution when authorize is installed", () => {
+  it("refuses a resolve that names no resolver and leaves the gate pending", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    expect(() => store.resolve("g1", "ok", ANONYMOUS)).toThrow(
+      expect.objectContaining({ name: "GateResolverRefused", gateId: "g1", actorClass: undefined, reason: "a resolver is required" }),
+    );
+    expect(store.get("g1")).toMatchObject({ status: "pending", payload: undefined, resolvedBy: undefined });
+  });
+
+  it("refuses an anonymous resolution before authorize runs", () => {
     let calls = 0;
     const permissive = (_gate: unknown, resolver: GateResolver | undefined) => {
       calls += 1;
