@@ -46,7 +46,8 @@
           "packages/style-checker",
           "packages/code-read",
           "packages/session-analytics",
-          "packages/queue-mirror"
+          "packages/queue-mirror",
+          "packages/decider"
         ],
         "ui": [
           "packages/react-app"
@@ -55,7 +56,8 @@
           "products/session-miner",
           "products/retrieval-eval",
           "apps/code-report",
-          "products/factory"
+          "products/factory",
+          "products/evals"
         ]
       },
       "layers": [
@@ -100,7 +102,8 @@
           "packages/style-checker",
           "packages/code-read",
           "packages/session-analytics",
-          "packages/queue-mirror"
+          "packages/queue-mirror",
+          "packages/decider"
         ],
         [
           "packages/react-app"
@@ -109,7 +112,8 @@
           "products/session-miner",
           "products/retrieval-eval",
           "apps/code-report",
-          "products/factory"
+          "products/factory",
+          "products/evals"
         ]
       ]
     },

@@ -29,6 +29,7 @@ import {
   inRepoFileId,
   isRelativeSpecifier,
   remapDistToSrc,
+  repoTypeRoots,
   resolveRelativeAbs,
 } from "./module-resolution.js";
 import { collectTsCallEdges } from "./ts-calls.js";
@@ -87,6 +88,7 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
             target: ScriptTarget.ESNext,
             module: ModuleKind.ESNext,
             moduleResolution: ModuleResolutionKind.NodeNext,
+            typeRoots: repoTypeRoots(this.repoRoot),
           },
         });
     return this.project;

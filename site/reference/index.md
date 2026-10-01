@@ -18,7 +18,7 @@ Domain-free building blocks. No titan dependencies.
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
 | [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only | none |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
-| [`evidence`](/reference/evidence) | Citation verification, overlap grouping and planted-control scoring for model-judged evidence | none |
+| [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
 | [`fix-proof`](/reference/fix-proof) | Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line | none |
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
@@ -53,6 +53,7 @@ Modules that know about a subject: transcripts, code, rules.
 | --- | --- | --- |
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `retrieval`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
+| [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding and the cost report over mined session data | `session-graph`, `store-sqlite` |
@@ -78,6 +79,7 @@ Thin compositions of the tiers. Private, not published.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
+| `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | none |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent-dispatch`, `authority`, `daemon`, `github`, `hitl`, `registry`, `rpc-client`, `session-read`, `store-sqlite`, `workflow` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
