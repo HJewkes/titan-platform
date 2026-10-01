@@ -1,7 +1,7 @@
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
-import { resolveFrom, resolvePath } from "./shell/path.js";
+import { resolvePath, resolveValue } from "./shell/path.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
@@ -19,8 +19,13 @@ export function scriptTarget(cmd: SimpleCommand, home: string): ScriptTarget | n
   if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
   if (SHELLS.has(name)) return shellTarget(cmd, home);
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
-  if (name.endsWith(".sh") && cmd.dir !== null) return { path: resolveFrom(cmd.dir, name), kind: "shell" };
-  return null;
+  return cmd.path?.endsWith(".sh") ? typedTarget(cmd, cmd.path, home) : null;
+}
+
+/** `./x.sh`, `~/bin/x.sh`, `/tmp/x.sh` or a bare `x.sh`, resolved as typed from the command's directory. */
+function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTarget | null {
+  const path = resolveValue(cmd.dir, typed, home);
+  return path === null ? null : { path, kind: "shell" };
 }
 
 /** `bash x.sh`, or `bash < x.sh`. `bash -c` text and heredocs are already walked by `extractCommands`. */
