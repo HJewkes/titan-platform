@@ -176,7 +176,7 @@ function pairBuckets(episodes: readonly WakeEpisode[]): WakePair[] {
       const [from, fromKind, to] = JSON.parse(key) as [string, WakeFromKind, string];
       return { from, fromKind, to, ...costOf(members) };
     })
-    .sort((a, b) => b.costUsd - a.costUsd || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+    .sort((a, b) => b.costUsd - a.costUsd || a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.fromKind.localeCompare(b.fromKind));
 }
 
 function groupBy<T>(rows: readonly T[], keyOf: (row: T) => string): Map<string, T[]> {

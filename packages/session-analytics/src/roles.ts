@@ -20,6 +20,7 @@ export const PROFILE_ROLES: Readonly<Record<string, WorkerRole>> = {
   "fable-architect": "planner",
   planner: "planner",
   "bd-planner": "planner",
+  decider: "planner",
   "fable-coordinator": "coordinator",
   "opus-coordinator": "coordinator",
   peer: "standing_peer",

@@ -89,6 +89,18 @@ describe.each(GRAPH_QUESTIONS.map((q) => [q.id, q] as const))("insights question
     expect((await ask(question.name, ["--since", "2026-09-10T03:45:00+02:00", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(2);
   });
 
+  it("reads a timestamp with no zone as UTC whatever the host zone is", async () => {
+    const host = process.env.TZ;
+    process.env.TZ = "America/New_York";
+    try {
+      expect((await ask(question.name, ["--since", "2026-09-10T00:00:00", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(3);
+      expect((await ask(question.name, ["--since", "2026-09-10"])).answer.totals.sessions).toBe(3);
+    } finally {
+      if (host === undefined) delete process.env.TZ;
+      else process.env.TZ = host;
+    }
+  });
+
   it.each([
     ["--since", "garbage"],
     ["--until", "garbage"],
