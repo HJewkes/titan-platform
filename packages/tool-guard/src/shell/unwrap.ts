@@ -13,6 +13,10 @@ interface WrapperSpec {
   script?: string[];
   /** Whether a script option also takes its text attached, as getopt does for `env -S'...'`. */
   attached?: boolean;
+  /** Whether the wrapper joins its command words into shell text, as `watch` does, unless given `direct`. */
+  joined?: boolean;
+  /** Options that make a joining wrapper run its words directly. */
+  direct?: string[];
 }
 
 const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "{", "}", "!"]);
@@ -32,13 +36,25 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   stdbuf: { values: ["-i", "-o", "-e"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,
+  coproc: {},
+  setsid: {},
+  doas: { values: ["-a", "-u"], stop: ["-C", "-L"] },
+  flock: {
+    values: ["-w", "--wait", "--timeout", "-E", "--conflict-exit-code"],
+    positionals: 1,
+    script: ["-c", "--command"],
+  },
+  watch: { values: ["-n", "--interval", "-q", "--equexit"], joined: true, direct: ["-x", "--exec"] },
 };
+
+const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
 
 /** Package managers that run a command only through a subcommand: `pnpm exec x`, `yarn dlx x`, `npm exec x`. */
 const RUNNERS: Record<string, { subs: string[]; values: string[]; shellMode?: boolean }> = {
   pnpm: { subs: ["exec", "dlx"], values: ["--filter", "-F", "-C", "--dir"], shellMode: true },
   yarn: { subs: ["exec", "dlx"], values: ["--cwd"] },
   npm: { subs: ["exec", "x"], values: ["-w", "--workspace", "-C", "--prefix"] },
+  bun: { subs: ["x"], values: ["--cwd"] },
 };
 
 export interface Unwrapped {
@@ -71,7 +87,8 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
-      const script = runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec);
+      const script =
+        runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) return { name: commandName(w.value), args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
@@ -98,7 +115,7 @@ function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
   return i + (spec.positionals ?? 0);
 }
 
-/** Shell text given to one of `spec.script`'s options, with any later words appended as quoted arguments. */
+/** Shell text given to one of `spec.script`'s options, before or after the positionals (`flock <file> -c`). */
 function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string | null {
   while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
     const v = (words[i] as WordToken).value;
@@ -108,7 +125,25 @@ function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string
     if (v === "--") break;
     i += spec.values?.includes(v) ? 2 : 1;
   }
-  return null;
+  if (!spec.positionals || !spec.script) return null;
+  return wrapperScript(words, i + spec.positionals, { ...spec, positionals: 0 });
+}
+
+/** `watch git push`: the words after the options, joined by spaces, are shell text. */
+function joinedScript(words: WordToken[], start: number, spec: WrapperSpec): string | null {
+  if (!spec.joined) return null;
+  const end = skipWrapper(words, start, spec);
+  if (words.slice(start, end).some((w) => isDirect(w.value, spec.direct ?? [])) || end >= words.length) return null;
+  return words
+    .slice(end)
+    .map((w) => w.value)
+    .join(" ");
+}
+
+/** Whether `v` is one of `direct`, alone or inside a short cluster such as `-tx`. */
+function isDirect(v: string, direct: string[]): boolean {
+  if (direct.includes(v)) return true;
+  return /^-[A-Za-z]+$/.test(v) && direct.some((d) => /^-[A-Za-z]$/.test(d) && v.includes(d.slice(1)));
 }
 
 /** Where a script option's text sits: attached to `v`, or in the next word. Null when `v` is no script option. */
@@ -150,4 +185,25 @@ function runnerEnd(words: WordToken[], i: number): number {
   const subWord = words[sub];
   if (!subWord || subWord.dynamic || !spec.subs.includes(subWord.value)) return i;
   return sub + 1;
+}
+
+/** The command words of each `find -exec`, `-execdir`, `-ok` and `-okdir`, without their terminator. */
+export function findExecs(args: WordToken[]): WordToken[][] {
+  const out: WordToken[][] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (!FIND_EXEC.has((args[i] as WordToken).value)) continue;
+    const end = execEnd(args, i + 1);
+    out.push(args.slice(i + 1, end));
+    i = end;
+  }
+  return out;
+}
+
+/** Index of the `;` that ends an exec, or of a `+` right after `{}`; the end of `args` when neither comes. */
+function execEnd(args: WordToken[], i: number): number {
+  for (let j = i; j < args.length; j++) {
+    const v = (args[j] as WordToken).value;
+    if (v === ";" || (v === "+" && j > i && args[j - 1]?.value === "{}")) return j;
+  }
+  return args.length;
 }
