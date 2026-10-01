@@ -11,7 +11,7 @@ import {
   type CommandRegistry,
   type JsonEnvelope,
 } from "@titan-design/registry";
-import { resolveConfig } from "./config.js";
+import { resolveConfig, type ConfigOverrides } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
 import { MINER_VERSION, createMinerRegistry } from "./registry.js";
 import { runMinerMcpStdio, serveMinerUntilSignal } from "./serve.js";
@@ -33,6 +33,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--corpus <dir>", "Claude transcript corpus root (TITAN_MINER_CORPUS)");
   program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
+  program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
   let exitCode: number = EXIT.OK;
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));
@@ -61,8 +62,8 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
   sub.action(async (...handlerArgs: unknown[]) => {
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
     const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;
-    const root = program.opts() as { json?: boolean; state?: string; corpus?: string; codexHome?: string; namespace?: string };
-    const ctx = createMinerContext(resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env), { format: root.json ? "json" : "human", surface: "cli" });
+    const root = program.opts() as RootOptions & { json?: boolean };
+    const ctx = createMinerContext(resolveConfig(configOverrides(root), io.env), { format: root.json ? "json" : "human", surface: "cli" });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
       emit(io, envelope, ctx.format);
@@ -71,6 +72,18 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
       ctx.close();
     }
   });
+}
+
+interface RootOptions {
+  state?: string;
+  corpus?: string;
+  codexHome?: string;
+  namespace?: string;
+  graph?: string;
+}
+
+function configOverrides(root: RootOptions): ConfigOverrides {
+  return { stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace, graph: root.graph };
 }
 
 function ensureGroup(root: Command, parts: string[]): Command {
@@ -87,10 +100,7 @@ function emit(io: CliIo, envelope: JsonEnvelope<unknown>, format: "human" | "jso
 }
 
 function attachLongRunning(program: Command, io: CliIo): void {
-  const config = () => {
-    const root = program.opts() as { state?: string; corpus?: string; codexHome?: string; namespace?: string };
-    return resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env);
-  };
+  const config = () => resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
   program
     .command("serve")
     .description("Run the daemon: /rpc, /mcp, /events on loopback")

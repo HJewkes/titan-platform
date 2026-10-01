@@ -3,12 +3,13 @@ import type { Migration } from "@titan-design/store-sqlite";
 
 /**
  * Product tables layered on the session graph's database. Versions start at
- * 1000 so they never collide with session-graph's own migration numbers.
- * Templates and occurrences hold ids and locators only, never blob text.
+ * 2000: session-graph owns the low numbers and active-work's band starts at 1001.
+ * A miner database migrated at 1000-1002 re-applies these idempotently and keeps
+ * its rows. Templates and occurrences hold ids and locators only, never blob text.
  */
 export const MINER_MIGRATIONS: Migration[] = [
   {
-    version: 1000,
+    version: 2000,
     name: "drain templates",
     up: (db) =>
       db.exec(`
@@ -40,8 +41,8 @@ export const MINER_MIGRATIONS: Migration[] = [
         );
       `),
   },
-  memoryMigration(1001),
-  { version: 1002, name: "screened tool results", up: db => db.exec(`
+  memoryMigration(2001),
+  { version: 2002, name: "screened tool results", up: db => db.exec(`
     CREATE TABLE IF NOT EXISTS drain_screened (
       transcript_id INTEGER NOT NULL, byte_offset INTEGER NOT NULL,
       source_hash TEXT NOT NULL, PRIMARY KEY(transcript_id,byte_offset,source_hash)

@@ -620,15 +620,14 @@ Tier 2, `@titan-design/session-graph@0.11.0`. Fold session events into the activ
 
 Key exports:
 
-- `graph`: `allSessionIds`, `openSessionGraph`, `resetIndex`
+- `graph`: `SessionGraphNotMigratedError`, `allSessionIds`, `openSessionGraph`, `resetIndex`
 - `audit-apply`: `applyAudit`
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`, `refreshCorpus`
-- `tasks`: `allTaskIds`
-- +79 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
+- +80 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
