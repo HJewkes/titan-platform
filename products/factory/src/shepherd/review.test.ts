@@ -7,7 +7,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { StepRoute } from "../routed-runner.js";
+import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";

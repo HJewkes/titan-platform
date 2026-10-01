@@ -1,9 +1,8 @@
 import { BrokerUnavailableError, parkAgent } from "@titan-design/agent-dispatch";
-import type { WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { redactForEvidence } from "../redact.js";
-import type { StepRoute } from "../routed-runner.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps } from "./phases.js";
 import type { ShepherdStoreRef } from "./store.js";

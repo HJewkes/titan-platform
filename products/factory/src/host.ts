@@ -4,15 +4,16 @@ import type { GateRecord } from "@titan-design/hitl";
 import { SqliteGateStore, gateMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
-  WorkflowRuntime,
+  routedRunner,
+  type StepRoute,
+  type WorkflowEvent,
   workflowMigration,
   workflowOwnershipMigration,
-  type WorkflowEvent,
   type WorkflowRun,
+  WorkflowRuntime,
 } from "@titan-design/workflow";
 import type { ShepherdServices } from "./shepherd/commands.js";
-import { assertDistinctStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
-import { routedRunner, type StepRoute } from "./routed-runner.js";
+import { assertDistinctStepIds, dispatchStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */
 export interface DatabaseTenant {
@@ -104,7 +105,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
   });
   for (const definition of options.workflows) {
     assertDistinctStepIds(definition);
-    runner.assertRoutes(definition);
+    runner.assertRoutes(definition.name, dispatchStepIds(definition));
     runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)));
   }
   return runtime;
