@@ -605,11 +605,11 @@ Tier 2, `@titan-design/decider@0.0.0`. Decision ledger: v2 row schema, outcome c
 Key exports:
 
 - `ledger`: `LedgerLocatorSchema`, `LedgerOptionSchema`, `LedgerRowSchema`, `PredictionSchema`
-- `outcome`: `classifyOutcome`, `stripRecommended`
+- `outcome`: `classifyOutcome`, `isRecommendedLabel`, `stripRecommended`
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
-- `parse-answer`: `answerFor`, `parseAnswerText`, `recommendedOption`
-- +39 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
+- `parse-answer`: `answerFor`, `parseAnswerText`
+- +40 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
 
 <a id="cap-memory"></a>
 

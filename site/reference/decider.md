@@ -90,8 +90,10 @@ const summary = await extractSource(store, transcriptSource(), policy);
   anything else.
 - `classifyOutcome` returns null for an unparsed answer and for a declined (`rejected`)
   question. Null means "out of scoring", not "none".
-- `recommended` is stored with any marker containing "recommend" stripped, bracketed or set off
-  by a separator, prefix or suffix. Option labels keep theirs verbatim.
+- `recommended` is stored with its marker stripped: a bracketed group containing "recommend", or
+  "Recommended" set off by a colon or a spaced dash as prefix or suffix. Option labels keep theirs
+  verbatim. A negated marker ("not recommended") is not a recommendation, and
+  `isRecommendedLabel` is the one test both the transcript source and `stripRecommended` use.
 - Personal-data patterns are checked against the header, question, answer, option labels and
   option descriptions.
 - A transcript call with several questions writes one row per question. The first keeps v1's key
