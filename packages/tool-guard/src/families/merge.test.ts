@@ -79,6 +79,14 @@ describe("one fixture per bash.merge spelling", () => {
     expect(spellings(bash(command, "main"))).toEqual(["bash.merge.git-merge-protected"]);
   });
 
+  it.each([
+    "git checkout main && cd src && git merge x",
+    "git checkout main && git -C src merge x",
+    "cd src && git checkout main && cd .. && git merge x",
+  ])("a switch to a protected head applies in every directory: %s", (command) => {
+    expect(spellings(bash(command, "feat/x"))).toEqual(["bash.merge.git-merge-protected"]);
+  });
+
   describe("a branch switch changes the head only in its own directory", () => {
     const MAIN_TREE = "/home/you/projects/app-main";
     const heads: Record<string, string> = { [REPO]: "feat/x", [MAIN_TREE]: "main" };

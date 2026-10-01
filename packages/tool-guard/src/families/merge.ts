@@ -178,12 +178,12 @@ function switchedHead(dir: string | null, created: WordToken | null, ctx: Classi
   return isProtected(headOf({ dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : created.value;
 }
 
-/** A branch switch replaces the head later commands on the line see, in its directory, or in every directory when that is unknown. */
+/** A branch switch replaces the head later commands see: an unprotected new branch in its own directory only, any other head everywhere. */
 function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
   const sw = switchDir(cmd, ctx);
   if (!sw) return undefined;
   const head = switchedHead(sw.dir, sw.created, ctx);
-  return { ...ctx, readHead: (d) => (sw.dir === null || d === sw.dir ? head : ctx.readHead(d)) };
+  return { ...ctx, readHead: (d) => (sw.dir === null || isProtected(head) || d === sw.dir ? head : ctx.readHead(d)) };
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */
