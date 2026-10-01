@@ -6,6 +6,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
@@ -145,6 +146,8 @@ function boundedFindings(text: string): string {
   return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
 }
 
+const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
+
 /**
  * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
  * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
@@ -183,9 +186,9 @@ export async function awaitVerdict(
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
-const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1) });
-/** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. */
-const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume"]), agentId: z.string().min(1).optional() });
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional() });
+/** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody. */
+const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional() });
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema });
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
@@ -235,8 +238,11 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[]): Omit<ReviewIntent, "head" | "at"> {
-  const standing = standingReviewer(registration, roster);
+/** A hold that names a reviewer waits for that reviewer; `fresh` skips the standing reviewer, which may be the one that went silent. */
+function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
+  const external = externalReviewer(registration);
+  if (external) return { mode: "external", reviewer: external };
+  const standing = fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
 }
@@ -301,7 +307,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
 /** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing. */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
-  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster);
+  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster, input.fresh);
   return { kind: "intent", head: input.head, ...choice, at: deps.now() };
 };
 
@@ -330,6 +336,7 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
   const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
+    if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
     const input = parseAwaitVerdictInput(raw);
     return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
   };
@@ -352,7 +359,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 }
 
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
-const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent") }), z.looseObject({ kind: z.literal("none") })]);
+const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string() }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("dispatched"), at: z.number(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
@@ -375,15 +382,21 @@ function seatGrants(ctx: WorkflowContext): string[] {
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId }, Intended);
-  if (intent.kind !== "intent") return { kind: "none" };
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }) }, Intended);
+  if (intent.kind !== "intent") return { kind: "none", cause: "no-verdict" };
+  if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { kind: "none" };
+  if (dispatched.kind !== "dispatched") return { kind: "none", cause: "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
+  return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
+};
+
+/** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
+async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: object, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (awaited.kind !== "verdict") return { kind: "none" };
+  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold" };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer, seatGrants: seatGrants(ctx) });
-};
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
+}
