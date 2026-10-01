@@ -1,1 +1,9 @@
 export * from "./shell/index.js";
+export { parseHookEvent } from "./event.js";
+export type { HookEvent, MalformedEvent, ReadEvent, WriteEvent } from "./event.js";
+export { GUARDED_PATHS } from "./paths.js";
+export type { GuardedList, GuardedPath } from "./paths.js";
+export { SPELLINGS } from "./spellings.js";
+export type { FamilyName, SpellingId } from "./spellings.js";
+export { classify } from "./classify.js";
+export type { ClassifiedAction, ClassifyContext, Family, GuardedAction } from "./types.js";

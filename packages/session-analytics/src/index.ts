@@ -24,6 +24,34 @@ export {
   wakeEpisodesSchema,
 } from "./wake-episodes.js";
 export type { AgentNameRow, WakeEventRow } from "./cost-report-queries.js";
+export type {
+  CycleParams,
+  HandoffCohort,
+  HandoffOptions,
+  HandoffRequestRow,
+  HandoffSession,
+  HandoffTeleport,
+  HandoffThreshold,
+  KSweep,
+  ReviewerComparison,
+  TeleportEvent,
+} from "./handoff-threshold.js";
+export {
+  BOOT_TOOL,
+  DEFAULT_CONFIGURED_K,
+  DEFAULT_K_SWEEP,
+  DEFAULT_REVIEWER_PRS,
+  DEFAULT_REVIEWER_ROLE,
+  DEFAULT_STANDING_ROLE,
+  POOLED_REVIEWERS,
+  TELEPORT_EVENT,
+  costPerRequest,
+  handoffThreshold,
+  handoffThresholdSchema,
+  isBootAction,
+  parseTeleportEvents,
+  sweepK,
+} from "./handoff-threshold.js";
 export type { TaskInitiative } from "./initiative.js";
 export type { EpisodeInbound, EpisodeInput, EpisodeRequest, EpisodeSignal, Heuristic, WrittenEpisodes } from "./episodes.js";
 export {
