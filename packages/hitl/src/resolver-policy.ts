@@ -18,13 +18,9 @@ export function defaultResolverRefusal(resolver: GateResolver): string | undefin
   return `actor class ${resolver.class} may not resolve a gate`;
 }
 
-/**
- * A rule-bound gate admits only its rule's resolver classes, and never an
- * anonymous resolve. Runs after the default refusal, so it only narrows.
- */
-export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver | undefined): string | undefined {
+/** A rule-bound gate admits only its rule's resolver classes. Runs after the default refusal, so it only narrows. */
+export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver): string | undefined {
   if (!record.rule) return undefined;
-  if (!resolver) return `rule ${record.rule.ruleId} requires a resolver`;
   if ((record.rule.resolvers as readonly string[]).includes(resolver.class)) return undefined;
   return `rule ${record.rule.ruleId} does not let ${resolver.class} resolve this gate`;
 }
