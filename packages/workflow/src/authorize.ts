@@ -48,13 +48,15 @@ export async function authorityOutcome(authority: Authority, gate: AuthorityGate
   return gateOutcome(gate.store.get(gate.id), gate.id, request, authority.actor.class);
 }
 
-/** A gate recorded under another rule than the request maps to now is not this step's gate, so it is refused, not resumed. */
+/** A gate with no rule, another table's rule, or another rule than the request maps to now is not this step's gate, so it is refused at once, not resumed or awaited. */
 function ruleMismatch(existing: GateRecord, gateId: string, authority: Authority, request: AuthorizeRequest): AuthorityOutcome | undefined {
-  const recorded = existing.rule?.ruleId;
-  if (recorded === undefined) return undefined;
+  const rule = existing.rule;
+  const refused = (ruleId: string, reason: string): AuthorityOutcome => ({ verdict: "refused", ruleId, gateId, reason });
+  if (!rule) return refused("unbound", "the gate carries no authority rule");
+  if (rule.table !== AUTHORITY_TABLE_NAME) return refused(rule.ruleId, `the gate was recorded under table ${rule.table}, not ${AUTHORITY_TABLE_NAME}`);
   const current = decide(authority, request).ruleId;
-  if (current === recorded) return undefined;
-  return { verdict: "refused", ruleId: recorded, gateId, reason: `the gate was recorded under rule ${recorded}, but ${request.action} maps to ${current ?? "no rule"}` };
+  if (current === rule.ruleId) return undefined;
+  return refused(rule.ruleId, `the gate was recorded under rule ${rule.ruleId}, but ${request.action} maps to ${current ?? "no rule"}`);
 }
 
 export function authorityStepResult(stepId: string, iteration: number, outcome: AuthorityOutcome): StepResult {
