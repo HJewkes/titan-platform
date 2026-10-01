@@ -15,7 +15,7 @@ export interface ExclusionSubject {
   cwd?: string | null;
   header: string | null;
   question: string;
-  options: readonly { label: string }[];
+  options: readonly { label: string; description?: string }[];
   answer: string | null;
 }
 
@@ -56,7 +56,8 @@ function toPattern(pattern: string | RegExp): RegExp {
 
 function mentionsPersonalData(subject: ExclusionSubject, patterns: ExclusionPolicy["personalDataPatterns"]): boolean {
   const texts = [subject.header ?? "", subject.question, subject.answer ?? ""];
-  const hay = [...texts, ...subject.options.map((o) => o.label)].join("\n");
+  const optionTexts = subject.options.flatMap((o) => [o.label, o.description ?? ""]);
+  const hay = [...texts, ...optionTexts].join("\n");
   return patterns.some((p) => {
     const rx = toPattern(p);
     rx.lastIndex = 0;

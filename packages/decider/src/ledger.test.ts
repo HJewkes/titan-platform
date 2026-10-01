@@ -33,6 +33,12 @@ describe("LedgerRowSchema reading a v1 precedent row", () => {
     });
   });
 
+  it("keeps a rejected v1 row out of scoring", () => {
+    const row = LedgerRowSchema.parse(v1Row({ answer: null, pick_type: "rejected" }));
+
+    expect(row.outcome).toBeNull();
+  });
+
   it("keeps an unparsed v1 row out of scoring", () => {
     const row = LedgerRowSchema.parse(v1Row({ answer: null, pick_type: "unparsed" }));
 

@@ -14,14 +14,19 @@ export type Outcome = (typeof OUTCOMES)[number];
 
 export interface OutcomeInput {
   answer: string | null;
-  /** Option labels as the asker wrote them, "(Recommended)" suffix included. */
+  /** Option labels as the asker wrote them, any "recommend" marker included. */
   options: readonly string[];
   recommended: string | null;
   /** A v1 row's pick type; when present it decides everything except amend against redirect. */
   pickType?: PickType;
 }
 
-const RECOMMENDED_MARK = /\s*\(recommended\)\s*/gi;
+/** Matches active-work v1 `recommendedOption`: any marker containing "recommend", bracketed or set off by a separator. */
+const RECOMMEND_MARKS = [
+  /[([{][^)\]}]*recommend[^)\]}]*[)\]}]/gi,
+  /^\s*recommend(?:ed)?\s*[:\-–—|]\s*/i,
+  /\s*[:\-–—|]\s*recommend(?:ed)?\s*$/i,
+];
 const QUOTES: [string, string][] = [
   ['"', '"'],
   ["'", "'"],
@@ -30,7 +35,8 @@ const QUOTES: [string, string][] = [
 ];
 
 export function stripRecommended(label: string): string {
-  return label.replace(RECOMMENDED_MARK, " ").trim();
+  const stripped = RECOMMEND_MARKS.reduce((text, mark) => text.replace(mark, " "), label);
+  return stripped.replace(/\s+/g, " ").trim();
 }
 
 function normalize(text: string): string {
@@ -56,7 +62,7 @@ function amendOrRedirect(answer: string | null, recommended: string | null): Out
 const FROM_PICK_TYPE: Record<PickType, Outcome | "free_text" | null> = {
   recommended: "accept",
   other_option: "other",
-  rejected: "other",
+  rejected: null,
   free_text: "free_text",
   unparsed: null,
   none: "none",
@@ -75,7 +81,7 @@ function fromAnswer(answer: string, options: readonly string[], recommended: str
   return isListed(answer, options) ? "other" : amendOrRedirect(answer, recommended);
 }
 
-/** The scored outcome of an answer; null means unparsed, which stays out of scoring. */
+/** The scored outcome of an answer; null means unparsed or declined, which stays out of scoring. */
 export function classifyOutcome({ answer, options, recommended, pickType }: OutcomeInput): Outcome | null {
   if (pickType !== undefined) {
     const mapped = FROM_PICK_TYPE[pickType];
