@@ -1,8 +1,20 @@
 # @titan-design/evals
 
-Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing
+The eval registry for units of work. Private; never published. Bin: `titan-evals`.
 
-Tier product of the titan-platform DAG. May import only packages in the same tier or
-below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
+Slice E1 (TP-687) ships the spec schemas (unit, variant, case, suite with checks,
+scorecard), strict and loose parsing, and canonical content hashing. Trials, checks,
+judges and scorecard aggregation arrive in later slices.
 
-Status: placeholder. Tracked by TP-687.
+```sh
+titan-evals validate fixtures/summarize-note/unit.json fixtures/summarize-note/variants/single-pass.json
+```
+
+`validate` strict-parses each spec, re-reads the prompt files it references, and prints
+its content hash. It exits 1 when a stored prompt digest no longer matches its file.
+
+`fixtures/summarize-note/` is one synthetic unit with a variant, three cases (one per
+split), a suite and a scorecard. Its hashes are checked by the tests, so editing a fixture
+means re-running `validate` and updating the digests it reports.
+
+Full reference: `site/reference/evals.md`.

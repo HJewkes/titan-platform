@@ -1,0 +1,35 @@
+{
+  "schema": "titan.scorecard/v1",
+  "keys": {
+    "unit": "a19f5b39ea8603fcd09d24bb8511a02a69f34d6a931a811f3ab3a081112e8a33",
+    "variant": "664e596bae0d9cc2a3300fa0e29af60ea3b60f57855e44453ff391faacc0b4be",
+    "suite": "cd8034a3b09394f3da7462d8e8d9bcc8db51bdecd6303eefccbfae63d038d9a6",
+    "judges": "55d5345a16b882f747edaf17c000ea3bdf97633e6268efe9d5c7a284ce34744e",
+    "env": {
+      "claudeCodeVersion": "2.0.0",
+      "harness": { "@titan-design/evals": "0.0.0" },
+      "os": "linux-x64",
+      "priceTable": "2026-09"
+    }
+  },
+  "n": { "cases": 3, "trials": 9, "errored": 0, "infraErrored": 0 },
+  "success": { "successes": 7, "n": 9, "rate": 0.778, "lower": 0.453, "upper": 0.937 },
+  "passAllK": { "successes": 2, "n": 3, "rate": 0.667, "lower": 0.208, "upper": 0.939 },
+  "criteria": {
+    "all-actions-listed": { "mean": 0.778, "lower": 0.556, "upper": 1, "n": 9 },
+    "no-invented-actions": { "mean": 1, "lower": 1, "upper": 1, "n": 9 }
+  },
+  "metrics": {
+    "cost_usd": { "median": 0.012, "p90": 0.018 },
+    "wall_ms": { "median": 4100, "p90": 6200 }
+  },
+  "costPerSuccess": 0.016,
+  "overhead": { "judgeUsd": 0.009, "simOwnerUsd": 0 },
+  "perCase": [
+    { "case": "264c83839dc889c54aed9dd1ff2526c90475a459da040cd4bd1a8a98f1236b3a", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.033 },
+    { "case": "3431630dc7546152e60e2a951493b0aecd95e92992b58e4f7431e5ba18b15060", "trials": 3, "passed": 1, "errored": 0, "costUsd": 0.048 },
+    { "case": "98670a0cfdd1c1572eab2667f9aa11d661f69384715db12ec69bc8bd94ea7ce3", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.031 }
+  ],
+  "controls": { "planted": 1, "caught": 1 },
+  "snapshot": { "builtAt": "2026-10-01T00:00:00Z", "split": "dev" }
+}

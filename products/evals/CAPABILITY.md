@@ -2,4 +2,4 @@
 
 <!-- One to three sentences for a reader deciding whether to reuse this or build something new. Feeds CAPABILITIES.md. -->
 
-Placeholder: replace with the situation that should send a reader to evals, and name the neighbouring unit for the situations that should not.
+You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead.
