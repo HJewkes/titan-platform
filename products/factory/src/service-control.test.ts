@@ -26,6 +26,8 @@ interface MachineInit {
   /** How many `print` calls still report the job after a bootout. */
   lingers?: number;
   claude?: CommandResult;
+  /** Paths that exist as directories, for --claude-config-dir. */
+  dirs?: string[];
   files?: Record<string, string>;
   /** Binaries `which` does not find. */
   absent?: string[];
@@ -70,10 +72,11 @@ function fakeMachine(init: MachineInit = {}) {
     uid: UID,
     home: HOME,
     launchctl,
-    claude: async (args) => {
-      calls.push(`claude ${args.join(" ")}`);
+    claude: async (args, env) => {
+      calls.push(`${env?.CLAUDE_CONFIG_DIR ? `CLAUDE_CONFIG_DIR=${env.CLAUDE_CONFIG_DIR} ` : ""}claude ${args.join(" ")}`);
       return init.claude;
     },
+    isDirectory: (path) => init.dirs?.includes(path) ?? false,
     health: async (port) => {
       if (init.stranger !== undefined) return { ok: true, pid: init.stranger, port };
       if (!job?.healthy) return null;
@@ -301,6 +304,36 @@ describe("titan-factory service install --mcp", () => {
     expect(code).toBe(EXIT.OK);
     expect(machine.calls).toContain(MCP_ADD);
     expect(out).toContain("registered titan-factory with claude");
+  });
+
+  it("names the config file it wrote when no dir is given", async () => {
+    const { out } = await service(["install", "--mcp"], fakeMachine({ claude: ok() }));
+
+    expect(out).toContain(`in ${HOME}/.claude.json\n`);
+  });
+
+  it("registers in every --claude-config-dir, each with its own printed file", async () => {
+    const machine = fakeMachine({ claude: ok(), dirs: ["/p/one", "/p/two"] });
+
+    const { code, out } = await service(["install", "--mcp", "--claude-config-dir", "/p/one", "--claude-config-dir", "/p/two"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(machine.calls).toContain(`CLAUDE_CONFIG_DIR=/p/one ${MCP_ADD}`);
+    expect(machine.calls).toContain(`CLAUDE_CONFIG_DIR=/p/two ${MCP_ADD}`);
+    expect(machine.calls).not.toContain(MCP_ADD);
+    expect(out).toContain("in /p/one/.claude.json\n");
+    expect(out).toContain("in /p/two/.claude.json\n");
+  });
+
+  it("fails before writing anything when a dir is missing or not a directory", async () => {
+    const machine = fakeMachine({ claude: ok(), dirs: ["/p/one"] });
+
+    const { code, err } = await service(["install", "--mcp", "--claude-config-dir", "/p/one", "--claude-config-dir", "/p/nope"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("--claude-config-dir /p/nope is not a directory");
+    expect(machine.calls).toEqual([]);
+    expect(machine.files.size).toBe(0);
   });
 
   it("still succeeds without a claude binary, and prints the command to run by hand", async () => {

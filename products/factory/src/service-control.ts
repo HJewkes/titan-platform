@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { plistPath, renderPlist, SERVICE_LABEL, type PlistOptions } from "./service.js";
 
 export interface CommandResult {
@@ -14,7 +14,8 @@ export interface ServicePorts {
   home: string;
   launchctl: (args: readonly string[]) => Promise<CommandResult>;
   /** Resolves undefined when no `claude` binary is on PATH. */
-  claude: (args: readonly string[]) => Promise<CommandResult | undefined>;
+  claude: (args: readonly string[], env?: Readonly<Record<string, string>>) => Promise<CommandResult | undefined>;
+  isDirectory: (path: string) => boolean;
   /** The absolute file a bare binary name runs on this machine, or undefined when it is not on PATH. */
   which: (binary: string) => string | undefined;
   /** The `/health` body, or null when nothing answers. */
@@ -37,6 +38,10 @@ export interface InstallOptions {
   /** The port `/health` is polled on; the plist carries its own copy. */
   port: number;
   mcp: boolean;
+  /** Claude config dirs to register in; empty means the caller's own profile. */
+  claudeConfigDirs: readonly string[];
+  /** The CLAUDE_CONFIG_DIR the caller runs under, when set. */
+  callerConfigDir?: string;
   /** Binaries the plist's PATH could not cover. */
   missing: readonly string[];
 }
@@ -128,6 +133,8 @@ function errorLogTail(ports: ServicePorts, logDir: string): string {
 export async function installService(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<number> {
   const file = plistPath(ports.home);
   if (options.missing.includes("gh")) return fail(io, "gh is not on PATH, and titan-factory serve cannot reach GitHub without it; install gh, then rerun");
+  const notDir = options.claudeConfigDirs.find((dir) => !ports.isDirectory(resolve(dir)));
+  if (notDir !== undefined) return fail(io, `--claude-config-dir ${notDir} is not a directory`);
   if (!(await bootoutIfLoaded(ports, io, await jobState(ports)))) return FAILURE;
   ports.mkdir(options.plist.logDir);
   ports.mkdir(dirname(file));
@@ -136,18 +143,26 @@ export async function installService(ports: ServicePorts, io: ServiceIo, options
   if (bootstrap.code !== 0) return fail(io, `launchctl bootstrap failed: ${detail(bootstrap)}`);
   if (!(await awaitHealthy(ports, io, options.port, options.plist.logDir))) return FAILURE;
   io.stdout(`installed ${SERVICE_LABEL} from ${file}; /health answers on port ${options.port}\n`);
-  if (options.mcp) await registerMcp(ports, io, options.port);
+  if (options.mcp) await registerMcpEverywhere(ports, io, options);
   return 0;
 }
 
+async function registerMcpEverywhere(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<void> {
+  const dirs = options.claudeConfigDirs.map((dir) => resolve(dir));
+  if (dirs.length === 0) return registerMcp(ports, io, options.port, options.callerConfigDir);
+  for (const dir of dirs) await registerMcp(ports, io, options.port, dir);
+}
+
 /** Registration is a convenience on top of a working service, so no outcome here fails the install. */
-async function registerMcp(ports: ServicePorts, io: ServiceIo, port: number): Promise<void> {
+async function registerMcp(ports: ServicePorts, io: ServiceIo, port: number, configDir: string | undefined): Promise<void> {
   const args = ["mcp", "add", "--transport", "http", "--scope", "user", "titan-factory", `http://127.0.0.1:${port}/mcp`];
-  const added = await ports.claude(args);
-  if (added?.code === 0) return io.stdout("registered titan-factory with claude at user scope\n");
-  if (added && /already exists/i.test(added.stdout + added.stderr)) return io.stdout("titan-factory is already registered with claude\n");
+  const file = join(configDir ?? ports.home, ".claude.json");
+  const added = await ports.claude(args, configDir === undefined ? undefined : { CLAUDE_CONFIG_DIR: configDir });
+  if (added?.code === 0) return io.stdout(`registered titan-factory with claude at user scope in ${file}\n`);
+  if (added && /already exists/i.test(added.stdout + added.stderr)) return io.stdout(`titan-factory is already registered with claude in ${file}\n`);
   const why = added ? `claude mcp add failed: ${detail(added)}` : "no claude binary on PATH";
-  io.stderr(`${why}; to register the MCP endpoint, run:\n  claude ${args.join(" ")}\n`);
+  const prefix = configDir === undefined ? "" : `CLAUDE_CONFIG_DIR=${configDir} `;
+  io.stderr(`${why}; to register the MCP endpoint in ${file}, run:\n  ${prefix}claude ${args.join(" ")}\n`);
 }
 
 export async function uninstallService(ports: ServicePorts, io: ServiceIo): Promise<number> {

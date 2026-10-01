@@ -93,7 +93,12 @@ script says so when the directory is not on `PATH`.
    with one line that carries the field.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory http://127.0.0.1:<port>/mcp`.
    A server that is already registered counts as success. With no `claude` on `PATH`, or when
-   the command fails, the verb prints the command to run by hand and still exits 0.
+   the command fails, the verb prints the command to run by hand and still exits 0. Each
+   registration prints the config file it wrote. With no `--claude-config-dir` it registers the
+   caller's profile only. Agents that run under another profile, such as one under
+   `~/.claude-profiles/`, need their own registration: pass `--claude-config-dir <dir>` once per
+   profile (it sets `CLAUDE_CONFIG_DIR` for that `claude mcp add`). A path that is not a directory
+   fails the install before anything is written.
 
 The plist points at the `dist/bin.js` of the checkout the verb ran from, so install from the
 checkout that should serve, not from a worktree that will be removed.
