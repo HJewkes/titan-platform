@@ -5,6 +5,7 @@ import { gateEverything, type GatePolicy } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import { LAND_STEPS, land, landRoutes, type LandOutcome } from "../workflows/land.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { OWNER } from "./resolver.js";
 
 export const REPO = "octo/demo";
 export const H1 = fakeSha("head1");
@@ -49,7 +50,7 @@ export async function gateOpened(host: FactoryHost, id: string): Promise<void> {
 /** Approve the run's pending approve-merge gate, if any, with the head the fake shows now. */
 export function answerPendingGate(host: FactoryHost, runId: string, fake: FakeGitHub): void {
   if (!host.pendingGates().some((gate) => gate.runId === runId)) return;
-  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: fake.pr(1).headSha });
+  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: fake.pr(1).headSha }, OWNER);
 }
 
 /** Answer every approve-merge gate until the run settles. */
