@@ -31,8 +31,9 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[] }>(`repos/${repo}/git/commits/${sha}`);
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha) } satisfies Commit;
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const committedAt = commit.committer?.date;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
     },
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),

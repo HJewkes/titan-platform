@@ -169,6 +169,14 @@ a rule-bound gate can be opened and cancelled but not resolved: the store throws
 resolve of the row. Run both migrations in either order; the second one installs the
 class-aware trigger.
 
+The insert guard fires before SQLite's conflict handling. A raw insert with no rule onto a
+pending rule-bound id therefore aborts with `hitl: a pending rule-bound gate cannot be
+replaced`, whether it is a plain duplicate, `ON CONFLICT DO UPDATE`, `ON CONFLICT DO NOTHING`
+or `INSERT OR IGNORE`; a duplicate plain insert reports that message, not `UNIQUE`. The guard
+covers only pending rows. A raw `REPLACE` of a cancelled or resolved rule-bound row succeeds
+and can leave a pending rule-less row. That is outside the store API: `create` is a plain
+insert and throws on an existing id, and no store method replaces a row.
+
 ## Settling
 
 A gate is `pending`, then exactly one of `resolved`, `cancelled`, or `expired`.

@@ -63,6 +63,17 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
+  it("reads a commit's parents and committer date, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], committer: { date: "2026-02-03T04:05:06Z" } }) });
+    const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
+
+    const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
+    const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
+
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], committedAt: "2026-02-03T04:05:06Z" });
+    expect(withoutDate).toEqual({ sha: H1, parents: [] });
+  });
+
   it("reads required checks from the branch rules, merging every status-check rule", async () => {
     const rules = [
       { type: "pull_request", parameters: { required_approving_review_count: 0 } },

@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -289,7 +289,26 @@ export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapsh
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
-  return { ...base, verdict: mergeVerdict(pr) };
+  const verdict = mergeVerdict(pr);
+  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
+  return { ...base, verdict };
+}
+
+/** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */
+async function baseMovedSinceGreen(port: GitHubPort, input: CiInput, pr: PullRequest, runs: CheckRun[]): Promise<boolean> {
+  const tip = await port.getHeadSha(input.repo, pr.baseRef);
+  if (!tip) return true;
+  const committedAt = Date.parse((await port.getCommit(input.repo, tip)).committedAt ?? "");
+  const greenAt = greenStartedAt(runs, pr.headSha, input.contexts);
+  return Number.isNaN(committedAt) || greenAt === null || committedAt > greenAt;
+}
+
+/** The earliest start among the required runs that made the head green; a pull_request run tests the base as it stood then. */
+function greenStartedAt(runs: CheckRun[], headSha: string, contexts: string[]): number | null {
+  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && contexts.includes(run.name));
+  const starts = latestPerName(required).map((run) => Date.parse(run.startedAt ?? ""));
+  if (starts.length === 0 || starts.some(Number.isNaN)) return null;
+  return Math.min(...starts);
 }
 
 function failingCheck(run: CheckRun): FailingCheck {

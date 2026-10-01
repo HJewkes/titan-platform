@@ -66,19 +66,19 @@ interface Waiter {
   caveats: string[];
 }
 
-/** Safe to repeat: every part reads before it writes, and refusals end as caveats after an hour, never as a failed run. */
+/** Safe to repeat: every part reads before it writes, and refusals end as caveats after an hour, never as a failed run. Each part has its own hour. */
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
-  const clock = deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS });
-  const wait: Waiter = { clock, pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats: [] };
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), wait)) ?? "unread";
+  const caveats: string[] = [];
+  const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), waiter())) ?? "unread";
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
     const why = registration === undefined ? "no registration" : "no cleanup ports wired";
-    return { ref, task: why, retired: [], caveats: wait.caveats };
+    return { ref, task: why, retired: [], caveats };
   }
-  const task = await closeTask(deps.cleanup.tasks, registration.task, wait);
-  const retired = await retireAll(deps.cleanup.agents, deps.store.get(), registration, input, wait);
-  return { ref, task, retired, caveats: wait.caveats };
+  const task = await closeTask(deps.cleanup.tasks, registration.task, waiter());
+  const retired = await retireAll(deps.cleanup.agents, deps.store.get(), registration, input, waiter());
+  return { ref, task, retired, caveats };
 }
 
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
@@ -135,8 +135,9 @@ export function retireOrder(registration: Registration, lineageSuccessors: reado
 
 /** The name `sh-review` gives the first fresh reviewer of a PR; later ones append `-<k>`. */
 export function freshReviewerBase(repo: RepoSlug, pr: number): string {
-  const repoName = (repo.split("/")[1] ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return `rv-${repoName.slice(0, 32) || "repo"}-${pr}`;
+  const slug = (part: string | undefined): string => (part ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+  const [owner, name] = repo.split("/");
+  return `rv-${slug(owner) || "owner"}-${slug(name) || "repo"}-${pr}`;
 }
 
 async function retireAll(agents: CleanupAgents, store: ReturnType<ShepherdStoreRef["get"]>, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string[]> {
