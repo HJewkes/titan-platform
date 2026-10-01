@@ -100,21 +100,32 @@ async function check() {
 function clearWorkDir() {
   if (existsSync(BASELINE_DIR)) {
     try {
-      git("worktree", "remove", "--force", BASELINE_DIR);
+      // The second --force removes a worktree that a killed `git worktree add` left locked.
+      git("worktree", "remove", "--force", "--force", BASELINE_DIR);
     } catch {
-      // A baseline left by another clone is not this repo's worktree; deleting the directory is enough.
+      // A half-made or foreign baseline is not removable by git; deleting the directory and pruning is enough.
     }
   }
-  rmSync(WORK_DIR, { recursive: true, force: true });
+  rmSync(WORK_DIR, { recursive: true, force: true, maxRetries: 5 });
+  git("worktree", "prune");
 }
 
 async function runWorker(cleanups) {
   const args = [`--max-old-space-size=${HEAP_CAP_MB}`, SCRIPT, WORKER_FLAG, ...process.argv.slice(2)];
-  const child = spawn(process.execPath, args, { stdio: "inherit" });
-  cleanups.push(() => child.kill("SIGKILL"));
+  // Its own process group, so one kill also stops the git the indexer is waiting on.
+  const child = spawn(process.execPath, args, { stdio: "inherit", detached: true });
+  cleanups.push(() => killGroup(child.pid));
   const [code, signal] = await once(child, "exit");
   if (signal) console.error(`dag-check indexer died with ${signal}`);
   return code ?? 2;
+}
+
+function killGroup(pid) {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (err) {
+    if (err.code !== "ESRCH") throw err;
+  }
 }
 
 async function supervise() {
