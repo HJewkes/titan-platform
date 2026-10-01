@@ -18,7 +18,7 @@
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
     "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
+    "test:watch": "vitest --exclude '**/*.repo.test.ts'",
     "dag:check": "node scripts/dag-check-self.mjs",
     "new:package": "node scripts/new-package.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",

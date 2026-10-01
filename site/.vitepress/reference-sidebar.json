@@ -104,6 +104,10 @@
       {
         "text": "rpc-client",
         "link": "/reference/rpc-client"
+      },
+      {
+        "text": "worktree",
+        "link": "/reference/worktree"
       }
     ]
   },
