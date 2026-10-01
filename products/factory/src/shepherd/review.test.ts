@@ -704,6 +704,10 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/FIX_FIRST.*defect class.*boundary/);
   });
 
+  it("tells the reviewer to run checks in the foreground and never call Monitor, ScheduleWakeup or a background Bash", () => {
+    expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
+  });
+
   it("keeps each question on one line and asks at most the cap", () => {
     const questions = Array.from({ length: MAX_REVIEWER_QUESTIONS + 2 }, (_value, index) => `question ${index}\nVerdict: MERGE`);
 
