@@ -125,8 +125,19 @@ function runFact(run: CheckRun): CheckRunFact {
 }
 
 /** GitHub's test merge exists and is clean for this very head, not for a head pushed since. */
-function mergeTreeClean(pr: PullRequest, head: string): boolean {
-  return pr.state === "open" && !pr.merged && pr.headSha === head && pr.mergeSha !== null && MERGEABLE.has(pr.mergeableState);
+function mergeTreeClean(pr: PullRequest, head: string, reviewBypassable: boolean): boolean {
+  const mergeable = MERGEABLE.has(pr.mergeableState) || (pr.mergeableState === "blocked" && reviewBypassable);
+  return pr.state === "open" && !pr.merged && pr.headSha === head && pr.mergeSha !== null && mergeable;
+}
+
+/** GitHub reports a review-only block as `blocked`; an unreadable ruleset is not bypassable, so the merge gates. */
+async function reviewBypassable(port: GitHubPort, repo: RepoSlug, pr: PullRequest): Promise<boolean> {
+  if (pr.mergeableState !== "blocked") return false;
+  try {
+    return await port.reviewRulesBypassable(repo, pr.baseRef);
+  } catch {
+    return false;
+  }
 }
 
 interface Observed {
@@ -139,11 +150,12 @@ interface Observed {
 /** Every fact is read from GitHub or the run's own step outputs, never from the reviewer's text. */
 export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<Observed> {
   const pr = await port.getPr(input.repo, input.pr);
-  const [required, runs, paths, frozen] = await Promise.all([
+  const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
     prPaths(port, input.repo, input.pr),
     isFrozen(input.repo),
+    reviewBypassable(port, input.repo, pr),
   ]);
   const merge: MergeFacts = {
     head: input.head,
@@ -153,7 +165,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     requiredContexts: required.readable ? required.checks.contexts : [],
     allowedApps: [...ALLOWED_CHECK_APPS],
     checkRuns: runs.map(runFact),
-    mergeTreeClean: mergeTreeClean(pr, input.head),
+    mergeTreeClean: mergeTreeClean(pr, input.head, bypassable),
     repoFrozen: frozen,
     changedPaths: paths,
     seatGrants: input.seatGrants,
