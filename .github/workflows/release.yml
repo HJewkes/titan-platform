@@ -2,11 +2,15 @@ name: Release
 
 # Changesets flow: every merge to main either refreshes the "Version Packages" PR
 # (when changesets are pending) or, once that PR is merged, publishes the bumped
-# packages to npm. Publishing authenticates through npm trusted publishing (OIDC),
-# so no NPM_TOKEN secret exists; each package needs a trusted publisher on
-# npmjs.com pointing at this repo and this workflow file. npm will not accept one for a
+# packages to npm. The workflow is not token-free: a GitHub App installation token
+# pushes the release branch and opens the PR, because pushes made with GITHUB_TOKEN
+# start no workflows and the required checks would never run. The App's commits are
+# also attributed to the App, which the ruleset's unattributed-change rule needs.
+# npm publishing still authenticates through trusted publishing (OIDC), so no
+# NPM_TOKEN secret exists; each package needs a trusted publisher on npmjs.com
+# pointing at this repo and this workflow file. npm will not accept one for a
 # package it has never seen, so a brand-new package's first version is published once
-# by hand from the owner's own terminal (see CLAUDE.md). Keep this workflow token-free.
+# by hand from the owner's own terminal (see CLAUDE.md). Setup: site/guides/autonomous-loop-setup.md.
 on:
   push:
     branches: [main]
@@ -23,9 +27,16 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -47,5 +58,6 @@ jobs:
           publish: pnpm release
           title: "Version Packages"
           commit: "Version packages"
+          commitMode: github-api
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
