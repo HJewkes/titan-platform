@@ -70,6 +70,7 @@ const RegisterArgs = z
     implementer: z.string().min(1),
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
+    slice: z.string().min(1).optional(),
     policy: RequestedPolicySchema.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] });
@@ -107,7 +108,7 @@ async function headBranch(services: ShepherdServices, args: RegisterArgs): Promi
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
-  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind });
+  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: args.slice });
   if (args.pr !== undefined && existing.pr === null) store.setPr(runId, args.pr);
   return { runId, created: false, registration: store.byRun(runId)! };
 }
