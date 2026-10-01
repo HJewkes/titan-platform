@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { CLIENT_HEADER, silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
+import { openFactoryHost } from "../host.js";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { H1, REPO } from "../test-support/land.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
@@ -68,6 +70,19 @@ async function cli(argv: string[], fixture: ShepherdFixture): Promise<{ code: nu
   return { code, out, err };
 }
 
+/** Leaves a registration in the database file whose run failed, the way a timed-out ci-wait would. */
+async function seedFailedRegistration(fixture: ShepherdFixture, dbPath: string): Promise<string> {
+  const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+  try {
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1", after: "not json" });
+    await host.runtime.wait(runId);
+    fixture.routes.shepherd!.store.get().register({ repo: REPO, pr: 1, branch: BRANCH, runId, task: "demo/T-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    return runId;
+  } finally {
+    host.close();
+  }
+}
+
 const register = { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" };
 
 describe("shepherd surfaces on titan-factory serve", () => {
@@ -110,6 +125,20 @@ describe("titan-factory shepherd with no server", () => {
     expect(first.code).toBe(0);
     expect(JSON.parse(second.out)).toMatchObject({ runId: JSON.parse(first.out).runId, created: false });
     expect(list.out).toMatch(new RegExp(`^${REPO}#1 `));
+  });
+
+  it("register --json carries previousRunId when it replaces a failed run", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const dbPath = dbFile();
+    const failedRunId = await seedFailedRegistration(fixture, dbPath);
+    const port = String(await deadPort());
+
+    const result = await cli(["--db", dbPath, "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--json", "--port", port], fixture);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out)).toMatchObject({ created: true, previousRunId: failedRunId });
+    expect(JSON.parse(result.out).runId).not.toBe(failedRunId);
   });
 
   it("refuses a malformed ref with a usage error", async () => {
