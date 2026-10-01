@@ -14,6 +14,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -78,7 +79,7 @@ function stepIds(host: FactoryHost, runId: string): string[] {
 
 async function approve(host: FactoryHost, runId: string, headSha: string, iteration = 0): Promise<void> {
   await gateOpened(host, gateId(runId, "approve-merge", iteration));
-  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha });
+  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha }, OWNER);
 }
 
 async function approveAndFinish(host: FactoryHost, runId: string, headSha: string): Promise<void> {
@@ -114,7 +115,7 @@ describe("shepherd-pr", () => {
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
     w.store.hold(runId, "owner wants a look");
-    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
     await sleep(100, new AbortController().signal);
     const whileHeld = { merges: w.fake.effects.merge, status: w.host.runtime.status(runId)?.status };
@@ -237,7 +238,7 @@ describe("shepherd-pr", () => {
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
-    w.host.runtime.signal(runId, "sh-sent-back", { decision: "abandon" });
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "abandon" }, OWNER);
     await w.host.runtime.wait(runId);
 
     expect(wakes.map((request) => request.kind)).toEqual([wake]);
@@ -253,7 +254,7 @@ describe("shepherd-pr", () => {
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
-    w.host.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" });
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" }, OWNER);
     w.fake.pushHead(1, H2);
     await approveAndFinish(w.host, runId, H2);
 

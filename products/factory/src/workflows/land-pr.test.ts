@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
+import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];
@@ -32,7 +33,7 @@ function stepIds(host: FactoryHost, runId: string): string[] {
 
 async function approveAndFinish(host: FactoryHost, runId: string, headSha: string, iteration = 0): Promise<void> {
   await gateOpened(host, gateId(runId, "approve-merge", iteration));
-  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha });
+  host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha }, OWNER);
   await host.runtime.wait(runId);
 }
 
@@ -53,7 +54,7 @@ describe("land-pr", () => {
 
     await gateOpened(host, gateId(runId, "ci-failed"));
     const rerunsBeforeAnswer = fake.effects.rerunFailedJobs;
-    host.runtime.signal(runId, "ci-failed", { decision: "rerun", headSha: H1 });
+    host.runtime.signal(runId, "ci-failed", { decision: "rerun", headSha: H1 }, OWNER);
     await approveAndFinish(host, runId, H1);
 
     expect(rerunsBeforeAnswer).toBe(1);
@@ -71,7 +72,7 @@ describe("land-pr", () => {
     await gateOpened(host, gateId(runId, "ci-failed"));
     expect(host.gates.get(gateId(runId, "ci-failed"))?.prompt).toContain(`validate (failure) ${run(1, "failure").url}`);
     awaiting = true;
-    host.runtime.signal(runId, "ci-failed", { decision: "await-fix", headSha: H1 });
+    host.runtime.signal(runId, "ci-failed", { decision: "await-fix", headSha: H1 }, OWNER);
     await approveAndFinish(host, runId, H2);
 
     expect(polls).toBeGreaterThanOrEqual(4);
@@ -89,10 +90,10 @@ describe("land-pr", () => {
     await gateOpened(host, gateId(runId, "approve-merge"));
 
     approved = true;
-    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await gateOpened(host, gateId(runId, "approve-merge", 1));
     const mergesBeforeSecondApproval = fake.effects.merge;
-    const reuseOldApproval = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 });
+    const reuseOldApproval = () => host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
 
     expect(reuseOldApproval).toThrow(`headSha: expected "${H2}"`);
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(H2);
@@ -105,11 +106,11 @@ describe("land-pr", () => {
     const { host, fake, runId } = landPrWorld(() => run(1, "failure"));
     await gateOpened(host, gateId(runId, "ci-failed"));
 
-    const staleAnswer = () => host.runtime.signal(runId, "ci-failed", { decision: "rerun", headSha: H2 });
+    const staleAnswer = () => host.runtime.signal(runId, "ci-failed", { decision: "rerun", headSha: H2 }, OWNER);
 
     expect(staleAnswer).toThrow(`headSha: expected "${H1}"`);
     expect(host.gates.get(gateId(runId, "ci-failed"))?.status).toBe("pending");
-    host.runtime.signal(runId, "ci-failed", { decision: "abandon", headSha: H1 });
+    host.runtime.signal(runId, "ci-failed", { decision: "abandon", headSha: H1 }, OWNER);
     expect((await host.runtime.wait(runId)).status).toBe("completed");
     expect(fake.effects).toMatchObject({ rerunFailedJobs: 0, merge: 0 });
   });
