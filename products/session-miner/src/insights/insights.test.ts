@@ -85,8 +85,12 @@ describe.each(INSIGHT_QUESTIONS.map((q) => [q.id, q] as const))("insights questi
     expect((await ask(question.name, ["--since", "2026-09-10T03:45:00+02:00", "--until", FIXTURE_WINDOW.until])).answer.totals.sessions).toBe(2);
   });
 
-  it.each([["--since"], ["--until"]])("refuses an unparseable %s with a usage error", async (flag) => {
-    const { code, stdout } = await cli(["--json", "insights", question.name, flag, "garbage"]);
+  it.each([
+    ["--since", "garbage"],
+    ["--until", "garbage"],
+    ["--until", "2026-13-45"],
+  ])("refuses %s %s with a usage error", async (flag, value) => {
+    const { code, stdout } = await cli(["--json", "insights", question.name, flag, value]);
 
     expect(code).toBe(64);
     expect(JSON.parse(stdout)).toMatchObject({ ok: false });
