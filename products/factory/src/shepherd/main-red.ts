@@ -75,8 +75,9 @@ export const FreezeResult = z.looseObject({
   episode: z.number().nullable(),
 });
 
-export const FixTaskResult = z.looseObject({ task: z.string().nullable(), detail: z.string() });
-export const FixerResult = z.looseObject({ fixer: z.string().nullable(), detail: z.string() });
+/** `thawed` means the episode ended while the step ran, so there is nothing left to gate on. */
+export const FixTaskResult = z.looseObject({ task: z.string().nullable(), thawed: z.boolean(), detail: z.string() });
+export const FixerResult = z.looseObject({ fixer: z.string().nullable(), thawed: z.boolean(), detail: z.string() });
 /** `frozen` is whether the repo is still frozen after the step. */
 export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), episode: z.number().nullable(), detail: z.string() });
 
@@ -87,8 +88,8 @@ export interface RedInput {
   runId: string;
 }
 
-/** The episode the gate opened for; a thaw of any other episode is refused. */
-export interface ThawInput extends RedInput {
+/** The episode `sh-freeze` returned; a step that finds another episode live writes nothing. */
+export interface EpisodeInput extends RedInput {
   episode: number | null;
 }
 
@@ -98,6 +99,7 @@ export interface FixerInput {
   task: string;
   /** The run's policy grant; false means notify only. */
   fixer: boolean;
+  episode: number | null;
 }
 
 /** `again` when the live freeze already has a fixer, so this red came from the fixer's own merge or through it, and the owner decides. */
@@ -159,22 +161,28 @@ async function fixTaskFields(deps: ShepherdDeps, input: RedInput, key: string, f
   return { title: `main red on ${input.repo} at ${short}: ${jobs}`.slice(0, 200), severity: "high", done_when: `Main CI on ${input.repo} is green at a commit after ${short}.`, tags: ["shepherd", "main-red", key], notes };
 }
 
+const noTask = (detail: string, thawed = false): z.infer<typeof FixTaskResult> => ({ task: null, thawed, detail });
+
 /** One task per episode: the freeze row's task is reused, and an add that landed before a crash is found again by its key tag. */
-export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: RedInput, signal: AbortSignal): Promise<z.infer<typeof FixTaskResult>> {
-  const live = wiring?.freezes().get(input.repo);
-  if (!wiring || !live) return { task: null, detail: "the repo is not frozen" };
-  if (live.fixTask !== null) return { task: live.fixTask, detail: "this episode already has its fix task" };
+export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: EpisodeInput, signal: AbortSignal): Promise<z.infer<typeof FixTaskResult>> {
+  const live = wiring?.freezes().live(input.repo, input.episode);
+  if (!wiring || !live) return noTask(THAWED, true);
+  if (live.fixTask !== null) return { task: live.fixTask, thawed: false, detail: "this episode already has its fix task" };
   const tasks = wiring.tasks;
-  if (!tasks) return { task: null, detail: "no active-work port is wired" };
+  if (!tasks) return noTask("no active-work port is wired");
   const named = initiativeOf(deps.store.get().byRun(input.runId)?.task);
   const initiative = named ?? DEFAULT_FIX_INITIATIVE;
   const key = mainRedKey(input.repo, input.mergeSha);
   const fields = await fixTaskFields(deps, input, key, named === undefined);
-  const id = await patiently(deps, signal, async () => (await tasks.findByTag(initiative, key)) ?? (await tasks.add(initiative, fields)));
-  if ("error" in id) return { task: null, detail: `active-work did not take the fix task: ${id.error}` };
+  const id = await patiently(deps, signal, async () => {
+    if (!wiring.freezes().live(input.repo, input.episode)) return undefined;
+    return (await tasks.findByTag(initiative, key)) ?? (await tasks.add(initiative, fields));
+  });
+  if ("error" in id) return noTask(`active-work did not take the fix task: ${id.error}`);
+  if (id.value === undefined) return noTask(THAWED, true);
   const task = `${initiative}/${id.value}`;
-  wiring.freezes().setFixTask(input.repo, task);
-  return { task, detail: "filed" };
+  if (!wiring.freezes().setFixTask(input.repo, live.episode, task)) return { task, thawed: true, detail: `${THAWED} after ${task} was filed` };
+  return { task, thawed: false, detail: "filed" };
 }
 
 function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[], log: string): string {
@@ -188,14 +196,16 @@ function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[
 
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
 
-const noFixer = (detail: string): z.infer<typeof FixerResult> => ({ fixer: null, detail });
+const THAWED = "the episode thawed while the step ran";
+
+const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> => ({ fixer: null, thawed, detail });
 
 /** One fixer per episode: the freeze row's fixer is reused, and a name already on the roster is never spawned twice. */
 export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: FixerInput, signal: AbortSignal): Promise<z.infer<typeof FixerResult>> {
   if (!input.fixer) return noFixer("notify only: the policy grants no fixer");
-  const live = wiring?.freezes().get(input.repo);
-  if (!wiring || !live) return noFixer("the repo is not frozen");
-  if (live.fixer !== null) return { fixer: live.fixer, detail: "this episode already has its fixer" };
+  const live = wiring?.freezes().live(input.repo, input.episode);
+  if (!wiring || !live) return noFixer(THAWED, true);
+  if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };
   const fixers = wiring.fixers;
   if (!fixers) return noFixer("no agent-chat is configured to spawn a fixer");
   const checkout = resolveCheckout(input.repo, (wiring.checkoutFor ?? seatCheckout())(input.repo), wiring.home);
@@ -204,11 +214,14 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
   const { failing, log } = await failingLogs(deps.port, input.repo, input.mergeSha);
   const brief = fixerBrief(name, input, failing, log);
   const spawned = await patiently(deps, signal, async () => {
+    if (!wiring.freezes().live(input.repo, input.episode)) return false;
     if (!(await fixers.roster()).some((row) => row.name === name)) await fixers.spawn(name, brief, checkout.dir);
+    return true;
   }, brokerDown);
   if ("error" in spawned) return noFixer(`spawning ${name} failed: ${spawned.error}`);
-  wiring.freezes().setFixer(input.repo, name);
-  return { fixer: name, detail: "spawned" };
+  if (!spawned.value) return noFixer(THAWED, true);
+  if (!wiring.freezes().setFixer(input.repo, live.episode, name)) return { fixer: name, thawed: true, detail: `${THAWED} after ${name} was spawned` };
+  return { fixer: name, thawed: false, detail: "spawned" };
 }
 
 /** A green merge clears the freeze only if it descends from the red sha and re-ran green every check that was red there. */
@@ -231,9 +244,9 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
 export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefined): StepRoute[] {
   return [
     codeRoute("sh-freeze", deps.now, async (input: RedInput) => freezeStep(wiring, input)),
-    codeRoute("sh-file-fix-task", deps.now, (input: RedInput, signal) => fileFixTask(deps, wiring, input, signal)),
+    codeRoute("sh-file-fix-task", deps.now, (input: EpisodeInput, signal) => fileFixTask(deps, wiring, input, signal)),
     codeRoute("sh-spawn-fixer", deps.now, (input: FixerInput, signal) => spawnFixer(deps, wiring, input, signal)),
     codeRoute("sh-unfreeze", deps.now, (input: RedInput) => unfreezeStep(deps, wiring, input)),
-    codeRoute("sh-thaw", deps.now, async (input: ThawInput) => ({ thawed: input.episode !== null && (wiring?.freezes().release(input.repo, input.episode) ?? false) })),
+    codeRoute("sh-thaw", deps.now, async (input: EpisodeInput) => ({ thawed: input.episode !== null && (wiring?.freezes().release(input.repo, input.episode) ?? false) })),
   ];
 }

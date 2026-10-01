@@ -110,6 +110,11 @@ happens next depends on the verdict (`products/factory/src/shepherd/post-merge.t
    register its fix pull request with the fix task and with itself as `--implementer`. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
 
+Both steps write only to the episode `sh-freeze` returned. If the repo thaws while a step
+waits, the step files or spawns nothing more, records nothing, and the run moves on to
+cleanup without a gate. That holds even if a new red has frozen the repo again. A fixer
+already spawned by then is reported in the step's detail and keeps running.
+
 While the repo is frozen, every merge route waits in `merging`, the same way a hold does.
 One pull request is exempt: the one whose registration names the episode's fix task and
 the episode's fixer as its implementer. The guard also re-reads the default branch at most

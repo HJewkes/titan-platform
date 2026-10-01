@@ -96,8 +96,8 @@ describe("the frozen-merge guard", () => {
   it("lets only the fix task's PR through a freeze", async () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
-    r.freezes.setFixer(A, "impl");
+    r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.setFixer(A, 1, "impl");
     const fix = openPr(r, A, "demo/fix");
     const other = openPr(r, A, "demo/other");
 
@@ -231,7 +231,7 @@ describe("the freeze store", () => {
   it("counts a later red sha in a live freeze and starts a new episode after a thaw", () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
+    r.freezes.setFixTask(A, 1, "demo/fix");
 
     const second = r.freezes.freeze(A, fakeSha("red2"));
     r.freezes.unfreeze(A, GREEN);
@@ -267,8 +267,8 @@ describe("the freeze store", () => {
   it("refuses to unfreeze at the red sha and reports the fix task and fixer", () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
-    r.freezes.setFixer(A, "fixer-1");
+    r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.setFixer(A, 1, "fixer-1");
 
     expect(r.freezes.unfreeze(A, RED)).toBe(false);
     expect(r.freezes.exemptTask(A)).toBe("demo/fix");
@@ -278,8 +278,17 @@ describe("the freeze store", () => {
     expect(r.freezes.exemptTask(A)).toBeUndefined();
   });
 
-  it("refuses to name a fix task for a repo that is not frozen", () => {
-    expect(() => rig().freezes.setFixTask(A, "demo/fix")).toThrow(/not frozen/);
+  it("refuses to name a fix task for a repo that is not frozen, or for an episode that has thawed", () => {
+    const r = rig();
+    const unfrozen = r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.freeze(A, RED);
+    r.freezes.unfreeze(A, GREEN);
+    r.freezes.freeze(A, fakeSha("red2"));
+
+    const stale = r.freezes.setFixer(A, 1, "old-fixer");
+
+    expect([unfrozen, stale]).toEqual([false, false]);
+    expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixTask: null, fixer: null });
   });
 });
 

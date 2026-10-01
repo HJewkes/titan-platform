@@ -249,8 +249,8 @@ async function registeredToMerge(w: ReturnType<typeof shepherdWorld>, task: stri
 function frozenWithFixer(w: ReturnType<typeof shepherdWorld>): void {
   const freezes = w.freezes();
   freezes.freeze(REPO, EARLIER_RED);
-  freezes.setFixTask(REPO, "demo/FX-1");
-  freezes.setFixer(REPO, FIXER);
+  freezes.setFixTask(REPO, 1, "demo/FX-1");
+  freezes.setFixer(REPO, 1, FIXER);
 }
 
 describe("shepherd-pr on a red main", () => {
@@ -265,6 +265,23 @@ describe("shepherd-pr on a red main", () => {
     expect(ports.spawned).toHaveLength(1);
     expect(w.freezes().get(REPO)).toMatchObject({ fixTask: "demo/FX-1", fixer: ports.spawned[0] });
     expect(w.host.gates.listPending()).toEqual([]);
+  });
+
+  it("finishes and cleans up, gating nothing, when main goes green and thaws the repo while the fixer spawns", async () => {
+    const ports = mainRedPorts();
+    let thaw = (): void => undefined;
+    const fixers = ports.mainRed.fixers!;
+    const mainRed = { ...ports.mainRed, fixers: { ...fixers, spawn: async (name: string, brief: string, cwd: string) => (thaw(), fixers.spawn(name, brief, cwd)) } };
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, mainRed);
+    thaw = () => void w.freezes().unfreeze(REPO, fakeSha("green"));
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)!.status).toBe("completed");
+    expect(stepIds(w, runId)).toContain("sh-cleanup");
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
   it("opens main-red-again on a red at the fixer's own merge, spawns no second fixer, and thaws on the owner's word", async () => {
@@ -328,8 +345,8 @@ describe("shepherd-pr on a red main", () => {
     const freezes = w.freezes();
     freezes.unfreeze(REPO, fakeSha("hand-fix"));
     freezes.freeze(REPO, EARLIER_RED);
-    freezes.setFixTask(REPO, "demo/FX-2");
-    freezes.setFixer(REPO, FIXER);
+    freezes.setFixTask(REPO, 2, "demo/FX-2");
+    freezes.setFixer(REPO, 2, FIXER);
 
     w.host.runtime.signal(runId, "main-frozen", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
     await w.host.runtime.wait(runId);

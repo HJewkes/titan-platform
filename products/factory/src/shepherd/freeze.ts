@@ -67,12 +67,19 @@ export class FreezeStore {
     return this.active(repo)!;
   }
 
-  setFixTask(repo: RepoSlug, id: string): void {
-    this.setField(repo, "fix_task", id);
+  /** False when `episode` is no longer the live one, so a late step never writes into a later episode. */
+  setFixTask(repo: RepoSlug, episode: number, id: string): boolean {
+    return this.setField(repo, episode, "fix_task", id);
   }
 
-  setFixer(repo: RepoSlug, name: string): void {
-    this.setField(repo, "fixer", name);
+  setFixer(repo: RepoSlug, episode: number, name: string): boolean {
+    return this.setField(repo, episode, "fixer", name);
+  }
+
+  /** The live freeze, only while it is still `episode`. */
+  live(repo: RepoSlug, episode: number | null): Freeze | undefined {
+    const freeze = this.active(repo);
+    return freeze?.episode === episode ? freeze : undefined;
   }
 
   isFrozen(repo: RepoSlug): boolean {
@@ -102,9 +109,8 @@ export class FreezeStore {
       .run(new Date(this.now()).toISOString(), repoKey(repo), episode).changes > 0;
   }
 
-  private setField(repo: RepoSlug, column: "fix_task" | "fixer", value: string): void {
-    const changed = this.db.prepare(`UPDATE shepherd_freeze SET ${column} = ? WHERE repo = ? AND thawed_at IS NULL`).run(value, repoKey(repo)).changes;
-    if (changed === 0) throw new Error(`${repo} is not frozen`);
+  private setField(repo: RepoSlug, episode: number, column: "fix_task" | "fixer", value: string): boolean {
+    return this.db.prepare(`UPDATE shepherd_freeze SET ${column} = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL`).run(value, repoKey(repo), episode).changes > 0;
   }
 
   private row(repo: RepoSlug): Row | undefined {
@@ -202,7 +208,7 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
   };
 }
 
-/** Both halves come from Shepherd's own records, because any registration can name the fix task, even by re-registering. */
+/** The fixer half catches an honest PR on the fix task; `implementer` is caller-supplied, so this is no security boundary. */
 function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
   if (freeze.fixTask === null || freeze.fixer === null || registration === undefined) return false;
   return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;

@@ -1,13 +1,14 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BrokerUnavailableError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { bindAll } from "../workflows.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
 import { FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
-import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type MainRedWiring, type RedInput } from "./main-red.js";
+import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
@@ -59,8 +60,15 @@ function rig(): Rig {
   return { fake, deps, freezes, added, spawned, wiring };
 }
 
-const red: RedInput = { repo: REPO, pr: 1, mergeSha: RED, runId: RUN };
+const red: EpisodeInput = { repo: REPO, pr: 1, mergeSha: RED, runId: RUN, episode: 1 };
 const signal = new AbortController().signal;
+
+/** A thaw by the freeze guard's re-read of main, then a new red, as can land while a step waits. */
+function thawAndRefreeze(r: Rig): void {
+  if (r.freezes.get(REPO)?.episode !== 1) return;
+  r.freezes.unfreeze(REPO, LATER);
+  r.freezes.freeze(REPO, fakeSha("next-red"));
+}
 
 /** A wiring whose freeze store loses the first record of `method`, as a crash between the side effect and its record would. */
 function crashingOnce(r: Rig, method: "setFixTask" | "setFixer"): MainRedWiring {
@@ -119,10 +127,35 @@ describe("sh-file-fix-task", () => {
 
     expect(result.task).toBe("demo/FX-1");
   });
+
+  it("files nothing when the episode thaws and a new red freezes again while active-work is down", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const tasks = r.wiring.tasks!;
+    const down: FixTasks = { ...tasks, findByTag: async () => (thawAndRefreeze(r), Promise.reject(new Error("connect ECONNREFUSED"))) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, tasks: down }, red, signal);
+
+    expect(result).toMatchObject({ task: null, thawed: true });
+    expect(r.added).toEqual([]);
+    expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixTask: null });
+  });
+
+  it("records nothing on a later episode when the episode thaws while the add is in flight", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const tasks = r.wiring.tasks!;
+    const slow: FixTasks = { ...tasks, add: async (...args) => (thawAndRefreeze(r), tasks.add(...args)) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, tasks: slow }, red, signal);
+
+    expect(result).toMatchObject({ task: "demo/FX-1", thawed: true });
+    expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixTask: null });
+  });
 });
 
 describe("sh-spawn-fixer", () => {
-  const fixer = { repo: REPO, mergeSha: RED, task: "demo/FX-1", fixer: true };
+  const fixer = { repo: REPO, mergeSha: RED, task: "demo/FX-1", fixer: true, episode: 1 };
 
   it("spawns one fixer per episode, even for a second red sha in the same episode", async () => {
     const r = rig();
@@ -160,6 +193,30 @@ describe("sh-spawn-fixer", () => {
     expect(brief).toContain("task `demo/FX-1`");
   });
 
+  it("spawns nothing when the episode thaws and a new red freezes again while the broker is down", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const down: FixerAgents = { ...r.wiring.fixers!, roster: async () => (thawAndRefreeze(r), Promise.reject(new BrokerUnavailableError("broker down"))) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: down }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: null, thawed: true });
+    expect(r.spawned).toEqual([]);
+    expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixer: null });
+  });
+
+  it("does not exempt the old fixer on a later episode when the episode thaws during the spawn", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    const slow: FixerAgents = { ...fixers, spawn: async (...args) => (thawAndRefreeze(r), fixers.spawn(...args)) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: slow }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), thawed: true });
+    expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixer: null });
+  });
+
   it("spawns nothing when the policy grants no fixer", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
@@ -177,7 +234,7 @@ describe("sh-freeze", () => {
 
     const first = freezeStep(r.wiring, red);
     const replay = freezeStep(r.wiring, red);
-    r.freezes.setFixer(REPO, "fix-widget-aaaaaaa");
+    r.freezes.setFixer(REPO, 1, "fix-widget-aaaaaaa");
     const second = freezeStep(r.wiring, { repo: REPO, mergeSha: LATER });
 
     expect([first.state, replay.state, second.state]).toEqual(["new", "new", "again"]);
@@ -231,8 +288,8 @@ describe("the freeze exemption", () => {
   it("lets a PR registered on the fix task through only when its implementer is the episode's fixer", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
-    r.freezes.setFixTask(REPO, "demo/FX-1");
-    r.freezes.setFixer(REPO, "fix-widget-aaaaaaa");
+    r.freezes.setFixTask(REPO, 1, "demo/FX-1");
+    r.freezes.setFixer(REPO, 1, "fix-widget-aaaaaaa");
     const store = r.deps.store.get();
     store.register({ repo: REPO, pr: 2, runId: "run-2", task: "demo/FX-1", implementer: "someone-else", policy: OWNER_GATE_POLICY });
     store.register({ repo: REPO, pr: 3, runId: "run-3", task: "demo/FX-1", implementer: "fix-widget-aaaaaaa", policy: OWNER_GATE_POLICY });

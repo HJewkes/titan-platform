@@ -5,7 +5,7 @@ import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
-import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type ThawInput } from "./main-red.js";
+import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
@@ -77,10 +77,11 @@ async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, de
   const episode = { ...red, episode: frozen.episode };
   if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
   if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, red.mergeSha);
-  const filed = await step(ctx, "sh-file-fix-task", red, FixTaskResult);
+  const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
+  if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
-  const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer }, FixerResult);
-  if (spawned.fixer === null) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
+  const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer, episode: frozen.episode }, FixerResult);
+  if (spawned.fixer === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
 const NO_FIXER_EXIT = "No PR is exempt from the freeze, so nothing Shepherd merges can clear it. Stay frozen until a green head on main thaws it, or unfreeze now?";
@@ -96,7 +97,7 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
 const FrozenAnswer = z.object({ decision: z.enum(["stay-frozen", "unfreeze"]), mergeSha: z.string() });
 
 /** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
-async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: ThawInput, prompt: string): Promise<void> {
+async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
   const answer = FrozenAnswer.parse((await ctx.assisted(gate, prompt, { schema: FrozenAnswer })).data);
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
