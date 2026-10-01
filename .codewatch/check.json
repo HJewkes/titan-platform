@@ -46,7 +46,8 @@
           "packages/style-checker",
           "packages/code-read",
           "packages/session-analytics",
-          "packages/queue-mirror"
+          "packages/queue-mirror",
+          "packages/decider"
         ],
         "ui": [
           "packages/react-app"
@@ -101,7 +102,8 @@
           "packages/style-checker",
           "packages/code-read",
           "packages/session-analytics",
-          "packages/queue-mirror"
+          "packages/queue-mirror",
+          "packages/decider"
         ],
         [
           "packages/react-app"
