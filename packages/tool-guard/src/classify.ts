@@ -1,5 +1,8 @@
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
+import { egress } from "./families/egress.js";
+import { merge } from "./families/merge.js";
+import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { scriptTarget } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -10,7 +13,7 @@ import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
-const FAMILIES: readonly Family[] = [secret, config];
+const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
 
 /**
  * What an event would do. Pure: the filesystem is reached only through `ctx`. Throws the
@@ -25,9 +28,11 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
+  let line = ctx;
   for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
-    out.push(...classifySimple(cmd, ctx));
-    if (followScripts) out.push(...scriptActions(cmd, ctx));
+    out.push(...classifySimple(cmd, line));
+    if (followScripts) out.push(...scriptActions(cmd, line));
+    line = FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
   }
   return unique(out);
 }

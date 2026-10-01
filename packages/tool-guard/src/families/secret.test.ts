@@ -7,7 +7,7 @@ const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 
 function fakeContext(links: Record<string, string> = {}, scripts: Record<string, string> = {}): ClassifyContext {
-  return { home: HOME, readLink: (p) => links[p] ?? null, readScript: (p) => scripts[p] ?? null };
+  return { home: HOME, readLink: (p) => links[p] ?? null, readHead: () => null, readScript: (p) => scripts[p] ?? null };
 }
 
 const meta = (toolName: string, cwd: string | null = REPO) => ({ toolName, cwd, sessionId: null, toolUseId: null });
@@ -180,6 +180,7 @@ describe("unknowns are treated conservatively", () => {
       readLink: () => {
         throw new Error("EACCES");
       },
+      readHead: () => null,
       readScript: () => {
         throw new Error("EACCES");
       },

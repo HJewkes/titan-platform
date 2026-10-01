@@ -7,6 +7,8 @@ export interface ClassifyContext {
   home: string;
   /** Realpath of an existing path, null when it does not exist. */
   readLink(path: string): string | null;
+  /** Current branch of the checkout at `dir`, null when detached or not a checkout. */
+  readHead(dir: string): string | null;
   /** Text of a script run by path, null when it cannot be read. */
   readScript(path: string): string | null;
 }
@@ -29,4 +31,6 @@ export interface Family {
   bash?(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[];
   read?(event: ReadEvent, ctx: ClassifyContext): ClassifiedAction[];
   write?(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[];
+  /** The context later commands on the same line see, when `cmd` changes it; undefined leaves it as it is. */
+  after?(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined;
 }
