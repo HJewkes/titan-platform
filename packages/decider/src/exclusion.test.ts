@@ -47,6 +47,24 @@ describe("isExcluded", () => {
     expect(isExcluded(subject({ question: "Rename Zorblatter?" }), POLICY).excluded).toBe(false);
   });
 
+  it("matches a string pattern that starts with @", () => {
+    const policy = { ...POLICY, personalDataPatterns: ["@zorblat"] };
+
+    expect(isExcluded(subject({ answer: "ping @zorblat" }), policy).excluded).toBe(true);
+  });
+
+  it("matches a string pattern that starts with +", () => {
+    const policy = { ...POLICY, personalDataPatterns: ["+44 7700 900123"] };
+
+    expect(isExcluded(subject({ answer: "call +44 7700 900123" }), policy).excluded).toBe(true);
+  });
+
+  it("does not match an edge-punctuated pattern inside a longer word", () => {
+    const policy = { ...POLICY, personalDataPatterns: ["@zorblat"] };
+
+    expect(isExcluded(subject({ answer: "mail me@zorblatter" }), policy).excluded).toBe(false);
+  });
+
   it("checks option labels against regex patterns", () => {
     const verdict = isExcluded(subject({ options: [{ label: "Attach the payslip" }] }), POLICY);
 

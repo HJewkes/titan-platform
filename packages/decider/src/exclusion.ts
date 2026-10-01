@@ -49,8 +49,9 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Lookarounds instead of \b, so a pattern that starts or ends with "@" or "+" still matches. */
 function toPattern(pattern: string | RegExp): RegExp {
-  return typeof pattern === "string" ? new RegExp(`\\b${escapeRegExp(pattern)}\\b`, "i") : pattern;
+  return typeof pattern === "string" ? new RegExp(`(?<!\\w)${escapeRegExp(pattern)}(?!\\w)`, "i") : pattern;
 }
 
 function mentionsPersonalData(subject: ExclusionSubject, patterns: ExclusionPolicy["personalDataPatterns"]): boolean {
