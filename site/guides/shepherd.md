@@ -78,12 +78,59 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
 | `merging` | merging the approved head; a held pull request waits here |
-| `post-merge` | reading main CI on the merge commit, for up to 60 minutes |
+| `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
-A red or unread main after the merge opens the `main-red` gate. The owner acknowledges it
-with `{"decision":"acknowledged","mergeSha":"<merge sha>"}`. Shepherd runs no deploy,
-release or activation stage and does not run the factory's `postMerge` chore.
+Shepherd runs no deploy, release or activation stage and does not run the factory's
+`postMerge` chore.
+
+## After the merge {#after-the-merge}
+
+The `sh-main-ci` step reads main CI on the merge commit once, for up to 60 minutes. What
+happens next depends on the verdict (`products/factory/src/shepherd/post-merge.ts` and
+`main-red.ts`).
+
+**Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
+
+**Red.** The run freezes the repo, then works through three steps:
+
+1. `sh-freeze` freezes the repo at the merge sha. A freeze is one row per repo; a red in a
+   live freeze counts up, and a red after a thaw starts a new episode.
+2. `sh-file-fix-task` files one high-severity active-work task per episode, over
+   active-work's loopback rpc (`127.0.0.1:$AW_PORT`, default 7400). The task goes into the
+   initiative of the merged pull request's `--task` when that reads `<initiative>/<id>`, and
+   into `titan-platform` otherwise. It carries the failing jobs and their fenced log tails,
+   and is tagged with a key built from the repo and the merge sha, so a replay after a crash
+   finds it instead of filing a second one. A daemon that is down is retried for up to 60
+   minutes.
+3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
+   grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
+   fixer is an agent-chat agent on the `implementer` profile, named
+   `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
+   register its fix pull request with the fix task and with itself as `--implementer`. It
+   needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
+
+While the repo is frozen, every merge route waits in `merging`, the same way a hold does.
+One pull request is exempt: the one whose registration names the episode's fix task and
+the episode's fixer as its implementer. The guard also re-reads the default branch at most
+every five minutes, and a green head there thaws the repo.
+
+**Green.** `sh-unfreeze` thaws a frozen repo when the merge commit descends from the red sha
+and every check that was red there ran green again. A path filter that skips a red check
+therefore cannot thaw it.
+
+Every outcome that leaves the repo frozen with nothing in place to clear it opens a gate
+with the owner's release on offer:
+
+- `main-red-again`: main went red while the episode already had a fixer, the fixer's own
+  merge included. No second fixer is spawned.
+- `main-frozen`: no fix task was filed, no fixer was spawned (notify-only policy, no
+  agent-chat, no checkout, or a failed spawn), or a green merge left the repo frozen.
+
+The answer is `{"decision":"stay-frozen"|"unfreeze","mergeSha":"<merge sha>"}`. `unfreeze`
+thaws only the episode the gate opened for. If the repo has thawed and frozen again since,
+the answer changes nothing. Each run opens its own gate, so one episode can leave several
+open; answer any one with `unfreeze` and the rest go stale.
 
 ## Watch
 
@@ -212,7 +259,9 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | the branch is still behind after three updates | `{"decision":"retry"\|"abandon"}` |
 | `sh-sent-back` | a review sent the head back and no agent took the wake | `{"decision":"await-new-head"\|"abandon"}` |
-| `main-red` | main CI on the merge commit is red or unread | `{"decision":"acknowledged","mergeSha":"…"}` |
+| `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
+| `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
+| `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 
 `titan-factory resume` and the `factory.gates` command print the exact resolve command for
 each open gate.
@@ -253,8 +302,8 @@ produced the locator keeps that key order, so a re-serialized copy may not match
 
 ## What is not built yet
 
-The land core, the hold, the policy resolution, the gates and the post-merge main CI read
-all run today, and so does the review phase when it is configured. These parts are not built:
+The land core, the hold, the policy resolution, the gates, the post-merge main CI read and
+the freeze all run today, and so does the review phase when it is configured. These parts are not built:
 
 - **The review phase is opt-in.** With `shepherd.review` set (see the
   [config file](/guides/factory#the-config-file)), `reviewPhase` in
@@ -268,10 +317,10 @@ all run today, and so does the review phase when it is configured. These parts a
   `unhandled` to every request. No agent is woken for a red head, a conflict or a review
   send-back. A red head opens `ci-failed`. A conflicting head ends the run as `done`, with
   a `not-mergeable` outcome.
-- **The freeze store.** `isFrozen` is the stand-in `noFreezeStoreUntilTp523`, which answers
-  false for every repo (TP-523). Nothing can freeze a repo yet.
-- **The registration's agents.** `--implementer`, `--reviewer` and `--kind` are stored on
-  the registration. No shipped phase reads them.
+- **The registration's agents.** Only the freeze exemption reads `--implementer`.
+  `--reviewer` and `--kind` are stored on the registration, and no shipped phase reads
+  them. `register` accepts any `--implementer` string, so the exemption stops honest
+  mistakes, not a determined caller.
 - **Stall limits.** A run that waits a long time in one phase is not flagged.
 
 ## How it fails
