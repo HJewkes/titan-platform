@@ -372,7 +372,7 @@ describe("literal text piped into a shell", () => {
     ["tee", "echo git push | tee f | bash"],
     ["cat with no file", "echo git push | cat - | sh"],
     ["printf %.3s, truncated", "printf '%.3s push\\n' 'gitlab' | bash"],
-    ["printf %c", "printf '%c%c%c push' g i t | bash"],
+    ["printf %c, the first character", "printf '%c%c%c push' gx ix tx | bash"],
     ["printf width and precision from arguments", "printf '%*.*s push' 3 3 'gitx' | bash"],
   ])("runs the text of %s", (_how, src) => {
     expect(gitArgs(src).at(-1)).toEqual(["push"]);
