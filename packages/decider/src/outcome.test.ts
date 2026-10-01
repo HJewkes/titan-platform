@@ -79,8 +79,23 @@ describe("stripRecommended", () => {
     expect(stripRecommended(label)).toBe(expected);
   });
 
-  it("keeps a label whose own words start with recommend", () => {
-    expect(stripRecommended("Recommend the vendor to the team")).toBe("Recommend the vendor to the team");
+  it.each([
+    "Recommend the vendor to the team",
+    "Recommended-tier plan",
+    "Force push (not recommended)",
+    "Skip the check [unrecommended]",
+  ])("keeps %j, which carries no recommendation marker", (label) => {
+    expect(stripRecommended(label)).toBe(label);
+  });
+});
+
+describe("classifyOutcome with an option the asker advised against", () => {
+  const options = ["Force push (not recommended)", "Rebase onto main (Recommended)"];
+
+  it("calls picking it other, not accept", () => {
+    const outcome = classifyOutcome({ answer: options[0] ?? null, options, recommended: options[1] ?? null });
+
+    expect(outcome).toBe("other");
   });
 });
 

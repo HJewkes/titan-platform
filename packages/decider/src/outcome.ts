@@ -21,12 +21,10 @@ export interface OutcomeInput {
   pickType?: PickType;
 }
 
-/** Matches active-work v1 `recommendedOption`: any marker containing "recommend", bracketed or set off by a separator. */
-const RECOMMEND_MARKS = [
-  /[([{][^)\]}]*recommend[^)\]}]*[)\]}]/gi,
-  /^\s*recommend(?:ed)?\s*[:\-–—|]\s*/i,
-  /\s*[:\-–—|]\s*recommend(?:ed)?\s*$/i,
-];
+const BRACKETED = /\s*[([{]([^)\]}]*)[)\]}]/g;
+const PREFIX_MARK = /^\s*recommend(?:ed)?(?:\s*:|\s+[-–—|])\s*/i;
+const SUFFIX_MARK = /(?:\s*:|\s+[-–—|])\s*recommend(?:ed)?\s*$/i;
+const NEGATED = /\b(?:not|never|un|non|less)[\s-]*recommend|n't\s+recommend/i;
 const QUOTES: [string, string][] = [
   ['"', '"'],
   ["'", "'"],
@@ -34,9 +32,27 @@ const QUOTES: [string, string][] = [
   ["“", "”"],
 ];
 
+function squash(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function isPositiveMark(content: string): boolean {
+  return /recommend/i.test(content) && !NEGATED.test(content);
+}
+
+/**
+ * Removes the asker's recommendation marker: a bracketed group containing "recommend", or
+ * "Recommended" set off by a colon or a spaced dash as prefix or suffix. A negated marker
+ * ("not recommended") is not a recommendation and stays.
+ */
 export function stripRecommended(label: string): string {
-  const stripped = RECOMMEND_MARKS.reduce((text, mark) => text.replace(mark, " "), label);
-  return stripped.replace(/\s+/g, " ").trim();
+  const unbracketed = label.replace(BRACKETED, (group, content: string) => (isPositiveMark(content) ? " " : group));
+  return squash(unbracketed.replace(PREFIX_MARK, " ").replace(SUFFIX_MARK, " "));
+}
+
+/** The one definition of a recommended option: its label carries a marker `stripRecommended` removes. */
+export function isRecommendedLabel(label: string): boolean {
+  return stripRecommended(label) !== squash(label);
 }
 
 function normalize(text: string): string {

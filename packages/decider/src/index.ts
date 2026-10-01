@@ -17,7 +17,7 @@ export type {
   Prediction,
   Route,
 } from "./ledger.js";
-export { OUTCOMES, PICK_TYPES, classifyOutcome, stripRecommended } from "./outcome.js";
+export { OUTCOMES, PICK_TYPES, classifyOutcome, isRecommendedLabel, stripRecommended } from "./outcome.js";
 export type { Outcome, OutcomeInput, PickType } from "./outcome.js";
 export { initiativeForCwd, isExcluded } from "./exclusion.js";
 export type { ExclusionPolicy, ExclusionReason, ExclusionSubject, ExclusionVerdict } from "./exclusion.js";

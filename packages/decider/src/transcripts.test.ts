@@ -92,6 +92,21 @@ describe("transcript source", () => {
     expect(wrap).toMatchObject({ answer: null, outcome: null });
   });
 
+  it("records the real recommendation when an earlier option is marked not recommended", async () => {
+    const push: Question = {
+      header: "Branch",
+      question: "How should the widget branch catch up?",
+      options: [{ label: "Force push (not recommended)" }, { label: "Rebase onto main (Recommended)" }],
+    };
+    appendFileSync(file, ask("tu-push", [push]));
+    appendFileSync(file, result("tu-push", answered([[push.question, "Force push (not recommended)"]])));
+
+    await extract();
+
+    const row = store.get(`transcript:${SESSION}:tu-push`);
+    expect(row).toMatchObject({ recommended: "Rebase onto main", outcome: "other" });
+  });
+
   it("keys every question of a multi-question call apart", async () => {
     appendFileSync(file, ask("tu-both", [MERGE, WRAP]));
     appendFileSync(file, result("tu-both", answered([[MERGE_Q, "Hold"], [WRAP_Q, "Wrap the session (Recommended)"]])));

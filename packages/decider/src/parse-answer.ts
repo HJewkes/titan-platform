@@ -1,3 +1,5 @@
+import { isRecommendedLabel } from "./outcome.js";
+
 /**
  * Reading the human's answers out of an `AskUserQuestion` tool result, ported from
  * active-work's `src/precedent/parse-answer.ts`.
@@ -53,7 +55,7 @@ export function answerFor(answers: ReadonlyMap<string, string>, question: string
   return null;
 }
 
-/** The first option whose label carries a "recommend" marker, as the asker wrote it. */
+/** The first option whose label carries a recommendation marker, as the asker wrote it. */
 export function recommendedOption(options: readonly string[]): string | null {
-  return options.find((o) => o.toLowerCase().includes("recommend")) ?? null;
+  return options.find(isRecommendedLabel) ?? null;
 }

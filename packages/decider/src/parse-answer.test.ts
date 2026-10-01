@@ -30,4 +30,14 @@ describe("recommendedOption", () => {
   it("finds a marker anywhere in the label", () => {
     expect(recommendedOption(["Hold", "Recommended: Ship it"])).toBe("Recommended: Ship it");
   });
+
+  it("skips an option the asker advised against when it comes before the recommended one", () => {
+    const options = ["Force push (not recommended)", "Rebase onto main (Recommended)"];
+
+    expect(recommendedOption(options)).toBe("Rebase onto main (Recommended)");
+  });
+
+  it("finds none when a label's own words start with recommend", () => {
+    expect(recommendedOption(["Recommend the vendor to the team", "Hold"])).toBeNull();
+  });
 });
