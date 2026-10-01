@@ -1,0 +1,26 @@
+{
+  "schema": "titan.variant/v1",
+  "unit": {
+    "id": "summarize-note",
+    "version": "1.0.0"
+  },
+  "id": "single-pass",
+  "topology": {
+    "module": "topologies/single-agent.ts",
+    "export": "singleAgent",
+    "sourceSha256": "afb81c09bb02ba7d69a154b4cc65ff635c46e4760bc52e71da24725f919ae75d"
+  },
+  "steps": {
+    "summarize": {
+      "kind": "llm",
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "prompt": {
+        "path": "prompts/summarize.md",
+        "sha256": "e7a4a20e0062ff3f107e64626f6771611df076a7ce091f9851dc549cc9c7580d"
+      },
+      "maxBudgetUsd": 0.25
+    }
+  },
+  "notes": "Baseline: one model turn, no tools."
+}
