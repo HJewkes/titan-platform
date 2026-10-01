@@ -85,6 +85,48 @@ A red or unread main after the merge opens the `main-red` gate. The owner acknow
 with `{"decision":"acknowledged","mergeSha":"<merge sha>"}`. Shepherd runs no deploy,
 release or activation stage and does not run the factory's `postMerge` chore.
 
+## Routing a reviewed head {#routing}
+
+After the review of a green head, the `sh-observe` step reads the pull request again, and one
+table decides what happens next (`products/factory/src/shepherd/route-table.ts`). The table
+is keyed by three things: whether the pull request is still open, GitHub's
+`mergeable_state`, and what the review came to. Every cell has a route, and a test fails if
+one is missing.
+
+| State at `sh-observe` | `MERGE` | `FIX_FIRST` | no verdict, or the wait ran out | hold's reviewer has not answered |
+| --- | --- | --- | --- | --- |
+| `clean`, `blocked`, `unstable`, `has_hooks` | merge decision | wake the fixer | fresh reviewer | read the hold's reviewer again |
+| `behind` | update the branch, new round | wake the fixer | update the branch, new round | update the branch, new round |
+| `dirty` | wake the fixer | wake the fixer | wake the fixer | wake the fixer |
+| `unknown` | new round | wake the fixer | new round | new round |
+| `draft` | end the run | wake the fixer | end the run | end the run |
+
+A head that moved during the review always starts a new round, and the new head is reviewed.
+A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
+post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
+request of each run that is waiting on a gate. When that pull request was merged or closed
+elsewhere, the serve process cancels the run and its gate.
+
+A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
+resumed. A run held with a reason that names a reviewer (`…-review` or `…-review-rN`), or held
+with a `--reviewer` registered, starts no reviewer of its own. It takes the newest verdict
+that reviewer gave at the head, so a `FIX_FIRST` from it wakes the implementer.
+
+`approve-merge` opens for three reasons only, and its prompt names the reason:
+
+- `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
+  have Shepherd land the next resolved head, or `abandon`.
+- `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Each fresh reviewer,
+  each re-read of a hold's reviewer, and each `FIX_FIRST` counts as a failed round.
+- a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
+  `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
+
+A woken implementer must start a turn within 5 minutes: a new event in its transcript, or a
+new head. A live implementer is messaged through `agent-chat debug send`, and an ended one
+is resumed or replaced by a successor. If no turn starts, one fallback goes out: a resume if
+the agent has ended by then, else a second message. If there is still no turn, the wake is
+unhandled.
+
 ## Watch
 
 ```sh
@@ -208,14 +250,15 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 
 | Gate | Opens when | Payload |
 | --- | --- | --- |
-| `approve-merge` | a green head needs the owner | `{"decision":"merge"\|"abandon","headSha":"…"}` |
+| `approve-merge` | one of the [three reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | the branch is still behind after three updates | `{"decision":"retry"\|"abandon"}` |
 | `sh-sent-back` | a review sent the head back and no agent took the wake | `{"decision":"await-new-head"\|"abandon"}` |
 | `main-red` | main CI on the merge commit is red or unread | `{"decision":"acknowledged","mergeSha":"…"}` |
 
 `titan-factory resume` and the `factory.gates` command print the exact resolve command for
-each open gate.
+each open gate. Repeating a resolve with the answer the run already took exits 0 and prints
+`already resolved`.
 
 ## The MRG-AU-RV row and the merge evidence
 
@@ -262,16 +305,10 @@ all run today, and so does the review phase when it is configured. These parts a
   checkout the seat book binds to the repo, and reads its verdict from that agent's
   transcript. A verdict then reaches the `MRG-AU-RV` decision, and the `sh-merge-evidence`
   step posts the evidence comment. With no `review` key, no checkout for the repo, or a
-  refused dispatch, the phase records `none` with the reason, the run opens `approve-merge`,
-  and the owner decides.
-- **The wake phase.** `wakePhase` in `products/factory/src/shepherd/wake.ts` answers
-  `unhandled` to every request. No agent is woken for a red head, a conflict or a review
-  send-back. A red head opens `ci-failed`. A conflicting head ends the run as `done`, with
-  a `not-mergeable` outcome.
+  refused dispatch, the phase records `none` with the reason, and the
+  [route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
 - **The freeze store.** `isFrozen` is the stand-in `noFreezeStoreUntilTp523`, which answers
   false for every repo (TP-523). Nothing can freeze a repo yet.
-- **The registration's agents.** `--implementer`, `--reviewer` and `--kind` are stored on
-  the registration. No shipped phase reads them.
 - **Stall limits.** A run that waits a long time in one phase is not flagged.
 
 ## How it fails
