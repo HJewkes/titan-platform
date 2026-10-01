@@ -267,6 +267,16 @@ importers:
         version: 4.5.4
 
   packages/decider:
+    dependencies:
+      '@titan-design/locator':
+        specifier: workspace:^
+        version: link:../locator
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
     devDependencies:
       zod:
         specifier: ^4.4.3
