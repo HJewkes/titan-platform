@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // scripts/dag-check.sh on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
@@ -11,6 +10,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
+// Fixed beside the lock, so the next holder clears what an aborted run (an OOM skips every handler) left behind.
+const WORK_DIR = path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-work");
 const cleanups = [];
 
 async function indexTree(graph, store, dir, ref) {
@@ -79,12 +80,13 @@ function formatText({ snapshot, baselineSnapshot, result }) {
 
 async function check(graph) {
   const baseRef = process.env.BASE_REF;
-  const workDir = mkdtempSync(path.join(tmpdir(), "dag-check-self-"));
-  cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
-  const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
+  rmSync(WORK_DIR, { recursive: true, force: true });
+  mkdirSync(WORK_DIR, { recursive: true });
+  cleanups.push(() => rmSync(WORK_DIR, { recursive: true, force: true }));
+  const store = graph.openCodeGraph(path.join(WORK_DIR, "graph.db"));
   cleanups.push(() => store.close());
   await indexTree(graph, store, ROOT, "head");
-  if (baseRef) await indexBaseline(graph, store, workDir, baseRef);
+  if (baseRef) await indexBaseline(graph, store, WORK_DIR, baseRef);
   const rules = await graph.loadCheckRules(CONFIG, { onWarn: (m) => console.warn(`${CONFIG}: ${m}`) });
   const run = graph.checkSnapshot(store, { snapshot: "head", baseline: baseRef ? "baseline" : undefined, rules });
   const json = { ...run, baselineSnapshot: run.baselineSnapshot ?? null, configPath: CONFIG };
