@@ -1,5 +1,11 @@
 # @titan-design/evidence
 
+## 0.2.0
+
+### Minor Changes
+
+- a737546: New `@titan-design/evidence/stats` subpath: `wilson`, `betaBinomialInterval`, `bootstrapCI`, `pairedBootstrap`, `mcnemar` and `minimumDetectableEffect` for small-sample eval scoring. Bootstraps draw from `seededRandom` and are reproducible; no interval uses the normal approximation.
+
 ## 0.1.0
 
 ### Minor Changes

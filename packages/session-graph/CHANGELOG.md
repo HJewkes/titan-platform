@@ -1,5 +1,19 @@
 # @titan-design/session-graph
 
+## 0.12.0
+
+### Minor Changes
+
+- 394bfae: `reconcilePrices` upserts a price table into a graph without deleting other rows: it adds missing models, updates changed rates and stamps the table version. `titan-miner` calls it with session-analytics' `PRICE_TABLE` whenever it opens the graph, so `titan-miner refresh` fixes a graph that still prices `claude-opus-5-5` at Opus 5 rates.
+- 0a9d26c: `openSessionGraph(path, { readonly: true })` opens a graph another process owns without migrating it, and throws `SessionGraphNotMigratedError` when it lacks a session-graph migration. The session miner reads such a graph with `--graph <file>` (`TITAN_MINER_GRAPH`), and its own migrations move from 1000-1002 to 2000-2002 so they no longer collide with active-work's band at 1001. A miner database migrated at the old numbers re-applies the new ones idempotently.
+
+### Patch Changes
+
+- Updated dependencies [88bf9f7]
+- Updated dependencies [c583709]
+- Updated dependencies [f3f843d]
+  - @titan-design/session-read@0.8.0
+
 ## 0.11.0
 
 ### Minor Changes
