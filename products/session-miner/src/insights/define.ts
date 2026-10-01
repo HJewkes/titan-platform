@@ -79,9 +79,13 @@ export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
   });
 }
 
-/** Request times are stored as UTC ISO strings and compared as text, so an offset must be resolved first. */
+const HAS_ZONE = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
+
+/** Request times are stored as UTC ISO strings and compared as text, so an offset must be resolved first; no zone means UTC. */
 function utc(time: string | undefined): string | undefined {
-  return time === undefined ? undefined : new Date(time).toISOString();
+  if (time === undefined) return undefined;
+  const zoned = /[T ]\d{2}:/.test(time) && !HAS_ZONE.test(time) ? `${time}Z` : time;
+  return new Date(zoned).toISOString();
 }
 
 function refuseCliOnly(question: AnyInsight, options: Record<string, unknown>, ctx: MinerContext): void {
