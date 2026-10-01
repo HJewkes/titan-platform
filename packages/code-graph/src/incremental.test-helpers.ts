@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { indexPaths, type IndexResult } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 
@@ -51,12 +52,21 @@ export async function disposeProject(project: Project): Promise<void> {
   await fs.rm(project.rootDir, { recursive: true, force: true });
 }
 
+// Skips parsing the default lib on every fresh program; reuse checks compare incremental to full under one config.
+const FIXTURE_TSCONFIG = fileURLToPath(new URL("./incremental.test-tsconfig.json", import.meta.url));
+
 export function runIndex(
   store: CodeGraphStore,
   rootDir: string,
   options: { incremental?: boolean } = {},
 ): Promise<IndexResult> {
-  return indexPaths(store, { paths: [rootDir], ref: "wd", detectRenames: false, ...options });
+  return indexPaths(store, {
+    paths: [rootDir],
+    ref: "wd",
+    detectRenames: false,
+    tsConfig: FIXTURE_TSCONFIG,
+    ...options,
+  });
 }
 
 export interface Snapshot {
