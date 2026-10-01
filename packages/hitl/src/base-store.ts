@@ -55,8 +55,9 @@ export abstract class BaseGateStore implements GateStore {
     return record ? this.lapseIfExpired(record) : undefined;
   }
 
-  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
-    const resolver = resolvedBy === undefined ? undefined : snapshotResolver(id, resolvedBy);
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
+    if (!resolvedBy) throw new GateResolverRefused(id, undefined, "a resolver is required");
+    const resolver = snapshotResolver(id, resolvedBy);
     const record = this.requirePending(id);
     this.requireAuthorized(record, resolver);
     if (record.schema) {
@@ -91,13 +92,12 @@ export abstract class BaseGateStore implements GateStore {
   }
 
   /** The default check runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
-  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver> | undefined): void {
-    const refusal = resolver ? defaultResolverRefusal(resolver) : undefined;
-    if (resolver && refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
+  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>): void {
+    const refusal = defaultResolverRefusal(resolver);
+    if (refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
     const ruleRefusal = ruleResolverRefusal(record, resolver);
-    if (ruleRefusal) throw new GateResolverRefused(record.id, resolver?.class, ruleRefusal);
+    if (ruleRefusal) throw new GateResolverRefused(record.id, resolver.class, ruleRefusal);
     if (!this.authorize) return;
-    if (!resolver) throw new GateResolverRefused(record.id, undefined, "a resolver is required when authorize is installed");
     const decision = readDecision(record.id, this.authorize(Object.freeze({ ...record }), resolver));
     if (!decision.allowed) throw new GateResolverRefused(record.id, resolver.class, decision.reason);
   }
