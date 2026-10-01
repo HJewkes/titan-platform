@@ -70,6 +70,10 @@
         "link": "/reference/agent-lifecycle"
       },
       {
+        "text": "agent-surface",
+        "link": "/reference/agent-surface"
+      },
+      {
         "text": "daemon",
         "link": "/reference/daemon"
       },

@@ -30,6 +30,23 @@ Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <di
 `TITAN_MINER_STATE` / `TITAN_MINER_CORPUS`) override the defaults of
 `~/.local/state/titan-session-miner` and `~/.claude/projects`.
 
+The package is private, so `titan-miner` is not on your `PATH` after a global install.
+Run it from a built checkout with `pnpm --filter @titan-design/session-miner exec titan-miner <args>`
+or `node products/session-miner/dist/bin.js <args>`.
+
+`--graph <file>` (or `TITAN_MINER_GRAPH`) reads a session graph another owner writes,
+such as active-work's `.miner/graph.sqlite3`, in place of the miner's own index. The
+miner opens it read-only: it runs no migrations, writes no price rows, and refuses write
+commands. Opening refuses a graph that lacks any session-graph migration this runtime
+declares.
+
+```
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" insights spend-by-action
+```
+
+The miner's own migrations are numbered from 2000. Session-graph owns the low numbers
+and active-work's band starts at 1001, which is where the miner's band sat before.
+
 ## How the tiers compose
 
 - `session-read` discovers transcripts (including subagent sidechains) and turns lines

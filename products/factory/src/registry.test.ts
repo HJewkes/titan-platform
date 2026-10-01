@@ -7,6 +7,7 @@ import { createFactoryRegistry, parsePrRef, type FactoryContext } from "./regist
 import { TOOL_PREFIX } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+import { OWNER } from "./test-support/resolver.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -58,7 +59,7 @@ describe("factory registry", () => {
     const { host } = world();
     const first = (await call(host, "factory.land", { repo: REPO, pr: 1 })).data as { runId: string };
     await gateOpened(host, gateId(first.runId, "approve-merge"));
-    host.runtime.signal(first.runId, "approve-merge", { decision: "merge", headSha: H1 });
+    host.runtime.signal(first.runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await host.runtime.wait(first.runId);
 
     const again = await call(host, "factory.land", { repo: REPO, pr: 1 });

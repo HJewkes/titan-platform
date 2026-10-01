@@ -166,6 +166,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/agent-surface: {}
+
   packages/authority:
     devDependencies:
       zod:

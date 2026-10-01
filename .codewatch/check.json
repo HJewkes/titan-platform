@@ -32,6 +32,7 @@
           "packages/matrix-bus",
           "packages/github",
           "packages/agent-dispatch",
+          "packages/agent-surface",
           "packages/worktree"
         ],
         "2": [
@@ -85,6 +86,7 @@
           "packages/matrix-bus",
           "packages/github",
           "packages/agent-dispatch",
+          "packages/agent-surface",
           "packages/worktree"
         ],
         [

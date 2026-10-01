@@ -248,7 +248,11 @@ read the original bytes back with [`locator`](/reference/locator).
 one and refuses a database stamped past it, before any migration runs. Pass the top of the
 schema *you* own: this package's `MIGRATIONS` are one band of a shared database, and a
 product layering its own tables sits above them. `products/session-miner` numbers its own
-from 1000 and passes 1002.
+from 2000 and passes 2002, clear of active-work's band at 1001.
+
+**`readonly: true` reads a graph someone else owns.** No migrations run and nothing is
+written. The open throws `SessionGraphNotMigratedError` when the graph lacks any migration
+this package declares.
 
 ## Where it came from
 
