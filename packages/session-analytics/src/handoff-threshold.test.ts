@@ -116,16 +116,39 @@ describe("handoffThreshold", () => {
     expect(reviewers.standing[0]!.costUsd).toBeCloseTo(2.25 + reads(50_000, 1_000, 20), 10);
   });
 
-  it("takes each model's requests per PR from its own reviewers, and the pooled mean for a standing model with none", () => {
+  it("takes each model's requests per PR from its own reviewers, and the newest reviewer cohort for a standing model with none", () => {
     const old = [1, 2, 3].flatMap((i) => reviewerSession(`old${i}`, "claude-sonnet-5", 5));
     const standing = (id: string, model: string) => coordinatorSession(id).map((row) => ({ ...row, role: "worker:standing_peer", model }));
     const { reviewers } = run([...old, ...reviewerSession("new", MODEL, 2), ...standing("peer", MODEL), ...standing("fable", "claude-fable-5-1")]);
     const by = (rows: typeof reviewers.fresh) => Object.fromEntries(rows.map((r) => [r.model, [r.requestsPerPr, r.requestsFrom]]));
 
     expect(by(reviewers.fresh)).toEqual({ "claude-sonnet-5": [5, "claude-sonnet-5"], [MODEL]: [2, MODEL] });
-    expect(by(reviewers.standing)).toEqual({ "claude-fable-5-1": [17 / 4, POOLED_REVIEWERS], [MODEL]: [2, MODEL] });
+    expect(by(reviewers.standing)).toEqual({ "claude-fable-5-1": [2, MODEL], [MODEL]: [2, MODEL] });
     expect(reviewers.fresh.find((r) => r.model === MODEL)!.costUsd).toBeCloseTo(10 * (0.3 + reads(40_000, 2_000, 2)), 10);
     expect(reviewers.standing.find((r) => r.model === MODEL)!.costUsd).toBeCloseTo(2.25 + reads(50_000, 1_000, 20), 10);
+  });
+});
+
+describe("reviewers without a cohort of their own", () => {
+  it("falls back to the newest reviewer cohort by latest session, not the session-weighted pool", () => {
+    const old = [1, 2, 3].flatMap((i) => reviewerSession(`old${i}`, "claude-sonnet-5", 40));
+    const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
+    const { reviewers } = run([...old, ...reviewerSession("new", "claude-haiku-4-5", 2), ...standing]);
+
+    expect(reviewers.standing).toEqual([expect.objectContaining({ model: MODEL, requestsPerPr: 2, requestsFrom: "claude-haiku-4-5" })]);
+  });
+
+  it("reports zero requests from `pooled` when there are no reviewer sessions at all", () => {
+    const standing = coordinatorSession("peer").map((row) => ({ ...row, role: "worker:standing_peer" }));
+
+    expect(run(standing).reviewers.standing).toEqual([expect.objectContaining({ requestsPerPr: 0, requestsFrom: POOLED_REVIEWERS })]);
+  });
+
+  it("does not let a session with no growth dilute its cohort's growth", () => {
+    const stalled = [request("s2", 30_000, { bootAction: true })];
+    const [cohort] = run([...coordinatorSession("s1"), ...stalled]).cohorts;
+
+    expect(cohort).toMatchObject({ sessions: 2, growthPerRequest: 1_000 });
   });
 });
 

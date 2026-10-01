@@ -128,7 +128,11 @@ log. Pass its lines as `brokerLogLines`; the `from` agent id maps to sessions th
 and its own reads each time. A standing reviewer, priced from the `standingRole` cohort, boots
 once and then reads a context that every earlier PR grew. A row's requests per PR come from the
 reviewer sessions on its own model; a standing model with no reviewers of its own takes the
-pooled mean over every reviewer session (`requestsFrom: "pooled"`).
+mean of the newest reviewer cohort, the model whose latest session ends last; `requestsFrom`
+names that model. With no reviewer session at all it is 0 and `requestsFrom` is `"pooled"`.
+A session with no request after boot does not count toward its cohort's growth. A reviewer's
+review often sits inside its boot (its first write or send comes late), so requests per PR
+count only what follows it and can understate a reviewer that does its work before it writes.
 
 The report reads a window, so a session that started before it has its boot cut short.
 
