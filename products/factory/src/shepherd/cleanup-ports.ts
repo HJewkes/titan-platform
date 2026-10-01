@@ -1,6 +1,7 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
+import type { FixTaskFields, FixTasks } from "./main-red.js";
 
 export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
 export const DEFAULT_ACTIVE_WORK_PORT = 7400;
@@ -19,7 +20,8 @@ export function agentChatCleanupAgents(agentChatBin: string, calls: AgentChatCal
 }
 
 type ActiveWorkCommands = {
-  "task.list": { args: { slug: string; status: "all" }; result: { tasks: { id: string; status: string; notes?: string }[] } };
+  "task.list": { args: { slug: string; status: "all"; tag?: string }; result: { tasks: { id: string; status: string; notes?: string }[] } };
+  "task.add": { args: { slug: string } & FixTaskFields; result: { id: string } };
   "task.edit": { args: { slug: string; id: string; field: "notes"; value: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
@@ -46,5 +48,14 @@ export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch 
       if (notes.includes(line)) return;
       await client.call("task.edit", { slug, id, field: "notes", value: notes === "" ? line : `${notes}\n${line}` });
     },
+  };
+}
+
+/** Fix tasks over the same loopback rpc; the notes travel in the request body, never in argv. */
+export function activeWorkFixTasks(options: { origin: string; fetch?: typeof fetch }): FixTasks {
+  const client = createRpcClient<ActiveWorkCommands>(liveSource(options));
+  return {
+    findByTag: async (slug, tag) => (await client.call("task.list", { slug, status: "all", tag })).tasks[0]?.id,
+    add: async (slug, fields) => (await client.call("task.add", { slug, ...fields })).id,
   };
 }

@@ -163,34 +163,39 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 ## Shepherd reviewer config
 
 Two keys under `shepherd` in the config file turn the review phase on. Both are optional.
+`agentChatBin` also lets a red main spawn a fixer, and `fixer` tunes that fixer (see
+[After the merge](https://hjewkes.github.io/titan-platform/guides/shepherd#after-the-merge)).
 
 ```json
 {
   "shepherd": {
     "seatsDir": "/srv/autonomy/seats",
     "agentChatBin": "/usr/local/bin/agent-chat",
-    "review": { "profile": "rv-readonly", "configDir": "<agent-home>/.claude-profiles/rv", "verdictTimeoutMs": 1800000, "sessionStartTimeoutMs": 300000 }
+    "review": { "profile": "rv-readonly", "configDir": "<agent-home>/.claude-profiles/rv", "verdictTimeoutMs": 1800000, "sessionStartTimeoutMs": 300000 },
+    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" }
   }
 }
 ```
 
 | Key | Meaning |
 | --- | --- |
-| `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` is set |
+| `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` or `fixer` is set. Without it a red main spawns no fixer |
 | `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
+| `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
 
-- `agentChatBin` is not an absolute path, or `review` is set without `agentChatBin`.
+- `agentChatBin` is not an absolute path, `review` is set without `agentChatBin`, or `fixer`
+  is set without `agentChatBin` (`fixer needs an agentChatBin`).
 - `configDir` is not an absolute path (`~` and relative paths are refused), or `profile` holds a
   slash or `..`.
 - `profile` or `configDir` is empty, starts with a dash, or holds whitespace or a NUL byte.
   Each reaches the `agent-chat` argv as one literal argument, so a value that reads as a flag
   is refused.
-- `review` holds an unknown key, or a timeout is not a positive integer.
+- `review` or `fixer` holds an unknown key, or a timeout is not a positive integer.
 
 With `review` set, `configuredRoutes` (`src/workflows.ts`) builds one
 `agentChatReviewerDispatch` and hands its roster to `transcriptReviewerReader`, so the verdict
