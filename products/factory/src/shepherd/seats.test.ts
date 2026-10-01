@@ -261,3 +261,51 @@ describe("lookupSeat repo keys", () => {
     expect(lookupSeat(book(), "acme/parked-app.git").kind).toBe("denied");
   });
 });
+
+describe("seat paths with inner spaces", () => {
+  const SPACED = "~/Library/Application Support/widget/x/bin";
+  const load = (repoPath: string, home = "/srv/seat-home") =>
+    loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("a-seat", `repos:\n  - {path: ${JSON.stringify(repoPath)}, remote: acme/spaced}\n`) }), home });
+
+  it("loads a repo path whose segments contain inner spaces and keeps it as written for spawns", () => {
+    expect(load(SPACED).seats[0]!.paths["acme/spaced"]).toBe(SPACED);
+  });
+
+  it("keeps a run of inner spaces as written, since it names a different directory", () => {
+    expect(load("~/Library/Application  Support/x").seats[0]!.paths["acme/spaced"]).toBe("~/Library/Application  Support/x");
+  });
+
+  it("matches a spaced deny_repos path to a spaced repo path, spelled with ~ or the home directory", () => {
+    const denier = seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify("/srv/seat-home/Library/Application Support/x")}]\n`);
+    const owner = seat("b-seat", `repos:\n  - {path: ${JSON.stringify("~/Library/Application Support/x")}, remote: acme/spaced}\n`);
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": denier, "b.md": owner }), home: "/srv/seat-home" });
+
+    expect(lookupSeat(book, "acme/spaced").kind).toBe("denied");
+  });
+
+  it.each([
+    "~/Library/ Application Support/x",
+    "~/Library/Application Support /x",
+    "~/Library/ Support/x",
+    "~/Library/Application Support /",
+    "~/Library/. Support/../x",
+    "~/Library/Application Support/./x",
+    "~/Library/Application Support/../x",
+    "~/Library/Application\tSupport/x",
+    "~/Library/Application Support/*",
+    "~/Library/Application Support/?",
+    "~/Library/Application Support/[a]",
+    "~/Library/Application Support/\"x\"",
+    "~/Library/Application Support/'x'",
+    "~/Library/Application Support/a\\b",
+    "~/Library/Application Support/a$b",
+  ])("still refuses the path %j", (repoPath) => {
+    expect(() => load(repoPath)).toThrow(NOT_ALLOWED);
+  });
+
+  it("refuses a spaced path in deny_repos when it has a leading-space segment", () => {
+    const seatsDir = writeSeats({ "a.md": seat("a-seat", `repos: []\ndeny_repos: [${JSON.stringify("~/a/ b")}]\n`) });
+
+    expect(() => loadSeatBook({ seatsDir })).toThrow(NOT_ALLOWED);
+  });
+});
