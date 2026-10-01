@@ -266,6 +266,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/decider:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/egress-scan: {}
 
   packages/embed:
