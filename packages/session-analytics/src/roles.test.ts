@@ -33,7 +33,7 @@ describe("worker roles", () => {
   it("maps every known spawn profile to a role other than unknown", () => {
     const known = [
       "implementer", "implementer-lite", "relay-implementer", "beat-builder", "fable-optimizer", "bd-implementer", "bd-implementer-lite",
-      "reviewer", "relay-reviewer", "bd-reviewer", "researcher", "explorer", "planner", "fable-architect", "bd-planner",
+      "reviewer", "relay-reviewer", "bd-reviewer", "researcher", "explorer", "planner", "fable-architect", "bd-planner", "decider",
       "fable-coordinator", "opus-coordinator", "peer",
     ];
 
@@ -42,6 +42,7 @@ describe("worker roles", () => {
     expect(roleFromProfile("bd-implementer-lite")).toBe(roleFromProfile("implementer-lite"));
     expect(roleFromProfile("bd-reviewer")).toBe(roleFromProfile("reviewer"));
     expect(roleFromProfile("bd-planner")).toBe(roleFromProfile("planner"));
+    expect(roleFromProfile("decider")).toBe("planner");
   });
 
   it("reclassifies a worker that lives past 12 hours with 2 or more episodes as standing_peer", () => {
