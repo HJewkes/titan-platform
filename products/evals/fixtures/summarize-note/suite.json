@@ -7,9 +7,9 @@
   "id": "summarize-note-capability",
   "version": "1.0.0",
   "cases": [
-    "10194ae3b062c3b6673d519451b5e29ad13bd26e126749a830f407bc3ea78dde",
-    "76633c55b8019e024359f6ef1c38620ffdc31ed08956aca96d1db438e54e673d",
-    "eeaa286570ccc0f70d340e2ba674edc2fb095131a727b622696c9653e4fdfb4f"
+    "601b324f21fab9002e35bc63d30a5a1267f65eac118baeebae52a1513db56ff2",
+    "75c05c5826264ea2d29f979c2d8da4fb3e120c483f2bcbc5a85c8e82a2d1d750",
+    "8b1a13296be4afcfa0e8016d70ef746ac562a6d41da7b80fbb690b9492f452a7"
   ],
   "checks": [
     {

@@ -43,13 +43,13 @@ export function hashCanonical(value: unknown): string {
 /**
  * Fields each hash leaves out; every other field is hashed, so a new schema field joins the identity by default.
  * Unit: prose, the owner's acceptance ladder and publishing state do not change what a run measures.
- * Case: names, labels and annotations; the suite, not the case, binds a case to a unit and a split.
+ * Case: names, labels and annotations. `split` is hashed: a suite lists cases by hash alone, so moving a case between splits must change it.
  * Variant: names and lineage. Suite: names and version text. Scorecard key: the environment, which warns rather than splits.
  * Locations (prompt and fixture paths, skill sources, the topology module path) are dropped inside the hashed fields.
  */
 export const HASH_EXCLUDED_FIELDS = {
   unit: ["title", "description", "acceptance", "visibility"],
-  case: ["id", "unit", "split", "tags", "humanMinutes", "solvable", "visibility"],
+  case: ["id", "unit", "tags", "humanMinutes", "solvable", "visibility"],
   variant: ["id", "notes", "parents"],
   suite: ["id", "version"],
   scorecardKey: ["env"],

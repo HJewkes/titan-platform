@@ -28,7 +28,8 @@ export const relativePath = z
   .string()
   .min(1)
   .refine((path) => !path.startsWith("/") && !path.startsWith("~") && !/^[A-Za-z]:/.test(path), "path must be relative")
-  .refine((path) => !path.split(/[\\/]/).includes(".."), "path must not climb out of the spec root");
+  .refine((path) => !path.includes("\\"), "path must use forward slashes")
+  .refine((path) => !path.split("/").includes(".."), "path must not climb out of the spec root");
 
 export function objectFor(mode: SpecParseMode) {
   return mode === "strict" ? z.strictObject : z.looseObject;

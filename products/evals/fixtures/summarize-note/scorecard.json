@@ -3,7 +3,7 @@
   "keys": {
     "unit": "b3639d60bcfb4d77816250def33a1b1f334081bc89a6f21e8beeaf4ddfa1ef91",
     "variant": "78a2479bd891d403abbe54e55566de469c801e441c0d022e439b531d916df0a3",
-    "suite": "a3fff7ef6dae6ff6762ee8a9ba6254265c621dff3b3765db36616f7a30d8c8db",
+    "suite": "9dd95e2473994b2b0dcb4905ec2d4c153470ccff195a3db08b08ee7a7ee36348",
     "judges": "55d5345a16b882f747edaf17c000ea3bdf97633e6268efe9d5c7a284ce34744e",
     "env": {
       "claudeCodeVersion": "2.0.0",
@@ -26,9 +26,9 @@
   "costPerSuccess": 0.016,
   "overhead": { "judgeUsd": 0.009, "simOwnerUsd": 0 },
   "perCase": [
-    { "case": "10194ae3b062c3b6673d519451b5e29ad13bd26e126749a830f407bc3ea78dde", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.033 },
-    { "case": "76633c55b8019e024359f6ef1c38620ffdc31ed08956aca96d1db438e54e673d", "trials": 3, "passed": 1, "errored": 0, "costUsd": 0.048 },
-    { "case": "eeaa286570ccc0f70d340e2ba674edc2fb095131a727b622696c9653e4fdfb4f", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.031 }
+    { "case": "601b324f21fab9002e35bc63d30a5a1267f65eac118baeebae52a1513db56ff2", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.033 },
+    { "case": "75c05c5826264ea2d29f979c2d8da4fb3e120c483f2bcbc5a85c8e82a2d1d750", "trials": 3, "passed": 1, "errored": 0, "costUsd": 0.048 },
+    { "case": "8b1a13296be4afcfa0e8016d70ef746ac562a6d41da7b80fbb690b9492f452a7", "trials": 3, "passed": 3, "errored": 0, "costUsd": 0.031 }
   ],
   "controls": { "planted": 1, "caught": 1 },
   "snapshot": { "builtAt": "2026-10-01T00:00:00Z", "split": "dev" }

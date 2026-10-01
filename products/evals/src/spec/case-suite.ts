@@ -22,7 +22,7 @@ export function caseSchema(mode: SpecParseMode) {
     schema: z.literal(CASE_SCHEMA_VERSION),
     id: specId,
     unit: unitRef(mode),
-    input: z.unknown(),
+    input: z.unknown().refine((value) => value !== undefined, "input is required"),
     fixture: fixtureRef(mode).optional(),
     expected: z.unknown().optional(),
     owner: z.record(z.string(), z.unknown()).optional(),

@@ -82,3 +82,19 @@ describe("strict and loose parsing", () => {
     expect(() => parseSpec(null)).toThrow(/unknown spec schema/);
   });
 });
+
+describe("schema edges", () => {
+  it("requires a case's input even though any JSON value is allowed", () => {
+    const evalCase = { ...readFixture<Record<string, unknown>>("cases/standup-note.json"), input: undefined };
+
+    expect(() => parseSpec(evalCase)).toThrow(/input/);
+  });
+
+  it("refuses a backslash path, which is one file name on POSIX and a folder path on Windows", () => {
+    const variant = readFixture<VariantSpec>("variants/single-pass.json");
+    const step = variant.steps.summarize as Extract<VariantSpec["steps"][string], { kind: "llm" }>;
+    const moved = { ...variant, steps: { summarize: { ...step, prompt: { ...step.prompt, path: "prompts\\summarize.md" } } } };
+
+    expect(() => parseSpec(moved)).toThrow(/forward slashes/);
+  });
+});

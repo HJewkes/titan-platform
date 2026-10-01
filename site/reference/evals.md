@@ -28,10 +28,15 @@ rule everything later depends on.
 | Spec | Left out of the hash |
 |---|---|
 | unit | `title`, `description`, `acceptance`, `visibility` |
-| case | `id`, `unit`, `split`, `tags`, `humanMinutes`, `solvable`, `visibility`, `provenance.source`, `provenance.ref` |
+| case | `id`, `unit`, `tags`, `humanMinutes`, `solvable`, `visibility`, `provenance.source`, `provenance.ref` |
 | variant | `id`, `notes`, `parents` |
 | suite | `id`, `version`; the case list is sorted |
 | scorecard key | `env` |
+
+A reference from one spec to another is a content hash wherever identity depends on it. A
+suite lists cases by hash, so a case's `split` is part of its hash. A `unit` step names its
+child as `{ id, version }` and its child variant by content hash, or as `"champion"`, which
+resolves when a trial starts; the trial, not the variant hash, records the resolved child.
 
 ## When to reach for it
 
@@ -40,6 +45,8 @@ check that a committed spec still matches the prompt files it names. Retrieval q
 its own harness, [`retrieval-eval`](/reference/retrieval-eval).
 
 ## Example
+
+The product is private, so the import resolves only inside this monorepo's workspace.
 
 ```ts
 import { readFile } from "node:fs/promises";
@@ -65,7 +72,7 @@ E3 to E7. Skill trees and topology modules are hashed by their stored digests, n
 - `variantHash` trusts the stored prompt digests. Call `pinVariantPrompts` first, or use
   `titan-evals validate`, which exits 1 when a stored digest is stale.
 - Prompt paths are relative to the unit directory, the nearest ancestor holding `unit.json`.
-  Absolute paths, `~` and `..` are refused, so a spec never names a machine path.
+  Absolute paths, `~`, `..` and backslashes are refused, so a spec never names a machine path.
 - Hash a parsed spec, not raw JSON. Parsing fills defaults such as a suite's `trials` and a
   check's `scope`, so a raw spec that omits them hashes differently.
 - Array order is significant. A suite's case list is the one exception: it is sorted before

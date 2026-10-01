@@ -5,6 +5,8 @@ import type { SpecParseMode } from "./common.js";
 export const VARIANT_SCHEMA_VERSION = "titan.variant/v1";
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 const ON_RESTART = z.enum(["repeat", "park"]);
+/** A child variant's content hash, so the parent's hash follows it; "champion" resolves at trial start and the trial records the resolved hash. */
+const childVariant = z.union([z.literal("champion"), sha256]);
 
 function runnerRef(mode: SpecParseMode) {
   const object = objectFor(mode);
@@ -41,7 +43,7 @@ function stepSchema(mode: SpecParseMode) {
   return z.discriminatedUnion("kind", [
     object({ kind: z.literal("code"), onRestart: ON_RESTART }),
     object({ kind: z.literal("gate"), schema: jsonSchema.optional() }),
-    object({ kind: z.literal("unit"), unit: specId, variant: nonempty }),
+    object({ kind: z.literal("unit"), unit: unitRef(mode), variant: childVariant }),
     object({
       kind: z.literal("llm"),
       model: modelId(mode),
