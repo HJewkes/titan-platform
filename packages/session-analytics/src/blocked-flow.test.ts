@@ -94,8 +94,8 @@ describe("parseDenials", () => {
     ];
 
     expect(parseDenials(lines, "seat-a")).toEqual([
-      { seat: "seat-a", at: "2026-09-10T10:00:05Z", reason: "Merge Without Review", action: "merge", tool: "Bash" },
-      { seat: "seat-a", at: "2026-09-10T10:00:05Z", reason: "Merge Without Review", action: "branch-delete", tool: "Bash" },
+      { seat: "seat-a", at: "2026-09-10T10:00:05Z", reason: "Merge Without Review", action: "merge", tool: "Bash", toolUseId: "t1" },
+      { seat: "seat-a", at: "2026-09-10T10:00:05Z", reason: "Merge Without Review", action: "branch-delete", tool: "Bash", toolUseId: "t2" },
     ]);
   });
 
@@ -175,6 +175,14 @@ describe("blockedFlowReport", () => {
     expect(blockedFlowSchema.safeParse(report).success).toBe(true);
     expect([all.before!.medianMin, all.after!.medianMin, all.after!.censored]).toEqual([90, 1, 1]);
     expect(report.openHoldingMerge.rows).toMatchObject([{ repo: "acme/g", pr: 3, ageMin: 90 }]);
+  });
+
+  it("counts a refusal repeated by a forked transcript once", () => {
+    const denial = (toolUseId: string, seat = "seat-a") => ({ seat, at: "2026-09-10T10:00:00Z", reason: "Merge Without Review", action: "merge", tool: "Bash", toolUseId });
+    const report = blockedFlowReport({ verdicts: [], pulls: [], denials: [denial("t1"), denial("t1"), denial("t2"), denial("t1", "seat-b")], journals: [], asOf: AS_OF });
+
+    expect(report.denials.total).toBe(3);
+    expect(report.denials.rows.map((r) => [r.seat, r.count])).toEqual([["seat-a", 2], ["seat-b", 1]]);
   });
 
   it("counts denials by reason, action and seat inside the window", () => {

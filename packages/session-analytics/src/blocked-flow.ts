@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { latencyStats, latencyStatsSchema, mergeOutcomes, round, type LatencyStats, type MergeOutcome, type PullState, type VerdictRecord } from "./blocked-flow-merge.js";
-import type { DenialRecord } from "./blocked-flow-denials.js";
+import { dedupeDenials, type DenialRecord } from "./blocked-flow-denials.js";
 import { TICK_HOLD_MAX_MIN, idleSlotMinutes, type SeatJournal } from "./blocked-flow-idle.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 
@@ -98,7 +98,7 @@ export function blockedFlowReport(input: BlockedFlowInput): BlockedFlowReport {
     sources: BLOCKED_FLOW_SOURCES,
     verdictToMerge: { cites: ["verdicts", "pulls"], rows: latencyRows(outcomes, input.splitAt) },
     openHoldingMerge: { cites: ["verdicts", "pulls"], prMinutes: round(open.reduce((sum, r) => sum + r.ageMin, 0)), rows: open },
-    denials: denialSection(input.denials.filter((d) => inScope(d.seat, d.at))),
+    denials: denialSection(dedupeDenials(input.denials).filter((d) => inScope(d.seat, d.at))),
     idleSlots: { cites: ["journals"], holdMaxMin: TICK_HOLD_MAX_MIN, total: idle.reduce((sum, r) => sum + r.slotMinutes, 0), rows: idle },
   };
 }
