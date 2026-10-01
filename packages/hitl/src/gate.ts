@@ -78,7 +78,7 @@ export async function waitForGate<T = unknown>(
 }
 
 /** Resolve a gate from wherever the human answered: a CLI, an MCP tool, a dashboard route. */
-export function resolveGate(store: GateStore, id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+export function resolveGate(store: GateStore, id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
   return store.resolve(id, payload, resolvedBy);
 }
 
