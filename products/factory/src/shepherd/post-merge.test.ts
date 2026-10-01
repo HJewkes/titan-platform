@@ -172,12 +172,12 @@ describe("shepherd-pr after land", () => {
     expect(retired).toEqual(["impl-a"]);
   });
 
-  it("freezes the repo and opens the main-red gate when main is red and no task port is wired", async () => {
+  it("freezes the repo and offers the owner the release when main is red and no task port is wired", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")]);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
-    w.host.runtime.signal(runId, "main-red", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+    w.host.runtime.signal(runId, "main-frozen", { decision: "stay-frozen", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
     await w.host.runtime.wait(runId);
 
     expect(stepIds(w, runId)).toContain("sh-freeze");
@@ -305,14 +305,55 @@ describe("shepherd-pr on a red main", () => {
     expect(stepIds(w, runId)).not.toContain("sh-unfreeze");
   });
 
-  it("files a task and spawns nothing when the policy grants no fixer", async () => {
+  it("files a task, spawns nothing and thaws on the owner's word when the policy grants no fixer", async () => {
     const ports = mainRedPorts();
     const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+    const frozenAtGate = w.freezes().isFrozen(REPO);
+    w.host.runtime.signal(runId, "main-frozen", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await w.host.runtime.wait(runId);
 
     expect(ports.added).toHaveLength(1);
     expect(ports.spawned).toEqual([]);
+    expect(frozenAtGate).toBe(true);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("thaws on the owner's word when no fix task could be filed", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, { ...mainRedPorts().mainRed, tasks: undefined });
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+    w.host.runtime.signal(runId, "main-frozen", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("offers the owner the release when the fixer's green merge skipped a check that was red, and thaws on the owner's word", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
+    w.fake.setRuns(EARLIER_RED, [successRun("docs", 4, undefined, "failure")]);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+    const frozenAtGate = w.freezes().isFrozen(REPO);
+    w.host.runtime.signal(runId, "main-frozen", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(frozenAtGate).toBe(true);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("opens no gate when the fixer's green merge thaws the repo", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await w.host.runtime.wait(runId);
+
+    expect(stepIds(w, runId)).not.toContain("main-frozen");
   });
 });

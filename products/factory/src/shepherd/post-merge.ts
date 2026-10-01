@@ -25,6 +25,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   { id: "sh-thaw", kind: "dispatch" },
   { id: "main-red", kind: "assisted" },
   { id: "main-red-again", kind: "assisted" },
+  { id: "main-frozen", kind: "assisted" },
   { id: "after-stages", kind: "assisted" },
   { id: "sh-cleanup", kind: "dispatch" },
 ];
@@ -61,7 +62,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false): Promise<MainCi> {
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, mergeSha: target.mergeSha, after }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
-  if (result.verdict === "green") await step(ctx, "sh-unfreeze", red, UnfreezeResult);
+  if (result.verdict === "green") await onMainGreen(ctx, red);
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail);
   else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, target.mergeSha);
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, target.mergeSha);
@@ -73,19 +74,30 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
 async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
-  if (frozen.state === "again") return askRedAgain(ctx, red, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
+  if (frozen.state === "again") return askFrozen(ctx, "main-red-again", red, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
   if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, red.mergeSha);
   const filed = await step(ctx, "sh-file-fix-task", red, FixTaskResult);
-  if (filed.task === null) return askOwner(ctx, "main-red", `${where} The repo is frozen; no fix task was filed: ${filed.detail}. Acknowledge.`, red.mergeSha);
+  if (filed.task === null) return askFrozen(ctx, "main-frozen", red, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
   const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer }, FixerResult);
-  if (spawned.fixer === null) await askOwner(ctx, "main-red", `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. Acknowledge.`, red.mergeSha);
+  if (spawned.fixer === null) await askFrozen(ctx, "main-frozen", red, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
-const RedAgainAnswer = z.object({ decision: z.enum(["stay-frozen", "unfreeze"]), mergeSha: z.string() });
+const NO_FIXER_EXIT = "No PR is exempt from the freeze, so nothing Shepherd merges can clear it. Stay frozen until a green head on main thaws it, or unfreeze now?";
 
-async function askRedAgain(ctx: WorkflowContext, red: RedInput, prompt: string): Promise<void> {
-  const answer = RedAgainAnswer.parse((await ctx.assisted("main-red-again", prompt, { schema: RedAgainAnswer })).data);
-  if (answer.mergeSha !== red.mergeSha) throw new Error(`main-red-again answer names a different merge sha than ${red.mergeSha}`);
+/** A green merge that leaves the repo frozen has no fixer left to clear it, so the owner decides. */
+async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
+  const result = await step(ctx, "sh-unfreeze", red, UnfreezeResult);
+  if (!result.frozen) return;
+  const prompt = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is green, but the repo stays frozen: ${result.detail}. Only a later green head on main thaws it. Stay frozen, or unfreeze?`;
+  await askFrozen(ctx, "main-frozen", red, prompt);
+}
+
+const FrozenAnswer = z.object({ decision: z.enum(["stay-frozen", "unfreeze"]), mergeSha: z.string() });
+
+/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
+async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: RedInput, prompt: string): Promise<void> {
+  const answer = FrozenAnswer.parse((await ctx.assisted(gate, prompt, { schema: FrozenAnswer })).data);
+  if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }
 

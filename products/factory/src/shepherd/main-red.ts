@@ -76,7 +76,8 @@ export const FreezeResult = z.looseObject({
 
 export const FixTaskResult = z.looseObject({ task: z.string().nullable(), detail: z.string() });
 export const FixerResult = z.looseObject({ fixer: z.string().nullable(), detail: z.string() });
-export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), detail: z.string() });
+/** `frozen` is whether the repo is still frozen after the step. */
+export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), detail: z.string() });
 
 export interface RedInput {
   repo: RepoSlug;
@@ -208,15 +209,17 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
 export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">): Promise<z.infer<typeof UnfreezeResult>> {
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
-  if (!freezes || !live) return { unfrozen: false, detail: "the repo is not frozen" };
+  if (!freezes || !live) return { unfrozen: false, frozen: false, detail: "the repo is not frozen" };
+  const stays = (detail: string) => ({ unfrozen: false, frozen: true, detail });
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
-    if (!after) return { unfrozen: false, detail: `${input.mergeSha} does not descend from the red sha ${live.redSha}` };
-    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live.redSha))) return { unfrozen: false, detail: `a check red at ${live.redSha} has not run green at ${input.mergeSha}` };
+    if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
+    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live.redSha))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
   } catch (error) {
-    return { unfrozen: false, detail: `main could not be read: ${messageOf(error)}` };
+    return stays(`main could not be read: ${messageOf(error)}`);
   }
-  return { unfrozen: freezes.unfreeze(input.repo, input.mergeSha), detail: "green after the red sha" };
+  const unfrozen = freezes.unfreeze(input.repo, input.mergeSha);
+  return { unfrozen, frozen: freezes.isFrozen(input.repo), detail: "green after the red sha" };
 }
 
 export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefined): StepRoute[] {
