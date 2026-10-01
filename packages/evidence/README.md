@@ -3,7 +3,8 @@
 Checks that a model's cited evidence is real. A citation names a path, a 1-based line
 range and a quote; `verifyCitation` confirms the path was allowed, the range exists and
 was shown to the reader, and the quote occurs inside that range. It also groups
-overlapping findings and scores planted control answers.
+overlapping findings and scores planted control answers. The `./stats` subpath adds
+small-sample intervals and tests for scoring eval runs.
 
 Tier 0 of the titan-platform DAG. No dependencies, no Node built-ins. Lifted from the
 repo-review tools (TP-354).
@@ -63,6 +64,38 @@ The same seed always gives the same picks and positions. `scoreControls` counts 
 expected control with no answer as `missing` and as a recall miss; answers for ids that
 are not controls are ignored. Precision and recall are `null` when their denominator is
 zero.
+
+## Small-sample statistics
+
+The `@titan-design/evidence/stats` subpath scores pass rates and paired comparisons at the
+20 to 50 cases an eval suite has. No interval uses the normal approximation, which is
+over-confident at that size.
+
+```ts
+import { betaBinomialInterval, mcnemar, minimumDetectableEffect, pairedBootstrap, wilson } from "@titan-design/evidence/stats";
+
+wilson(7, 10);                       // { estimate: 0.7, lower: 0.397, upper: 0.892 }
+betaBinomialInterval(7, 10);         // Jeffreys prior: { estimate: 0.7, lower: 0.394, upper: 0.907 }
+pairedBootstrap(champion, challenger, { seed: runId }); // interval on mean(champion[i] - challenger[i])
+mcnemar(2, 10);                      // { method: "exact", statistic: 2, pValue: 0.0386 }
+minimumDetectableEffect({ n: 30, sd: 0.5 }); // 0.256
+```
+
+- `wilson` and `betaBinomialInterval` take successes and trials. The Beta interval is the
+  equal-tailed posterior interval; pass `prior` to replace Jeffreys' Beta(0.5, 0.5).
+- `bootstrapCI` and `pairedBootstrap` are percentile bootstraps with 10000 resamples by
+  default. Pass one value per case, so trials of one case are never resampled as if they
+  were independent. They draw from `seededRandom`, and the seed defaults to 0, so every
+  call is reproducible.
+- `mcnemar` takes the discordant counts (A passed and B failed, then the reverse). Below
+  25 discordant pairs it runs the exact binomial test; from 25 it runs the
+  continuity-corrected chi-square. Force either with `method`.
+- `minimumDetectableEffect` is the smallest mean paired difference a two-sided z-test
+  detects at alpha 0.05 and power 0.8, given the standard deviation of the per-case
+  difference. It is a planning figure to print beside a "no detectable difference".
+
+Invalid input (no trials, more successes than trials, a confidence outside (0, 1))
+throws `RangeError`.
 
 ## Not in scope
 
