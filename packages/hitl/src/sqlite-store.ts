@@ -1,6 +1,7 @@
 import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import { BaseGateStore } from "./base-store.js";
 import {
+  GateResolverRefused,
   GateStoreSchemaOutdated,
   type GateAuthorize,
   type GateRecord,
@@ -36,6 +37,8 @@ export function gateMigration(version: number, name: string = DEFAULT_GATE_TABLE
   return { version, name: `hitl:${name}`, up: (db) => db.exec(gateTableDdl(name)) };
 }
 
+const RESOLVER_REQUIRED = "hitl: resolvedBy required";
+
 /**
  * The triggers that refuse a resolved row naming no resolver, on update and on
  * insert, so a writer that predates `resolved_by` fails loudly instead of resolving anonymously.
@@ -51,7 +54,7 @@ function resolverTrigger(name: string, event: "UPDATE" | "INSERT"): string {
       BEFORE ${event} ON ${quoteIdent(name)}
       FOR EACH ROW WHEN NEW.status = 'resolved' AND NEW.resolved_by IS NULL
     BEGIN
-      SELECT RAISE(ABORT, 'hitl: resolvedBy required');
+      SELECT RAISE(ABORT, '${RESOLVER_REQUIRED}');
     END;
   `;
 }
@@ -145,7 +148,7 @@ export function gateRuleMigration(version: number, name: string = DEFAULT_GATE_T
 
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -162,8 +165,7 @@ interface RawGateRow {
   created_at: string;
   resolved_at: string | null;
   expires_at: string | null;
-  /** Absent entirely on a table that has not run `gateResolverMigration`. */
-  resolved_by?: string | null;
+  resolved_by: string | null;
   /** Absent entirely on a table that has not run `gateRuleMigration`. */
   rule?: string | null;
 }
@@ -175,7 +177,6 @@ interface RawGateRow {
  */
 export class SqliteGateStore extends BaseGateStore {
   private readonly table: string;
-  private resolverColumnSeen = false;
   private ruleColumnSeen = false;
 
   constructor(
@@ -184,7 +185,8 @@ export class SqliteGateStore extends BaseGateStore {
   ) {
     super(options.now ?? Date.now, options.authorize);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
-    if (options.migrate ?? true) runMigrations(db, [gateMigration(1, this.table), gateRuleMigration(3, this.table)]);
+    if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
+    if (!hasResolverColumn(db, this.table)) throw new GateStoreSchemaOutdated("", this.table, "gateResolverMigration");
   }
 
   protected insert(record: GateRecord): void {
@@ -221,44 +223,17 @@ export class SqliteGateStore extends BaseGateStore {
   }
 
   protected update(record: GateRecord): void {
-    if (record.resolvedBy) {
-      this.updateWithResolver(record, record.resolvedBy);
-      return;
+    const statement = this.db.prepare(
+      `UPDATE ${quoteIdent(this.table)}
+          SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
+        WHERE id = ?`,
+    );
+    const resolvedBy = record.resolvedBy ? JSON.stringify(record.resolvedBy) : null;
+    try {
+      statement.run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
+    } catch (error) {
+      throw translateTriggerError(record.id, error);
     }
-    this.db
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)}
-            SET status = ?, payload = ?, reason = ?, resolved_at = ?
-          WHERE id = ?`,
-      )
-      .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, record.id);
-  }
-
-  /** Refuses rather than dropping the resolver when the table has no column to hold it. */
-  private updateWithResolver(record: GateRecord, resolvedBy: GateResolver): void {
-    if (!this.resolverColumnPresent()) {
-      throw new GateStoreSchemaOutdated(record.id, this.table, "gateResolverMigration");
-    }
-    this.db
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)}
-            SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
-          WHERE id = ?`,
-      )
-      .run(
-        record.status,
-        toJson(record.payload),
-        record.reason ?? null,
-        record.resolvedAt ?? null,
-        JSON.stringify(resolvedBy),
-        record.id,
-      );
-  }
-
-  /** Only a positive probe is cached, so a migration run after construction is still noticed. */
-  private resolverColumnPresent(): boolean {
-    if (!this.resolverColumnSeen) this.resolverColumnSeen = hasResolverColumn(this.db, this.table);
-    return this.resolverColumnSeen;
   }
 
   private ruleColumnPresent(): boolean {
@@ -272,6 +247,18 @@ export class SqliteGateStore extends BaseGateStore {
       .all(status) as RawGateRow[];
     return rows.map(toRecord);
   }
+}
+
+function defaultMigrations(table: string): Migration[] {
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table)];
+}
+
+/** Callers see a typed refusal, so no package outside hitl matches the trigger's text. */
+function translateTriggerError(gateId: string, error: unknown): unknown {
+  if (error instanceof Error && error.message.includes(RESOLVER_REQUIRED)) {
+    return new GateResolverRefused(gateId, undefined, "a resolver is required");
+  }
+  return error;
 }
 
 function columns(record: GateRecord): unknown[] {

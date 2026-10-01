@@ -55,7 +55,7 @@ export abstract class BaseGateStore implements GateStore {
     return record ? this.lapseIfExpired(record) : undefined;
   }
 
-  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
     const resolver = resolvedBy === undefined ? undefined : snapshotResolver(id, resolvedBy);
     const record = this.requirePending(id);
     this.requireAuthorized(record, resolver);

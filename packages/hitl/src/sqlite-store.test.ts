@@ -175,51 +175,41 @@ describe("an old writer against a migrated table", () => {
     expect(store.get("legacy")?.resolvedBy).toBeUndefined();
   });
 
-  it("refuses the new store's own anonymous resolve through the trigger", () => {
+  it("turns the trigger's refusal of an anonymous resolve into GateResolverRefused", () => {
     const db = migratedWithLegacyRows();
     const store = new SqliteGateStore(db, { migrate: false });
-    expect(() => store.resolve("p1", "yes")).toThrow("hitl: resolvedBy required");
+    const anonymous = undefined as unknown as GateResolver;
+    expect(() => store.resolve("p1", "yes", anonymous)).toThrow(
+      expect.objectContaining({ name: "GateResolverRefused", gateId: "p1", reason: "a resolver is required" }),
+    );
     expect(store.get("p1")).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 });
 
 describe("a store whose table predates the resolver column", () => {
-  it("still resolves when no resolver is given", () => {
-    const store = new SqliteGateStore(v1Db(), { migrate: false });
-    store.create({ id: "g1", prompt: "ship it?" });
-    expect(store.resolve("g1", "ok")).toMatchObject({ status: "resolved", resolvedBy: undefined });
-    expect(store.get("g1")).toMatchObject({ status: "resolved", payload: "ok", resolvedBy: undefined });
-  });
-
-  it("refuses a resolver rather than dropping it, and leaves the gate pending", () => {
-    const store = new SqliteGateStore(v1Db(), { migrate: false });
-    store.create({ id: "g1", prompt: "ship it?" });
-    expect(() => store.resolve("g1", "ok", OWNER)).toThrow(GateStoreSchemaOutdated);
-    expect(store.get("g1")).toMatchObject({ status: "pending", payload: undefined });
-  });
-
-  it("names the gate, the table and the migration it needs", () => {
-    const store = new SqliteGateStore(v1Db(), { migrate: false });
-    store.create({ id: "g1", prompt: "ship it?" });
-    expect(() => store.resolve("g1", "ok", OWNER)).toThrow(
-      expect.objectContaining({ gateId: "g1", table: "hitl_gate", migration: "gateResolverMigration" }),
+  it("refuses to construct and names the table and the migration it needs", () => {
+    const db = v1Db();
+    expect(() => new SqliteGateStore(db, { migrate: false })).toThrow(GateStoreSchemaOutdated);
+    expect(() => new SqliteGateStore(db, { migrate: false })).toThrow(
+      expect.objectContaining({ gateId: "", table: "hitl_gate", migration: "gateResolverMigration" }),
     );
   });
 
-  it("records the resolver once the migration runs after the store was built", () => {
+  it("is upgraded by migrate: true, which records the resolver", () => {
     const db = v1Db();
-    const store = new SqliteGateStore(db, { migrate: false });
-    store.create({ id: "g1", prompt: "ship it?" });
-    runMigrations(db, [gateMigration(1), gateResolverMigration(2)]);
+    oldInsert(db, "g1");
+    const store = new SqliteGateStore(db);
     expect(store.resolve("g1", "ok", OWNER).resolvedBy).toEqual(OWNER);
+    expect(resolverColumnCount(db)).toBe(1);
   });
 
-  it("is what migrate: true still builds, so an existing default store keeps resolving anonymously", () => {
+  it("gains the resolver migration when an earlier default store already ran versions 1 and 3", () => {
     const db = open();
-    const store = new SqliteGateStore(db);
-    store.create({ id: "g1", prompt: "ship it?" });
-    expect(store.resolve("g1", "ok").status).toBe("resolved");
-    expect(resolverColumnCount(db)).toBe(0);
+    runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
+    new SqliteGateStore(db).create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
+    const versions = db.prepare("SELECT version FROM _migration ORDER BY version").all();
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(() => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(REMOTE), "g1")).toThrow("hitl: resolver outside the gate rule");
   });
 });
 
@@ -253,14 +243,11 @@ describe("gateRuleMigration", () => {
     expect(triggerNames(db)).toEqual(["hitl_gate_resolver_required", "hitl_gate_resolver_required_insert", "hitl_gate_rule_replace", "hitl_gate_rule_resolver", "hitl_gate_rule_resolver_insert"]);
   });
 
-  it("is run by migrate: true, so a default store holds a rule-bound gate it cannot resolve until the resolver migration", () => {
-    const db = open();
-    const store = new SqliteGateStore(db);
+  it("is run by migrate: true beside the resolver migration, so a default store resolves a rule-bound gate", () => {
+    const store = new SqliteGateStore(open());
     store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     expect(() => store.resolve("g1", "ok", REMOTE)).toThrow("does not let owner-remote resolve");
-    expect(() => store.resolve("g1", "ok", OWNER)).toThrow(expect.objectContaining({ migration: "gateResolverMigration" }));
-    runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
-    expect(store.resolve("g1", "ok", OWNER).rule).toEqual(TERMINAL_ONLY);
+    expect(store.resolve("g1", "ok", OWNER)).toMatchObject({ resolvedBy: OWNER, rule: TERMINAL_ONLY });
   });
 
   it.each([
@@ -281,22 +268,22 @@ describe("an old writer against a rule-bound row on a table without the resolver
   it("is refused when it resolves with the old SQL, and can still cancel", () => {
     const db = open();
     runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
-    const store = new SqliteGateStore(db, { migrate: false });
-    store.create({ id: "bound", prompt: "release?", rule: TERMINAL_ONLY });
-    store.create({ id: "free", prompt: "ship it?" });
+    db.prepare(`INSERT INTO "hitl_gate" (id, prompt, status, created_at, rule) VALUES ('bound', 'release?', 'pending', ?, ?)`).run(T_CREATED, RULE_JSON);
+    oldInsert(db, "free");
     expect(() => db.prepare(OLD_UPDATE).run("resolved", JSON.stringify("yes"), null, T_SETTLED, "bound")).toThrow(
       "hitl: resolver outside the gate rule",
     );
     db.prepare(OLD_UPDATE).run("resolved", JSON.stringify("yes"), null, T_SETTLED, "free");
     db.prepare(OLD_UPDATE).run("cancelled", null, "superseded", T_SETTLED, "bound");
-    expect(store.get("bound")).toMatchObject({ status: "cancelled", rule: TERMINAL_ONLY });
-    expect(store.get("free")?.status).toBe("resolved");
+    expect(rawRow(db, "bound")).toMatchObject({ status: "cancelled", rule: RULE_JSON });
+    expect(rawRow(db, "free").status).toBe("resolved");
   });
 });
 
 describe("a store whose table predates the rule column", () => {
   it("refuses a rule-bound gate rather than dropping the rule, and inserts nothing", () => {
     const db = v1Db();
+    runMigrations(db, [gateMigration(1), gateResolverMigration(2)]);
     const store = new SqliteGateStore(db, { migrate: false });
     expect(() => store.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY })).toThrow(
       expect.objectContaining({ name: "GateStoreSchemaOutdated", gateId: "g1", table: "hitl_gate", migration: "gateRuleMigration" }),

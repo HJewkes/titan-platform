@@ -65,7 +65,7 @@ export interface GateInput {
 export interface GateStore {
   create(input: GateInput): GateRecord;
   get(id: string): GateRecord | undefined;
-  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord;
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord;
   cancel(id: string, reason: string): GateRecord;
   listPending(): GateRecord[];
 }
@@ -141,14 +141,18 @@ export class GateResolverRefused extends GateError {
   }
 }
 
-/** The store cannot record a resolver or a rule because its table predates the migration that adds the column. */
+/**
+ * The store cannot record a resolver or a rule because its table predates the migration that adds the column.
+ * `gateId` is empty when the store refuses at construction, before any gate is named.
+ */
 export class GateStoreSchemaOutdated extends GateError {
   constructor(
     gateId: string,
     readonly table: string,
     readonly migration: string,
   ) {
-    super(`gate ${gateId} cannot be recorded: table ${table} needs ${migration}`, gateId);
+    const subject = gateId === "" ? `gate store on ${table}` : `gate ${gateId}`;
+    super(`${subject} cannot be recorded: table ${table} needs ${migration}`, gateId);
   }
 }
 
