@@ -77,6 +77,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
+| Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -88,6 +89,15 @@ works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it rea
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
 renderer. Both carry `LIST_PRICE_CAVEAT`: the figures are list prices, not a bill.
+
+Q7 reads outside the graph, so it refuses `--session`, `--agent-prefix` and `--role`; narrow it
+with `--seat`. Reviewer verdicts come from agent-chat's events table, opened read-only at
+`TITAN_MINER_EVENTS_DB` (default `~/.agent-chat/events.db`). `merged_at` and the current head come
+from `gh api repos/<repo>/pulls/<n>`, or from a `--pulls` snapshot. Classifier denials come from each
+`--transcript` (a `.jsonl` file or a directory of them), and idle slots from each `--journal` named
+`<YYYY-MM-DD>.md`, read in this machine's local time. Waits are measured to `--until`, or to now, so a
+PR merged later counts as open, and its age is a censored wait. Every table names the JSON field its
+numbers come from, and the text ends with the command and field behind each source.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a

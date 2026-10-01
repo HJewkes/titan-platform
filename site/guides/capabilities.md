@@ -647,7 +647,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +113 more in the [reference page](/reference/session-analytics)
+- +143 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
