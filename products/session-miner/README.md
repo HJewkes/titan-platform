@@ -78,6 +78,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
+| Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -98,6 +99,16 @@ from `gh api repos/<repo>/pulls/<n>`, or from a `--pulls` snapshot. Classifier d
 `<YYYY-MM-DD>.md`, read in this machine's local time. Waits are measured to `--until`, or to now, so a
 PR merged later counts as open, and its age is a censored wait. Every table names the JSON field its
 numbers come from, and the text ends with the command and field behind each source.
+
+Q8 also reads outside the graph and takes `--seat` in place of the session filters. It reads
+agent-chat's broker log at `TITAN_MINER_BROKER_LOG` (default `~/.agent-chat/broker.log`) or
+`--broker-log`, and the events table read-only. A seat is dark from a `deregistered` line to its next
+`registered` line; a gap still open at `--until` is listed only if a route missed the seat during
+it. A route misses each `to` name when it logs `delivered:false`, and misses a name left out of
+`recipients` as a partial delivery. Unreported exits take their profile from the `agent_spawned`
+row with the same agent id. A stale prompt is an `approval_request` that is its actor's newest event
+before `--until`. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
+`AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a
