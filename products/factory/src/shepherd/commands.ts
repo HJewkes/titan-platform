@@ -71,9 +71,11 @@ const RegisterArgs = z
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
+    noSlice: z.boolean().optional(),
     policy: RequestedPolicySchema.optional(),
   })
-  .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] });
+  .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
+  .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
 
 type RegisterArgs = z.infer<typeof RegisterArgs>;
 
@@ -106,9 +108,15 @@ async function headBranch(services: ShepherdServices, args: RegisterArgs): Promi
   return headRef;
 }
 
+/** A repeat register without a slice keeps the stored one; only an explicit noSlice clears it. */
+function sliceAfter(existing: Registration, args: RegisterArgs): string | undefined {
+  if (args.noSlice) return undefined;
+  return args.slice ?? existing.slice ?? undefined;
+}
+
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
-  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: args.slice });
+  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
   if (args.pr !== undefined && existing.pr === null) store.setPr(runId, args.pr);
   return { runId, created: false, registration: store.byRun(runId)! };
 }

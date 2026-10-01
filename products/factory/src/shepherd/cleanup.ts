@@ -91,12 +91,13 @@ async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string
   return result.done ? "deleted" : result.skipped;
 }
 
-/** A slice PR notes its task and leaves it open, because the task's other slices have not landed. */
+/** A slice PR notes its task and leaves it open, because the task's other slices have not landed. An unread merge sha writes nothing, so a retry cannot add a second line for the landing. */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
   if (registration.slice === null) return closeTask(tasks, registration.task, wait);
   const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
-  const line = `${registration.slice} landed in ${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
+  if (pr === undefined) return "unread";
+  const line = `${registration.slice} landed in ${input.repo}#${input.pr} at ${pr.mergeSha ?? "unknown"}`;
   return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, line).then(() => "noted"), tasks);
 }
 
