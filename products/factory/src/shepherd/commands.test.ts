@@ -113,6 +113,21 @@ describe("shepherd.register after a failed run", () => {
     expect(await w.call("shepherd.timeline", { repo: REPO, pr: 1 })).toMatchObject({ ok: true, data: { row: { runId: again.runId } } });
   });
 
+  it("the failed run's authors move to the new run, where cleanup and wake read them", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+    const store = w.routes.shepherd!.store.get();
+    store.recordAuthor(failedRunId, { agentId: "a-1", name: "impl-a", role: "implementer" });
+    store.recordAuthor(failedRunId, { agentId: "a-2", name: "impl-a-2", role: "successor", predecessor: "a-1" });
+
+    const again = await registered(w, pr1);
+
+    expect(store.authorsOf(again.runId).map((author) => author.name)).toEqual(["impl-a", "impl-a-2"]);
+    expect(store.authorsOf(again.registration.runId).filter((author) => author.role === "successor").map((author) => author.name)).toEqual(["impl-a-2"]);
+    expect(store.authorsOf(failedRunId)).toEqual([]);
+  });
+
   it("two registers after one failure start exactly one new run", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -135,6 +150,20 @@ describe("shepherd.register after a failed run", () => {
 
     expect(again).toMatchObject({ runId: first.runId, created: false });
     expect(again.previousRunId).toBeUndefined();
+  });
+
+  it("a recovery_required run comes back unchanged", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, pr1);
+    const status = w.host.runtime.status.bind(w.host.runtime);
+    vi.spyOn(w.host.runtime, "status").mockImplementation((id) => ({ ...status(id)!, status: "recovery_required" }));
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId: first.runId, created: false });
+    expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([first.runId]);
   });
 
   it("a cancelled run comes back unchanged", async () => {

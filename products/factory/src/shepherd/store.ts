@@ -189,10 +189,14 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Points a registration at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
-    const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
-    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+    const move = this.db.transaction(() => {
+      const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
+      if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+      this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+    });
+    move();
     return this.byRun(newRunId)!;
   }
 
