@@ -1,11 +1,10 @@
-import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
-import type { GateResolver } from "@titan-design/hitl";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
+import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
@@ -336,31 +335,6 @@ async function parse(program: Command, argv: string[], io: CliIo, exitCode: () =
     return EXIT.FAILURE;
   }
   return exitCode();
-}
-
-function resolveGate(host: FactoryHost, io: CliIo, runId: string, stepId: string, json: string): number {
-  const payload = parsePayload(json);
-  if (!payload) {
-    io.stderr("error: --json must be a JSON object\n");
-    return EXIT.USAGE;
-  }
-  host.runtime.signal(runId, stepId, payload, cliResolver(io.env));
-  io.stdout(`resolved ${runId}/${stepId}\n`);
-  return EXIT.OK;
-}
-
-/** Owner unless agent-chat spawned this shell; CLAUDECODE is ignored because the owner's `!` commands set it too. A refusal exits FAILURE through `parse`. */
-function cliResolver(env: NodeJS.ProcessEnv): GateResolver {
-  return { class: env.AGENT_CHAT_AGENT_ID ? "coordinator" : "owner-terminal", id: userInfo().username, channel: "factory-cli" };
-}
-
-function parsePayload(json: string): Record<string, unknown> | undefined {
-  try {
-    const value: unknown = JSON.parse(json);
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export function formatResume(report: ResumeReport): string {

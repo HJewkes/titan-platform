@@ -32,6 +32,10 @@ dispatchToAgentChat(
   an exited agent's clean, pushed worktree and keeps its branch, and `resumeAgent`
   re-creates it. A refusal (live, dirty, unpushed or shared tree) throws `DispatchError`
   with the broker's reason; a broker that cannot be reached throws `BrokerUnavailableError`.
+- `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
+  the broker delivers the text to a live agent as one channel message from the human seat,
+  which starts a turn in an idle session. A name with no live session throws
+  `DispatchError` with the broker's reason. The text is in argv.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
