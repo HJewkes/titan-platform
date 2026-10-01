@@ -19,6 +19,9 @@ const BROKER = [
   log("08:20:00", "route", { kind: "message", from: "impl-1", to: "seat-a", delivered: false, recipients: [] }),
   log("08:30:00", "registered", { name: "seat-a" }),
   log("09:00:00", "unreported-exit", { agentId: "a1", name: "impl-1", spawner: "seat-a", lastAction: "chat_send" }),
+  log("09:10:00", "deregistered", { name: "rev-5", reason: "connection closed" }),
+  log("09:10:01", "agent_exited", { agentId: "a5", name: "rev-5", code: 0 }),
+  log("09:40:00", "registered", { name: "rev-5" }),
 ].join("\n");
 
 interface EventFixture {
@@ -35,9 +38,11 @@ const EVENTS: EventFixture[] = [
   { ts: "2026-09-12T07:00:00Z", kind: "agent_spawned", actor: "seat-a", target: "impl-1", msgId: "a1", meta: { profile: "implementer" } },
   { ts: "2026-09-12T10:00:00Z", kind: "approval_request", actor: "rev-1", target: "human", msgId: "p1", meta: { tool_name: "Bash" } },
   { ts: "2026-09-12T10:30:00Z", kind: "approval_request", actor: "rev-2", target: "human", msgId: "p2", meta: { tool_name: "Edit" } },
-  { ts: "2026-09-12T10:31:00Z", kind: "resolution", actor: "human", ref: "p2" },
+  { ts: "2026-09-12T10:31:00Z", kind: "resolution", actor: "rev-2", ref: "p2", meta: "withdrawn" },
   { ts: "2026-09-12T10:40:00Z", kind: "approval_request", actor: "impl-1", target: "human", msgId: "p3", meta: "not json" },
   { ts: "2026-09-12T10:45:00Z", kind: "message", actor: "rev-3", target: "seat-a" },
+  { ts: "2026-09-12T10:50:00Z", kind: "approval_request", actor: "rev-6", target: "human", msgId: "p6", meta: { tool_name: "Bash" } },
+  { ts: "2026-09-12T10:55:00Z", kind: "agent_retired", actor: "human", target: "rev-6", meta: { reaped: "not_registered" } },
   { ts: "2026-09-12T13:00:00Z", kind: "message", actor: "rev-1", target: "seat-a" },
 ];
 
@@ -90,13 +95,19 @@ describe("insights liveness", () => {
     expect(answer.routeFailures.rows).toMatchObject([{ recipient: "seat-a", failed: 1, lines: [3] }]);
   });
 
+  it("leaves out a seat that exited cleanly and later resumed", async () => {
+    const answer = await ask(WINDOW);
+
+    expect(answer.darkSeats.rows.map((r) => r.seat)).not.toContain("rev-5");
+  });
+
   it("joins an unreported exit to its spawn row's profile", async () => {
     const answer = await ask(WINDOW);
 
     expect(answer.unreportedExits.rows).toMatchObject([{ profile: "implementer", count: 1, exits: [{ name: "impl-1", line: 5, spawnEventId: 1 }] }]);
   });
 
-  it("reports agents whose last event before --until is a prompt, with any resolution and an unreadable meta", async () => {
+  it("reports agents whose last event before --until is a prompt, with the agent's own resolution and an unreadable meta, skipping a retired one", async () => {
     const answer = await ask(WINDOW);
 
     expect(answer.stalePrompts.rows).toEqual([

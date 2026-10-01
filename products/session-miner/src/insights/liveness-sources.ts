@@ -24,13 +24,16 @@ interface LastEventRow {
   kind: string;
   tool: string | null;
   resolutionEventId: number | null;
+  endEventId: number | null;
 }
 
-/** Each actor's newest event before asOf, kept only where it is an approval request, with any resolution of it. */
+/** Each actor's newest event before asOf other than a resolution, kept only where it is an approval request, with any resolution of it and any later exit or retirement. */
 export function readLastPrompts(eventsDb: string, asOf: string): LastEventRecord[] {
   const sql = `SELECT e.id AS eventId, e.ts, e.actor, e.kind, ${metaField("tool_name", "e.meta")} AS tool,
-      (SELECT min(r.id) FROM events r WHERE r.kind = 'resolution' AND r.ref = e.msg_id AND r.ts < @asOf) AS resolutionEventId
-    FROM events e JOIN (SELECT actor, max(id) AS id FROM events WHERE ts < @asOf GROUP BY actor) last ON e.id = last.id
+      (SELECT min(r.id) FROM events r WHERE r.kind = 'resolution' AND r.ref = e.msg_id AND r.ts < @asOf) AS resolutionEventId,
+      (SELECT min(x.id) FROM events x WHERE x.id > e.id AND x.ts < @asOf
+        AND ((x.kind = 'agent_exited' AND x.actor = e.actor) OR (x.kind = 'agent_retired' AND x.target = e.actor))) AS endEventId
+    FROM events e JOIN (SELECT actor, max(id) AS id FROM events WHERE ts < @asOf AND kind != 'resolution' GROUP BY actor) last ON e.id = last.id
     WHERE e.kind = 'approval_request' ORDER BY e.id`;
   const rows = withEventsDb(eventsDb, (db) => db.prepare(sql).all({ asOf: Date.parse(asOf) }) as LastEventRow[]);
   return rows.map(({ ts, ...row }) => ({ ...row, at: new Date(ts).toISOString() }));

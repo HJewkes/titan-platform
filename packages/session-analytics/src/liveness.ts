@@ -9,8 +9,8 @@ import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 /** Where each section's findings come from: the command that re-reads them and the field it reads. */
 export const LIVENESS_SOURCES = {
   registrations: {
-    command: `grep -nE '"event":"(registered|deregistered|teleport_started|teleport_completed|teleport_failed)"' <broker.log>`,
-    field: "ts, event, name; cited as broker.log line numbers",
+    command: `grep -nE '"event":"(registered|deregistered|agent_exited|teleport_started|teleport_completed|teleport_failed|teleport_aborted)"' <broker.log>`,
+    field: "ts, event, name; cited as broker.log line numbers; a gap with an agent_exited and no teleport is a resume",
   },
   routes: { command: `grep -n '"event":"route"' <broker.log>`, field: "to, delivered, recipients" },
   exits: { command: `grep -n '"event":"unreported-exit"' <broker.log>`, field: "agentId, name, spawner, lastAction" },
@@ -19,8 +19,8 @@ export const LIVENESS_SOURCES = {
     field: "events.msg_id (agent id), events.meta.profile",
   },
   prompts: {
-    command: `sqlite3 -readonly <events.db> "SELECT e.* FROM events e JOIN (SELECT actor, max(id) id FROM events WHERE ts < <asOf> GROUP BY actor) l ON e.id = l.id WHERE e.kind='approval_request'"`,
-    field: "events.ts, events.actor, events.meta.tool_name; a resolution row's events.ref",
+    command: `sqlite3 -readonly <events.db> "SELECT e.* FROM events e JOIN (SELECT actor, max(id) id FROM events WHERE ts < <asOf> AND kind != 'resolution' GROUP BY actor) l ON e.id = l.id WHERE e.kind='approval_request'"`,
+    field: "events.ts, events.actor, events.meta.tool_name; a resolution row's events.ref; skipped after the actor's agent_exited or agent_retired, or a broker_started it never re-registered after",
   },
 } as const;
 
@@ -32,7 +32,7 @@ export interface LivenessInput {
   lastEvents: readonly LastEventRecord[];
   /** Gaps still open and prompt ages are measured to here; later entries are ignored. */
   asOf: string;
-  /** A finding is kept when it starts inside the window; a prompt still unanswered at asOf is kept however old. */
+  /** A finding is kept when it starts inside the window; a prompt from a live agent still unanswered at asOf is kept however old. */
   window?: { since?: string; until?: string };
   /** Keeps only findings about these names: the dark seat, route recipient, exiting agent or its spawner, prompting agent. */
   seats?: readonly string[];
@@ -87,7 +87,7 @@ export function livenessReport(input: LivenessInput): LivenessReport {
   const dark = darkGaps(broker, misses, input.asOf).filter((g) => keep([g.seat], g.from));
   const routeMissesInScope = misses.filter((m) => keep([m.recipient], m.at));
   const routes = routeFailureRows(routeMissesInScope);
-  const prompts = stalePromptRows(input.lastEvents, input.asOf).filter((p) => !input.seats || input.seats.includes(p.agent));
+  const prompts = stalePromptRows(input.lastEvents, broker, input.asOf).filter((p) => !input.seats || input.seats.includes(p.agent));
   const exits = unreportedExitRows(broker.filter((e) => keep([stringField(e, "name") ?? "", stringField(e, "spawner") ?? ""], e.ts)), input.spawns);
   return {
     asOf: input.asOf,

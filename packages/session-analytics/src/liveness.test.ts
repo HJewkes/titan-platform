@@ -40,7 +40,7 @@ const BROKER = [
 
 const SPAWNS: SpawnRecord[] = [{ eventId: 7, agentId: "a1", name: "impl-1", profile: "implementer" }];
 
-const prompt = (actor: string, time: string, kind = "approval_request"): LastEventRecord => ({ eventId: actor.length * 10, at: at(time), actor, kind, tool: "Bash", resolutionEventId: null });
+const prompt = (actor: string, time: string, kind = "approval_request"): LastEventRecord => ({ eventId: actor.length * 10, at: at(time), actor, kind, tool: "Bash", resolutionEventId: null, endEventId: null });
 const LAST_EVENTS = [prompt("rev-1", "12:30:00"), prompt("rev-22", "12:55:00"), prompt("impl-333", "12:00:00", "message"), { ...prompt("rev-4444", "12:00:00"), resolutionEventId: 99 }];
 
 const AS_OF = at("13:00:00");
@@ -104,6 +104,41 @@ describe("livenessReport", () => {
 
   it("keeps a prompt raised before --since that is still unanswered at asOf", () => {
     expect(report({ window: { since: at("12:45:00") } }).stalePrompts.rows.map((r) => r.agent)).toEqual(["rev-1"]);
+  });
+
+  it("skips a gap where the agent exited before registering again, as a resume rather than a dark seat", () => {
+    const broker = parseBrokerLog([
+      log("10:00:00", "deregistered", { name: "rev-5" }),
+      log("10:00:01", "agent_exited", { agentId: "a5", name: "rev-5", code: 0 }),
+      log("10:20:00", "registered", { name: "rev-5" }),
+      log("11:00:00", "agent_exited", { agentId: "a6", name: "rev-6", code: 0 }),
+      log("11:00:01", "deregistered", { name: "rev-6" }),
+      log("11:10:00", "route", { kind: "message", from: "seat-a", to: "rev-6", delivered: false, recipients: [] }),
+      log("12:00:00", "deregistered", { name: "rev-7" }),
+      log("12:20:00", "registered", { name: "rev-7" }),
+    ]);
+
+    expect(livenessReport({ broker, spawns: [], lastEvents: [], asOf: AS_OF }).darkSeats.rows.map((r) => r.seat)).toEqual(["rev-7"]);
+  });
+
+  it("keeps a teleport gap whose old process exited", () => {
+    const broker = parseBrokerLog([
+      log("10:00:00", "teleport_started", { name: "seat-d" }),
+      log("10:00:30", "deregistered", { name: "seat-d" }),
+      log("10:00:31", "agent_exited", { agentId: "d1", name: "seat-d", code: 0 }),
+      log("10:20:00", "registered", { name: "seat-d" }),
+    ]);
+
+    expect(livenessReport({ broker, spawns: [], lastEvents: [], asOf: AS_OF }).darkSeats.rows).toMatchObject([{ seat: "seat-d", teleport: true }]);
+  });
+
+  it("skips a prompt from an agent that exited or retired since, or never re-registered after a broker restart", () => {
+    const broker = parseBrokerLog([log("12:40:00", "broker_started"), log("12:40:05", "registered", { name: "rev-1" })]);
+    const lastEvents = [prompt("rev-1", "12:30:00"), prompt("rev-22", "12:35:00"), { ...prompt("rev-333", "12:42:00"), endEventId: 120 }, prompt("rev-4444", "12:45:00")];
+
+    const { stalePrompts } = livenessReport({ broker, spawns: [], lastEvents, asOf: AS_OF });
+
+    expect(stalePrompts.rows.map((r) => r.agent)).toEqual(["rev-1", "rev-4444"]);
   });
 
   it("marks a gap after an aborted teleport as a teleport gap", () => {

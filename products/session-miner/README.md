@@ -103,12 +103,15 @@ numbers come from, and the text ends with the command and field behind each sour
 Q8 also reads outside the graph and takes `--seat` in place of the session filters. It reads
 agent-chat's broker log at `TITAN_MINER_BROKER_LOG` (default `~/.agent-chat/broker.log`) or
 `--broker-log`, and the events table read-only. A seat is dark from a `deregistered` line to its next
-`registered` line; a gap still open at `--until` is listed only if a route missed the seat during
+`registered` line. A gap with an `agent_exited` line and no teleport is a clean exit and later
+resume, not a dark seat. A gap still open at `--until` is listed only if a route missed the seat during
 it. A `delivered:false` route counts as failed, except one the broker held for a dark seat (`held`) or
 an answer or decision queued in the inbox, which counts as queued. A name left out of `recipients`
 counts as a partial delivery. Broadcasts and tag sends (`to: "tag <name>"`) are skipped. Unreported exits take their profile from the `agent_spawned`
 row with the same agent id. A stale prompt is an `approval_request` that is its actor's newest event
-before `--until`, however long before `--since`; prompts with a `resolution` row are listed apart. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
+before `--until`, not counting `resolution` rows, however long before `--since`; prompts with a `resolution` row are listed apart.
+A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
+restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
