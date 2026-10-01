@@ -166,3 +166,19 @@ describe("normal work classifies nothing", () => {
     expect(bash(command, head)).toEqual([]);
   });
 });
+
+describe("xargs -I runs the command once per input line", () => {
+  it("denies a push hidden behind a read-only line", () => {
+    expect(bash("printf 'status\\npush origin HEAD:main' | xargs -I{} git {}")).toEqual([
+      expect.objectContaining({ action: "merge", spelling: "bash.merge.git-push-protected", subject: { branch: "main" } }),
+    ]);
+  });
+
+  it("allows a single read-only line", () => {
+    expect(bash("printf 'status' | xargs -I{} git {}")).toEqual([]);
+  });
+
+  it("denies a push hidden in a here-string line", () => {
+    expect(spellings(bash("xargs -I{} git {} <<< $'status\\npush origin HEAD:main'"))).toEqual(["bash.merge.git-push-protected"]);
+  });
+});
