@@ -6,6 +6,7 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
@@ -92,7 +93,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
     const final = outcome && (await afterLand(run, outcome));
-    if (final) return final.kind === "merged" ? landed(ctx, run.target, final, params.after) : final;
+    if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : final;
     run.state.round += 1;
   }
 }
@@ -199,9 +200,9 @@ async function narrowToRegistration(run: ShepherdRun): Promise<void> {
 }
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
-async function landed(ctx: WorkflowContext, target: PrTarget, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
-  await step(ctx, "sh-landed", { ...target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
-  await shepherdMainCi(ctx, { ...target, mergeSha: merged.mergeSha }, after);
+async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
+  await step(ctx, "sh-landed", { ...run.target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
+  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha }, after, run.policy.fixer);
   return merged;
 }
 
@@ -232,6 +233,8 @@ export interface ShepherdWiring {
   review?: ReviewWiring;
   /** Absent means `agent-chat agent park` through `deps.agentChatBin`. */
   park?: ParkPort;
+  /** The freeze store and the task and fixer ports a red main uses; absent means a red main goes to the owner, unfrozen. */
+  mainRed?: MainRedWiring;
 }
 
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -243,7 +246,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
-    ...postMergeRoutes(deps),
+    ...postMergeRoutes(deps, wiring.mainRed),
   ];
 }
 

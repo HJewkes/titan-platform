@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { GITHUB_ACTIONS_APP_ID, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -5,9 +6,11 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { CleanupPorts } from "./cleanup.js";
+import { freezeStoreRef } from "./freeze.js";
+import type { MainRedWiring } from "./main-red.js";
 import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type MainCiInput } from "./post-merge.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { OWNER_GATE_POLICY } from "./policy.js";
+import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -102,7 +105,7 @@ describe("readMainCi", () => {
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts) {
+function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -110,10 +113,11 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, mergeRuns()), base.checkRuns(repo, sha)) };
   let clock = 0;
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup });
+  const freeze = freezeStoreRef(() => clock);
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup, mainRed });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, store };
+  return { host, fake, store, freezes: () => freeze.get() };
 }
 
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
@@ -168,7 +172,7 @@ describe("shepherd-pr after land", () => {
     expect(retired).toEqual(["impl-a"]);
   });
 
-  it("opens the main-red gate for the owner when main is red", async () => {
+  it("freezes the repo and opens the main-red gate when main is red and no task port is wired", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")]);
     const runId = await runToMerge(w);
 
@@ -176,7 +180,8 @@ describe("shepherd-pr after land", () => {
     w.host.runtime.signal(runId, "main-red", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
     await w.host.runtime.wait(runId);
 
-    expect(stepIds(w, runId)).not.toContain("sh-freeze");
+    expect(stepIds(w, runId)).toContain("sh-freeze");
+    expect(w.freezes().get(REPO)?.redSha).toBe(w.fake.pr(1).mergeSha);
   });
 
   it("gates on a non-empty after list and runs no stage", async () => {
@@ -213,5 +218,101 @@ describe("shepherd-pr after land", () => {
     expect(w.host.runtime.status(runId)!.status).toBe("failed");
     expect(w.fake.calls).not.toContain("merge");
     expect(stepIds(w, runId)).not.toContain("merge");
+  });
+});
+
+const FIXER_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, fixer: true, seat: "demo-seat" };
+const EARLIER_RED = fakeSha("earlier-red");
+const FIXER = "fix-widget-aaaaaaa";
+
+function mainRedPorts() {
+  const added: string[] = [];
+  const spawned: string[] = [];
+  const mainRed: Omit<MainRedWiring, "freezes"> = {
+    tasks: { findByTag: async () => undefined, add: async (_initiative, fields) => `FX-${added.push(fields.title)}` },
+    fixers: { roster: async () => spawned.map((name) => ({ name })), spawn: async (name) => void spawned.push(name) },
+    checkoutFor: () => tmpdir(),
+  };
+  return { mainRed, added, spawned };
+}
+
+/** Starts a run for PR 1 and registers it before the merge gate, as `shepherd.register` would. */
+async function registeredToMerge(w: ReturnType<typeof shepherdWorld>, task: string, implementer: string): Promise<string> {
+  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(FIXER_POLICY) });
+  w.store.get().register({ repo: REPO, pr: 1, runId, task, implementer, policy: FIXER_POLICY });
+  await gateOpened(w.host, gateId(runId, "approve-merge"));
+  w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+  return runId;
+}
+
+/** The repo is already frozen at an earlier red with a fix task and a fixer, before PR 1's run starts. */
+function frozenWithFixer(w: ReturnType<typeof shepherdWorld>): void {
+  const freezes = w.freezes();
+  freezes.freeze(REPO, EARLIER_RED);
+  freezes.setFixTask(REPO, "demo/FX-1");
+  freezes.setFixer(REPO, FIXER);
+}
+
+describe("shepherd-pr on a red main", () => {
+  it("freezes, files one fix task and spawns one fixer, and asks the owner nothing", async () => {
+    const ports = mainRedPorts();
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(ports.added).toHaveLength(1);
+    expect(ports.spawned).toHaveLength(1);
+    expect(w.freezes().get(REPO)).toMatchObject({ fixTask: "demo/FX-1", fixer: ports.spawned[0] });
+    expect(w.host.gates.listPending()).toEqual([]);
+  });
+
+  it("opens main-red-again on a red at the fixer's own merge, spawns no second fixer, and thaws on the owner's word", async () => {
+    const ports = mainRedPorts();
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await gateOpened(w.host, gateId(runId, "main-red-again"));
+    const before = { added: ports.added.length, spawned: ports.spawned.length };
+    w.host.runtime.signal(runId, "main-red-again", { decision: "unfreeze", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(before).toEqual({ added: 0, spawned: 0 });
+    expect(ports.spawned).toEqual([]);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("unfreezes when the fixer's merge is green", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+  });
+
+  it("neither freezes nor unfreezes when no run appears at the merge sha", async () => {
+    const w = shepherdWorld(() => [], undefined, mainRedPorts().mainRed);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await gateOpened(w.host, gateId(runId, "main-red"));
+
+    expect(w.freezes().get(REPO)).toMatchObject({ redSha: EARLIER_RED, redCount: 1 });
+    expect(stepIds(w, runId)).not.toContain("sh-freeze");
+    expect(stepIds(w, runId)).not.toContain("sh-unfreeze");
+  });
+
+  it("files a task and spawns nothing when the policy grants no fixer", async () => {
+    const ports = mainRedPorts();
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
+    const runId = await runToMerge(w);
+
+    await gateOpened(w.host, gateId(runId, "main-red"));
+
+    expect(ports.added).toHaveLength(1);
+    expect(ports.spawned).toEqual([]);
   });
 });

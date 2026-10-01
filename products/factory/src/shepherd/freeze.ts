@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 
 export const FREEZE_RECHECK_MS = 5 * 60_000;
@@ -92,8 +92,12 @@ export class FreezeStore {
   unfreeze(repo: RepoSlug, greenSha: string): boolean {
     const freeze = this.active(repo);
     if (!freeze || freeze.redSha === greenSha) return false;
-    this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ?").run(new Date(this.now()).toISOString(), repoKey(repo));
-    return true;
+    return this.release(repo);
+  }
+
+  /** The owner's override from the main-red-again gate: thaws without a green sha. */
+  release(repo: RepoSlug): boolean {
+    return this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND thawed_at IS NULL").run(new Date(this.now()).toISOString(), repoKey(repo)).changes > 0;
   }
 
   private setField(repo: RepoSlug, column: "fix_task" | "fixer", value: string): void {
@@ -146,24 +150,28 @@ export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
   };
 }
 
-/** The repo's default-branch head, when every run from Actions on it is complete and green and it is not the red sha. */
+/** The repo's default-branch head, when `greenAfterRed` holds for it. */
 export async function greenHead(port: GitHubPort, repo: RepoSlug, baseRef: string, redSha: string): Promise<string | undefined> {
   const head = await port.getHeadSha(repo, baseRef);
-  if (head === null || head === redSha) return undefined;
-  const runs = (await port.latestCheckRuns(repo, head)).filter((run) => run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID);
-  if (runs.length === 0) return undefined;
-  return headCheckFindings({
-    headSha: head,
-    contexts: [],
-    runs,
-    requiredApps: [GITHUB_ACTIONS_APP_ID],
-  }).length === 0
-    ? head
-    : undefined;
+  if (head === null) return undefined;
+  return (await greenAfterRed(port, repo, head, redSha)) ? head : undefined;
+}
+
+/** Every Actions run at `sha` is complete and green, and every check that was red at `redSha` ran green here, so a path-filtered head cannot clear it. */
+export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: string, redSha: string): Promise<boolean> {
+  if (sha === redSha) return false;
+  const runs = await actionsRuns(port, repo, sha);
+  if (runs.length === 0) return false;
+  const redSet = (await actionsRuns(port, repo, redSha)).filter((run) => run.status === "completed" && !isPassing(run)).map((run) => run.name);
+  return headCheckFindings({ headSha: sha, contexts: [...new Set(redSet)], runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
+}
+
+async function actionsRuns(port: GitHubPort, repo: RepoSlug, sha: string): Promise<CheckRun[]> {
+  return (await port.latestCheckRuns(repo, sha)).filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID);
 }
 
 export interface RegistrationTasks {
-  byPr(repo: RepoSlug, pr: number): { task: string } | undefined;
+  byPr(repo: RepoSlug, pr: number): { task: string; implementer: string } | undefined;
 }
 
 export interface FreezeGuardDeps {
@@ -185,11 +193,17 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
       const freezes = deps.freezes();
       const freeze = freezes.get(repo);
       if (!freeze) return undefined;
-      if (freeze.fixTask !== null && deps.registrations().byPr(repo, pr)?.task === freeze.fixTask) return undefined;
+      if (isFixersPr(freeze, deps.registrations().byPr(repo, pr))) return undefined;
       if (await recheck(port, freezes, repo, baseRef, lastRead, now())) return undefined;
       return `${repo} is frozen: main is red at ${freeze.redSha}`;
     },
   };
+}
+
+/** Both halves come from Shepherd's own records, because any registration can name the fix task, even by re-registering. */
+function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
+  if (freeze.fixTask === null || freeze.fixer === null || registration === undefined) return false;
+  return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;
 }
 
 /** A failed read leaves the freeze in place, because the merge it guards is already blocked. */

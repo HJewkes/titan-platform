@@ -97,6 +97,7 @@ describe("the frozen-merge guard", () => {
     const r = rig();
     r.freezes.freeze(A, RED);
     r.freezes.setFixTask(A, "demo/fix");
+    r.freezes.setFixer(A, "impl");
     const fix = openPr(r, A, "demo/fix");
     const other = openPr(r, A, "demo/other");
 
