@@ -51,7 +51,11 @@ Somewhere else entirely, in a CLI, an MCP tool, or a dashboard route:
 ```ts
 import { resolveGate, cancelGate } from "@titan-design/hitl";
 
-resolveGate(store, "deploy-approval", { approved: true });
+resolveGate(store, "deploy-approval", { approved: true }, {
+  class: "owner-terminal",
+  id: "owner",
+  channel: "cli",
+});
 ```
 
 After a restart, re-attach by id instead of re-opening:
@@ -89,7 +93,7 @@ both pass the same behaviour suite.
 
 `SqliteGateStore` installs a `hitl_gate` table through store-sqlite's
 `runMigrations` on construction. Pass `migrate: false` and put `gateMigration(n)`
-in the product's own migration list when hitl shares a database with domain
+and `gateResolverMigration(m)` in the product's own migration list when hitl shares a database with domain
 tables. `table` renames the table so one database can host several gate spaces.
 Timestamps are ISO-8601 strings, the shape store-sqlite writes and any surface
 can send on as-is.
@@ -99,7 +103,7 @@ tell its waiter why.
 
 ## Who resolved it
 
-`resolve` and `resolveGate` take an optional third argument, a `GateResolver`:
+`resolve` and `resolveGate` require a third argument, a `GateResolver`:
 `{ class, id, channel, confirmEvent? }`. `class` is an actor class from
 `@titan-design/authority`. The store records it as `resolvedBy`.
 
@@ -116,23 +120,46 @@ agent or automation never answers a gate. It throws `GateResolverRefused` and th
 pending. The store reads each declared resolver field once into a frozen copy, and checks and stores
 only that copy. A store's `authorize` option runs after the class check and can refuse more,
 never fewer. It must return `{ allowed }` synchronously, or the store throws
-`GateAuthorizeInvalid`. With `authorize` installed, a resolve that names no resolver is refused.
+`GateAuthorizeInvalid`.
 Refusals name the gate id and the actor class, never the resolver's other fields.
 
 hitl records a claim about the resolver; it cannot prove one. Any process that can write
 the database can claim any class.
 
 On SQLite the resolver lives in a `resolved_by` column that `gateResolverMigration(n)` adds,
-along with a trigger that refuses any resolve naming no resolver. Add it to your own
-migration list after `gateMigration`. It is idempotent and does not backfill: gates resolved
-before it read back with `resolvedBy` undefined. Until the migration runs, a store resolves
-without a resolver as before and throws `GateStoreSchemaOutdated` when given one, rather
-than dropping it. `migrate: true` does not run it yet.
+along with a trigger that refuses any resolve naming no resolver. `migrate: true` runs it as
+version 2; with `migrate: false`, add it to your own migration list after `gateMigration`. It
+is idempotent and does not backfill: gates resolved before it read back with `resolvedBy`
+undefined. `SqliteGateStore` checks for the column when it is constructed and throws
+`GateStoreSchemaOutdated` naming `gateResolverMigration` when it is missing, or naming
+`gateMigration` when the table does not exist. That error carries an empty `gateId`,
+because no gate is involved yet.
 
 After the migration, a writer built on hitl 0.2.x fails when it resolves: SQLite aborts the
 statement with a raw error whose message is `hitl: resolvedBy required`. The same trigger
 refuses a direct insert of a resolved row with no resolver. Cancels from an old writer still
-work. The fix is to upgrade that writer so it passes a resolver.
+work. The fix is to upgrade that writer so it passes a resolver. A caller on this release
+never reaches the trigger: every store refuses a resolve with no resolver first.
+
+## Upgrading to 0.4
+
+0.4 makes the resolver required. It is a breaking release; a `^0.3` range does not pick it up.
+
+1. Pass a `GateResolver` to every `store.resolve`, `resolveGate` and workflow
+   `runtime.signal` call. The compiler finds each one. Name the class honestly: a human at
+   a terminal is `owner-terminal`, a human on a phone is `owner-remote`. An agent or an
+   automation cannot resolve a gate, by design.
+2. Add `gateResolverMigration(n)` to your migration list, after `gateMigration`, with the
+   next free version in your own list. `migrate: true` stores run it for you as version 2.
+3. Expect `GateStoreSchemaOutdated` naming `gateResolverMigration` from the
+   `SqliteGateStore` constructor if step 2 is missing. The store no longer opens over such a
+   table.
+4. Upgrade every process that writes the gate table at once. A writer still on 0.2 fails
+   each resolve with SQLite's `hitl: resolvedBy required` once the migration has run.
+
+A caller that bypasses the type and resolves with no resolver gets `GateResolverRefused`
+with the reason `a resolver is required` from every store, memory or SQLite, and the gate
+stays pending.
 
 ## Rule-bound gates
 
@@ -163,11 +190,10 @@ idempotent and does not backfill. `migrate: true` runs it as version 3. A store 
 lacks the column throws `GateStoreSchemaOutdated` naming `gateRuleMigration` when handed a
 rule, rather than dropping it.
 
-The trigger needs `resolved_by` to know who answered. Until `gateResolverMigration` has run,
-a rule-bound gate can be opened and cancelled but not resolved: the store throws
-`GateStoreSchemaOutdated` naming `gateResolverMigration`, and the trigger aborts every raw
-resolve of the row. Run both migrations in either order; the second one installs the
-class-aware trigger.
+The trigger needs `resolved_by` to know who answered. On a table that has run
+`gateRuleMigration` but not `gateResolverMigration`, the trigger aborts every raw resolve of
+a rule-bound row, and no store opens over the table. Run both migrations in either order;
+the second one installs the class-aware trigger.
 
 The insert guard fires before SQLite's conflict handling. A raw insert with no rule onto a
 pending rule-bound id therefore aborts with `hitl: a pending rule-bound gate cannot be

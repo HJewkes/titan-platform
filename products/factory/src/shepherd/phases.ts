@@ -18,16 +18,21 @@ export interface WakeRequest extends PhaseTarget {
 
 export type WakeOutcome = { kind: "woken"; agent: string; sessionId?: string } | { kind: "unhandled"; reason: string };
 
-export type ReviewRequest = PhaseTarget;
+export interface ReviewRequest extends PhaseTarget {
+  /** Spawn a reviewer under a never-held name, so a reviewer that went silent at this head is not asked again. */
+  fresh?: boolean;
+}
+
+/** Why a review gave no verdict: none was started or none was sent, the wait ran out, or the hold's reviewer has not answered. */
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold";
 
 export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown }
   | { kind: "FIX_FIRST"; headSha: string; text: string }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  /** `noVerdict` says why no dispatched reviewer gave a verdict; absent means none was dispatched. */
-  | { kind: "none"; noVerdict?: string };
+  | { kind: "none"; cause?: NoVerdictCause };
 
-/** A `none` verdict or `unhandled` wake leaves the decision to the owner gate. */
+/** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
   wake(ctx: WorkflowContext, request: WakeRequest): Promise<WakeOutcome>;
   review(ctx: WorkflowContext, request: ReviewRequest): Promise<Verdict>;

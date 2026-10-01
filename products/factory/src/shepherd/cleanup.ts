@@ -27,6 +27,8 @@ export type TaskState = "open" | "done" | "missing";
 export interface CleanupTasks {
   state(initiative: string, id: string): Promise<TaskState>;
   done(initiative: string, id: string): Promise<void>;
+  /** Adds a line to the task's notes unless the notes already hold it, so a repeated cleanup adds nothing. */
+  appendNote(initiative: string, id: string, line: string): Promise<void>;
 }
 
 export interface CleanupPorts {
@@ -76,7 +78,7 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
     const why = registration === undefined ? "no registration" : "no cleanup ports wired";
     return { ref, task: why, retired: [], caveats };
   }
-  const task = await closeTask(deps.cleanup.tasks, registration.task, waiter());
+  const task = await settleTask(deps, registration, input, waiter());
   const retired = await retireAll(deps.cleanup.agents, deps.store.get(), registration, input, waiter());
   return { ref, task, retired, caveats };
 }
@@ -89,7 +91,21 @@ async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string
   return result.done ? "deleted" : result.skipped;
 }
 
+/** A slice PR notes its task and leaves it open, because the task's other slices have not landed. An unread merge sha writes nothing, so a retry cannot add a second line for the landing. */
+async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
+  const tasks = deps.cleanup!.tasks;
+  if (registration.slice === null) return closeTask(tasks, registration.task, wait);
+  const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
+  if (pr === undefined) return "unread";
+  const line = `${registration.slice} landed in ${input.repo}#${input.pr} at ${pr.mergeSha ?? "unknown"}`;
+  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, line).then(() => "noted"), tasks);
+}
+
 async function closeTask(tasks: CleanupTasks, key: string, wait: Waiter): Promise<string> {
+  return onOpenTask(key, wait, (initiative, id) => tasks.done(initiative, id).then(() => "done"), tasks);
+}
+
+async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, id: string) => Promise<string>, tasks: CleanupTasks): Promise<string> {
   const slash = key.indexOf("/");
   if (slash <= 0 || slash === key.length - 1) {
     wait.caveats.push(`task ${key} is not <initiative>/<id>`);
@@ -99,8 +115,7 @@ async function closeTask(tasks: CleanupTasks, key: string, wait: Waiter): Promis
   const close = async (): Promise<string> => {
     const state = await tasks.state(initiative, id);
     if (state !== "open") return state === "done" ? "already-done" : "missing";
-    await tasks.done(initiative, id);
-    return "done";
+    return act(initiative, id);
   };
   return (await retrying(`task ${key}`, close, wait)) ?? "unread";
 }

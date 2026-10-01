@@ -4,6 +4,7 @@ import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
 import { decideAutoMerge, type MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
+import { escalationReason } from "./route-table.js";
 import type { SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
@@ -50,7 +51,6 @@ export class RegistrationRefused extends Error {
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
-export const NO_VERDICT_RULE: PolicyRule = { table: "shepherd-review", rowId: "no-verdict", version: 1 };
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
   return MERGE_ORDER.indexOf(a) <= MERGE_ORDER.indexOf(b) ? a : b;
@@ -94,21 +94,32 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
-      const silence = noVerdictAt(target?.headSha, verdictFor);
-      if (silence !== undefined) return { outcome: "gate", rule: NO_VERDICT_RULE, reason: `no reviewer verdict at ${target?.headSha}: ${silence}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor));
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
     },
   };
 }
 
-/** The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries. */
-export function shepherdLandOptions(effective: () => EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): LandOptions {
-  return {
-    policy: { decide: (action, target) => shepherdGatePolicy(effective(), verdictFor).decide(action, target) },
-    allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }),
+/**
+ * The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries.
+ * Every gate names why the owner is asked: failed rounds at that head, else a policy that did not allow the merge.
+ */
+export function shepherdLandOptions(
+  effective: () => EffectivePolicy,
+  verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
+  failedRoundsAt: (headSha: string) => string | undefined = () => undefined,
+): LandOptions {
+  const decide = (action: string, target?: { headSha?: string }): GateDecision => {
+    const decision = shepherdGatePolicy(effective(), verdictFor).decide(action, target);
+    if (decision.outcome !== "gate") return decision;
+    const failed = target?.headSha === undefined ? undefined : failedRoundsAt(target.headSha);
+    if (failed !== undefined) return { outcome: "gate", rule: ROUTE_RULE, reason: escalationReason("failed-rounds", failed) };
+    return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
+  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }) };
 }
+
+const ROUTE_RULE: PolicyRule = { table: "shepherd-route", rowId: "failed-rounds", version: 1 };
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
 function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
@@ -117,11 +128,6 @@ function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdi
   const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
   const wellFormed = typeof evidence?.head === "string" && typeof evidence.merge === "object" && evidence.merge !== null && typeof evidence.record === "object" && evidence.record !== null;
   return wellFormed ? (evidence as MergeEvidence) : undefined;
-}
-
-function noVerdictAt(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string | undefined {
-  const verdict = headSha === undefined ? undefined : verdictFor(headSha);
-  return verdict?.kind === "none" ? verdict.noVerdict : undefined;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

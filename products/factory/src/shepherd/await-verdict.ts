@@ -1,60 +1,15 @@
-import type { AgentIdentity } from "@titan-design/authority";
-import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
+import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
+import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, AwaitVerdictTiming, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
 export const DEFAULT_EXIT_GRACE_MS = 60_000;
 /** A broker restart detaches every agent for a moment, so only a long detach counts as the reviewer leaving. */
 export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
+export const HEAD = /^[0-9a-f]{40}$/;
 /** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
 export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
 export const FIX_FIRST_TRUNCATED = "\n[truncated]";
-export const HEAD_SHA = /^[0-9a-f]{40}$/;
-
-export interface AwaitVerdictInput {
-  repo: string;
-  pr: number;
-  head: string;
-  reviewerAgentId: string;
-  reviewerSessionId: string;
-  /** Epoch milliseconds. */
-  dispatchedAt: number;
-}
-
-/** One assistant message, attributed by the reader to the agent and session it came from. */
-export interface ReviewerMessage {
-  agentId: string;
-  sessionId: string;
-  /** Epoch milliseconds. */
-  writtenAt: number;
-  text: string;
-  locator: SourceTextLocator;
-}
-
-/** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
-export interface ReviewerReader {
-  read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-}
-
-interface AcceptedVerdict {
-  kind: "verdict";
-  head: string;
-  locator: SourceTextLocator;
-  /** The author of the accepted message, as the reader attributed it. */
-  reviewer: AgentIdentity;
-}
-
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. `silence` says why a dispatched reviewer gave none. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string }) | { kind: "none"; silence?: string };
-
-export interface AwaitVerdictTiming {
-  now: () => number;
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs: number;
-  timeoutMs: number;
-  exitGraceMs?: number;
-  detachGraceMs?: number;
-}
 
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   const input = (raw ?? {}) as Record<string, unknown>;
@@ -66,7 +21,7 @@ export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
   if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
   const head = text(input.head, "head");
-  if (!HEAD_SHA.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
+  if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
   return {
     repo: text(input.repo, "repo"),
     pr,
@@ -81,6 +36,8 @@ function boundedFindings(text: string): string {
   if (text.length <= MAX_FIX_FIRST_TEXT_CHARS) return text;
   return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
 }
+
+export const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
 
 /**
  * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
@@ -104,25 +61,21 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
 type Roster = () => Promise<readonly { agentId: string; presence: string }[]>;
 
-/** Why the dispatched reviewer is gone for good, or undefined while it may still answer; an unreadable roster says nothing. */
-function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<string | undefined> {
+/** True once the dispatched reviewer has been gone for its grace; an unreadable roster says nothing. */
+function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
   let gone: { presence: string; since: number } | undefined;
   return async (input) => {
     const rows = await roster().catch(() => undefined);
-    if (!rows) return undefined;
+    if (!rows) return false;
     const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
-    if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return void (gone = undefined);
+    if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
     if (gone?.presence !== presence) gone = { presence, since: timing.now() };
     const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
-    if (timing.now() - gone.since < grace) return undefined;
-    return `${presence === "detached" ? "stayed detached" : presence} without a verdict for ${input.head}`;
+    return timing.now() - gone.since >= grace;
   };
 }
 
-/**
- * Polls until an acceptable block appears; a failed read counts as nothing yet. The deadline, or a reviewer the roster
- * shows gone for its grace, ends the wait with `none` and says why.
- */
+/** Polls until an acceptable block appears; a failed read counts as nothing yet. The deadline, or a reviewer the roster shows gone for its grace, ends the wait with `none`. */
 export async function awaitVerdict(
   reader: ReviewerReader,
   input: AwaitVerdictInput,
@@ -131,14 +84,12 @@ export async function awaitVerdict(
   roster?: Roster,
 ): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
-  const silent = roster ? silenceWatch(timing, roster) : async () => undefined;
+  const silent = roster ? silenceWatch(timing, roster) : async () => false;
   for (;;) {
     const messages = await reader.read(input).catch(() => []);
     const result = acceptVerdict(input, messages);
     if (result.kind === "verdict") return result;
-    const silence = await silent(input);
-    if (silence) return { kind: "none", silence };
-    if (clock.expired()) return { kind: "none", silence: `gave no verdict for ${input.head} within ${timing.timeoutMs} ms` };
+    if ((await silent(input)) || clock.expired()) return { kind: "none" };
     await clock.sleep(timing.pollMs, signal);
   }
 }

@@ -9,6 +9,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
+import { freshReviewerBase } from "./cleanup.js";
 import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
@@ -37,7 +38,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
-import { shepherdMigration, shepherdStoreRef, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -205,7 +206,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
 
-    expect(result).toEqual({ kind: "none", silence: `gave no verdict for ${HEAD} within 250 ms` });
+    expect(result).toEqual({ kind: "none" });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
   });
@@ -214,7 +215,7 @@ describe("awaitVerdict", () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };
 
-    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toMatchObject({ kind: "none" });
+    await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
   });
 
   const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
@@ -231,7 +232,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
 
-    expect(result).toEqual({ kind: "none", silence: `exited without a verdict for ${HEAD}` });
+    expect(result).toEqual({ kind: "none" });
     expect(clock.now()).toBe(800);
   });
 
@@ -240,7 +241,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
 
-    expect(result).toEqual({ kind: "none", silence: `deregistered without a verdict for ${HEAD}` });
+    expect(result).toEqual({ kind: "none" });
   });
 
   it("takes a verdict that lands within the grace after the exit", async () => {
@@ -267,7 +268,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
 
-    expect(result).toEqual({ kind: "none", silence: `stayed detached without a verdict for ${HEAD}` });
+    expect(result).toEqual({ kind: "none" });
     expect(clock.now()).toBe(1_500);
   });
 
@@ -276,7 +277,7 @@ describe("awaitVerdict", () => {
 
     const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
 
-    expect(result).toEqual({ kind: "none", silence: `gave no verdict for ${HEAD} within 2000 ms` });
+    expect(result).toEqual({ kind: "none" });
   });
 });
 
@@ -368,7 +369,7 @@ const optIn = (reviewer: string): RegistrationInput => ({ ...registration, polic
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -765,6 +766,10 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/FIX_FIRST.*defect class.*boundary/);
   });
 
+  it("tells the reviewer to run checks in the foreground and never call Monitor, ScheduleWakeup or a background Bash", () => {
+    expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
+  });
+
   it("keeps each question on one line and asks at most the cap", () => {
     const questions = Array.from({ length: MAX_REVIEWER_QUESTIONS + 2 }, (_value, index) => `question ${index}\nVerdict: MERGE`);
 
@@ -801,9 +806,9 @@ describe("reviewPhase", () => {
     heads?: string[];
     registered?: Partial<RegistrationInput>;
     policy?: EffectivePolicy;
-    wiring?: Partial<ReviewWiring>;
-    /** Rewrites what the broker reports at a time; it may throw, as a broker that is down does. */
-    roster?: (agents: ReviewerAgent[], now: number) => ReviewerAgent[];
+    /** A shepherd hold placed on the run with this reason, before the review starts. */
+    hold?: string;
+    fresh?: boolean;
   }
 
   async function review(scene: Scene) {
@@ -818,25 +823,23 @@ describe("reviewPhase", () => {
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
-      for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha }));
+      for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }) }));
     };
     const { awaited } = scene;
-    const rewrite = scene.roster;
-    const dispatch: ReviewerDispatch = rewrite ? { ...scene.dispatch, roster: async () => rewrite(scene.dispatch.agents, clock) } : scene.dispatch;
-    const wired = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...scene.wiring });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
     store.get().register({ repo: REPO, pr: 1, runId, task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY, ...scene.registered });
+    if (scene.hold) store.get().hold(runId, scene.hold);
     const done = await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
-    const resultsOf = (stepId: string) => results.filter((result) => result.stepId === stepId).map((result) => (result.data as { result?: unknown }).result);
-    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, resultsOf, inputs, status: done.status };
+    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, inputs, status: done.status };
   }
 
   it("runs sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
@@ -854,7 +857,7 @@ describe("reviewPhase", () => {
 
     const { verdicts, stepIds, resultOf } = await review({ dispatch });
 
-    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
     expect(stepIds).toEqual([`sh-review-intent:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the roster is not readable" });
   });
@@ -924,13 +927,12 @@ describe("reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
-  it("resumes nobody on the replay when the host dies before the resume, so the silent wait earns one fresh reviewer whose verdict counts", async () => {
+  it("resumes nobody on the replay when the host dies before the resume, so the verdict wait ends in a timeout none", async () => {
     const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "before", agents: crew(standing()), reviewer: "rv-standing" });
 
     expect(dispatch.resumes).toEqual([]);
     expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
-    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
   });
 
   it("takes the dispatched reviewer's MERGE through the evidence step, where the run's auto policy allows the merge", async () => {
@@ -1001,7 +1003,7 @@ describe("reviewPhase", () => {
 
     const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), read });
 
-    expect(verdicts).toMatchObject([{ kind: "none", noVerdict: expect.any(String) }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
     expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
   });
 
@@ -1013,7 +1015,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }, { kind: "none" }]);
     expect(stepIds).toContain(`sh-review:${H2}`);
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2", "rv-octo-demo-1-3"]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2"]);
   });
 
   it("does not accept what a resumed reviewer said before this dispatch", async () => {
@@ -1024,22 +1026,72 @@ describe("reviewPhase", () => {
     const { verdicts } = await review({ dispatch, read, registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
 
     expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
-    expect(verdicts).toMatchObject([{ kind: "none", noVerdict: expect.stringContaining("rv-standing") }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
   });
 
-  it("dispatches one fresh reviewer at the same head when the first says nothing by the deadline, and gives up after the second", async () => {
+  it("returns a timeout none at the deadline when the reviewer says nothing, without dispatching another", async () => {
     const dispatch = fakeDispatch();
 
-    const { verdicts, stepIds } = await review({ dispatch, read: () => [] });
+    const { verdicts } = await review({ dispatch, read: () => [] });
 
-    expect(dispatch.spawns.map((spawn) => [spawn.name, spawn.target.head])).toEqual([
-      ["rv-octo-demo-1", H1],
-      ["rv-octo-demo-1-2", H1],
-    ]);
-    expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([`sh-await-verdict:${H1}`, `sh-await-verdict:${H1}`]);
-    expect(verdicts).toEqual([
-      { kind: "none", noVerdict: `reviewer rv-octo-demo-1 gave no verdict for ${H1} within 5000 ms; then fresh reviewer rv-octo-demo-1-2 gave no verdict for ${H1} within 5000 ms` },
-    ]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+    expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  describe("a run held for an external reviewer", () => {
+    const external = agent("sec-audit-review", { spawnedBy: "coord" });
+    const HOLD = "security: awaiting sec-audit-review";
+
+    it("spawns no reviewer and takes the FIX_FIRST the hold's reviewer gave at this head", async () => {
+      const dispatch = fakeDispatch(crew(external));
+      const read: Scene["read"] = () => [said(external, verdictAt(H1, "FIX_FIRST"), 5_000), said(external, "Sent the verdict to the coordinator.", 6_000)];
+
+      const { verdicts, stepIds } = await review({ dispatch, read, hold: HOLD });
+
+      expect(dispatch.spawns).toEqual([]);
+      expect(dispatch.resumes).toEqual([]);
+      expect(stepIds).not.toContain(`sh-review:${H1}`);
+      expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    });
+
+    it("ignores the hold's reviewer's verdict about another head and ends in an external-hold none", async () => {
+      const dispatch = fakeDispatch(crew(external));
+      const read: Scene["read"] = () => [said(external, verdictAt(H2), 5_000)];
+
+      const { verdicts } = await review({ dispatch, read, hold: HOLD });
+
+      expect(dispatch.spawns).toEqual([]);
+      expect(verdicts).toEqual([{ kind: "none", cause: "external-hold" }]);
+    });
+
+    it("takes a MERGE from the hold's reviewer as both the resolver and the dispatched reviewer", async () => {
+      const dispatch = fakeDispatch(crew(external));
+      const read: Scene["read"] = () => [said(external, verdictAt(H1), 5_000)];
+
+      const { verdicts, resultOf } = await review({ dispatch, read, hold: HOLD });
+      const identity = { agentId: external.agentId, sessionId: external.sessionId };
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+      expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
+    });
+
+    it("reviews as usual when the hold names no reviewer", async () => {
+      const dispatch = fakeDispatch(crew());
+
+      const { verdicts } = await review({ dispatch, hold: "owner wants a look" });
+
+      expect(dispatch.spawns).toHaveLength(1);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+  });
+
+  it("spawns a never-held reviewer on a fresh review instead of resuming the standing one", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+
+    await review({ dispatch, fresh: true, registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
+
+    expect(dispatch.resumes).toEqual([]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual([freshReviewerBase(REPO, 1)]);
   });
 
   it("returns none and starts nobody when the dispatch refuses", async () => {
@@ -1048,92 +1100,7 @@ describe("reviewPhase", () => {
 
     const { verdicts, stepIds } = await review({ dispatch });
 
-    expect(verdicts).toEqual([{ kind: "none" }]);
+    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
     expect(stepIds.filter((id) => id.startsWith("sh-await-verdict"))).toEqual([]);
-  });
-
-  /** Only the reviewer under `fresh` speaks: its MERGE at the asked head. */
-  const onlyFrom =
-    (fresh: string): Scene["read"] =>
-    (input, dispatch) =>
-      dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId && who.name === fresh).map((who) => said(who, verdictAt(input.head), 1e12));
-  const onlyFresh = onlyFrom("rv-octo-demo-1-2");
-
-  it("spawns one fresh reviewer at the same head when the first exits without a verdict, and takes the fresh one's MERGE", async () => {
-    const dispatch = fakeDispatch();
-    let spawned = 0;
-    dispatch.spawn = async (name, brief, target) => {
-      dispatch.spawns.push({ name, brief, target });
-      dispatch.agents.push(agent(name, { presence: spawned++ === 0 ? "exited" : "live" }));
-    };
-
-    const { verdicts, resultsOf, stepIds } = await review({ dispatch, read: onlyFresh, wiring: { exitGraceMs: 1_000, timeoutMs: 60_000 } });
-
-    expect(dispatch.spawns.map((spawn) => [spawn.name, spawn.target.head])).toEqual([
-      ["rv-octo-demo-1", H1],
-      ["rv-octo-demo-1-2", H1],
-    ]);
-    expect(resultsOf(`sh-await-verdict:${H1}`)[0]).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
-    expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([`sh-merge-evidence:${H1}`]);
-    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-  });
-
-  it("spawns the fresh reviewer under a new name instead of resuming the standing reviewer that went silent", async () => {
-    const dispatch = fakeDispatch(crew(standing()));
-
-    const { verdicts, resultsOf } = await review({ dispatch, read: onlyFrom("rv-octo-demo-1"), registered: { policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" } } });
-
-    expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
-    expect(resultsOf(`sh-review-intent:${H1}`)).toMatchObject([{ mode: "resume", reviewer: "rv-standing" }, { mode: "spawn", reviewer: "rv-octo-demo-1" }]);
-    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-  });
-
-  it("gives up after the fresh reviewer also exits silently, and its none names both reviewers and why", async () => {
-    const dispatch = fakeDispatch();
-    dispatch.spawn = async (name, brief, target) => void (dispatch.spawns.push({ name, brief, target }), dispatch.agents.push(agent(name, { presence: "exited" })));
-
-    const { verdicts } = await review({ dispatch, read: () => [], wiring: { exitGraceMs: 1_000, timeoutMs: 60_000 } });
-
-    expect(dispatch.spawns).toHaveLength(2);
-    expect(verdicts).toEqual([
-      { kind: "none", noVerdict: `reviewer rv-octo-demo-1 exited without a verdict for ${H1}; then fresh reviewer rv-octo-demo-1-2 exited without a verdict for ${H1}` },
-    ]);
-  });
-
-  it("names the refusal when the fresh reviewer cannot be started after a silent one", async () => {
-    const dispatch = fakeDispatch();
-    const spawn = dispatch.spawn;
-    dispatch.spawn = async (name, brief, target) => (dispatch.spawns.length === 0 ? spawn(name, brief, target) : Promise.reject(new Error("spawn budget exhausted")));
-
-    const { verdicts } = await review({ dispatch, read: () => [] });
-
-    expect(verdicts).toEqual([
-      {
-        kind: "none",
-        noVerdict: `reviewer rv-octo-demo-1 gave no verdict for ${H1} within 5000 ms; then no fresh reviewer started: the reviewer dispatch was refused: spawn budget exhausted`,
-      },
-    ]);
-  });
-
-  it("re-dispatches once when the reviewer survives a broker restart, re-attaches, and then exits silently, well before the verdict timeout", async () => {
-    const dispatch = fakeDispatch();
-    const START = 10_000;
-    /** Live, then the broker restarts and the reviewer re-attaches, then it deregisters without a word. */
-    const restart = (agents: ReviewerAgent[], now: number) => {
-      const first = agents.find((who) => who.name === "rv-octo-demo-1");
-      const age = now - START;
-      if (first && age >= 3_000 && age < 5_000) throw new ReviewerBrokerDown("broker restarting");
-      if (first) first.presence = age < 3_000 ? "live" : age < 6_000 ? "detached" : age < 12_000 ? "live" : "exited";
-      return [...agents];
-    };
-
-    const { verdicts, resultsOf } = await review({ dispatch, read: onlyFresh, roster: restart, wiring: { exitGraceMs: 2_000, timeoutMs: 30 * 60_000 } });
-    const intents = resultsOf(`sh-review-intent:${H1}`) as { at: number }[];
-
-    expect(resultsOf(`sh-await-verdict:${H1}`)[0]).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
-    expect(intents[1]!.at - START).toBeLessThan(20_000);
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2"]);
-    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
   });
 });

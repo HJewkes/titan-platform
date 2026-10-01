@@ -124,3 +124,21 @@ describe("canResolve", () => {
     expect(canResolve(DEFAULT_TABLE, "NOPE-OT", { class: "owner-terminal", tainted: false })).toBe(false);
   });
 });
+
+describe("evaluate with a malformed actor", () => {
+  const malformed: Array<[string, unknown]> = [
+    ["a missing actor", undefined],
+    ["a null actor", null],
+    ["a non-object actor", "worker"],
+    ["an actor with no class", { id: "a1" }],
+    ["an actor with a null class", { class: null, id: "a1" }],
+    ["an actor with an unknown class", { class: "root", id: "a1" }],
+    ["an actor whose class names an inherited property", { class: "constructor", id: "a1" }],
+  ];
+
+  it.each(malformed)("denies %s instead of throwing", (_name, actor) => {
+    const request = { action: "merge", actor, tainted: false, subject: {} } as unknown as AuthorityRequest;
+    const decision = evaluate(DEFAULT_TABLE, request);
+    expect(decision.verdict).toBe("deny");
+  });
+});

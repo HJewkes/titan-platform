@@ -23,7 +23,7 @@ export const TRACE_RECORD_KINDS = ["run", "attempt", "call", "gate", "artifact",
 export const TRACE_ARTIFACT_KINDS = ["commit", "pr", "file"] as const;
 /** Mirrors workflow's WorkflowStatus; agent-protocol sits below workflow, so the S2 contract test pins the match. */
 export const TRACE_RUN_STATUSES = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"] as const;
-export const TRACE_STEP_KINDS = ["dispatch", "seed", "assisted"] as const;
+export const TRACE_STEP_KINDS = ["dispatch", "seed", "assisted", "authorize"] as const;
 /** Mirrors hitl's GateStatus for the same tier reason. */
 export const TRACE_GATE_STATUSES = ["pending", "resolved", "cancelled", "expired"] as const;
 export const TRACE_GATE_VERDICTS = ["allow", "deny", "revise"] as const;

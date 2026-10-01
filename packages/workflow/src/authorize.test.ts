@@ -134,7 +134,7 @@ class AnonymousResolveStore implements GateStore {
     const record = this.inner.get(id);
     return record && { ...record, status: "resolved", payload: APPROVE, resolvedAt: record.createdAt, resolvedBy: undefined };
   }
-  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
     return this.inner.resolve(id, payload, resolvedBy);
   }
   cancel(id: string, reason: string): GateRecord {
@@ -159,7 +159,7 @@ class ForgedResolveStore implements GateStore {
     const record = this.inner.get(id);
     return record && { ...record, status: "resolved", payload: this.answer, resolvedAt: record.createdAt, resolvedBy: this.resolvedBy };
   }
-  resolve(id: string, payload: unknown, resolvedBy?: GateResolver): GateRecord {
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
     return this.inner.resolve(id, payload, resolvedBy);
   }
   cancel(id: string, reason: string): GateRecord {

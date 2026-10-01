@@ -3,7 +3,7 @@ import type * as Authority from "@titan-design/authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
-import { EffectivePolicySchema, NO_VERDICT_RULE, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -83,16 +83,6 @@ describe("shepherdGatePolicy", () => {
 
     expect(policy.decide("merge", { headSha: head })).toMatchObject({ outcome: "gate", reason: expect.stringContaining("review at this head: MERGE") });
     expect(policy.decide("merge", { headSha: "c".repeat(40) }).reason).not.toContain("review at this head");
-  });
-
-  it("gates with the reason no reviewer gave a verdict, instead of the seat or authority text, unless the seat denies", () => {
-    const head = "b".repeat(40);
-    const silent = (headSha: string) => (headSha === head ? { kind: "none" as const, noVerdict: "reviewer rv-1 exited; then fresh reviewer rv-2 exited" } : undefined);
-    const decide = (repo: string, merge?: "never") => shepherdGatePolicy(effective(repo, merge && { merge }), silent).decide("merge", { headSha: head });
-
-    expect(decide("acme/gizmos")).toEqual({ outcome: "gate", rule: NO_VERDICT_RULE, reason: `no reviewer verdict at ${head}: reviewer rv-1 exited; then fresh reviewer rv-2 exited` });
-    expect(decide("acme/widgets")).toMatchObject({ outcome: "gate", rule: NO_VERDICT_RULE });
-    expect(decide("acme/gizmos", "never")).toMatchObject({ outcome: "deny" });
   });
 
   it("parses an effective policy back from JSON and refuses an unknown key", () => {

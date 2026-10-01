@@ -1,5 +1,22 @@
 # @titan-design/session-read
 
+## 0.8.0
+
+### Minor Changes
+
+- 88bf9f7: Add `command_heads`, `file_read` and `file_write` signals and export `commandHeads`. A Bash call's signal carries the program and up to two subcommand words of each simple command, plus `>basename` for redirect and `tee` targets, joined by `;` within 256 characters. Read emits `file_read` and Write, Edit, MultiEdit and NotebookEdit emit `file_write`, each with the repo-relative path. `EXTRACT_VERSION` is now 3, so consumers re-extract once.
+- f3f843d: `commandHeads` keeps the signal a path operand carried. `gh api` gives the method and resource shape (`gh api PUT pulls/merge`), an interpreter gives its script's basename (`python3 score.py`), and a redirect or `tee` target keeps its last parent directory (`>a/2026-01-01.md`). `timeout N`, `nice`, `nohup` and `env` are looked through like `builtin` and `command`.
+
+  `EXTRACT_VERSION` is now 5, so stored `command_heads` re-extract on the next backfill.
+
+  The session-analytics journal-write rule now matches a redirect head with a parent directory, such as `>state/events.jsonl`.
+
+### Patch Changes
+
+- c583709: `commandHeads` drops a closing subshell paren glued to the last word, looks through `builtin` and `command` so `builtin cd x` is dropped like `cd x`, and the README documents that `command_heads` can keep lowercase positionals.
+
+  `EXTRACT_VERSION` is now 4. Existing graphs re-extract on the next backfill, which replaces the old heads such as `ls)` and the leaked `builtin cd x`.
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-miner",
-  "version": "0.2.13",
+  "version": "0.3.0",
   "description": "The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,6 +36,7 @@
     "@titan-design/cluster": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/embed": "workspace:^",
+    "@titan-design/github": "workspace:^",
     "@titan-design/locator": "workspace:^",
     "@titan-design/memory": "workspace:^",
     "@titan-design/registry": "workspace:^",

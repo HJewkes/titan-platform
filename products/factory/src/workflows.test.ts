@@ -274,9 +274,9 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none", silence: `gave no verdict for ${H1} within 30000 ms` });
-    expect(elapsed).toBeGreaterThanOrEqual(2 * 30_000);
-    expect(elapsed).toBeLessThan(2 * DEFAULT_EXIT_GRACE_MS);
+    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(elapsed).toBeGreaterThanOrEqual(30_000);
+    expect(elapsed).toBeLessThan(DEFAULT_EXIT_GRACE_MS);
   });
 
   it("gives up one exit grace after the roster shows the reviewer exited with no verdict, long before the verdict timeout", async () => {
@@ -284,8 +284,8 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none", silence: `exited without a verdict for ${H1}` });
-    expect(elapsed).toBeGreaterThanOrEqual(2 * DEFAULT_EXIT_GRACE_MS);
+    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_EXIT_GRACE_MS);
     expect(elapsed).toBeLessThan(DEFAULT_VERDICT_TIMEOUT_MS);
   });
 
