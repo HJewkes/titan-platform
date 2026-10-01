@@ -30,10 +30,10 @@ async function registered(w: World, args: object): Promise<Registered> {
 }
 
 /** A registration whose run has already failed: a run started with a malformed `after` list fails before any step reads GitHub. */
-async function failedRegistration(w: World): Promise<string> {
+async function failedRegistration(w: World, slice?: string): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1", after: "not json" });
   await w.host.runtime.wait(runId);
-  w.routes.shepherd!.store.get().register({ ...pr1, branch: BRANCH, runId, policy: OWNER_GATE_POLICY });
+  w.routes.shepherd!.store.get().register({ ...pr1, branch: BRANCH, runId, policy: OWNER_GATE_POLICY, slice });
   expect(w.host.runtime.status(runId)?.status).toBe("failed");
   return runId;
 }
@@ -93,6 +93,57 @@ describe("shepherd.register", () => {
 
     expect(envelope).toMatchObject({ ok: false });
     expect(shepherdRuns(w.host)).toEqual([]);
+  });
+});
+
+describe("shepherd.register slice", () => {
+  it("a re-register without a slice keeps the stored slice", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, slice: "S4" });
+
+    const again = await registered(w, { ...pr1, implementer: "impl-b" });
+
+    expect(again.registration.slice).toBe("S4");
+  });
+
+  it("a re-register with a new slice replaces the stored one", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, slice: "S4" });
+
+    const again = await registered(w, { ...pr1, slice: "S5" });
+
+    expect(again.registration.slice).toBe("S5");
+  });
+
+  it("noSlice clears the stored slice", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, slice: "S4" });
+
+    const again = await registered(w, { ...pr1, noSlice: true });
+
+    expect(again.registration.slice).toBeNull();
+  });
+
+  it("a slice and noSlice together are refused", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", { ...pr1, slice: "S4", noSlice: true });
+
+    expect(envelope.ok).toBe(false);
+  });
+
+  it("a re-register after a failed run keeps the slice on the new run", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w, "S4");
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: failedRunId, registration: { slice: "S4" } });
   });
 });
 

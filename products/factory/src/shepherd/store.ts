@@ -19,9 +19,11 @@ export interface RegistrationInput {
   policy: EffectivePolicy;
   /** Absent means `unknown`; a value outside `TASK_KINDS` is refused, because `unknown` skips the fix-proof gate. */
   kind?: string;
+  /** Names the slice of a multi-slice task this PR delivers; landing then notes the task instead of closing it. */
+  slice?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice">;
 
 export interface Registration {
   repo: RepoSlug;
@@ -33,6 +35,7 @@ export interface Registration {
   reviewer: string | null;
   policy: EffectivePolicy;
   kind: TaskKind;
+  slice: string | null;
   held: boolean;
   holdReason: string | null;
   createdAt: string;
@@ -66,6 +69,10 @@ const TABLE_DDL = `
 
 export function shepherdMigration(version = 4): Migration {
   return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
+}
+
+export function sliceMigration(version = 8): Migration {
+  return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
 }
 
 export const AUTHOR_ROLES = ["implementer", "successor"] as const;
@@ -123,6 +130,7 @@ interface Row {
   reviewer: string | null;
   policy: string;
   kind: string;
+  slice: string | null;
   held: number;
   hold_reason: string | null;
   created_at: string;
@@ -147,10 +155,10 @@ export class ShepherdStore implements HoldLookup {
     const at = this.stamp();
     this.db
       .prepare(
-        `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(repoKey(input.repo), input.pr ?? null, input.branch ?? null, input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, at, at);
+      .run(repoKey(input.repo), input.pr ?? null, input.branch ?? null, input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
     return this.byRun(input.runId)!;
   }
 
@@ -176,8 +184,8 @@ export class ShepherdStore implements HoldLookup {
   update(runId: string, meta: RegistrationUpdate): Registration {
     const kind = KindSchema.parse(meta.kind ?? "unknown");
     const changed = this.db
-      .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, updated_at = ? WHERE run_id = ?")
-      .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(meta.policy), kind, this.stamp(), runId).changes;
+      .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
+      .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(meta.policy), kind, meta.slice ?? null, this.stamp(), runId).changes;
     if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
     return this.byRun(runId)!;
   }
@@ -255,6 +263,7 @@ function fromRow(row: Row): Registration {
     reviewer: row.reviewer,
     policy: EffectivePolicySchema.parse(JSON.parse(row.policy)),
     kind: KindSchema.parse(row.kind),
+    slice: row.slice,
     held: row.held === 1,
     holdReason: row.hold_reason,
     createdAt: row.created_at,

@@ -1,5 +1,5 @@
 export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, MergeMethod, OpenPrRequest, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
-export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_FILES_CAP, githubPort } from "./port.js";
+export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export type { ChecksVerdict } from "./checks.js";
 export { evaluateChecks, isPassing, latestPerName } from "./checks.js";
 export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, MergeReadiness, MergeReadinessInput } from "./readiness.js";

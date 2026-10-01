@@ -24,7 +24,7 @@ Before adding code:
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
-| [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
+| [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
@@ -45,6 +45,7 @@ Before adding code:
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
+| [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions. Parsing is session-read; storage is session-graph. |
@@ -56,6 +57,7 @@ Before adding code:
 | [`workflow`](#cap-workflow) | 2 | Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths. |
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
+| [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for one kind of agent, the Shepherd reviewer. Relay and agent-chat keep every other dispatch. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against today's injected baseline. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
@@ -234,9 +236,9 @@ Key exports:
 
 ### [`evidence`](/reference/evidence)
 
-Tier 0, `@titan-design/evidence@0.1.0`. Citation verification, overlap grouping and planted-control scoring for model-judged evidence
+Tier 0, `@titan-design/evidence@0.1.0`. Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence
 
-**Use this when:** A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it.
+**Use this when:** A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases.
 
 Key exports:
 
@@ -429,7 +431,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`
-- +44 more in the [reference page](/reference/github)
+- +45 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -593,6 +595,23 @@ Key exports:
 - `query`: `serializeContract`, `Finding`, `FindingStatus`, `SourceExcerpt`
 - +70 more in the [reference page](/reference/code-read)
 
+<a id="cap-decider"></a>
+
+### [`decider`](/reference/decider)
+
+Tier 2, `@titan-design/decider@0.0.0`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+
+**Use this when:** You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list.
+
+Key exports:
+
+- `ledger`: `LedgerLocatorSchema`, `LedgerOptionSchema`, `LedgerRowSchema`, `PredictionSchema`
+- `outcome`: `classifyOutcome`, `isRecommendedLabel`, `stripRecommended`
+- `exclusion`: `initiativeForCwd`, `isExcluded`
+- `classify`: `classifyQuestion`
+- `parse-answer`: `answerFor`, `parseAnswerText`
+- +77 more in the [reference page](/reference/decider)
+
 <a id="cap-memory"></a>
 
 ### [`memory`](/reference/memory)
@@ -647,7 +666,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +113 more in the [reference page](/reference/session-analytics)
+- +143 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -791,6 +810,20 @@ Tier ui, `@titan-design/react-ui`, published from the titan-design repository. C
 ## Products
 
 Thin compositions of the tiers. Private, not published.
+
+<a id="cap-evals"></a>
+
+### `evals`
+
+Tier product, private, `products/evals`. Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing
+
+**Use this when:** You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead.
+
+Key exports:
+
+- `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `VariantSpecSchema`, `parseSpec`
+- `hash`: `canonicalJson`, `caseHash`, `hashCanonical`, `judgesHash`, `pinSuitePrompts`
+- +30 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 

@@ -1,0 +1,13 @@
+{
+  "schema": "titan.case/v1",
+  "id": "long-planning-note",
+  "unit": { "id": "summarize-note", "version": "1.0.0" },
+  "input": { "note": "Planning. Q4 focuses on search quality. Chris drafts the eval plan. Dana pairs with Chris on fixtures. Ed owns the dashboard. The offsite moves to the second week. Fay books the room." },
+  "expected": { "actionItems": ["Chris drafts the eval plan", "Dana pairs with Chris on fixtures", "Ed owns the dashboard", "Fay books the room"] },
+  "split": "holdout",
+  "tags": ["long", "four-actions"],
+  "humanMinutes": 4,
+  "provenance": { "source": "synthetic", "labelVersion": 1 },
+  "solvable": { "by": "reference-output", "ref": "expected" },
+  "visibility": "public"
+}

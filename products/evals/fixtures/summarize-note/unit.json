@@ -1,0 +1,35 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "summarize-note",
+  "version": "1.0.0",
+  "title": "Summarize a note",
+  "description": "Turn a free-text note into a two-sentence summary and a list of action items. Synthetic unit for schema and hashing tests.",
+  "input": {
+    "type": "object",
+    "required": ["note"],
+    "properties": { "note": { "type": "string" } }
+  },
+  "output": {
+    "type": "object",
+    "required": ["summary", "actionItems"],
+    "properties": {
+      "summary": { "type": "string" },
+      "actionItems": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "artifacts": [{ "name": "summary.md", "required": true }],
+  "objective": {
+    "constraints": [{ "metric": "success", "min": 0.8 }],
+    "noCriticalFailures": true,
+    "primary": { "name": "action-item-recall", "direction": "maximize" }
+  },
+  "acceptance": {
+    "levels": [
+      { "level": 1, "minCases": 3 },
+      { "level": 2, "successLowerBound": 0.7 },
+      { "level": 3, "successLowerBound": 0.85, "passAllKFloor": 0.75 },
+      { "level": 4, "holdDays": 14 }
+    ]
+  },
+  "visibility": "public"
+}

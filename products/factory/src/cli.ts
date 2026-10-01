@@ -115,7 +115,7 @@ interface ShepherdOpts {
   json?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; policy?: string };
+type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here. */
 function registerShepherd(program: Command, verbs: Verbs): void {
@@ -132,6 +132,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .requiredOption("--implementer <name>", "the agent that pushes fixes")
     .option("--reviewer <name>", "the agent that reviews")
     .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
+    .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
+    .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts), opts));
   verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
@@ -162,8 +164,8 @@ function parseTarget(target: string): { repo: string; pr?: number } {
 function registerArgs(target: string, opts: RegisterOpts): Record<string, unknown> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, task, implementer, reviewer, kind } = opts;
-  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, policy };
+  const { branch, task, implementer, reviewer, kind, slice } = opts;
+  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
