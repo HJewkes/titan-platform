@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { readRequiredChecks } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -60,6 +61,8 @@ export interface MergeEvidence {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
+  /** Why the base branch's required checks could not be read; set means the merge gates. */
+  requiredChecksUnknown?: string;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -67,6 +70,7 @@ export interface DecidableEvidence {
   head: string;
   merge: MergeFacts;
   record: Pick<EvidenceRecord, "repo" | "pr">;
+  requiredChecksUnknown?: string;
 }
 
 function guardRule(rowId: string): PolicyRule {
@@ -89,6 +93,7 @@ export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | u
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
+  if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
   if (workflowPaths.length > 0) return { outcome: "gate", rule: guardRule("github-path"), reason: `the owner decides changes under .github/: ${workflowPaths.join(", ")}` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
@@ -128,13 +133,14 @@ interface Observed {
   pr: PullRequest;
   merge: MergeFacts;
   runs: CheckRun[];
+  requiredChecksUnknown?: string;
 }
 
 /** Every fact is read from GitHub or the run's own step outputs, never from the reviewer's text. */
 export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<Observed> {
   const pr = await port.getPr(input.repo, input.pr);
   const [required, runs, paths, frozen] = await Promise.all([
-    port.requiredChecks(input.repo, pr.baseRef),
+    readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
     prPaths(port, input.repo, input.pr),
     isFrozen(input.repo),
@@ -144,7 +150,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     resolver: input.resolver,
     dispatchedReviewer: input.dispatchedReviewer,
     verdict: { value: input.verdict.value, head: input.verdict.head },
-    requiredContexts: required.contexts,
+    requiredContexts: required.readable ? required.checks.contexts : [],
     allowedApps: [...ALLOWED_CHECK_APPS],
     checkRuns: runs.map(runFact),
     mergeTreeClean: mergeTreeClean(pr, input.head),
@@ -152,7 +158,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     changedPaths: paths,
     seatGrants: input.seatGrants,
   };
-  return { pr, merge, runs };
+  return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }) };
 }
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
@@ -199,8 +205,9 @@ export function evidenceComment(record: EvidenceRecord): string {
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs } = await collectMergeFacts(port, input, isFrozen);
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input });
+  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen);
+  const unknown = requiredChecksUnknown === undefined ? {} : { requiredChecksUnknown };
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, ...unknown });
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -214,5 +221,5 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     decision,
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, commentId: comment.id };
+  return { head: input.head, merge, record, ...unknown, commentId: comment.id };
 }
