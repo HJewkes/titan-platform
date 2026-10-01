@@ -6,7 +6,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
-import { HEAD, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
+import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -18,14 +18,18 @@ import type { Registration } from "./store.js";
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
 export const AWAIT_VERDICT_STEP = "sh-await-verdict";
+export const LATE_VERDICT_STEP = "sh-late-verdict";
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: REVIEW_INTENT_STEP, kind: "dispatch" },
   { id: REVIEW_STEP, kind: "dispatch" },
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
+  { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
+/** How long a timed-out reviewer that has not exited is read again for its verdict. */
+export const DEFAULT_LATE_VERDICT_MS = 10 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
@@ -218,6 +222,7 @@ export interface ReviewWiring {
   /** Questions chosen by code for this PR and added to the reviewer brief. */
   questions?: (target: ReviewTarget) => Promise<readonly string[]>;
   timeoutMs?: number;
+  lateVerdictMs?: number;
   sessionStartTimeoutMs?: number;
   isFrozen?: IsFrozen;
 }
@@ -280,9 +285,19 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, run),
+    codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen)),
   ];
 };
+
+/** With no dispatch wired there is no roster to tell an exited reviewer, so the step answers `none` at once. */
+async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal): Promise<AwaitVerdictResult> {
+  const dispatch = wiring?.dispatch;
+  if (!dispatch) return { kind: "none" };
+  const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS };
+  const exited = async () => (await dispatch.roster()).every((agent) => agent.agentId !== input.reviewerAgentId || agent.presence === "exited");
+  return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
+}
 
 const MergeEvidenceResult = z.looseObject({ head: z.string(), merge: z.looseObject({}), record: z.looseObject({}) });
 
@@ -327,9 +342,13 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
 };
 
-/** An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. */
+/**
+ * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
+ * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate.
+ */
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: object, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
-  const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
+  const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
+  const awaited = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold" };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };

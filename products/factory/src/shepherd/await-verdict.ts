@@ -70,3 +70,23 @@ export async function awaitVerdict(
     await clock.sleep(timing.pollMs, signal);
   }
 }
+
+/**
+ * After the wait ran out: a reviewer held up by a permission prompt can still write its verdict, so its final message is
+ * read again until it has one, the reviewer has exited, or the grace ends. A read taken after the exit decides.
+ */
+export async function awaitLateVerdict(
+  reader: ReviewerReader,
+  exited: () => Promise<boolean>,
+  input: AwaitVerdictInput,
+  timing: AwaitVerdictTiming,
+  signal: AbortSignal,
+): Promise<AwaitVerdictResult> {
+  const clock = deadline(timing);
+  for (;;) {
+    const gone = await exited().catch(() => false);
+    const result = acceptVerdict(input, await reader.read(input).catch(() => []));
+    if (result.kind === "verdict" || gone || clock.expired()) return result;
+    await clock.sleep(timing.pollMs, signal);
+  }
+}

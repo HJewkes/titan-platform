@@ -8,7 +8,7 @@ import { shepherdStoreRef } from "./store.js";
 import { WAKE_STEPS, wakeRoutes } from "./wake.js";
 
 const WAKE_FAMILIES = ["sh-wake", "sh-await-new-head"];
-const REVIEW_FAMILIES = ["sh-review", "sh-await-verdict", "sh-merge-evidence"];
+const REVIEW_FAMILIES = ["sh-review", "sh-await-verdict", "sh-late-verdict", "sh-merge-evidence"];
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
 const deps: ShepherdDeps = { port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
 
@@ -32,9 +32,10 @@ describe("shepherd phase step families", () => {
     expect(wakeRoutes(deps).map((route) => route.match)).toEqual(["sh-wake-implementer", "sh-await-new-head"]);
   });
 
-  it("pins sh-review-intent, sh-review, sh-await-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
-    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(["sh-review-intent", "sh-review", "sh-await-verdict", "sh-merge-evidence"]);
-    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(["sh-review-intent", "sh-review", "sh-await-verdict", "sh-merge-evidence"]);
+  it("pins sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {
+    const ids = ["sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-merge-evidence"];
+    expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
+    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids);
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");
   });
 

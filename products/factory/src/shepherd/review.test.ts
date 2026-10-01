@@ -738,7 +738,7 @@ describe("reviewPhase", () => {
   interface Scene {
     dispatch: FakeDispatch;
     /** What the reader returns for the reviewer the step names; the default is that reviewer's MERGE at the asked head. */
-    read?: (input: AwaitVerdictInput, dispatch: FakeDispatch) => ReviewerMessage[];
+    read?: (input: AwaitVerdictInput, dispatch: FakeDispatch, now: number) => ReviewerMessage[];
     /** Stands in for the sh-await-verdict step, to record an output the real step would refuse. */
     awaited?: (input: AwaitVerdictInput) => AwaitVerdictResult;
     heads?: string[];
@@ -760,7 +760,7 @@ describe("reviewPhase", () => {
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat" };
     const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), clock + 1));
-    const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch) : own(input)) };
+    const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }) }));
@@ -967,6 +967,34 @@ describe("reviewPhase", () => {
 
     expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
     expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+  });
+
+  describe("a reviewer whose verdict lands after the wait ran out", () => {
+    /** Synthetic stand-in for a reviewer whose chat report waited on a permission prompt past the deadline, then wrote its verdict. */
+    const lateReader = (verdictFrom: number, exitAfter = false): Scene["read"] => (input, dispatch, now) => {
+      const who = dispatch.agents.find((candidate) => candidate.agentId === input.reviewerAgentId)!;
+      if (exitAfter) who.presence = "exited";
+      const blocked = said(who, "Sending the verdict to the coordinator.", input.dispatchedAt + 1);
+      return now < verdictFrom ? [blocked] : [blocked, said(who, verdictAt(input.head), now)];
+    };
+    it("reads the MERGE written after the deadline as MERGE and takes it through the evidence step", async () => {
+      const dispatch = fakeDispatch(crew());
+
+      const { verdicts, stepIds } = await review({ dispatch, read: lateReader(18_000), policy: AUTO });
+
+      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("stops reading a reviewer that exited with no verdict and returns a timeout none", async () => {
+      const dispatch = fakeDispatch(crew());
+
+      const { verdicts, resultOf } = await review({ dispatch, read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(resultOf(`sh-late-verdict:${H1}`)).toEqual({ kind: "none" });
+    });
   });
 
   it("returns a timeout none at the deadline when the reviewer says nothing, without dispatching another", async () => {
