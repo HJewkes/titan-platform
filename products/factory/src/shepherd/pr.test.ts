@@ -333,7 +333,7 @@ describe("the route table in a run", () => {
     const gate = w.host.gates.get(gateId(runId, "approve-merge"));
 
     expect(asked).toHaveLength(3);
-    expect(gate?.prompt).toContain("Policy shepherd-route/failed-rounds: 3 review rounds failed at this task");
+    expect(gate?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
     expect(w.fake.effects.merge).toBe(0);
   });
 

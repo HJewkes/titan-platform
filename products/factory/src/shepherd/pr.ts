@@ -200,11 +200,18 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
   return "FIX_FIRST";
 }
 
+const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
+  "no-verdict": "no reviewer verdict",
+  timeout: "no reviewer verdict before the wait ran out",
+  "external-hold": "no verdict yet from the reviewer the hold names",
+  FIX_FIRST: "a FIX_FIRST review",
+};
+
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
   if (isFailedRound(route, routed.outcome) && ++run.failedRounds >= MAX_FAILED_ROUNDS) {
-    run.escalations.set(headSha, `${run.failedRounds} rounds ended without a merge, the last with review outcome ${routed.outcome}`);
+    run.escalations.set(headSha, `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[routed.outcome] ?? routed.outcome}`);
     return true;
   }
   switch (route) {
