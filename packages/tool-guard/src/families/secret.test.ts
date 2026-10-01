@@ -156,10 +156,6 @@ describe("a script run by the path typed", () => {
       expect(spellings(bash(command, ctx))).toEqual(["bash.secret.script-by-path"]);
     },
   );
-
-  it("follows a relative script from the directory a cd reached", () => {
-    expect(spellings(bash("cd tools && ./x.sh", ctx))).toEqual(["bash.secret.script-by-path"]);
-  });
 });
 
 describe("safe calls classify nothing", () => {

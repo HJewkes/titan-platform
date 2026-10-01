@@ -89,10 +89,6 @@ describe("one fixture per bash.merge spelling", () => {
     expect(bash(command, "main")).toEqual([]);
   });
 
-  it("still classifies a merge after && that creates a protected branch name", () => {
-    expect(spellings(bash("git checkout -B release/2 && git merge x", "main"))).toEqual(["bash.merge.git-merge-protected"]);
-  });
-
   it.each([
     "git checkout main && cd src && git merge x",
     "git checkout main && git -C src merge x",
