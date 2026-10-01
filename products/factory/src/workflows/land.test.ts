@@ -291,6 +291,37 @@ describe("land refreshes a head whose base moved after its last green run", () =
   });
 });
 
+describe("readCi on a blocked head", () => {
+  async function blockedVerdict(options: { bypass: boolean; runs: CheckRun[]; state?: string }) {
+    const fake = fakeGitHub({ repo: "octo/demo" });
+    fake.reviewBypass = options.bypass;
+    fake.addPr({ headSha: H1, mergeableState: options.state ?? "blocked" });
+    fake.setRuns(H1, options.runs);
+    const snapshot = await readCi(githubPort(fake.wire), { repo: "octo/demo", pr: 1, contexts: ["validate", "dag-check"], strict: true });
+    return { snapshot, calls: fake.calls };
+  }
+  const green = [successRun("validate", 1), successRun("dag-check", 2)];
+
+  it("is green when the approval rule is bypassable and every required context is green", async () => {
+    expect((await blockedVerdict({ bypass: true, runs: green })).snapshot.verdict).toBe("green");
+  });
+
+  it("stays pending when the approval rule cannot be bypassed", async () => {
+    expect((await blockedVerdict({ bypass: false, runs: green })).snapshot.verdict).toBe("pending");
+  });
+
+  it("stays pending without reading the bypass while a required context is still pending", async () => {
+    const { snapshot, calls } = await blockedVerdict({ bypass: true, runs: [successRun("validate", 1)] });
+
+    expect(snapshot.verdict).toBe("pending");
+    expect(calls).not.toContain("reviewRulesBypassable");
+  });
+
+  it("stays not-mergeable when dirty, whatever the bypass says", async () => {
+    expect((await blockedVerdict({ bypass: true, runs: green, state: "dirty" })).snapshot.verdict).toBe("not-mergeable");
+  });
+});
+
 describe("readCi on a behind head in a non-strict repo", () => {
   async function behindVerdict(baseCommit: { committedAt?: string }, runs: CheckRun[]) {
     const fake = fakeGitHub({ repo: "octo/demo" });
