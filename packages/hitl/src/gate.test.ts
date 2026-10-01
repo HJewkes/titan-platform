@@ -7,7 +7,9 @@ import { z } from "zod";
 import { cancelGate, openGate, resolveGate, waitForGate } from "./gate.js";
 import { MemoryGateStore } from "./memory-store.js";
 import { SqliteGateStore } from "./sqlite-store.js";
-import { GateAborted, GateCancelled, GateExpired, GateNotFound, GatePayloadInvalid } from "./types.js";
+import { GateAborted, GateCancelled, GateExpired, GateNotFound, GatePayloadInvalid, type GateResolver } from "./types.js";
+
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
 
 const approval = z.object({ approved: z.boolean(), note: z.string().optional() });
 
@@ -38,14 +40,14 @@ describe("openGate", () => {
   it("resolves with the validated payload once someone answers", async () => {
     const store = new MemoryGateStore();
     const gate = openGate(store, { prompt: "ship it?", schema: approval });
-    setTimeout(() => resolveGate(store, gate.id, { approved: true, note: "green" }), 5);
+    setTimeout(() => resolveGate(store, gate.id, { approved: true, note: "green" }, OWNER), 5);
     await expect(gate.wait({ pollMs: 1 })).resolves.toEqual({ approved: true, note: "green" });
   });
 
   it("resolves with the raw payload when no schema was given", async () => {
     const store = new MemoryGateStore();
     const gate = openGate<string>(store, { prompt: "which branch?" });
-    resolveGate(store, gate.id, "main");
+    resolveGate(store, gate.id, "main", OWNER);
     await expect(gate.wait({ pollMs: 1 })).resolves.toBe("main");
   });
 
@@ -85,7 +87,7 @@ describe("openGate", () => {
   it("refuses a payload the schema does not accept", () => {
     const store = new MemoryGateStore();
     const gate = openGate(store, { prompt: "ship it?", schema: approval });
-    expect(() => resolveGate(store, gate.id, { approved: "yes" })).toThrow(GatePayloadInvalid);
+    expect(() => resolveGate(store, gate.id, { approved: "yes" }, OWNER)).toThrow(GatePayloadInvalid);
   });
 });
 
@@ -93,9 +95,21 @@ describe("resolveGate", () => {
   it("passes the resolver through to the store", () => {
     const store = new MemoryGateStore();
     const gate = openGate(store, { prompt: "ship it?" });
-    const resolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" } as const;
-    expect(resolveGate(store, gate.id, "ok", resolver).resolvedBy).toEqual(resolver);
-    expect(store.get(gate.id)?.resolvedBy).toEqual(resolver);
+    expect(resolveGate(store, gate.id, "ok", OWNER).resolvedBy).toEqual(OWNER);
+    expect(store.get(gate.id)?.resolvedBy).toEqual(OWNER);
+  });
+
+  it("refuses at compile time a resolve that names no resolver", () => {
+    const store = new MemoryGateStore();
+    const gate = openGate(store, { prompt: "ship it?" });
+    const anonymousCalls = [
+      // @ts-expect-error resolvedBy is required
+      () => resolveGate(store, gate.id, "ok"),
+      // @ts-expect-error resolvedBy is required
+      () => store.resolve(gate.id, "ok"),
+    ];
+    expect(anonymousCalls).toHaveLength(2);
+    expect(store.get(gate.id)?.status).toBe("pending");
   });
 });
 
@@ -109,7 +123,7 @@ describe("waitForGate", () => {
 
     const resolver = sqliteStore(dbPath);
     expect(resolver.listPending().map((g) => g.id)).toEqual(["deploy-approval"]);
-    resolveGate(resolver, "deploy-approval", { approved: true });
+    resolveGate(resolver, "deploy-approval", { approved: true }, OWNER);
 
     const restarted = sqliteStore(dbPath);
     const payload = await waitForGate(restarted, "deploy-approval", { schema: approval, pollMs: 1 });
@@ -123,7 +137,7 @@ describe("waitForGate", () => {
 
     const gate = openGate(waiter, { id: "g1", prompt: "ship it?", schema: approval });
     const pending = gate.wait({ pollMs: 1 });
-    setTimeout(() => resolveGate(other, "g1", { approved: false }), 5);
+    setTimeout(() => resolveGate(other, "g1", { approved: false }, OWNER), 5);
     await expect(pending).resolves.toEqual({ approved: false });
   });
 
@@ -134,7 +148,7 @@ describe("waitForGate", () => {
   it("rejects when the stored payload does not satisfy the waiter's schema", async () => {
     const store = new MemoryGateStore();
     const gate = openGate(store, { prompt: "ship it?" });
-    resolveGate(store, gate.id, { approved: "maybe" });
+    resolveGate(store, gate.id, { approved: "maybe" }, OWNER);
     await expect(waitForGate(store, gate.id, { schema: approval, pollMs: 1 })).rejects.toThrow(GatePayloadInvalid);
   });
 

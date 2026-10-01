@@ -73,10 +73,11 @@ sequence for new and upgraded databases is supported. A custom run table name
 must be passed to both migration helpers and to `WorkflowRuntime.runTable`.
 
 `gateResolverMigration` adds hitl's `resolved_by` column and a trigger that
-refuses a resolution naming no resolver. Once it has run, pass a resolver to
-every `runtime.signal`. A run paused before the migration resumes normally when
-it is signalled with a resolver afterwards. Gates resolved before it keep
-`resolvedBy` undefined.
+refuses a resolution naming no resolver. It is required: `runtime.signal`
+takes the payload and a resolver with no defaults, and the `SqliteGateStore`
+constructor throws `GateStoreSchemaOutdated` on a table that has not run it. A
+run paused before the migration resumes normally when it is signalled with a
+resolver afterwards. Gates resolved before it keep `resolvedBy` undefined.
 
 ## Step kinds
 
