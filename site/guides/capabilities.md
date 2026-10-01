@@ -758,7 +758,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
-- +69 more in the [reference page](/reference/workflow)
+- +70 more in the [reference page](/reference/workflow)
 
 ## UI
 
