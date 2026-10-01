@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport, type CostReport } from "./cost-report.js";
 import { WAKE_WINDOW, createFixtureGraph, seedWakeScenario, type FixtureGraph } from "./fixture.js";
 import { priceRequest } from "./price-request.js";
-import { buildWakeEpisodes, episodeNames, fromKindOf, type WakeEpisodes } from "./wake-episodes.js";
+import { buildWakeEpisodes, episodeNames, fromKindOf, summarizeWakeEpisodes, type WakeEpisode, type WakeEpisodes } from "./wake-episodes.js";
 
 let fixture: FixtureGraph;
 let episodes: WakeEpisodes;
@@ -111,5 +111,18 @@ describe("episode names", () => {
     const [episode] = buildWakeEpisodes([{ ...event, fromName: "worker-1" }], [], names, ["text-only"]);
 
     expect(episode).toMatchObject({ requests: 0, costUsd: 0, noAction: true, to: "seat-top", from: "agent" });
+  });
+});
+
+describe("pair ordering", () => {
+  const episode = (fromKind: WakeEpisode["fromKind"]): WakeEpisode => ({ key: fromKind, cause: "channel_message", midLoop: false, fromKind, from: "seat-b", to: "seat-a", requests: 1, costUsd: 1, noAction: false });
+  const kindsFor = (list: WakeEpisode[]) => summarizeWakeEpisodes(list, [], [], []).pairs.map((pair) => pair.fromKind);
+
+  it("orders pairs tied on cost, sender and receiver by sender kind, whatever the input order", () => {
+    const seat = episode("seat");
+    const broadcast = episode("broadcast");
+
+    expect(kindsFor([seat, broadcast])).toEqual(["broadcast", "seat"]);
+    expect(kindsFor([broadcast, seat])).toEqual(["broadcast", "seat"]);
   });
 });
