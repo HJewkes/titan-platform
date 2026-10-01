@@ -1,4 +1,4 @@
-import type { Db } from "@titan-design/store-sqlite";
+import { openDatabase, type Db } from "@titan-design/store-sqlite";
 
 /** Synthetic graph rows for the insight tests. Test support: nothing outside tests imports it. */
 export const FIXTURE_WINDOW = { since: "2026-09-10", until: "2026-09-11" } as const;
@@ -70,4 +70,22 @@ export function seedInsightGraph(db: Db): void {
   insertRequest(db, { sessionId: "rev-1", ts: "2026-09-10T03:00:00Z", cacheWrite1h: 20_000 });
   insertRequest(db, { sessionId: "rev-1", ts: "2026-09-10T03:01:00Z", cacheRead: 20_000, cacheWrite1h: 500, gapMs: 60_000 });
   insertRequest(db, { sessionId: "seat-1", ts: "2026-09-11T05:00:00Z", cacheWrite1h: 90_000 });
+}
+
+export interface FixtureMessage {
+  ts: string;
+  actor: string;
+  target: string;
+  body: string;
+}
+
+/** An agent-chat events table holding these messages; returns its path. */
+export function seedEventsDb(file: string, messages: readonly FixtureMessage[]): string {
+  const db = openDatabase(file);
+  db.exec(`CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL,
+    target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)`);
+  const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, 'message', ?, ?, ?)");
+  for (const m of messages) insert.run(Date.parse(m.ts), m.actor, m.target, m.body);
+  db.close();
+  return file;
 }

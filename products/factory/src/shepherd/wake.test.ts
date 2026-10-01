@@ -9,7 +9,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { lineageMigration, shepherdMigration, shepherdStoreRef, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { LIVE_POLL_MS, LOG_BUDGET_BYTES, WAKE_STEPS, tailBytes, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
@@ -53,7 +53,7 @@ function fakeAgents(rows: AgentRow[]) {
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -459,7 +459,7 @@ describe("wakePhase", () => {
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");

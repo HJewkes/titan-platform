@@ -65,7 +65,9 @@ true when `files` reaches 300 or the commits returned are fewer than `total_comm
 true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
 unknown. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
 when none by the authenticated `gh` user has `marker` (an HTML comment the caller builds, also
-put in `body`) alone on a line. Another author's comment or a longer marker never counts. Two
+put in `body`) alone on a line; trailing whitespace on that line still counts. Another author's comment or a longer marker never counts. Under a GitHub App installation token,
+`GET /user` is 403, so pass the app's bot login: `githubPort(wire, { login: "my-app[bot]" })`
+(`GET /app` needs an App JWT, so config is the only path that works with the installation token). Two
 concurrent callers can both post; there is no lock. Each read carries the same ETag cache and
 rate budget as the others.
 
