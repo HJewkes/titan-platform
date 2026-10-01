@@ -105,13 +105,14 @@ interface PreflightInput extends ReleaseTarget {
   merge: MergeMode;
 }
 
-/** Marks the head ready only under an auto policy, so a release the owner must approve never holds other merges. */
+/** Marks the head ready only under an auto policy, so a release the owner must approve never holds other merges; a run not yet registered marks nothing. */
 export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): StepRoute[] {
   return [
     codeRoute(RELEASE_PREFLIGHT_STEP, deps.now, async (input: PreflightInput) => {
       const preflight = await releasePreflight(deps.port, registry, input);
       const ready = preflight.blockers.length === 0 && input.merge === "auto";
-      deps.store.get().setReleaseReady(input.runId, ready ? input.head : null);
+      const store = deps.store.get();
+      if (store.byRun(input.runId)) store.setReleaseReady(input.runId, ready ? input.head : null);
       return preflight;
     }),
   ];
