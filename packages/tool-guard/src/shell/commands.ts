@@ -17,6 +17,12 @@ const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-fi
  */
 export type Wrapping = "subshell" | "sh-c" | "eval" | "xargs" | "heredoc-shell" | "piped-shell" | "find-exec";
 
+/** A run of commands joined only by `&&`; any other operator, a group or a nested list starts a new one. Compared by identity. */
+export interface Chain {
+  /** The operator before the run's first command, null at the start of a list. */
+  readonly start: string | null;
+}
+
 /** One simple command the shell would run. */
 export interface SimpleCommand {
   /** Null when no word names the command statically: only assignments or redirections, or a dynamic first word. */
@@ -33,6 +39,11 @@ export interface SimpleCommand {
   wrapping: Wrapping[];
   /** The operator joining the command to the next on its list (`&&`, `||`, `;`, `\n`, `|`, `&`), null when none follows. */
   next: string | null;
+  /** The operator joining the previous command on its list to this one, null when none precedes. */
+  prev: string | null;
+  /** Whether `!` negates the command's status. */
+  negated: boolean;
+  chain: Chain;
 }
 
 export interface ExtractOptions {
@@ -61,6 +72,9 @@ interface Walk {
   depth: number;
   /** Literal text piped into the command being emitted, as `echo 'git push' | bash` does. */
   stdin: string | null;
+  /** The operator before the command being emitted. */
+  prev: string | null;
+  chain: Chain;
 }
 
 /**
@@ -71,7 +85,7 @@ interface Walk {
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null } });
   return out;
 }
 
@@ -85,6 +99,8 @@ function walk(tokens: Token[], w: Walk): void {
       w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
       words = [];
       redirects = [];
+      w.prev = token.value;
+      if (token.value !== "&&") w.chain = { start: token.value };
       scope(token.value, w);
       continue;
     }
@@ -123,7 +139,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
-  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null };
+  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null } };
 }
 
 function scope(op: string, w: Walk): void {
@@ -155,7 +171,8 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, next });
+  const links = { next, prev: w.prev, negated: cmd.negated === true, chain: w.chain };
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
   const script = inlineScript(cmd, redirects, w.stdin);
   if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;

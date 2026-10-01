@@ -480,3 +480,26 @@ describe("xargs options", () => {
     expect(extract("sudo -Eu root git push").map((c) => c.name)).toEqual(["git"]);
   });
 });
+
+describe("how a command joins its list", () => {
+  it("records the operator before each command and whether ! negates it", () => {
+    const cmds = extract("! a && b || c");
+
+    expect(cmds.map((c) => [c.name, c.prev, c.negated])).toEqual([["a", null, true], ["b", "&&", false], ["c", "||", false]]);
+  });
+
+  it("shares a chain only across commands joined by &&", () => {
+    const [a, b, c, d] = extract("a && b && c; d");
+
+    expect(a?.chain).toBe(b?.chain);
+    expect(b?.chain).toBe(c?.chain);
+    expect(d?.chain).not.toBe(c?.chain);
+  });
+
+  it("starts a new chain after an operator on a command it does not emit", () => {
+    const [a, b] = extract("a && X=1 || b");
+
+    expect(b?.chain).not.toBe(a?.chain);
+    expect(b?.chain.start).toBe("||");
+  });
+});

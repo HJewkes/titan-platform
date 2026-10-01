@@ -74,6 +74,8 @@ export interface Unwrapped {
   script?: string;
   /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input line. */
   xargs?: { replace: string | null };
+  /** Set when `!` negates the command's status. */
+  negated?: true;
 }
 
 /** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
@@ -86,11 +88,15 @@ export function commandName(value: string): string {
 export function unwrap(words: WordToken[]): Unwrapped | null {
   const assigned: Array<[string, string | null]> = [];
   let xargs: Unwrapped["xargs"];
+  let negated = false;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
     const assignment = parseAssignment(w);
-    if (KEYWORDS.has(w.value) && !w.quoted) i++;
+    if (KEYWORDS.has(w.value) && !w.quoted) {
+      negated ||= w.value === "!";
+      i++;
+    }
     else if (assignment) {
       assigned.push(assignment);
       i++;
@@ -105,7 +111,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (commandName(w.value) === "xargs") xargs = { replace: xargsReplace(words.slice(start, i)) ?? xargs?.replace ?? null };
     } else break;
   }
-  return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}) };
+  return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}) };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
