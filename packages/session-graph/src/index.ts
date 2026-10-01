@@ -1,6 +1,6 @@
 export type { SessionGraph } from "./graph.js";
 export type { OpenSessionGraphOptions } from "./graph.js";
-export { allSessionIds, openSessionGraph, resetIndex } from "./graph.js";
+export { SessionGraphNotMigratedError, allSessionIds, openSessionGraph, resetIndex } from "./graph.js";
 export { DERIVED_TABLES, DOMAIN_DDL, KIT, MIGRATIONS } from "./schema.js";
 export { AUDIT_DDL, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
 export { EPISODE_TABLE, ORIGIN_DDL, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_VIEWS } from "./audit-schema-v5.js";
