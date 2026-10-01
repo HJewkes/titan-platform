@@ -4,10 +4,11 @@ import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
-import { activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
+import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import { agentChatFixers, type MainRedWiring } from "./shepherd/main-red.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
@@ -38,6 +39,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   cleanup?: CleanupPorts;
   /** How `sh-park` parks the implementer's worktree; defaults to `agent-chat agent park`. */
   park?: ParkPort;
+  /** The fix-task and fixer ports a red main uses; absent ports still freeze, and leave the rest to the owner. */
+  mainRed?: Omit<MainRedWiring, "freezes">;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -60,14 +63,21 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
-  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park });
+  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
   return Object.assign([...land, ...shepherd], { database, shepherd: services });
 }
 
-function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => void {
-  const unbinds = refs.map((ref) => ref.bind(db));
+/** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */
+export function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => void {
+  const unbinds: (() => void)[] = [];
+  try {
+    for (const ref of refs) unbinds.push(ref.bind(db));
+  } catch (error) {
+    unbinds.reverse().forEach((unbind) => unbind());
+    throw error;
+  }
   return () => unbinds.forEach((unbind) => unbind());
 }
 
@@ -92,13 +102,20 @@ function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
   return { agents: agentChatCleanupAgents(agentChatBin), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
 }
 
+/** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
+function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv): FactoryRouteDeps["mainRed"] {
+  const agentChatBin = shepherd?.agentChatBin;
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: agentChatFixers(agentChatBin, shepherd.fixer?.configDir) }) };
+}
+
 /** The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per registration and per spawn. */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge, shepherd } = loadConfig(configPath(env));
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const review = configuredReview(shepherd, seats);
   const cleanup = configuredCleanup(shepherd, env);
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, ...overrides, seats });
+  const mainRed = configuredMainRed(shepherd, env);
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, mainRed, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;
