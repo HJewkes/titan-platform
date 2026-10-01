@@ -1,6 +1,7 @@
 import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import type { GateResolver } from "@titan-design/hitl";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
@@ -344,9 +345,27 @@ function resolveGate(host: FactoryHost, io: CliIo, runId: string, stepId: string
     io.stderr("error: --json must be a JSON object\n");
     return EXIT.USAGE;
   }
+  const repeated = repeatedResolution(host, runId, stepId, payload);
+  if (repeated !== undefined) {
+    io.stdout(`already resolved ${repeated} with this answer\n`);
+    return EXIT.OK;
+  }
   host.runtime.signal(runId, stepId, payload, cliResolver(io.env));
   io.stdout(`resolved ${runId}/${stepId}\n`);
   return EXIT.OK;
+}
+
+/** The gate a repeat of this resolve already answered: none for the step is pending, and its latest gate holds this payload. */
+function repeatedResolution(host: FactoryHost, runId: string, stepId: string, payload: Record<string, unknown>): string | undefined {
+  const base = `${runId}/${stepId}`;
+  if (host.pendingGates().some(({ gate }) => gate.id === base || gate.id.startsWith(`${base}:`))) return undefined;
+  let latest = host.gates.get(base);
+  for (let n = 1; ; n += 1) {
+    const next = host.gates.get(`${base}:${n}`);
+    if (next === undefined) break;
+    latest = next;
+  }
+  return latest?.status === "resolved" && isDeepStrictEqual(latest.payload, payload) ? latest.id : undefined;
 }
 
 /** Owner unless agent-chat spawned this shell; CLAUDECODE is ignored because the owner's `!` commands set it too. A refusal exits FAILURE through `parse`. */
