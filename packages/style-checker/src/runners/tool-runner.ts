@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 
 export interface ToolRunResult {
   stdout: string;
@@ -9,16 +10,46 @@ export interface ToolRunResult {
   timedOut: boolean;
 }
 
-export function runTool(
+const SPAWN_ATTEMPTS = 5;
+const SPAWN_BACKOFF_MS = 20;
+
+// A sibling thread can fork while this one holds a just-written script open for writing; exec then fails with ETXTBSY until the fork execs.
+export async function runTool(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; timeout?: number },
+): Promise<ToolRunResult> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runToolOnce(command, args, options);
+    } catch (err) {
+      const busy = (err as { code?: string }).code === "ETXTBSY";
+      if (!busy || attempt >= SPAWN_ATTEMPTS) throw err;
+      await new Promise((r) => setTimeout(r, SPAWN_BACKOFF_MS * attempt));
+    }
+  }
+}
+
+function spawnFailure(command: string, err: Error): Error {
+  return Object.assign(new Error(`Failed to spawn ${command}: ${err.message}`), {
+    code: (err as NodeJS.ErrnoException).code,
+  });
+}
+
+function runToolOnce(
   command: string,
   args: string[],
   options?: { cwd?: string; timeout?: number },
 ): Promise<ToolRunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: options?.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      child = spawn(command, args, { cwd: options?.cwd, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      // Node throws every spawn error except EACCES, EAGAIN, EMFILE, ENFILE and ENOENT synchronously; ETXTBSY is one.
+      reject(spawnFailure(command, err as Error));
+      return;
+    }
 
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
@@ -34,7 +65,7 @@ export function runTool(
 
     child.on("error", (err) => {
       clearTimeout(timer);
-      reject(new Error(`Failed to spawn ${command}: ${err.message}`));
+      reject(spawnFailure(command, err));
     });
 
     child.on("close", (code, signal) => {
