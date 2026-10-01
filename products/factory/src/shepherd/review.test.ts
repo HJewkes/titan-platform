@@ -221,6 +221,95 @@ describe("awaitVerdict", () => {
 
     await expect(awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 150 }, signal)).resolves.toEqual({ kind: "none" });
   });
+
+  const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
+  /** The reviewer's roster row, whose presence `presenceAt` gives by the clock; `down` means the broker cannot be reached. */
+  const rosterBy = (clock: ReturnType<typeof clockAt>, presenceAt: (now: number) => string | "absent" | "down") => async () => {
+    const presence = presenceAt(clock.now());
+    if (presence === "down") throw new ReviewerBrokerDown("broker restarting");
+    return presence === "absent" ? [] : [agent("rv", { agentId: "reviewer-1", sessionId: "session-1", presence })];
+  };
+  const silentReader: ReviewerReader = { read: async () => [] };
+
+  it("ends the wait one grace after the reviewer exits without a verdict, long before the deadline", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBe(800);
+  });
+
+  it("ends the wait when the reviewer deregisters and leaves the roster", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "absent")));
+
+    expect(result).toEqual({ kind: "none" });
+  });
+
+  it("takes a verdict that lands within the grace after the exit", async () => {
+    const clock = clockAt(0);
+    const reader: ReviewerReader = { read: async () => (clock.now() >= 700 ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "exited")));
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("keeps waiting through a broker restart that detaches the reviewer for a moment, and takes the verdict it gives after", async () => {
+    const clock = clockAt(0);
+    const presenceAt = (now: number) => (now < 300 ? "live" : now < 600 ? "down" : now < 1_200 ? "detached" : "live");
+    const reader: ReviewerReader = { read: async () => (clock.now() >= 3_000 ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, rosterBy(clock, presenceAt));
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("ends the wait when the reviewer stays detached past its grace", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, (now) => (now < 500 ? "live" : "detached")));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBe(1_500);
+  });
+
+  it("never ends the wait early while the broker cannot be reached", async () => {
+    const clock = clockAt(0);
+
+    const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it("restarts the grace when the reviewer comes back and goes absent again", async () => {
+    const clock = clockAt(0);
+    const presenceAt = (now: number) => (now < 500 ? "live" : now < 600 ? "exited" : now < 900 ? "live" : "exited");
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, presenceAt));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBe(1_200);
+  });
+
+  it("takes a verdict that lands after the silence check decides to stop", async () => {
+    const clock = clockAt(0);
+    let stopped = false;
+    const roster = rosterBy(clock, (now) => (now < 500 ? "live" : "exited"));
+    const decided: typeof roster = async () => {
+      const rows = await roster();
+      stopped = clock.now() >= 800;
+      return rows;
+    };
+    const reader: ReviewerReader = { read: async () => (stopped ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, decided);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
 });
 
 describe("parseAwaitVerdictInput", () => {

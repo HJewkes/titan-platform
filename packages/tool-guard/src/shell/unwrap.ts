@@ -68,10 +68,14 @@ export interface Unwrapped {
   args: WordToken[];
   /** Leading `NAME=value` words, values null when only known at run time. */
   assigned: Array<[string, string | null]>;
+  /** The command word as typed, after literal expansion: `./x.sh`, `/usr/bin/git`; null when `name` is. */
+  path: string | null;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
   script?: string;
-  /** The string `xargs -I` replaces with each input line. */
-  replace?: string;
+  /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input line. */
+  xargs?: { replace: string | null };
+  /** Set when `!` negates the command's status. */
+  negated?: true;
 }
 
 /** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
@@ -83,12 +87,16 @@ export function commandName(value: string): string {
 /** Strips keywords, assignments and wrappers. Returns null for a wrapper that does not run its command. */
 export function unwrap(words: WordToken[]): Unwrapped | null {
   const assigned: Array<[string, string | null]> = [];
-  let replace: string | null = null;
+  let xargs: Unwrapped["xargs"];
+  let negated = false;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
     const assignment = parseAssignment(w);
-    if (KEYWORDS.has(w.value) && !w.quoted) i++;
+    if (KEYWORDS.has(w.value) && !w.quoted) {
+      negated ||= w.value === "!";
+      i++;
+    }
     else if (assignment) {
       assigned.push(assignment);
       i++;
@@ -97,33 +105,50 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
-      if (script !== null) return { name: commandName(w.value), args: words.slice(i + 1), assigned, script };
+      if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
-      if (commandName(w.value) === "xargs") replace = xargsReplace(words.slice(start, i)) ?? replace;
+      if (commandName(w.value) === "xargs") xargs = { replace: xargsReplace(words.slice(start, i)) ?? xargs?.replace ?? null };
     } else break;
   }
-  return { ...command(words, i, assigned), ...(replace === null ? {} : { replace }) };
+  return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}) };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
   const first = words[i];
-  if (!first) return { name: null, args: [], assigned };
-  if (first.dynamic) return { name: null, args: words.slice(i), assigned };
-  return { name: commandName(first.value), args: words.slice(i + 1), assigned };
+  if (!first) return { name: null, path: null, args: [], assigned };
+  if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };
+  return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned };
 }
 
-/** The replace string of `-I str`, `-Istr`, `-i[str]` or `--replace[=str]`, `{}` when none is given. */
+/** The replace string of `-I str`, `-Istr`, `-i[str]`, `--replace[=str]` or a cluster such as `-tI{}`, `{}` when none is given. */
 function xargsReplace(options: WordToken[]): string | null {
   let replace: string | null = null;
   options.forEach((word, j) => {
     const v = word.value;
-    if (v === "-I") replace = options[j + 1]?.value ?? null;
-    else if (/^-[Ii]./.test(v)) replace = v.slice(2);
-    else if (v === "-i" || v === "--replace") replace = "{}";
+    if (v === "--replace") replace = "{}";
     else if (v.startsWith("--replace=")) replace = v.slice("--replace=".length);
+    else if (/^-[A-Za-z]/.test(v)) replace = clusterReplace(v, options[j + 1]?.value) ?? replace;
   });
   return replace;
+}
+
+/** The replace string a short-option cluster sets: the text after `I` or `i`, else the next word for `I` and `{}` for `i`. */
+function clusterReplace(v: string, next: string | undefined): string | null {
+  for (let k = 1; k < v.length; k++) {
+    const rest = v.slice(k + 1);
+    if (v[k] === "I") return rest || (next ?? null);
+    if (v[k] === "i") return rest || "{}";
+    if (WRAPPERS.xargs?.values?.includes(`-${v[k]}`)) return null;
+  }
+  return null;
+}
+
+/** Whether option word `v` takes the next word as its value: `-I`, or a cluster ending in one, `-tI`. */
+function takesValue(v: string, values: string[] = []): boolean {
+  if (values.includes(v)) return true;
+  if (!/^-[A-Za-z]{2,}$/.test(v)) return false;
+  return [...v.slice(1)].findIndex((c) => values.includes(`-${c}`)) === v.length - 2;
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {
@@ -135,7 +160,7 @@ function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
   while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
     const v = (words[i] as WordToken).value;
     if (spec.stop?.includes(v)) return -1;
-    i += spec.values?.includes(v) ? 2 : 1;
+    i += takesValue(v, spec.values) ? 2 : 1;
     if (v === "--") break;
   }
   if (spec.named && isCompoundStart(words[i + 1])) return i + 1;
@@ -154,7 +179,7 @@ function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string
     if (at === "next") return scriptText(words[i + 1]?.value ?? "", words.slice(i + 2));
     if (at !== null) return scriptText(at.attached, words.slice(i + 1));
     if (v === "--") break;
-    i += spec.values?.includes(v) ? 2 : 1;
+    i += takesValue(v, spec.values) ? 2 : 1;
   }
   if (!spec.positionals || !spec.script) return null;
   return wrapperScript(words, i + spec.positionals, { ...spec, positionals: 0 });

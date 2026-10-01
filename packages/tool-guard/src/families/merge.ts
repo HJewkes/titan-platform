@@ -1,4 +1,4 @@
-import type { SimpleCommand } from "../shell/commands.js";
+import type { Chain, SimpleCommand } from "../shell/commands.js";
 import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
@@ -148,7 +148,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
-  if (cmd.name === "git") return git(cmd, ctx);
+  if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
   return curlMerge(cmd);
 }
 
@@ -169,21 +169,53 @@ function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | nu
   return { dir: inv.otherPaths.length > 0 ? null : inv.dir, created };
 }
 
-/**
- * The head a branch switch leaves: a created branch's name only when the head it left was unprotected,
- * since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
- */
-function switchedHead(dir: string | null, created: WordToken | null, ctx: ClassifyContext): string {
-  if (dir === null || !created || created.dynamic) return UNKNOWN;
-  return isProtected(headOf({ dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : created.value;
+type Switch = { dir: string | null; created: WordToken | null };
+
+/** Contexts that trust a created branch inside one `&&` chain, with the context every command outside it sees. */
+const chainTrust = new WeakMap<ClassifyContext, { chain: Chain; fallback: ClassifyContext }>();
+
+/** The context `cmd` sees: a created branch trusted for its `&&` chain is dropped once the chain ends. */
+function inChain(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext {
+  const held = chainTrust.get(ctx);
+  return held && held.chain !== cmd.chain ? held.fallback : ctx;
 }
 
-/** A branch switch replaces the head later commands see: an unprotected new branch in its own directory only, any other head everywhere. */
-function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
-  const sw = switchDir(cmd, ctx);
-  if (!sw) return undefined;
-  const head = switchedHead(sw.dir, sw.created, ctx);
+/** Operators before a switch whose status the next `&&` may not see: `||` skips it, a pipe stage's status can be another's. */
+const UNGUARDED_PREV = new Set(["||", "|", "|&"]);
+
+/** Whether every later command in the chain runs only when the switch succeeded: joined by `&&`, not negated, not after `||` or a pipe. */
+function guardsChain(cmd: SimpleCommand): boolean {
+  return cmd.next === "&&" && !UNGUARDED_PREV.has(cmd.prev ?? "") && !cmd.negated;
+}
+
+/**
+ * The head a branch switch leaves: a created branch's name when the switch is known to have succeeded or the
+ * head it left was unprotected, since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
+ */
+function switchedHead(sw: Switch, succeeded: boolean, ctx: ClassifyContext): string {
+  if (sw.dir === null || !sw.created || sw.created.dynamic) return UNKNOWN;
+  if (succeeded) return sw.created.value;
+  return isProtected(headOf({ dir: sw.dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : sw.created.value;
+}
+
+function switched(sw: Switch, head: string, ctx: ClassifyContext): ClassifyContext {
   return { ...ctx, readHead: (d) => (sw.dir === null || isProtected(head) || d === sw.dir ? head : ctx.readHead(d)) };
+}
+
+/**
+ * A branch switch replaces the head later commands see: an unprotected new branch in its own directory only, any other
+ * head everywhere. A created name is trusted outright only for the rest of an `&&` chain the switch guards.
+ */
+function after(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext | undefined {
+  const ctx = inChain(cmd, line);
+  const sw = switchDir(cmd, ctx);
+  if (!sw) return ctx === line ? undefined : ctx;
+  const base = chainTrust.get(ctx)?.fallback ?? ctx;
+  const fallback = switched(sw, switchedHead(sw, false, base), base);
+  if (!guardsChain(cmd)) return fallback;
+  const trusted = switched(sw, switchedHead(sw, true, ctx), ctx);
+  chainTrust.set(trusted, { chain: cmd.chain, fallback });
+  return trusted;
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */

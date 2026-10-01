@@ -34,7 +34,7 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
-export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
+export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 
 export interface ReviewTarget {
   repo: string;
@@ -120,6 +120,8 @@ export interface AwaitVerdictTiming {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;
   timeoutMs: number;
+  exitGraceMs?: number;
+  detachGraceMs?: number;
 }
 
 
@@ -224,6 +226,8 @@ export interface ReviewWiring {
   timeoutMs?: number;
   lateVerdictMs?: number;
   sessionStartTimeoutMs?: number;
+  exitGraceMs?: number;
+  detachGraceMs?: number;
   isFrozen?: IsFrozen;
 }
 
@@ -274,11 +278,12 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
 
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
-  const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS };
+  const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
   const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
     if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
     const input = parseAwaitVerdictInput(raw);
-    return wiring ? awaitVerdict(wiring.reader, input, timing, signal) : { kind: "none" };
+    const dispatch = wiring?.dispatch;
+    return wiring ? awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster())) : { kind: "none" };
   };
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [

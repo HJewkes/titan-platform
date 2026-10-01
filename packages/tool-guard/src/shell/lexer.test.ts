@@ -155,6 +155,20 @@ describe("heredocs", () => {
   });
 });
 
+describe("words split by quoting", () => {
+  it.each([
+    ["a double-quoted part after text", 'cat ~/".x"', true],
+    ["an empty single-quoted part", "cat .n''x", true],
+    ["a backslash escape", "cat .n\\x", true],
+    ["an ANSI-C string", "cat $'.x'", true],
+    ["text after a quoted part", "cat \".\"x", true],
+    ["a word quoted whole", 'cat "/home/you/.x"', false],
+    ["a plain word", "cat ~/.x", false],
+  ])("marks %s", (_how, src, spliced) => {
+    expect(tokenize(src)[1]).toMatchObject({ type: "word", spliced });
+  });
+});
+
 describe("ANSI-C strings", () => {
   it.each([
     ["$'\\x7e/.npmrc'", "~/.npmrc"],
