@@ -174,5 +174,15 @@
         "link": "/reference/react-ui"
       }
     ]
+  },
+  {
+    "text": "Products",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "evals",
+        "link": "/reference/evals"
+      }
+    ]
   }
 ]

@@ -56,6 +56,7 @@ Before adding code:
 | [`workflow`](#cap-workflow) | 2 | Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths. |
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
+| [`evals`](#cap-evals) | product | Placeholder: replace with the situation that should send a reader to evals, and name the neighbouring unit for the situations that should not. |
 | [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for one kind of agent, the Shepherd reviewer. Relay and agent-chat keep every other dispatch. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against today's injected baseline. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
@@ -791,6 +792,18 @@ Tier ui, `@titan-design/react-ui`, published from the titan-design repository. C
 ## Products
 
 Thin compositions of the tiers. Private, not published.
+
+<a id="cap-evals"></a>
+
+### [`evals`](/reference/evals)
+
+Tier product, `@titan-design/evals@0.0.0`. Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing
+
+**Use this when:** Placeholder: replace with the situation that should send a reader to evals, and name the neighbouring unit for the situations that should not.
+
+Key exports:
+
+No library entry point.
 
 <a id="cap-factory"></a>
 
