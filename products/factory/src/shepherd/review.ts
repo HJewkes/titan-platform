@@ -1,11 +1,12 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { HEAD, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -28,11 +29,8 @@ export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
-/** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
-export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
-export const FIX_FIRST_TRUNCATED = "\n[truncated]";
 const DEFAULT_POLL_MS = 30_000;
-const HEAD = /^[0-9a-f]{40}$/;
+export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 
 export interface ReviewTarget {
   repo: string;
@@ -102,7 +100,7 @@ export interface ReviewerReader {
   read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
 }
 
-interface AcceptedVerdict {
+export interface AcceptedVerdict {
   kind: "verdict";
   head: string;
   locator: SourceTextLocator;
@@ -120,69 +118,6 @@ export interface AwaitVerdictTiming {
   timeoutMs: number;
 }
 
-export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
-  const input = (raw ?? {}) as Record<string, unknown>;
-  const text = (value: unknown, name: string): string => {
-    if (typeof value !== "string" || value === "") throw new Error(`sh-await-verdict: ${name} must be a non-empty string`);
-    return value;
-  };
-  const { pr, dispatchedAt } = input;
-  if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
-  if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
-  const head = text(input.head, "head");
-  if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
-  return {
-    repo: text(input.repo, "repo"),
-    pr,
-    head,
-    reviewerAgentId: text(input.reviewerAgentId, "reviewerAgentId"),
-    reviewerSessionId: text(input.reviewerSessionId, "reviewerSessionId"),
-    dispatchedAt,
-  };
-}
-
-function boundedFindings(text: string): string {
-  if (text.length <= MAX_FIX_FIRST_TEXT_CHARS) return text;
-  return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
-}
-
-const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
-
-/**
- * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
- * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
- * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
- */
-export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
-  const final = messages.at(-1);
-  if (!final) return { kind: "none" };
-  if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
-  if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
-  if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
-  const block = parseVerdictBlock(final.text);
-  if (!block.ok) return { kind: "none" };
-  if (block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) return { kind: "none" };
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
-}
-
-/** Polls until an acceptable block appears; the deadline ends the wait with `none`, and a failed read counts as nothing yet. */
-export async function awaitVerdict(
-  reader: ReviewerReader,
-  input: AwaitVerdictInput,
-  timing: AwaitVerdictTiming,
-  signal: AbortSignal,
-): Promise<AwaitVerdictResult> {
-  const clock = deadline(timing);
-  for (;;) {
-    const messages = await reader.read(input).catch(() => []);
-    const result = acceptVerdict(input, messages);
-    if (result.kind === "verdict") return result;
-    if (clock.expired()) return { kind: "none" };
-    await clock.sleep(timing.pollMs, signal);
-  }
-}
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });

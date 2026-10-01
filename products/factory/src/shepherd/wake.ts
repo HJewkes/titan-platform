@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat, listAgents, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
-import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { BrokerUnavailableError, DispatchTimeoutError, dispatchToAgentChat, listAgents, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
@@ -11,6 +11,7 @@ import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
+import { describeWake } from "./wake-brief.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -23,21 +24,14 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 
 /** The agent-chat profile a successor starts under; the profile is its tool grant. */
 export const SUCCESSOR_PROFILE = "implementer";
-export const LOG_TAIL_LINES = 150;
-/** The most CI log the wake carries across every failing job, headers included. */
-export const LOG_BUDGET_BYTES = 8 * 1024;
 export const CLI_TIMEOUT_MS = 30_000;
+export { LOG_BUDGET_BYTES, LOG_TAIL_LINES, isRegistry, tailBytes } from "./wake-brief.js";
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
 /** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
 const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
 const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
-
-/** Files a build regenerates from source; a conflict confined to them is settled by regenerating, never by hand-merging. */
-const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"]);
-const REGISTRY_DIR = "site/reference/";
-export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path) || (path.startsWith(REGISTRY_DIR) && path.length > REGISTRY_DIR.length);
 
 /** How the wake step reaches agent-chat. A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface ImplementerAgents {
@@ -102,87 +96,6 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 
 /** Waited out with no deadline: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
-
-/** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
-async function ciLogs(port: GitHubPort, input: WakeInput): Promise<string> {
-  const failing = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
-  if (failing.length === 0) return "No failing check run was found at this head.";
-  const budget = Math.floor((LOG_BUDGET_BYTES - (failing.length - 1)) / failing.length);
-  const sections = await Promise.all(failing.map((run) => logSection(port, input.repo, run, budget)));
-  return headBytes(sections.join("\n"), LOG_BUDGET_BYTES);
-}
-
-async function logSection(port: GitHubPort, repo: RepoSlug, run: CheckRun, budget: number): Promise<string> {
-  const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${messageOf(error)})`);
-  return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header)));
-}
-
-/** The last `max` bytes, dropping a character the cut split; a log's error is at its end. */
-export function tailBytes(text: string, max: number): string {
-  const bytes = Buffer.from(text);
-  if (bytes.length <= max) return text;
-  return bytes.subarray(bytes.length - max).toString("utf8").replace(/^�+/, "");
-}
-
-function headBytes(text: string, max: number): string {
-  const bytes = Buffer.from(text);
-  if (bytes.length <= max) return text;
-  return bytes.subarray(0, max).toString("utf8").replace(/�+$/, "");
-}
-
-interface Conflict {
-  /** Files the PR changed that the base also changed since the merge base: the likely conflicts. */
-  files: string[];
-  truncated: boolean;
-}
-
-async function conflictFiles(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<Conflict> {
-  const [prFiles, base] = await Promise.all([port.listPrFiles(input.repo, input.pr), port.compareFiles(input.repo, input.headSha, pr.baseRef)]);
-  const moved = new Set(base.files);
-  const touched = prFiles.flatMap((file) => [file.path, ...(file.previousPath === undefined ? [] : [file.previousPath])]);
-  return { files: [...new Set(touched.filter((path) => moved.has(path)))], truncated: base.truncated };
-}
-
-/** A truncated comparison may hide a hand-written file, so it is never generated-only. */
-const generatedOnly = (conflict: Conflict): boolean => !conflict.truncated && conflict.files.length > 0 && conflict.files.every(isRegistry);
-
-function conflictList(conflict: Conflict): string {
-  const mark = !generatedOnly(conflict) && conflict.files.some(isRegistry);
-  const files = conflict.files.map((path) => (mark && isRegistry(path) ? `${path} (generated registry)` : path));
-  const lines = files.length > 0 ? files : ["No file both this PR and the base changed; rebase and resolve what git reports."];
-  return [...lines, ...(conflict.truncated ? ["GitHub truncated the base comparison, so this list may be missing files."] : [])].join("\n");
-}
-
-const REGENERATE = "run `pnpm build` then `pnpm capabilities`, commit the regenerated files and push";
-
-function conflictReason(input: WakeInput, conflict: Conflict): string {
-  const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below.`;
-  if (generatedOnly(conflict)) {
-    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Merge the base branch from origin, take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
-  }
-  const registries = conflict.files.some(isRegistry) ? ` Do not hand-merge a file marked (generated registry): take the base's side of it, then ${REGENERATE}.` : "";
-  return `${intro} The files both sides changed follow.${registries}`;
-}
-
-const FixFirst = z.looseObject({ text: z.string().min(1) });
-
-/** Why the agent is woken, and the data that shows it, fenced. */
-async function describe(port: GitHubPort, input: WakeInput, pr: PullRequest): Promise<{ reason: string; payload: string }> {
-  const head = input.headSha;
-  switch (input.kind) {
-    case "ci-red":
-      return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
-    case "review":
-      return { reason: `An independent review of head ${head} returned FIX_FIRST. Its findings follow.`, payload: dataFence("review findings", FixFirst.parse(input.payload).text) };
-    case "conflict": {
-      const conflict = await conflictFiles(port, input, pr);
-      return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };
-    }
-    case "fix-proof":
-      return { reason: `The fix-proof check at head ${head} did not pass. Its result follows.`, payload: dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2)) };
-  }
-}
 
 interface WakeTask {
   input: WakeInput;
@@ -385,7 +298,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, ...(await describe(deps.port, input, pr)), implementer: registration.implementer, successors };
+  return { input, pr, ...(await describeWake(deps.port, input, pr)), implementer: registration.implementer, successors };
 }
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
