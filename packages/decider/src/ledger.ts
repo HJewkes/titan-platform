@@ -86,7 +86,7 @@ export const LedgerRowSchema = LedgerRowInputSchema.transform(upgrade);
 
 export type LedgerRow = z.output<typeof LedgerRowSchema>;
 export type LedgerRowWire = z.input<typeof LedgerRowSchema>;
-export type LedgerSource = (typeof LEDGER_SOURCES)[number];
+export type LedgerSourceName = (typeof LEDGER_SOURCES)[number];
 export type AnsweredBy = (typeof ANSWERED_BY)[number];
 export type Route = (typeof ROUTES)[number];
 export type LedgerLocator = z.infer<typeof LedgerLocatorSchema>;
