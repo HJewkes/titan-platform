@@ -40,15 +40,21 @@ function printfText(values: string[]): string | null {
 
 const DIRECTIVE = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
 
+/** A `*` count printf would read as `-1` or `0x8` is not guessed: only plain decimals are understood. */
 function applyFormat(format: string, args: string[]): { text: string; used: number } | null {
   let used = 0;
   let understood = true;
   const next = () => args[used++] ?? "";
+  const count = () => {
+    const v = next();
+    if (!/^\d+$/.test(v)) understood = false;
+    return v;
+  };
   const text = format.replace(DIRECTIVE, (whole, flags: string, width: string, precision?: string, conv = "") => {
     if (whole === "%%") return "%";
     if (!"sbcdi".includes(conv) || conv === "") understood = false;
-    const w = width === "*" ? next() : width;
-    const p = precision === "*" ? next() : precision;
+    const w = width === "*" ? count() : width;
+    const p = precision === "*" ? count() : precision;
     return pad(convert(conv, next(), p), w, flags.includes("-"));
   });
   return understood ? { text, used } : null;

@@ -70,6 +70,8 @@ export interface Unwrapped {
   assigned: Array<[string, string | null]>;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
   script?: string;
+  /** The string `xargs -I` replaces with each input line. */
+  replace?: string;
 }
 
 /** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
@@ -81,6 +83,7 @@ export function commandName(value: string): string {
 /** Strips keywords, assignments and wrappers. Returns null for a wrapper that does not run its command. */
 export function unwrap(words: WordToken[]): Unwrapped | null {
   const assigned: Array<[string, string | null]> = [];
+  let replace: string | null = null;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -97,12 +100,30 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (script !== null) return { name: commandName(w.value), args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
+      if (commandName(w.value) === "xargs") replace = xargsReplace(words.slice(start, i)) ?? replace;
     } else break;
   }
+  return { ...command(words, i, assigned), ...(replace === null ? {} : { replace }) };
+}
+
+function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
   const first = words[i];
   if (!first) return { name: null, args: [], assigned };
   if (first.dynamic) return { name: null, args: words.slice(i), assigned };
   return { name: commandName(first.value), args: words.slice(i + 1), assigned };
+}
+
+/** The replace string of `-I str`, `-Istr`, `-i[str]` or `--replace[=str]`, `{}` when none is given. */
+function xargsReplace(options: WordToken[]): string | null {
+  let replace: string | null = null;
+  options.forEach((word, j) => {
+    const v = word.value;
+    if (v === "-I") replace = options[j + 1]?.value ?? null;
+    else if (/^-[Ii]./.test(v)) replace = v.slice(2);
+    else if (v === "-i" || v === "--replace") replace = "{}";
+    else if (v.startsWith("--replace=")) replace = v.slice("--replace=".length);
+  });
+  return replace;
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {

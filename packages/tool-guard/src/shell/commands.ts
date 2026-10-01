@@ -85,7 +85,16 @@ function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: str
 
 function passesThrough(cmd: Unwrapped): boolean {
   if (cmd.name === "tee") return true;
-  return cmd.name === "cat" && cmd.args.every((a) => a.value === "-" || /^-[A-Za-z]+$/.test(a.value));
+  if (cmd.name !== "cat") return false;
+  const operands = catOperands(cmd.args.map((a) => a.value));
+  return operands.length === 0 || operands.includes("-");
+}
+
+function catOperands(values: string[]): string[] {
+  const end = values.indexOf("--");
+  const options = end < 0 ? values : values.slice(0, end);
+  const operands = options.filter((v) => v === "-" || !v.startsWith("-"));
+  return end < 0 ? operands : [...operands, ...values.slice(end + 1)];
 }
 
 function nestedLists(token: Token): Token[][] {
@@ -147,8 +156,13 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  if (hasC) return positional?.value ?? stdin;
+  if (hasC) return positional ? replaced(positional.value, cmd.replace, stdin) : stdin;
   return positional ? null : (stdinScript(redirects) ?? stdin);
+}
+
+/** `xargs -I{} sh -c '{}'`: the piped text stands in for each replace string. */
+function replaced(script: string, replace: string | undefined, stdin: string | null): string {
+  return replace === undefined || stdin === null ? script : script.replaceAll(replace, stdin);
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
