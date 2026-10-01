@@ -13,6 +13,8 @@ export interface MinerConfig {
   /** Optional Codex home; enabled explicitly to preserve existing corpus defaults. */
   codexHome?: string;
   namespace?: string;
+  /** agent-chat's event log, read-only, where reviewer verdicts live. */
+  eventsDb: string;
 }
 
 export interface ConfigOverrides {
@@ -24,14 +26,15 @@ export interface ConfigOverrides {
   graph?: string;
 }
 
-/** Explicit overrides win, then `TITAN_MINER_STATE` / `TITAN_MINER_CORPUS` / `TITAN_MINER_GRAPH`, then the defaults. */
+/** Explicit overrides win, then `TITAN_MINER_STATE` / `TITAN_MINER_CORPUS` / `TITAN_MINER_GRAPH` / `TITAN_MINER_EVENTS_DB`, then the defaults. */
 export function resolveConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessEnv = process.env): MinerConfig {
   const stateDir = expandHome(overrides.stateDir ?? env.TITAN_MINER_STATE ?? path.join(os.homedir(), ".local", "state", "titan-session-miner"));
   const corpusRoot = expandHome(overrides.corpusRoot ?? env.TITAN_MINER_CORPUS ?? transcriptsRoot());
   const codexHome = overrides.codexHome ?? env.TITAN_MINER_CODEX_HOME;
   const graph = overrides.graph ?? env.TITAN_MINER_GRAPH;
   const db = graph ? { dbPath: expandHome(graph), readonly: true } : { dbPath: path.join(stateDir, "index.sqlite3") };
-  return { stateDir, corpusRoot, ...db,
+  const eventsDb = expandHome(env.TITAN_MINER_EVENTS_DB ?? path.join(os.homedir(), ".agent-chat", "events.db"));
+  return { stateDir, corpusRoot, eventsDb, ...db,
     ...(codexHome ? { codexHome: expandHome(codexHome), namespace: overrides.namespace ?? env.TITAN_MINER_NAMESPACE ?? os.hostname() } : {}) };
 }
 

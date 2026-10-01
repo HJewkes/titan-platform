@@ -80,5 +80,5 @@ Thin compositions of the tiers. Private, not published.
 | --- | --- | --- |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent-dispatch`, `authority`, `daemon`, `github`, `hitl`, `registry`, `rpc-client`, `session-read`, `store-sqlite`, `workflow` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `embed`, `retrieval`, `store-sqlite` |
-| `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
+| `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `code-report` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |

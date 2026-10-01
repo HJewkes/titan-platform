@@ -631,6 +631,9 @@ importers:
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator
