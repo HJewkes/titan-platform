@@ -84,6 +84,27 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
   });
 
+  it("reads the bypass of every ruleset behind a pull_request rule, and is true when each is bypassable", async () => {
+    const rules = [{ type: "pull_request", ruleset_id: 11 }, { type: "pull_request", ruleset_id: 11 }, { type: "required_status_checks", ruleset_id: 12 }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules), "rulesets/11": JSON.stringify({ current_user_can_bypass: "pull_requests_only" }) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(true);
+    expect(gh.calls.filter((call) => call.args.some((arg) => arg.includes("rulesets/")))).toHaveLength(1);
+  });
+
+  it("is false when any ruleset behind a pull_request rule says never", async () => {
+    const rules = [{ type: "pull_request", ruleset_id: 11 }, { type: "pull_request", ruleset_id: 12 }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules), "rulesets/11": JSON.stringify({ current_user_can_bypass: "always" }), "rulesets/12": JSON.stringify({ current_user_can_bypass: "never" }) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(false);
+  });
+
+  it("is true when no pull_request rule applies", async () => {
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
+
+    expect(await ghCliWire(gh.exec).reviewRulesBypassable(REPO, "main")).toBe(true);
+  });
+
   it("follows the next-page link for check runs and reads the run id from the job URL, the app id and the head sha", async () => {
     const run = (id: number, name: string, app: number) => ({ id, name, status: "completed", conclusion: "success", started_at: "2026-01-01T00:00:00Z", head_sha: H1, details_url: `https://github.com/octo/demo/actions/runs/55/job/${id}`, html_url: null, app: { id: app } });
     const next = { link: '<https://api.github.com/repositories/9/commits/x/check-runs?per_page=100&page=2>; rel="next"' };
@@ -173,6 +194,7 @@ describe("gh api adapter, REST only", () => {
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
+      reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       getCommit: () => port.getCommit(REPO, H1),

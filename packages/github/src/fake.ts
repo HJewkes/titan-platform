@@ -20,6 +20,8 @@ export interface FakeGitHub {
   /** Every wire call in order, as `method` names; lets a test prove what was never called. */
   calls: string[];
   rules: RequiredChecks;
+  /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
+  reviewBypass: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
   /** The live record, so a test can move the world (behind, mergeable_state) between steps. */
   pr(number: number): PullRequest;
@@ -79,6 +81,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     effects,
     calls: [],
     rules: { contexts: ["validate", "dag-check"], strict: true },
+    reviewBypass: false,
     commits: new Map(),
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
@@ -129,6 +132,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getPr", { ...pr });
     },
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
+    reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [] }),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),

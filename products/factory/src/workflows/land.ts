@@ -27,7 +27,7 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "stuck-behind", kind: "assisted" },
 ];
 
-/** mergeable_state values that let a merge through; `unknown` and `blocked` mean GitHub has not settled. */
+/** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
 const INPUT_VAR = "LAND_STEP_INPUT";
 const TEMPLATE = `{{${INPUT_VAR}}}`;
@@ -290,7 +290,7 @@ export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapsh
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
-  const verdict = mergeVerdict(pr);
+  const verdict = await settledVerdict(port, input, pr);
   if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
   return { ...base, verdict };
 }
@@ -318,6 +318,13 @@ function failingCheck(run: CheckRun): FailingCheck {
 
 function findingName(finding: CheckFinding): string {
   return finding.kind === "missing" ? finding.name : finding.run.name;
+}
+
+/** A blocked PR is green when its only block is an approval rule the caller can bypass, which GitHub reports as blocked all the same. */
+async function settledVerdict(port: GitHubPort, input: CiInput, pr: PullRequest): Promise<CiVerdict> {
+  const verdict = mergeVerdict(pr);
+  if (verdict === "pending" && pr.mergeableState === "blocked" && (await port.reviewRulesBypassable(input.repo, pr.baseRef))) return "green";
+  return verdict;
 }
 
 function mergeVerdict(pr: PullRequest): CiVerdict {
