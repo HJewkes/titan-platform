@@ -85,11 +85,13 @@ export async function awaitVerdict(
 ): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
   const silent = roster ? silenceWatch(timing, roster) : async () => false;
+  const poll = async () => acceptVerdict(input, await reader.read(input).catch(() => []));
   for (;;) {
-    const messages = await reader.read(input).catch(() => []);
-    const result = acceptVerdict(input, messages);
+    const result = await poll();
     if (result.kind === "verdict") return result;
-    if ((await silent(input)) || clock.expired()) return { kind: "none" };
+    // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
+    if (await silent(input)) return poll();
+    if (clock.expired()) return { kind: "none" };
     await clock.sleep(timing.pollMs, signal);
   }
 }

@@ -278,6 +278,33 @@ describe("awaitVerdict", () => {
     const result = await awaitVerdict(silentReader, input, { ...timing(clock), timeoutMs: 2_000 }, signal, rosterBy(clock, () => "down"));
 
     expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it("restarts the grace when the reviewer comes back and goes absent again", async () => {
+    const clock = clockAt(0);
+    const presenceAt = (now: number) => (now < 500 ? "live" : now < 600 ? "exited" : now < 900 ? "live" : "exited");
+
+    const result = await awaitVerdict(silentReader, input, timing(clock), signal, rosterBy(clock, presenceAt));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.now()).toBe(1_200);
+  });
+
+  it("takes a verdict that lands after the silence check decides to stop", async () => {
+    const clock = clockAt(0);
+    let stopped = false;
+    const roster = rosterBy(clock, (now) => (now < 500 ? "live" : "exited"));
+    const decided: typeof roster = async () => {
+      const rows = await roster();
+      stopped = clock.now() >= 800;
+      return rows;
+    };
+    const reader: ReviewerReader = { read: async () => (stopped ? [message()] : []) };
+
+    const result = await awaitVerdict(reader, input, timing(clock), signal, decided);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 });
 
