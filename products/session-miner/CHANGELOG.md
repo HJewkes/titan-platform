@@ -1,5 +1,49 @@
 # @titan-design/session-miner
 
+## 0.3.0
+
+### Minor Changes
+
+- c7fcdeb: `blockedFlowReport` reports, per repo, the minutes from a reviewer's first `Verdict: MERGE` at a PR's final head to its merge, with still-open PRs as censored ages and an optional split at a moment such as a merge-authority grant. It also lists open PRs holding MERGE at their current head, counts classifier denials by reason and by the action refused, and counts idle implementer slot-minutes by the seat journal's stated reason. New exports: `parseVerdict`, `mergeOutcomes`, `latencyStats`, `parseDenials`, `classifyDeniedAction`, `parseSeatJournal`, `idleSlotMinutes`, `blockedFlowSchema`, `renderBlockedFlowText`, `BLOCKED_FLOW_SOURCES`.
+
+  `titan-miner insights blocked-flow` (Q7) runs it over agent-chat's events table (`TITAN_MINER_EVENTS_DB`), GitHub REST and the seat transcripts and journals given with `--transcript` and `--journal`. An insight's `answer` may now be async and receives the miner config.
+
+- a594543: `costReport` and `cacheTtlReport` take an optional `scope` (`sessionIds`, `agentPrefix`, `roles`) that narrows every request-keyed field; with no scope the reports are unchanged. `renderCostReportSections` renders chosen sections of the cost report (`COST_REPORT_SECTIONS`) under its header, with `LIST_PRICE_CAVEAT` and the footer last. New exports: `ReportScope`, `scopeFilter`, `COST_REPORT_SECTIONS`, `CostReportSection`, `renderCostReportSections`.
+
+  `titan-miner insights <question>` runs the session-insights questions Q1 to Q4 (`spend-by-action`, `handoff-threshold`, `cache-ttl`, `wake-economics`) on the CLI, over MCP as `miner__insights__<question>`, and at `/rpc/insights.<question>`, each from one definition. Every question takes `--session`, `--agent-prefix`, `--role`, `--since` and `--until`, returns `{ question, caveat, filters, answer }` under `--json`, and prints its text renderer with the list-price caveat otherwise.
+
+### Patch Changes
+
+- 394bfae: `reconcilePrices` upserts a price table into a graph without deleting other rows: it adds missing models, updates changed rates and stamps the table version. `titan-miner` calls it with session-analytics' `PRICE_TABLE` whenever it opens the graph, so `titan-miner refresh` fixes a graph that still prices `claude-opus-5-5` at Opus 5 rates.
+- 0a9d26c: `openSessionGraph(path, { readonly: true })` opens a graph another process owns without migrating it, and throws `SessionGraphNotMigratedError` when it lacks a session-graph migration. The session miner reads such a graph with `--graph <file>` (`TITAN_MINER_GRAPH`), and its own migrations move from 1000-1002 to 2000-2002 so they no longer collide with active-work's band at 1001. A miner database migrated at the old numbers re-applies the new ones idempotently.
+- Updated dependencies [c7fcdeb]
+- Updated dependencies [679866f]
+- Updated dependencies [4662a91]
+- Updated dependencies [83e6c69]
+- Updated dependencies [ccbdde0]
+- Updated dependencies [394bfae]
+- Updated dependencies [59b6491]
+- Updated dependencies [a594543]
+- Updated dependencies [0a9d26c]
+- Updated dependencies [1712421]
+- Updated dependencies [45c7ad5]
+- Updated dependencies [c9f7712]
+- Updated dependencies [9821aa7]
+- Updated dependencies [61c29c4]
+- Updated dependencies [88bf9f7]
+- Updated dependencies [c583709]
+- Updated dependencies [f41ea9d]
+- Updated dependencies [06ffd8c]
+- Updated dependencies [f3f843d]
+- Updated dependencies [9ce7e65]
+- Updated dependencies [e9cac19]
+  - @titan-design/session-analytics@0.5.0
+  - @titan-design/github@0.2.0
+  - @titan-design/session-graph@0.12.0
+  - @titan-design/registry@0.3.2
+  - @titan-design/session-read@0.8.0
+  - @titan-design/daemon@0.3.2
+
 ## 0.2.13
 
 ### Patch Changes

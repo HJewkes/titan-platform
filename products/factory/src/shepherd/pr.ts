@@ -11,6 +11,8 @@ import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phase
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
+import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
+import { MAX_FAILED_ROUNDS, escalationReason, isFailedRound, routeFor, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
@@ -29,6 +31,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...PARK_STEPS,
   ...REVIEW_STEPS,
   ...POST_MERGE_STEPS,
+  ...OBSERVE_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -70,6 +73,14 @@ interface ShepherdRun {
   policy: EffectivePolicy;
   policyReads: number;
   lastCi?: CiSnapshot;
+  /** Review rounds at this task that ended without a merge decision. */
+  failedRounds: number;
+  /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
+  conflictWakes: number;
+  /** Heads whose next review spawns a never-held reviewer. */
+  fresh: Set<string>;
+  /** Heads whose merge decision is the owner's after failed rounds, with what failed. */
+  escalations: Map<string, string>;
 }
 
 /** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
@@ -85,9 +96,12 @@ class LeaveLand extends Error {
  */
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
-  const run: ShepherdRun = { ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 };
+  const run: ShepherdRun = {
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 },
+    ...{ failedRounds: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
+  };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor);
+  const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
@@ -113,7 +127,7 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return onCiFailed(run.ctx, run.target, outcome, run.state);
   }
-  if (isConflict(run, outcome) && (await woken(run, "conflict", outcome.headSha, { mergeableState: "dirty" }))) return undefined;
+  if (isConflict(run, outcome)) return onConflict(run, outcome.headSha);
   return outcome;
 }
 
@@ -148,35 +162,122 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
   };
 }
 
-/** A head a review sent back is sent back again whenever it is green, so its verdict never reaches the merge decision. */
+/** A green head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
 async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
   run.lastCi = ci.data;
   if (ci.data.verdict !== "green") return;
-  const { headSha } = ci.data;
-  if (!run.reviews.has(headSha)) {
-    await parkAtGreen(run.ctx, headSha);
-    run.reviews.set(headSha, await reviewHead(run, headSha));
-  }
-  await sendBack(run, headSha, run.reviews.get(headSha)!);
+  run.conflictWakes = 0;
+  await routeGreenHead(run, ci.data.headSha);
   await narrowToRegistration(run);
 }
 
-/** Where each verdict sends the PR back to; MERGE and none fall through to the merge decision. */
-const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_FIRST: "review", NO_REPRO: "fix-proof" };
+async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
+  if (!run.reviews.has(headSha)) await parkAtGreen(run.ctx, headSha);
+  for (;;) {
+    const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
+    run.reviews.set(headSha, verdict);
+    const observed = await observePr(run.ctx, run.target, headSha);
+    const outcome = reviewOutcome(verdict, observed, headSha);
+    const routed: Routed = { headSha, verdict, observed, outcome, route: routeFor(observed.runState, observed.mergeableState, outcome) };
+    if (await takeRoute(run, routed)) return;
+  }
+}
+
+interface Routed {
+  headSha: string;
+  verdict: Verdict;
+  observed: ObservedPr;
+  outcome: ReviewOutcome;
+  route: Route;
+}
+
+function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string): ReviewOutcome {
+  if (observed.headSha !== headSha) return "head-moved";
+  if (verdict.kind === "MERGE") return "MERGE";
+  if (verdict.kind === "none") return verdict.cause ?? "no-verdict";
+  return "FIX_FIRST";
+}
+
+const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
+  "no-verdict": "no reviewer verdict",
+  timeout: "no reviewer verdict before the wait ran out",
+  "external-hold": "no verdict yet from the reviewer the hold names",
+  FIX_FIRST: "a FIX_FIRST review",
+};
+
+/** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
+async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
+  const { route, headSha } = routed;
+  if (isFailedRound(route, routed.outcome) && ++run.failedRounds >= MAX_FAILED_ROUNDS) {
+    run.escalations.set(headSha, `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[routed.outcome] ?? routed.outcome}`);
+    return true;
+  }
+  switch (route) {
+    case "merge":
+      return true;
+    case "fresh-reviewer":
+    case "await-external":
+      run.reviews.delete(headSha);
+      if (route === "fresh-reviewer") run.fresh.add(headSha);
+      return false;
+    case "wake-fixer":
+      if (routed.outcome === "FIX_FIRST") return sendBack(run, headSha, routed.verdict);
+      throw new LeaveLand(await onConflict(run, headSha));
+    case "end-run":
+      throw new LeaveLand(endedOutcome(routed));
+    case "update-branch":
+    case "new-cycle":
+      throw new LeaveLand();
+  }
+}
+
+function endedOutcome({ observed, headSha }: Routed): LandOutcome {
+  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha ?? "" };
+  if (observed.runState === "closed-elsewhere") return { kind: "stopped", reason: "closed", headSha, detail: "the pull request was closed outside Shepherd" };
+  return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
+}
 
 /** A verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
-  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha });
-  return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none" };
+  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }) });
+  return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 
-async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<void> {
+/** Where each verdict sends the PR back to. */
+const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_FIRST: "review", NO_REPRO: "fix-proof" };
+
+/** Never returns: a woken agent starts the next round, and an unhandled wake asks a human. */
+async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<never> {
   const wake = SEND_BACK[verdict.kind];
-  if (!wake) return;
+  if (!wake) throw new Error(`shepherd-pr: a ${verdict.kind} verdict has no send-back`);
   if (await woken(run, wake, headSha, verdict)) throw new LeaveLand();
   throw new LeaveLand(await unhandledSendBack(run, verdict.kind, headSha));
+}
+
+/** One fixer attempt per conflict; a conflict that survives it goes to the owner. Undefined lands the next round. */
+async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> {
+  if (run.conflictWakes >= 1) return conflictGate(run, headSha);
+  run.conflictWakes += 1;
+  if (await woken(run, "conflict", headSha, { mergeableState: "dirty" })) return undefined;
+  return { kind: "stopped", reason: "not-mergeable", headSha, detail: "mergeable_state is dirty and no agent took the conflict wake" };
+}
+
+function conflictAnswer(headSha: string) {
+  return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
+}
+
+/** `merge` waits for a head that resolves the conflict and lands it through the normal rounds; it trusts no head. */
+async function conflictGate(run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> {
+  const { repo, pr } = run.target;
+  const reason = escalationReason("conflict", `mergeable_state is dirty at ${headSha} after a fixer's attempt`);
+  const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? Policy shepherd-route/conflict: ${reason}. Answer merge to have Shepherd land the next resolved head, or abandon.`;
+  const schema = conflictAnswer(headSha);
+  const answer = schema.parse((await run.ctx.assisted("approve-merge", prompt, { schema })).data);
+  if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human abandoned the PR at a conflict" };
+  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
+  return undefined;
 }
 
 const SentBackAnswer = z.object({ decision: z.enum(["await-new-head", "abandon"]) });
@@ -244,6 +345,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
     ...postMergeRoutes(deps),
+    observeRoute(deps.port, deps.now),
   ];
 }
 

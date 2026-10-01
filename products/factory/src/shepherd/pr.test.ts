@@ -276,13 +276,137 @@ describe("shepherd-pr", () => {
   });
 });
 
+describe("the route table in a run", () => {
+  const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
+  const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+  const merges = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>
+    mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
+
+  function autoWorld(review: ShepherdPhases["review"], wake: ShepherdPhases["wake"] = async () => UNHANDLED): World {
+    const w = world({ review, wake });
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    return w;
+  }
+
+  it("updates a PR that went behind during a MERGE review, then merges the updated head with no approve-merge gate", async () => {
+    const late: { w?: World } = {};
+    const w = autoWorld(async (ctx, request) => {
+      if (request.headSha === H1) Object.assign(late.w!.fake.pr(1), { mergeableState: "behind", behind: true });
+      return merges(ctx, request);
+    });
+    late.w = w;
+    const greenRuns = w.fake.onGetPr!;
+    w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), pr.headSha !== H1 && (pr.mergeableState = "clean"));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(w.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+    expect(stepResult(w.host, runId, "merge-policy:0")).toBeUndefined();
+  });
+
+  it("gives a silent reviewer one fresh reviewer at the same head and merges on its MERGE", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), request.fresh ? merges(ctx, request) : { kind: "none", cause: "timeout" }));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([
+      [H1, false],
+      [H1, true],
+    ]);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("opens approve-merge naming the failed rounds after three reviews give no verdict", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "timeout" }));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+
+    expect(asked).toHaveLength(3);
+    expect(gate?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {
+    const w = autoWorld(async (ctx, request) => merges(ctx, request));
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("the authority policy did not allow an automated merge: seat none policy owner-gate");
+  });
+
+  it("ends the run as merged, with no gate, when the PR is merged elsewhere during the review", async () => {
+    const late: { w?: World } = {};
+    const w = autoWorld(async (ctx, request) => {
+      Object.assign(late.w!.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
+      return merges(ctx, request);
+    });
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(stepResult(w.host, runId, "sh-landed")).toMatchObject({ result: { mergeSha: fakeSha("elsewhere") } });
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("starts a new cycle when the head moves during the review, and decides the merge only at the new head", async () => {
+    const late: { w?: World } = {};
+    const asked: string[] = [];
+    const w = autoWorld(async (ctx, request) => {
+      asked.push(request.headSha);
+      if (request.headSha === H1) late.w!.fake.pushHead(1, H2);
+      return merges(ctx, request);
+    });
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked).toEqual([H1, H2]);
+    expect(stepResult(w.host, runId, "merge-policy:r1:0")).toMatchObject({ result: { outcome: "allow", headSha: H2 } });
+    expect(stepIds(w.host, runId)).not.toContain("merge-policy:0");
+    expect(w.fake.effects.merge).toBe(1);
+  });
+
+  it("opens approve-merge naming the conflict when a conflict survives one fixer attempt", async () => {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1, mergeableState: "dirty" });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
+    const done = await w.host.runtime.wait(runId);
+
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
+    expect(done.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
 describe("sh-park", () => {
   /** Phases and a park port that log one shared order of events, so a test can see park land before review. */
   function parkWorld(park: (name: string) => string[]): { w: World; events: string[] } {
     const events: string[] = [];
     const phases: ShepherdPhases = {
       wake: async () => UNHANDLED,
-      review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "none" }),
+      review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
     };
     const w = world(phases, undefined, undefined, (name) => (events.push(`park ${name}`), { lines: park(name) }));
     w.fake.addPr({ headSha: H1 });

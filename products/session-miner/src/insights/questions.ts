@@ -8,16 +8,21 @@ import {
   cacheTtlWhatIfSchema,
   costReport,
   costReportSchema,
+  livenessReport,
+  livenessSchema,
   renderCacheTtlText,
+  renderLivenessText,
   renderBlockedFlowText,
   renderCostReportSections,
   type ActionClass,
   type BlockedFlowReport,
+  type LivenessReport,
   type ReportScope,
 } from "@titan-design/session-analytics";
 import { z } from "zod";
 import { fetchPulls, readDenials, readJournal, readPullSnapshot, readVerdicts } from "./blocked-flow-sources.js";
 import { defineInsight, isoTime, type AnyInsight } from "./define.js";
+import { readBrokerLog, readLastPrompts, readSpawns } from "./liveness-sources.js";
 
 const reportFrame = { window: true, priceTableVersion: true, totals: true, coverage: true } as const;
 
@@ -127,7 +132,7 @@ export const blockedFlow = defineInsight<BlockedFlowOptions, BlockedFlowReport>(
   schema: blockedFlowSchema,
   cliOnly: ["transcript", "journal", "pulls"],
   async answer(_db, report, options, config) {
-    refuseSessionScope(report.scope);
+    refuseSessionScope("blocked-flow", report.scope);
     const window = { since: report.since, until: report.until };
     const verdicts = readVerdicts(config.eventsDb, window);
     const merges = verdicts.filter((v) => v.verdict === "MERGE");
@@ -140,11 +145,43 @@ export const blockedFlow = defineInsight<BlockedFlowOptions, BlockedFlowReport>(
   },
 });
 
-/** Blocked flow reads agent-chat, GitHub and seat files, not the session graph, so session filters would silently match nothing. */
-function refuseSessionScope(scope: ReportScope | undefined): void {
+export const liveness = defineInsight<{ seat?: string[]; brokerLog?: string }, LivenessReport>({
+  id: "Q8",
+  name: "liveness",
+  description: "Seats dark over 5 min, routes that missed a recipient, unreported exits by profile and agents stuck on a permission prompt",
+  options: {
+    seat: z.array(z.string().min(1)).optional().describe("only findings about these agent names"),
+    brokerLog: z.string().min(1).optional().describe("agent-chat broker log to read instead of TITAN_MINER_BROKER_LOG"),
+  },
+  flags: {
+    seat: { long: "--seat", description: "agent name (repeatable)" },
+    brokerLog: { long: "--broker-log", description: "broker log path" },
+  },
+  schema: livenessSchema,
+  cliOnly: ["brokerLog"],
+  answer(_db, report, options, config) {
+    refuseSessionScope("liveness", report.scope);
+    const asOf = report.until ?? new Date().toISOString();
+    const data = livenessReport({
+      broker: readBrokerLog(options.brokerLog ?? config.brokerLog),
+      spawns: readSpawns(config.eventsDb),
+      lastEvents: readLastPrompts(config.eventsDb, asOf),
+      asOf,
+      window: { since: report.since, until: report.until },
+      seats: options.seat,
+    });
+    return { data, text: renderLivenessText(data) };
+  },
+});
+
+/** These questions read agent-chat's files, not the session graph, so session filters would silently match nothing. */
+function refuseSessionScope(question: string, scope: ReportScope | undefined): void {
   const given = Object.entries(scope ?? {}).filter(([, value]) => value !== undefined).map(([key]) => key);
-  if (given.length > 0) throw Object.assign(new Error(`blocked-flow does not take ${given.join(", ")}; narrow it with --seat`), { code: EXIT.DATAERR });
+  if (given.length > 0) throw Object.assign(new Error(`${question} does not take ${given.join(", ")}; narrow it with --seat`), { code: EXIT.DATAERR });
 }
 
 /** Every insight question, in plan order; a new question is one definition added here. */
 export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow];
+
+/** Questions that read only agent-chat's files; insights.test.ts runs every INSIGHT_QUESTIONS entry but blocked-flow against the graph. */
+export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [liveness];

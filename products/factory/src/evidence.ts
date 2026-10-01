@@ -1,4 +1,4 @@
-import { workflowStepRequestKey } from "@titan-design/workflow";
+import { TRACE_GATES_KEY, workflowStepRequestKey } from "@titan-design/workflow";
 
 /** Bumped when a record's shape changes, so a reader can refuse records it does not understand. */
 export const EVIDENCE_VERSION = 1;
@@ -6,7 +6,7 @@ export const EVIDENCE_VERSION = 1;
 /** `StepResult.data` keys the F3 trace projection reads artifacts and policy decisions from. */
 export const TRACE_DATA_KEYS = {
   artifacts: "titan.trace.artifacts",
-  gates: "titan.trace.gates",
+  gates: TRACE_GATES_KEY,
 } as const;
 
 /** Where a record sits in the trace: the run is the trace, one step attempt is the span. */
