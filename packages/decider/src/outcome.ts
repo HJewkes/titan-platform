@@ -14,14 +14,17 @@ export type Outcome = (typeof OUTCOMES)[number];
 
 export interface OutcomeInput {
   answer: string | null;
-  /** Option labels as the asker wrote them, "(Recommended)" suffix included. */
+  /** Option labels as the asker wrote them, any "recommend" marker included. */
   options: readonly string[];
   recommended: string | null;
   /** A v1 row's pick type; when present it decides everything except amend against redirect. */
   pickType?: PickType;
 }
 
-const RECOMMENDED_MARK = /\s*\(recommended\)\s*/gi;
+const BRACKETED = /\s*[([{]([^)\]}]*)[)\]}]/g;
+const PREFIX_MARK = /^\s*recommend(?:ed)?(?:\s*:|\s+[-–—|])\s*/i;
+const SUFFIX_MARK = /(?:\s*:|\s+[-–—|])\s*recommend(?:ed)?\s*$/i;
+const NEGATED = /\b(?:not|never|un|non|less)[\s-]*recommend|n't\s+recommend/i;
 const QUOTES: [string, string][] = [
   ['"', '"'],
   ["'", "'"],
@@ -29,8 +32,27 @@ const QUOTES: [string, string][] = [
   ["“", "”"],
 ];
 
+function squash(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function isPositiveMark(content: string): boolean {
+  return /recommend/i.test(content) && !NEGATED.test(content);
+}
+
+/**
+ * Removes the asker's recommendation marker: a bracketed group containing "recommend", or
+ * "Recommended" set off by a colon or a spaced dash as prefix or suffix. A negated marker
+ * ("not recommended") is not a recommendation and stays.
+ */
 export function stripRecommended(label: string): string {
-  return label.replace(RECOMMENDED_MARK, " ").trim();
+  const unbracketed = label.replace(BRACKETED, (group, content: string) => (isPositiveMark(content) ? " " : group));
+  return squash(unbracketed.replace(PREFIX_MARK, " ").replace(SUFFIX_MARK, " "));
+}
+
+/** The one definition of a recommended option: its label carries a marker `stripRecommended` removes. */
+export function isRecommendedLabel(label: string): boolean {
+  return stripRecommended(label) !== squash(label);
 }
 
 function normalize(text: string): string {
@@ -56,7 +78,7 @@ function amendOrRedirect(answer: string | null, recommended: string | null): Out
 const FROM_PICK_TYPE: Record<PickType, Outcome | "free_text" | null> = {
   recommended: "accept",
   other_option: "other",
-  rejected: "other",
+  rejected: null,
   free_text: "free_text",
   unparsed: null,
   none: "none",
@@ -75,7 +97,7 @@ function fromAnswer(answer: string, options: readonly string[], recommended: str
   return isListed(answer, options) ? "other" : amendOrRedirect(answer, recommended);
 }
 
-/** The scored outcome of an answer; null means unparsed, which stays out of scoring. */
+/** The scored outcome of an answer; null means unparsed or declined, which stays out of scoring. */
 export function classifyOutcome({ answer, options, recommended, pickType }: OutcomeInput): Outcome | null {
   if (pickType !== undefined) {
     const mapped = FROM_PICK_TYPE[pickType];

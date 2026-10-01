@@ -1,0 +1,70 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "summarize-note",
+    "version": "1.0.0"
+  },
+  "id": "summarize-note-capability",
+  "version": "1.0.0",
+  "cases": [
+    "601b324f21fab9002e35bc63d30a5a1267f65eac118baeebae52a1513db56ff2",
+    "75c05c5826264ea2d29f979c2d8da4fb3e120c483f2bcbc5a85c8e82a2d1d750",
+    "8b1a13296be4afcfa0e8016d70ef746ac562a6d41da7b80fbb690b9492f452a7"
+  ],
+  "checks": [
+    {
+      "id": "output-shape",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "trial",
+      "critical": true,
+      "type": "output.schema",
+      "params": {
+        "from": "unit.output"
+      }
+    },
+    {
+      "id": "cost-cap",
+      "family": "metric",
+      "role": "required",
+      "scope": "trial",
+      "metric": "cost_usd",
+      "max": 0.25
+    },
+    {
+      "id": "summary-quality",
+      "family": "judge",
+      "role": "reported",
+      "scope": "trial",
+      "mode": "absolute",
+      "judge": {
+        "model": "claude-haiku-4-5-20251001",
+        "prompt": {
+          "path": "prompts/judge.md",
+          "sha256": "f56088f8cc909c9343e2f854808d9f5920b535646e500478d62c5a4f8b70b741"
+        },
+        "maxBudgetUsd": 0.05
+      },
+      "criteria": [
+        {
+          "id": "all-actions-listed",
+          "question": "Does the summary list every task the note assigns?",
+          "scale": "binary",
+          "weight": 2
+        },
+        {
+          "id": "no-invented-actions",
+          "question": "Is every listed action present in the note?",
+          "scale": "binary",
+          "weight": 1
+        }
+      ],
+      "evidenceRequired": true,
+      "controls": {
+        "perBatch": 1,
+        "pool": "summarize-note-controls"
+      }
+    }
+  ],
+  "trials": 3
+}

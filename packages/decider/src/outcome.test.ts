@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OPTIONS } from "./fixtures.js";
-import { classifyOutcome, type OutcomeInput } from "./outcome.js";
+import { classifyOutcome, stripRecommended, type OutcomeInput } from "./outcome.js";
 
 const RECOMMENDED = OPTIONS[0] ?? null;
 
@@ -55,12 +55,56 @@ describe("classifyOutcome from a v1 pick type", () => {
   it.each([
     ["recommended", "Use a queue (Recommended)", "accept"],
     ["other_option", "Use a cron job", "other"],
-    ["rejected", null, "other"],
+    ["rejected", null, null],
     ["none", null, "none"],
     ["unparsed", null, null],
     ["free_text", "Use a queue (Recommended) and add a dead-letter table", "amend"],
     ["free_text", "Ask the widget team first", "redirect"],
   ] as const)("maps %s answered %j to %s", (pickType, answer, expected) => {
     expect(outcomeOf(answer, { pickType })).toBe(expected);
+  });
+});
+
+describe("stripRecommended", () => {
+  it.each([
+    ["Use a queue (Recommended)", "Use a queue"],
+    ["Use a queue (recommended for now)", "Use a queue"],
+    ["Use a queue [Recommended]", "Use a queue"],
+    ["(Recommended) Use a queue", "Use a queue"],
+    ["Recommended: Use a queue", "Use a queue"],
+    ["Recommended - Use a queue", "Use a queue"],
+    ["Use a queue - recommended", "Use a queue"],
+    ["Use a queue: Recommend", "Use a queue"],
+  ])("strips the marker from %j", (label, expected) => {
+    expect(stripRecommended(label)).toBe(expected);
+  });
+
+  it.each([
+    "Recommend the vendor to the team",
+    "Recommended-tier plan",
+    "Force push (not recommended)",
+    "Skip the check [unrecommended]",
+  ])("keeps %j, which carries no recommendation marker", (label) => {
+    expect(stripRecommended(label)).toBe(label);
+  });
+});
+
+describe("classifyOutcome with an option the asker advised against", () => {
+  const options = ["Force push (not recommended)", "Rebase onto main (Recommended)"];
+
+  it("calls picking it other, not accept", () => {
+    const outcome = classifyOutcome({ answer: options[0] ?? null, options, recommended: options[1] ?? null });
+
+    expect(outcome).toBe("other");
+  });
+});
+
+describe("classifyOutcome with a prefix marker on the recommended option", () => {
+  const options = ["Recommended: Use a queue", "Use a cron job"];
+
+  it("accepts the recommended option picked without its marker", () => {
+    const outcome = classifyOutcome({ answer: "Use a queue", options, recommended: options[0] ?? null });
+
+    expect(outcome).toBe("accept");
   });
 });

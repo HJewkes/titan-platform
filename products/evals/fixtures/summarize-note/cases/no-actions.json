@@ -1,0 +1,12 @@
+{
+  "schema": "titan.case/v1",
+  "id": "no-actions",
+  "unit": { "id": "summarize-note", "version": "1.0.0" },
+  "input": { "note": "Retro notes. The team agreed the new board layout reads better. Nobody raised a blocker." },
+  "expected": { "actionItems": [] },
+  "split": "validation",
+  "tags": ["short", "adversarial"],
+  "humanMinutes": 1,
+  "provenance": { "source": "synthetic", "labelVersion": 1 },
+  "visibility": "public"
+}

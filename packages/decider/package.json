@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/decider",
   "version": "0.0.0",
-  "description": "Decision ledger: v2 row schema, outcome classifier and exclusion policy for the decider",
+  "description": "Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,6 +34,12 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "@titan-design/locator": "workspace:^",
+    "@titan-design/memory": "workspace:^",
+    "@titan-design/session-read": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^"
   },
   "devDependencies": {
     "zod": "^4.4.3"
