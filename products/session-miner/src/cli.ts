@@ -62,7 +62,7 @@ function attach(program: Command, cmd: AnyCommand<MinerContext>, registry: Comma
     const positionals = handlerArgs.slice(0, cmd.cli?.positional?.length ?? 0);
     const opts = handlerArgs[cmd.cli?.positional?.length ?? 0] as Record<string, unknown>;
     const root = program.opts() as { json?: boolean; state?: string; corpus?: string; codexHome?: string; namespace?: string };
-    const ctx = createMinerContext(resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env), root.json ? "json" : "human");
+    const ctx = createMinerContext(resolveConfig({ stateDir: root.state, corpusRoot: root.corpus, codexHome: root.codexHome, namespace: root.namespace }, io.env), { format: root.json ? "json" : "human", surface: "cli" });
     try {
       const { envelope, exitCode } = await invokeCommand(cmd, collectCliArgs(cmd, positionals, opts), ctx, { invalidArgsCode: EXIT.USAGE });
       emit(io, envelope, ctx.format);

@@ -41,6 +41,27 @@ export function renderCostReportText(report: CostReport): string {
   return sections.join("\n\n") + "\n";
 }
 
+/** The report's sections a caller may render alone, keyed by the field each one shows. */
+export const COST_REPORT_SECTIONS = {
+  byRole: (report: CostReport) => bucketTable("By role", report.byRole, report.totals.costUsd),
+  byAction: (report: CostReport) => actionTable(report.byAction),
+  mechanicalShare: (report: CostReport) => mechanicalTable(report.mechanicalShare),
+  byWakeCause: (report: CostReport) => wakeCauseTable(report),
+  wakeEpisodes: (report: CostReport) => episodeTable(report.wakeEpisodes),
+  wakePairs: (report: CostReport) => pairTable(report.wakeEpisodes),
+  handoff: (report: CostReport) => handoffTable(report.handoffThreshold),
+  teleports: (report: CostReport) => teleportTable(report.handoffThreshold),
+  reviewers: (report: CostReport) => reviewerTable(report.handoffThreshold),
+} as const;
+
+export type CostReportSection = keyof typeof COST_REPORT_SECTIONS;
+
+/** Some sections of the report under its header, with the caveat and footer last as in the full text. */
+export function renderCostReportSections(report: CostReport, sections: readonly CostReportSection[]): string {
+  const body = sections.map((section) => COST_REPORT_SECTIONS[section](report));
+  return [header(report), ...body, [LIST_PRICE_CAVEAT, footer(report)].join("\n")].join("\n\n") + "\n";
+}
+
 function header(report: CostReport): string {
   const { since, until } = report.window;
   const { requests, sessions, costUsd } = report.totals;

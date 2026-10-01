@@ -50,6 +50,12 @@ priceRequest(
   `command_heads`, `file_read` and `file_write` signals session-read extracted for them.
 - `renderCostReportText(report)` — the same report as plain-text tables, ending with
   `LIST_PRICE_CAVEAT` and the price-table and coverage footer.
+- `renderCostReportSections(report, sections)`, `COST_REPORT_SECTIONS` — chosen sections of that
+  text under the same header, with the caveat and footer last; one question's answer, not the
+  whole report.
+- `scope` on `costReport` and `cacheTtlReport` options (`ReportScope`: `sessionIds`,
+  `agentPrefix` on agent-chat names, `roles`), and `scopeFilter(db, scope)` behind it — narrows
+  every request-keyed field to some sessions. Compactions and coverage stay window-wide.
 - `roleFromProfile`, `workerRole(facts)`, `sessionRole(classification, facts)` — worker-v1
   roles, including the standing-peer overlay.
 - `buildEpisodes(input, "worker-v1" | "coordinator-v1")` (pure), `readEpisodeInput`,
