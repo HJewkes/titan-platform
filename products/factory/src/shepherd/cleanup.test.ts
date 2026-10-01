@@ -87,6 +87,19 @@ describe("sh-cleanup task", () => {
     expect(w.tasks.notes).toEqual([`demo/TP-1: S4 landed in ${REPO}#1 at ${fakeSha("merge")}`]);
   });
 
+  it("writes no landing note while the merge sha cannot be read, so a retry cannot leave two lines", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const real = githubPort(fake.wire);
+    let reads = 0;
+    const port: GitHubPort = { ...real, getPr: async (repo, pr) => (++reads === 1 ? real.getPr(repo, pr) : Promise.reject(new Error("timeout"))) };
+    const w = world({ fake, port, registration: { ...base, slice: "S4" } });
+
+    const result = await w.run();
+
+    expect(result.task).toBe("unread");
+    expect(w.tasks.notes).toEqual([]);
+  });
+
   it("leaves a slice's task alone when it is already done", async () => {
     const w = world({ registration: { ...base, slice: "S4" }, task: "done" });
 
