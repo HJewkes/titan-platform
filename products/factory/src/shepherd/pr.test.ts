@@ -510,6 +510,27 @@ describe("the Version Packages PR", () => {
     expect(w.fake.effects.merge).toBe(1);
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
   });
+
+  it("never marks a release ready under an owner-gate seat, so another PR's merge is not deferred", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    const release = w.fake.addPr({ headSha: H2, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
+    w.fake.prFiles.set(release.number, RELEASE_FILES);
+    w.fake.files.set(`${H2}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.1.0" }), blobSha: "b1" });
+    const releaseRun = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: String(release.number), branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: releaseRun, task: "demo/version-packages", implementer: "changesets", policy: OWNER_GATE_POLICY });
+
+    await gateOpened(w.host, gateId(releaseRun, "approve-merge"));
+    const releaseReady = w.store.byRun(releaseRun)?.releaseReady;
+    expect(releaseReady).toBeNull();
+    const runId = shepherdPr1(w);
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(stepResult(w.host, releaseRun, `sh-release-preflight:${H2}`)).toMatchObject({ result: { blockers: [] } });
+    expect(stepResult(w.host, runId, "merge:0")).not.toMatchObject({ result: { skipped: "held" } });
+    expect(w.fake.effects.merge).toBe(1);
+  });
 });
 
 describe("sh-park", () => {
