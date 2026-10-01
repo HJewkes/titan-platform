@@ -84,3 +84,35 @@ describe("ci-wait deadline", () => {
     expect(h.clock.now).toBeLessThan(TIMEOUT_MS + POLL_MS);
   });
 });
+
+describe("ci-wait on a blocked head whose bypass read fails", () => {
+  it("polls again after a thrown read and turns green once the read succeeds", async () => {
+    const h = harness();
+    h.fake.pr(1).mergeableState = "blocked";
+    h.fake.onGetPr = undefined;
+    let reads = 0;
+    h.fake.wire.reviewRulesBypassable = async () => {
+      if (++reads === 1) throw new Error("HTTP 500");
+      return true;
+    };
+
+    const outcome = await h.ciWait();
+
+    expect(outcome.ok).toBe(true);
+    expect(JSON.parse(outcome.output!).result.verdict).toBe("green");
+    expect(reads).toBe(2);
+  });
+
+  it("times out with the read error when the read never succeeds", async () => {
+    const h = harness();
+    h.fake.pr(1).mergeableState = "blocked";
+    h.fake.wire.reviewRulesBypassable = async () => {
+      throw new Error("HTTP 500");
+    };
+
+    const outcome = await h.ciWait();
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toContain("HTTP 500");
+  });
+});

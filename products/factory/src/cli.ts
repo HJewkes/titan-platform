@@ -124,7 +124,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
       .description(description)
       .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
       .option("--json", "print the result as JSON");
-  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run")
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
     .option("--branch <name>", "the PR's head branch")
     .requiredOption("--task <slug/id>", "the task this PR delivers")
     .requiredOption("--implementer <name>", "the agent that pushes fixes")

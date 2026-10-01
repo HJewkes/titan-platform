@@ -3,6 +3,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
 
 const hosts: FactoryHost[] = [];
@@ -26,6 +27,15 @@ async function registered(w: World, args: object): Promise<Registered> {
   const envelope = await w.call<Registered>("shepherd.register", args);
   if (!envelope.ok) throw new Error(envelope.error);
   return envelope.data;
+}
+
+/** A registration whose run has already failed: a run started with a malformed `after` list fails before any step reads GitHub. */
+async function failedRegistration(w: World): Promise<string> {
+  const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1", after: "not json" });
+  await w.host.runtime.wait(runId);
+  w.routes.shepherd!.store.get().register({ ...pr1, branch: BRANCH, runId, policy: OWNER_GATE_POLICY });
+  expect(w.host.runtime.status(runId)?.status).toBe("failed");
+  return runId;
 }
 
 describe("shepherd.register", () => {
@@ -83,6 +93,103 @@ describe("shepherd.register", () => {
 
     expect(envelope).toMatchObject({ ok: false });
     expect(shepherdRuns(w.host)).toEqual([]);
+  });
+});
+
+describe("shepherd.register after a failed run", () => {
+  it("a failed run gets a new run, the registration moves to it, and the old run still reads", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+
+    const again = await registered(w, { ...pr1, implementer: "impl-b" });
+
+    expect(again).toMatchObject({ created: true, previousRunId: failedRunId, registration: { runId: again.runId, pr: 1, branch: BRANCH, implementer: "impl-b" } });
+    expect(again.runId).not.toBe(failedRunId);
+    expect(w.host.runtime.status(failedRunId)?.status).toBe("failed");
+    expect(w.host.runtime.status(again.runId)?.status).toBe("running");
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    expect(await w.call("shepherd.status", { repo: REPO, pr: 1 })).toMatchObject({ ok: true, data: [{ runId: again.runId }] });
+    expect(await w.call("shepherd.timeline", { repo: REPO, pr: 1 })).toMatchObject({ ok: true, data: { row: { runId: again.runId } } });
+  });
+
+  it("the failed run's authors move to the new run, where cleanup and wake read them", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+    const store = w.routes.shepherd!.store.get();
+    store.recordAuthor(failedRunId, { agentId: "a-1", name: "impl-a", role: "implementer" });
+    store.recordAuthor(failedRunId, { agentId: "a-2", name: "impl-a-2", role: "successor", predecessor: "a-1" });
+
+    const again = await registered(w, pr1);
+
+    expect(store.authorsOf(again.runId).map((author) => author.name)).toEqual(["impl-a", "impl-a-2"]);
+    expect(store.authorsOf(again.registration.runId).filter((author) => author.role === "successor").map((author) => author.name)).toEqual(["impl-a-2"]);
+    expect(store.authorsOf(failedRunId)).toEqual([]);
+  });
+
+  it("two registers after one failure start exactly one new run", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+
+    const [first, second] = await Promise.all([registered(w, pr1), registered(w, pr1)]);
+
+    expect(first).toMatchObject({ created: true, previousRunId: failedRunId });
+    expect(second).toMatchObject({ created: false, runId: first.runId });
+    expect(second.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("a running run comes back unchanged", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, pr1);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId: first.runId, created: false });
+    expect(again.previousRunId).toBeUndefined();
+  });
+
+  it("a recovery_required run comes back unchanged", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, pr1);
+    const status = w.host.runtime.status.bind(w.host.runtime);
+    vi.spyOn(w.host.runtime, "status").mockImplementation((id) => ({ ...status(id)!, status: "recovery_required" }));
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId: first.runId, created: false });
+    expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([first.runId]);
+  });
+
+  it("a cancelled run comes back unchanged", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, pr1);
+    w.host.runtime.cancel(first.runId, "test");
+    await w.host.runtime.wait(first.runId);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId: first.runId, created: false });
+    expect(shepherdRuns(w.host)).toEqual([first.runId]);
+  });
+
+  it("a completed run comes back unchanged", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH, state: "closed", merged: true, mergeSha: H1 });
+    const first = await registered(w, pr1);
+    await w.host.runtime.wait(first.runId);
+    expect(w.host.runtime.status(first.runId)?.status).toBe("completed");
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId: first.runId, created: false });
+    expect(shepherdRuns(w.host)).toEqual([first.runId]);
   });
 });
 
