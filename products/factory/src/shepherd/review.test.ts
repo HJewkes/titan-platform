@@ -353,7 +353,7 @@ describe("sh-review", () => {
     return { outcome, clock: steps.clock, result: result as ReviewDispatchResult | undefined };
   }
 
-  const spawnIntent: ReviewIntent = { head: HEAD, reviewer: "rv-demo-7", at: START, mode: "spawn" };
+  const spawnIntent: ReviewIntent = { head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn" };
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
     const dispatch = fakeDispatch();
@@ -381,9 +381,9 @@ describe("sh-review", () => {
     const repeated = await steps.review(spawnIntent, attempt);
 
     expect(repeated.result).toEqual(lost.result);
-    expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", agentId: "agent-rv-demo-7" });
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-7"]);
-    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-demo-7"]);
+    expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", agentId: "agent-rv-octo-demo-7" });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-octo-demo-7"]);
   });
 
   it("spawns on a repeat that finds nobody under the intent's name, because the earlier run died before its spawn", async () => {
@@ -391,7 +391,7 @@ describe("sh-review", () => {
 
     const { result } = await reviewSteps(dispatch).review(spawnIntent, 1);
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
     expect(dispatch.spawns).toHaveLength(1);
   });
 
@@ -408,25 +408,25 @@ describe("sh-review", () => {
   });
 
   it("spawns under the intent's name, not under the name the roster it reads would yield", async () => {
-    const dispatch = fakeDispatch([agent("rv-demo-7")]);
+    const dispatch = fakeDispatch([agent("rv-octo-demo-7")]);
     const steps = reviewSteps(dispatch);
     const intent = (await steps.intent()).result;
     dispatch.agents.length = 0;
 
     const { result } = await steps.review(intent);
 
-    expect(intent).toMatchObject({ reviewer: "rv-demo-7-2" });
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7-2", agentId: "agent-rv-demo-7-2" });
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-7-2"]);
+    expect(intent).toMatchObject({ reviewer: "rv-octo-demo-7-2" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7-2", agentId: "agent-rv-octo-demo-7-2" });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7-2"]);
   });
 
   it("answers none at once and spawns nobody when two agents already hold the intent's name", async () => {
-    const dispatch = fakeDispatch([agent("rv-demo-7"), agent("rv-demo-7", { agentId: "agent-other" })]);
+    const dispatch = fakeDispatch([agent("rv-octo-demo-7"), agent("rv-octo-demo-7", { agentId: "agent-other" })]);
     const steps = reviewSteps(dispatch);
 
     const { result } = await steps.review(spawnIntent);
 
-    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("rv-demo-7") });
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("rv-octo-demo-7") });
     expect(dispatch.spawns).toEqual([]);
     expect(steps.clock.sleeps).toBe(0);
   });
@@ -468,7 +468,7 @@ describe("sh-review", () => {
 
     const { result } = await steps.review(spawnIntent);
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", at: START });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", at: START });
     expect(dispatch.spawns).toHaveLength(1);
     expect(steps.clock.sleeps).toBe(2);
   });
@@ -493,8 +493,8 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-demo-7", at: START, mode: "spawn", agentId: "agent-rv-demo-7", sessionId: "session-rv-demo-7" });
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-7"]);
+    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn", agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7" });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
   });
 
   it("stamps the dispatch time before the reviewer starts, so its first words count as written after it", async () => {
@@ -536,20 +536,20 @@ describe("sh-review", () => {
   });
 
   it("takes the next free name when an earlier agent held the PR's reviewer name, and resumes nobody", async () => {
-    const dispatch = fakeDispatch([agent("rv-demo-7", { fillTokens: 1_000 })]);
+    const dispatch = fakeDispatch([agent("rv-octo-demo-7", { fillTokens: 1_000 })]);
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7-2", mode: "spawn", agentId: "agent-rv-demo-7-2" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7-2", mode: "spawn", agentId: "agent-rv-octo-demo-7-2" });
     expect(dispatch.resumes).toEqual([]);
   });
 
   it("does not give a fresh reviewer the implementer's name when the implementer has left the roster", async () => {
     const dispatch = fakeDispatch();
 
-    const { result } = await shReview(dispatch, { registered: { ...registration, implementer: "rv-demo-7" } });
+    const { result } = await shReview(dispatch, { registered: { ...registration, implementer: "rv-octo-demo-7" } });
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7-2", mode: "spawn" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7-2", mode: "spawn" });
   });
 
   it("resumes an exited opt-in reviewer under the fill limit whose stored lineage never meets the implementer's", async () => {
@@ -578,7 +578,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch, { registered: optIn(reviewer) });
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", mode: "spawn" });
     expect(dispatch.resumes).toEqual([]);
   });
 
@@ -596,7 +596,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch, { registered: optIn(reviewer) });
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", mode: "spawn" });
     expect(dispatch.resumes).toEqual([]);
   });
 
@@ -606,7 +606,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch, { registered: { ...optIn("impl-a"), implementer: "impl-a-2" } });
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", mode: "spawn" });
     expect(dispatch.resumes).toEqual([]);
   });
 
@@ -615,7 +615,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch, { registered: optIn("rv-standing") });
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7", mode: "spawn" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", mode: "spawn" });
     expect(dispatch.resumes).toEqual([]);
   });
 
@@ -633,7 +633,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("rv-demo-7") });
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("rv-octo-demo-7") });
   });
 
   it("waits while the broker is down, then spawns the reviewer once", async () => {
@@ -647,7 +647,7 @@ describe("sh-review", () => {
 
     const { result, clock } = await shReview(dispatch);
 
-    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-7" });
+    expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
     expect(dispatch.agents).toHaveLength(1);
     expect(clock.sleeps).toBe(2);
   });
@@ -657,12 +657,12 @@ describe("sh-review", () => {
     const dispatch = fakeDispatch();
     dispatch.spawn = async () => {
       attempts += 1;
-      throw new Error("the name rv-demo-7 is held by a live agent");
+      throw new Error("the name rv-octo-demo-7 is held by a live agent");
     };
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the name rv-demo-7 is held by a live agent" });
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the name rv-octo-demo-7 is held by a live agent" });
     expect(attempts).toBe(1);
   });
 
@@ -773,7 +773,7 @@ describe("reviewPhase", () => {
 
   it("runs sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
     const { stepIds, resultOf, inputs } = await review({ dispatch: fakeDispatch(), policy: AUTO });
-    const intent = { kind: "intent", head: H1, reviewer: "rv-demo-1", at: 10_000, mode: "spawn" };
+    const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
 
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
@@ -841,9 +841,9 @@ describe("reviewPhase", () => {
   ])("spawns one reviewer under one name and takes its verdict when the host dies %s", async (_name, window, at) => {
     const { verdicts, dispatch, dispatched } = await replay(window);
 
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-1"]);
-    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-demo-1"]);
-    expect(dispatched).toMatchObject({ kind: "dispatched", reviewer: "rv-demo-1", agentId: "agent-rv-demo-1", at });
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+    expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-octo-demo-1"]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-1", agentId: "agent-rv-octo-demo-1", at });
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
@@ -868,13 +868,13 @@ describe("reviewPhase", () => {
     const dispatch = fakeDispatch();
 
     const { verdicts, fake, status } = await review({ dispatch, policy: AUTO });
-    const reviewer = { agentId: "agent-rv-demo-1", sessionId: "session-rv-demo-1" };
+    const reviewer = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
     const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
 
     expect(status).toBe("completed");
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     expect(evidence.merge).toMatchObject({ resolver: reviewer, dispatchedReviewer: reviewer, verdict: { value: "MERGE", head: H1 } });
-    expect(evidence.record).toMatchObject({ reviewer, verdictLocator: locatorIn("session-rv-demo-1"), decision: { outcome: "allow" } });
+    expect(evidence.record).toMatchObject({ reviewer, verdictLocator: locatorIn("session-rv-octo-demo-1"), decision: { outcome: "allow" } });
     expect(fake.comments.get(1)).toHaveLength(1);
   });
 
@@ -893,7 +893,7 @@ describe("reviewPhase", () => {
     const { verdicts } = await review({ dispatch: fakeDispatch(), awaited, policy: AUTO });
     const evidence = (verdicts[0] as Extract<Verdict, { kind: "MERGE" }>).evidence as MergeEvidence;
 
-    expect(evidence.merge).toMatchObject({ resolver: other, dispatchedReviewer: { agentId: "agent-rv-demo-1", sessionId: "session-rv-demo-1" } });
+    expect(evidence.merge).toMatchObject({ resolver: other, dispatchedReviewer: { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" } });
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 
@@ -944,7 +944,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }, { kind: "none" }]);
     expect(stepIds).toContain(`sh-review:${H2}`);
-    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-demo-1", "rv-demo-1-2"]);
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-2"]);
   });
 
   it("does not accept what a resumed reviewer said before this dispatch", async () => {
