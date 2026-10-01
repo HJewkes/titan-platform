@@ -15,7 +15,7 @@ import { OWNER } from "../test-support/resolver.js";
 const hosts: FactoryHost[] = [];
 const dirs: string[] = [];
 const stray: number[] = [];
-const track = (pid: number) => void stray.push(pid);
+const track = (pid: number) => void (pid > 0 && stray.push(pid));
 afterEach(() => {
   stray.splice(0).forEach((pid) => {
     try {
@@ -213,6 +213,16 @@ describe("execChore", () => {
     const started = Date.now();
 
     const result = await execChore(["/bin/sh", "-c", "sleep 3 & wait"], options({ timeoutMs: 200 }));
+
+    expect(result).toMatchObject({ timedOut: true });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("settles a timed-out chore whose grandchild left its process group and still holds the output", async () => {
+    const escape = "require('node:child_process').spawn('sleep', ['3'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] })";
+    const started = Date.now();
+
+    const result = await execChore([process.execPath, "-e", escape], options({ timeoutMs: 200 }));
 
     expect(result).toMatchObject({ timedOut: true });
     expect(Date.now() - started).toBeLessThan(2_000);
