@@ -5,10 +5,13 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
+const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
+const cleanups = [];
 
 async function indexTree(graph, store, dir, ref) {
   // apps/ is absent from baselines taken before the first app landed.
@@ -25,10 +28,13 @@ async function indexBaseline(graph, store, workDir, baseRef) {
   const dir = path.join(workDir, "baseline");
   git("worktree", "prune");
   git("worktree", "add", "--detach", dir, baseRef);
+  const removeWorktree = () => git("worktree", "remove", "--force", dir);
+  cleanups.push(removeWorktree);
   try {
     await indexTree(graph, store, dir, "baseline");
   } finally {
-    git("worktree", "remove", "--force", dir);
+    cleanups.splice(cleanups.indexOf(removeWorktree), 1);
+    removeWorktree();
   }
 }
 
@@ -71,26 +77,34 @@ function formatText({ snapshot, baselineSnapshot, result }) {
   return lines.join("\n");
 }
 
+async function check(graph) {
+  const baseRef = process.env.BASE_REF;
+  const workDir = mkdtempSync(path.join(tmpdir(), "dag-check-self-"));
+  cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
+  const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
+  cleanups.push(() => store.close());
+  await indexTree(graph, store, ROOT, "head");
+  if (baseRef) await indexBaseline(graph, store, workDir, baseRef);
+  const rules = await graph.loadCheckRules(CONFIG, { onWarn: (m) => console.warn(`${CONFIG}: ${m}`) });
+  const run = graph.checkSnapshot(store, { snapshot: "head", baseline: baseRef ? "baseline" : undefined, rules });
+  const json = { ...run, baselineSnapshot: run.baselineSnapshot ?? null, configPath: CONFIG };
+  console.log(process.argv.includes("--json") ? JSON.stringify(json, null, 2) : formatText(run));
+  return run.result.passed ? 0 : 1;
+}
+
 async function main() {
   if (!existsSync(ENTRY)) {
     console.error(`${ENTRY} not found; run pnpm build first`);
     return 2;
   }
   const graph = await import(ENTRY);
-  const baseRef = process.env.BASE_REF;
-  const workDir = mkdtempSync(path.join(tmpdir(), "dag-check-self-"));
-  const store = graph.openCodeGraph(path.join(workDir, "graph.db"));
+  cleanupOnSignal(cleanups);
+  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log: (m) => console.error(m) });
+  cleanups.push(() => release(DEFAULT_LOCK_DIR));
   try {
-    await indexTree(graph, store, ROOT, "head");
-    if (baseRef) await indexBaseline(graph, store, workDir, baseRef);
-    const rules = await graph.loadCheckRules(CONFIG, { onWarn: (m) => console.warn(`${CONFIG}: ${m}`) });
-    const run = graph.checkSnapshot(store, { snapshot: "head", baseline: baseRef ? "baseline" : undefined, rules });
-    const json = { ...run, baselineSnapshot: run.baselineSnapshot ?? null, configPath: CONFIG };
-    console.log(process.argv.includes("--json") ? JSON.stringify(json, null, 2) : formatText(run));
-    return run.result.passed ? 0 : 1;
+    return await check(graph);
   } finally {
-    store.close();
-    rmSync(workDir, { recursive: true, force: true });
+    runCleanups(cleanups);
   }
 }
 
