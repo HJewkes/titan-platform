@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import type { WorkflowStatus } from "@titan-design/workflow";
+import { behindMain, type BehindMain } from "./behind-main.js";
+import { buildSha } from "./build-info.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
@@ -32,6 +34,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   releaseSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
+  /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
+  build?: { sha: string; behindMain?: BehindMain };
 }
 
 export interface FactoryServer {
@@ -47,9 +51,10 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const host = openFactoryHost(options);
   const github = options.github ?? githubHealth();
   void github.refresh();
+  const build = buildHealth(options);
   let daemon: DaemonHandle;
   try {
-    daemon = await startDaemon(daemonOptions(host, options, github));
+    daemon = await startDaemon(daemonOptions(host, options, github, build));
   } catch (err) {
     host.close();
     throw err;
@@ -95,7 +100,7 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
   });
 }
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth): StartDaemonOptions<FactoryContext> {
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
   return {
     registry: createFactoryRegistry(),
     createContext: () => factoryContext(host, options.routes),
@@ -105,9 +110,16 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => ({ ...factoryHealth(host), github: github.status() }),
+    health: () => ({ ...factoryHealth(host), github: github.status(), build: { sha: build.sha, behindMain: build.status() } }),
     logger: options.logger,
   };
+}
+
+function buildHealth(options: FactoryServerOptions): BehindMain & { sha: string } {
+  const sha = options.build?.sha ?? buildSha();
+  const probe = options.build?.behindMain ?? behindMain({ sha });
+  void probe.refresh();
+  return { sha, status: probe.status, refresh: probe.refresh };
 }
 
 export function factoryHealth(host: FactoryHost): Record<string, unknown> {

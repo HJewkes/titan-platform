@@ -23,6 +23,7 @@ interface MachineInit {
   serves?: boolean;
   /** Another process answering /health on the port, by pid. */
   stranger?: number;
+  build?: { sha: string; behindMain: number | string };
   /** How many `print` calls still report the job after a bootout. */
   lingers?: number;
   claude?: CommandResult;
@@ -80,7 +81,7 @@ function fakeMachine(init: MachineInit = {}) {
     health: async (port) => {
       if (init.stranger !== undefined) return { ok: true, pid: init.stranger, port };
       if (!job?.healthy) return null;
-      return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2 };
+      return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2, ...(init.build === undefined ? {} : { build: init.build }) };
     },
     which: (binary) => (init.absent?.includes(binary) ? undefined : TOOLS[binary]),
     mkdir: (dir) => void dirs.push(dir),
@@ -409,6 +410,20 @@ describe("titan-factory service status", () => {
 
     expect(code).toBe(EXIT.OK);
     expect(out).toBe(`${SERVICE_LABEL}: loaded, pid ${OLD_PID}\nhealth: ok on port 7410 (pid ${OLD_PID}, version 0.1.0, github ok, pendingGates 2)\n`);
+  });
+
+  it("prints the build sha and how many commits behind main it is", async () => {
+    const build = { sha: "0123456789abcdef0123-dirty", behindMain: 7 };
+    const { out } = await service(["status"], fakeMachine({ loaded: true, build }));
+
+    expect(out).toContain("build 0123456789ab-dirty, 7 behind main)");
+  });
+
+  it("prints the reason when the behind count is not a number", async () => {
+    const build = { sha: "unknown", behindMain: "checking" };
+    const { out } = await service(["status"], fakeMachine({ loaded: true, build }));
+
+    expect(out).toContain("build unknown, behind main: checking)");
   });
 
   it("exits non-zero when /health is down, loaded or not", async () => {
