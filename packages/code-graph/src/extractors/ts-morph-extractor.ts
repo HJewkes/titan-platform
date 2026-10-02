@@ -50,16 +50,21 @@ export interface TsMorphGraphExtractorOptions {
   project?: Project;
 }
 
+const RETIRE_BATCH = 100;
+
 export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
   readonly name = "ts-morph-graph";
   private readonly repoRoot: string;
   private readonly tsConfigPath?: string;
   private project?: Project;
+  private readonly ownsProject: boolean;
+  private readonly retired: SourceFile[] = [];
 
   constructor(options: TsMorphGraphExtractorOptions) {
     this.repoRoot = options.repoRoot;
     this.tsConfigPath = options.tsConfigPath;
     this.project = options.project;
+    this.ownsProject = options.project === undefined;
   }
 
   extract(file: ParsedFile): GraphFragment[] {
@@ -67,6 +72,20 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
 
     const project = this.ensureProject();
     const sourceFile = this.loadSourceFile(project, file);
+    try {
+      return this.extractFrom(sourceFile, file);
+    } finally {
+      if (this.ownsProject) this.retire(project, sourceFile);
+    }
+  }
+
+  private retire(project: Project, sourceFile: SourceFile): void {
+    this.retired.push(sourceFile);
+    if (this.retired.length < RETIRE_BATCH) return;
+    for (const sf of this.retired.splice(0)) project.removeSourceFile(sf);
+  }
+
+  private extractFrom(sourceFile: SourceFile, file: ParsedFile): GraphFragment[] {
     const nodes = this.buildFileAndModuleNodes(sourceFile);
     const symbolNodes = buildSymbolNodes(this.repoRoot, sourceFile, file);
     const { edges, externalNodes } = this.collectEdges(sourceFile);
