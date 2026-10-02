@@ -10,6 +10,7 @@ import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { freezeStoreRef, type FreezeStore } from "./freeze.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -79,6 +80,7 @@ interface World {
   routes: FactoryRoutes;
   store: ShepherdStore;
   train: MergeTrainRef;
+  freezes: FreezeStore;
 }
 
 function world(repo: Repo, review: ShepherdPhases["review"] = merges, dbPath = ":memory:"): World {
@@ -86,11 +88,12 @@ function world(repo: Repo, review: ShepherdPhases["review"] = merges, dbPath = "
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const store = shepherdStoreRef();
   const train = mergeTrainRef();
-  const routes = factoryRoutesFor({ port: landingPort(repo), store, train, now: () => clock, sleep: tick, registry: async () => true });
+  const freeze = freezeStoreRef(() => clock);
+  const routes = factoryRoutesFor({ port: landingPort(repo), store, train, freeze, now: () => clock, sleep: tick, registry: async () => true });
   const phases: ShepherdPhases = { review, wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }) };
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, routes, store: store.get(), train };
+  return { host, routes, store: store.get(), train, freezes: freeze.get() };
 }
 
 function shepherd(w: World, pr: 1 | 2): string {
@@ -119,6 +122,18 @@ function firstUpdates(repo: Repo, w: () => World, runs: { first?: string }, ci: 
     if (request.pr === 2) await vi.waitFor(() => expect(w().train.get().holder(REPO)?.runId).toBe(runs.first), { timeout: 5_000 });
     return merges(ctx, request);
   };
+}
+
+/** Starts both runs and returns once run 1 holds the train on its update head, whose CI waits, and run 2 waits at its merge. */
+async function firstHoldsSecondWaits(repo: Repo, ci: { update?: string }): Promise<{ w: World; first: string; second: string }> {
+  const runs: { first?: string } = {};
+  const late: { w?: World } = {};
+  const w = (late.w = world(repo, firstUpdates(repo, () => late.w!, runs, ci)));
+  runs.first = shepherd(w, 1);
+  const second = shepherd(w, 2);
+  await vi.waitFor(() => expect(repo.fake.effects.updateBranch).toBe(1), { timeout: 5_000 });
+  await vi.waitFor(() => expect(w.host.runtime.status(second)?.currentStep).toMatch(/^merge:/), { timeout: 5_000 });
+  return { w, first: runs.first, second };
 }
 
 async function statusRow(w: World, pr: number): Promise<WatchRow | undefined> {
@@ -180,6 +195,44 @@ describe("the merge train", () => {
     expect(w.host.runtime.status(second)?.status).toBe("completed");
     expect(repo.merged).toEqual([2]);
     expect(w.train.get().holder(REPO)).toBeUndefined();
+  });
+});
+
+describe("a holder whose own merge must wait", () => {
+  it("gives the train up while its PR is held, and merges second once released", async () => {
+    const repo = twoPrRepo();
+    const ci: { update?: string } = {};
+    const { w, first, second } = await firstHoldsSecondWaits(repo, ci);
+
+    w.store.hold(first, "owner hold in this test");
+    await w.host.runtime.wait(second);
+    const firstWhileHeld = w.host.runtime.status(first)?.status;
+    const mergedWhileHeld = [...repo.merged];
+    ci.update = "success";
+    w.store.release(first);
+    await w.host.runtime.wait(first);
+
+    expect(firstWhileHeld).toBe("running");
+    expect(mergedWhileHeld).toEqual([2]);
+    expect([first, second].map((runId) => w.host.runtime.status(runId)?.status)).toEqual(["completed", "completed"]);
+    expect(repo.merged).toEqual([2, 1]);
+    expect(repo.refused).toEqual([]);
+    expect(w.train.get().holder(REPO)).toBeUndefined();
+  });
+
+  it("gives the train to the fix task's PR when the repo freezes under the holder", async () => {
+    const repo = twoPrRepo();
+    const { w, first, second } = await firstHoldsSecondWaits(repo, {});
+
+    const { episode } = w.freezes.freeze(REPO, fakeSha("train-red-main"));
+    w.freezes.setFixTask(REPO, episode, "demo/2");
+    w.freezes.setFixer(REPO, episode, "impl-2");
+    await w.host.runtime.wait(second);
+
+    expect(w.host.runtime.status(second)?.status).toBe("completed");
+    expect(w.host.runtime.status(first)?.status).toBe("running");
+    expect(repo.merged).toEqual([2]);
+    expect(repo.refused).toEqual([]);
   });
 });
 
