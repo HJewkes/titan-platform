@@ -67,7 +67,7 @@ function seatFileSchema(home: string) {
   return z.object({
     schema: z.literal("autonomy-seat/v1"),
     name: z.string().min(1),
-    repos: z.array(z.object({ path: path.optional(), remote: RemoteSchema.optional() })).default([]),
+    repos: z.array(z.object({ path: path.optional(), remote: RemoteSchema.optional(), read_only: z.unknown().optional() })).default([]),
     deny_repos: z.array(path).default([]),
     grants_extra: z.array(z.string()).default([]),
   });
@@ -204,9 +204,11 @@ function parseFrontmatter<T>(path: string, kind: string, schema: z.ZodType<T>): 
   return parsed.data;
 }
 
+/** Only an explicit `read_only: true` makes an entry a listing; absent or any other value keeps it owned. */
 function toSeat(data: SeatFile): Seat {
-  const remotes = data.repos.flatMap((r) => (r.remote ? [r.remote] : []));
-  const paths = Object.fromEntries(data.repos.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path.written]] : [])));
+  const owned = data.repos.filter((r) => r.read_only !== true);
+  const remotes = owned.flatMap((r) => (r.remote ? [r.remote] : []));
+  const paths = Object.fromEntries(owned.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path.written]] : [])));
   return { name: data.name, remotes, paths, grants: data.grants_extra };
 }
 
