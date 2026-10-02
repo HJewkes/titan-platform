@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -47,7 +50,7 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:"): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
@@ -55,7 +58,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
 }
@@ -762,5 +765,25 @@ describe("a new cycle at a new head", () => {
     expect(w.host.gates.get(`${runId}/sh-sent-back`)?.status).toBe("cancelled");
     expect(w.host.gates.get(`${runId}/sh-sent-back:3`)?.status).toBe("pending");
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
+
+describe("a restarted run", () => {
+  it("keeps the approve-merge gate it waits on at the newest head", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp742-")), "factory.db");
+    const fake = fakeGitHub();
+    const red = (sha: string): string => (sha === H1 ? "failure" : "success");
+    const first = world(fakePhases({ wake: pushes(fake, H2) }).phases, red, fake, undefined, undefined, dbPath);
+    fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(first);
+    await gateOpened(first.host, gateId(runId, "approve-merge"));
+    first.host.close();
+
+    const second = world(fakePhases({ wake: pushes(fake, H2) }).phases, red, fake, undefined, undefined, dbPath);
+    await second.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(second.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(second.host.runtime.status(runId)?.status).toBe("paused");
   });
 });

@@ -3,7 +3,7 @@ import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
-import { assistedGateId, gateIdFor, gateIsPending, memoKey } from "./gate-ids.js";
+import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey } from "./gate-ids.js";
 import { buildStepVars, type TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
 import { parseStepOutput } from "./step-output.js";
@@ -72,6 +72,7 @@ interface Memo {
 
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
 export class RunContext implements WorkflowContext {
+  private replaying = false;
   readonly runId: string;
   readonly workflowName: string;
   readonly signal: AbortSignal;
@@ -190,9 +191,9 @@ export class RunContext implements WorkflowContext {
     return this.bump(stepId, result);
   }
 
+  /** A no-op while the call just made was answered from the record: replay re-runs old callbacks, and a side effect there would hit gates the run still waits on. */
   expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
-    const own = this.deps.gates.listPending().filter((gate) => gate.id.startsWith(`${this.runId}/`) && isStale(gate));
-    return own.map((gate) => this.deps.gates.cancel(gate.id, reason).id);
+    return this.replaying ? [] : cancelOwnPending(this.deps.gates, this.runId, reason, isStale);
   }
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
@@ -329,11 +330,11 @@ export class RunContext implements WorkflowContext {
   private recall(operation: StepOperation, stepId: string): Memo {
     const index = this.legacyKeys && operation === "seed" ? 0 : this.iteration(stepId);
     const key = memoKey(operation, stepId, index);
-    if (this.legacyKeys) return { index, key, cached: this.run.stepResults[key] };
-    const cached = this.run.stepResults[key] ?? this.run.stepResults[memoKey(otherKeyShape(operation), stepId, index)];
-    if (cached?.operation && cached.operation !== operation) {
+    const cached = this.run.stepResults[key] ?? (this.legacyKeys ? undefined : this.run.stepResults[memoKey(otherKeyShape(operation), stepId, index)]);
+    if (!this.legacyKeys && cached?.operation && cached.operation !== operation) {
       throw new WorkflowNonDeterminismError(this.runId, stepId, index, cached.operation, operation);
     }
+    this.replaying = cached !== undefined;
     return { index, key, cached };
   }
 
