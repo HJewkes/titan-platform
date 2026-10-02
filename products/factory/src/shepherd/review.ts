@@ -13,6 +13,7 @@ import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { reviewerBrief } from "./reviewer-brief.js";
+import { CARRY_STEP, carryRoute } from "./tree-carry.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
@@ -27,6 +28,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
+  { id: CARRY_STEP, kind: "dispatch" },
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -158,7 +160,7 @@ function ancestry(name: string, roster: readonly ReviewerAgent[], parents: Paren
 }
 
 /** Proven only from roster facts: nobody who wrote the code is the agent, spawned it, or handed over to it, at any depth. */
-function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
+export function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
   const wrote = ancestry(implementer, roster, takeovers);
   const above = ancestry(agent.name, roster, descent);
   return wrote !== undefined && above !== undefined && ![...wrote].some((author) => above.has(author));
@@ -320,6 +322,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(AWAIT_VERDICT_STEP, deps.now, run),
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen)),
+    carryRoute(deps.now),
   ];
 };
 

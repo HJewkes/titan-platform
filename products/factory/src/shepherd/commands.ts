@@ -237,7 +237,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
   const row = rowOf(ctx.host, services, registration, run);
   const policy = stricterPolicy(registration.policy, runPolicy(run));
   const decision = shepherdGatePolicy(policy).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
-  const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined);
+  const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined, row.headSha ?? undefined);
   return { runId: run.id, phase: row.phase, decision, held: held === undefined ? null : { reason: held }, pendingGate: row.pendingGate, waiting: row.nextAction };
 }
 
