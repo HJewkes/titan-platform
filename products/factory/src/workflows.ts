@@ -1,6 +1,7 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
-import { configPath, loadConfig, type FactoryConfig } from "./config.js";
+import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
@@ -13,6 +14,7 @@ import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
+import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
@@ -47,6 +49,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   registry?: PackageRegistry;
   /** The fix-task and fixer ports a red main uses; absent ports still freeze, and leave the rest to the owner. */
   mainRed?: Omit<MainRedWiring, "freezes">;
+  /** Starts `service deploy` after a green merge into the factory's own repo; absent means sh-redeploy spawns nothing. */
+  redeploy?: Deployer;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -76,7 +80,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
-  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now)], { database, shepherd: services });
+  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
@@ -125,6 +129,9 @@ function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
   return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: agentChatFixers(agentChatBin, shepherd.fixer?.configDir) }) };
 }
 
+/** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
+const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
+
 /** The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per registration and per spawn. */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge, shepherd } = loadConfig(configPath(env));
@@ -132,7 +139,8 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const review = configuredReview(shepherd, seats);
   const cleanup = configuredCleanup(shepherd, env);
   const mainRed = configuredMainRed(shepherd, env);
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, mainRed, ...overrides, seats });
+  const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, mainRed, redeploy, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;
