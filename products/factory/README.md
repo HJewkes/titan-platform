@@ -164,6 +164,14 @@ then held until a newer one arrives.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
 
+Shepherd starts the deployer itself. After `sh-main-ci` reads green on a merge into the
+factory's own repo (its `package.json` `repository`), step `sh-redeploy:<merge sha>` spawns
+`service deploy --expect <merge sha>` detached, so it leads its own session and process group
+and outlives the `kickstart -k` it triggers, and appends its output to
+`$XDG_STATE_HOME/titan-factory/redeploy.log`. The step returns at once. Other repos, and a red
+or unread main, record no step. A replay reuses the recorded step, and a service already
+built from the merge sha spawns nothing, so the run resumed after the restart is a no-op.
+
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
 and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
 `$XDG_STATE_HOME/titan-factory/serve.{out,err}.log`. `ProcessType` is `Interactive`; a
