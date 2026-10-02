@@ -821,9 +821,9 @@ Tier product, private, `products/evals`. Eval registry: spec schemas for units, 
 
 Key exports:
 
-- `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `VariantSpecSchema`, `parseSpec`
-- `hash`: `canonicalJson`, `caseHash`, `hashCanonical`, `judgesHash`, `pinSuitePrompts`
-- +30 more in `products/evals/src/index.ts`
+- `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
+- `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
+- +38 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 

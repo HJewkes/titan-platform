@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { count, fraction, nonempty, objectFor, sha256, timestamp, usd } from "./common.js";
 import type { SpecParseMode } from "./common.js";
+import { resolvedChampions } from "./trial.js";
 
 export const SCORECARD_SCHEMA_VERSION = "titan.scorecard/v1";
 
@@ -35,7 +36,14 @@ export function scorecardSchema(mode: SpecParseMode) {
   const { rate, meanCI } = intervals(mode);
   return object({
     schema: z.literal(SCORECARD_SCHEMA_VERSION),
-    keys: object({ unit: sha256, variant: sha256, suite: sha256, judges: sha256, env: envFingerprint(mode) }),
+    keys: object({
+      unit: sha256,
+      variant: sha256,
+      champions: resolvedChampions.optional(),
+      suite: sha256,
+      judges: sha256,
+      env: envFingerprint(mode),
+    }),
     n: object({ cases: count, trials: count, errored: count, infraErrored: count }),
     success: rate,
     passAllK: rate,
