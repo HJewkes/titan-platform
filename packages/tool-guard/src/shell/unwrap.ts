@@ -62,6 +62,11 @@ const RUNNERS: Record<string, { subs: string[]; values: string[]; shellMode?: bo
   bun: { subs: ["x"], values: ["--cwd"] },
 };
 
+export interface XargsBatch {
+  unit: "lines" | "args";
+  size: number | null;
+}
+
 export interface Unwrapped {
   /** The command that runs, or null when no word names one statically. */
   name: string | null;
@@ -77,6 +82,8 @@ export interface Unwrapped {
     replace: string | null;
     /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
     delimiters: string[] | null;
+    /** The `-L`/`-n` batching: how many lines or arguments one run takes; `size` is null when it cannot be read statically. */
+    batch: XargsBatch | null;
   };
   /** Set when `!` negates the command's status. */
   negated?: true;
@@ -129,7 +136,28 @@ function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNul
   const found = xargsDelimiters(options);
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
-  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters };
+  const batch = xargsBatch(options) ?? earlier?.batch ?? null;
+  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters, batch };
+}
+
+function batchSize(word: WordToken | undefined, text: string | undefined = word?.value): number | null {
+  if (!word || (text === word.value && word.dynamic) || !/^\d+$/.test(text ?? "")) return null;
+  return Number(text) > 0 ? Number(text) : null;
+}
+
+/** The last `-L N`, `-lN`, `--max-lines[=N]`, `-n N`, `-nN` or `--max-args=N`; a bare `-l` or `--max-lines` means one line. */
+function xargsBatch(options: WordToken[]): XargsBatch | null {
+  let found: XargsBatch | null = null;
+  options.forEach((word, j) => {
+    const v = word.value;
+    const next = options[j + 1];
+    if (v === "-L") found = { unit: "lines", size: batchSize(next) };
+    else if (v === "-n") found = { unit: "args", size: batchSize(next) };
+    else if (v === "-l" || v === "--max-lines") found = { unit: "lines", size: 1 };
+    else if (/^(-[Ll]|--max-lines=)./.test(v)) found = { unit: "lines", size: batchSize(word, v.replace(/^(-[Ll]|--max-lines=)/, "")) };
+    else if (/^(-n|--max-args=)./.test(v)) found = { unit: "args", size: batchSize(word, v.replace(/^(-n|--max-args=)/, "")) };
+  });
+  return found;
 }
 
 const DELIMITER_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0", "\\": "\\" };

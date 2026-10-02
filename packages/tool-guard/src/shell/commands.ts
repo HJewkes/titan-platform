@@ -3,7 +3,7 @@ import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
-import type { Unwrapped } from "./unwrap.js";
+import type { Unwrapped, XargsBatch } from "./unwrap.js";
 import { expandWord, lookup, trackVars } from "./vars.js";
 import type { Vars } from "./vars.js";
 
@@ -196,23 +196,48 @@ function xargsStdin(redirects: RedirectToken[], piped: string | null): string | 
   return feeds ? stdinScript(redirects) : piped;
 }
 
-/** The argument lists `xargs` runs the command with: one per input line under a replace string, else one with the piped words appended. */
+/** The argument lists `xargs` runs the command with: one per input line under a replace string, one per `-L`/`-n` batch, else one with the piped words appended. */
 function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
-  if (!cmd.xargs || stdin === null) return [cmd.args];
+  if (!cmd.xargs) return [cmd.args];
   const { replace } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
+  if (stdin === null) return replace === null ? [cmd.args] : unknownRuns(cmd, replace);
   if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
   if (shell) return [cmd.args];
-  return [[...cmd.args, ...stdin.split(/\s+/).filter(Boolean).map(literalWord)]];
+  return batches(stdin, cmd.xargs.batch).map((words) => [...cmd.args, ...words.map(literalWord)]);
+}
+
+const WORST_CASE: Record<string, string[]> = { git: ["push", "origin", "HEAD:main"], gh: ["pr", "merge", "1"] };
+
+/** Input that cannot be read: a protected utility named by the replace string alone is read as its worst case, so it fails closed. */
+function unknownRuns(cmd: Unwrapped, replace: string): WordToken[][] {
+  const worst = WORST_CASE[cmd.name ?? ""];
+  if (!worst || cmd.args[0]?.value !== replace) return [cmd.args];
+  return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
+}
+
+/** The word groups one `xargs` run each takes. An unreadable batch size adds every split: each line, each word, all words. */
+function batches(stdin: string, batch: XargsBatch | null): string[][] {
+  const lines = stdin.split(/\r?\n/).map(wordsOf).filter((l) => l.length > 0);
+  const all = lines.flat();
+  if (batch === null) return [all];
+  const units = batch.unit === "lines" ? lines : all.map((w) => [w]);
+  if (batch.size === null) return [all, ...lines, ...all.map((w) => [w])];
+  const groups = Array.from({ length: Math.ceil(units.length / batch.size) }, (_, i) => units.slice(i * (batch.size as number), (i + 1) * (batch.size as number)).flat());
+  return groups.length > 0 ? groups : [[]];
+}
+
+function wordsOf(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean);
 }
 
 /**
  * Non-empty input records. A line ends at a newline or NUL; each `-d` separator also splits it, and an
- * unreadable `-d` splits on every punctuation character in turn. Extra splits only add commands to classify.
+ * unreadable `-d` splits on every character of the input in turn, letters and spaces included. Extra splits only add commands to classify.
  */
 function inputRecords(stdin: string, delimiters: string[] | null): string[] {
-  const separators = delimiters ?? [...new Set(stdin.match(/[^\sA-Za-z0-9_]/g) ?? [])];
+  const separators = delimiters ?? [...new Set(stdin)];
   const splits = [["\n", "\0"], ...separators.map((d) => [d])].map((seps) => splitOn(stdin, [...seps, "\n", "\0"]));
   const records = [...new Set(splits.flat())];
   return records.length > 0 ? records : [""];

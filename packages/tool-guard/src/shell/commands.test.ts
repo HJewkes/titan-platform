@@ -529,14 +529,64 @@ describe("xargs -I runs the command once per input line", () => {
     expect(gitArgs("printf status | xargs git <<< 'push origin HEAD:main'")).toEqual([PUSH]);
   });
 
-  it("does not read the pipe when a file is the stdin", () => {
-    expect(gitArgs("printf status | xargs -I{} git {} < list.txt")).toEqual([["{}"]]);
+  it("does not read the pipe when a file is the stdin, and adds the worst case for git", () => {
+    expect(gitArgs("printf status | xargs -I{} git {} < list.txt")).toEqual([["{}"], ["push", "origin", "HEAD:main"]]);
+  });
+
+  it("leaves {} as a value alone when stdin is unknown", () => {
+    expect(gitArgs("xargs -I{} git -C {} status < repos.txt")).toEqual([["-C", "{}", "status"]]);
+  });
+
+  it("reads input from a pipe that is not literal as unknown", () => {
+    expect(gitArgs("cat <<EOF | xargs -I{} git {}\nstatus\nEOF")).toEqual([["{}"], ["push", "origin", "HEAD:main"]]);
+  });
+
+  it("splits on every character when -d is not static", () => {
+    expect(gitArgs("printf 'echo hiXgit push origin HEAD:main' | xargs -I{} -d \"$D\" git {}")).toContainEqual(["push", "origin", "HEAD:main"]);
   });
 
   it("gives each line's command the xargs wrapping", () => {
     const git = extract("printf 'status\\npush' | xargs -I{} git {}").filter((c) => c.name === "git");
 
     expect(git.map((c) => c.wrapping)).toEqual([["xargs"], ["xargs"]]);
+  });
+});
+
+describe("xargs -L and -n run the command once per batch", () => {
+  const PUSH = ["push", "origin", "HEAD:main"];
+
+  it.each([
+    ["-L1", "printf 'status\\npush origin HEAD:main' | xargs -L1 git", [["status"], PUSH]],
+    ["-L 1", "printf 'status\\npush origin HEAD:main' | xargs -L 1 git", [["status"], PUSH]],
+    ["-l", "printf 'status\\npush origin HEAD:main' | xargs -l git", [["status"], PUSH]],
+    ["--max-lines=1", "printf 'status\\npush origin HEAD:main' | xargs --max-lines=1 git", [["status"], PUSH]],
+    ["-L2", "printf 'a\\nb\\nc' | xargs -L2 git", [["a", "b"], ["c"]]],
+    ["-n 3", "printf 'status a b push origin HEAD:main' | xargs -n 3 git", [["status", "a", "b"], PUSH]],
+    ["-n3", "printf 'status a b push origin HEAD:main' | xargs -n3 git", [["status", "a", "b"], PUSH]],
+    ["--max-args=3", "printf 'status a b push origin HEAD:main' | xargs --max-args=3 git", [["status", "a", "b"], PUSH]],
+  ])("splits the input under %s", (_how, command, expected) => {
+    expect(gitArgs(command)).toEqual(expected);
+  });
+
+  it("keeps a single batch as one command", () => {
+    expect(gitArgs("printf 'status' | xargs -L1 git")).toEqual([["status"]]);
+    expect(gitArgs("printf 'status\\nlog' | xargs -L 5 git")).toEqual([["status", "log"]]);
+  });
+
+  it("reads every split when the size is not static", () => {
+    expect(gitArgs("printf 'status\\npush origin HEAD:main' | xargs -L \"$N\" git")).toEqual([
+      ["status", "push", "origin", "HEAD:main"],
+      ["status"],
+      PUSH,
+      ["status"],
+      ["push"],
+      ["origin"],
+      ["HEAD:main"],
+    ]);
+  });
+
+  it("appends everything when no batch is named", () => {
+    expect(gitArgs("printf 'a\\nb' | xargs git")).toEqual([["a", "b"]]);
   });
 });
 
