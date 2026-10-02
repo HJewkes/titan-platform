@@ -420,7 +420,7 @@ Key exports:
 
 ### [`github`](/reference/github)
 
-Tier 1, `@titan-design/github@0.3.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.3.1`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
@@ -539,7 +539,7 @@ Key exports:
 
 ### [`worktree`](/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.1.0`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.1.1`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
 **Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
 
@@ -562,7 +562,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.9.2`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.10.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -581,7 +581,7 @@ Key exports:
 
 ### [`code-read`](/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.1.7`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.1.8`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -769,7 +769,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.6.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.7.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
