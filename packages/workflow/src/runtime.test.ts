@@ -19,6 +19,7 @@ import type {
   WorkflowFn,
   WorkflowRun,
 } from "./types.js";
+import { GATE_CANCELLED_SIGNAL } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
 
@@ -981,6 +982,79 @@ describe("WorkflowRuntime.signal resolver", () => {
     expect(new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`)?.resolvedBy).toEqual(OWNER);
   });
 });
+
+describe("assisted with recordCancel", () => {
+  const askTwice: WorkflowFn = async (ctx) => {
+    const first = await ctx.assisted("approve", "Approve the old head?", { recordCancel: true });
+    if (first.signal === GATE_CANCELLED_SIGNAL) await ctx.assisted("approve", "Approve the new head?");
+  };
+
+  async function cancelledThenReasked(db: Db): Promise<{ rt: WorkflowRuntime; runId: string; gates: SqliteGateStore }> {
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const rt = runtime(db, inlineRunner(() => "ok"));
+    rt.register("ask-twice", askTwice);
+    const runId = rt.start("ask-twice");
+    await vi.waitFor(() => expect(gates.get(`${runId}/approve`)?.status).toBe("pending"));
+    gates.cancel(`${runId}/approve`, "head moved");
+    await vi.waitFor(() => expect(gates.get(`${runId}/approve:1`)?.status).toBe("pending"));
+    return { rt, runId, gates };
+  }
+
+  it("records a cancelled gate as the step's answer and opens a fresh gate on the next call", async () => {
+    const { rt, runId } = await cancelledThenReasked(makeDb());
+
+    expect(rt.status(runId)?.stepResults.approve).toMatchObject({ signal: GATE_CANCELLED_SIGNAL, data: { reason: "head moved" } });
+    rt.signal(runId, "approve", { signal: "approved" }, OWNER);
+    expect((await rt.wait(runId)).status).toBe("completed");
+  });
+
+  it("replays the recorded cancel after a restart and waits on the fresh gate", async () => {
+    const db = makeDb();
+    const { rt: first, runId, gates } = await cancelledThenReasked(db);
+    first.shutdown();
+
+    const second = runtime(db, inlineRunner(() => "ok"));
+    second.register("ask-twice", askTwice);
+    expect(await second.hydrate()).toEqual([runId]);
+    await vi.waitFor(() => expect(second.status(runId)?.status).toBe("paused"));
+    second.signal(runId, "approve", { signal: "approved" }, OWNER);
+
+    expect((await second.wait(runId)).status).toBe("completed");
+    expect(gates.get(`${runId}/approve:1`)?.resolvedBy).toEqual(OWNER);
+  });
+
+  it("ends a cancelled run instead of recording its gate's cancel as an answer", async () => {
+    const db = makeDb();
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const rt = runtime(db, inlineRunner(() => "ok"));
+    rt.register("ask-twice", askTwice);
+    const runId = rt.start("ask-twice");
+    await vi.waitFor(() => expect(gates.get(`${runId}/approve`)?.status).toBe("pending"));
+
+    rt.cancel(runId, "operator stopped it");
+
+    expect((await rt.wait(runId)).status).toBe("cancelled");
+    expect(gates.get(`${runId}/approve:1`)).toBeUndefined();
+  });
+
+  it("still fails a run whose gate is cancelled without recordCancel", async () => {
+    const db = makeDb();
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const { rt, runId } = await pausedRunOf(db, async (ctx) => void (await ctx.assisted("approve", "Approve?")));
+
+    gates.cancel(`${runId}/approve`, "head moved");
+
+    expect((await rt.wait(runId)).status).toBe("failed");
+  });
+});
+
+async function pausedRunOf(db: Db, fn: WorkflowFn): Promise<{ rt: WorkflowRuntime; runId: string }> {
+  const rt = runtime(db, inlineRunner(() => "ok"));
+  rt.register("one-gate", fn);
+  const runId = rt.start("one-gate");
+  await vi.waitFor(() => expect(rt.status(runId)?.status).toBe("paused"));
+  return { rt, runId };
+}
 
 describe("RunContext.expireGates", () => {
   it("cancels only this run's pending gates the predicate picks", () => {

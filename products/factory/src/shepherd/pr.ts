@@ -14,7 +14,7 @@ import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shephe
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { expireStaleGates } from "./stale-gates.js";
+import { expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
@@ -167,7 +167,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: (stepId, prompt, options) => ctx.assisted(stepId, prompt, options),
+    assisted: supersedingGates(ctx, () => new LeaveLand()),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
