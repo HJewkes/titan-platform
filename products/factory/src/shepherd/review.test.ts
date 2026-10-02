@@ -1265,6 +1265,52 @@ describe("reviewPhase", () => {
     expect(dispatch.spawns).toHaveLength(1);
   });
 
+  describe("a seat reviewer outside Shepherd's dispatch", () => {
+    const seat = agent("seat-pr-1-review", { spawnedBy: "coord" });
+    /** Shepherd's own reviewer says MERGE at the asked head the moment it is read; the seat reviewer says what `seatSaid` holds. */
+    const withSeat = (seatSaid: ReviewerMessage[], late = false): Scene["read"] => (input, dispatch, now) => {
+      if (input.reviewerAgentId === seat.agentId) return seatSaid;
+      if (late && now < 18_000) return [];
+      return dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), now));
+    };
+
+    it("sends the head back on the seat reviewer's FIX_FIRST at the head Shepherd's own reviewer passed, and collects no merge evidence", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read: withSeat([said(seat, `Unbounded retry.\n\n${verdictAt(H1, "FIX_FIRST")}`, 9_000)]), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "FIX_FIRST", headSha: H1, text: expect.stringContaining("Unbounded retry.") }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: seat.agentId } });
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
+    it("takes Shepherd's MERGE once the same seat reviewer writes a later MERGE at the head", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+      const seatSaid = [said(seat, verdictAt(H1, "FIX_FIRST"), 9_000), said(seat, verdictAt(H1), 9_500)];
+
+      const { verdicts } = await review({ dispatch, read: withSeat(seatSaid), policy: AUTO });
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
+    it("takes Shepherd's MERGE when the seat reviewer's FIX_FIRST named an older head", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+
+      const { verdicts } = await review({ dispatch, read: withSeat([said(seat, verdictAt(H2, "FIX_FIRST"), 9_000)]), policy: AUTO });
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
+    it("sends the head back when Shepherd's reviewer's MERGE lands after the wait and the seat reviewer said FIX_FIRST", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+
+      const { verdicts, stepIds } = await review({ dispatch, read: withSeat([said(seat, verdictAt(H1, "FIX_FIRST"), 9_000)], true), policy: AUTO });
+
+      expect(stepIds).toContain(`sh-late-verdict:${H1}`);
+      expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    });
+  });
+
   describe("a run held for an external reviewer", () => {
     const external = agent("sec-audit-review", { spawnedBy: "coord" });
     const HOLD = "security: awaiting the audit";
