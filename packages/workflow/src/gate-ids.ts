@@ -10,6 +10,11 @@ export function memoKey(operation: StepOperation, stepId: string, index: number)
   return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
 }
 
+/** The first call position has two key shapes, bare and `:0`, so a lookup checks the one this operation does not write. */
+export function otherKeyShape(operation: StepOperation): StepOperation {
+  return operation === "dispatch" ? "assisted" : "dispatch";
+}
+
 /**
  * A run paused by 0.2.x inside `assisted(x)` after a `dispatch(x)` has its answer waiting
  * on the bare gate, so adopt that gate instead of orphaning it and asking the human twice.
