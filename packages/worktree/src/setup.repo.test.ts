@@ -7,6 +7,7 @@ import { createWorktreeAllocator, type WorktreeRequest } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
 import {
   parseSetupStep,
+  PNPM_WORKSPACE_FILE,
   runSetupCommand,
   setupEnv,
   SETUP_FILE,
@@ -560,6 +561,9 @@ const HOSTILE_NPMRC: Record<string, (markers: string) => string> = {
   },
 };
 
+/** Needs the registry once to fetch pnpm; 10.28.1 is the version whose precedence was observed. */
+const PNPM_INSTALL = ["npx", "--yes", "pnpm@10.28.1", "install"];
+
 describe("npm config during worktree setup", () => {
   it("a reused branch whose package.json has install scripts runs none of them under npm ci", async () => {
     const repo = makeRepo({
@@ -604,7 +608,7 @@ describe("npm config during worktree setup", () => {
   it("a reused branch with a .pnpmfile.cjs does not run it under pnpm 10", async () => {
     const markers = tmpdir("wt-markers-");
     const repo = makeRepo({
-      command: ["npx", "--yes", "pnpm@10", "install", "--ignore-workspace"],
+      command: PNPM_INSTALL,
     });
     branchWithFiles(repo, "agent-chat/alice", {
       "package.json": JSON.stringify({
@@ -665,6 +669,67 @@ describe("npm config during worktree setup", () => {
       npm_config_shell: "/bin/sh",
       NPM_CONFIG_SHELL: "/bin/sh",
     });
+  });
+});
+
+const writesMarker = (name: string): string =>
+  `require('fs').writeFileSync(require('path').join(__dirname, ${JSON.stringify(
+    `${name}-ran`
+  )}), '')\nmodule.exports = { hooks: {} }\n`;
+
+/** A branch package with a root postinstall and two pnpmfiles, each of which leaves a marker in the tree. */
+const PNPM_HOSTILE_PACKAGE: Record<string, string> = {
+  "package.json": JSON.stringify({
+    name: "pin-synthetic",
+    version: "1.0.0",
+    scripts: { postinstall: "touch postinstall-ran" },
+  }),
+  ".pnpmfile.cjs": writesMarker("pnpmfile"),
+  "evil.cjs": writesMarker("evil"),
+};
+
+const HOSTILE_WORKSPACE = "ignorePnpmfile: false\nignoreScripts: false\n";
+
+describe("pnpm-workspace.yaml during worktree setup", () => {
+  it.each([
+    ["turns both back on", HOSTILE_WORKSPACE],
+    ["names its own pnpmfile", `${HOSTILE_WORKSPACE}pnpmfile: evil.cjs\n`],
+  ])(
+    "a reused branch whose pnpm-workspace.yaml %s runs no branch code under pnpm install",
+    async (_case, workspace) => {
+      const repo = makeRepo({ command: PNPM_INSTALL });
+      branchWithFiles(repo, "agent-chat/alice", {
+        ...PNPM_HOSTILE_PACKAGE,
+        [PNPM_WORKSPACE_FILE]: workspace,
+      });
+
+      const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
+
+      expect(alloc.ref?.reused).toBe("true");
+      expect(setupWarnings(alloc.warnings)).toEqual([
+        `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
+      ]);
+      expect(markersIn(alloc.cwd)).toEqual([]);
+    },
+    120_000
+  );
+
+  it("still runs the step when the branch keeps the pnpm-workspace.yaml origin has", async () => {
+    const repo = makeRepo({ command: ["true"] });
+    fs.writeFileSync(path.join(repo, PNPM_WORKSPACE_FILE), "packages: []\n");
+    git(["add", "."], repo);
+    git(["commit", "-m", "workspace"], repo);
+    git(["push", "-q", "origin", "main"], repo);
+    branchWithFiles(repo, "agent-chat/alice", { "work.txt": "work\n" });
+    const recorder = recording();
+
+    const alloc = await createWorktreeAllocator({
+      runSetup: recorder.runner,
+    }).allocate(ctxFor(repo));
+
+    expect(alloc.ref?.reused).toBe("true");
+    expect(setupWarnings(alloc.warnings)).toEqual([]);
+    expect(recorder.calls).toHaveLength(1);
   });
 });
 
