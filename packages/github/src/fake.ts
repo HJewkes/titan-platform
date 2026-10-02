@@ -30,6 +30,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
+  updateBranchConflict?: boolean;
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   commits: Map<string, Commit>;
@@ -214,6 +216,7 @@ function updateRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: stri
 /** Like GitHub: refused unless the head is the expected one; the new head is a merge of head and base. */
 function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextSha: (tag: string) => string): void {
   if (pr.headSha !== expected) throw new FakeHttpError(422, "expected head sha did not match");
+  if (fake.updateBranchConflict) throw new FakeHttpError(422, "merge conflict between base and head");
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
   fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });

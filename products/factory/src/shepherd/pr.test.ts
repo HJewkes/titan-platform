@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -47,7 +50,7 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:"): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
@@ -55,7 +58,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
 }
@@ -697,5 +700,90 @@ describe("the merge hold", () => {
     await approveAndFinish(w.host, runId, H1);
 
     expect(w.fake.effects.merge).toBe(1);
+  });
+});
+
+describe("an update-branch the base cannot merge into", () => {
+  const behindPr = (fake: FakeGitHub): void => {
+    fake.updateBranchConflict = true;
+    fake.addPr({ headSha: H1, mergeableState: "behind", behind: true });
+  };
+
+  it("wakes the fixer with the conflict instead of failing the run", async () => {
+    const fake = fakeGitHub();
+    const resolve = (): WakeOutcome => ((fake.updateBranchConflict = false), (fake.pr(1).behind = false), (fake.pr(1).mergeableState = "clean"), fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" });
+    const { phases, wakes } = fakePhases({ wake: resolve });
+    const w = world(phases, undefined, fake);
+    behindPr(fake);
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H2);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(w.fake.effects.merge).toBe(1);
+  });
+
+  it("opens approve-merge naming the conflict when it survives one fixer wake", async () => {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    behindPr(fake);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
+    const done = await w.host.runtime.wait(runId);
+
+    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict"]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("a merge conflict survived one fixer attempt");
+    expect(done.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
+describe("a new cycle at a new head", () => {
+  it("expires pending approve-merge and sh-sent-back gates for an older head and keeps one at the current head", async () => {
+    const stale = fakeSha("old-head");
+    const fake = fakeGitHub();
+    const w = world(fakePhases({}).phases, undefined, fake);
+    fake.addPr({ headSha: H1 });
+    const seedGates = fake.onGetPr!;
+    let runId = "";
+    fake.onGetPr = (pr, reads) => {
+      seedGates(pr, reads);
+      if (reads !== 1) return;
+      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?` });
+      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST` });
+      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST` });
+    };
+    runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(w.host.gates.get(`${runId}/approve-merge:7`)?.status).toBe("cancelled");
+    expect(w.host.gates.get(`${runId}/sh-sent-back`)?.status).toBe("cancelled");
+    expect(w.host.gates.get(`${runId}/sh-sent-back:3`)?.status).toBe("pending");
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
+
+describe("a restarted run", () => {
+  it("keeps the approve-merge gate it waits on at the newest head", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp742-")), "factory.db");
+    const fake = fakeGitHub();
+    const red = (sha: string): string => (sha === H1 ? "failure" : "success");
+    const first = world(fakePhases({ wake: pushes(fake, H2) }).phases, red, fake, undefined, undefined, dbPath);
+    fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(first);
+    await gateOpened(first.host, gateId(runId, "approve-merge"));
+    first.host.close();
+
+    const second = world(fakePhases({ wake: pushes(fake, H2) }).phases, red, fake, undefined, undefined, dbPath);
+    await second.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(second.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(second.host.runtime.status(runId)?.status).toBe("paused");
   });
 });
