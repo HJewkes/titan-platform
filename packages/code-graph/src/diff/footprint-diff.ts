@@ -26,10 +26,11 @@ export function diffFootprints(store: CodeGraphStore, options: DiffFootprintsOpt
   const toGraph = loadSymbolLayer(store, toSnapshotId);
   const before = computeFootprints(remapGraph(fromGraph, resolve), options);
   const after = computeFootprints(toGraph, options);
-  const previousIds = previousIdsOf(fromGraph.nodes, resolve);
+  const { previousIds, mergedAway } = mergeSources(fromGraph.nodes, resolve);
   const changes = [
     ...changedOrAdded(after, before, previousIds),
     ...removed(before, after, previousIds, resolve),
+    ...mergedAway.map((id) => ({ symbolId: id, status: "removed" as const, reasons: [], fileId: resolve(declaringFile(id)) })),
   ].sort((a, b) => compare(a.symbolId, b.symbolId));
   const files = [...new Set(changes.map((c) => c.fileId))].sort(compare);
   return { fromSnapshotId, toSnapshotId, changes, files };
@@ -59,14 +60,29 @@ function remapGraph(graph: FootprintGraph, resolve: ResolveId): FootprintGraph {
   };
 }
 
-/** Resolved id to the original from-snapshot id, for symbols whose id moved. */
-function previousIdsOf(nodes: readonly GraphNode[], resolve: ResolveId): Map<string, string> {
-  const out = new Map<string, string>();
+interface MergeSources {
+  /** Resolved id to the original from-snapshot id, for symbols whose id moved. */
+  previousIds: Map<string, string>;
+  /** From-snapshot ids that lost a many-to-one collision and so are reported removed. */
+  mergedAway: string[];
+}
+
+// Design (TP-765): one change per to-symbol, so previousId names one source: the symbol already at
+// the target id, else the smallest from-id. The other colliding from-symbols are reported removed.
+function mergeSources(nodes: readonly GraphNode[], resolve: ResolveId): MergeSources {
+  const groups = new Map<string, string[]>();
   for (const node of nodes) {
     const id = resolve(node.id);
-    if (id !== node.id) out.set(id, node.id);
+    groups.set(id, [...(groups.get(id) ?? []), node.id]);
   }
-  return out;
+  const previousIds = new Map<string, string>();
+  const mergedAway: string[] = [];
+  for (const [id, sources] of groups) {
+    const keeper = sources.includes(id) ? id : [...sources].sort(compare)[0]!;
+    if (keeper !== id) previousIds.set(id, keeper);
+    mergedAway.push(...sources.filter((source) => source !== keeper));
+  }
+  return { previousIds, mergedAway };
 }
 
 function changedOrAdded(

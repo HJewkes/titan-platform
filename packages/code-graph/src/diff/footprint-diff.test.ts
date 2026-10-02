@@ -154,7 +154,7 @@ describe("diffFootprints", () => {
     ]);
   });
 
-  it("keeps one of two same-named symbols when two files merge into one", () => {
+  it("reports the losing same-named symbol as removed when two files merge into one", () => {
     const from = snapshot([fileNode("src/a.ts"), fileNode("src/b.ts"), symbol("src/a.ts#run"), symbol("src/b.ts#run")], []);
     const to = snapshot([fileNode("src/c.ts"), symbol("src/c.ts#run")], [], [
       { oldId: "src/a.ts", newId: "src/c.ts", reason: "merge" },
@@ -163,9 +163,9 @@ describe("diffFootprints", () => {
 
     const result = diff(from, to);
 
-    // Pins a known gap: a.ts#run collides with b.ts#run after remapping and is not reported as removed.
     expect(result.changes).toEqual([
-      { symbolId: "src/c.ts#run", previousId: "src/b.ts#run", status: "changed", reasons: ["renamed"], fileId: "src/c.ts" },
+      { symbolId: "src/b.ts#run", status: "removed", reasons: [], fileId: "src/c.ts" },
+      { symbolId: "src/c.ts#run", previousId: "src/a.ts#run", status: "changed", reasons: ["renamed"], fileId: "src/c.ts" },
     ]);
   });
 });
