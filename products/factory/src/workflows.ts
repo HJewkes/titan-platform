@@ -18,6 +18,7 @@ import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { holdReviewerMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
 
@@ -28,6 +29,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
   store: ShepherdStoreRef;
   freeze?: FreezeStoreRef;
+  /** The per-repo merge train shepherd-pr runs merge through; defaults to one bound with the store. */
+  train?: MergeTrainRef;
   holdPollMs?: number;
   agentChatBin?: string;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
@@ -49,11 +52,12 @@ export interface FactoryRouteDeps extends LandPrDeps {
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
- * PR never reaches the port's merge, whichever workflow lands it; an unbound store refuses the merge.
+ * PR never reaches the port's merge, whichever workflow lands it; an unbound store refuses the merge. A shepherd-pr
+ * merge then waits for its repo's train, so a held PR never holds the train while it waits.
  */
 export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const holds = () => deps.store.get();
@@ -61,15 +65,17 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const guard = firstReason(freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now));
   const held = heldCheck(deps.port, holds, guard);
+  const train = deps.train ?? mergeTrainRef(deps.now);
+  const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard) }).map((route) =>
-    route.match === "merge" ? waitWhileHeld(route, held, { sleep: pause, pollMs: deps.holdPollMs, now: deps.now }) : route,
+    route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
-  const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS) };
-  return Object.assign([...land, ...shepherd], { database, shepherd: services });
+  const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
+  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now)], { database, shepherd: services });
 }
 
 /** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */

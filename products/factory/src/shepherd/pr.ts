@@ -15,6 +15,7 @@ import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { expireStaleGates } from "./stale-gates.js";
+import { leaveTrain } from "./train.js";
 import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
@@ -30,6 +31,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "sh-landed", kind: "dispatch" },
   { id: "sh-policy", kind: "dispatch" },
   { id: "sh-sent-back", kind: "assisted" },
+  { id: "sh-train-leave", kind: "dispatch" },
   ...WAKE_STEPS,
   ...PARK_STEPS,
   ...REVIEW_STEPS,
@@ -114,6 +116,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
+    await leaveTrain(ctx, params.repo, run.state.round);
     const final = outcome && (await afterLand(run, outcome));
     if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : final;
     run.state.round += 1;

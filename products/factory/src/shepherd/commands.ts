@@ -19,6 +19,7 @@ import {
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import type { MergeTrainRef } from "./train.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -29,6 +30,8 @@ export interface ShepherdServices {
   port: GitHubPort;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
   seats: () => SeatBook;
+  /** Absent means no row reports a run waiting for its repo's merge train. */
+  train?: MergeTrainRef;
 }
 
 export interface Registered {
@@ -179,9 +182,10 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
   return run;
 }
 
-function rowOf(host: FactoryHost, registration: Registration, run: WorkflowRun): WatchRow {
+function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }) });
+  const train = services.train?.get().holder(registration.repo);
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
 }
 
 function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
@@ -190,7 +194,7 @@ function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, registration, run)] : [];
+      return run ? [rowOf(host, services, registration, run)] : [];
     });
 }
 
@@ -211,7 +215,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
   const services = servicesOf(ctx);
   const registration = await locate(services, repo, pr);
   const run = runOf(ctx.host, registration);
-  const row = rowOf(ctx.host, registration, run);
+  const row = rowOf(ctx.host, services, registration, run);
   const policy = stricterPolicy(registration.policy, runPolicy(run));
   const decision = shepherdGatePolicy(policy).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
   const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined);
@@ -256,9 +260,10 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
-    const registration = await locate(servicesOf(ctx), repo, pr);
+    const services = servicesOf(ctx);
+    const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
   },
 });
 
