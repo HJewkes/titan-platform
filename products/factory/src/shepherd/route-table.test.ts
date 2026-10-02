@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
 
-const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external" };
+const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review" };
 
 /** The routing rules in the order they bind, written apart from the table so each cell is checked against the rule. */
 function expectedRoute(run: RunState, state: MergeableState, outcome: ReviewOutcome): Route {
@@ -17,8 +17,8 @@ function expectedRoute(run: RunState, state: MergeableState, outcome: ReviewOutc
 const CELLS = RUN_STATES.flatMap((run) => MERGEABLE_STATES.flatMap((state) => REVIEW_OUTCOMES.map((outcome) => [run, state, outcome] as const)));
 
 describe("the Shepherd route table", () => {
-  it("has 144 cells: 3 run states x 8 mergeable states x 6 review outcomes", () => {
-    expect(CELLS).toHaveLength(144);
+  it("has 168 cells: 3 run states x 8 mergeable states x 7 review outcomes", () => {
+    expect(CELLS).toHaveLength(168);
   });
 
   it("gives every cell a route, so a missing state or outcome fails here", () => {
@@ -61,6 +61,8 @@ describe("roundKind", () => {
     ["update-branch", "MERGE", "progress"],
     ["new-cycle", "head-moved", "progress"],
     ["merge", "MERGE", "progress"],
+    ["retry-review", "not-started", "not-started"],
+    ["wake-fixer", "not-started", "not-started"],
   ] as const)("reads route %s on outcome %s as a %s round", (route, outcome, kind) => {
     expect(roundKind(route, outcome)).toBe(kind);
   });

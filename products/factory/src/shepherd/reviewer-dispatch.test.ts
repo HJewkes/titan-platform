@@ -218,6 +218,28 @@ describe("agentChatReviewerDispatch spawn", () => {
     expect((error as Error).message).toBe(reason);
   });
 
+  it("reports a refusal agent-chat marks retryable as busy, carrying the guard's reason without the trailer", async () => {
+    const guard = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents)";
+    const error = await failure(dispatchOver(`echo 'Not spawned: ${guard}'\necho 'code: machine_headless_limit retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect((error as Error).message).toBe(guard);
+  });
+
+  it("reports any other refusal marked retryable as busy, naming its code", async () => {
+    const error = await failure(dispatchOver(`echo 'Not spawned: spawn budget spent'\necho 'code: spawn_rate retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect((error as Error).message).toBe("spawn budget spent (spawn_rate)");
+  });
+
+  it("keeps a refusal marked retryable: false a refusal", async () => {
+    const error = await failure(dispatchOver(`echo 'Not spawned: the name rv-demo-7 is held'\necho 'code: name_held retryable: false'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).not.toBeInstanceOf(ReviewerBrokerBusy);
+    expectRefusal(error, "the name rv-demo-7 is held");
+  });
+
   it("keeps a refusal that only mentions the machine guard mid-sentence a refusal", async () => {
     const error = await failure(dispatchOver(`echo 'Not spawned: no machine guard: reading'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
 

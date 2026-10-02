@@ -244,6 +244,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
     case "merge":
       return true;
     case "fresh-reviewer":
+    case "retry-review":
     case "await-external":
       run.reviews.delete(headSha);
       if (route === "fresh-reviewer") run.fresh.add(headSha);

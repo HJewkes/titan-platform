@@ -53,17 +53,30 @@ function checkoutDir(repo: string, cwdFor: AgentChatReviewerDispatchOptions["cwd
   return resolved.dir;
 }
 
-/** agent-chat's machine guard (headless-agent total or memory floor) refuses with no code, so its reason prefix is the only marker. */
+/** The trailer agent-chat prints after a coded refusal; only `retryable: true` marks one that clears with time. */
+const RETRYABLE_TRAILER = /\n\s*code: (\S+) retryable: true$/;
+/** An agent-chat older than the trailer refuses by its machine guard with no code, so the reason prefix is the marker. */
 const MACHINE_GUARD = /(?:^|: )(machine guard: .*)$/s;
+const REFUSAL_PREFIX = /^agent-chat refused the \w+: (?:Not spawned: )?/;
 
-/** Only an unreachable broker or its machine guard is safe to ask again; every other failure, a timeout included, stays a refusal. */
+/** The reason a refusal that clears with time gives, without the CLI's prefixes or trailer; undefined for any other refusal. */
+function busyReason(message: string): string | undefined {
+  const text = message.trim();
+  const trailer = RETRYABLE_TRAILER.exec(text);
+  const reason = trailer ? text.slice(0, trailer.index) : text;
+  const guard = MACHINE_GUARD.exec(reason)?.[1];
+  if (guard !== undefined) return guard;
+  return trailer ? `${reason.replace(REFUSAL_PREFIX, "")} (${trailer[1]})` : undefined;
+}
+
+/** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
 async function askBroker<T>(ask: () => T): Promise<T> {
   try {
     return ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
-    const guard = error instanceof DispatchError ? MACHINE_GUARD.exec(error.message.trim()) : null;
-    if (guard?.[1] !== undefined) throw new ReviewerBrokerBusy(guard[1], { cause: error });
+    const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
+    if (busy !== undefined) throw new ReviewerBrokerBusy(busy, { cause: error });
     throw error;
   }
 }

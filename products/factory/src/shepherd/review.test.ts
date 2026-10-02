@@ -826,21 +826,27 @@ describe("sh-review", () => {
 
       const { result } = await steps.review(spawnIntent);
 
-      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7" });
+      const waits = [1, 2, 4].map((n) => `${GUARD}; asking again in ${n} min`);
+      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
-      expect(seen).toEqual([1, 2, 4].map((n) => `waiting for the broker to start reviewer rv-octo-demo-7: ${GUARD}; asking again in ${n} min`));
+      expect(seen).toEqual(waits.map((wait) => `waiting for the broker to start reviewer rv-octo-demo-7: ${wait}`));
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
     });
 
-    it("answers none with the guard's reason once the busy wait is spent, after waits capped at eight minutes", async () => {
+    it("answers not-started with the guard's reason and every wait once the busy wait is spent, after waits capped at eight minutes", async () => {
       const dispatch = busyFor(Infinity);
       const slept: number[] = [];
       const steps = reviewSteps(dispatch, { onSleep: (ms) => void slept.push(ms / 60_000) });
 
       const { result } = await steps.review(spawnIntent);
 
-      expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)` });
+      expect(result).toEqual({
+        kind: "none",
+        reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)`,
+        notStarted: true,
+        busyWaits: [1, 2, 4, 8, 8, 7].map((n) => `${GUARD}; asking again in ${n} min`),
+      });
       expect(slept).toEqual([1, 2, 4, 8, 8, 7]);
       expect(steps.clock.now - START).toBe(DEFAULT_BUSY_WAIT_MS);
       expect(dispatch.spawns).toEqual([]);
@@ -1004,11 +1010,34 @@ describe("reviewPhase", () => {
     let refusals = 3;
     dispatch.spawn = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : spawn(...args));
 
-    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO });
+    const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "dispatched", busyWaits: [expect.any(String), expect.any(String), expect.any(String)] });
     expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  it("answers not-started, not no-verdict, when the machine guard outlasts the busy wait, and starts nobody", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async () => Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide"));
+
+    const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
+
+    expect(verdicts).toEqual([{ kind: "none", cause: "not-started" }]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`]);
+    expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "none", notStarted: true, busyWaits: expect.arrayContaining([expect.stringContaining("machine guard")]) });
+    expect(dispatch.agents).toEqual([]);
+  });
+
+  it("keeps a spawn refused for a reason that does not clear a no-verdict review", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async () => Promise.reject(new Error("unknown profile: 'reviewer'"));
+
+    const { verdicts, resultOf } = await review({ dispatch, policy: AUTO });
+
+    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
+    expect(resultOf(`sh-review:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: unknown profile: 'reviewer'" });
   });
 
   it("returns none after the intent step alone when the roster read is refused", async () => {

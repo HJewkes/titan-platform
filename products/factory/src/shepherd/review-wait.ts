@@ -3,6 +3,11 @@ export class ReviewerBrokerBusy extends Error {
   override readonly name = "ReviewerBrokerBusy";
 }
 
+/** The busy wait ran out with the broker still refusing; nobody was started, so the review never began. */
+export class ReviewerStillBusy extends Error {
+  override readonly name = "ReviewerStillBusy";
+}
+
 /** The first wait after a busy refusal; each later wait doubles, up to the longest. */
 export const BUSY_FIRST_WAIT_MS = 60_000;
 export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
@@ -26,7 +31,7 @@ export async function whileBrokerBusy<T>(timing: BusyTiming, signal: AbortSignal
     } catch (error) {
       if (!(error instanceof ReviewerBrokerBusy)) throw error;
       const left = until - timing.now();
-      if (left <= 0) throw new Error(`${error.message} (still refused after ${minutes(timing.busyWaitMs)})`, { cause: error });
+      if (left <= 0) throw new ReviewerStillBusy(`${error.message} (still refused after ${minutes(timing.busyWaitMs)})`, { cause: error });
       const ms = Math.min(wait, left);
       note(`${error.message}; asking again in ${minutes(ms)}`);
       await timing.sleep(ms, signal);

@@ -23,8 +23,8 @@ export interface ReviewRequest extends PhaseTarget {
   fresh?: boolean;
 }
 
-/** Why a review gave no verdict: none was started or none was sent, the wait ran out, or the hold's reviewer has not answered. */
-export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold";
+/** Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, or a busy broker started nobody. */
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started";
 
 export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown }
