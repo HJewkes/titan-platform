@@ -82,7 +82,8 @@ stays out of the repo.
       "configDir": "<agent-home>/.claude-profiles/rv",
       "verdictTimeoutMs": 1800000,
       "sessionStartTimeoutMs": 300000
-    }
+    },
+    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" }
   }
 }
 ```
@@ -91,7 +92,8 @@ stays out of the repo.
   `LAND_PR_REPO`, `LAND_PR_NUMBER` and `LAND_PR_MERGE_SHA` in its environment, and is killed
   after `timeoutMs` (default 10 minutes). An unknown key such as `shell` fails the load.
 - `shepherd.agentChatBin` is the absolute path of the `agent-chat` executable. It is required
-  when `shepherd.review` is set.
+  when `shepherd.review` or `shepherd.fixer` is set. Without it, a red main still freezes the
+  repo and files a fix task, but spawns no fixer.
 - `shepherd.review` turns the review phase on. `profile` is the one agent-chat profile the
   reviewer is spawned with. `configDir` is optional: an absolute path to the reviewer's Claude
   config directory, under the agent's home. `config.ts` checks only that the path is absolute;
@@ -100,6 +102,10 @@ stays out of the repo.
   the owner decides every merge. A `review` block without `agentChatBin`, or an unknown key in
   it, fails the load. The full key table is in the
   [factory README](https://github.com/HJewkes/titan-platform/blob/main/products/factory/README.md#shepherd-reviewer-config).
+- `shepherd.fixer` tunes the fixer a red main spawns (see
+  [After the merge](/guides/shepherd#after-the-merge)). Its one key, `configDir`, is optional
+  and follows the same rules as `review.configDir`. A `fixer` block without `agentChatBin`
+  fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
@@ -328,7 +334,7 @@ The plist names the checkout it came from. After you move the checkout or change
 | What you see | Why |
 | --- | --- |
 | `error: Daemon already running (pid N, port P)` | a second `serve` on the same database directory; the first keeps serving |
-| `error: invalid config <path>: …` | the config file is not valid JSON, has an unknown `postMerge` or `shepherd.review` key, or sets `review` without `agentChatBin` |
+| `error: invalid config <path>: …` | the config file is not valid JSON, has an unknown `postMerge`, `shepherd.review` or `shepherd.fixer` key, or sets `review` or `fixer` without `agentChatBin` |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference; `#0` and `#01` are refused too |
 | `error: gh api … failed (4): … gh auth login` | `gh` is not logged in where the command runs |
 | `error: no gate with id <run>/<step>` | the run or step id is wrong |
