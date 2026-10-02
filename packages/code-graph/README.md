@@ -271,6 +271,16 @@ snapshots and buckets each violation as new, resolved, or unchanged; unchanged m
 violations are further split into worsened and improved by value. From-side ids follow the
 alias chain, as in the ratchet.
 
+`computeFootprints({ nodes, edges }, options)` gives each symbol node a footprint built from
+structural inputs only, so a moved declaration or a churn window never reads as a change. It
+has three parts, each a `hashText` over canonical JSON: `signature` (name, exported, signature,
+purpose; no span), `consumers` (sorted distinct files with a `references` edge into the symbol),
+and `coupling` (sorted co-import partners at or above `minCoImports`, default 2). `hash` combines
+the three. Consumers include test files unless `ignoreConsumer(fileId)` rejects them; a rejected
+file is dropped from coupling too. `symbolSetHash({ unitId, symbolIds }, footprints)` hashes a
+doc unit's sorted `[symbolId, footprint.hash]` pairs, so it ignores member order and changes when
+a member is added, removed or changed.
+
 `scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
 instead of codewatch's CLI.
 

@@ -181,6 +181,14 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+export type {
+  FootprintGraph,
+  FootprintOptions,
+  FootprintParts,
+  FootprintUnit,
+  SymbolFootprint,
+} from "./diff/footprint.js";
+export { computeFootprints, symbolSetHash } from "./diff/footprint.js";
 
 export type {
   EmbedAttempt,
