@@ -377,7 +377,7 @@ interface FakeDispatch extends ReviewerDispatch {
   resumes: { name: string; brief: string }[];
 }
 
-/** A roster in memory. A spawn adds one live agent with a started session, unless `onSpawn` or `onResume` says otherwise. */
+/** A roster in memory. A spawn adds one live agent with a started session, unless `onSpawn` says otherwise, and a resume makes the named agent live. */
 function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: string) => void; onResume?: (name: string) => void } = {}): FakeDispatch {
   const fake: FakeDispatch = {
     agents,
@@ -391,6 +391,7 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
     },
     resume: async (name, brief) => {
       fake.resumes.push({ name, brief });
+      fake.agents.filter((held) => held.name === name).forEach((held) => (held.presence = "live"));
       hooks.onResume?.(name);
     },
   };
@@ -548,6 +549,35 @@ describe("sh-review", () => {
     expect(repeated.result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: START });
     expect(dispatch.resumes).toHaveLength(1);
     expect(dispatch.spawns).toEqual([]);
+  });
+
+  it("resumes the standing reviewer on a repeat that crashed during the machine-guard wait, because its session wrote nothing after the intent", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+    const resume = dispatch.resume;
+    let refusals = 1;
+    dispatch.resume = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : resume(...args));
+    const abort = new AbortController();
+    const intent = (await reviewSteps(dispatch, { registered: optIn("rv-standing") }).intent()).result;
+
+    const crashed = await reviewSteps(dispatch, { registered: optIn("rv-standing"), signal: abort.signal, onSleep: () => abort.abort() }).review(intent);
+    const repeated = await reviewSteps(dispatch, { registered: optIn("rv-standing") }).review(intent, 1);
+
+    expect(crashed.outcome.ok).toBe(false);
+    expect(repeated.result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: START });
+    expect(dispatch.resumes.map((resumed) => resumed.name)).toEqual(["rv-standing"]);
+  });
+
+  it.each<[string, number, number]>([
+    ["wrote after the intent and has exited again", START + 1, 0],
+    ["last wrote before the intent", START - 1, 1],
+  ])("on a repeat, resumes the exited standing reviewer whose session %s only when it has not resumed since", async (_name, lastWrittenAt, resumes) => {
+    const dispatch = fakeDispatch(crew(standing({ lastWrittenAt })));
+    const steps = reviewSteps(dispatch, { registered: optIn("rv-standing") });
+
+    const { result } = await steps.review({ head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing" }, 1);
+
+    expect(result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
+    expect(dispatch.resumes).toHaveLength(resumes);
   });
 
   /** The broker cannot be reached for the first `reads` roster reads. */
@@ -991,16 +1021,23 @@ describe("reviewPhase", () => {
     when: "before" | "after";
     agents?: ReviewerAgent[];
     reviewer?: string;
+    /** The machine guard refuses the first resume, and the host dies in the wait that follows. */
+    busyResume?: boolean;
   }
 
   /** One host dies in a step and a second replays the run a minute later; the reviewer speaks a millisecond after it is started. */
-  async function replay({ dieIn, when, agents = [], reviewer }: Replay) {
+  async function replay({ dieIn, when, agents = [], reviewer, busyResume }: Replay) {
     let clock = 10_000;
     let spokeAt: number | undefined;
+    let dieInSleep = false;
     const started = (name: string) => void ((spokeAt = clock + 1), dispatch.agents.some((held) => held.name === name) || dispatch.agents.push(agent(name, { presence: "live" })));
     const dispatch = fakeDispatch(agents, { onSpawn: started, onResume: started });
+    const resume = dispatch.resume;
+    let refusals = busyResume ? 1 : 0;
+    dispatch.resume = async (...args) => (refusals-- > 0 ? ((dieInSleep = true), Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide"))) : resume(...args));
+    const sleep = async (ms: number) => (dieInSleep ? ((dieInSleep = false), died(), new Promise<never>(() => undefined)) : void (clock += ms));
     const store = boundStore();
-    const deps = { store, now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 } as unknown as ShepherdDeps;
+    const deps = { store, now: () => clock, sleep, pollMs: 1_000 } as unknown as ShepherdDeps;
     const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
     const routes = reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000 });
     const verdicts: Verdict[] = [];
@@ -1044,12 +1081,15 @@ describe("reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
-  it("resumes nobody on the replay when the host dies before the resume, so the verdict wait ends in a timeout none", async () => {
-    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "before", agents: crew(standing()), reviewer: "rv-standing" });
+  it.each<[string, Partial<Replay>]>([
+    ["before the resume", { dieIn: "sh-review", when: "before" }],
+    ["during the machine-guard wait", { dieIn: "", when: "before", busyResume: true }],
+  ])("resumes the standing reviewer on the replay and takes its verdict when the host dies %s", async (_name, window) => {
+    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "", when: "before", ...window, agents: crew(standing()), reviewer: "rv-standing" });
 
-    expect(dispatch.resumes).toEqual([]);
-    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
-    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+    expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: 10_000 });
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
   it("takes the dispatched reviewer's MERGE through the evidence step, where the run's auto policy allows the merge", async () => {
