@@ -201,7 +201,17 @@ function healthSummary(health: Record<string, unknown>, port: number): string {
     const value = health[key];
     return typeof value === "string" || typeof value === "number" ? [`${key} ${value}`] : [];
   });
+  const build = buildSummary(health.build);
+  if (build) fields.push(build);
   return `ok on port ${port}${fields.length > 0 ? ` (${fields.join(", ")})` : ""}`;
+}
+
+function buildSummary(build: unknown): string | undefined {
+  if (typeof build !== "object" || build === null) return undefined;
+  const { sha, behindMain } = build as Record<string, unknown>;
+  if (typeof sha !== "string") return undefined;
+  const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;
+  return `build ${sha.slice(0, 12)}${sha.endsWith("-dirty") ? "-dirty" : ""}, ${behind}`;
 }
 
 export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string): Promise<number> {
