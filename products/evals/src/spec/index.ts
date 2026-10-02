@@ -3,6 +3,7 @@ import type { SpecParseMode } from "./common.js";
 import { CASE_SCHEMA_VERSION, SUITE_SCHEMA_VERSION, caseSchema, suiteSchema } from "./case-suite.js";
 import { checkSchema } from "./check.js";
 import { SCORECARD_SCHEMA_VERSION, scorecardSchema } from "./scorecard.js";
+import { trialSchema } from "./trial.js";
 import { UNIT_SCHEMA_VERSION, unitSchema } from "./unit.js";
 import { VARIANT_SCHEMA_VERSION, variantSchema } from "./variant.js";
 
@@ -34,6 +35,15 @@ export type EvalCase = z.infer<typeof EvalCaseSchema>;
 export type SuiteSpec = z.infer<typeof SuiteSpecSchema>;
 export type CheckSpec = z.infer<typeof CheckSpecSchema>;
 export type Scorecard = z.infer<typeof ScorecardSchema>;
+
+/** A trial record is run output, not a hashed spec, so it parses on its own and loose by default. */
+export const TrialRecordSchema = trialSchema("strict");
+const looseTrialRecord = trialSchema("loose");
+export type TrialRecord = z.infer<typeof TrialRecordSchema>;
+
+export function parseTrialRecord(value: unknown, mode: SpecParseMode = "loose"): TrialRecord {
+  return (mode === "strict" ? TrialRecordSchema : looseTrialRecord).parse(value);
+}
 
 export type SpecSchemaVersion = keyof typeof strict;
 export const SPEC_SCHEMA_VERSIONS = Object.keys(strict) as SpecSchemaVersion[];
