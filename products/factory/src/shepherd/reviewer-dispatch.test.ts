@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError } from "@titan-design/agent-dispatch";
@@ -91,6 +91,16 @@ describe("agentChatReviewerDispatch roster", () => {
       { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true },
     ]);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
+  });
+
+  it("reports when the session's transcript was last written, so a resume since an intent shows on the roster", async () => {
+    const transcriptPath = join(dir, "session-1.jsonl");
+    writeFileSync(transcriptPath, "{}\n");
+    utimesSync(transcriptPath, 1_700_000_000, 1_700_000_000);
+
+    const [found] = await rosterOf([{ ...row, transcriptPath, transcriptExists: true }]);
+
+    expect(found).toMatchObject({ transcriptPath, lastWrittenAt: 1_700_000_000_000 });
   });
 
   it("reports no spawner and no transcript for a row that carries neither", async () => {

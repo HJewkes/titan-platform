@@ -206,7 +206,7 @@ export type WorkflowEvent =
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
   | { type: "step_failed"; runId: string; stepId: string; error: string }
-  | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string }
+  | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string; gateId?: string }
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }

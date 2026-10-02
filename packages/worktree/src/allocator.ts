@@ -178,8 +178,8 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
     force: req.forceReset === true,
     run: boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS),
   });
-  copyClaudeDir(gitRoot, worktreePath);
   const warnings = [
+    ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
     ...(await runWorktreeSetup(setupTarget(gitRoot, worktreePath, base), opts.runSetup)),
   ];

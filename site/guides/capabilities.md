@@ -575,7 +575,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +262 more in the [reference page](/reference/code-graph)
+- +275 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -777,7 +777,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
-- +70 more in the [reference page](/reference/workflow)
+- +71 more in the [reference page](/reference/workflow)
 
 ## UI
 

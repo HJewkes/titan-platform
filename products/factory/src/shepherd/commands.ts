@@ -19,6 +19,7 @@ import {
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import type { MergeTrainRef } from "./train.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -29,6 +30,8 @@ export interface ShepherdServices {
   port: GitHubPort;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
   seats: () => SeatBook;
+  /** Absent means no row reports a run waiting for its repo's merge train. */
+  train?: MergeTrainRef;
 }
 
 export interface Registered {
@@ -129,21 +132,42 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
   return { runId, created: false, registration: store.byRun(runId)! };
 }
 
-function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): string {
+/** `onStart` writes the registration in the transaction that inserts the run, so neither commits without the other. */
+function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy, onStart: (runId: string) => void): string {
   const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
-  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task });
+  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task }, { onStart });
 }
 
 /** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
 function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
   const previousRunId = known.runId;
-  const runId = startRun(ctx, args, known.branch ?? undefined, policy);
-  store.repoint(previousRunId, runId);
+  let runId: string;
+  try {
+    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
+  } catch (error) {
+    const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
+    if (!winner) throw error;
+    return refresh(store, winner, args, policy);
+  }
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
 }
 
-/** No await between the last lookup and the start, so two registers in this process cannot both start a run. */
+/** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
+function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Registered {
+  let registration: Registration | undefined;
+  try {
+    const runId = startRun(ctx, args, branch, policy, (started) => {
+      registration = store.register({ ...args, branch, runId: started, policy });
+    });
+    return { runId, created: true, registration: registration! };
+  } catch (error) {
+    const winner = findRegistration(ctx, store, args.repo, args.pr, branch);
+    if (!winner) throw error;
+    return reuseOrRestart(ctx, store, winner, args, policy);
+  }
+}
+
 async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services, args);
@@ -153,9 +177,7 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
-  const runId = startRun(ctx, args, branch, policy);
-  const registration = store.register({ ...args, branch, runId, policy });
-  return { runId, created: true, registration };
+  return startRegistered(ctx, store, args, branch, policy);
 }
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
@@ -179,9 +201,10 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
   return run;
 }
 
-function rowOf(host: FactoryHost, registration: Registration, run: WorkflowRun): WatchRow {
+function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }) });
+  const train = services.train?.get().holder(registration.repo);
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
 }
 
 function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
@@ -190,7 +213,7 @@ function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, registration, run)] : [];
+      return run ? [rowOf(host, services, registration, run)] : [];
     });
 }
 
@@ -211,7 +234,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
   const services = servicesOf(ctx);
   const registration = await locate(services, repo, pr);
   const run = runOf(ctx.host, registration);
-  const row = rowOf(ctx.host, registration, run);
+  const row = rowOf(ctx.host, services, registration, run);
   const policy = stricterPolicy(registration.policy, runPolicy(run));
   const decision = shepherdGatePolicy(policy).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
   const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined);
@@ -256,9 +279,10 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
-    const registration = await locate(servicesOf(ctx), repo, pr);
+    const services = servicesOf(ctx);
+    const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
   },
 });
 

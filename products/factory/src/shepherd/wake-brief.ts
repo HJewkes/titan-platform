@@ -1,7 +1,12 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
 import { z } from "zod";
+import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
 
+/** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
+export const FIX_FIRST_STEP = "sh-wake-fix-first";
+/** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
+export const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
@@ -18,6 +23,8 @@ export interface WakeFacts {
   pr: number;
   headSha: string;
   payload: unknown;
+  /** Which FIX_FIRST of the run a review wake is, from 1; absent reads as the first. */
+  fixFirst?: number;
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -85,6 +92,37 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
 }
 
 const FixFirst = z.looseObject({ text: z.string().min(1) });
+const VERDICT_LINE = /^\s*(?:Verdict|PR|Head):/;
+const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
+
+/** The reviewer's defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
+export function defectClassSection(text: string): string | undefined {
+  const lines = text.split("\n");
+  const start = lines.findIndex(isDefectHeading);
+  if (start < 0) return undefined;
+  const end = lines.findIndex((line, index) => index > start && VERDICT_LINE.test(line));
+  return lines.slice(start, end < 0 ? undefined : end).join("\n").trim();
+}
+
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
+const STRUCTURAL = "Do not patch the items one by one: fix the defect class at the one boundary where a single change covers every instance, then check that each blocking item in the findings is covered by it.";
+const NO_CLASS = "The reviewer named no defect class. Name the class these items share and the boundary where one fix covers it in your final message, then fix it there.";
+
+/** A repeat FIX_FIRST carries the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
+function reviewWake(input: WakeFacts): { reason: string; payload: string } {
+  const text = FixFirst.parse(input.payload).text;
+  const nth = input.fixFirst ?? 1;
+  const findings = dataFence("review findings", text);
+  if (nth < STRUCTURAL_FIX_FIRST) return { reason: `An independent review of head ${input.headSha} returned FIX_FIRST. Its findings follow.`, payload: findings };
+  const section = defectClassSection(text);
+  const intro = `An independent review of head ${input.headSha} returned FIX_FIRST, the ${ordinal(nth)} on this PR, so this is a structural pass. ${STRUCTURAL}`;
+  const reason = `${intro} ${section === undefined ? NO_CLASS : "The reviewer's defect class follows, then every blocking item verbatim in the full findings."}`;
+  return { reason, payload: section === undefined ? findings : `${dataFence("defect class", section)}\n\n${findings}` };
+}
 
 /** Why the agent is woken, and the data that shows it, fenced. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
@@ -93,7 +131,7 @@ export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullR
     case "ci-red":
       return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
     case "review":
-      return { reason: `An independent review of head ${head} returned FIX_FIRST. Its findings follow.`, payload: dataFence("review findings", FixFirst.parse(input.payload).text) };
+      return reviewWake(input);
     case "conflict": {
       const conflict = await conflictFiles(port, input, pr);
       return { reason: conflictReason(input, conflict), payload: `${dataFence("base branch", pr.baseRef)}\n\n${dataFence("conflict candidates", conflictList(conflict))}` };

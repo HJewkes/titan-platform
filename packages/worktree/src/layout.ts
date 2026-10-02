@@ -1,4 +1,4 @@
-import { cpSync, existsSync } from "node:fs";
+import { cpSync, lstatSync, type Stats } from "node:fs";
 import path from "node:path";
 import { gitOrNull } from "./git.js";
 
@@ -30,11 +30,38 @@ export async function checkoutOf(gitRoot: string, branch: string): Promise<strin
   return line ? path.resolve(line.slice("worktree ".length).trim()) : null;
 }
 
-/** Hooks and settings live in gitignored .claude/, so a fresh worktree runs unhooked without this. */
-export function copyClaudeDir(gitRoot: string, worktreePath: string): void {
+function lstatOrNull(target: string): Stats | null {
+  try {
+    return lstatSync(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function kindOf(stat: Stats): string {
+  if (stat.isSymbolicLink()) return "a symlink";
+  if (stat.isDirectory()) return "a directory";
+  return stat.isFile() ? "a file" : "not a regular file";
+}
+
+/**
+ * Hooks and settings live in gitignored .claude/, so a fresh worktree runs unhooked without this.
+ * The target is branch-controlled: lstat it, since a committed symlink would let the copy write
+ * outside the tree. Anything already there is kept and reported as a warning.
+ */
+export function copyClaudeDir(gitRoot: string, worktreePath: string): string[] {
   const source = path.resolve(gitRoot, ".claude");
   const target = path.resolve(worktreePath, ".claude");
-  if (existsSync(source) && !existsSync(target)) cpSync(source, target, { recursive: true });
+  if (lstatOrNull(source) === null) return [];
+  const existing = lstatOrNull(target);
+  if (existing === null) {
+    cpSync(source, target, { recursive: true });
+    return [];
+  }
+  return [
+    `${target} is ${kindOf(existing)} from the branch, so the repository's .claude was not copied in; this agent runs with the branch's .claude`,
+  ];
 }
 
 /** Remove the tree and its branch. Callers decide first whether anything would be lost. */

@@ -76,7 +76,7 @@ import { betaBinomialInterval, mcnemar, minimumDetectableEffect, pairedBootstrap
 
 wilson(7, 10);                       // { estimate: 0.7, lower: 0.397, upper: 0.892 }
 betaBinomialInterval(7, 10);         // Jeffreys prior: { estimate: 0.7, lower: 0.394, upper: 0.907 }
-pairedBootstrap(champion, challenger, { seed: runId }); // interval on mean(champion[i] - challenger[i])
+pairedBootstrap(challenger, champion, { seed: runId }); // interval on mean(challenger[i] - champion[i]); a challenger win reads above 0
 mcnemar(2, 10);                      // { method: "exact", statistic: 2, pValue: 0.0386 }
 minimumDetectableEffect({ n: 30, sd: 0.5 }); // 0.256
 ```

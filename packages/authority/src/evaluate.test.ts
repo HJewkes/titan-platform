@@ -142,3 +142,15 @@ describe("evaluate with a malformed actor", () => {
     expect(decision.verdict).toBe("deny");
   });
 });
+
+describe("evaluate with a polluted Object.prototype.class", () => {
+  it("denies an actor that does not own a class instead of reading the inherited one", () => {
+    Object.defineProperty(Object.prototype, "class", { value: "owner-terminal", configurable: true });
+    try {
+      const polluted = { action: "merge", actor: { id: "a1" }, tainted: false, subject: {} } as unknown as AuthorityRequest;
+      expect(evaluate(DEFAULT_TABLE, polluted)).toMatchObject({ verdict: "deny", ruleId: null });
+    } finally {
+      delete (Object.prototype as { class?: unknown }).class;
+    }
+  });
+});

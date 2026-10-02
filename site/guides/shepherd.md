@@ -77,7 +77,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `fixing` | waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
-| `merging` | merging the approved head; a held pull request waits here |
+| `merging` | merging the approved head; a held pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
@@ -189,6 +189,16 @@ implementer. Shepherd never reads a reviewer's name out of the hold's reason tex
 - `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
+
+Each `FIX_FIRST` wake records one `sh-wake-fix-first` step, so the run counts them across
+every head it sees. After the first, every review is a re-review: its brief requires a
+section that starts `Defect class:`, which names the defect class that recurs across the
+rounds and the one boundary where a single fix covers every instance. From the second
+`FIX_FIRST` on, the fixer gets a structural brief instead of another patch round. The brief
+carries the reviewer's defect-class section and the whole findings verbatim, so every
+blocking item reaches the fixer. A re-reviewer that leaves the section out still gives a
+valid verdict. The fixer is then asked to name the class itself before fixing. The brief is
+built from the verdict alone, and nothing can trim it before the wake.
 
 A woken implementer must start a turn within 5 minutes: a new event in its transcript, or a
 new head. A live implementer is messaged through `agent-chat debug send`, which delivers the
@@ -304,6 +314,36 @@ in `merging`, polling every 10 seconds, until `release`
 branch registration can be held only once its pull request exists. `--reviewer` names the
 reviewer whose verdict the run waits for; `release` clears it. A merge that waited on a hold
 does not go through on release: land reads CI again first, because the base may have moved.
+
+## Merge train {#merge-train}
+
+Per repo, one Shepherd run at a time is in the land sequence: update the branch if it is
+behind, wait for green required checks at the new head, merge, then let the next run in
+(`products/factory/src/shepherd/train.ts`). Without it, two pull requests approved at once
+both reach the merge; the first merge puts the second behind its base, and the second merge
+fails.
+
+A run boards the train at its first merge step, after review and the merge decision. If
+another run holds the train, it waits in `merging`, polling every 10 seconds, and `status`
+names the run it waits behind:
+
+```
+owner/repo#124 merging 4d5e6f7 waiting for the merge train behind run ab0f9228-… (#123)
+```
+
+A run that has just boarded merges at once only when the train was free and its head is
+current. Otherwise land reads CI again, so a branch the last merge put behind is updated
+while the run holds the train. The run gives the train up in the `sh-train-leave` step when
+its land round ends: merged, red CI, a send-back, or a conflict. A red head goes to the fixer
+after the train has moved on.
+
+The holder is a row in the `shepherd_train` table, so a restarted `titan-factory serve`
+resumes the holder's run and it keeps the train. A waiting run takes the train over when the
+holder's run is no longer running: failed, cancelled, parked for recovery, or paused on an
+owner gate. It also takes it over when the holder's own merge is held, frozen or waiting on
+the Version Packages pull request, so a hold never wedges the repo. Only `shepherd-pr` runs
+ride the train; `titan-factory land` does not. A holder still waits through the review of
+the head its update produced.
 
 ## The Version Packages pull request {#version-packages}
 

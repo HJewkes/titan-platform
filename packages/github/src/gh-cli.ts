@@ -108,6 +108,9 @@ interface GhRule {
 
 function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
   const statusRules = rules.filter((rule) => rule.type === "required_status_checks");
+  if (statusRules.some((rule) => !Array.isArray(rule.parameters?.required_status_checks))) {
+    throw new Error("a required_status_checks rule has no required_status_checks list, so the required contexts are unknown");
+  }
   const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
   return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true) };
 }
