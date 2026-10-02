@@ -59,6 +59,8 @@ export interface ReviewerAgent {
   predecessor?: string | null;
   /** Context tokens the session holds; absent means unknown, and an unknown fill is never resumed. */
   fillTokens?: number;
+  /** Epoch milliseconds the agent's current session started; absent means unknown. */
+  sessionStartedAt?: number;
 }
 
 /** The port throws this when the broker cannot be reached: nothing was asked of it, so asking again is safe. */
@@ -219,6 +221,10 @@ async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, t
 /** A resumed reviewer is found by its agent id. A spawned one is the only agent under a name nobody held before. */
 const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentId === undefined ? agent.name === intent.reviewer : agent.agentId === intent.agentId);
 
+/** The intent only names an exited reviewer, so one that is no longer exited, or whose session started since, was resumed. */
+const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
+  holds(intent)(agent) && (agent.presence !== "exited" || (agent.sessionStartedAt !== undefined && agent.sessionStartedAt >= intent.at));
+
 async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
   const clock = deadline(timing);
   for (;;) {
@@ -274,8 +280,8 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
-  // A held name was spawned by an earlier run, and a refused spawn holds none. A resume leaves no mark on the roster, so only the first run asks for it.
-  const asked = intent.mode === "resume" ? repeat : roster.some(holds(intent));
+  // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
+  const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   if (!asked) await startReviewer(dispatch, intent, target, reviewerBrief({ ...target, questions: await questions?.(target) }), timing, signal);
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
