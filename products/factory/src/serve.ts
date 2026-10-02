@@ -4,6 +4,8 @@ import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logg
 import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
+import { factoryStateDir } from "./config.js";
+import { readLastDeploy } from "./deploy-ports.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { busyRuns } from "./restart-drain.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
@@ -39,6 +41,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   github?: GithubHealth;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
   build?: { sha: string; behindMain?: BehindMain };
+  /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
+  deployStateDir?: string;
 }
 
 export interface FactoryServer {
@@ -118,7 +122,12 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => ({ ...factoryHealth(host, routeFor), github: github.status(), build: { sha: build.sha, behindMain: build.status() } }),
+    health: () => ({
+      ...factoryHealth(host, routeFor),
+      github: github.status(),
+      build: { sha: build.sha, behindMain: build.status() },
+      lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
+    }),
     logger: options.logger,
   };
 }

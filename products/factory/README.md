@@ -30,6 +30,7 @@ titan-factory resume                                          # drive every unfi
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist, load it, wait for /health
 titan-factory service status|restart|uninstall                # macOS only, like install
+titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
 titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
@@ -112,6 +113,7 @@ checkout that should serve, not from a worktree that will be removed.
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
+| `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist and touches nothing | always |
 
@@ -126,6 +128,41 @@ restart goes ahead, because every Shepherd step repeats safely. A park-routed st
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
 that does not answer, or a build from before `busy`, has nothing to drain.
+
+`service deploy [--expect <sha>]` rebuilds and restarts the service from the checkout the bin
+was built in, which must be on `main` with no tracked changes. It takes the pid lock
+`$XDG_STATE_HOME/titan-factory/deploy.lock`. A lock whose pid is dead is stale; a deployer
+takes it over by renaming it, so two deployers cannot both win, and on exit removes the lock
+only while it still holds its own pid. It runs `git fetch origin main` and targets `--expect`
+or `origin/main`; a target not on `origin/main` is refused. A target the running build
+(`/health` `build.sha`) already contains is a no-op. A target behind the checkout's own `main`
+is refused with the commit to deploy instead. It then diffs the running build sha to the
+target against the factory closure, the workspace packages
+`pnpm --filter "@titan-design/factory..."` selects, plus the root build inputs
+(`pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `.npmrc`, root `tsconfig*.json`). An
+unknown or dirty build sha counts as touched. When nothing intersects it runs
+`git merge --ff-only` and records `skipped`.
+
+A touched range whose `pnpm-lock.yaml` changes the version of a package with a native build
+(`better-sqlite3`, the one in the factory closure) is refused before anything changes. The
+deployer installs under `@titan-design/worktree`'s `setupEnv` pin, whose `ignore_scripts`
+skips that package's compile, and a rollback restores `dist` only, never `node_modules`. The
+refusal names the package and its versions and lists the steps to deploy it by hand.
+
+Otherwise it copies every closure package's `dist` to `deploy-backup/<running sha>/`,
+fast-forwards, runs `pnpm install --frozen-lockfile` under the `setupEnv` pin, builds the
+closure, and restarts drained as `service restart` does. Success means launchd's pid answers
+`/health` with `github` `ok`, and then `build.sha` equals the target. The sha read polls
+`/health` up to 10 times with a 5 s timeout each, so a slow answer under load is not a
+failure; only a wrong sha, or no sha in the whole poll, fails. A failed install or build
+restores the snapshot and leaves the old process running, untouched. A failed restart or sha
+check restores the snapshot and kickstarts again. Both record `rolled-back`, and that sha is
+then held until a newer one arrives.
+
+`deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
+`lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
+The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
+target.
 
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
 and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
@@ -163,6 +200,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist renderer, and the cached `gh api rate_limit` probe behind health's `github` field |
 | `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `claude`, `/health`, the filesystem, the clock). Tests pass fake ports, so none reaches launchd |
 | `src/restart-drain.ts` | The busy runs on `/health`, and the drain `service restart` waits on before it kickstarts |
+| `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
 | `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd` and `service` |
