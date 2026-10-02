@@ -13,8 +13,8 @@ const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
-// The indexer's live heap peaks near 1 GB; uncapped, V8 lets garbage grow the process to about 3 GB.
-const HEAP_CAP_MB = 1536;
+// The indexer's live heap peaks near 460 MB; uncapped, V8 lets garbage grow the process to about 3 GB.
+const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
 // Fixed beside the lock, so the next holder clears whatever a killed run left behind.
 const WORK_DIR = path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-work");
