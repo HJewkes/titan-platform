@@ -9,11 +9,29 @@ export interface ReviewerBriefInput {
   head: string;
   /** Questions chosen by code for this diff, never text an implementer wrote. */
   questions?: readonly string[];
+  /** FIX_FIRST reviews this PR already had in its run; one or more makes this a re-review. */
+  fixFirsts?: number;
 }
+
+/** The line the fixer's structural brief finds the reviewer's defect-class section by. */
+export const DEFECT_CLASS_HEADING = "Defect class:";
 
 function questionLines(questions: readonly string[]): string[] {
   const asked = questions.slice(0, MAX_REVIEWER_QUESTIONS).map((question) => `- ${question.replace(/\s+/g, " ").trim()}`);
   return asked.length === 0 ? [] : ["", "Answer each of these in your review:", ...asked];
+}
+
+/** A re-review asks for the recurring class, so the next fix is structural rather than another patch round. */
+function recurringLines(fixFirsts: number): string[] {
+  if (fixFirsts < 1) return [];
+  const reviews = fixFirsts === 1 ? "one FIX_FIRST review" : `${fixFirsts} FIX_FIRST reviews`;
+  return [
+    "",
+    `This PR already had ${reviews}, and its later commits are the fixes for them. Read its commit history.`,
+    `If your verdict is FIX_FIRST, your review must include a section that starts with a line \`${DEFECT_CLASS_HEADING}\`.`,
+    "In it, name the defect class that recurs across this PR's rounds, and the one boundary where a single fix covers every instance.",
+    "List every blocking item outside that section.",
+  ];
 }
 
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
@@ -35,6 +53,7 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
     "",
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
     "For FIX_FIRST, list every blocking item, then name the defect class the items share and the boundary where one fix covers it.",
+    ...recurringLines(input.fixFirsts ?? 0),
     "",
     "End your final message with exactly these three lines, the verdict filled in and nothing after them:",
     "",

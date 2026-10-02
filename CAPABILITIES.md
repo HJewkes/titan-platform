@@ -118,7 +118,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.3.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.4.0`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
@@ -338,7 +338,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](https://hjewkes.github.io/titan-platform/reference/agent)
 
-Tier 1, `@titan-design/agent@0.4.3`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.4.4`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -355,7 +355,7 @@ Key exports:
 
 ### [`agent-dispatch`](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.2.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.3.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead.
 
@@ -370,7 +370,7 @@ Key exports:
 
 ### [`agent-lifecycle`](https://hjewkes.github.io/titan-platform/reference/agent-lifecycle)
 
-Tier 1, `@titan-design/agent-lifecycle@0.1.3`. Durable agent execution state and fenced ownership
+Tier 1, `@titan-design/agent-lifecycle@0.1.4`. Durable agent execution state and fenced ownership
 
 **Use this when:** You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one.
 
@@ -420,7 +420,7 @@ Key exports:
 
 ### [`github`](https://hjewkes.github.io/titan-platform/reference/github)
 
-Tier 1, `@titan-design/github@0.2.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.3.1`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
@@ -539,7 +539,7 @@ Key exports:
 
 ### [`worktree`](https://hjewkes.github.io/titan-platform/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.1.0`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.1.1`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
 **Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
 
@@ -562,7 +562,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.9.2`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.10.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -575,13 +575,13 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +255 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +275 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
 ### [`code-read`](https://hjewkes.github.io/titan-platform/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.1.7`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.1.8`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -652,7 +652,7 @@ Key exports:
 
 ### [`session-analytics`](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.5.0`. Pricing, session classification, banding and the cost report over mined session data
+Tier 2, `@titan-design/session-analytics@0.6.0`. Pricing, session classification, banding and the cost report over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions. Parsing is session-read; storage is session-graph.
 
@@ -672,7 +672,7 @@ Key exports:
 
 ### [`session-graph`](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.12.0`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.12.1`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph.
 
@@ -691,7 +691,7 @@ Key exports:
 
 ### [`session-read`](https://hjewkes.github.io/titan-platform/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.8.0`. Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.8.1`. Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -728,7 +728,7 @@ Key exports:
 
 ### [`style-checker`](https://hjewkes.github.io/titan-platform/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.0`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.1`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:** You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape.
 
@@ -769,7 +769,7 @@ Key exports:
 
 ### [`workflow`](https://hjewkes.github.io/titan-platform/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.6.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.7.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
@@ -777,7 +777,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
-- +70 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +71 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 

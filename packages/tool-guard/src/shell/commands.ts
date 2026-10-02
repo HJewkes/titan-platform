@@ -3,7 +3,7 @@ import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
-import type { Unwrapped } from "./unwrap.js";
+import type { Unwrapped, XargsBatch } from "./unwrap.js";
 import { expandWord, lookup, trackVars } from "./vars.js";
 import type { Vars } from "./vars.js";
 
@@ -170,14 +170,18 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const cmd = { ...raw, args: xargsArgs(raw, w.stdin) };
+  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
+  for (const args of xargsRuns(raw, stdin)) runOnce({ ...raw, args }, redirects, w, next, stdin);
+}
+
+function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, w.stdin);
+  const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
   for (const words of findExecs(cmd.args)) {
@@ -186,15 +190,95 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   }
 }
 
-/** The arguments `xargs` passes: the piped text in place of its replace string, else the piped words appended. */
-function xargsArgs(cmd: Unwrapped, stdin: string | null): WordToken[] {
-  if (!cmd.xargs || stdin === null) return cmd.args;
+/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
+function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
+  const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
+  return feeds ? stdinScript(redirects) : piped;
+}
+
+/** The argument lists `xargs` runs the command with: one per input line under a replace string, one per `-L`/`-n` batch, else one with the piped words appended. */
+function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
+  if (!cmd.xargs) return [cmd.args];
   const { replace } = cmd.xargs;
-  const text = stdin.replace(/\n+$/, "");
-  if (replace !== null) return cmd.args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, text) } : a));
+  const shell = cmd.name !== null && SHELLS.has(cmd.name);
+  if (stdin === null) return unknownRuns(cmd, replace);
+  if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
-  if (cmd.name !== null && SHELLS.has(cmd.name)) return cmd.args;
-  return [...cmd.args, ...text.split(/\s+/).filter(Boolean).map(literalWord)];
+  if (shell) return [cmd.args];
+  return batches(stdin, cmd.xargs.batch).map((words) => [...cmd.args, ...words.map(literalWord)]);
+}
+
+const WORST_CASE: Record<string, string[]> = { git: ["push", "origin", "HEAD:main"], gh: ["pr", "merge", "1"] };
+
+/** Input that cannot be read: a protected utility is also read with its worst case, as the replace string or as appended words, so it fails closed. */
+function unknownRuns(cmd: Unwrapped, replace: string | null): WordToken[][] {
+  const worst = WORST_CASE[cmd.name ?? ""];
+  if (!worst) return [cmd.args];
+  if (replace === null) return [cmd.args, [...cmd.args, ...worst.map(literalWord)]];
+  if (cmd.args[0]?.value !== replace) return [cmd.args];
+  return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
+}
+
+const MAX_RUN = 16;
+
+/**
+ * The word groups one `xargs` run each takes. Quoted input or an unreadable size shifts the real
+ * boundaries, so every contiguous run of up to MAX_RUN words is read, plus all words together.
+ */
+function batches(stdin: string, batch: XargsBatch | null): string[][] {
+  const lines = logicalLines(stdin).map(wordsOf).filter((l) => l.length > 0);
+  const all = lines.flat();
+  if (batch === null) return [all];
+  if (batch.size === null || /["'\\]/.test(stdin)) return [all, ...contiguousRuns(all.map((w) => w.replace(/["'\\]/g, "")))];
+  const units = batch.unit === "lines" ? lines : all.map((w) => [w]);
+  const size = batch.size;
+  const groups = Array.from({ length: Math.ceil(units.length / size) }, (_, i) => units.slice(i * size, (i + 1) * size).flat());
+  return groups.length > 1 ? [all, ...groups] : groups.length === 1 ? groups : [[]];
+}
+
+/** Lines as `-L` counts them: a line ending in a blank continues onto the next. */
+function logicalLines(stdin: string): string[] {
+  return stdin.split(/\r?\n/).reduce<string[]>((out, line, i) => {
+    const prev = out[out.length - 1];
+    if (i > 0 && prev !== undefined && /[ \t]$/.test(prev)) out[out.length - 1] = prev + line;
+    else out.push(line);
+    return out;
+  }, []);
+}
+
+function contiguousRuns(words: string[]): string[][] {
+  const runs: string[][] = [];
+  for (let i = 0; i < words.length; i++) for (let n = 1; n <= MAX_RUN && i + n <= words.length; n++) runs.push(words.slice(i, i + n));
+  return runs;
+}
+
+function wordsOf(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Non-empty input records. A line ends at a newline or NUL; each `-d` separator also splits it, and an
+ * unreadable `-d` splits on every character of the input in turn, letters and spaces included. Extra splits only add commands to classify.
+ */
+function inputRecords(stdin: string, delimiters: string[] | null): string[] {
+  const separators = delimiters ?? [...new Set(stdin)];
+  const splits = [["\n", "\0"], ...separators.map((d) => [d])].map((seps) => splitOn(stdin, [...seps, "\n", "\0"]));
+  const records = [...new Set(splits.flat())];
+  return records.length > 0 ? records : [""];
+}
+
+function splitOn(text: string, separators: string[]): string[] {
+  const escaped = separators.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.split(new RegExp(`\r?(?:${escaped.join("|")})`)).filter((r) => r.trim() !== "");
+}
+
+/** The exact reading of a line (one word), plus a split reading when a bare replace string could hold several words. */
+function lineRuns(args: WordToken[], replace: string, line: string, split: boolean): WordToken[][] {
+  const exact = args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, line) } : a));
+  const words = line.split(/\s+/).filter(Boolean);
+  if (!split || words.length < 2 || !args.some((a) => a.value === replace)) return [exact];
+  const spread = args.flatMap((a, i) => (a.value === replace ? words.map(literalWord) : [exact[i] as WordToken]));
+  return [exact, spread];
 }
 
 function literalWord(value: string): WordToken {

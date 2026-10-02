@@ -4,7 +4,7 @@ import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
 import { decideAutoMerge, type MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
-import { escalationReason } from "./route-table.js";
+import { escalationReason, type Escalated } from "./route-table.js";
 import type { SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
@@ -102,24 +102,24 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
 
 /**
  * The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries.
- * Every gate names why the owner is asked: failed rounds at that head, else a policy that did not allow the merge.
+ * Every gate names why the owner is asked: the escalation at that head, else a policy that did not allow the merge.
  */
 export function shepherdLandOptions(
   effective: () => EffectivePolicy,
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
-  failedRoundsAt: (headSha: string) => string | undefined = () => undefined,
+  escalationAt: (headSha: string) => Escalated | undefined = () => undefined,
 ): LandOptions {
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
     const decision = shepherdGatePolicy(effective(), verdictFor).decide(action, target);
     if (decision.outcome !== "gate") return decision;
-    const failed = target?.headSha === undefined ? undefined : failedRoundsAt(target.headSha);
-    if (failed !== undefined) return { outcome: "gate", rule: ROUTE_RULE, reason: escalationReason("failed-rounds", failed) };
+    const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
+    if (escalated !== undefined) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalationReason(escalated.escalation, escalated.detail) };
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }) };
 }
 
-const ROUTE_RULE: PolicyRule = { table: "shepherd-route", rowId: "failed-rounds", version: 1 };
+const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
 function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {

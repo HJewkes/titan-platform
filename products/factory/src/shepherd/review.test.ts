@@ -18,7 +18,9 @@ import {
   FIX_FIRST_TRUNCATED,
   MAX_FIX_FIRST_TEXT_CHARS,
   MAX_RESUME_FILL_TOKENS,
+  DEFAULT_BUSY_WAIT_MS,
   REVIEW_STEPS,
+  ReviewerBrokerBusy,
   ReviewerBrokerDown,
   acceptVerdict,
   awaitVerdict,
@@ -37,8 +39,9 @@ import {
   type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
+import { reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
-import { shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -374,7 +377,7 @@ interface FakeDispatch extends ReviewerDispatch {
   resumes: { name: string; brief: string }[];
 }
 
-/** A roster in memory. A spawn adds one live agent with a started session, unless `onSpawn` or `onResume` says otherwise. */
+/** A roster in memory. A spawn adds one live agent with a started session, unless `onSpawn` says otherwise, and a resume makes the named agent live. */
 function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: string) => void; onResume?: (name: string) => void } = {}): FakeDispatch {
   const fake: FakeDispatch = {
     agents,
@@ -388,6 +391,7 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
     },
     resume: async (name, brief) => {
       fake.resumes.push({ name, brief });
+      fake.agents.filter((held) => held.name === name).forEach((held) => (held.presence = "live"));
       hooks.onResume?.(name);
     },
   };
@@ -400,7 +404,7 @@ const optIn = (reviewer: string): RegistrationInput => ({ ...registration, polic
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -417,18 +421,26 @@ describe("sh-review", () => {
     repo?: string;
     wiring?: Partial<ReviewWiring>;
     clock?: ReturnType<typeof clockAtStart>;
+    /** Runs inside every sleep, after the clock has moved. */
+    onSleep?: (ms: number) => void;
+    signal?: AbortSignal;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
   function reviewSteps(dispatch: ReviewerDispatch | undefined, options: StepOptions = {}) {
     const clock = options.clock ?? clockAtStart();
-    const sleep = async (ms: number) => void ((clock.now += ms), (clock.sleeps += 1));
+    const sleep = async (ms: number, signal: AbortSignal) => {
+      clock.now += ms;
+      clock.sleeps += 1;
+      options.onSleep?.(ms);
+      signal.throwIfAborted();
+    };
     const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
     const run = async <R>(match: string, input: object, attempt: number) => {
-      const step = { prompt: JSON.stringify(input), signal: new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
+      const step = { prompt: JSON.stringify(input), signal: options.signal ?? new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
       const outcome = await routes.find((candidate) => candidate.match === match)!.runner.run(step as never);
       return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as R | undefined };
     };
@@ -537,6 +549,35 @@ describe("sh-review", () => {
     expect(repeated.result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: START });
     expect(dispatch.resumes).toHaveLength(1);
     expect(dispatch.spawns).toEqual([]);
+  });
+
+  it("resumes the standing reviewer on a repeat that crashed during the machine-guard wait, because its session wrote nothing after the intent", async () => {
+    const dispatch = fakeDispatch(crew(standing()));
+    const resume = dispatch.resume;
+    let refusals = 1;
+    dispatch.resume = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : resume(...args));
+    const abort = new AbortController();
+    const intent = (await reviewSteps(dispatch, { registered: optIn("rv-standing") }).intent()).result;
+
+    const crashed = await reviewSteps(dispatch, { registered: optIn("rv-standing"), signal: abort.signal, onSleep: () => abort.abort() }).review(intent);
+    const repeated = await reviewSteps(dispatch, { registered: optIn("rv-standing") }).review(intent, 1);
+
+    expect(crashed.outcome.ok).toBe(false);
+    expect(repeated.result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: START });
+    expect(dispatch.resumes.map((resumed) => resumed.name)).toEqual(["rv-standing"]);
+  });
+
+  it.each<[string, number, number]>([
+    ["wrote after the intent and has exited again", START + 1, 0],
+    ["last wrote before the intent", START - 1, 1],
+  ])("on a repeat, resumes the exited standing reviewer whose session %s only when it has not resumed since", async (_name, lastWrittenAt, resumes) => {
+    const dispatch = fakeDispatch(crew(standing({ lastWrittenAt })));
+    const steps = reviewSteps(dispatch, { registered: optIn("rv-standing") });
+
+    const { result } = await steps.review({ head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing" }, 1);
+
+    expect(result).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
+    expect(dispatch.resumes).toHaveLength(resumes);
   });
 
   /** The broker cannot be reached for the first `reads` roster reads. */
@@ -760,6 +801,66 @@ describe("sh-review", () => {
     expect(attempts).toBe(1);
   });
 
+  describe("a broker whose machine guard refuses the spawn", () => {
+    const GUARD = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents); wait for one to exit";
+
+    /** The spawn is refused as busy `refusals` times, then starts the reviewer. */
+    function busyFor(refusals: number): FakeDispatch & { asks: () => number } {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn;
+      let asks = 0;
+      dispatch.spawn = async (...args) => (asks++ < refusals ? Promise.reject(new ReviewerBrokerBusy(GUARD)) : spawn(...args));
+      return Object.assign(dispatch, { asks: () => asks });
+    }
+
+    const watchedWaits = () => {
+      const seen: (string | undefined)[] = [];
+      return { seen, onSleep: () => void seen.push(reviewWait("octo/demo", 7)) };
+    };
+
+    it("asks again after one, two and four minutes, then lands a normal review and names each wait while it lasts", async () => {
+      const dispatch = busyFor(3);
+      const { seen, onSleep } = watchedWaits();
+      const steps = reviewSteps(dispatch, { onSleep });
+
+      const { result } = await steps.review(spawnIntent);
+
+      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7" });
+      expect(dispatch.asks()).toBe(4);
+      expect(steps.clock.now - START).toBe(7 * 60_000);
+      expect(seen).toEqual([1, 2, 4].map((n) => `waiting for the broker to start reviewer rv-octo-demo-7: ${GUARD}; asking again in ${n} min`));
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+    });
+
+    it("answers none with the guard's reason once the busy wait is spent, after waits capped at eight minutes", async () => {
+      const dispatch = busyFor(Infinity);
+      const slept: number[] = [];
+      const steps = reviewSteps(dispatch, { onSleep: (ms) => void slept.push(ms / 60_000) });
+
+      const { result } = await steps.review(spawnIntent);
+
+      expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)` });
+      expect(slept).toEqual([1, 2, 4, 8, 8, 7]);
+      expect(steps.clock.now - START).toBe(DEFAULT_BUSY_WAIT_MS);
+      expect(dispatch.spawns).toEqual([]);
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+    });
+
+    it("stops cleanly when aborted during a wait, and a repeat of the step spawns the reviewer once", async () => {
+      const dispatch = busyFor(1);
+      const abort = new AbortController();
+
+      const aborted = await reviewSteps(dispatch, { signal: abort.signal, onSleep: () => abort.abort() }).review(spawnIntent);
+      const repeated = await reviewSteps(dispatch).review(spawnIntent, 1);
+
+      expect(aborted.outcome.ok).toBe(false);
+      expect(aborted.result).toBeUndefined();
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+      expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+    });
+  });
+
   it("answers none when the spawned reviewer starts no session before the deadline", async () => {
     const dispatch = fakeDispatch([], { onSpawn: (name) => void dispatch.agents.push(agent(name, { sessionId: "" })) });
 
@@ -797,6 +898,18 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/FIX_FIRST.*defect class.*boundary/);
   });
 
+  it("asks a re-review for a section naming the recurring defect class, and a first review for none", () => {
+    const ask = "your review must include a section that starts with a line `Defect class:`";
+
+    const rereview = reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, fixFirsts: 2 });
+
+    expect(rereview).toContain("This PR already had 2 FIX_FIRST reviews");
+    expect(rereview).toContain(ask);
+    expect(rereview).toMatch(/recurs across this PR's rounds, and the one boundary where a single fix covers every instance/);
+    expect(parseVerdictBlock(rereview).ok).toBe(false);
+    expect(brief()).not.toContain(ask);
+  });
+
   it("tells the reviewer to run checks in the foreground and never call Monitor, ScheduleWakeup or a background Bash", () => {
     expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
   });
@@ -831,7 +944,7 @@ describe("reviewPhase", () => {
   interface Scene {
     dispatch: FakeDispatch;
     /** What the reader returns for the reviewer the step names; the default is that reviewer's MERGE at the asked head. */
-    read?: (input: AwaitVerdictInput, dispatch: FakeDispatch) => ReviewerMessage[];
+    read?: (input: AwaitVerdictInput, dispatch: FakeDispatch, now: number) => ReviewerMessage[];
     /** Stands in for the sh-await-verdict step, to record an output the real step would refuse. */
     awaited?: (input: AwaitVerdictInput) => AwaitVerdictResult;
     heads?: string[];
@@ -839,6 +952,8 @@ describe("reviewPhase", () => {
     policy?: EffectivePolicy;
     /** A shepherd hold placed on the run with this reason, before the review starts. */
     hold?: string;
+    /** The hold's `--reviewer`. */
+    holdReviewer?: string;
     fresh?: boolean;
   }
 
@@ -851,7 +966,7 @@ describe("reviewPhase", () => {
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat" };
     const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), clock + 1));
-    const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch) : own(input)) };
+    const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }) }));
@@ -861,12 +976,12 @@ describe("reviewPhase", () => {
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
     store.get().register({ repo: REPO, pr: 1, runId, task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY, ...scene.registered });
-    if (scene.hold) store.get().hold(runId, scene.hold);
+    if (scene.hold) store.get().hold(runId, scene.hold, scene.holdReviewer);
     const done = await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
@@ -880,6 +995,19 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
+  });
+
+  it("waits out three machine-guard refusals of the spawn and takes the reviewer's MERGE, with no step that sends the PR to the owner", async () => {
+    const dispatch = fakeDispatch();
+    const spawn = dispatch.spawn;
+    let refusals = 3;
+    dispatch.spawn = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : spawn(...args));
+
+    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(dispatch.spawns).toHaveLength(1);
   });
 
   it("returns none after the intent step alone when the roster read is refused", async () => {
@@ -905,16 +1033,23 @@ describe("reviewPhase", () => {
     when: "before" | "after";
     agents?: ReviewerAgent[];
     reviewer?: string;
+    /** The machine guard refuses the first resume, and the host dies in the wait that follows. */
+    busyResume?: boolean;
   }
 
   /** One host dies in a step and a second replays the run a minute later; the reviewer speaks a millisecond after it is started. */
-  async function replay({ dieIn, when, agents = [], reviewer }: Replay) {
+  async function replay({ dieIn, when, agents = [], reviewer, busyResume }: Replay) {
     let clock = 10_000;
     let spokeAt: number | undefined;
+    let dieInSleep = false;
     const started = (name: string) => void ((spokeAt = clock + 1), dispatch.agents.some((held) => held.name === name) || dispatch.agents.push(agent(name, { presence: "live" })));
     const dispatch = fakeDispatch(agents, { onSpawn: started, onResume: started });
+    const resume = dispatch.resume;
+    let refusals = busyResume ? 1 : 0;
+    dispatch.resume = async (...args) => (refusals-- > 0 ? ((dieInSleep = true), Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide"))) : resume(...args));
+    const sleep = async (ms: number) => (dieInSleep ? ((dieInSleep = false), died(), new Promise<never>(() => undefined)) : void (clock += ms));
     const store = boundStore();
-    const deps = { store, now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 } as unknown as ShepherdDeps;
+    const deps = { store, now: () => clock, sleep, pollMs: 1_000 } as unknown as ShepherdDeps;
     const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
     const routes = reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000 });
     const verdicts: Verdict[] = [];
@@ -958,12 +1093,15 @@ describe("reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
-  it("resumes nobody on the replay when the host dies before the resume, so the verdict wait ends in a timeout none", async () => {
-    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "sh-review", when: "before", agents: crew(standing()), reviewer: "rv-standing" });
+  it.each<[string, Partial<Replay>]>([
+    ["before the resume", { dieIn: "sh-review", when: "before" }],
+    ["during the machine-guard wait", { dieIn: "", when: "before", busyResume: true }],
+  ])("resumes the standing reviewer on the replay and takes its verdict when the host dies %s", async (_name, window) => {
+    const { verdicts, dispatch, dispatched } = await replay({ dieIn: "", when: "before", ...window, agents: crew(standing()), reviewer: "rv-standing" });
 
-    expect(dispatch.resumes).toEqual([]);
-    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing" });
-    expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+    expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
+    expect(dispatched).toMatchObject({ kind: "dispatched", mode: "resume", agentId: "agent-rv-standing", at: 10_000 });
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
   });
 
   it("takes the dispatched reviewer's MERGE through the evidence step, where the run's auto policy allows the merge", async () => {
@@ -1060,6 +1198,34 @@ describe("reviewPhase", () => {
     expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
   });
 
+  describe("a reviewer whose verdict lands after the wait ran out", () => {
+    /** Synthetic stand-in for a reviewer whose chat report waited on a permission prompt past the deadline, then wrote its verdict. */
+    const lateReader = (verdictFrom: number, exitAfter = false): Scene["read"] => (input, dispatch, now) => {
+      const who = dispatch.agents.find((candidate) => candidate.agentId === input.reviewerAgentId)!;
+      if (exitAfter) who.presence = "exited";
+      const blocked = said(who, "Sending the verdict to the coordinator.", input.dispatchedAt + 1);
+      return now < verdictFrom ? [blocked] : [blocked, said(who, verdictAt(input.head), now)];
+    };
+    it("reads the MERGE written after the deadline as MERGE and takes it through the evidence step", async () => {
+      const dispatch = fakeDispatch(crew());
+
+      const { verdicts, stepIds } = await review({ dispatch, read: lateReader(18_000), policy: AUTO });
+
+      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("stops reading a reviewer that exited with no verdict and returns a timeout none", async () => {
+      const dispatch = fakeDispatch(crew());
+
+      const { verdicts, resultOf } = await review({ dispatch, read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(resultOf(`sh-late-verdict:${H1}`)).toEqual({ kind: "none" });
+    });
+  });
+
   it("returns a timeout none at the deadline when the reviewer says nothing, without dispatching another", async () => {
     const dispatch = fakeDispatch();
 
@@ -1071,13 +1237,13 @@ describe("reviewPhase", () => {
 
   describe("a run held for an external reviewer", () => {
     const external = agent("sec-audit-review", { spawnedBy: "coord" });
-    const HOLD = "security: awaiting sec-audit-review";
+    const HOLD = "security: awaiting the audit";
 
     it("spawns no reviewer and takes the FIX_FIRST the hold's reviewer gave at this head", async () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H1, "FIX_FIRST"), 5_000), said(external, "Sent the verdict to the coordinator.", 6_000)];
 
-      const { verdicts, stepIds } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts, stepIds } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
 
       expect(dispatch.spawns).toEqual([]);
       expect(dispatch.resumes).toEqual([]);
@@ -1089,7 +1255,7 @@ describe("reviewPhase", () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H2), 5_000)];
 
-      const { verdicts } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
 
       expect(dispatch.spawns).toEqual([]);
       expect(verdicts).toEqual([{ kind: "none", cause: "external-hold" }]);
@@ -1099,11 +1265,29 @@ describe("reviewPhase", () => {
       const dispatch = fakeDispatch(crew(external));
       const read: Scene["read"] = () => [said(external, verdictAt(H1), 5_000)];
 
-      const { verdicts, resultOf } = await review({ dispatch, read, hold: HOLD });
+      const { verdicts, resultOf } = await review({ dispatch, read, hold: HOLD, holdReviewer: external.name });
       const identity = { agentId: external.agentId, sessionId: external.sessionId };
 
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
+    });
+
+    it("reviews as usual when the hold's reason text names a reviewer but --reviewer was not given", async () => {
+      const dispatch = fakeDispatch(crew(external));
+
+      const { verdicts } = await review({ dispatch, hold: `security: awaiting ${external.name}` });
+
+      expect(dispatch.spawns).toHaveLength(1);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+
+    it("does not wait on the registration's reviewer when the hold has no --reviewer", async () => {
+      const dispatch = fakeDispatch(crew(external));
+
+      const { verdicts, stepIds } = await review({ dispatch, hold: "owner wants a look", registered: { reviewer: external.name } });
+
+      expect(stepIds).toContain(`sh-review:${H1}`);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
     it("reviews as usual when the hold names no reviewer", async () => {

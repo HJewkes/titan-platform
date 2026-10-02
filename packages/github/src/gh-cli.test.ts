@@ -63,14 +63,14 @@ describe("gh api adapter", () => {
     expect(gh.calls.flatMap((call) => call.args).some((arg) => /token|authorization/i.test(arg))).toBe(false);
   });
 
-  it("reads a commit's parents and committer date, and leaves the date out when GitHub omits it", async () => {
-    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], committer: { date: "2026-02-03T04:05:06Z" } }) });
+  it("reads a commit's parents, tree and committer date, and leaves the date out when GitHub omits it", async () => {
+    const dated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [{ sha: "p1" }], tree: { sha: "t1" }, committer: { date: "2026-02-03T04:05:06Z" } }) });
     const undated = scriptedGh({ [`git/commits/${H1}`]: JSON.stringify({ sha: H1, parents: [] }) });
 
     const withDate = await ghCliWire(dated.exec).getCommit(REPO, H1);
     const withoutDate = await ghCliWire(undated.exec).getCommit(REPO, H1);
 
-    expect(withDate).toEqual({ sha: H1, parents: ["p1"], committedAt: "2026-02-03T04:05:06Z" });
+    expect(withDate).toEqual({ sha: H1, parents: ["p1"], tree: "t1", committedAt: "2026-02-03T04:05:06Z" });
     expect(withoutDate).toEqual({ sha: H1, parents: [] });
   });
 
@@ -82,6 +82,12 @@ describe("gh api adapter", () => {
     const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules) });
 
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
+  });
+
+  it("throws a named error for a required_status_checks rule with no parameters, rather than reading no contexts", async () => {
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
+
+    await expect(ghCliWire(gh.exec).getBranchRules(REPO, "main")).rejects.toThrow(/required_status_checks rule has no required_status_checks list/);
   });
 
   it("reads the bypass of every ruleset behind a pull_request rule, and is true when each is bypassable", async () => {
@@ -190,7 +196,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
   [/rules\/branches\//, []],
   [/check-runs$/, { check_runs: [] }],
-  [/git\/commits\//, { sha: H1, parents: [] }],
+  [/git\/commits\//, { sha: H1, parents: [], tree: { sha: "t1" } }],
+  [/git\/commits$/, { sha: H2 }],
   [/actions\/runs\/\d+$/, { status: "completed" }],
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
@@ -230,6 +237,7 @@ describe("gh api adapter, REST only", () => {
       getCommit: () => port.getCommit(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
+      pushEmptyCommit: () => port.pushEmptyCommit(REPO, "topic", H1, "m"),
       merge: () => port.merge(REPO, 7, H1, "squash"),
       rerunFailed: () => port.rerunFailed(REPO, 55),
       listPrFiles: () => port.listPrFiles(REPO, 7),

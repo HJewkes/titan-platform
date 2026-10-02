@@ -16,6 +16,8 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
   return {
     getRef: async (repo, branch) => (await api.getOrNull<{ object: { sha: string } }>(`repos/${repo}/git/ref/heads/${branch}`))?.object.sha ?? null,
     createRef: async (repo, branch, sha) => void (await api.send("POST", `repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })),
+    createCommit: async (repo, request) => ({ sha: (await api.send<{ sha: string }>("POST", `repos/${repo}/git/commits`, {}, JSON.stringify(request))).sha }),
+    updateRef: async (repo, branch, sha) => void (await api.send("PATCH", `repos/${repo}/git/refs/heads/${branch}`, {}, JSON.stringify({ sha, force: false }))),
     deleteRef: async (repo, branch) => void (await api.send("DELETE", `repos/${repo}/git/refs/heads/${branch}`)),
     getDefaultBranch: async (repo) => (await api.get<{ default_branch: string }>(`repos/${repo}`)).default_branch,
     getContent: (repo, path, ref) => getContent(api, repo, path, ref),
@@ -32,9 +34,10 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     getCommit: async (repo, sha) => {
-      const commit = await api.get<{ sha: string; parents: { sha: string }[]; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
+      const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
-      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
+      const tree = commit.tree?.sha;
+      return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
     },
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
@@ -105,6 +108,9 @@ interface GhRule {
 
 function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
   const statusRules = rules.filter((rule) => rule.type === "required_status_checks");
+  if (statusRules.some((rule) => !Array.isArray(rule.parameters?.required_status_checks))) {
+    throw new Error("a required_status_checks rule has no required_status_checks list, so the required contexts are unknown");
+  }
   const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
   return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true) };
 }

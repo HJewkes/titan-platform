@@ -30,6 +30,11 @@ export const ReviewConfigSchema = z.strictObject({
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
 
+/** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
+export const FixerConfigSchema = z.strictObject({
+  configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+});
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
@@ -41,9 +46,11 @@ export const FactoryConfigSchema = z.object({
       hardStopRepos: z.record(z.string().min(1), z.array(z.string().refine(isRepoKey, "must be an owner/name repo"))).optional(),
       agentChatBin: absolutePath.optional(),
       review: ReviewConfigSchema.optional(),
+      fixer: FixerConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 

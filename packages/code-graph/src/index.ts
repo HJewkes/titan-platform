@@ -181,6 +181,26 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+export type {
+  FootprintGraph,
+  FootprintOptions,
+  FootprintParts,
+  FootprintUnit,
+  SymbolFootprint,
+} from "./diff/footprint.js";
+export { computeFootprints, symbolSetHash } from "./diff/footprint.js";
+export type { FootprintChange, FootprintChangeReason, FootprintDiff } from "./diff/types.js";
+export type { DiffFootprintsOptions } from "./diff/footprint-diff.js";
+export { diffFootprints } from "./diff/footprint-diff.js";
+export type {
+  GateResult,
+  GateUnitsInput,
+  RegenerateReason,
+  UnitProvenance,
+  UnitProvenanceInput,
+  UnitRegeneration,
+} from "./diff/gate.js";
+export { gateUnits, unitProvenance } from "./diff/gate.js";
 
 export type {
   EmbedAttempt,

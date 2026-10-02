@@ -102,6 +102,39 @@ describe("WorkflowRuntime", () => {
     expect(rt.status(runId)?.status).toBe("completed");
   });
 
+  it("commits a start hook's write together with the run it starts", async () => {
+    const db = makeDb();
+    db.exec("CREATE TABLE claim (run_id TEXT NOT NULL)");
+    const rt = runtime(db, inlineRunner(() => "ok"));
+    rt.register("demo", twoSteps);
+
+    const runId = rt.start("demo", {}, { onStart: (id) => void db.prepare("INSERT INTO claim (run_id) VALUES (?)").run(id) });
+
+    expect(db.prepare("SELECT run_id FROM claim").all()).toEqual([{ run_id: runId }]);
+    expect((await rt.wait(runId)).status).toBe("completed");
+  });
+
+  it("a start hook that throws leaves no run, its own writes undone, and nothing launched", () => {
+    const db = makeDb();
+    db.exec("CREATE TABLE claim (run_id TEXT NOT NULL)");
+    const seen: StepRunInput[] = [];
+    const rt = runtime(db, inlineRunner((input) => (seen.push(input), "ok")));
+    rt.register("demo", twoSteps);
+
+    const start = (): string =>
+      rt.start("demo", {}, {
+        onStart: (id) => {
+          db.prepare("INSERT INTO claim (run_id) VALUES (?)").run(id);
+          throw new Error("crashed before the hook finished");
+        },
+      });
+
+    expect(start).toThrow(/crashed before the hook finished/);
+    expect(rt.list(["running", "paused", "completed", "failed", "cancelled"])).toEqual([]);
+    expect(db.prepare("SELECT run_id FROM claim").all()).toEqual([]);
+    expect(seen).toEqual([]);
+  });
+
   it("retries a retryable failure once and then fails the run", async () => {
     const db = makeDb();
     let calls = 0;
@@ -218,6 +251,92 @@ describe("WorkflowRuntime", () => {
     expect(run.status).toBe("completed");
     expect(gatesOpened(events)).toEqual([]);
     expect(run.stepResults["ask:1"]).toMatchObject({ iteration: 1, signal: "second" });
+  });
+
+  describe("a paused run whose gate row is gone at hydrate", () => {
+    async function pausedThenGateDeleted(): Promise<{ db: Db; runId: string; gateId: string }> {
+      const db = makeDb();
+      const first = runtime(db, inlineRunner(() => "ok"));
+      first.register("interview", interview);
+      const runId = first.start("interview");
+      await vi.waitFor(() => expect(first.status(runId)?.status).toBe("paused"));
+      first.signal(runId, "ask", { signal: "first" }, OWNER);
+      await vi.waitFor(() => expect(first.status(runId)).toMatchObject({ status: "paused", stepResults: { ask: { signal: "first" } } }));
+      first.shutdown();
+      const gateId = `${runId}/ask:1`;
+      db.prepare(`DELETE FROM "hitl_gate" WHERE id = ?`).run(gateId);
+      return { db, runId, gateId };
+    }
+
+    async function hydrateHeld(db: Db, runId: string, events: WorkflowEvent[] = []): Promise<{ rt: WorkflowRuntime; run: WorkflowRun }> {
+      const rt = runtime(db, inlineRunner(() => "ok"), events);
+      rt.register("interview", interview);
+      await rt.hydrate();
+      return { rt, run: await rt.wait(runId) };
+    }
+
+    it("holds the run for recovery and names the gate instead of opening a fresh one", async () => {
+      const { db, runId, gateId } = await pausedThenGateDeleted();
+      const events: WorkflowEvent[] = [];
+
+      const { run } = await hydrateHeld(db, runId, events);
+
+      expect(run).toMatchObject({ status: "recovery_required", currentStep: "ask" });
+      expect(run.error).toContain(gateId);
+      expect(events).toContainEqual({ type: "workflow_recovery_required", runId, stepId: "ask", evidence: run.error, gateId });
+      expect(gatesOpened(events)).toEqual([]);
+      expect(new SqliteGateStore(db, { migrate: false }).get(gateId)).toBeUndefined();
+    });
+
+    it("stays held on a later hydrate, and resumes once the gate row is restored", async () => {
+      const { db, runId, gateId } = await pausedThenGateDeleted();
+      await hydrateHeld(db, runId);
+      const events: WorkflowEvent[] = [];
+
+      expect((await hydrateHeld(db, runId, events)).run.status).toBe("recovery_required");
+      expect(gatesOpened(events)).toEqual([]);
+
+      new SqliteGateStore(db, { migrate: false }).create({ id: gateId, prompt: "Question 2?" });
+      const restored = runtime(db, inlineRunner(() => "ok"));
+      restored.register("interview", interview);
+      expect(await restored.hydrate()).toEqual([runId]);
+      await vi.waitFor(() => expect(restored.status(runId)?.status).toBe("paused"));
+      restored.signal(runId, "ask", { signal: "second" }, OWNER);
+      expect((await restored.wait(runId)).status).toBe("completed");
+    });
+
+    it("lets the operator cancel the held run", async () => {
+      const { db, runId } = await pausedThenGateDeleted();
+      const { rt } = await hydrateHeld(db, runId);
+
+      rt.cancel(runId, "gate lost");
+
+      expect(rt.status(runId)).toMatchObject({ status: "cancelled", error: "gate lost" });
+    });
+  });
+
+  it("resumes onto a paused gate that still exists without reopening or touching it", async () => {
+    const db = makeDb();
+    const first = runtime(db, inlineRunner(() => "ok"));
+    first.register("interview", interview);
+    const runId = first.start("interview");
+    await vi.waitFor(() => expect(first.status(runId)?.status).toBe("paused"));
+    first.shutdown();
+    const gates = new SqliteGateStore(db, { migrate: false });
+    const before = gates.get(`${runId}/ask`);
+
+    const events: WorkflowEvent[] = [];
+    const second = runtime(db, inlineRunner(() => "ok"), events);
+    second.register("interview", interview);
+    expect(await second.hydrate()).toEqual([runId]);
+    await vi.waitFor(() => expect(second.status(runId)?.status).toBe("paused"));
+
+    expect(gates.get(`${runId}/ask`)).toEqual(before);
+    expect(events.filter((e) => e.type === "gate_opened" || e.type === "workflow_recovery_required")).toEqual([]);
+    second.signal(runId, "ask", { signal: "first" }, OWNER);
+    await vi.waitFor(() => expect(gatesOpened(events)).toHaveLength(1));
+    second.signal(runId, "ask", { signal: "second" }, OWNER);
+    expect((await second.wait(runId)).status).toBe("completed");
   });
 
   it("gives a gate its own key when the step id is also a dispatch step", async () => {
@@ -860,5 +979,23 @@ describe("WorkflowRuntime.signal resolver", () => {
     expect((await second.wait(runId)).status).toBe("completed");
     expect(gatesOpened(events)).toEqual([]);
     expect(new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`)?.resolvedBy).toEqual(OWNER);
+  });
+});
+
+describe("RunContext.expireGates", () => {
+  it("cancels only this run's pending gates the predicate picks", () => {
+    const gates = new SqliteGateStore(makeDb(), { migrate: false });
+    const run = newRun("run-a", "mixed", {});
+    gates.create({ id: "run-a/old", prompt: "old head" });
+    gates.create({ id: "run-a/current", prompt: "current head" });
+    gates.create({ id: "run-b/old", prompt: "old head" });
+    const ctx = new RunContext(run, replayDeps(gates), new AbortController());
+
+    const expired = ctx.expireGates("head moved", (gate) => gate.prompt === "old head");
+
+    expect(expired).toEqual(["run-a/old"]);
+    expect(gates.get("run-a/old")).toMatchObject({ status: "cancelled", reason: "head moved" });
+    expect(gates.get("run-a/current")?.status).toBe("pending");
+    expect(gates.get("run-b/old")?.status).toBe("pending");
   });
 });

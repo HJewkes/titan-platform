@@ -1,4 +1,4 @@
-import type { GateStore } from "@titan-design/hitl";
+import type { GateRecord, GateStore } from "@titan-design/hitl";
 import type { StepOperation, WorkflowRun } from "./types.js";
 
 export function gateIdFor(runId: string, stepId: string): string {
@@ -8,6 +8,11 @@ export function gateIdFor(runId: string, stepId: string): string {
 /** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
 export function memoKey(operation: StepOperation, stepId: string, index: number): string {
   return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
+}
+
+/** The first call position has two key shapes, bare and `:0`, so a lookup checks the one this operation does not write. */
+export function otherKeyShape(operation: StepOperation): StepOperation {
+  return operation === "dispatch" ? "assisted" : "dispatch";
 }
 
 /**
@@ -34,4 +39,10 @@ export type GatePredicate = (gateId: string) => boolean;
 
 export function gateIsPending(gates: GateStore, gateId: string): boolean {
   return gates.get(gateId)?.status === "pending";
+}
+
+/** Cancels the pending gates a run opened that `isStale` picks, and returns their ids. */
+export function cancelOwnPending(gates: GateStore, runId: string, reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
+  const own = gates.listPending().filter((gate) => gate.id.startsWith(`${runId}/`) && isStale(gate));
+  return own.map((gate) => gates.cancel(gate.id, reason).id);
 }

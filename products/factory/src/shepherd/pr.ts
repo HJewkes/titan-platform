@@ -6,13 +6,17 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
+import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { MAX_FAILED_ROUNDS, escalationReason, isFailedRound, routeFor, type ReviewOutcome, type Route } from "./route-table.js";
+import { expireStaleGates } from "./stale-gates.js";
+import { leaveTrain } from "./train.js";
+import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
@@ -27,9 +31,11 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "sh-landed", kind: "dispatch" },
   { id: "sh-policy", kind: "dispatch" },
   { id: "sh-sent-back", kind: "assisted" },
+  { id: "sh-train-leave", kind: "dispatch" },
   ...WAKE_STEPS,
   ...PARK_STEPS,
   ...REVIEW_STEPS,
+  ...RELEASE_STEPS,
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
 ];
@@ -41,6 +47,8 @@ export interface ShepherdPrParams {
   policy: EffectivePolicy;
   /** Parsed before land, so a malformed list fails the run before any merge. */
   after: AfterStage[];
+  /** The changesets Version Packages PR: a release preflight stands in for the reviewer. */
+  release: boolean;
 }
 
 /** A run with no `policy` param gets the owner gate as its ceiling; the registration's policy can only narrow it. */
@@ -54,7 +62,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
   const rawPolicy = ctx.param("policy");
   const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
-  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx) };
+  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
 interface PrTarget {
@@ -72,15 +80,18 @@ interface ShepherdRun {
   /** The run param narrowed by every registration read so far; it only ever tightens. */
   policy: EffectivePolicy;
   policyReads: number;
+  release: boolean;
   lastCi?: CiSnapshot;
-  /** Review rounds at this task that ended without a merge decision. */
+  /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
+  /** FIX_FIRST reviews at this task; each is progress until the runaway cap. */
+  fixFirsts: number;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
-  /** Heads whose merge decision is the owner's after failed rounds, with what failed. */
-  escalations: Map<string, string>;
+  /** Heads whose merge decision is the owner's, with why. */
+  escalations: Map<string, Escalated>;
 }
 
 /** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
@@ -97,16 +108,17 @@ class LeaveLand extends Error {
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
   const run: ShepherdRun = {
-    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0 },
-    ...{ failedRounds: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
+  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
+    await leaveTrain(ctx, params.repo, run.state.round);
     const final = outcome && (await afterLand(run, outcome));
-    if (final) return final.kind === "merged" ? landed(ctx, run.target, final, params.after) : final;
+    if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : final;
     run.state.round += 1;
   }
 }
@@ -127,13 +139,15 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return onCiFailed(run.ctx, run.target, outcome, run.state);
   }
-  if (isConflict(run, outcome)) return onConflict(run, outcome.headSha);
-  return outcome;
+  if (!isConflict(run, outcome)) return outcome;
+  run.failedRounds += 1;
+  return onConflict(run, outcome.headSha);
 }
 
 function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
-  if (outcome.kind !== "stopped" || outcome.reason !== "not-mergeable") return false;
-  return run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
+  if (outcome.kind !== "stopped") return false;
+  const dirty = outcome.reason === "not-mergeable" && run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
+  return outcome.reason === "conflict" || dirty;
 }
 
 /** A woken agent has already awaited its new head, so the caller goes straight to the next land round. */
@@ -151,6 +165,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     signal: ctx.signal,
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
+    expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: (stepId, prompt, options) => ctx.assisted(stepId, prompt, options),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
@@ -167,6 +182,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
   run.lastCi = ci.data;
+  expireStaleGates(run.ctx, ci.data.headSha);
   if (ci.data.verdict !== "green") return;
   run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
@@ -174,7 +190,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
-  if (!run.reviews.has(headSha)) await parkAtGreen(run.ctx, headSha);
+  if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);
@@ -204,14 +220,24 @@ const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
   "no-verdict": "no reviewer verdict",
   timeout: "no reviewer verdict before the wait ran out",
   "external-hold": "no verdict yet from the reviewer the hold names",
-  FIX_FIRST: "a FIX_FIRST review",
 };
+
+/** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
+function countRound(run: ShepherdRun, { route, outcome, headSha }: Routed): Escalated | undefined {
+  const kind = roundKind(route, outcome);
+  if (kind === "fix-first") return ++run.fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail: `the last at ${headSha}` } : undefined;
+  if (kind !== "stuck") return undefined;
+  run.failedRounds += 1;
+  if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[outcome] ?? outcome}` };
+}
 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
-  if (isFailedRound(route, routed.outcome) && ++run.failedRounds >= MAX_FAILED_ROUNDS) {
-    run.escalations.set(headSha, `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[routed.outcome] ?? routed.outcome}`);
+  const escalated = countRound(run, routed);
+  if (escalated) {
+    run.escalations.set(headSha, escalated);
     return true;
   }
   switch (route) {
@@ -241,6 +267,7 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
 
 /** A verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
+  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
   const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }) });
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
@@ -300,9 +327,9 @@ async function narrowToRegistration(run: ShepherdRun): Promise<void> {
 }
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
-async function landed(ctx: WorkflowContext, target: PrTarget, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
-  await step(ctx, "sh-landed", { ...target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
-  await shepherdMainCi(ctx, { ...target, mergeSha: merged.mergeSha }, after);
+async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
+  await step(ctx, "sh-landed", { ...run.target, headSha: merged.headSha, mergeSha: merged.mergeSha }, LandedResult);
+  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha }, after, run.policy.fixer);
   return merged;
 }
 
@@ -333,6 +360,10 @@ export interface ShepherdWiring {
   review?: ReviewWiring;
   /** Absent means `agent-chat agent park` through `deps.agentChatBin`. */
   park?: ParkPort;
+  /** Absent means registry.npmjs.org over `fetch`. */
+  registry?: PackageRegistry;
+  /** The freeze store and the task and fixer ports a red main uses; absent means a red main goes to the owner, unfrozen. */
+  mainRed?: MainRedWiring;
 }
 
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -344,7 +375,8 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
-    ...postMergeRoutes(deps),
+    ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
+    ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),
   ];
 }

@@ -1,5 +1,11 @@
 # @titan-design/agent-protocol
 
+## 0.4.0
+
+### Minor Changes
+
+- fe11f1b: `TRACE_STEP_KINDS` gains `authorize`, so an authorize step parses as a trace attempt.
+
 ## 0.3.0
 
 ### Minor Changes

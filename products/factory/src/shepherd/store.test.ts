@@ -1,11 +1,11 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type AuthorInput, type RegistrationInput } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -32,9 +32,20 @@ describe("shepherd registration store", () => {
     runMigrations(db, [shepherdMigration(4)]);
     db.prepare("INSERT INTO shepherd_registration (repo, pr, run_id, task, implementer, policy, kind, created_at, updated_at) VALUES ('octo/demo', 7, 'run-1', 'demo/1', 'impl-a', ?, 'unknown', 't', 't')").run(JSON.stringify(OWNER_GATE_POLICY));
 
-    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
 
     expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ pr: 7, slice: null });
+  });
+
+  it("adds the hold reviewer column to a database that already holds a hold", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    new ShepherdStore(db).register(base);
+    db.prepare("UPDATE shepherd_registration SET held = 1, hold_reason = 'owner review'").run();
+
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
+
+    expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ held: true, holdReason: "owner review", holdReviewer: null });
   });
 
   it("refuses a kind outside the known set instead of treating it as unknown", () => {
@@ -57,6 +68,29 @@ describe("shepherd registration store", () => {
     expect(() => store.register({ ...base, runId: "run-3" })).toThrow(/UNIQUE/);
     expect(() => store.register({ ...base, pr: undefined, branch: "feat/a", runId: "run-4" })).toThrow(/UNIQUE/);
     expect(() => store.register({ ...base, repo: "octo/other", runId: "run-5" })).not.toThrow();
+  });
+
+  it("a repeat registration with a looser policy keeps the stricter stored one", () => {
+    const store = openStore();
+    const stored: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "demo-seat" };
+    store.register({ ...base, policy: stored });
+
+    const updated = store.update("run-1", { ...base, policy: { ...stored, merge: "auto", fixer: true } });
+
+    expect(updated.policy).toEqual(stored);
+  });
+
+  it("a repeat registration with a stricter policy narrows the stored one", () => {
+    const store = openStore();
+    store.register({ ...base, policy: { merge: "auto", mergeMethod: "squash", fixer: true, seat: "demo-seat" } });
+
+    const updated = store.update("run-1", { ...base, policy: { merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" } });
+
+    expect(updated.policy).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" });
+  });
+
+  it("refuses an update to a run with no registration", () => {
+    expect(() => openStore().update("run-9", base)).toThrow(/has no registration/);
   });
 
   it("refuses a registration with neither a PR nor a branch", () => {
@@ -86,6 +120,17 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 8)).toBeUndefined();
   });
 
+  it("keeps a hold's reviewer only as given, and release clears it", () => {
+    const store = openStore();
+    store.register(base);
+
+    const named = store.hold("run-1", "awaiting sec-audit-review", "sec-audit-review");
+    const released = store.release("run-1");
+    const unnamed = store.hold("run-1", "awaiting sec-audit-review");
+
+    expect([named.holdReviewer, released.holdReviewer, unnamed.holdReviewer]).toEqual(["sec-audit-review", null, null]);
+  });
+
   it("holds any PR whose head branch has a held registration still waiting for its PR", () => {
     const store = openStore();
     store.register({ ...base, pr: undefined, branch: "feat/a" });
@@ -96,11 +141,37 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 12, "feat/b")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12)).toBeUndefined();
   });
+
+  it("holds a PR whose bare head branch matches a hold registered as refs/heads/<branch>", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "refs/heads/feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "feat/x")).toBe("owner review");
+  });
+
+  it("holds a PR whose head branch is given as refs/heads/<branch> against a hold registered with the bare name", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "refs/heads/feat/x")).toBe("owner review");
+  });
+
+  it("does not match a branch that only shares a prefix or suffix with the held one", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "refs/heads/feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "feat/xy")).toBeUndefined();
+    expect(store.heldReason("octo/demo", 12, "other/feat/x")).toBeUndefined();
+    expect(store.heldReason("octo/demo", 12, "refs/heads/other/feat/x")).toBeUndefined();
+  });
 });
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9)]);
   return new ShepherdStore(db, () => clock.now);
 }
 
@@ -200,7 +271,7 @@ describe("shepherd store ref", () => {
   it("refuses a second bind until the first is released", () => {
     const ref = shepherdStoreRef();
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
     const unbind = ref.bind(db);
 
     expect(() => ref.bind(db)).toThrow(/already bound/);

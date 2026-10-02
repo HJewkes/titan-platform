@@ -1,5 +1,5 @@
 import type { AuthorityRequest } from "@titan-design/authority";
-import type { GateResolver } from "@titan-design/hitl";
+import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { ZodType } from "zod";
 
 export type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
@@ -131,6 +131,8 @@ export interface WorkflowContext {
   assisted(stepId: string, prompt: string, options?: AssistedOptions): Promise<StepResult>;
   /** Ask the authority table: proceed on allow, wait on a rule-bound gate, throw `AuthorityDeniedError` on deny. */
   authorize(stepId: string, request: AuthorizeRequest, options?: AuthorizeOptions): Promise<AuthorizeResult>;
+  /** Cancels this run's own pending gates that `isStale` picks, so no one can answer a question the run has moved past; returns their ids. */
+  expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[];
   /** How many times `stepId` has completed so far; loop guards read this. */
   iteration(stepId: string): number;
   /** Aborts when the run is cancelled; pass it to anything long-running. */
@@ -204,7 +206,7 @@ export type WorkflowEvent =
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
   | { type: "step_failed"; runId: string; stepId: string; error: string }
-  | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string }
+  | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string; gateId?: string }
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }

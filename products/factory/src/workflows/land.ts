@@ -7,7 +7,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
-import { CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
 export const MAX_UPDATE_CYCLES = 3;
@@ -68,7 +68,7 @@ export interface FailingCheck {
 export type LandOutcome =
   | { kind: "merged"; headSha: string; mergeSha: string }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "abandoned" | "stuck-behind" | "merge-denied"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied"; headSha: string; detail: string };
 
 export interface LandDeps {
   port: GitHubPort;
@@ -101,6 +101,8 @@ interface UpdateResult {
   /** The new head is GitHub's merge of the expected head and the base, so it adds nothing a human has not seen. */
   own: boolean;
   skipped?: string;
+  /** GitHub refused the update because the base does not merge into the head; the head is unchanged. */
+  conflict?: boolean;
 }
 
 interface LandState {
@@ -147,6 +149,7 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   state.updatesSinceGate += 1;
+  if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   return undefined;
 }
@@ -339,7 +342,8 @@ interface UpdateInput {
 
 /** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
 async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
-  const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha);
+  const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
+  if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
   if (!write.done && write.skipped !== "head-moved") {
     const pr = await port.getPr(input.repo, input.pr);
     return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };

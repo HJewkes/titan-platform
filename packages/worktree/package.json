@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/worktree",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep",
   "type": "module",
   "main": "./dist/index.js",

@@ -4,14 +4,14 @@ import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
-import { describeWake } from "./wake-brief.js";
+import { FIX_FIRST_STEP, describeWake } from "./wake-brief.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -20,12 +20,13 @@ export const AWAIT_NEW_HEAD_STEP = "sh-await-new-head";
 export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: WAKE_STEP, kind: "dispatch" },
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
+  { id: FIX_FIRST_STEP, kind: "dispatch" },
 ];
 
 /** The agent-chat profile a successor starts under; the profile is its tool grant. */
 export const SUCCESSOR_PROFILE = "implementer";
 export const CLI_TIMEOUT_MS = 30_000;
-export { LOG_BUDGET_BYTES, LOG_TAIL_LINES, isRegistry, tailBytes } from "./wake-brief.js";
+export { FIX_FIRST_STEP, LOG_BUDGET_BYTES, LOG_TAIL_LINES, STRUCTURAL_FIX_FIRST, defectClassSection, isRegistry, tailBytes } from "./wake-brief.js";
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
@@ -37,7 +38,7 @@ const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(
 export interface ImplementerAgents {
   roster(): Promise<readonly AgentRow[]>;
   resume(name: string, message: string): Promise<void>;
-  /** Delivers `message` to a live agent as one chat message. */
+  /** Delivers `message` to a live agent as one chat message, sent as the human until CC-436 adds a `shepherd` wake source. */
   message(name: string, message: string): Promise<void>;
   /** `cwd` is a checkout of the PR's repo, which the successor's own worktree is cut from. */
   spawn(name: string, brief: string, cwd: string): Promise<void>;
@@ -83,6 +84,7 @@ const WakeInputSchema = z.object({
   headSha: z.string().min(1),
   payload: z.unknown(),
   runId: z.string().min(1),
+  fixFirst: z.number().int().positive().optional(),
 });
 
 type WakeInput = z.infer<typeof WakeInputSchema>;
@@ -321,6 +323,7 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
   awaitNewHeadRoute(deps, AWAIT_NEW_HEAD_STEP),
+  codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
 ];
 
 const Woke = z.discriminatedUnion("kind", [
@@ -328,9 +331,19 @@ const Woke = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string() }),
 ]);
 
+const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
+
+/** Counts a review wake across every head of the run, so the second FIX_FIRST is known however many heads came between. */
+async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promise<number | undefined> {
+  if (request.kind !== "review") return undefined;
+  const record = { repo: request.repo, pr: request.pr, headSha: request.headSha, fixFirst: ctx.iteration(FIX_FIRST_STEP) + 1 };
+  return (await step(ctx, FIX_FIRST_STEP, record, FixFirstRecord)).fixFirst;
+}
+
 /** Wakes an agent, then waits for the head to move; `woken` means a new head exists. A second wake in one round replays at the next index. */
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
-  const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId }, Woke);
+  const fixFirst = await countFixFirst(ctx, request);
+  const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
   if (woke.kind !== "woken") return { kind: "unhandled", reason: woke.reason };
   const target = { repo: request.repo, pr: request.pr, headSha: request.headSha };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);

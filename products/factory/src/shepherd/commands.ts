@@ -16,8 +16,10 @@ import {
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
+import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import type { MergeTrainRef } from "./train.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -28,6 +30,8 @@ export interface ShepherdServices {
   port: GitHubPort;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
   seats: () => SeatBook;
+  /** Absent means no row reports a run waiting for its repo's merge train. */
+  train?: MergeTrainRef;
 }
 
 export interface Registered {
@@ -89,15 +93,22 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
   }
 }
 
-/** The registration for `repo#pr`, else the one for its head branch; a branch already tied to another PR is refused. */
-function findRegistration(store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
+const FINISHED_RUNS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
+
+/**
+ * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
+ * PR's run is live; a finished run gives the branch up, as the changesets branch is reused by every release.
+ */
+function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
   const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
   if (byPr) return byPr;
   const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (byBranch && pr !== undefined && byBranch.pr !== null && byBranch.pr !== pr) {
-    throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
+  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
+  if (FINISHED_RUNS.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed")) {
+    store.releaseBranch(byBranch.runId);
+    return undefined;
   }
-  return byBranch;
+  throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -121,33 +132,57 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
   return { runId, created: false, registration: store.byRun(runId)! };
 }
 
-function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): string {
+/** `onStart` writes the registration in the transaction that inserts the run, so neither commits without the other. */
+function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy, onStart: (runId: string) => void): string {
   const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
-  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task });
+  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task }, { onStart });
 }
 
 /** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
 function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
   const previousRunId = known.runId;
-  const runId = startRun(ctx, args, known.branch ?? undefined, policy);
-  store.repoint(previousRunId, runId);
+  let runId: string;
+  try {
+    runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
+  } catch (error) {
+    const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
+    if (!winner) throw error;
+    return refresh(store, winner, args, policy);
+  }
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
 }
 
-/** No await between the last lookup and the start, so two registers in this process cannot both start a run. */
+/** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
+function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Registered {
+  let registration: Registration | undefined;
+  try {
+    const runId = startRun(ctx, args, branch, policy, (started) => {
+      registration = store.register({ ...args, branch, runId: started, policy });
+    });
+    return { runId, created: true, registration: registration! };
+  } catch (error) {
+    const winner = findRegistration(ctx, store, args.repo, args.pr, branch);
+    if (!winner) throw error;
+    return reuseOrRestart(ctx, store, winner, args, policy);
+  }
+}
+
 async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
   const policy = policyFor(services, args);
-  const known = findRegistration(services.store.get(), args.repo, args.pr, args.branch);
+  const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
   if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
   const branch = await headBranch(services, args);
   const store = services.store.get();
-  const existing = findRegistration(store, args.repo, args.pr, branch);
+  const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
-  const runId = startRun(ctx, args, branch, policy);
-  const registration = store.register({ ...args, branch, runId, policy });
-  return { runId, created: true, registration };
+  return startRegistered(ctx, store, args, branch, policy);
+}
+
+/** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
+export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
+  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, policy: { fixer: false } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
@@ -166,9 +201,10 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
   return run;
 }
 
-function rowOf(host: FactoryHost, registration: Registration, run: WorkflowRun): WatchRow {
+function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }) });
+  const train = services.train?.get().holder(registration.repo);
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
 }
 
 function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
@@ -177,7 +213,7 @@ function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, registration, run)] : [];
+      return run ? [rowOf(host, services, registration, run)] : [];
     });
 }
 
@@ -198,7 +234,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
   const services = servicesOf(ctx);
   const registration = await locate(services, repo, pr);
   const run = runOf(ctx.host, registration);
-  const row = rowOf(ctx.host, registration, run);
+  const row = rowOf(ctx.host, services, registration, run);
   const policy = stricterPolicy(registration.policy, runPolicy(run));
   const decision = shepherdGatePolicy(policy).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
   const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined);
@@ -243,27 +279,30 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
-    const registration = await locate(servicesOf(ctx), repo, pr);
+    const services = servicesOf(ctx);
+    const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
   },
 });
 
 interface HoldResult {
   runId: string;
-  held: { reason: string } | null;
+  held: { reason: string; reviewer?: string } | null;
 }
 
-const holdCommand = defineCommand<PrRefArgs & { reason: string }, HoldResult, FactoryContext>({
+const HoldArgs = PrRefArgs.extend({ reason: z.string().min(1), reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+
+const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
-  description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release",
-  args: PrRefArgs.extend({ reason: z.string().min(1) }),
+  description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release; --reviewer names the reviewer whose verdict the run waits for",
+  args: HoldArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, reason }, ctx) {
+  async run({ repo, pr, reason, reviewer }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason);
-    return { runId, held: { reason: held.holdReason ?? reason } };
+    const held = services.store.get().hold(runId, reason, reviewer);
+    return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
 

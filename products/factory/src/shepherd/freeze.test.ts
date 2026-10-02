@@ -96,7 +96,8 @@ describe("the frozen-merge guard", () => {
   it("lets only the fix task's PR through a freeze", async () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
+    r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.setFixer(A, 1, "impl");
     const fix = openPr(r, A, "demo/fix");
     const other = openPr(r, A, "demo/other");
 
@@ -249,7 +250,7 @@ describe("the freeze store", () => {
   it("counts a later red sha in a live freeze and starts a new episode after a thaw", () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
+    r.freezes.setFixTask(A, 1, "demo/fix");
 
     const second = r.freezes.freeze(A, fakeSha("red2"));
     r.freezes.unfreeze(A, GREEN);
@@ -268,11 +269,25 @@ describe("the freeze store", () => {
     });
   });
 
+  it("releases only the episode named, so an override for a thawed episode leaves a later one frozen", () => {
+    const r = rig();
+    const first = r.freezes.freeze(A, RED);
+    r.freezes.unfreeze(A, GREEN);
+    const second = r.freezes.freeze(A, fakeSha("red2"));
+
+    const stale = r.freezes.release(A, first.episode);
+    const current = r.freezes.release(A, second.episode);
+
+    expect(stale).toBe(false);
+    expect(current).toBe(true);
+    expect(r.freezes.isFrozen(A)).toBe(false);
+  });
+
   it("refuses to unfreeze at the red sha and reports the fix task and fixer", () => {
     const r = rig();
     r.freezes.freeze(A, RED);
-    r.freezes.setFixTask(A, "demo/fix");
-    r.freezes.setFixer(A, "fixer-1");
+    r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.setFixer(A, 1, "fixer-1");
 
     expect(r.freezes.unfreeze(A, RED)).toBe(false);
     expect(r.freezes.exemptTask(A)).toBe("demo/fix");
@@ -282,8 +297,17 @@ describe("the freeze store", () => {
     expect(r.freezes.exemptTask(A)).toBeUndefined();
   });
 
-  it("refuses to name a fix task for a repo that is not frozen", () => {
-    expect(() => rig().freezes.setFixTask(A, "demo/fix")).toThrow(/not frozen/);
+  it("refuses to name a fix task for a repo that is not frozen, or for an episode that has thawed", () => {
+    const r = rig();
+    const unfrozen = r.freezes.setFixTask(A, 1, "demo/fix");
+    r.freezes.freeze(A, RED);
+    r.freezes.unfreeze(A, GREEN);
+    r.freezes.freeze(A, fakeSha("red2"));
+
+    const stale = r.freezes.setFixer(A, 1, "old-fixer");
+
+    expect([unfrozen, stale]).toEqual([false, false]);
+    expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixTask: null, fixer: null });
   });
 });
 
@@ -321,8 +345,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8]);
+    expect(applied).toEqual([6, 8, 9, 10]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, isFailedRound, mergeableState, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
+import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
 
 const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external" };
 
@@ -51,15 +51,32 @@ describe("mergeableState", () => {
   });
 });
 
-describe("isFailedRound", () => {
+describe("roundKind", () => {
   it.each([
-    ["fresh-reviewer", "timeout", true],
-    ["await-external", "external-hold", true],
-    ["wake-fixer", "FIX_FIRST", true],
-    ["wake-fixer", "MERGE", false],
-    ["update-branch", "MERGE", false],
-    ["merge", "MERGE", false],
-  ] as const)("counts route %s on outcome %s as failed: %s", (route, outcome, failed) => {
-    expect(isFailedRound(route, outcome)).toBe(failed);
+    ["fresh-reviewer", "timeout", "stuck"],
+    ["fresh-reviewer", "no-verdict", "stuck"],
+    ["await-external", "external-hold", "stuck"],
+    ["wake-fixer", "MERGE", "stuck"],
+    ["wake-fixer", "FIX_FIRST", "fix-first"],
+    ["update-branch", "MERGE", "progress"],
+    ["new-cycle", "head-moved", "progress"],
+    ["merge", "MERGE", "progress"],
+  ] as const)("reads route %s on outcome %s as a %s round", (route, outcome, kind) => {
+    expect(roundKind(route, outcome)).toBe(kind);
+  });
+});
+
+describe("MAIN_CI_ROUTES", () => {
+  it.each([
+    ["green", "done"],
+    ["red", "main-red"],
+    ["cancelled", "main-red"],
+    ["cancelled-superseded", "read-newer-run"],
+  ] as const)("routes a %s main CI read to %s", (read, route) => {
+    expect(MAIN_CI_ROUTES[read]).toBe(route);
+  });
+
+  it("routes every read it names", () => {
+    expect(Object.keys(MAIN_CI_ROUTES).sort()).toEqual([...MAIN_CI_READS].sort());
   });
 });

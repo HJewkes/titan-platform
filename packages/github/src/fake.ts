@@ -10,6 +10,7 @@ export interface FakeEffects {
   putContent: number;
   createPr: number;
   updateBranch: number;
+  updateRef: number;
   merge: number;
   rerunFailedJobs: number;
 }
@@ -29,6 +30,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
+  updateBranchConflict?: boolean;
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   commits: Map<string, Commit>;
@@ -72,7 +75,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const repo = options.repo ?? "o/r";
   let counter = 0;
   const nextSha = (tag: string): string => fakeSha(`${tag}${++counter}`);
-  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, merge: 0, rerunFailedJobs: 0 };
+  const effects: FakeEffects = { createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 0, rerunFailedJobs: 0 };
   const prs = new Map<number, PullRequest>();
   const runs = new Map<string, CheckRun[]>();
   const runStatus = new Map<number, string>();
@@ -111,6 +114,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       effects.createRef += 1;
       fake.refs.set(branch, sha);
     },
+    createCommit: async (_repo, request) => {
+      const sha = nextSha("commit");
+      fake.commits.set(sha, { sha, parents: [...request.parents], tree: request.tree });
+      return record("createCommit", { sha });
+    },
+    updateRef: async (_repo, branch, sha) => record("updateRef", updateRef(fake, prs, branch, sha)),
     deleteRef: async (_repo, branch) => {
       record("deleteRef", undefined);
       if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
@@ -134,7 +143,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
-    getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [] }),
+    getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
       const log = fake.jobLogs.get(jobId);
@@ -195,9 +204,19 @@ function createPr(fake: FakeGitHub, request: OpenPrRequest): PullRequest {
   return fake.addPr({ headRef: request.head, baseRef: request.base, headSha });
 }
 
+/** Like GitHub without force: refused unless the new commit's parent is the branch's tip; an open PR on the branch moves with it. */
+function updateRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: string, sha: string): void {
+  const tip = fake.refs.get(branch);
+  if (tip === undefined || !(fake.commits.get(sha)?.parents ?? []).includes(tip)) throw new FakeHttpError(422, "Update is not a fast forward");
+  fake.effects.updateRef += 1;
+  fake.refs.set(branch, sha);
+  for (const pr of prs.values()) if (pr.state === "open" && pr.headRef === branch) pr.headSha = sha;
+}
+
 /** Like GitHub: refused unless the head is the expected one; the new head is a merge of head and base. */
 function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextSha: (tag: string) => string): void {
   if (pr.headSha !== expected) throw new FakeHttpError(422, "expected head sha did not match");
+  if (fake.updateBranchConflict) throw new FakeHttpError(422, "merge conflict between base and head");
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
   fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });

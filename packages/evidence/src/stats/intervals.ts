@@ -29,7 +29,10 @@ export function wilson(successes: number, trials: number, options: { confidence?
   const z2n = (z * z) / trials;
   const centre = (rate + z2n / 2) / (1 + z2n);
   const half = (z / (1 + z2n)) * Math.sqrt((rate * (1 - rate)) / trials + z2n / (4 * trials));
-  return { estimate: rate, lower: clamp01(centre - half), upper: clamp01(centre + half) };
+  // Rounding leaves 1e-17 off the exact endpoints, which are known: no successes gives 0, all successes gives 1.
+  const lower = successes === 0 ? 0 : clamp01(centre - half);
+  const upper = successes === trials ? 1 : clamp01(centre + half);
+  return { estimate: rate, lower, upper };
 }
 
 /**

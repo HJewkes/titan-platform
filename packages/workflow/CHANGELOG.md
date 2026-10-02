@@ -1,5 +1,20 @@
 # @titan-design/workflow
 
+## 0.7.0
+
+### Minor Changes
+
+- 3eca440: Shepherd treats an `update-branch` HTTP 422 "merge conflict between base and head" as a conflict instead of failing the run: it wakes the fixer, and opens `approve-merge` only if the conflict survives one wake. A run that reads a new head cancels its own pending `approve-merge` and `sh-sent-back` gates for an older head. `WorkflowContext` gains `expireGates(reason, isStale)`, and the fake GitHub gains `updateBranchConflict`.
+
+## 0.6.1
+
+### Patch Changes
+
+- fe11f1b: Each `ctx.authorize` result carries `titan.trace.gates` with one F3 policy gate-decision record per decision, and `TRACE_GATES_KEY` is exported. `policyRule.version` is the table version's semver major; a rule-less deny records row id `no-rule`.
+- Updated dependencies [fe11f1b]
+  - @titan-design/agent-protocol@0.4.0
+  - @titan-design/agent@0.4.4
+
 ## 0.6.0
 
 ### Minor Changes
