@@ -65,6 +65,30 @@ describe("gateUnits", () => {
   });
 });
 
+describe("gateUnits with repeated ids", () => {
+  const [current] = priorFor([PARSE_UNIT]);
+  const stale: UnitProvenance = { ...current!, symbolSetHash: "stale" };
+
+  it("lets the last prior record for an id win, so a stale one before a current one skips", () => {
+    const result = gateUnits({ prior: [stale, current!], units: [PARSE_UNIT], footprints: footprints() });
+
+    expect(result).toEqual({ regenerate: [], skip: [PARSE_UNIT.unitId], orphaned: [] });
+  });
+
+  it("lets the last prior record for an id win, so a stale one after a current one regenerates", () => {
+    const result = gateUnits({ prior: [current!, stale], units: [PARSE_UNIT], footprints: footprints() });
+
+    expect(result.regenerate).toEqual([{ unitId: PARSE_UNIT.unitId, reason: "changed" }]);
+    expect(result.skip).toEqual([]);
+  });
+
+  it("gates each occurrence of a duplicated unit id on its own", () => {
+    const result = gateUnits({ prior: [current!], units: [PARSE_UNIT, PARSE_UNIT], footprints: footprints() });
+
+    expect(result).toEqual({ regenerate: [], skip: [PARSE_UNIT.unitId, PARSE_UNIT.unitId], orphaned: [] });
+  });
+});
+
 describe("unitProvenance", () => {
   it("emits the to-snapshot commit hash and the unit's symbol-set hash", () => {
     const record = unitProvenance({ unit: RENDER_UNIT, footprints: footprints(), snapshot: { commitHash: "c0ffee" } });
@@ -73,6 +97,10 @@ describe("unitProvenance", () => {
     expect(record.model).toBeNull();
     expect(record.unitId).toBe(RENDER_UNIT.unitId);
     expect(record.symbolSetHash).toBe(priorFor([RENDER_UNIT])[0]!.symbolSetHash);
+  });
+
+  it("records the model it is given", () => {
+    expect(priorFor([RENDER_UNIT])[0]!.model).toBe("m");
   });
 
   it("emits a null commit for a working-tree snapshot", () => {

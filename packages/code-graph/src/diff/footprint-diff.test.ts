@@ -140,4 +140,32 @@ describe("diffFootprints", () => {
     expect(result.changes.map((c) => [c.symbolId, c.reasons])).toEqual([[PARSE, ["consumers"]]]);
     expect(result.files).toEqual(["src/parse.ts"]);
   });
+
+  it("reports coupling alone when a co-import partner appears but consumers stay the same", () => {
+    const from = snapshot(baseNodes(), baseEdges());
+    const to = snapshot(baseNodes(), [...baseEdges(), ref("src/a.ts", RENDER), ref("src/b.ts", RENDER)]);
+
+    const result = diff(from, to);
+
+    expect(result.changes).toEqual([
+      { symbolId: FORMAT, status: "changed", reasons: ["coupling"], fileId: "src/parse.ts" },
+      { symbolId: PARSE, status: "changed", reasons: ["coupling"], fileId: "src/parse.ts" },
+      { symbolId: RENDER, status: "changed", reasons: ["consumers", "coupling"], fileId: "src/render.ts" },
+    ]);
+  });
+
+  it("keeps one of two same-named symbols when two files merge into one", () => {
+    const from = snapshot([fileNode("src/a.ts"), fileNode("src/b.ts"), symbol("src/a.ts#run"), symbol("src/b.ts#run")], []);
+    const to = snapshot([fileNode("src/c.ts"), symbol("src/c.ts#run")], [], [
+      { oldId: "src/a.ts", newId: "src/c.ts", reason: "merge" },
+      { oldId: "src/b.ts", newId: "src/c.ts", reason: "merge" },
+    ]);
+
+    const result = diff(from, to);
+
+    // Pins a known gap: a.ts#run collides with b.ts#run after remapping and is not reported as removed.
+    expect(result.changes).toEqual([
+      { symbolId: "src/c.ts#run", previousId: "src/b.ts#run", status: "changed", reasons: ["renamed"], fileId: "src/c.ts" },
+    ]);
+  });
 });
