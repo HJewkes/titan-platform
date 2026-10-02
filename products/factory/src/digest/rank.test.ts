@@ -28,6 +28,13 @@ describe("rankDigest", () => {
     expect(rankDigest(emptyModel({ needsYou: [gate, queued] })).needsYou).toEqual([gate]);
   });
 
+  it("keeps an ask that names a PR no earlier ask covered, even when it also names one that was", () => {
+    const gate = { text: "gate", source: "factory", keys: ["pr:widgets#1"] };
+    const both = queueAsk("seat-a", "widgets#1 and widgets#2 both need a rebase");
+
+    expect(rankDigest(emptyModel({ needsYou: [gate, both] })).needsYou).toEqual([gate, both]);
+  });
+
   it("puts the newest merge and the oldest stuck item first and counts what the caps hid", () => {
     const merged = Array.from({ length: 7 }, (_, i) => ({ ref: `acme/widgets#${i + 1}`, title: "t", at: `2026-03-10T1${i}:00:00Z` }));
     const stuck = [
