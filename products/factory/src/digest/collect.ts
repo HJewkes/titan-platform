@@ -1,0 +1,93 @@
+import type { WatchRow } from "../shepherd/view.js";
+import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
+import type { AgentChatDigest, Ask, DigestModel, DigestSlot, Merged, SeatLine, Stuck } from "./model.js";
+
+export interface GateFact {
+  runId: string;
+  stepId: string;
+  prompt: string;
+  resolve: string;
+}
+
+/** Where a digest's facts come from; tests pass fakes, the CLI passes the factory host and the agent-chat CLI. */
+export interface DigestSources {
+  rows(): Promise<WatchRow[]>;
+  gates(): Promise<GateFact[]>;
+  /** Throws when agent-chat is missing, slow, or too old to print JSON. */
+  agentChat(windowMinutes: number): Promise<AgentChatDigest>;
+  queueAsks(): Ask[];
+  seatCosts(since: Date): SeatLine[];
+}
+
+export interface CollectOptions {
+  sources: DigestSources;
+  now: Date;
+  windowMinutes: number;
+  slot: DigestSlot;
+}
+
+const FINISHED = new Set(["done", "cancelled", "failed"]);
+const refOf = (row: WatchRow): string => (row.pr === null ? `${row.repo}@${row.branch}` : `${row.repo}#${row.pr}`);
+
+/** A source that fails becomes a gap line; the other sections still render. */
+async function guarded<T>(gaps: string[], name: string, fallback: T, read: () => Promise<T> | T): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    gaps.push(`${name}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+    return fallback;
+  }
+}
+
+export async function collectDigest({ sources, now, windowMinutes, slot }: CollectOptions): Promise<DigestModel> {
+  const gaps: string[] = [];
+  const since = new Date(now.getTime() - windowMinutes * 60_000);
+  const rows = await guarded(gaps, "shepherd", [], () => sources.rows());
+  const gates = await guarded(gaps, "factory gates", [], () => sources.gates());
+  const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
+  const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
+  const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
+  return {
+    slot,
+    generatedAt: now.toISOString(),
+    since: since.toISOString(),
+    needsYou: [...gateAsks(gates, rows), ...queue, ...(chat ? chatAsks(chat) : [])],
+    merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
+    stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
+    seats,
+    spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
+    gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
+  };
+}
+
+function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[]): Ask[] {
+  return gates.map((gate) => {
+    const row = rows.find((r) => r.runId === gate.runId);
+    const keys = [runKey(gate.runId), ...(row?.pr != null ? [prKey(row.repo, row.pr)] : [])];
+    return { text: `${row ? refOf(row) : gate.runId.slice(0, 8)} ${gate.stepId}: ${gate.prompt}`, command: gate.resolve, source: "factory", keys };
+  });
+}
+
+function chatAsks(chat: AgentChatDigest): Ask[] {
+  const named = (label: string, items: AgentChatDigest["readyToMerge"]): Ask[] =>
+    items.map((item) => ({ text: `${label} ${refOfUrl(item.label)} ${item.detail}`.trim(), source: "agent-chat", keys: keysIn(item.label) }));
+  const escalations = chat.ledger.escalations.map((e) => ({ text: `${e.from}: ${e.text}`, source: "agent-chat", keys: keysIn(e.text) }));
+  return [...escalations, ...named("ready to merge:", chat.readyToMerge), ...named("needs a grant:", chat.needsGrant)];
+}
+
+function shepherdMerged(rows: readonly WatchRow[], since: Date): Merged[] {
+  return rows.filter((row) => row.phase === "done" && Date.parse(row.phaseSince) >= since.getTime()).map((row) => ({ ref: refOf(row), title: row.task, at: row.phaseSince }));
+}
+
+/** Held or stalled live runs, plus runs that failed inside the window; older failures are history, not news. */
+function shepherdStuck(rows: readonly WatchRow[], since: Date): Stuck[] {
+  return rows
+    .filter((row) => (row.held || row.stalled) && (!FINISHED.has(row.phase) || (row.phase === "failed" && Date.parse(row.phaseSince) >= since.getTime())))
+    .map((row) => ({ ref: refOf(row), reason: row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`, since: row.phaseSince }));
+}
+
+function chatStuck(chat: AgentChatDigest): Stuck[] {
+  const claims = chat.stalled.map((c) => ({ ref: c.taskId, reason: `${c.agentId} stalled in ${c.phase}`, since: c.phaseAt }));
+  const reports = chat.ledger.reports.map((r) => ({ ref: r.from, reason: r.line, since: new Date(r.at).toISOString() }));
+  return [...claims, ...reports];
+}

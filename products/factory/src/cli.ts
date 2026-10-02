@@ -6,6 +6,7 @@ import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
 import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
+import { parseSince, runDigestVerb, type DigestFlags, type FactoryCall } from "./digest/command.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -69,7 +70,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, registerDigest, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -192,6 +193,35 @@ function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>,
   }
   io.stdout(json ? `${JSON.stringify(envelope.data, null, 2)}\n` : formatShepherd(name, envelope.data));
   return EXIT.OK;
+}
+
+/** Reads Shepherd and the gates from titan-factory serve when one answers, else from the database here. */
+function registerDigest(program: Command, verbs: Verbs): void {
+  program
+    .command("digest")
+    .description("the owner digest across every coordinator seat")
+    .command("run")
+    .description("collect and render the digest for the current slot, then write <date>-<HH>.md to the digest and iCloud dirs")
+    .option("--since <window>", "window like 90m, 6h or 2d; default runs back to the previous slot", parseSinceFlag)
+    .option("--dry-run", "print the markdown and write nothing")
+    .option("--full", "show every ask, merged and stuck item instead of the top few")
+    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+    .action(async (opts: { since?: number; dryRun?: boolean; full?: boolean; port: number }) => {
+      const flags: DigestFlags = { sinceMinutes: opts.since, dryRun: opts.dryRun, full: opts.full };
+      if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => postRpc(opts.port, name, args), flags));
+      await verbs.withHost((host, routes) => {
+        const call: FactoryCall = async (name, args) => (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
+        return runDigestVerb(verbs.io, call, flags);
+      });
+    });
+}
+
+function parseSinceFlag(value: string): number {
+  try {
+    return parseSince(value);
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
 }
 
 interface PlistFlags {
