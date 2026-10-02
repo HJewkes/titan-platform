@@ -80,6 +80,8 @@ export class RunContext implements WorkflowContext {
   private readonly inFlight = new Set<Promise<unknown>>();
   /** A run with a result from before 0.5 keeps that release's keys: seeds apart from the call count, and no operation check. */
   private readonly legacyKeys: boolean;
+  /** The step a resumed run was paused on; its next gate call must find the row it opened. */
+  private resumedGateStep: string | null;
 
   constructor(
     readonly run: WorkflowRun,
@@ -90,6 +92,7 @@ export class RunContext implements WorkflowContext {
     this.workflowName = run.workflowName;
     this.signal = controller.signal;
     this.legacyKeys = Object.values(run.stepResults).some((result) => result.operation === undefined);
+    this.resumedGateStep = run.status === "paused" || run.status === "recovery_required" ? run.currentStep : null;
   }
 
   param(key: string): string | undefined {
@@ -180,8 +183,9 @@ export class RunContext implements WorkflowContext {
     const { index: iteration, key, cached } = this.recall("assisted", stepId);
     if (cached) return this.bump(stepId, cached);
     const gateId = assistedGateId(this.run, stepId, iteration, (id) => gateIsPending(this.deps.gates, id));
-    this.setCurrent(stepId, "paused");
+    this.requireResumedGate(stepId, gateId);
     this.openGateOnce(gateId, prompt, options, stepId);
+    this.setCurrent(stepId, "paused");
     const payload = (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
     const signal = typeof payload?.signal === "string" ? payload.signal : null;
     const result: StepResult = { stepId, iteration, operation: "assisted", agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
@@ -194,6 +198,19 @@ export class RunContext implements WorkflowContext {
   /** A no-op while the call just made was answered from the record: replay re-runs old callbacks, and a side effect there would hit gates the run still waits on. */
   expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
     return this.replaying ? [] : cancelOwnPending(this.deps.gates, this.runId, reason, isStale);
+  }
+
+  /** A paused run already opened this gate, so a missing row is lost history: reopening it would ask the step again. */
+  private requireResumedGate(stepId: string, gateId: string): void {
+    if (this.resumedGateStep !== stepId) return;
+    this.resumedGateStep = null;
+    if (this.deps.gates.get(gateId)) return;
+    const evidence = `gate ${gateId} is missing, but the run was paused on it`;
+    this.run.status = "recovery_required";
+    this.run.error = evidence;
+    this.persist();
+    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId, evidence, gateId });
+    throw new WorkflowRecoveryRequiredError(this.runId, stepId, evidence);
   }
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
@@ -209,8 +226,10 @@ export class RunContext implements WorkflowContext {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
     if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
+    const gateId = gateIdFor(this.runId, key);
+    this.requireResumedGate(stepId, gateId);
     const gate: AuthorityGate = {
-      id: gateIdFor(this.runId, key),
+      id: gateId,
       store: this.deps.gates,
       wait: { pollMs: this.deps.gatePollMs, signal: this.signal },
       opened: (gateId, prompt) => this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt }),
