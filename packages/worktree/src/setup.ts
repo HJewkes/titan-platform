@@ -77,6 +77,14 @@ const PINNED_NPM_CONFIG: Readonly<Record<string, string>> = {
   shell: "/bin/sh",
   // pnpm loads a branch .pnpmfile.cjs (arbitrary code) even with ignore-scripts on.
   ignore_pnpmfile: "true",
+  // pnpm otherwise downloads and runs the branch package.json's packageManager version.
+  manage_package_manager_versions: "false",
+};
+
+/** A corepack shim reads a branch .corepack.env for any COREPACK_ key the env leaves unset. */
+const PINNED_COREPACK: Readonly<Record<string, string>> = {
+  COREPACK_ENV_FILE: "0",
+  COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: "0",
 };
 
 /** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
@@ -98,7 +106,7 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return out;
+  return { ...out, ...PINNED_COREPACK };
 }
 
 const isCommand = (value: unknown): value is string[] =>

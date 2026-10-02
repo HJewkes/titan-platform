@@ -1,5 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -670,6 +673,219 @@ describe("npm config during worktree setup", () => {
       NPM_CONFIG_SHELL: "/bin/sh",
     });
   });
+
+  it("keeps package manager switching off even when the host environment turns it on", () => {
+    const env = setupEnv({
+      PATH: "/bin",
+      npm_config_manage_package_manager_versions: "true",
+      NPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS: "true",
+      COREPACK_ENV_FILE: ".corepack.env",
+      COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: "1",
+    });
+    expect(env).toMatchObject({
+      npm_config_manage_package_manager_versions: "false",
+      NPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS: "false",
+      COREPACK_ENV_FILE: "0",
+      COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: "0",
+    });
+  });
+});
+
+/** A pnpm version no real registry has, so only the fake one can serve it. */
+const BRANCH_PNPM = "10.99.0";
+const PNPM_BINS = { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" };
+
+interface FakeRegistry {
+  url: string;
+  requests: string[];
+  tarballUrl: (version: string) => string;
+  close: () => Promise<void>;
+}
+
+/** A tarball of a "pnpm" package whose bins run `main`. */
+function pnpmTarball(version: string, main: string): Buffer {
+  const dir = tmpdir("wt-pkg-");
+  const pkg = path.join(dir, "package");
+  fs.mkdirSync(path.join(pkg, "bin"), { recursive: true });
+  for (const bin of Object.values(PNPM_BINS))
+    fs.writeFileSync(path.join(pkg, bin), `#!/usr/bin/env node\n${main}`, {
+      mode: 0o755,
+    });
+  fs.writeFileSync(
+    path.join(pkg, "package.json"),
+    JSON.stringify({ name: "pnpm", version, bin: PNPM_BINS })
+  );
+  execFileSync("tar", ["-czf", "pkg.tgz", "package"], { cwd: dir });
+  return fs.readFileSync(path.join(dir, "pkg.tgz"));
+}
+
+const packument = (registry: FakeRegistry, tarballs: Map<string, Buffer>) => ({
+  name: "pnpm",
+  "dist-tags": { latest: BRANCH_PNPM },
+  versions: Object.fromEntries(
+    [...tarballs].map(([version, tarball]) => [
+      version,
+      {
+        name: "pnpm",
+        version,
+        bin: PNPM_BINS,
+        dist: {
+          tarball: registry.tarballUrl(version),
+          integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
+        },
+      },
+    ])
+  ),
+});
+
+/** An in-process npm registry on localhost serving only the given pnpm versions. */
+async function servePnpm(
+  versions: Record<string, string>
+): Promise<FakeRegistry> {
+  const tarballs = new Map(
+    Object.entries(versions).map(([v, main]) => [v, pnpmTarball(v, main)])
+  );
+  const server = http.createServer((req, res) => {
+    registry.requests.push(req.url ?? "");
+    const version = /^\/pnpm\/-\/pnpm-(.+)\.tgz$/.exec(req.url ?? "")?.[1];
+    if (req.url === "/pnpm") res.end(JSON.stringify(packument(registry, tarballs)));
+    else if (version !== undefined && tarballs.has(version)) res.end(tarballs.get(version));
+    else res.writeHead(404).end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const registry: FakeRegistry = {
+    url,
+    requests: [],
+    tarballUrl: (version) => `${url}/pnpm/-/pnpm-${version}.tgz`,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
+  return registry;
+}
+
+const writesMarkerFile = (markers: string): string =>
+  `require('fs').writeFileSync(${JSON.stringify(path.join(markers, "pnpm-ran"))}, '')\n`;
+
+/** The real pnpm 10.28.1 entry point, from npx's cache (the registry is needed once to fill it). */
+const realPnpmEntry = (): string =>
+  fs.realpathSync(
+    execFileSync("npx", ["--yes", "--prefer-offline", "-p", "pnpm@10.28.1", "sh", "-c", "command -v pnpm"], {
+      cwd: os.tmpdir(),
+      encoding: "utf8",
+      stdio: "pipe",
+    }).trim()
+  );
+
+/** A corepack pnpm shim, as `corepack enable` installs one onto PATH. */
+function corepackPnpmShim(): string {
+  const dir = tmpdir("wt-corepack-");
+  execFileSync(
+    "npx",
+    ["--yes", "--prefer-offline", "-p", "corepack@0.34.7", "corepack", "enable", "--install-directory", dir, "pnpm"],
+    { cwd: os.tmpdir(), stdio: "pipe" }
+  );
+  return path.join(dir, "pnpm");
+}
+
+const assignEnv = (values: Record<string, string | undefined>): void => {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+};
+
+/** Runs `run` with throwaway npm, pnpm and corepack homes and no host registry, so nothing lands in the real caches. */
+async function withThrowawayToolHomes<T>(run: () => Promise<T>): Promise<T> {
+  const home = tmpdir("wt-tools-");
+  const overrides: Record<string, string | undefined> = {
+    npm_config_cache: path.join(home, "npm"),
+    PNPM_HOME: path.join(home, "pnpm"),
+    XDG_DATA_HOME: path.join(home, "data"),
+    XDG_CACHE_HOME: path.join(home, "cache"),
+    XDG_CONFIG_HOME: path.join(home, "config"),
+    COREPACK_HOME: path.join(home, "corepack"),
+    npm_config_registry: undefined,
+    NPM_CONFIG_REGISTRY: undefined,
+    COREPACK_NPM_REGISTRY: undefined,
+    // A pnpm that switched to this repo's pinned version exports this to the test run.
+    npm_config_manage_package_manager_versions: undefined,
+    NPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS: undefined,
+  };
+  const saved = Object.fromEntries(
+    Object.keys(overrides).map((key) => [key, process.env[key]])
+  );
+  assignEnv(overrides);
+  try {
+    return await run();
+  } finally {
+    assignEnv(saved);
+  }
+}
+
+describe("packageManager during worktree setup", () => {
+  it.each([
+    ["leaves switching at its default", ""],
+    ["turns switching on", "manage-package-manager-versions=true\n"],
+  ])(
+    "a reused branch naming a pnpm on its own registry, whose .npmrc %s, does not run that pnpm",
+    async (_case, npmrcExtra) => {
+      const markers = tmpdir("wt-markers-");
+      const registry = await servePnpm({
+        "10.28.1": `require(${JSON.stringify(realPnpmEntry())})\n`,
+        [BRANCH_PNPM]: writesMarkerFile(markers),
+      });
+      try {
+        const repo = makeRepo({ command: PNPM_INSTALL });
+        branchWithFiles(repo, "agent-chat/alice", {
+          "package.json": JSON.stringify({
+            name: "pin-synthetic",
+            version: "1.0.0",
+            packageManager: `pnpm@${BRANCH_PNPM}`,
+          }),
+          ".npmrc": `registry=${registry.url}/\n${npmrcExtra}`,
+        });
+
+        const alloc = await withThrowawayToolHomes(() =>
+          createWorktreeAllocator().allocate(ctxFor(repo))
+        );
+
+        expect(alloc.ref?.reused).toBe("true");
+        expect(registry.requests).toContain("/pnpm");
+        expect(markersIn(markers)).toEqual([]);
+      } finally {
+        await registry.close();
+      }
+    },
+    120_000
+  );
+
+  it("a reused branch whose .corepack.env allows a URL packageManager does not run it through a corepack shim", async () => {
+    const markers = tmpdir("wt-markers-");
+    const registry = await servePnpm({
+      [BRANCH_PNPM]: writesMarkerFile(markers),
+    });
+    try {
+      const repo = makeRepo({ command: [corepackPnpmShim(), "install"] });
+      branchWithFiles(repo, "agent-chat/alice", {
+        "package.json": JSON.stringify({
+          name: "pin-synthetic",
+          version: "1.0.0",
+          packageManager: `pnpm@${registry.tarballUrl(BRANCH_PNPM)}`,
+        }),
+        ".corepack.env": "COREPACK_ENABLE_UNSAFE_CUSTOM_URLS=1\n",
+      });
+
+      const alloc = await withThrowawayToolHomes(() =>
+        createWorktreeAllocator().allocate(ctxFor(repo))
+      );
+
+      expect(alloc.ref?.reused).toBe("true");
+      expect(registry.requests).toEqual([]);
+      expect(markersIn(markers)).toEqual([]);
+    } finally {
+      await registry.close();
+    }
+  }, 120_000);
 });
 
 const writesMarker = (name: string): string =>
