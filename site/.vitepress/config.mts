@@ -43,6 +43,7 @@ export default withMermaid(
             { text: "Case study: the session miner", link: "/guides/session-miner" },
             { text: "Case study: adopting registry and daemon", link: "/guides/adopting-a-package" },
             { text: "Working in the repo", link: "/guides/contributing" },
+            { text: "Set up the autonomous loop", link: "/guides/autonomous-loop-setup" },
           ],
         },
         {

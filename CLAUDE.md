@@ -83,8 +83,9 @@ Zero lint warnings in files you touched.
 ## Releasing
 
 Merging to main lets the Release workflow open or refresh the "Version Packages" PR.
-Merging that PR publishes via npm trusted publishing. Never add a token secret to
-`release.yml`.
+Merging that PR publishes via npm trusted publishing. Never add an npm token secret to
+`release.yml`. The only secret it may use is the GitHub App key, which pushes the release
+branch and opens the PR so CI runs on it.
 
 A brand-new package cannot use that path yet: npm only accepts a trusted publisher for a
 package that already exists, and it has no pending-publisher feature that would let one be
@@ -99,7 +100,7 @@ hand, from the owner's own terminal:
 3. Add the trusted publisher on the new package's npmjs.com settings page: GitHub Actions,
    user HJewkes, repository titan-platform, workflow `release.yml`, no environment, "Allow
    npm publish" checked.
-4. From then on `release.yml` publishes the package. No token is created at any point.
+4. From then on `release.yml` publishes the package. No npm token is created at any point.
 
 Ordering trap: hold the "Version Packages" pull request until every new package it depends
 on already exists on npm.
