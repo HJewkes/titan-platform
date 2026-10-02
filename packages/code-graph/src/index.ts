@@ -189,6 +189,15 @@ export type {
   SymbolFootprint,
 } from "./diff/footprint.js";
 export { computeFootprints, symbolSetHash } from "./diff/footprint.js";
+export type {
+  GateResult,
+  GateUnitsInput,
+  RegenerateReason,
+  UnitProvenance,
+  UnitProvenanceInput,
+  UnitRegeneration,
+} from "./diff/gate.js";
+export { gateUnits, unitProvenance } from "./diff/gate.js";
 
 export type {
   EmbedAttempt,
