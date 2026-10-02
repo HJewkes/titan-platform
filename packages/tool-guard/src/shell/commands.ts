@@ -170,14 +170,18 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const cmd = { ...raw, args: xargsArgs(raw, w.stdin) };
+  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
+  for (const args of xargsRuns(raw, stdin)) runOnce({ ...raw, args }, redirects, w, next, stdin);
+}
+
+function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, w.stdin);
+  const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
   for (const words of findExecs(cmd.args)) {
@@ -186,15 +190,46 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   }
 }
 
-/** The arguments `xargs` passes: the piped text in place of its replace string, else the piped words appended. */
-function xargsArgs(cmd: Unwrapped, stdin: string | null): WordToken[] {
-  if (!cmd.xargs || stdin === null) return cmd.args;
+/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
+function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
+  const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
+  return feeds ? stdinScript(redirects) : piped;
+}
+
+/** The argument lists `xargs` runs the command with: one per input line under a replace string, else one with the piped words appended. */
+function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
+  if (!cmd.xargs || stdin === null) return [cmd.args];
   const { replace } = cmd.xargs;
-  const text = stdin.replace(/\n+$/, "");
-  if (replace !== null) return cmd.args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, text) } : a));
+  const shell = cmd.name !== null && SHELLS.has(cmd.name);
+  if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
-  if (cmd.name !== null && SHELLS.has(cmd.name)) return cmd.args;
-  return [...cmd.args, ...text.split(/\s+/).filter(Boolean).map(literalWord)];
+  if (shell) return [cmd.args];
+  return [[...cmd.args, ...stdin.split(/\s+/).filter(Boolean).map(literalWord)]];
+}
+
+/**
+ * Non-empty input records. A line ends at a newline or NUL; each `-d` separator also splits it, and an
+ * unreadable `-d` splits on every punctuation character in turn. Extra splits only add commands to classify.
+ */
+function inputRecords(stdin: string, delimiters: string[] | null): string[] {
+  const separators = delimiters ?? [...new Set(stdin.match(/[^\sA-Za-z0-9_]/g) ?? [])];
+  const splits = [["\n", "\0"], ...separators.map((d) => [d])].map((seps) => splitOn(stdin, [...seps, "\n", "\0"]));
+  const records = [...new Set(splits.flat())];
+  return records.length > 0 ? records : [""];
+}
+
+function splitOn(text: string, separators: string[]): string[] {
+  const escaped = separators.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.split(new RegExp(`\r?(?:${escaped.join("|")})`)).filter((r) => r.trim() !== "");
+}
+
+/** The exact reading of a line (one word), plus a split reading when a bare replace string could hold several words. */
+function lineRuns(args: WordToken[], replace: string, line: string, split: boolean): WordToken[][] {
+  const exact = args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, line) } : a));
+  const words = line.split(/\s+/).filter(Boolean);
+  if (!split || words.length < 2 || !args.some((a) => a.value === replace)) return [exact];
+  const spread = args.flatMap((a, i) => (a.value === replace ? words.map(literalWord) : [exact[i] as WordToken]));
+  return [exact, spread];
 }
 
 function literalWord(value: string): WordToken {

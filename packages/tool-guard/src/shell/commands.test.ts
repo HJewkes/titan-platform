@@ -481,6 +481,65 @@ describe("xargs options", () => {
   });
 });
 
+describe("xargs -I runs the command once per input line", () => {
+  const PUSH = ["push", "origin", "HEAD:main"];
+  const LINE = ["push origin HEAD:main"];
+
+  it("runs each piped line as its own command", () => {
+    expect(gitArgs("printf 'status\\npush origin HEAD:main' | xargs -I{} git {}")).toEqual([["status"], LINE, PUSH]);
+  });
+
+  it("keeps a single read-only line as one command", () => {
+    expect(gitArgs("printf 'status' | xargs -I{} git {}")).toEqual([["status"]]);
+  });
+
+  it("emits no empty command for a trailing newline", () => {
+    expect(gitArgs("printf 'status\\n' | xargs -I{} git {}")).toEqual([["status"]]);
+  });
+
+  it("splits CRLF input without leaving a carriage return in the command", () => {
+    expect(gitArgs("printf 'status\\r\\npush origin HEAD:main\\r\\n' | xargs -I{} git {}")).toEqual([["status"], LINE, PUSH]);
+  });
+
+  it("runs each line of a here-string", () => {
+    expect(gitArgs("xargs -I{} git {} <<< $'status\\npush origin HEAD:main'")).toEqual([["status"], LINE, PUSH]);
+  });
+
+  it("runs each line of a heredoc", () => {
+    expect(gitArgs("xargs -I{} git {} <<EOF\nstatus\npush origin HEAD:main\nEOF")).toEqual([["status"], LINE, PUSH]);
+  });
+
+  it("appends the words of a here-string to a command without -I", () => {
+    expect(gitArgs("xargs git <<< 'push origin HEAD:main'")).toEqual([PUSH]);
+  });
+
+  it("runs each line of a shell script fed through -I", () => {
+    expect(gitArgs("printf 'true\\ngit push' | xargs -I{} sh -c '{}'")).toEqual([["push"]]);
+  });
+
+  it("reads a here-string over the pipe, as the shell does", () => {
+    expect(gitArgs("printf status | xargs -I{} git {} <<< 'push origin HEAD:main'")).toEqual([LINE, PUSH]);
+  });
+
+  it("reads a multi-word line both as one argument and as words", () => {
+    expect(gitArgs("printf 'my repo' | xargs -I{} git -C {} push")).toEqual([["-C", "my repo", "push"], ["-C", "my", "repo", "push"]]);
+  });
+
+  it("appends a here-string's words over the pipe without -I", () => {
+    expect(gitArgs("printf status | xargs git <<< 'push origin HEAD:main'")).toEqual([PUSH]);
+  });
+
+  it("does not read the pipe when a file is the stdin", () => {
+    expect(gitArgs("printf status | xargs -I{} git {} < list.txt")).toEqual([["{}"]]);
+  });
+
+  it("gives each line's command the xargs wrapping", () => {
+    const git = extract("printf 'status\\npush' | xargs -I{} git {}").filter((c) => c.name === "git");
+
+    expect(git.map((c) => c.wrapping)).toEqual([["xargs"], ["xargs"]]);
+  });
+});
+
 describe("how a command joins its list", () => {
   it("records the operator before each command and whether ! negates it", () => {
     const cmds = extract("! a && b || c");

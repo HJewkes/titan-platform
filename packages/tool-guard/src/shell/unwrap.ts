@@ -72,8 +72,12 @@ export interface Unwrapped {
   path: string | null;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
   script?: string;
-  /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input line. */
-  xargs?: { replace: string | null };
+  /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input record. */
+  xargs?: {
+    replace: string | null;
+    /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
+    delimiters: string[] | null;
+  };
   /** Set when `!` negates the command's status. */
   negated?: true;
 }
@@ -108,7 +112,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
-      if (commandName(w.value) === "xargs") xargs = { replace: xargsReplace(words.slice(start, i)) ?? xargs?.replace ?? null };
+      if (commandName(w.value) === "xargs") xargs = xargsOptions(words.slice(start, i), xargs);
     } else break;
   }
   return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}) };
@@ -119,6 +123,50 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
   if (!first) return { name: null, path: null, args: [], assigned };
   if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };
   return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned };
+}
+
+function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNullable<Unwrapped["xargs"]> {
+  const found = xargsDelimiters(options);
+  const before = earlier?.delimiters;
+  const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
+  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters };
+}
+
+const DELIMITER_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0", "\\": "\\" };
+
+/** The separator a `-d` value names: one character or a C escape; null when dynamic or longer. */
+function delimiterOf(word: WordToken | undefined, text?: string): string | null {
+  if (!word || (text === undefined && word.dynamic)) return null;
+  const v = text ?? word.value;
+  if (v.length === 1) return v;
+  return v.length === 2 && v[0] === "\\" ? (DELIMITER_ESCAPES[v[1] as string] ?? null) : null;
+}
+
+/** The record separators of `-0`, `--null`, `-d c`, `-dc`, `--delimiter=c` or a cluster such as `-t0`; null if one is unreadable. */
+function xargsDelimiters(options: WordToken[]): string[] | null {
+  const out: string[] = [];
+  for (let j = 0; j < options.length; j++) {
+    const v = (options[j] as WordToken).value;
+    if (v === "--null") out.push("\0");
+    else if (v === "--delimiter") out.push(delimiterOf(options[++j]) ?? "");
+    else if (v.startsWith("--delimiter=")) out.push(delimiterOf(options[j], v.slice("--delimiter=".length)) ?? "");
+    else if (/^-[A-Za-z]/.test(v)) j = clusterDelimiters(options, j, out);
+  }
+  return out.includes("") ? null : out;
+}
+
+/** Reads the `0` and `d` options of the cluster at `j`; returns the index of the last word it used. */
+function clusterDelimiters(options: WordToken[], j: number, out: string[]): number {
+  const v = (options[j] as WordToken).value;
+  for (let k = 1; k < v.length; k++) {
+    if (v[k] === "0") out.push("\0");
+    else if (v[k] === "d") {
+      const rest = v.slice(k + 1);
+      out.push((rest ? delimiterOf(options[j], rest) : delimiterOf(options[j + 1])) ?? "");
+      return rest ? j : j + 1;
+    } else if (WRAPPERS.xargs?.values?.includes(`-${v[k]}`)) return v.length > k + 1 ? j : j + 1;
+  }
+  return j;
 }
 
 /** The replace string of `-I str`, `-Istr`, `-i[str]`, `--replace[=str]` or a cluster such as `-tI{}`, `{}` when none is given. */
