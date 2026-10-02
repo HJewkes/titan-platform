@@ -516,6 +516,18 @@ describe("xargs -I runs the command once per input line", () => {
     expect(gitArgs("printf 'true\\ngit push' | xargs -I{} sh -c '{}'")).toEqual([["push"]]);
   });
 
+  it("reads a here-string over the pipe, as the shell does", () => {
+    expect(gitArgs("printf status | xargs -I{} git {} <<< 'push origin HEAD:main'")).toEqual([PUSH]);
+  });
+
+  it("appends a here-string's words over the pipe without -I", () => {
+    expect(gitArgs("printf status | xargs git <<< 'push origin HEAD:main'")).toEqual([PUSH]);
+  });
+
+  it("does not read the pipe when a file is the stdin", () => {
+    expect(gitArgs("printf status | xargs -I{} git {} < list.txt")).toEqual([["{}"]]);
+  });
+
   it("gives each line's command the xargs wrapping", () => {
     const git = extract("printf 'status\\npush' | xargs -I{} git {}").filter((c) => c.name === "git");
 

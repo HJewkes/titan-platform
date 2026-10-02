@@ -170,7 +170,7 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const stdin = raw.xargs ? (w.stdin ?? stdinScript(redirects)) : w.stdin;
+  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
   for (const args of xargsRuns(raw, stdin)) runOnce({ ...raw, args }, redirects, w, next, stdin);
 }
 
@@ -188,6 +188,12 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
     const exec = unwrap(words);
     if (exec) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
   }
+}
+
+/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
+function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
+  const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
+  return feeds ? stdinScript(redirects) : piped;
 }
 
 /** The argument lists `xargs` runs the command with: one per input line under a replace string, else one with the piped words appended. */

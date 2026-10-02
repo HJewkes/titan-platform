@@ -181,4 +181,9 @@ describe("xargs -I runs the command once per input line", () => {
   it("denies a push hidden in a here-string line", () => {
     expect(spellings(bash("xargs -I{} git {} <<< $'status\\npush origin HEAD:main'"))).toEqual(["bash.merge.git-push-protected"]);
   });
+
+  it("denies a push in a here-string that replaces the pipe", () => {
+    expect(spellings(bash("printf status | xargs -I{} git {} <<< 'push origin HEAD:main'"))).toEqual(["bash.merge.git-push-protected"]);
+    expect(spellings(bash("printf status | xargs git <<< 'push origin HEAD:main'"))).toEqual(["bash.merge.git-push-protected"]);
+  });
 });
