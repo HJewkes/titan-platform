@@ -1,5 +1,11 @@
 # @titan-design/agent-dispatch
 
+## 0.3.0
+
+### Minor Changes
+
+- 86bb7a2: `messageAgent(bin, name, text, timeoutMs)` delivers one chat message to a live agent through `agent-chat debug send`, which starts a turn in an idle session.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @titan-design/workflow
 
+## 0.6.1
+
+### Patch Changes
+
+- fe11f1b: Each `ctx.authorize` result carries `titan.trace.gates` with one F3 policy gate-decision record per decision, and `TRACE_GATES_KEY` is exported. `policyRule.version` is the table version's semver major; a rule-less deny records row id `no-rule`.
+- Updated dependencies [fe11f1b]
+  - @titan-design/agent-protocol@0.4.0
+  - @titan-design/agent@0.4.4
+
 ## 0.6.0
 
 ### Minor Changes

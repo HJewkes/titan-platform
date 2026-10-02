@@ -1,5 +1,11 @@
 # @titan-design/style-checker
 
+## 0.4.1
+
+### Patch Changes
+
+- ab5387d: Retry a tool spawn that Node rejects synchronously with ETXTBSY, which can happen when another thread forks while a just-written script is still open.
+
 ## 0.4.0
 
 ### Minor Changes

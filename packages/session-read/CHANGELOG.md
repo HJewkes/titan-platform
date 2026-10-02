@@ -1,5 +1,12 @@
 # @titan-design/session-read
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [fe11f1b]
+  - @titan-design/agent-protocol@0.4.0
+
 ## 0.8.0
 
 ### Minor Changes
