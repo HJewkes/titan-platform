@@ -23,7 +23,7 @@ export const WatchRowSchema = z.object({
   phaseSince: z.string(),
   nextAction: z.string(),
   pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).nullable(),
-  held: z.object({ reason: z.string() }).nullable(),
+  held: z.object({ reason: z.string(), satisfiedAt: z.string().optional(), satisfiedBy: z.string().optional() }).nullable(),
   stalled: z.object({ reason: z.string() }).nullable(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
@@ -179,6 +179,14 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[]): string | u
   return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : undefined;
 }
 
+/** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
+function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["held"] {
+  if (!held) return null;
+  if (holdSatisfied === null) return { reason: holdReason ?? "held" };
+  const { reviewer, agentId, sessionId } = holdSatisfied.by;
+  return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
+}
+
 /** One watch-list row; stall limits per phase are left to TP-492, so a failed or parked run, or a review the broker keeps refusing, reads as stalled. */
 export function watchRow({ registration, run, pending, train }: RowInput): WatchRow {
   const steps = completedSteps(run);
@@ -196,7 +204,7 @@ export function watchRow({ registration, run, pending, train }: RowInput): Watch
     phaseSince: phaseSince(run, steps, phase),
     nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
-    held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
+    held: heldView(registration),
     stalled: stalled === undefined ? null : { reason: stalled },
   };
 }

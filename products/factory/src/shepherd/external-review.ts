@@ -33,7 +33,7 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
 }
 
 /** A name can span sessions; the last row the roster lists with a session holds it. */
-function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
+export function latestSession(name: string, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
 

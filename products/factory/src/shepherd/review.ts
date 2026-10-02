@@ -160,7 +160,7 @@ function ancestry(name: string, roster: readonly ReviewerAgent[], parents: Paren
 }
 
 /** Proven only from roster facts: nobody who wrote the code is the agent, spawned it, or handed over to it, at any depth. */
-function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
+export function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
   const wrote = ancestry(implementer, roster, takeovers);
   const above = ancestry(agent.name, roster, descent);
   return wrote !== undefined && above !== undefined && ![...wrote].some((author) => above.has(author));

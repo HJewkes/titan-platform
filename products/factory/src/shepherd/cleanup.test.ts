@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
 const REPO = "octo/demo";
 const RUN = "run-1";
@@ -14,7 +14,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -150,6 +150,29 @@ describe("sh-cleanup head ref", () => {
     w.fake.refs.delete("feat/x");
 
     expect((await w.run()).ref).toBe("absent");
+  });
+});
+
+describe("sh-cleanup hold", () => {
+  it("releases a hold its reviewer satisfied once the PR has landed", async () => {
+    const w = world();
+    w.store.hold(RUN, "awaiting a named review", "rv-sec");
+    w.store.satisfyHold(RUN, "rv-sec", fakeSha("head"), { agentId: "agent-rv", sessionId: "session-rv", locator: {} });
+
+    await w.run();
+
+    expect(w.store.byRun(RUN)).toMatchObject({ held: false, holdReviewer: null, holdSatisfied: null });
+  });
+
+  it("keeps the hold on a PR that has not merged", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headRef: "feat/x", headSha: fakeSha("head") });
+    const w = world({ fake });
+    w.store.hold(RUN, "awaiting a named review", "rv-sec");
+
+    await w.run();
+
+    expect(w.store.byRun(RUN)?.held).toBe(true);
   });
 });
 
