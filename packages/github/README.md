@@ -18,6 +18,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `putFile` | the file on the branch; identical content skips | `sha` = expected blob |
 | `openPr` | open, then merged, PRs for the head | none |
 | `updateBranch` | the PR: merged, head moved or not behind skips | `expected_head_sha` |
+| `pushEmptyCommit` | the branch's ref: absent or moved past the expected head skips | the ref moves only as a fast-forward |
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
 | `upsertComment` | the PR's comments; one containing the marker skips | none |

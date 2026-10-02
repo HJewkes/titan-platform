@@ -90,6 +90,11 @@ The `sh-main-ci` step reads main CI on the merge commit once, for up to 60 minut
 happens next depends on the verdict (`products/factory/src/shepherd/post-merge.ts` and
 `main-red.ts`).
 
+A run at the merge commit that concurrency cancelled because a newer main push superseded
+it is not red. When every failed run was cancelled and main's tip is a later push that
+contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTES` in
+`products/factory/src/shepherd/route-table.ts`). A cancelled run with no newer push is red.
+
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
 **Red.** The run freezes the repo, then works through three steps:
@@ -159,22 +164,31 @@ post-merge read, a close stops. `titan-factory serve` also checks, every 5 minut
 request of each run that is waiting on a gate. When that pull request was merged or closed
 elsewhere, the serve process cancels the run and its gate.
 
-A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
-resumed. A run held with a reason that names a reviewer (`…-review` or `…-review-rN`), or held
-with a `--reviewer` registered, starts no reviewer of its own. It takes the newest verdict
-that reviewer gave at the head, so a `FIX_FIRST` from it wakes the implementer.
+A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
+`sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
+head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt
+that writes `Verdict: MERGE` after the deadline is therefore read as MERGE, and its merge
+goes through the evidence step like any other.
 
-`approve-merge` opens for three reasons only, and its prompt names the reason:
+A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
+resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own. It takes the
+newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
+implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
+
+`approve-merge` opens for four reasons only, and its prompt names the reason:
 
 - `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
   have Shepherd land the next resolved head, or `abandon`.
-- `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Each fresh reviewer,
-  each re-read of a hold's reviewer, and each `FIX_FIRST` counts as a failed round.
+- `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
+  counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
+  conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
+- `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
 A woken implementer must start a turn within 5 minutes: a new event in its transcript, or a
-new head. A live implementer is messaged through `agent-chat debug send`, and an ended one
+new head. A live implementer is messaged through `agent-chat debug send`, which delivers the
+message as if the human sent it until agent-chat adds a `shepherd` wake source (CC-436). An ended one
 is resumed or replaced by a successor. If no turn starts, one fallback goes out: a resume if
 the agent has ended by then, else a second message. If there is still no turn, the wake is
 unhandled.
@@ -260,6 +274,7 @@ cannot loosen it.
 
 ```sh
 titan-factory shepherd hold owner/repo#123 --reason "waiting on a schema decision"
+titan-factory shepherd hold owner/repo#123 --reason "security audit" --reviewer sec-audit-review
 titan-factory shepherd release owner/repo#123
 ```
 
@@ -273,7 +288,38 @@ the merge call itself: every merge route reads the hold first, and a held pull r
 in `merging`, polling every 10 seconds, until `release`
 (`products/factory/src/shepherd/hold.ts`). The check covers `land-pr` too, so
 `titan-factory land` on a held pull request also waits. Both verbs take `owner/repo#N`, so a
-branch registration can be held only once its pull request exists.
+branch registration can be held only once its pull request exists. `--reviewer` names the
+reviewer whose verdict the run waits for; `release` clears it. A merge that waited on a hold
+does not go through on release: land reads CI again first, because the base may have moved.
+
+## The Version Packages pull request {#version-packages}
+
+The changesets action opens a "Version Packages" pull request from `changeset-release/main`.
+Shepherd lands it with no human step (`products/factory/src/shepherd/release.ts` and
+`version-packages.ts`):
+
+1. **Registered by a sweep.** Every minute, `titan-factory serve` looks for an open pull
+   request from `changeset-release/main` in each repo Shepherd watches. It registers one it
+   has not seen, with task `<repo>/version-packages`, implementer `changesets` and no fixer. A
+   finished run gives up its claim on the branch, so the next release registers too.
+2. **CI started by Shepherd.** The changesets action pushes with `GITHUB_TOKEN`, which starts
+   no workflow. When the head has no Actions run and is at least 2 minutes old, the sweep
+   pushes one empty commit onto the branch through `pushEmptyCommit`. It never pushes onto an
+   empty commit, so Actions being down costs one commit, not one per sweep. The GitHub App of
+   TP-447 replaces this.
+3. **A release preflight instead of a reviewer.** At each green head, `sh-release-preflight`
+   checks that every changed file is one `changeset version` writes, and that every public
+   package in the release is already on registry.npmjs.org. A brand-new package cannot use
+   trusted publishing until its first version is published by hand, so it blocks with its
+   name.
+4. **The `shepherd-release` decision.** A passed preflight at the exact head merges under an
+   `auto` seat (`shepherd-release/version-packages`). A blocked preflight
+   (`preflight-blocked`), a missing one (`no-preflight`) or an `owner-gate` seat
+   (`owner-gate`) opens `approve-merge`, and a `never` seat denies.
+5. **A merge freeze.** Every main push regenerates the pull request. While its head is ready,
+   meaning the preflight passed under an `auto` seat, the repo's other Shepherd merges wait in
+   `merging`, then read CI again. The freeze ends when the release merges, its head moves, or
+   30 minutes pass.
 
 ## `merge` evaluates, and resolves nothing
 

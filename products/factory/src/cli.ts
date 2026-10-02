@@ -142,7 +142,9 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
   verb("hold <ref>", "hold owner/repo#N so no merge goes through until release")
     .requiredOption("--reason <text>", "why it is held")
-    .action((ref: string, opts: ShepherdOpts & { reason: string }) => runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason }), opts));
+    .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
+    .action((ref: string, opts: ShepherdOpts & { reason: string; reviewer?: string }) =>
+      runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer }), opts));
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }

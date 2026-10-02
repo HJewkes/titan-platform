@@ -273,6 +273,18 @@ describe("shepherd.merge", () => {
     expect(whileHeld).toMatchObject({ ok: true, data: { held: { reason: "owner wants a look" } } });
     expect(released).toMatchObject({ ok: true, data: { held: null } });
   });
+
+  it("records a hold's --reviewer and refuses one with whitespace", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+
+    const named = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "awaiting the audit", reviewer: "sec-audit-review" });
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "awaiting the audit", reviewer: "two words" });
+
+    expect(named).toEqual({ ok: true, data: { runId, held: { reason: "awaiting the audit", reviewer: "sec-audit-review" } } });
+    expect(refused).toMatchObject({ ok: false });
+  });
 });
 
 describe("shepherd reads", () => {
