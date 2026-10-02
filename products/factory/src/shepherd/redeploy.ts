@@ -35,11 +35,17 @@ export async function redeployStep(ctx: WorkflowContext, input: RedeployInput): 
   return step(ctx, `${REDEPLOY_STEP}:${input.mergeSha}`, input, RedeployResult);
 }
 
-/** A service already built from the sha is the restart this step caused, so it spawns nothing. */
+/** A service already built from the sha is the restart this step caused, so it spawns nothing. Never throws, so a failed spawn cannot stop unfreeze and cleanup. */
 export function redeploy(deployer: Deployer | undefined, input: RedeployInput): Redeploy {
   if (!deployer) return { spawned: false, detail: "no deployer wired" };
   if (deployer.runningSha() === input.mergeSha) return { spawned: false, detail: `the service already runs ${input.mergeSha}` };
-  const { pid, log } = deployer.spawn(input.mergeSha);
+  let started: ReturnType<Deployer["spawn"]>;
+  try {
+    started = deployer.spawn(input.mergeSha);
+  } catch (error) {
+    return { spawned: false, detail: `the deployer did not start: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const { pid, log } = started;
   if (pid === undefined) return { spawned: false, log, detail: `the deployer did not start; see ${log}` };
   return { spawned: true, pid, log, detail: `deployer pid ${pid} deploys ${input.mergeSha}, logging to ${log}` };
 }
@@ -65,6 +71,15 @@ export const nodeDeployerPorts: DeployerPorts = {
   close: (fd) => closeSync(fd),
 };
 
+/** An async spawn error lands outside any step, so a throw here would crash the service. */
+function appendQuietly(ports: DeployerPorts, path: string, text: string): void {
+  try {
+    ports.append(path, text);
+  } catch {
+    // Best effort: a lost line beats a crashed service.
+  }
+}
+
 export interface DeployerOptions {
   /** The factory bin the deployer runs as `service deploy`. */
   bin: string;
@@ -86,7 +101,7 @@ export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = 
       const fd = ports.openAppend(log);
       try {
         const child = ports.spawn(options.node ?? process.execPath, args, { cwd: options.stateDir, detached: true, stdio: ["ignore", fd, fd] });
-        child.on("error", (error: Error) => ports.append(log, `deployer did not start: ${error.message}\n`));
+        child.on("error", (error: Error) => appendQuietly(ports, log, `deployer did not start: ${error.message}\n`));
         child.unref();
         return { pid: child.pid, log };
       } finally {

@@ -117,6 +117,45 @@ describe("sh-redeploy after main CI", () => {
   });
 });
 
+/** Ports that record each effect; `failing` names the one that throws. */
+function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append") {
+  const calls: { file: string; args: readonly string[]; options: Record<string, unknown> }[] = [];
+  const effects: string[] = [];
+  const errorHandlers: ((error: Error) => void)[] = [];
+  const fail = (port: string) => {
+    if (port === failing) throw new Error(`${port} refused`);
+  };
+  const ports: DeployerPorts = {
+    spawn: (file, args, options) => {
+      fail("spawn");
+      calls.push({ file, args, options: options as Record<string, unknown> });
+      const on = (_event: string, handler: (error: Error) => void) => void errorHandlers.push(handler);
+      return { pid: 777, unref: () => void effects.push("unref"), on: on as never };
+    },
+    mkdir: (dir) => (fail("mkdir"), void effects.push(`mkdir ${dir}`)),
+    append: (path) => (fail("append"), void effects.push(`append ${path}`)),
+    openAppend: (path) => (fail("openAppend"), effects.push(`open ${path}`), 9),
+    close: (fd) => void effects.push(`close ${fd}`),
+  };
+  return { ports, calls, effects, errorHandlers };
+}
+
+const stepIdsOf = (w: ReturnType<typeof world>, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+
+describe("sh-redeploy when the deployer cannot start", () => {
+  it.each(["spawn", "mkdir", "openAppend"] as const)("records spawned false when %s throws, and still unfreezes and cleans up", async (failing) => {
+    const deployer = systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts(failing).ports);
+    const w = world("success", deployer);
+    const runId = await mergeIn(w, OWN_REPO);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)!.status).toBe("completed");
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, detail: `the deployer did not start: ${failing} refused` } } }]);
+    expect(stepIdsOf(w, runId)).toEqual(expect.arrayContaining(["sh-unfreeze", "sh-cleanup"]));
+  });
+});
+
 describe("redeploy", () => {
   const input = { repo: OWN_REPO, pr: 1, mergeSha: "a".repeat(40) };
 
@@ -144,22 +183,6 @@ describe("redeploy", () => {
 });
 
 describe("systemDeployer", () => {
-  function fakePorts() {
-    const calls: { file: string; args: readonly string[]; options: Record<string, unknown> }[] = [];
-    const effects: string[] = [];
-    const ports: DeployerPorts = {
-      spawn: (file, args, options) => {
-        calls.push({ file, args, options: options as Record<string, unknown> });
-        return { pid: 777, unref: () => void effects.push("unref"), on: () => ({}) as never };
-      },
-      mkdir: (dir) => void effects.push(`mkdir ${dir}`),
-      append: (path) => void effects.push(`append ${path}`),
-      openAppend: (path) => (effects.push(`open ${path}`), 9),
-      close: (fd) => void effects.push(`close ${fd}`),
-    };
-    return { ports, calls, effects };
-  }
-
   it("starts service deploy detached in its own session, logging to the state dir, and lets the service exit without it", () => {
     const fake = fakePorts();
     const deployer = systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports);
@@ -172,5 +195,16 @@ describe("systemDeployer", () => {
       { file: "/bin/node", args: ["/factory/dist/bin.js", "service", "deploy", "--expect", "b".repeat(40)], options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } },
     ]);
     expect(fake.effects).toEqual(["mkdir /state", `append ${log}`, `open ${log}`, "unref", "close 9"]);
+  });
+
+  it("swallows a log append that throws while reporting a late spawn error, so the service does not crash", () => {
+    const fake = fakePorts();
+    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports).spawn("b".repeat(40));
+    fake.ports.append = () => {
+      throw new Error("disk full");
+    };
+
+    expect(() => fake.errorHandlers.forEach((handler) => handler(new Error("ENOENT")))).not.toThrow();
+    expect(fake.errorHandlers).toHaveLength(1);
   });
 });

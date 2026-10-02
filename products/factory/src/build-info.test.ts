@@ -30,6 +30,11 @@ describe("repoSlugOf", () => {
     expect(repoSlugOf("git@github.com:octo/demo.git")).toBe("octo/demo");
   });
 
+  it("reads nothing from a url that merely contains a github slug", () => {
+    expect(repoSlugOf("https://evil.example/github.com/octo/demo.git")).toBeUndefined();
+    expect(repoSlugOf("https://notgithub.com/octo/demo.git")).toBeUndefined();
+  });
+
   it("reads nothing from a url on another host", () => {
     expect(repoSlugOf("https://gitlab.com/octo/demo.git")).toBeUndefined();
   });

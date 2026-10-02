@@ -11,7 +11,7 @@ export function buildSha(): string {
 
 /** `owner/name` from a GitHub repository url such as `git+https://github.com/owner/name.git`; undefined for any other url. */
 export function repoSlugOf(url: string): string | undefined {
-  return /github\.com[/:]([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(url)?.[1];
+  return /^(?:git\+)?(?:https:\/\/|ssh:\/\/git@|git@)github\.com[/:]([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(url)?.[1];
 }
 
 const { repository } = createRequire(import.meta.url)("../package.json") as { repository?: { url?: string } };
