@@ -1,5 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import { stepPhase, watchRow } from "./view.js";
 
@@ -29,5 +30,16 @@ describe("shepherd view phases", () => {
 
   it("keeps the review steps in the review phase", () => {
     expect(stepPhase("sh-review:abc1234")).toBe("review");
+  });
+
+  it("names the wait a review step has noted in place of the plain review wait, and drops it once cleared", () => {
+    const run = pausedAt("sh-review:abc1234");
+    noteReviewWait("acme/widgets", 1, "waiting for the broker to start reviewer rv-1: machine guard: full");
+
+    const noted = watchRow({ registration, run }).nextAction;
+    clearReviewWait("acme/widgets", 1);
+
+    expect(noted).toBe("waiting for the broker to start reviewer rv-1: machine guard: full");
+    expect(watchRow({ registration, run }).nextAction).toBe("waiting for the review");
   });
 });
