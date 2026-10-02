@@ -74,31 +74,51 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
   return newest;
 }
 
-/** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. */
+/** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A failed read rejects. */
 async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<ReviewerMessage[]> {
-  const read = (row: ReviewerAgent) => reader.read({ ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }).catch(() => []);
+  const read = (row: ReviewerAgent) => reader.read({ ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   return (await Promise.all(rows.map(read))).flat().filter(owned);
 }
 
-/** The first seat reviewer whose newest verdict at this head is FIX_FIRST; an unreadable roster or transcript reads as none. */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget): Promise<AwaitVerdictResult> {
-  const rows = (await roster().catch(() => [])).filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
-  for (const name of new Set(rows.map((row) => row.name))) {
-    const newest = newestAtHead(target, await readReviewer(reader, target, rows.filter((row) => row.name === name)));
-    if (newest?.verdict !== "FIX_FIRST") continue;
-    const { message } = newest;
-    const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
-    return { kind: "verdict", verdict: "FIX_FIRST", head: target.head, locator: message.locator, reviewer: { agentId: message.agentId, sessionId: message.sessionId }, text };
-  }
-  return { kind: "none" };
+/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
+
+const why = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
+  const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
+  return { kind: "verdict", verdict: "FIX_FIRST", head: target.head, locator: message.locator, reviewer: { agentId: message.agentId, sessionId: message.sessionId }, text };
 }
 
-/** A MERGE stands only while no seat reviewer's newest verdict at the same head is FIX_FIRST. */
+/**
+ * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
+ * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
+ */
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget): Promise<SeatCheck> {
+  let listed: readonly ReviewerAgent[];
+  try {
+    listed = await roster();
+  } catch (error) {
+    return { kind: "none", reason: `seat check: the roster could not be read: ${why(error)}` };
+  }
+  const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
+  let failed: SeatCheck | undefined;
+  for (const name of new Set(rows.map((row) => row.name))) {
+    const read = await readReviewer(reader, target, rows.filter((row) => row.name === name)).then(
+      (messages) => newestAtHead(target, messages),
+      (error: unknown) => void (failed ??= { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(error)}` }),
+    );
+    if (read?.verdict === "FIX_FIRST") return sentBack(name, target, read.message);
+  }
+  return failed ?? { kind: "clear" };
+}
+
+/** A MERGE stands only while the seat check is clear at the same head. */
 export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
-  const blocked = await seatFixFirst(roster, reader, target);
-  return blocked.kind === "verdict" ? blocked : result;
+  const check = await seatFixFirst(roster, reader, target);
+  return check.kind === "clear" ? result : check;
 }
 
 type VerdictStep = (raw: unknown, signal: AbortSignal) => Promise<AwaitVerdictResult>;

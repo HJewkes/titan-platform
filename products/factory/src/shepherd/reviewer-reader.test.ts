@@ -284,6 +284,22 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     expect(blocked.kind === "verdict" && (await readSessionSourceText(blocked.locator))).toMatch(/^Verdict: FIX_FIRST\nPR: octo\/demo#4/);
   });
 
+  it("blocks the head when an exited seat reviewer's transcript cannot be read", async () => {
+    const rows = [{ ...seat, transcriptPath: path.join(dir, "gone", `${FIXTURE_SESSION}.jsonl`) }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+
+    const blocked = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD });
+
+    expect(blocked).toMatchObject({ kind: "none", reason: expect.stringContaining(`the transcript of ${seat.name} could not be read`) });
+  });
+
+  it("does not block on a seat reviewer still running with no transcript yet", async () => {
+    const rows = [{ ...seat, presence: "live", transcriptExists: false, transcriptPath: null }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+
+    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
+  });
+
   it("keeps the final text last, so the dispatched reviewer's final message is still its text", async () => {
     const records = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(BLOCK)]), toolResult(SESSION, "tool-send", "Delivered."), assistant(SESSION, ["Sent it."])];
 

@@ -65,11 +65,11 @@ describe("seatFixFirst", () => {
     const resumed = agent(SEAT.name, "session-later");
     const messages = [said(SEAT, verdictAt("FIX_FIRST"), 5), said(resumed, verdictAt("MERGE"), 9)];
 
-    expect(await seatFixFirst(rosterOf(SEAT, resumed), readerOf(messages), target)).toEqual({ kind: "none" });
+    expect(await seatFixFirst(rosterOf(SEAT, resumed), readerOf(messages), target)).toEqual({ kind: "clear" });
   });
 
   it("does not block the head on a FIX_FIRST that named an older head", async () => {
-    expect(await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST", OLD_HEAD), 5)]), target)).toEqual({ kind: "none" });
+    expect(await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST", OLD_HEAD), 5)]), target)).toEqual({ kind: "clear" });
   });
 
   it("does not let another reviewer's later MERGE clear a seat reviewer's FIX_FIRST", async () => {
@@ -88,20 +88,39 @@ describe("seatFixFirst", () => {
   it("ignores a FIX_FIRST from an agent whose name is not a seat reviewer's", async () => {
     const coord = agent("design-coord");
 
-    expect(await seatFixFirst(rosterOf(coord), readerOf([said(coord, verdictAt("FIX_FIRST"), 5)]), target)).toEqual({ kind: "none" });
+    expect(await seatFixFirst(rosterOf(coord), readerOf([said(coord, verdictAt("FIX_FIRST"), 5)]), target)).toEqual({ kind: "clear" });
   });
 
   it("drops a message the reader attributes to a session the roster does not list under the name", async () => {
     const stray = { ...said(SEAT, verdictAt("FIX_FIRST"), 5), sessionId: "session-elsewhere" };
     const reader: ReviewerReader = { read: async () => [stray] };
 
-    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none" });
+    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "clear" });
   });
 
-  it("reads an unreadable roster as no seat verdict", async () => {
+  it("blocks the head with the failure named when the roster cannot be read", async () => {
     const roster = async () => Promise.reject(new Error("broker down"));
 
-    expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none" });
+    expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: broker down" });
+  });
+
+  it("blocks the head with the reviewer named when a seat reviewer's transcript cannot be read", async () => {
+    const reader: ReviewerReader = { read: async () => Promise.reject(new Error("EACCES: permission denied")) };
+
+    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: EACCES: permission denied` });
+  });
+
+  it("prefers another seat reviewer's FIX_FIRST over a transcript that cannot be read", async () => {
+    const broken = agent("seat-d-1-review");
+    const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("bad json")) : [said(SEAT, verdictAt("FIX_FIRST"), 5)]) };
+
+    expect(await seatFixFirst(rosterOf(broken, SEAT), reader, target)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
+  });
+
+  it("does not block on a running seat reviewer whose transcript has nothing to read yet", async () => {
+    const running = { ...agent("seat-e-2-review"), presence: "live" };
+
+    expect(await seatFixFirst(rosterOf(running), readerOf([]), target)).toEqual({ kind: "clear" });
   });
 });
 
@@ -110,6 +129,12 @@ describe("unlessSeatFixFirst", () => {
     const result = await unlessSeatFixFirst(rosterOf(SHEPHERD_RV, SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5)]), target, shepherdMerge);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
+  });
+
+  it("turns Shepherd's MERGE into a blocking none when the roster cannot be read", async () => {
+    const roster = async () => Promise.reject(new Error("broker down"));
+
+    expect(await unlessSeatFixFirst(roster, readerOf([]), target, shepherdMerge)).toMatchObject({ kind: "none", reason: expect.stringContaining("roster could not be read") });
   });
 
   it("keeps a FIX_FIRST or a none as it is without reading the roster", async () => {

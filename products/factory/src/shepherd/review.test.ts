@@ -1301,6 +1301,20 @@ describe("reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
     });
 
+    it("does not merge when the seat reviewer's transcript cannot be read, and records why", async () => {
+      const dispatch = fakeDispatch(crew(seat));
+      const unreadable: Scene["read"] = (input, held, now) => {
+        if (input.reviewerAgentId === seat.agentId) throw new Error("unexpected end of JSON input");
+        return withSeat([])(input, held, now);
+      };
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason: `seat check: the transcript of ${seat.name} could not be read: unexpected end of JSON input` });
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
     it("sends the head back when Shepherd's reviewer's MERGE lands after the wait and the seat reviewer said FIX_FIRST", async () => {
       const dispatch = fakeDispatch(crew(seat));
 
