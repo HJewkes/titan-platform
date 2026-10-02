@@ -5,7 +5,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator, type WorktreeRequest } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
-import { parseSetupStep, runSetupCommand, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner } from "./setup.js";
+import {
+  parseSetupStep,
+  runSetupCommand,
+  setupEnv,
+  SETUP_FILE,
+  SETUP_LOG,
+  type SetupResult,
+  type SetupRunner,
+} from "./setup.js";
 import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
@@ -14,11 +22,17 @@ vi.setConfig({ testTimeout: 20_000 });
 const tmpdirs: string[] = [];
 
 afterEach(() => {
-  while (tmpdirs.length > 0) fs.rmSync(tmpdirs.pop() ?? "", { recursive: true, force: true });
+  while (tmpdirs.length > 0)
+    fs.rmSync(tmpdirs.pop() ?? "", { recursive: true, force: true });
 });
 
 const git = (args: string[], cwd: string): string =>
-  execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe", env: fixtureEnv() }).trim();
+  execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: "pipe",
+    env: fixtureEnv(),
+  }).trim();
 
 const tmpdir = (prefix: string): string => {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -66,7 +80,11 @@ const makeRepo = (setup?: object): string =>
   makeRepoHolding(setup === undefined ? undefined : JSON.stringify({ setup }));
 
 /** A branch with one commit of its own that declares `command`, checked out nowhere. */
-function branchDeclaring(repo: string, branch: string, command: string[]): void {
+function branchDeclaring(
+  repo: string,
+  branch: string,
+  command: string[]
+): void {
   git(["switch", "-q", "-c", branch], repo);
   commitDeclaration(repo, command);
   git(["switch", "-q", "main"], repo);
@@ -79,13 +97,23 @@ const ctxFor = (cwd: string, agentName = "alice"): WorktreeRequest => ({
 
 interface Recorded {
   runner: SetupRunner;
-  calls: Array<{ command: readonly string[]; cwd: string; treeExisted: boolean }>;
+  calls: Array<{
+    command: readonly string[];
+    cwd: string;
+    treeExisted: boolean;
+  }>;
 }
 
-const recording = (result: SetupResult = { exitCode: 0, timedOut: false, output: "" }): Recorded => {
+const recording = (
+  result: SetupResult = { exitCode: 0, timedOut: false, output: "" }
+): Recorded => {
   const calls: Recorded["calls"] = [];
   const runner: SetupRunner = async (command, cwd) => {
-    calls.push({ command, cwd, treeExisted: fs.existsSync(path.join(cwd, "README.md")) });
+    calls.push({
+      command,
+      cwd,
+      treeExisted: fs.existsSync(path.join(cwd, "README.md")),
+    });
     return result;
   };
   return { runner, calls };
@@ -121,7 +149,9 @@ describe("worktree setup on allocate", () => {
     const repo = makeRepo();
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls).toEqual([]);
     expect(setupWarnings(alloc.warnings)).toEqual([]);
@@ -129,22 +159,36 @@ describe("worktree setup on allocate", () => {
 
   it("turns a failing step into a warning naming it and its exit, and still allocates", async () => {
     const repo = makeRepo({ command: ["npm", "ci"] });
-    const { runner } = recording({ exitCode: 1, timedOut: false, output: "npm ERR! lockfile out of sync\n" });
+    const { runner } = recording({
+      exitCode: 1,
+      timedOut: false,
+      output: "npm ERR! lockfile out of sync\n",
+    });
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(fs.existsSync(alloc.cwd)).toBe(true);
-    expect(setupWarnings(alloc.warnings)).toEqual([expect.stringContaining("`npm ci` exited with code 1")]);
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      expect.stringContaining("`npm ci` exited with code 1"),
+    ]);
   });
 
   it("keeps the step output out of the warning and in an owner-only log outside the tree", async () => {
     const repo = makeRepo({ command: ["npm", "ci"] });
-    const output = "npm ERR! 401 //registry.example/:_authToken=synthetic-value\n";
+    const output =
+      "npm ERR! 401 //registry.example/:_authToken=synthetic-value\n";
     const { runner } = recording({ exitCode: 1, timedOut: false, output });
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
-    const log = path.join(git(["rev-parse", "--absolute-git-dir"], alloc.cwd), SETUP_LOG);
+    const log = path.join(
+      git(["rev-parse", "--absolute-git-dir"], alloc.cwd),
+      SETUP_LOG
+    );
     const [warning] = setupWarnings(alloc.warnings);
     expect(warning).not.toContain("synthetic-value");
     expect(warning).toContain(`its output is in ${log}`);
@@ -157,7 +201,9 @@ describe("worktree setup on allocate", () => {
     const repo = makeRepo({ command: ["npm", "ci"], timeoutMs: 50 });
     const { runner } = recording({ exitCode: 0, timedOut: true, output: "" });
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(setupWarnings(alloc.warnings)).toEqual([
       expect.stringContaining("`npm ci` timed out after 50ms and was killed"),
@@ -166,9 +212,15 @@ describe("worktree setup on allocate", () => {
 
   it("reports a timed-out step as killed", async () => {
     const repo = makeRepo({ command: ["npm", "ci"], timeoutMs: 50 });
-    const { runner } = recording({ exitCode: null, timedOut: true, output: "" });
+    const { runner } = recording({
+      exitCode: null,
+      timedOut: true,
+      output: "",
+    });
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(setupWarnings(alloc.warnings)).toEqual([
       expect.stringContaining("`npm ci` timed out after 50ms and was killed"),
@@ -179,42 +231,62 @@ describe("worktree setup on allocate", () => {
     const repo = makeRepo({ command: "npm ci" });
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls).toEqual([]);
-    expect(setupWarnings(alloc.warnings)).toEqual([expect.stringContaining("setup.command must be")]);
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      expect.stringContaining("setup.command must be"),
+    ]);
   });
 
   it("warns and runs nothing when the declaration file is empty", async () => {
     const repo = makeRepoHolding("");
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls).toEqual([]);
-    expect(setupWarnings(alloc.warnings)).toEqual([`worktree setup skipped: ${SETUP_FILE} is empty`]);
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      `worktree setup skipped: ${SETUP_FILE} is empty`,
+    ]);
   });
 
   it("warns and does not throw when setup is null", async () => {
     const repo = makeRepoHolding('{"setup":null}');
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls).toEqual([]);
-    expect(setupWarnings(alloc.warnings)).toEqual([expect.stringContaining("setup must be an object")]);
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      expect.stringContaining("setup must be an object"),
+    ]);
   });
 
   it("ignores keys it does not know and still runs the step as argv", async () => {
-    const declared = { setup: { command: ["npm", "ci"], shell: true, env: { X: "1" } }, later: [1] };
+    const declared = {
+      setup: { command: ["npm", "ci"], shell: true, env: { X: "1" } },
+      later: [1],
+    };
     const repo = makeRepoHolding(JSON.stringify(declared));
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls.map((c) => c.command)).toEqual([["npm", "ci"]]);
     expect(setupWarnings(alloc.warnings)).toEqual([]);
-    expect(parseSetupStep(JSON.stringify(declared))).toEqual({ command: ["npm", "ci"], timeoutMs: 300_000 });
+    expect(parseSetupStep(JSON.stringify(declared))).toEqual({
+      command: ["npm", "ci"],
+      timeoutMs: 300_000,
+    });
   });
 });
 
@@ -235,25 +307,39 @@ describe("where the setup declaration is read from", () => {
     branchDeclaring(repo, "agent-chat/alice", ["branch-step"]);
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(alloc.ref?.reused).toBe("true");
-    expect(fs.readFileSync(path.join(alloc.cwd, SETUP_FILE), "utf8")).toContain("branch-step");
-    expect(calls).toEqual([{ command: ["default-step"], cwd: alloc.cwd, treeExisted: true }]);
+    expect(fs.readFileSync(path.join(alloc.cwd, SETUP_FILE), "utf8")).toContain(
+      "branch-step"
+    );
+    expect(calls).toEqual([
+      { command: ["default-step"], cwd: alloc.cwd, treeExisted: true },
+    ]);
   });
 
   it("a resume that re-creates a parked tree runs origin default, not the branch declaration", async () => {
     const repo = makeRepo({ command: ["default-step"] });
-    const first = await createWorktreeAllocator({ runSetup: recording().runner }).allocate(ctxFor(repo));
+    const first = await createWorktreeAllocator({
+      runSetup: recording().runner,
+    }).allocate(ctxFor(repo));
     commitDeclaration(first.cwd, ["branch-step"]);
     git(["worktree", "remove", "--force", first.cwd], repo);
     const { runner, calls } = recording();
 
-    const record = { gitRoot: repo, worktree: first.cwd, branch: first.ref?.branch ?? "" };
+    const record = {
+      gitRoot: repo,
+      worktree: first.cwd,
+      branch: first.ref?.branch ?? "",
+    };
     const again = await reattachWorktree(record, { runSetup: runner });
 
     expect(again.ref?.reattached).toBe("local");
-    expect(fs.readFileSync(path.join(again.cwd, SETUP_FILE), "utf8")).toContain("branch-step");
+    expect(fs.readFileSync(path.join(again.cwd, SETUP_FILE), "utf8")).toContain(
+      "branch-step"
+    );
     expect(calls.map((c) => c.command)).toEqual([["default-step"]]);
   });
 
@@ -262,7 +348,9 @@ describe("where the setup declaration is read from", () => {
     branchDeclaring(repo, "agent-chat/alice", ["branch-step"]);
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(alloc.ref?.reused).toBe("true");
     expect(calls).toEqual([]);
@@ -270,36 +358,58 @@ describe("where the setup declaration is read from", () => {
   });
 
   it("runs nothing and says so when the base is a local HEAD because origin is absent", async () => {
-    const repo = makeLocalRepo(JSON.stringify({ setup: { command: ["local-step"] } }));
+    const repo = makeLocalRepo(
+      JSON.stringify({ setup: { command: ["local-step"] } })
+    );
     const { runner, calls } = recording();
 
-    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(ctxFor(repo));
+    const alloc = await createWorktreeAllocator({ runSetup: runner }).allocate(
+      ctxFor(repo)
+    );
 
     expect(calls).toEqual([]);
-    expect(setupWarnings(alloc.warnings)).toEqual([expect.stringContaining("worktree setup skipped")]);
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      expect.stringContaining("worktree setup skipped"),
+    ]);
   });
 });
 
 describe("worktree setup on resume re-creation", () => {
   it("runs the declared step in the re-created worktree", async () => {
     const repo = makeRepo({ command: ["npm", "ci"] });
-    const first = await createWorktreeAllocator({ runSetup: recording().runner }).allocate(ctxFor(repo));
+    const first = await createWorktreeAllocator({
+      runSetup: recording().runner,
+    }).allocate(ctxFor(repo));
     git(["worktree", "remove", "--force", first.cwd], repo);
     const { runner, calls } = recording();
 
-    const record = { gitRoot: repo, worktree: first.cwd, branch: first.ref?.branch ?? "" };
+    const record = {
+      gitRoot: repo,
+      worktree: first.cwd,
+      branch: first.ref?.branch ?? "",
+    };
     const again = await reattachWorktree(record, { runSetup: runner });
 
     expect(again.cwd).toBe(first.cwd);
-    expect(calls).toEqual([{ command: ["npm", "ci"], cwd: first.cwd, treeExisted: true }]);
+    expect(calls).toEqual([
+      { command: ["npm", "ci"], cwd: first.cwd, treeExisted: true },
+    ]);
   });
 });
 
 describe("the default setup runner", () => {
   it("reports the exit code and the output", async () => {
     const dir = tmpdir("wt-run-");
-    const result = await runSetupCommand(["sh", "-c", "echo installing; exit 3"], dir, 5_000);
-    expect(result).toEqual({ exitCode: 3, timedOut: false, output: "installing\n" });
+    const result = await runSetupCommand(
+      ["sh", "-c", "echo installing; exit 3"],
+      dir,
+      5_000
+    );
+    expect(result).toEqual({
+      exitCode: 3,
+      timedOut: false,
+      output: "installing\n",
+    });
   });
 
   it("kills a step that outlives its timeout", async () => {
@@ -324,13 +434,209 @@ describe("the default setup runner", () => {
 
   it("reports a command that cannot start", async () => {
     const dir = tmpdir("wt-run-");
-    const result = await runSetupCommand(["definitely-not-a-command"], dir, 5_000);
+    const result = await runSetupCommand(
+      ["definitely-not-a-command"],
+      dir,
+      5_000
+    );
     expect(result.exitCode).toBeNull();
     expect(result.output).toContain("ENOENT");
   });
 });
 
-const EGRESS_HOOK = path.resolve("node_modules/@titan-design/egress-scan/hooks/pre-push");
+/** A package with no dependencies whose every lifecycle script touches a marker in the tree. */
+const SCRIPTED_PACKAGE = {
+  "package.json": JSON.stringify({
+    name: "pin-synthetic",
+    version: "1.0.0",
+    scripts: Object.fromEntries(
+      ["preinstall", "install", "postinstall", "prepare"].map((hook) => [
+        hook,
+        `touch ${hook}-ran`,
+      ])
+    ),
+  }),
+  "package-lock.json": JSON.stringify({
+    name: "pin-synthetic",
+    version: "1.0.0",
+    lockfileVersion: 3,
+    requires: true,
+    packages: { "": { name: "pin-synthetic", version: "1.0.0" } },
+  }),
+};
+
+const markersIn = (dir: string): string[] =>
+  fs.readdirSync(dir).filter((name) => name.endsWith("-ran"));
+
+/** Commits `files` on a new branch of `repo`, checked out nowhere afterwards. */
+function branchWithFiles(
+  repo: string,
+  branch: string,
+  files: Record<string, string>
+): void {
+  git(["switch", "-q", "-c", branch], repo);
+  for (const [name, content] of Object.entries(files))
+    fs.writeFileSync(path.join(repo, name), content);
+  git(["add", "."], repo);
+  git(["commit", "-m", "branch files"], repo);
+  git(["switch", "-q", "main"], repo);
+}
+
+/** A git dependency with a prepare script, which makes npm spawn git and node to prepare it. */
+function gitDependency(): { url: string; sha: string } {
+  const dir = tmpdir("wt-dep-");
+  git(["init", "-q", "-b", "main"], dir);
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({
+      name: "dep",
+      version: "1.0.0",
+      scripts: { prepare: "true" },
+    })
+  );
+  git(["add", "."], dir);
+  git(
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test",
+      "commit",
+      "-qm",
+      "dep",
+    ],
+    dir
+  );
+  return { url: `git+file://${dir}`, sha: git(["rev-parse", "HEAD"], dir) };
+}
+
+/** A branch package that depends on a git dependency and carries `npmrc`. */
+function packageWithGitDependency(npmrc: string): Record<string, string> {
+  const dep = gitDependency();
+  const root = {
+    name: "pin-synthetic",
+    version: "1.0.0",
+    dependencies: { dep: dep.url },
+  };
+  const lock = {
+    ...root,
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      "": root,
+      "node_modules/dep": {
+        version: "1.0.0",
+        resolved: `${dep.url}#${dep.sha}`,
+      },
+    },
+  };
+  return {
+    "package.json": JSON.stringify(root),
+    "package-lock.json": JSON.stringify(lock),
+    ".npmrc": npmrc,
+  };
+}
+
+/** Each .npmrc names a program that writes `<key>-ran` into `markers` when npm runs it. */
+const HOSTILE_NPMRC: Record<string, (markers: string) => string> = {
+  git: (markers) => {
+    const script = path.join(markers, "git.sh");
+    fs.writeFileSync(
+      script,
+      `#!/bin/sh\ntouch ${markers}/git-ran\nexec git "$@"\n`,
+      { mode: 0o755 }
+    );
+    return `git=${script}\n`;
+  },
+  "node-options": (markers) => {
+    const script = path.join(markers, "require.cjs");
+    fs.writeFileSync(
+      script,
+      `require('fs').writeFileSync(${JSON.stringify(
+        `${markers}/node-options-ran`
+      )}, '')\n`
+    );
+    return `node-options=--require=${script}\n`;
+  },
+};
+
+describe("npm config during worktree setup", () => {
+  it("a reused branch whose package.json has install scripts runs none of them under npm ci", async () => {
+    const repo = makeRepo({
+      command: ["npm", "ci", "--no-audit", "--no-fund"],
+    });
+    branchWithFiles(repo, "agent-chat/alice", SCRIPTED_PACKAGE);
+
+    const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
+
+    expect(alloc.ref?.reused).toBe("true");
+    expect(setupWarnings(alloc.warnings)).toEqual([]);
+    expect(markersIn(alloc.cwd)).toEqual([]);
+  }, 60_000);
+
+  it.each(Object.keys(HOSTILE_NPMRC))(
+    "a reused branch whose .npmrc sets %s to its own program does not run it under npm ci",
+    async (key) => {
+      const repo = makeRepo({
+        command: ["npm", "ci", "--no-audit", "--no-fund"],
+      });
+      const markers = tmpdir("wt-markers-");
+      branchWithFiles(
+        repo,
+        "agent-chat/alice",
+        packageWithGitDependency(HOSTILE_NPMRC[key]?.(markers) ?? "")
+      );
+
+      const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
+
+      expect(alloc.ref?.reused).toBe("true");
+      expect(setupWarnings(alloc.warnings)).toEqual([]);
+      expect(
+        fs.existsSync(
+          path.join(alloc.cwd, "node_modules", "dep", "package.json")
+        )
+      ).toBe(true);
+      expect(markersIn(markers)).toEqual([]);
+    },
+    60_000
+  );
+
+  it("turns scripts off even when the host environment turns them on", () => {
+    const env = setupEnv({
+      PATH: "/bin",
+      npm_config_ignore_scripts: "false",
+      NPM_CONFIG_IGNORE_SCRIPTS: "false",
+    });
+    expect(env).toMatchObject({
+      npm_config_ignore_scripts: "true",
+      NPM_CONFIG_IGNORE_SCRIPTS: "true",
+    });
+  });
+
+  it("pins every npm setting that names a program, over the host environment", () => {
+    const env = setupEnv({
+      PATH: "/bin",
+      npm_config_git: "/tmp/evil",
+      NPM_CONFIG_NODE_OPTIONS: "--require=/tmp/evil.js",
+      npm_config_script_shell: "/tmp/evil",
+      NPM_CONFIG_SHELL: "/tmp/evil",
+    });
+    expect(env).toMatchObject({
+      npm_config_git: "git",
+      NPM_CONFIG_GIT: "git",
+      npm_config_node_options: "--no-deprecation",
+      NPM_CONFIG_NODE_OPTIONS: "--no-deprecation",
+      npm_config_script_shell: "/bin/sh",
+      NPM_CONFIG_SCRIPT_SHELL: "/bin/sh",
+      npm_config_shell: "/bin/sh",
+      NPM_CONFIG_SHELL: "/bin/sh",
+    });
+  });
+});
+
+const EGRESS_HOOK = path.resolve(
+  "node_modules/@titan-design/egress-scan/hooks/pre-push"
+);
 
 /** Stands in for the scanner: records that the hook reached it, then allows the push. */
 const STUB_SCANNER =
@@ -346,13 +652,20 @@ function makeHookedRepo(setup?: object): string {
 }
 
 /** System PATH only, so the hook can find no scanner but one the worktree has. */
-const pushEnv = (): NodeJS.ProcessEnv => ({ ...fixtureEnv(), PATH: "/usr/bin:/bin" });
+const pushEnv = (): NodeJS.ProcessEnv => ({
+  ...fixtureEnv(),
+  PATH: "/usr/bin:/bin",
+});
 
 const pushFrom = (cwd: string): { status: number | null; stderr: string } => {
   fs.writeFileSync(path.join(cwd, "work.txt"), "work\n");
   git(["add", "work.txt"], cwd);
   git(["commit", "-m", "work"], cwd);
-  const pushed = spawnSync("git", ["push", "-q", "origin", "HEAD"], { cwd, encoding: "utf8", env: pushEnv() });
+  const pushed = spawnSync("git", ["push", "-q", "origin", "HEAD"], {
+    cwd,
+    encoding: "utf8",
+    env: pushEnv(),
+  });
   return { status: pushed.status, stderr: pushed.stderr };
 };
 
