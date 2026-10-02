@@ -38,6 +38,15 @@ suite lists cases by hash, so a case's `split` is part of its hash. A `unit` ste
 child as `{ id, version }` and its child variant by content hash, or as `"champion"`, which
 resolves when a trial starts; the trial, not the variant hash, records the resolved child.
 
+`startTrial` resolves every `"champion"` once, when the trial starts, and writes a
+`titan.trial/v1` record. Its `variant` is always a content hash: a trial run with variant
+`"champion"` records the hash of the variant holding the slot at that moment. A `unit` step
+whose child is `"champion"` is recorded in `champions`, keyed by step path (`delegate`, or
+`delegate/inner` for a champion's own champion step). `scorecardKeysFor` carries `champions`
+into the scorecard key, so two different champions never share a key. A trial with no
+champion steps omits `champions`, and its key hash is the same as before the field existed.
+Old trial records and scorecards without `champions` still load and keep their old key.
+
 ## When to reach for it
 
 You need a stable identity for "this workflow configuration on this suite", or you want to
@@ -64,7 +73,7 @@ if (variant.schema === "titan.variant/v1") {
 
 ## What it deliberately does not do
 
-No trial host, check engine, judge runner or scorecard aggregation yet; those are slices
+No trial host beyond `startTrial`'s identity record, no check engine, judge runner or scorecard aggregation yet; those are slices
 E3 to E7. Skill trees and topology modules are hashed by their stored digests, not re-read.
 
 ## Gotchas
