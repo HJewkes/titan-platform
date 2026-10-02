@@ -35,10 +35,32 @@ export const FixerConfigSchema = z.strictObject({
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
 });
 
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
+export const DigestConfigSchema = z.strictObject({
+  outDir: absolutePath.optional(),
+  icloudDir: absolutePath.optional(),
+  timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
+  slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
+  queuesDir: absolutePath.optional(),
+  logsDir: absolutePath.optional(),
+});
+
+export type DigestConfig = z.infer<typeof DigestConfigSchema>;
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
   postMerge: PostMergeConfigSchema.optional(),
+  digest: DigestConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),

@@ -25,6 +25,8 @@ export const WatchRowSchema = z.object({
   pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).nullable(),
   held: z.object({ reason: z.string(), satisfiedAt: z.string().optional(), satisfiedBy: z.string().optional() }).nullable(),
   stalled: z.object({ reason: z.string() }).nullable(),
+  /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
+  outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -165,6 +167,15 @@ export interface RowInput {
   train?: TrainHolder;
 }
 
+const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
+
+function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
+  if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
+  const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
+  const parsed = stopped && StoppedData.safeParse(stopped.data);
+  return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
+}
+
 /** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
 export const MAX_NOT_STARTED_REVIEWS = 3;
 
@@ -207,6 +218,7 @@ export function watchRow({ registration, run, pending, train }: RowInput): Watch
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: heldView(registration),
     stalled: stalled === undefined ? null : { reason: stalled },
+    outcome: runOutcome(steps),
   };
 }
 

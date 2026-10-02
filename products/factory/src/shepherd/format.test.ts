@@ -17,6 +17,7 @@ const row = (held: WatchRow["held"]): WatchRow => ({
   pendingGate: null,
   held,
   stalled: null,
+  outcome: null,
 });
 
 describe("the shepherd text view of a hold", () => {
