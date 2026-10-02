@@ -283,6 +283,14 @@ describe("read_only repo entries", () => {
     const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": owner, "b.md": listing(flag) }) });
     expect(lookupSeat(book, "acme/widgets")).toMatchObject({ kind: "seat", seat: { grants: [] } });
   });
+
+  it.each([["a string", ", read_only: yes-please"], ["a quoted true", ', read_only: "true"'], ["a number", ", read_only: 1"]])(
+    "refuses a seat file whose read_only is %s",
+    (_case, flag) => {
+      const seatsDir = writeSeats({ "a.md": listing(flag) });
+      expect(() => loadSeatBook({ seatsDir })).toThrow(/read_only/);
+    },
+  );
 });
 
 describe("seat paths with inner spaces", () => {
@@ -296,6 +304,10 @@ describe("seat paths with inner spaces", () => {
 
   it("keeps a run of inner spaces as written, since it names a different directory", () => {
     expect(load("~/Library/Application  Support/x").seats[0]!.paths["acme/spaced"]).toBe("~/Library/Application  Support/x");
+  });
+
+  it("keeps a segment that is a dot then a space then a word as written, since it is not a . or .. segment", () => {
+    expect(load("~/Library/. Support/x").seats[0]!.paths["acme/spaced"]).toBe("~/Library/. Support/x");
   });
 
   it("matches a spaced deny_repos path to a spaced repo path, spelled with ~ or the home directory", () => {
@@ -312,6 +324,8 @@ describe("seat paths with inner spaces", () => {
     "~/Library/ Support/x",
     "~/Library/Application Support /",
     "~/Library/. Support/../x",
+    "~/Library/Application\u00a0Support/x",
+    "~/Library/Application Support\u00a0/x",
     "~/Library/Application Support/./x",
     "~/Library/Application Support/../x",
     "~/Library/Application\tSupport/x",
