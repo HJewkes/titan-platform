@@ -9,6 +9,7 @@ import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
@@ -253,9 +254,21 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
   service
     .command("restart")
-    .description("kill and restart the loaded job, then wait for /health")
+    .description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
-    .action((opts: { port: number }) => run("restart", (ports) => restartService(ports, io, opts.port, logDir)));
+    .option("--drain-timeout <duration>", "longest wait for busy runs, such as 45m, 90s or 1h", parseDuration, DEFAULT_DRAIN_TIMEOUT_MS)
+    .option("--no-drain", "restart without waiting for busy runs")
+    .option("--force", "restart even while a park-routed step is busy")
+    .action((opts: RestartFlags) =>
+      run("restart", (ports) => restartService(ports, io, opts.port, logDir, { timeoutMs: opts.drainTimeout, wait: opts.drain, force: opts.force === true })),
+    );
+}
+
+interface RestartFlags {
+  port: number;
+  drainTimeout: number;
+  drain: boolean;
+  force?: boolean;
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
@@ -326,6 +339,14 @@ function parsePort(value: string): number {
   const port = Number(value);
   if (!/^[0-9]+$/.test(value) || port > 65_535) throw new InvalidArgumentError("expected a port number");
   return port;
+}
+
+const DURATION_UNIT_MS: Readonly<Record<string, number>> = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 };
+
+function parseDuration(value: string): number {
+  const match = /^([0-9]+)(ms|s|m|h)$/.exec(value);
+  if (!match) throw new InvalidArgumentError("expected a duration such as 45m, 90s or 1h");
+  return Number(match[1]) * DURATION_UNIT_MS[match[2]!]!;
 }
 
 async function parse(program: Command, argv: string[], io: CliIo, exitCode: () => number): Promise<number> {

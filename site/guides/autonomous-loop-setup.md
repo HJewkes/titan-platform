@@ -106,11 +106,12 @@ titan-factory service restart
 ```
 
 The state is a SQLite database under `$XDG_STATE_HOME/titan-factory`. Logs sit in the same directory. `GET /health` on the
-service port (default 7410) reports run counts, pending gates, the GitHub probe, the version
-and the pid. Full detail is in [Factory](/guides/factory#install-as-a-service).
+service port (default 7410) reports run counts, pending gates, the GitHub probe, the version,
+the pid, and the runs a restart would interrupt (`busy`). Full detail is in [Factory](/guides/factory#install-as-a-service).
 
 The service runs the code it was built from. After a merge that changes the factory, pull
-main, rebuild and run `titan-factory service restart`. A service that was not redeployed
+main, rebuild and run `titan-factory service restart`. The restart waits up to 45 minutes for
+in-flight reviews, merges and post-merge chores to finish. A service that was not redeployed
 keeps the old behavior.
 
 ## Shepherd seat policy
