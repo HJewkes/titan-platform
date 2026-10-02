@@ -4,7 +4,7 @@ import { assertCount, assertProbability } from "./validate.js";
 export interface DetectableEffectOptions {
   /** Number of paired cases. */
   n: number;
-  /** Standard deviation of the per-case difference; 0.5 is the largest a single pass/fail rate can have. */
+  /** Standard deviation of the per-case difference; 0.5 is the largest a single pass/fail rate can have, but a paired binary difference can reach 1. */
   sd: number;
   /** Significance level; defaults to 0.05. */
   alpha?: number;

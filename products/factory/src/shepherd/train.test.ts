@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +17,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
-import { mergeTrainRef, type MergeTrainRef } from "./train.js";
+import { MergeTrain, mergeTrainRef, trainMigration, type MergeTrainRef } from "./train.js";
 import type { WatchRow } from "./view.js";
 
 const HEADS = { 1: fakeSha("train-head1"), 2: fakeSha("train-head2") } as const;
@@ -260,5 +261,30 @@ describe("a restart mid-train", () => {
     expect(repo.merged).toEqual([1, 2]);
     expect(repo.refused).toEqual([]);
     expect(restarted.train.get().holder(REPO)).toBeUndefined();
+  });
+});
+
+describe("MergeTrain.take", () => {
+  function openTrain(): MergeTrain {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [trainMigration(1)]);
+    return new MergeTrain(db);
+  }
+
+  it("refuses a take from a holder that is no longer the holder, and keeps the real one", () => {
+    const train = openTrain();
+    train.take(REPO, "run-a", 1, null);
+    train.take(REPO, "run-b", 2, "run-a");
+
+    expect(train.take(REPO, "run-c", 3, "run-a")).toBe(false);
+    expect(train.holder(REPO)).toMatchObject({ runId: "run-b", pr: 2 });
+  });
+
+  it("refuses a take from nobody while a run holds the train", () => {
+    const train = openTrain();
+    train.take(REPO, "run-a", 1, null);
+
+    expect(train.take(REPO, "run-b", 2, null)).toBe(false);
+    expect(train.holder(REPO)?.runId).toBe("run-a");
   });
 });
