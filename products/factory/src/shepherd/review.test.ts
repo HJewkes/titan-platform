@@ -551,7 +551,7 @@ describe("sh-review", () => {
     expect(dispatch.spawns).toEqual([]);
   });
 
-  it("resumes the standing reviewer on a repeat that crashed during the machine-guard wait, because no session started after the intent", async () => {
+  it("resumes the standing reviewer on a repeat that crashed during the machine-guard wait, because its session wrote nothing after the intent", async () => {
     const dispatch = fakeDispatch(crew(standing()));
     const resume = dispatch.resume;
     let refusals = 1;
@@ -568,10 +568,10 @@ describe("sh-review", () => {
   });
 
   it.each<[string, number, number]>([
-    ["started after the intent and has exited again", START + 1, 0],
-    ["last started before the intent", START - 1, 1],
-  ])("on a repeat, resumes the exited standing reviewer whose session %s only when it has not resumed since", async (_name, sessionStartedAt, resumes) => {
-    const dispatch = fakeDispatch(crew(standing({ sessionStartedAt })));
+    ["wrote after the intent and has exited again", START + 1, 0],
+    ["last wrote before the intent", START - 1, 1],
+  ])("on a repeat, resumes the exited standing reviewer whose session %s only when it has not resumed since", async (_name, lastWrittenAt, resumes) => {
+    const dispatch = fakeDispatch(crew(standing({ lastWrittenAt })));
     const steps = reviewSteps(dispatch, { registered: optIn("rv-standing") });
 
     const { result } = await steps.review({ head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing" }, 1);

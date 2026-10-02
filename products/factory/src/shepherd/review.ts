@@ -59,8 +59,8 @@ export interface ReviewerAgent {
   predecessor?: string | null;
   /** Context tokens the session holds; absent means unknown, and an unknown fill is never resumed. */
   fillTokens?: number;
-  /** Epoch milliseconds the agent's current session started; absent means unknown. */
-  sessionStartedAt?: number;
+  /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
+  lastWrittenAt?: number;
 }
 
 /** The port throws this when the broker cannot be reached: nothing was asked of it, so asking again is safe. */
@@ -221,9 +221,9 @@ async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, t
 /** A resumed reviewer is found by its agent id. A spawned one is the only agent under a name nobody held before. */
 const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentId === undefined ? agent.name === intent.reviewer : agent.agentId === intent.agentId);
 
-/** The intent only names an exited reviewer, so one that is no longer exited, or whose session started since, was resumed. */
+/** The intent only names an exited reviewer, so one that is no longer exited, or whose session wrote since, was resumed. */
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
-  holds(intent)(agent) && (agent.presence !== "exited" || (agent.sessionStartedAt !== undefined && agent.sessionStartedAt >= intent.at));
+  holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
 async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
   const clock = deadline(timing);
