@@ -1,4 +1,4 @@
-import { GateAlreadyExists, openGate, waitForGate, type GateStore } from "@titan-design/hitl";
+import { GateAlreadyExists, openGate, waitForGate, type GateRecord, type GateStore } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
@@ -188,6 +188,11 @@ export class RunContext implements WorkflowContext {
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal });
     return this.bump(stepId, result);
+  }
+
+  expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
+    const own = this.deps.gates.listPending().filter((gate) => gate.id.startsWith(`${this.runId}/`) && isStale(gate));
+    return own.map((gate) => this.deps.gates.cancel(gate.id, reason).id);
   }
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {

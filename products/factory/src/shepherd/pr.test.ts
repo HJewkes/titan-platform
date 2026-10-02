@@ -699,3 +699,68 @@ describe("the merge hold", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 });
+
+describe("an update-branch the base cannot merge into", () => {
+  const behindPr = (fake: FakeGitHub): void => {
+    fake.updateBranchConflict = true;
+    fake.addPr({ headSha: H1, mergeableState: "behind", behind: true });
+  };
+
+  it("wakes the fixer with the conflict instead of failing the run", async () => {
+    const fake = fakeGitHub();
+    const resolve = (): WakeOutcome => ((fake.updateBranchConflict = false), (fake.pr(1).behind = false), (fake.pr(1).mergeableState = "clean"), fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" });
+    const { phases, wakes } = fakePhases({ wake: resolve });
+    const w = world(phases, undefined, fake);
+    behindPr(fake);
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H2);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(w.fake.effects.merge).toBe(1);
+  });
+
+  it("opens approve-merge naming the conflict when it survives one fixer wake", async () => {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    behindPr(fake);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
+    const done = await w.host.runtime.wait(runId);
+
+    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict"]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("a merge conflict survived one fixer attempt");
+    expect(done.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
+describe("a new cycle at a new head", () => {
+  it("expires pending approve-merge and sh-sent-back gates for an older head and keeps one at the current head", async () => {
+    const stale = fakeSha("old-head");
+    const fake = fakeGitHub();
+    const w = world(fakePhases({}).phases, undefined, fake);
+    fake.addPr({ headSha: H1 });
+    const seedGates = fake.onGetPr!;
+    let runId = "";
+    fake.onGetPr = (pr, reads) => {
+      seedGates(pr, reads);
+      if (reads !== 1) return;
+      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?` });
+      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST` });
+      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST` });
+    };
+    runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(w.host.gates.get(`${runId}/approve-merge:7`)?.status).toBe("cancelled");
+    expect(w.host.gates.get(`${runId}/sh-sent-back`)?.status).toBe("cancelled");
+    expect(w.host.gates.get(`${runId}/sh-sent-back:3`)?.status).toBe("pending");
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
