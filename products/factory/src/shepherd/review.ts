@@ -11,6 +11,7 @@ import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
+import { DEFAULT_BUSY_WAIT_MS, clearReviewWait, noteReviewWait, whileBrokerBusy, type BusyTiming } from "./review-wait.js";
 import { reviewerBrief } from "./reviewer-brief.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -34,6 +35,7 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
+export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 
 export interface ReviewTarget {
@@ -64,7 +66,7 @@ export class ReviewerBrokerDown extends Error {
   override readonly name = "ReviewerBrokerDown";
 }
 
-/** How Shepherd starts a reviewer; any other throw from `spawn` or `resume` is a refusal. */
+/** How Shepherd starts a reviewer; a throw from `spawn` or `resume` other than `ReviewerBrokerDown` or `ReviewerBrokerBusy` is a refusal. */
 export interface ReviewerDispatch {
   roster(): Promise<readonly ReviewerAgent[]>;
   /** `target` names the repo whose checkout the reviewer starts in. */
@@ -203,6 +205,17 @@ async function whileBrokerDown<T>(timing: Timing, signal: AbortSignal, ask: () =
   }
 }
 
+/** Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts. */
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, brief: string, timing: BusyTiming & Timing, signal: AbortSignal): Promise<void> {
+  const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target));
+  const note = (text: string) => noteReviewWait(target.repo, target.pr, `waiting for the broker to start reviewer ${intent.reviewer}: ${text}`);
+  try {
+    await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
+  } finally {
+    clearReviewWait(target.repo, target.pr);
+  }
+}
+
 /** A resumed reviewer is found by its agent id. A spawned one is the only agent under a name nobody held before. */
 const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentId === undefined ? agent.name === intent.reviewer : agent.agentId === intent.agentId);
 
@@ -226,6 +239,8 @@ export interface ReviewWiring {
   timeoutMs?: number;
   lateVerdictMs?: number;
   sessionStartTimeoutMs?: number;
+  /** How long a busy broker is asked again before its refusal stands; absent means `DEFAULT_BUSY_WAIT_MS`. */
+  busyWaitMs?: number;
   exitGraceMs?: number;
   detachGraceMs?: number;
   isFrozen?: IsFrozen;
@@ -256,15 +271,12 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
 };
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs }, { intent, ...target }, signal, repeat) => {
-  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS };
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, ...target }, signal, repeat) => {
+  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
-  // A held name was spawned by an earlier run. A resume leaves no mark on the roster, so only the first run asks for it.
+  // A held name was spawned by an earlier run, and a refused spawn holds none. A resume leaves no mark on the roster, so only the first run asks for it.
   const asked = intent.mode === "resume" ? repeat : roster.some(holds(intent));
-  if (!asked) {
-    const brief = reviewerBrief({ ...target, questions: await questions?.(target) });
-    await whileBrokerDown(timing, signal, () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target)));
-  }
+  if (!asked) await startReviewer(dispatch, intent, target, reviewerBrief({ ...target, questions: await questions?.(target) }), timing, signal);
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId };
