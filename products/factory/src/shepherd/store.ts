@@ -40,15 +40,26 @@ export interface Registration {
   holdReason: string | null;
   /** The reviewer a hold waits on, set only by `hold --reviewer`; never read out of the reason. */
   holdReviewer: string | null;
+  /** The head at which the hold's reviewer sent MERGE, and who sent it; a merge at that head passes the hold. */
+  holdSatisfied: HoldSatisfaction | null;
   /** A Version Packages PR's head that passed the release preflight under an auto policy, and when; other merges in the repo wait on it. */
   releaseReady: { head: string; at: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it. */
+/** The verdict that satisfied a hold: its reviewer's name, the session that wrote it, and where in that session's transcript. */
+export const HoldSatisfiedBySchema = z.object({ reviewer: z.string(), agentId: z.string(), sessionId: z.string(), locator: z.looseObject({}) });
+export type HoldSatisfiedBy = z.infer<typeof HoldSatisfiedBySchema>;
+
+export interface HoldSatisfaction {
+  head: string;
+  by: HoldSatisfiedBy;
+}
+
+/** What the merge guard asks: the reason `repo#pr`, or the PR's head `branch`, is held, or undefined when nothing holds it; a hold satisfied at `sha` does not hold a merge there. */
 export interface HoldLookup {
-  heldReason(repo: RepoSlug, pr: number, branch?: string): string | undefined;
+  heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
 const TABLE_DDL = `
@@ -87,6 +98,15 @@ const TP734_DDL = `
 /** The hold's structured reviewer, and the head at which a Version Packages PR passed its release preflight. */
 export function holdReviewerMigration(version = 9): Migration {
   return { version, name: "factory:shepherd_registration_hold_reviewer_release_ready", up: (db) => db.exec(TP734_DDL) };
+}
+
+const TP779_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN hold_satisfied_head TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN hold_satisfied_by TEXT;`;
+
+/** The head at which a hold's named reviewer sent MERGE, and the verdict's author and locator. */
+export function holdSatisfiedMigration(version = 11): Migration {
+  return { version, name: "factory:shepherd_registration_hold_satisfied", up: (db) => db.exec(TP779_DDL) };
 }
 
 export const AUTHOR_ROLES = ["implementer", "successor"] as const;
@@ -150,6 +170,8 @@ interface Row {
   hold_reviewer?: string | null;
   release_ready_head?: string | null;
   release_ready_at?: string | null;
+  hold_satisfied_head?: string | null;
+  hold_satisfied_by?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -236,12 +258,29 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(newRunId)!;
   }
 
+  /** A hold or a release clears any satisfaction, so a re-hold waits for its own reviewer again. */
   hold(runId: string, reason: string, reviewer?: string): Registration {
     return this.setHeld(runId, true, reason, reviewer ?? null);
   }
 
   release(runId: string): Registration {
     return this.setHeld(runId, false, null, null);
+  }
+
+  /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
+  satisfyHold(runId: string, reviewer: string, head: string, by: Omit<HoldSatisfiedBy, "reviewer">): boolean {
+    const satisfiedBy = JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer }));
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
+      .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
+    return changed === 1;
+  }
+
+  /** Withdraws a satisfaction at `head`, as when the reviewer's newest verdict there is FIX_FIRST. */
+  unsatisfyHold(runId: string, head: string): void {
+    this.db
+      .prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND hold_satisfied_head = ?")
+      .run(this.stamp(), runId, head);
   }
 
   /** Marks `head` as ready to land, or clears the mark with null. */
@@ -258,9 +297,9 @@ export class ShepherdStore implements HoldLookup {
   }
 
   /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. */
-  heldReason(repo: RepoSlug, pr: number, branch?: string): string | undefined {
+  heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
-    const held = candidates.find((registration) => registration?.held);
+    const held = candidates.find((registration) => registration?.held && !(sha !== undefined && registration.holdSatisfied?.head === sha));
     return held && (held.holdReason ?? "held");
   }
 
@@ -279,7 +318,7 @@ export class ShepherdStore implements HoldLookup {
 
   private setHeld(runId: string, held: boolean, reason: string | null, reviewer: string | null): Registration {
     const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, updated_at = ? WHERE run_id = ?")
+      .prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?")
       .run(held ? 1 : 0, reason, reviewer, this.stamp(), runId).changes;
     if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
     return this.byRun(runId)!;
@@ -310,6 +349,7 @@ function fromRow(row: Row): Registration {
     held: row.held === 1,
     holdReason: row.hold_reason,
     holdReviewer: row.hold_reviewer ?? null,
+    holdSatisfied: row.hold_satisfied_head && row.hold_satisfied_by ? { head: row.hold_satisfied_head, by: HoldSatisfiedBySchema.parse(JSON.parse(row.hold_satisfied_by)) } : null,
     releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

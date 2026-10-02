@@ -7,7 +7,7 @@ import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
-import { firstReason, heldCheck, holdingPort, waitWhileHeld } from "./shepherd/hold.js";
+import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatFixers, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
@@ -17,7 +17,7 @@ import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
-import { holdReviewerMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
@@ -52,7 +52,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -64,10 +64,11 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const guard = firstReason(freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now));
-  const held = heldCheck(deps.port, holds, guard);
+  const satisfy = holdSatisfierFor(deps);
+  const held = heldCheck(deps.port, holds, guard, satisfy);
   const train = deps.train ?? mergeTrainRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
-  const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard) }).map((route) =>
+  const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
@@ -76,6 +77,13 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
   return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now)], { database, shepherd: services });
+}
+
+/** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
+function holdSatisfierFor(deps: FactoryRouteDeps): HoldSatisfier | undefined {
+  const dispatch = deps.review?.dispatch;
+  if (!deps.review || !dispatch) return undefined;
+  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), reader: deps.review.reader });
 }
 
 /** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */

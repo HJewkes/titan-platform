@@ -73,6 +73,7 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
   const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), waiter())) ?? "unread";
+  await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
     const why = registration === undefined ? "no registration" : "no cleanup ports wired";
@@ -89,6 +90,13 @@ async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
+}
+
+/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. */
+async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<void> {
+  const store = deps.store.get();
+  if (store.byRun(input.runId)?.held !== true) return;
+  if ((await deps.port.getPr(input.repo, input.pr)).merged) store.release(input.runId);
 }
 
 /** A slice PR notes its task and leaves it open, because the task's other slices have not landed. An unread merge sha writes nothing, so a retry cannot add a second line for the landing. */

@@ -1,11 +1,11 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type AuthorInput, type RegistrationInput } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -169,9 +169,67 @@ describe("shepherd registration store", () => {
   });
 });
 
+describe("a hold satisfied by its reviewer's MERGE", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const by = { agentId: "agent-rv", sessionId: "session-rv", locator: { sourceId: "synthetic" } };
+
+  function heldFor(reviewer: string): ShepherdStore {
+    const store = openStore();
+    store.register(base);
+    store.hold("run-1", "awaiting a named review", reviewer);
+    return store;
+  }
+
+  it("passes a merge at the satisfied head and still holds any other head", () => {
+    const store = heldFor("rv-sec");
+
+    const swapped = store.satisfyHold("run-1", "rv-sec", H1, by);
+
+    expect(swapped).toBe(true);
+    expect(store.heldReason("octo/demo", 7, undefined, H1)).toBeUndefined();
+    expect(store.heldReason("octo/demo", 7, undefined, H2)).toBe("awaiting a named review");
+    expect(store.heldReason("octo/demo", 7)).toBe("awaiting a named review");
+    expect(store.byRun("run-1")?.holdSatisfied).toEqual({ head: H1, by: { ...by, reviewer: "rv-sec" } });
+  });
+
+  it("refuses the swap when the hold names another reviewer or was released", () => {
+    const store = heldFor("rv-sec");
+
+    const otherReviewer = store.satisfyHold("run-1", "rv-other", H1, by);
+    store.release("run-1");
+    const released = store.satisfyHold("run-1", "rv-sec", H1, by);
+
+    expect([otherReviewer, released]).toEqual([false, false]);
+    expect(store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("clears the satisfaction on a re-hold, even for the same reviewer", () => {
+    const store = heldFor("rv-sec");
+    store.satisfyHold("run-1", "rv-sec", H1, by);
+
+    store.hold("run-1", "awaiting another look", "rv-other");
+
+    expect(store.heldReason("octo/demo", 7, undefined, H1)).toBe("awaiting another look");
+    expect(store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("withdraws the satisfaction at its own head only", () => {
+    const store = heldFor("rv-sec");
+    store.satisfyHold("run-1", "rv-sec", H1, by);
+
+    store.unsatisfyHold("run-1", H2);
+    const kept = store.byRun("run-1")?.holdSatisfied?.head;
+    store.unsatisfyHold("run-1", H1);
+
+    expect(kept).toBe(H1);
+    expect(store.heldReason("octo/demo", 7, undefined, H1)).toBe("awaiting a named review");
+  });
+});
+
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
   return new ShepherdStore(db, () => clock.now);
 }
 
