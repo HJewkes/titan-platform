@@ -145,8 +145,8 @@ export async function reattachWorktree(
     base.sha,
     boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS)
   );
-  copyClaudeDir(gitRoot, worktree);
   const warnings = [
+    ...copyClaudeDir(gitRoot, worktree),
     ...reattachWarnings(record, source, base),
     ...(await runWorktreeSetup(setupTarget(gitRoot, worktree, base), opts.runSetup)),
   ];
