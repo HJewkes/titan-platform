@@ -7,7 +7,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
-import { conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
 export const MAX_UPDATE_CYCLES = 3;
@@ -220,7 +220,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps.port, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal)),
     codeRoute("update-branch", now, (input: UpdateInput, signal) => updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal)),
-    codeRoute("merge", now, (input: MergeInput) => deps.port.merge(input.repo, input.pr, input.sha, input.method)),
+    codeRoute("merge", now, async (input: MergeInput) => deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow)),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
   ];
 }

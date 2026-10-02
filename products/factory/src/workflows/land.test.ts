@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type GhExec } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type GhExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -105,6 +105,39 @@ describe("land core", () => {
     expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("updates the branch and merges again when GitHub refuses a merge because the base moved", async () => {
+    const scenario = landScenario();
+    const refuse = refuseNextMerge(scenario, 405, "Base branch was modified. Review and try the merge again.");
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(refuse.attempts()).toBe(2);
+    expect(scenario.fake.calls.filter((call) => /merge|updateBranch/.test(call))).toEqual(["merge:refused", "updateBranch", "merge"]);
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", mergeSha: scenario.fake.pr(1).mergeSha });
+  });
+
+  it.each([
+    [405, "Pull Request is not mergeable"],
+    [409, "Head branch was modified. Review and try the merge again."],
+  ])("still fails the merge step on an HTTP %i that is not a moved base (%s)", async (status, message) => {
+    const scenario = landScenario();
+    refuseNextMerge(scenario, status, message);
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("failed");
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 0, merge: 0 });
   });
 
   it("never merges while mergeable_state reads unknown: ci-wait times out and the run fails", async () => {
@@ -420,3 +453,17 @@ describe("readCi judges every run at the head", () => {
     expect(snapshot).toMatchObject({ verdict: "pending", waitingOn: ["validate"] });
   });
 });
+
+/** The next wire merge fails like GitHub and leaves the PR behind, as when another PR lands first. */
+function refuseNextMerge(scenario: LandScenario, status: number, message: string): { attempts: () => number } {
+  const { fake } = scenario;
+  const merge = fake.wire.merge;
+  let attempts = 0;
+  fake.wire.merge = async (...args) => {
+    if (attempts++ > 0) return merge(...args);
+    fake.calls.push("merge:refused");
+    fake.pr(1).behind = true;
+    throw new FakeHttpError(status, message);
+  };
+  return { attempts: () => attempts };
+}
