@@ -183,6 +183,8 @@ implementer. Shepherd never reads a reviewer's name out of the hold's reason tex
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
 - `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
+  `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
 Each `FIX_FIRST` wake records one `sh-wake-fix-first` step, so the run counts them across
 every head it sees. After the first, every review is a re-review: its brief requires a
@@ -193,8 +195,6 @@ carries the reviewer's defect-class section and the whole findings verbatim, so 
 blocking item reaches the fixer. A re-reviewer that leaves the section out still gives a
 valid verdict. The fixer is then asked to name the class itself before fixing. The brief is
 built from the verdict alone, and nothing can trim it before the wake.
-- a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
-  `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
 A woken implementer must start a turn within 5 minutes: a new event in its transcript, or a
 new head. A live implementer is messaged through `agent-chat debug send`, which delivers the
