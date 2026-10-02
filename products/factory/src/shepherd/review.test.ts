@@ -569,6 +569,7 @@ describe("sh-review", () => {
 
   it.each<[string, number, number]>([
     ["wrote after the intent and has exited again", START + 1, 0],
+    ["wrote at the very moment of the intent and has exited again", START, 0],
     ["last wrote before the intent", START - 1, 1],
   ])("on a repeat, resumes the exited standing reviewer whose session %s only when it has not resumed since", async (_name, lastWrittenAt, resumes) => {
     const dispatch = fakeDispatch(crew(standing({ lastWrittenAt })));
