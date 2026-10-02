@@ -201,7 +201,7 @@ function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
   if (!cmd.xargs || stdin === null) return [cmd.args];
   const { replace } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
-  if (replace !== null) return inputLines(stdin).map((line) => replaceIn(cmd.args, replace, line, !shell));
+  if (replace !== null) return inputLines(stdin).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
   if (shell) return [cmd.args];
   return [[...cmd.args, ...stdin.split(/\s+/).filter(Boolean).map(literalWord)]];
@@ -213,12 +213,13 @@ function inputLines(stdin: string): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
-/** A word that is only the replace string becomes the line's words, as the guard reads a line as shell words whatever xargs execs. */
-function replaceIn(args: WordToken[], replace: string, line: string, split: boolean): WordToken[] {
-  return args.flatMap((a) => {
-    if (split && a.value === replace) return line.split(/\s+/).filter(Boolean).map(literalWord);
-    return [a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, line) } : a];
-  });
+/** The exact reading of a line (one word), plus a split reading when a bare replace string could hold several words. */
+function lineRuns(args: WordToken[], replace: string, line: string, split: boolean): WordToken[][] {
+  const exact = args.map((a) => (a.value.includes(replace) ? { ...a, value: a.value.replaceAll(replace, line) } : a));
+  const words = line.split(/\s+/).filter(Boolean);
+  if (!split || words.length < 2 || !args.some((a) => a.value === replace)) return [exact];
+  const spread = args.flatMap((a, i) => (a.value === replace ? words.map(literalWord) : [exact[i] as WordToken]));
+  return [exact, spread];
 }
 
 function literalWord(value: string): WordToken {
