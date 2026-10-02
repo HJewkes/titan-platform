@@ -70,6 +70,29 @@ describe("shepherd registration store", () => {
     expect(() => store.register({ ...base, repo: "octo/other", runId: "run-5" })).not.toThrow();
   });
 
+  it("a repeat registration with a looser policy keeps the stricter stored one", () => {
+    const store = openStore();
+    const stored: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "demo-seat" };
+    store.register({ ...base, policy: stored });
+
+    const updated = store.update("run-1", { ...base, policy: { ...stored, merge: "auto", fixer: true } });
+
+    expect(updated.policy).toEqual(stored);
+  });
+
+  it("a repeat registration with a stricter policy narrows the stored one", () => {
+    const store = openStore();
+    store.register({ ...base, policy: { merge: "auto", mergeMethod: "squash", fixer: true, seat: "demo-seat" } });
+
+    const updated = store.update("run-1", { ...base, policy: { merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" } });
+
+    expect(updated.policy).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" });
+  });
+
+  it("refuses an update to a run with no registration", () => {
+    expect(() => openStore().update("run-9", base)).toThrow(/has no registration/);
+  });
+
   it("refuses a registration with neither a PR nor a branch", () => {
     expect(() => openStore().register({ ...base, pr: undefined })).toThrow(/pr or a branch/);
   });
