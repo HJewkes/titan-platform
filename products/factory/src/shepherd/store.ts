@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { EffectivePolicySchema, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, stricterPolicy, type EffectivePolicy } from "./policy.js";
 
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
 
@@ -203,13 +203,18 @@ export class ShepherdStore implements HoldLookup {
     return rows.map(fromRow);
   }
 
-  /** A repeat registration refreshes who and what the run is for; the run only ever narrows toward the stored policy. */
+  /** A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy. */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const kind = KindSchema.parse(meta.kind ?? "unknown");
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
-      .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(meta.policy), kind, meta.slice ?? null, this.stamp(), runId).changes;
-    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+    const write = this.db.transaction(() => {
+      const stored = this.byRun(runId);
+      if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
+      const policy = stricterPolicy(meta.policy, stored.policy);
+      this.db
+        .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
+        .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
+    });
+    write.immediate();
     return this.byRun(runId)!;
   }
 

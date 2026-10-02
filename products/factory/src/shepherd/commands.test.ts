@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -14,9 +17,9 @@ interface World extends ShepherdFixture {
   call: <T>(name: string, args: unknown) => ReturnType<typeof callCommand<T>>;
 }
 
-function world(options: FixtureOptions = {}): World {
+function world(options: FixtureOptions & { dbPath?: string } = {}): World {
   const fixture = shepherdFixture(options);
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: options.dbPath ?? ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   hosts.push(host);
   return { ...fixture, host, call: (name, args) => callCommand(host, fixture.routes, name, args) };
 }
@@ -93,6 +96,50 @@ describe("shepherd.register", () => {
 
     expect(envelope).toMatchObject({ ok: false });
     expect(shepherdRuns(w.host)).toEqual([]);
+  });
+});
+
+describe("shepherd.register races", () => {
+  it("a crash between starting the run and writing its registration leaves neither", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const store = w.routes.shepherd!.store.get();
+    vi.spyOn(store, "register").mockImplementationOnce(() => {
+      throw new Error("process died mid-register");
+    });
+
+    const envelope = await w.call("shepherd.register", pr1);
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/process died mid-register/) });
+    expect(shepherdRuns(w.host)).toEqual([]);
+    expect(store.all()).toEqual([]);
+  });
+
+  it("two hosts on one database registering the same repo#pr yield exactly one run", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp-571-")), "factory.db");
+    const cli = world({ frozen: true, dbPath });
+    const serve = world({ frozen: true, dbPath });
+    for (const w of [cli, serve]) w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const serveStore = serve.routes.shepherd!.store.get();
+    const first = await registered(cli, pr1);
+    vi.spyOn(serveStore, "byPr").mockReturnValueOnce(undefined).mockReturnValueOnce(undefined);
+    vi.spyOn(serveStore, "byBranch").mockReturnValueOnce(undefined);
+
+    const second = await registered(serve, pr1);
+
+    expect(second).toMatchObject({ runId: first.runId, created: false });
+    expect(shepherdRuns(cli.host)).toEqual([first.runId]);
+    expect(serveStore.all().map((registration) => registration.runId)).toEqual([first.runId]);
+  });
+
+  it("a repeat register cannot widen the stored merge policy", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, policy: { merge: "never" } });
+
+    const again = await registered(w, pr1);
+
+    expect(again.registration.policy.merge).toBe("never");
   });
 });
 

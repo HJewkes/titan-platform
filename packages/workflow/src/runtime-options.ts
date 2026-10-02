@@ -12,6 +12,11 @@ export interface WorkflowAuthorityOptions {
   actor: { class: ActorClass; id: string };
 }
 
+export interface WorkflowStartOptions {
+  /** Runs synchronously inside the transaction that inserts the run, on the runtime's `db`; a throw rolls the run back. */
+  onStart?: (runId: string) => void;
+}
+
 export interface WorkflowRuntimeOptions {
   db: Db;
   gates: GateStore;

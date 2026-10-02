@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ReviewerBrokerDown, type ReviewTarget } from "./review.js";
+import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
 import { agentChatReviewerDispatch, expandHome, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 
 const PROFILE = "rv-readonly";
@@ -198,6 +198,23 @@ describe("agentChatReviewerDispatch spawn", () => {
     expectRefusal(error, BROKER_DOWN_LINE);
   });
 
+  it.each([
+    ["the headless-agent total", "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents); wait for one to exit"],
+    ["the memory floor", "machine guard: memory 9% free (floor 15%, config machineMemoryFreePercent); wait for memory pressure to ease before spawning"],
+  ])("reports a refusal by the machine guard (%s) as busy, carrying the guard's reason alone", async (_name, reason) => {
+    const error = await failure(dispatchOver(`echo 'Not spawned: ${reason}'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect((error as Error).message).toBe(reason);
+  });
+
+  it("keeps a refusal that only mentions the machine guard mid-sentence a refusal", async () => {
+    const error = await failure(dispatchOver(`echo 'Not spawned: no machine guard: reading'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).not.toBeInstanceOf(ReviewerBrokerBusy);
+    expectRefusal(error, "no machine guard");
+  });
+
   it("keeps a spawn that timed out a refusal, because the reviewer may be running", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).spawn("rv-demo-7", BRIEF, target));
 
@@ -220,6 +237,12 @@ describe("agentChatReviewerDispatch resume", () => {
 
   it("reports an unreachable broker as broker-down", async () => {
     expect(await failure(dispatchOver(BROKER_DOWN).resume("rv-standing", BRIEF))).toBeInstanceOf(ReviewerBrokerDown);
+  });
+
+  it("reports a resume refused by the machine guard as busy", async () => {
+    const error = await failure(dispatchOver(`echo 'machine guard: 11 live headless agents machine-wide' >&2\nexit 1\n`).resume("rv-standing", BRIEF));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
   });
 
   it("keeps a refused resume a refusal", async () => {

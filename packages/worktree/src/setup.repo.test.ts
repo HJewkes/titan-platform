@@ -601,6 +601,40 @@ describe("npm config during worktree setup", () => {
     60_000
   );
 
+  it("a reused branch with a .pnpmfile.cjs does not run it under pnpm 10", async () => {
+    const markers = tmpdir("wt-markers-");
+    const repo = makeRepo({
+      command: ["npx", "--yes", "pnpm@10", "install", "--ignore-workspace"],
+    });
+    branchWithFiles(repo, "agent-chat/alice", {
+      "package.json": JSON.stringify({
+        name: "pin-synthetic",
+        version: "1.0.0",
+      }),
+      ".pnpmfile.cjs": `module.exports = { hooks: { readPackage(pkg) { require('fs').writeFileSync(${JSON.stringify(
+        `${markers}/pnpmfile-ran`
+      )}, ''); return pkg; } } };\n`,
+    });
+
+    const alloc = await createWorktreeAllocator().allocate(ctxFor(repo));
+
+    expect(alloc.ref?.reused).toBe("true");
+    expect(setupWarnings(alloc.warnings)).toEqual([]);
+    expect(markersIn(markers)).toEqual([]);
+  }, 120_000);
+
+  it("ignores the branch pnpmfile even when the host environment loads it", () => {
+    const env = setupEnv({
+      PATH: "/bin",
+      npm_config_ignore_pnpmfile: "false",
+      NPM_CONFIG_IGNORE_PNPMFILE: "false",
+    });
+    expect(env).toMatchObject({
+      npm_config_ignore_pnpmfile: "true",
+      NPM_CONFIG_IGNORE_PNPMFILE: "true",
+    });
+  });
+
   it("turns scripts off even when the host environment turns them on", () => {
     const env = setupEnv({
       PATH: "/bin",

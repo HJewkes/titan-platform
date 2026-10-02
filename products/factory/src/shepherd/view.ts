@@ -2,6 +2,7 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { reviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 
@@ -147,11 +148,11 @@ const WAITING: Readonly<Record<Phase, string>> = {
   cancelled: "none",
 };
 
-function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, behind: TrainHolder | undefined): string {
+function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration, behind: TrainHolder | undefined): string {
   if (gate) return `owner: resolve ${gateStep}`;
   if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
-  return WAITING[phase];
+  return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
 }
 
 export interface RowInput {
@@ -178,7 +179,7 @@ export function watchRow({ registration, run, pending, train }: RowInput): Watch
     phase,
     headSha,
     phaseSince: phaseSince(run, steps, phase),
-    nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, train?.runId === run.id ? undefined : train),
+    nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
     stalled: stuck ? { reason: run.error ?? run.status } : null,

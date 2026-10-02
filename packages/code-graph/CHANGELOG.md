@@ -1,5 +1,11 @@
 # @titan-design/code-graph
 
+## 0.10.0
+
+### Minor Changes
+
+- abcc9be: Add `computeFootprints` and `symbolSetHash`: a per-symbol structural footprint (signature, consumers and co-import coupling part hashes) and an order-independent hash over a unit's symbols.
+
 ## 0.9.2
 
 ### Patch Changes
