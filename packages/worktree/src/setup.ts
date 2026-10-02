@@ -75,6 +75,8 @@ const PINNED_NPM_CONFIG: Readonly<Record<string, string>> = {
   node_options: "--no-deprecation",
   script_shell: "/bin/sh",
   shell: "/bin/sh",
+  // pnpm loads a branch .pnpmfile.cjs (arbitrary code) even with ignore-scripts on.
+  ignore_pnpmfile: "true",
 };
 
 /** An allowlist of what an install needs: the step runs with the host's authority, outside any permission profile. */

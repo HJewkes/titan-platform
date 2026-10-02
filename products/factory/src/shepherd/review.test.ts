@@ -18,7 +18,9 @@ import {
   FIX_FIRST_TRUNCATED,
   MAX_FIX_FIRST_TEXT_CHARS,
   MAX_RESUME_FILL_TOKENS,
+  DEFAULT_BUSY_WAIT_MS,
   REVIEW_STEPS,
+  ReviewerBrokerBusy,
   ReviewerBrokerDown,
   acceptVerdict,
   awaitVerdict,
@@ -37,6 +39,7 @@ import {
   type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
+import { reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
@@ -417,18 +420,26 @@ describe("sh-review", () => {
     repo?: string;
     wiring?: Partial<ReviewWiring>;
     clock?: ReturnType<typeof clockAtStart>;
+    /** Runs inside every sleep, after the clock has moved. */
+    onSleep?: (ms: number) => void;
+    signal?: AbortSignal;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
   function reviewSteps(dispatch: ReviewerDispatch | undefined, options: StepOptions = {}) {
     const clock = options.clock ?? clockAtStart();
-    const sleep = async (ms: number) => void ((clock.now += ms), (clock.sleeps += 1));
+    const sleep = async (ms: number, signal: AbortSignal) => {
+      clock.now += ms;
+      clock.sleeps += 1;
+      options.onSleep?.(ms);
+      signal.throwIfAborted();
+    };
     const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
     const run = async <R>(match: string, input: object, attempt: number) => {
-      const step = { prompt: JSON.stringify(input), signal: new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
+      const step = { prompt: JSON.stringify(input), signal: options.signal ?? new AbortController().signal, attempt, requestKey: "k", stepId: `${match}:${HEAD}` };
       const outcome = await routes.find((candidate) => candidate.match === match)!.runner.run(step as never);
       return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as R | undefined };
     };
@@ -760,6 +771,66 @@ describe("sh-review", () => {
     expect(attempts).toBe(1);
   });
 
+  describe("a broker whose machine guard refuses the spawn", () => {
+    const GUARD = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents); wait for one to exit";
+
+    /** The spawn is refused as busy `refusals` times, then starts the reviewer. */
+    function busyFor(refusals: number): FakeDispatch & { asks: () => number } {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn;
+      let asks = 0;
+      dispatch.spawn = async (...args) => (asks++ < refusals ? Promise.reject(new ReviewerBrokerBusy(GUARD)) : spawn(...args));
+      return Object.assign(dispatch, { asks: () => asks });
+    }
+
+    const watchedWaits = () => {
+      const seen: (string | undefined)[] = [];
+      return { seen, onSleep: () => void seen.push(reviewWait("octo/demo", 7)) };
+    };
+
+    it("asks again after one, two and four minutes, then lands a normal review and names each wait while it lasts", async () => {
+      const dispatch = busyFor(3);
+      const { seen, onSleep } = watchedWaits();
+      const steps = reviewSteps(dispatch, { onSleep });
+
+      const { result } = await steps.review(spawnIntent);
+
+      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7" });
+      expect(dispatch.asks()).toBe(4);
+      expect(steps.clock.now - START).toBe(7 * 60_000);
+      expect(seen).toEqual([1, 2, 4].map((n) => `waiting for the broker to start reviewer rv-octo-demo-7: ${GUARD}; asking again in ${n} min`));
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+    });
+
+    it("answers none with the guard's reason once the busy wait is spent, after waits capped at eight minutes", async () => {
+      const dispatch = busyFor(Infinity);
+      const slept: number[] = [];
+      const steps = reviewSteps(dispatch, { onSleep: (ms) => void slept.push(ms / 60_000) });
+
+      const { result } = await steps.review(spawnIntent);
+
+      expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)` });
+      expect(slept).toEqual([1, 2, 4, 8, 8, 7]);
+      expect(steps.clock.now - START).toBe(DEFAULT_BUSY_WAIT_MS);
+      expect(dispatch.spawns).toEqual([]);
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+    });
+
+    it("stops cleanly when aborted during a wait, and a repeat of the step spawns the reviewer once", async () => {
+      const dispatch = busyFor(1);
+      const abort = new AbortController();
+
+      const aborted = await reviewSteps(dispatch, { signal: abort.signal, onSleep: () => abort.abort() }).review(spawnIntent);
+      const repeated = await reviewSteps(dispatch).review(spawnIntent, 1);
+
+      expect(aborted.outcome.ok).toBe(false);
+      expect(aborted.result).toBeUndefined();
+      expect(reviewWait("octo/demo", 7)).toBeUndefined();
+      expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+    });
+  });
+
   it("answers none when the spawned reviewer starts no session before the deadline", async () => {
     const dispatch = fakeDispatch([], { onSpawn: (name) => void dispatch.agents.push(agent(name, { sessionId: "" })) });
 
@@ -882,6 +953,19 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
+  });
+
+  it("waits out three machine-guard refusals of the spawn and takes the reviewer's MERGE, with no step that sends the PR to the owner", async () => {
+    const dispatch = fakeDispatch();
+    const spawn = dispatch.spawn;
+    let refusals = 3;
+    dispatch.spawn = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : spawn(...args));
+
+    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(dispatch.spawns).toHaveLength(1);
   });
 
   it("returns none after the intent step alone when the roster read is refused", async () => {
