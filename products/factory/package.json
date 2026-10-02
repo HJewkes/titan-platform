@@ -43,6 +43,7 @@
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
+    "@titan-design/worktree": "workspace:^",
     "commander": "^14.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"
