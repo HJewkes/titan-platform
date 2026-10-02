@@ -197,4 +197,21 @@ describe("xargs -I runs the command once per input line", () => {
   it("denies a merge when {} is the value of gh -R and the line has a space", () => {
     expect(spellings(bash("printf 'my repo' | xargs -I{} gh -R {} pr merge 1"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
+
+  it.each([
+    ["-0", "printf 'status\\0push origin HEAD:main' | xargs -0 -I{} git {}"],
+    ["--null", "printf 'status\\0push origin HEAD:main' | xargs --null -I{} git {}"],
+    ["-d,", "printf 'status,push origin HEAD:main' | xargs -d, -I{} git {}"],
+    ["-d ,", "printf 'status,push origin HEAD:main' | xargs -d , -I{} git {}"],
+    ["--delimiter=,", "printf 'status,push origin HEAD:main' | xargs --delimiter=, -I{} git {}"],
+    ["-d '\\n' with -tI", "printf 'status\\npush origin HEAD:main' | xargs -d '\\n' -tI{} git {}"],
+    ["a -d value that is not static", "printf 'status;push origin HEAD:main' | xargs -d \"$SEP\" -I{} git {}"],
+  ])("denies a push in a later record under %s", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("allows a single read-only record under -0 and -d", () => {
+    expect(bash("printf 'status' | xargs -0 -I{} git {}")).toEqual([]);
+    expect(bash("printf 'status' | xargs -d, -I{} git {}")).toEqual([]);
+  });
 });

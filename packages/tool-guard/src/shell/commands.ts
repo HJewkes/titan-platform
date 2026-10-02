@@ -201,16 +201,26 @@ function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
   if (!cmd.xargs || stdin === null) return [cmd.args];
   const { replace } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
-  if (replace !== null) return inputLines(stdin).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
+  if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
   if (shell) return [cmd.args];
   return [[...cmd.args, ...stdin.split(/\s+/).filter(Boolean).map(literalWord)]];
 }
 
-/** Non-empty input lines; empty input still yields one, so the replace string is emptied as before. */
-function inputLines(stdin: string): string[] {
-  const lines = stdin.split(/\r?\n/).filter((line) => line.trim() !== "");
-  return lines.length > 0 ? lines : [""];
+/**
+ * Non-empty input records. A line ends at a newline or NUL; each `-d` separator also splits it, and an
+ * unreadable `-d` splits on every punctuation character in turn. Extra splits only add commands to classify.
+ */
+function inputRecords(stdin: string, delimiters: string[] | null): string[] {
+  const separators = delimiters ?? [...new Set(stdin.match(/[^\sA-Za-z0-9_]/g) ?? [])];
+  const splits = [["\n", "\0"], ...separators.map((d) => [d])].map((seps) => splitOn(stdin, [...seps, "\n", "\0"]));
+  const records = [...new Set(splits.flat())];
+  return records.length > 0 ? records : [""];
+}
+
+function splitOn(text: string, separators: string[]): string[] {
+  const escaped = separators.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.split(new RegExp(`\r?(?:${escaped.join("|")})`)).filter((r) => r.trim() !== "");
 }
 
 /** The exact reading of a line (one word), plus a split reading when a bare replace string could hold several words. */
