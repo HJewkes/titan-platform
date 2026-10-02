@@ -3,7 +3,7 @@ import { cancelGate, type GateResolver } from "@titan-design/hitl";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
 import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
-import type { WorkflowRuntimeOptions } from "./runtime-options.js";
+import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
 import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
@@ -62,14 +62,19 @@ export class WorkflowRuntime {
   registered(): string[] {
     return [...this.workflows.keys()];
   }
-  start(name: string, params: Record<string, string> = {}): string {
+  /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
+  start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
     const fn = this.workflows.get(name);
     if (!fn) throw new Error(`unknown workflow: ${name}`);
     const run = newRun(randomUUID(), name, params);
-    this.store.create(run);
-    const claimed = this.claim(run.id);
-    if (!claimed) throw new Error(`could not claim new workflow ${run.id}`);
-    this.launch(claimed, fn, new Map());
+    const insert = this.options.db.transaction((): WorkflowRun => {
+      this.store.create(run);
+      const claimed = this.claim(run.id);
+      if (!claimed) throw new Error(`could not claim new workflow ${run.id}`);
+      options.onStart?.(run.id);
+      return claimed;
+    });
+    this.launch(insert.immediate(), fn, new Map());
     return run.id;
   }
 

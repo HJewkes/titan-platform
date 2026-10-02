@@ -102,6 +102,39 @@ describe("WorkflowRuntime", () => {
     expect(rt.status(runId)?.status).toBe("completed");
   });
 
+  it("commits a start hook's write together with the run it starts", async () => {
+    const db = makeDb();
+    db.exec("CREATE TABLE claim (run_id TEXT NOT NULL)");
+    const rt = runtime(db, inlineRunner(() => "ok"));
+    rt.register("demo", twoSteps);
+
+    const runId = rt.start("demo", {}, { onStart: (id) => void db.prepare("INSERT INTO claim (run_id) VALUES (?)").run(id) });
+
+    expect(db.prepare("SELECT run_id FROM claim").all()).toEqual([{ run_id: runId }]);
+    expect((await rt.wait(runId)).status).toBe("completed");
+  });
+
+  it("a start hook that throws leaves no run, its own writes undone, and nothing launched", () => {
+    const db = makeDb();
+    db.exec("CREATE TABLE claim (run_id TEXT NOT NULL)");
+    const seen: StepRunInput[] = [];
+    const rt = runtime(db, inlineRunner((input) => (seen.push(input), "ok")));
+    rt.register("demo", twoSteps);
+
+    const start = (): string =>
+      rt.start("demo", {}, {
+        onStart: (id) => {
+          db.prepare("INSERT INTO claim (run_id) VALUES (?)").run(id);
+          throw new Error("crashed before the hook finished");
+        },
+      });
+
+    expect(start).toThrow(/crashed before the hook finished/);
+    expect(rt.list(["running", "paused", "completed", "failed", "cancelled"])).toEqual([]);
+    expect(db.prepare("SELECT run_id FROM claim").all()).toEqual([]);
+    expect(seen).toEqual([]);
+  });
+
   it("retries a retryable failure once and then fails the run", async () => {
     const db = makeDb();
     let calls = 0;
