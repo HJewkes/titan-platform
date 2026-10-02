@@ -131,21 +131,62 @@ describe("shepherd-pr", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("stops waiting on a held PR merged outside Shepherd and leaves merging with no merge call", async () => {
-    const w = world(fakePhases({}).phases);
+  /** Approve PR 1 while it is held, so the run waits at `merge:0`. */
+  async function heldAtMerge(w: World): Promise<string> {
     w.fake.addPr({ headSha: H1 });
     const runId = shepherdPr1(w);
-
     await gateOpened(w.host, gateId(runId, "approve-merge"));
     w.store.hold(runId, "owner wants a look");
     w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
+    return runId;
+  }
+
+  function lastCiVerdict(w: World, runId: string): string | undefined {
+    const reads = stepIds(w.host, runId).filter((stepId) => stepId.startsWith("ci-wait:"));
+    return reads.map((stepId) => (stepResult(w.host, runId, stepId) as { result: { verdict: string } }).result.verdict).at(-1);
+  }
+
+  function landedSteps(w: World, runId: string): string[] {
+    return stepIds(w.host, runId).filter((stepId) => stepId === "sh-landed");
+  }
+
+  it("stops waiting on a held PR merged outside Shepherd and leaves merging with no merge call", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
     Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
     await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).not.toBe("merge:0"), { timeout: 500 });
     await w.host.runtime.wait(runId);
 
     expect(w.fake.effects.merge).toBe(0);
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(landedSteps(w, runId)).toHaveLength(1);
+  });
+
+  it("stops waiting on a held PR closed without merging, ends the run as closed, and records no landing", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { state: "closed" });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).not.toBe("merge:0"), { timeout: 500 });
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(landedSteps(w, runId)).toEqual([]);
+    expect(lastCiVerdict(w, runId)).toBe("closed");
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+  });
+
+  it("keeps the hold on a PR whose state reads as unknown, and makes no merge call", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { state: undefined });
+    await sleep(100, new AbortController().signal);
+
+    expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0");
+    expect(w.fake.effects.merge).toBe(0);
   });
 
   it("wakes the implementer with a review wake on FIX_FIRST, before any merge decision on that head", async () => {
