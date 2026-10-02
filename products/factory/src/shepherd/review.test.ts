@@ -1268,7 +1268,7 @@ describe("reviewPhase", () => {
   describe("a seat reviewer outside Shepherd's dispatch", () => {
     const seat = agent("seat-pr-1-review", { spawnedBy: "coord" });
     /** Shepherd's own reviewer says MERGE at the asked head the moment it is read; the seat reviewer says what `seatSaid` holds. */
-    const withSeat = (seatSaid: ReviewerMessage[], late = false): Scene["read"] => (input, dispatch, now) => {
+    const withSeat = (seatSaid: ReviewerMessage[], late = false): NonNullable<Scene["read"]> => (input, dispatch, now) => {
       if (input.reviewerAgentId === seat.agentId) return seatSaid;
       if (late && now < 18_000) return [];
       return dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), now));
