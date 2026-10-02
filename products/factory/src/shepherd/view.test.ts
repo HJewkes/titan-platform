@@ -44,6 +44,23 @@ describe("shepherd view phases", () => {
   });
 });
 
+describe("shepherd view holds", () => {
+  it("names the head and the session whose MERGE satisfied a hold", () => {
+    const by = { reviewer: "rv-sec", agentId: "agent-rv", sessionId: "session-rv", locator: {} };
+    const held = { ...registration, held: true, holdReason: "awaiting a named review", holdSatisfied: { head: "a".repeat(40), by } } as Registration;
+
+    const row = watchRow({ registration: held, run: pausedAt("merge:0:0") });
+
+    expect(row.held).toEqual({ reason: "awaiting a named review", satisfiedAt: "a".repeat(40), satisfiedBy: "rv-sec (agent-rv/session-rv)" });
+  });
+
+  it("shows an unsatisfied hold by its reason alone", () => {
+    const held = { ...registration, held: true, holdReason: "owner review", holdSatisfied: null } as Registration;
+
+    expect(watchRow({ registration: held, run: pausedAt("merge:0:0") }).held).toEqual({ reason: "owner review" });
+  });
+});
+
 describe("shepherd view stalls", () => {
   function reviewedRun(outcomes: readonly ("started" | "not-started")[]): WorkflowRun {
     const run = pausedAt("sh-review:abc1234");

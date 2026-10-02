@@ -2,8 +2,10 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { redactForEvidence } from "../redact.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
+import { acceptExternalVerdict, externalReviewer, latestSession } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
-import type { HoldLookup } from "./store.js";
+import { provablyIndependent, type ReviewerAgent, type ReviewerReader } from "./review.js";
+import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 
 export const HOLD_POLL_MS = 10_000;
 
@@ -11,8 +13,47 @@ export class MergeHeldError extends Error {
   override readonly name = "MergeHeldError";
 }
 
-/** Why a merge of `repo#pr` must wait, read fresh; a PR merged or closed elsewhere has nothing left to wait for; any other state, unknown included, keeps the hold. */
-export type HeldCheck = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
+/**
+ * Why a merge of `repo#pr` at `sha` must wait, read fresh; a PR merged or closed elsewhere has nothing left to wait for; any
+ * other state, unknown included, keeps the hold. A hold satisfied at `sha` passes only while `sha` is still the head; no
+ * `sha` means the head as read now.
+ */
+export type HeldCheck = (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
+
+/** Reads the hold's named reviewer at `sha` and records the newest verdict there: MERGE satisfies the hold, FIX_FIRST withdraws it. */
+export type HoldSatisfier = (repo: RepoSlug, pr: number, sha: string) => Promise<void>;
+
+export interface HoldSatisfierDeps {
+  store: () => ShepherdStore;
+  roster: () => Promise<readonly ReviewerAgent[]>;
+  reader: ReviewerReader;
+}
+
+/** A read that fails, a reviewer not on the roster, or one not provably independent of the code's authors changes nothing. */
+export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
+  return async (repo, pr, sha) => {
+    const store = deps.store();
+    const registration = store.byPr(repo, pr);
+    const reviewer = externalReviewer(registration);
+    if (registration === undefined || reviewer === undefined) return;
+    const roster = await deps.roster().catch((): readonly ReviewerAgent[] => []);
+    const row = latestSession(reviewer, roster);
+    if (row === undefined || !independent(row, registration, roster, store)) return;
+    const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
+    const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, await deps.reader.read(read).catch(() => []));
+    if (verdict.kind !== "verdict") return;
+    if (verdict.verdict === "FIX_FIRST") return store.unsatisfyHold(registration.runId, sha);
+    if (registration.holdSatisfied?.head === sha) return;
+    store.satisfyHold(registration.runId, reviewer, sha, { ...verdict.reviewer, locator: { ...verdict.locator } });
+  };
+}
+
+/** The roster's lineage must clear the reviewer, and so must the run's recorded authors, by agent id and by name. */
+function independent(row: ReviewerAgent, registration: Registration, roster: readonly ReviewerAgent[], store: ShepherdStore): boolean {
+  const authors = store.authorsOf(registration.runId);
+  if (authors.some((author) => author.agentId === row.agentId || author.name === row.name)) return false;
+  return provablyIndependent(row, registration.implementer, roster);
+}
 
 /** The first guard that names a reason decides; later guards are not read. */
 export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
@@ -27,22 +68,24 @@ export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
   };
 }
 
-export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard): HeldCheck {
-  return async (repo, pr) => {
+export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard, satisfy?: HoldSatisfier): HeldCheck {
+  return async (repo, pr, sha) => {
     const lookup = holds();
-    const { headRef, baseRef, state, merged } = await port.getPr(repo, pr);
+    const { headRef, baseRef, state, merged, headSha } = await port.getPr(repo, pr);
     if (merged || state === "closed") return undefined;
-    return lookup.heldReason(repo, pr, headRef) ?? (await freeze?.reason(port, repo, pr, baseRef));
+    const at = sha === undefined || sha === headSha ? headSha : undefined;
+    if (at !== undefined) await satisfy?.(repo, pr, at);
+    return lookup.heldReason(repo, pr, headRef, at) ?? (await freeze?.reason(port, repo, pr, baseRef));
   };
 }
 
 /** The port handed to `landRoutes`: its merge refuses a held PR, and any PR of a frozen repo but the fix task's; any other PR passes straight through. */
-export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard): GitHubPort {
-  const held = heldCheck(port, holds, freeze);
+export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard, satisfy?: HoldSatisfier): GitHubPort {
+  const held = heldCheck(port, holds, freeze, satisfy);
   return {
     ...port,
     merge: async (repo, pr, sha, method) => {
-      const reason = await held(repo, pr);
+      const reason = await held(repo, pr, sha);
       if (reason !== undefined) throw new MergeHeldError(`${repo}#${pr} is held: ${reason}`);
       return port.merge(repo, pr, sha, method);
     },
@@ -80,13 +123,14 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
 interface MergeTarget {
   repo: RepoSlug;
   pr: number;
+  sha: string;
 }
 
 /** True when the PR was held at least once before its release. */
 async function untilReleased(held: HeldCheck, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
-    if ((await held(target.repo, target.pr)) === undefined) return waited;
+    if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }
 }
