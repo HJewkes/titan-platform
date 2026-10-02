@@ -15,6 +15,7 @@ import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { expireStaleGates } from "./stale-gates.js";
+import { STOPPED_STEPS, recordStopped, stoppedRoute } from "./stopped.js";
 import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
@@ -28,7 +29,6 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   { id: "ci-failed", kind: "assisted" },
   { id: "sh-await-pr", kind: "dispatch" },
   { id: "sh-landed", kind: "dispatch" },
-  { id: "sh-stopped", kind: "dispatch" },
   { id: "sh-policy", kind: "dispatch" },
   { id: "sh-sent-back", kind: "assisted" },
   ...WAKE_STEPS,
@@ -37,6 +37,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...RELEASE_STEPS,
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
+  ...STOPPED_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -116,7 +117,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
     const final = outcome && (await afterLand(run, outcome));
-    if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : ended(ctx, final);
+    if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : recordStopped(ctx, final);
     run.state.round += 1;
   }
 }
@@ -331,16 +332,8 @@ async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<La
   return merged;
 }
 
-/** Records why a run ended without a merge, so the read model never mistakes a completed run for a merged one. */
-async function ended(ctx: WorkflowContext, outcome: Exclude<LandOutcome, { kind: "merged" }>): Promise<LandOutcome> {
-  const reason = outcome.kind === "stopped" ? outcome.reason : outcome.kind;
-  await step(ctx, "sh-stopped", { kind: outcome.kind, reason, headSha: outcome.headSha }, StoppedResult);
-  return outcome;
-}
-
 const AwaitPrResult = z.looseObject({ pr: z.number().int().positive(), headSha: z.string() });
 const LandedResult = z.looseObject({ mergeSha: z.string() });
-const StoppedResult = z.looseObject({ reason: z.string() });
 
 interface AwaitPrInput {
   repo: RepoSlug;
@@ -377,7 +370,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   return [
     codeRoute("sh-await-pr", deps.now, (input: AwaitPrInput, signal) => awaitPr(deps, input, signal)),
     codeRoute("sh-landed", deps.now, async (input: object) => input),
-    codeRoute("sh-stopped", deps.now, async (input: object) => input),
+    stoppedRoute(deps.now),
     codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),

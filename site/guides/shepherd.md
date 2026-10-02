@@ -81,6 +81,10 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
+A `done` run did not necessarily merge. A run that stops unmerged (closed, abandoned,
+merge-denied, stuck-behind, not-mergeable, conflict) records an `sh-stopped` step with the
+reason, and the `WatchRow` `outcome` field reads `merged` or `stopped` with that reason.
+
 Shepherd runs no deploy, release or activation stage and does not run the factory's
 `postMerge` chore.
 
