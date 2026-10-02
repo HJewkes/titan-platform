@@ -194,8 +194,10 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   if (go.touched.length === 0) return finish(deploy, go, "skipped", "no changed path reaches the factory build");
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
-  const why = (await installAndBuild(deploy.ports)) ?? (await restartAndConfirm(deploy, go.target));
-  return why === undefined ? finish(deploy, go, "deployed") : rollback(deploy, go, backup, why);
+  const built = await installAndBuild(deploy.ports);
+  if (built !== undefined) return rollback(deploy, go, backup, built, "running");
+  const why = await restartAndConfirm(deploy, go.target);
+  return why === undefined ? finish(deploy, go, "deployed") : rollback(deploy, go, backup, why, "restarted");
 }
 
 async function fastForward(ports: DeployPorts, target: string): Promise<string | undefined> {
@@ -247,13 +249,24 @@ async function restartAndConfirm({ ports, io, options }: Deploy, target: string)
   return sha === target ? undefined : `/health reports build ${sha ?? "none"}, not ${target}`;
 }
 
-/** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */
-async function rollback(deploy: Deploy, go: Go, backup: string, why: string): Promise<number> {
-  const { ports, io, options } = deploy;
-  io.stderr(`error: ${why}; restoring the factory build from ${backup}\n`);
+/** Whether the old process still runs (`running`) or the new build already replaced it (`restarted`). */
+type ServiceState = "running" | "restarted";
+
+/** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it; only a replaced process is kickstarted. */
+async function rollback(deploy: Deploy, go: Go, backup: string, why: string, state: ServiceState): Promise<number> {
+  deploy.io.stderr(`error: ${why}; restoring the factory build from ${backup}\n`);
   restore(deploy, go, backup);
-  const restarted = (await restartService(ports, io, options.port, options.logDir, { ...options.drain, wait: false })) === 0;
-  const answering = restarted ? await runningBuild(ports, options.port) : undefined;
-  const back = restarted && (go.running === undefined || answering === go.running);
+  const back = state === "restarted" ? await restartRestored(deploy, go) : await stillServing(deploy, go);
   return finish(deploy, go, "rolled-back", back ? why : `${why}; the restored build did not answer /health as ${go.running ?? "before"}`);
+}
+
+async function restartRestored(deploy: Deploy, go: Go): Promise<boolean> {
+  const { ports, io, options } = deploy;
+  if ((await restartService(ports, io, options.port, options.logDir, { ...options.drain, wait: false })) !== 0) return false;
+  return stillServing(deploy, go);
+}
+
+/** After a failed build the old process has its code loaded already, so it should still answer as the running build. */
+async function stillServing({ ports, options }: Deploy, go: Go): Promise<boolean> {
+  return go.running === undefined || (await runningBuild(ports, options.port)) === go.running;
 }

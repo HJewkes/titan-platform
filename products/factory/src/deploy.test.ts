@@ -216,17 +216,20 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations()).toEqual([]);
   });
 
-  it("restores the dist snapshot, restarts and records rolled-back when the build fails", async () => {
-    const failing = fakeMachine({ buildFails: true });
+  it.each([
+    ["install", { installFails: true }, "pnpm install --frozen-lockfile failed"],
+    ["build", { buildFails: true }, "pnpm --filter @titan-design/factory... build failed"],
+  ])("restores the dist snapshot without restarting the still-running service when the %s fails", async (_step, init, why) => {
+    const failing = fakeMachine(init);
 
     const result = await deploy(failing);
 
     expect(result.code).toBe(1);
     expect(failing.trees.get(FACTORY_DIST)).toBe(`build:${BASE}`);
     expect(failing.serving()).toBe(BASE);
-    expect(failing.mutations()).toContain(`launchctl kickstart -k ${TARGET}`);
-    expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, from: BASE });
-    expect(failing.record()?.why).toContain("pnpm --filter @titan-design/factory... build failed");
+    expect(failing.mutations().some((call) => call.startsWith("launchctl"))).toBe(false);
+    expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, from: BASE, why: expect.stringContaining(why) });
+    expect(failing.record()?.why).not.toContain("did not answer");
     expect(failing.calls.some((call) => call.startsWith("git reset"))).toBe(false);
   });
 

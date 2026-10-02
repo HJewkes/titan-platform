@@ -142,8 +142,9 @@ unknown or dirty build sha counts as touched. When nothing intersects it runs
 to `deploy-backup/<running sha>/`, fast-forwards, runs `pnpm install --frozen-lockfile` under
 `@titan-design/worktree`'s `setupEnv` pin, builds the closure, and restarts drained as
 `service restart` does. Success means launchd's pid answers `/health` with `github` `ok` and
-`build.sha` equal to the target. A failed install, build, restart or sha check restores the
-snapshot, kickstarts again and records `rolled-back`; that sha is then held until a newer one
+`build.sha` equal to the target. A failed install or build restores the snapshot and leaves
+the old process running, untouched. A failed restart or sha check restores the snapshot and
+kickstarts again. Both record `rolled-back`, and that sha is then held until a newer one
 arrives. Every outcome but a no-op goes to `deploy.json`, which `/health` shows as `lastDeploy`.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
