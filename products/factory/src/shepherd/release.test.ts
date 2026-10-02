@@ -2,7 +2,21 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type PrFile } from "@
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { RELEASE_FREEZE_MS, VERSION_PACKAGES_BRANCH, decideRelease, isReleaseFile, npmRegistry, releaseGuard, releasePreflight, type PackageRegistry, type ReleasePreflight } from "./release.js";
+import {
+  REGISTRY_BACKOFF_MS,
+  RELEASE_FREEZE_MS,
+  VERSION_PACKAGES_BRANCH,
+  blockedOnlyByNpm,
+  decideRelease,
+  isReleaseFile,
+  npmRegistry,
+  publishedSince,
+  releaseGuard,
+  releasePreflight,
+  retryingRegistry,
+  type PackageRegistry,
+  type ReleasePreflight,
+} from "./release.js";
 import { ShepherdStore, holdReviewerMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -60,19 +74,18 @@ describe("isReleaseFile", () => {
 
 describe("releasePreflight", () => {
   it("passes when every public package in the release is on npm, and skips private ones", async () => {
-    expect(await preflight(versionPackagesPr())).toEqual({ head: HEAD, blockers: [], packages: ["@demo/widget"] });
+    expect(await preflight(versionPackagesPr())).toEqual({ head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [] });
   });
 
   it("blocks a package npm has never seen and names it", async () => {
     const result = await preflight(versionPackagesPr(), onNpm());
 
     expect(result.blockers).toEqual(["@demo/widget is not on registry.npmjs.org yet; publish its first version by hand (CLAUDE.md, Releasing)"]);
+    expect(result.unpublished).toEqual(["@demo/widget"]);
   });
 
-  it("blocks when the registry cannot be read, rather than assuming the package exists", async () => {
-    const result = await preflight(versionPackagesPr(), async () => Promise.reject(new Error("HTTP 503")));
-
-    expect(result.blockers).toEqual(["the registry read for @demo/widget failed: HTTP 503"]);
+  it("throws when the registry cannot be read, so no blocked result exists for a head npm never answered for", async () => {
+    await expect(preflight(versionPackagesPr(), async () => Promise.reject(new Error("HTTP 503")))).rejects.toThrow("HTTP 503");
   });
 
   it("blocks a file changesets does not write", async () => {
@@ -119,7 +132,7 @@ describe("releasePreflight", () => {
 });
 
 describe("decideRelease", () => {
-  const passed: ReleasePreflight = { head: HEAD, blockers: [], packages: ["@demo/widget"] };
+  const passed: ReleasePreflight = { head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [] };
 
   it.each<[string, EffectivePolicy, string | undefined, ReleasePreflight | undefined, string, string]>([
     ["a never seat", { ...AUTO, merge: "never" }, HEAD, passed, "deny", "never"],
@@ -196,5 +209,72 @@ describe("npmRegistry", () => {
     expect(await npmRegistry(answering(404) as typeof fetch)("@demo/widget")).toBe(false);
     await expect(npmRegistry(answering(500) as typeof fetch)("@demo/widget")).rejects.toThrow(/answered 500/);
     expect(requested[0]).toBe("https://registry.npmjs.org/@demo%2fwidget");
+  });
+});
+
+describe("retryingRegistry", () => {
+  /** A registry that throws for its first `failures` reads, then has every package; it records each wait. */
+  function flaky(failures: number) {
+    const waits: number[] = [];
+    let reads = 0;
+    const registry: PackageRegistry = async () => {
+      reads += 1;
+      if (reads <= failures) throw new Error(`HTTP 503 on read ${reads}`);
+      return true;
+    };
+    const sleep = async (ms: number) => void waits.push(ms);
+    return { retrying: retryingRegistry(registry, sleep, new AbortController().signal), waits, reads: () => reads };
+  }
+
+  it("reads again after each backoff and answers once the registry recovers", async () => {
+    const { retrying, waits } = flaky(2);
+
+    expect(await retrying("@demo/widget")).toBe(true);
+    expect(waits).toEqual(REGISTRY_BACKOFF_MS.slice(0, 2));
+  });
+
+  it("throws the last failure once every backoff ran out", async () => {
+    const { retrying, waits, reads } = flaky(Number.POSITIVE_INFINITY);
+
+    await expect(retrying("@demo/widget")).rejects.toThrow(`HTTP 503 on read ${REGISTRY_BACKOFF_MS.length + 1}`);
+    expect([waits, reads()]).toEqual([REGISTRY_BACKOFF_MS, REGISTRY_BACKOFF_MS.length + 1]);
+  });
+
+  it("answers a 404 at once, without waiting", async () => {
+    const waits: number[] = [];
+    const retrying = retryingRegistry(onNpm(), async (ms) => void waits.push(ms), new AbortController().signal);
+
+    expect([await retrying("@demo/widget"), waits]).toEqual([false, []]);
+  });
+});
+
+describe("blockedOnlyByNpm", () => {
+  const unpublished: ReleasePreflight = { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"], unpublished: ["@demo/widget"] };
+  const results = (result: object) => ({ [`dispatch:sh-release-preflight:${HEAD}#0`]: { stepId: `sh-release-preflight:${HEAD}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00Z", data: { result } } });
+  const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green.`;
+
+  it("finds the preflight a gate at its head asks about when unpublished packages are its only blockers", () => {
+    expect(blockedOnlyByNpm(results(unpublished), prompt)).toEqual(unpublished);
+  });
+
+  it.each<[string, object, string]>([
+    ["another blocker beside the unpublished package", { ...unpublished, blockers: [...unpublished.blockers, "it changes files a release does not write: src/a.ts"] }, prompt],
+    ["a malformed manifest and nothing unpublished", { ...unpublished, blockers: ["packages/widget/package.json is not a readable package manifest"], unpublished: [] }, prompt],
+    ["a result stored before unpublished was recorded", { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"] }, prompt],
+    ["a gate about another head", unpublished, `Merge PR #1 in ${REPO} at head ${fakeSha("other")}?`],
+  ])("finds nothing for %s", (_name, result, gatePrompt) => {
+    expect(blockedOnlyByNpm(results(result), gatePrompt)).toBeUndefined();
+  });
+});
+
+describe("publishedSince", () => {
+  const preflight: ReleasePreflight = { head: HEAD, blockers: ["a", "b"], packages: ["@demo/a", "@demo/b"], unpublished: ["@demo/a", "@demo/b"] };
+
+  it("is true only once npm has every package that blocked the release", async () => {
+    expect([await publishedSince(onNpm("@demo/a"), preflight), await publishedSince(onNpm("@demo/a", "@demo/b"), preflight)]).toEqual([false, true]);
+  });
+
+  it("reads an unreadable registry as not yet, so the next sweep asks again", async () => {
+    expect(await publishedSince(async () => Promise.reject(new Error("HTTP 503")), preflight)).toBe(false);
   });
 });
