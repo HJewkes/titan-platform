@@ -27,12 +27,19 @@ notices and errors to stderr.
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
   both diffs name is reported once. The message is read with `--encoding=UTF-8`, so
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
+- **Idents and ref names.** Each scanned commit's raw author and committer name and email are
+  scanned too, and a finding names the field (`commit <sha> author.name`, `author.email`,
+  `committer.name`, `committer.email`). `pre-push` also scans the local and remote ref names on
+  each stdin line, so a branch or tag named after a private term is refused as
+  `push line <n> local ref` or `push line <n> remote ref`. A ref deletion is not scanned, so a
+  leaked ref can still be deleted. Idents and ref names are never allowable.
 - **Binary files are scanned as text.** Every `git show` and `git diff` passes `--text`, so a
   file git calls binary (one NUL byte is enough) still yields its lines, and the report's
   `binary files skipped` stays 0; if git ever prints a file as binary anyway, the scan exits 2.
   There is no opt-out, since an opt-out would be a bypass.
   Matching is on the bytes decoded as UTF-8: a term written in UTF-16 or another encoding is
-  not matched.
+  not matched. **UTF-16 text is not scanned**: a UTF-16LE or UTF-16BE file passes even
+  with `--text`, because its NUL-interleaved bytes never decode to the term.
 - **Size limit.** A commit whose patch text is over 128 MiB (`MAX_PATCH_BYTES`) exits 2 with
   one line naming its short sha and the limit. `tree` has the same limit on the whole tree's
   patch text and exits 2 with one line naming `tree` and the limit. GitHub itself refuses a file over 100 MiB.

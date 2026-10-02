@@ -9,6 +9,7 @@ import {
   parsePrePush,
   readCommit,
   readTree,
+  refSource,
   repoRoot,
 } from "./git.js";
 import { installHook, type InstallResult } from "./install.js";
@@ -42,12 +43,9 @@ function readCommits(root: string, shas: readonly string[], maxPatchBytes?: numb
 }
 
 function prePushSources(root: string, remote: string, io: CliIo): ScanSource[] {
-  const updates = parsePrePush(io.readStdin());
-  return readCommits(
-    root,
-    updates.flatMap((update) => commitsForUpdate(root, remote, update)),
-    io.maxPatchBytes,
-  );
+  const pushLines = parsePrePush(io.readStdin());
+  const shas = pushLines.flatMap((line) => commitsForUpdate(root, remote, line));
+  return [refSource(pushLines), ...readCommits(root, shas, io.maxPatchBytes)];
 }
 
 function runScan(io: CliIo, collect: (root: string) => ScanSource[]): number {

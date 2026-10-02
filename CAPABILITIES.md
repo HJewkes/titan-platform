@@ -212,7 +212,7 @@ Key exports:
 - `terms`: `parseTerms`, `TermFileError`
 - `scan`: `scan`
 - `report`: `formatReport`
-- +17 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
