@@ -10,6 +10,7 @@ import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./ho
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
+import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
@@ -66,7 +67,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const sweep =startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
   const services = options.routes.shepherd;
-  const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
+  const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
@@ -148,6 +149,7 @@ async function adopt(host: FactoryHost, log: Logger): Promise<void> {
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded an approve-merge gate whose PR head moved");
 }
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {

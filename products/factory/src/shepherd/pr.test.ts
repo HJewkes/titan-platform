@@ -527,6 +527,25 @@ describe("the route table in a run", () => {
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
   });
+
+  it("reads the next head when the head sweep cancels a conflict gate the pull request moved past", async () => {
+    const resolved = fakeSha("conflict-resolved");
+    const fake = fakeGitHub();
+    const { phases, reviews } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1, mergeableState: "dirty" });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    Object.assign(w.fake.pr(1), { mergeableState: "clean" });
+    w.fake.pushHead(1, resolved);
+    w.host.gates.cancel(gateId(runId, "approve-merge"), `superseded: the pull request moved to head ${resolved}`);
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+
+    expect(reviews.map((review) => review.headSha)).toContain(resolved);
+    expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${resolved}`);
+    expect(w.host.runtime.status(runId)?.status).toBe("paused");
+  });
 });
 
 describe("the Version Packages PR", () => {
