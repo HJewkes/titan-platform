@@ -19,17 +19,17 @@ const readerOf = (messages: readonly ReviewerMessage[]): ReviewerReader => ({
   read: async (input) => messages.filter((message) => message.agentId === input.reviewerAgentId && message.sessionId === input.reviewerSessionId),
 });
 
-const SEAT = agent("dc-td-9-review");
+const SEAT = agent("seat-c-9-review");
 const SHEPHERD_RV = agent("rv-octo-demo-4");
 const rosterOf = (...rows: ReviewerAgent[]) => async () => rows;
 const shepherdMerge: AwaitVerdictResult = { kind: "verdict", verdict: "MERGE", head: HEAD, locator: locatorIn(SHEPHERD_RV.sessionId), reviewer: { agentId: SHEPHERD_RV.agentId, sessionId: SHEPHERD_RV.sessionId } };
 
 describe("SEAT_REVIEWER", () => {
-  it.each(["dc-td-104-review", "tc-tp-7-review-r2", "x-review-r10"])("matches the seat reviewer name %s", (name) => {
+  it.each(["seat-a-12-review", "seat-b-7-review-r2", "x-review-r10"])("matches the seat reviewer name %s", (name) => {
     expect(SEAT_REVIEWER.test(name)).toBe(true);
   });
 
-  it.each(["rv-octo-demo-4", "rv-octo-demo-4-2", "tc-tp-7-review-fix", "review-r", "impl-a"])("does not match %s", (name) => {
+  it.each(["rv-octo-demo-4", "rv-octo-demo-4-2", "seat-b-7-review-fix", "review-r", "impl-a"])("does not match %s", (name) => {
     expect(SEAT_REVIEWER.test(name)).toBe(false);
   });
 });
@@ -57,7 +57,7 @@ describe("seatFixFirst", () => {
     const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5)]), target);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: HEAD, reviewer: { agentId: SEAT.agentId, sessionId: SEAT.sessionId } });
-    expect((result as { text: string }).text).toContain("Seat reviewer dc-td-9-review said FIX_FIRST");
+    expect((result as { text: string }).text).toContain("Seat reviewer seat-c-9-review said FIX_FIRST");
     expect((result as { text: string }).text).toContain("Findings.");
   });
 
@@ -73,7 +73,7 @@ describe("seatFixFirst", () => {
   });
 
   it("does not let another reviewer's later MERGE clear a seat reviewer's FIX_FIRST", async () => {
-    const other = agent("dc-td-9-review-r2");
+    const other = agent("seat-c-9-review-r2");
     const messages = [said(SEAT, verdictAt("FIX_FIRST"), 5), said(other, verdictAt("MERGE"), 9)];
 
     expect(await seatFixFirst(rosterOf(SEAT, other), readerOf(messages), target)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
