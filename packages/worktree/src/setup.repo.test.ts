@@ -714,6 +714,26 @@ describe("pnpm-workspace.yaml during worktree setup", () => {
     120_000
   );
 
+  it("skips the step when the tree's pnpm-workspace.yaml cannot be hashed", async () => {
+    const repo = makeRepo({ command: ["true"] });
+    git(["switch", "-q", "-c", "agent-chat/alice"], repo);
+    fs.mkdirSync(path.join(repo, PNPM_WORKSPACE_FILE));
+    fs.writeFileSync(path.join(repo, PNPM_WORKSPACE_FILE, "x"), "x\n");
+    git(["add", "."], repo);
+    git(["commit", "-m", "a directory where the file goes"], repo);
+    git(["switch", "-q", "main"], repo);
+    const recorder = recording();
+
+    const alloc = await createWorktreeAllocator({
+      runSetup: recorder.runner,
+    }).allocate(ctxFor(repo));
+
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
+    ]);
+    expect(recorder.calls).toEqual([]);
+  });
+
   it("still runs the step when the branch keeps the pnpm-workspace.yaml origin has", async () => {
     const repo = makeRepo({ command: ["true"] });
     fs.writeFileSync(path.join(repo, PNPM_WORKSPACE_FILE), "packages: []\n");
