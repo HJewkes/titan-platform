@@ -1,4 +1,5 @@
 import type { JsonEnvelope } from "@titan-design/registry";
+import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
 import type { WatchRow } from "../shepherd/view.js";
 import type { DigestSources, GateFact } from "./collect.js";
@@ -33,6 +34,15 @@ export function parseSince(value: string): number {
   const match = /^([1-9][0-9]*)([mhd])$/.exec(value);
   if (!match) throw new Error(`--since expects a window like 90m, 6h or 2d, got ${JSON.stringify(value)}`);
   return Number(match[1]) * UNIT_MINUTES[match[2]!]!;
+}
+
+/** `parseSince` as a commander option parser, so a bad window is a usage error. */
+export function parseSinceOption(value: string): number {
+  try {
+    return parseSince(value);
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
 }
 
 function factorySources(call: FactoryCall): Pick<DigestSources, "rows" | "gates"> {

@@ -6,7 +6,7 @@ import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { resolveDbPath } from "./config.js";
 import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
-import { parseSince, runDigestVerb, type DigestFlags, type FactoryCall } from "./digest/command.js";
+import { parseSinceOption, runDigestVerb, type DigestFlags, type FactoryCall } from "./digest/command.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -202,7 +202,7 @@ function registerDigest(program: Command, verbs: Verbs): void {
     .description("the owner digest across every coordinator seat")
     .command("run")
     .description("collect and render the digest for the current slot, then write <date>-<HH>.md to the digest and iCloud dirs")
-    .option("--since <window>", "window like 90m, 6h or 2d; default runs back to the previous slot", parseSinceFlag)
+    .option("--since <window>", "window like 90m, 6h or 2d; default runs back to the previous slot", parseSinceOption)
     .option("--dry-run", "print the markdown and write nothing")
     .option("--full", "show every ask, merged and stuck item instead of the top few")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
@@ -214,14 +214,6 @@ function registerDigest(program: Command, verbs: Verbs): void {
         return runDigestVerb(verbs.io, call, flags);
       });
     });
-}
-
-function parseSinceFlag(value: string): number {
-  try {
-    return parseSince(value);
-  } catch (error) {
-    throw new InvalidArgumentError((error as Error).message);
-  }
 }
 
 interface PlistFlags {

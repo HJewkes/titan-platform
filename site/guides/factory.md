@@ -243,6 +243,17 @@ held ab0f9228-… shepherd-pr: leased by 9fdfad86-… until 2026-09-30T14:42:43.
 A killed process keeps its lease for 30 seconds. A run whose interrupted step may already
 have had its effect (the post-merge chore) is parked as `recovery_required` for a human.
 
+## `digest run`
+
+```sh
+titan-factory digest run --dry-run   # print the owner digest for the current slot
+titan-factory digest run             # write <date>-<HH>.md to the digest dir and the iCloud dir
+```
+
+The digest covers every seat in the seat book in under 400 words: Needs you, Merged, Stuck,
+Seats and Spend. A source that cannot be read becomes a Gaps line instead of a failure. The
+`digest` config block and the sources are in the package README, under "Owner digest".
+
 ## Install as a service
 
 On macOS, one verb installs `titan-factory serve` as the LaunchAgent
