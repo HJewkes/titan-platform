@@ -1,5 +1,15 @@
 # @titan-design/worktree
 
+## 0.1.2
+
+### Patch Changes
+
+- 0c697f8: `copyClaudeDir` now lstats `<worktree>/.claude` before copying. A branch that commits `.claude` as a symlink (dangling or not), a file, or a directory no longer has the repository's `.claude` copied through it; the allocation and re-attach results report a warning instead.
+- ce4fe2f: Worktree setup no longer hangs when a branch's `.npmrc` or `pnpm-workspace.yaml` is a symlink to a device such as `/dev/zero`. The base-identity guard now lstats each guarded file and treats anything that is not a regular file as changed, so setup skips before any read.
+- ad65b8c: Pin `ignore-pnpmfile` in the worktree setup environment, so pnpm does not load a branch's `.pnpmfile.cjs` during setup when the branch's `.npmrc` or `package.json` asks it to. A branch `pnpm-workspace.yaml` outranks this pin; the setup step's refusal of a changed `pnpm-workspace.yaml` covers that case.
+- 5605896: Worktree setup now skips the step when the tree's `.npmrc` differs from origin's default branch, as it already does for `pnpm-workspace.yaml`. A branch that adds, edits or deletes `.npmrc` gets a warning and no setup. It also pins `manage-package-manager-versions=false`, `COREPACK_ENV_FILE=0` and `COREPACK_ENABLE_UNSAFE_CUSTOM_URLS=0`. Together these stop a branch's `packageManager` field, `.npmrc` or `.corepack.env` from making setup download and run a package manager of its choosing. A base pinned to an older pnpm now installs with the host's pnpm.
+- 9c04876: Skip the worktree setup step, with a warning, when the tree's `pnpm-workspace.yaml` is not byte-identical to the one at the trusted base. pnpm 10 ranks that file's `ignorePnpmfile`, `ignoreScripts` and `pnpmfile` keys above the pinned environment, so a branch could otherwise re-enable its pnpmfile hooks and lifecycle scripts during setup.
+
 ## 0.1.1
 
 ### Patch Changes

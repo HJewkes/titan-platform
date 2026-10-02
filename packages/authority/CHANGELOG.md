@@ -1,5 +1,11 @@
 # @titan-design/authority
 
+## 0.2.2
+
+### Patch Changes
+
+- e54f34e: `evaluate` reads the actor class only from an own property, so a polluted `Object.prototype.class` can no longer supply one.
+
 ## 0.2.1
 
 ### Patch Changes

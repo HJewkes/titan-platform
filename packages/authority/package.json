@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/authority",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator",
   "type": "module",
   "main": "./dist/index.js",
