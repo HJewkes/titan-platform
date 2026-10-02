@@ -255,6 +255,25 @@ describe("ctx.authorize", () => {
     expect(second.results).toEqual([{ verdict: "approved", ruleId: "MRG-AU", gateId: `${runId}/${STEP}`, resolvedBy: OWNER_TERMINAL }]);
   });
 
+  it("holds the run for recovery instead of deciding again when the paused gate's row is gone", async () => {
+    const file = scratchFile();
+    const first = harness(makeDb(file), "automation");
+    const runId = first.rt.start("governed");
+    await pausedOnGate(first, runId);
+    first.rt.shutdown();
+    const db = makeDb(file);
+    db.prepare(`DELETE FROM "hitl_gate" WHERE id = ?`).run(`${runId}/${STEP}`);
+
+    const second = harness(db, "automation");
+    await second.rt.hydrate();
+    const run = await second.rt.wait(runId);
+
+    expect(run.status).toBe("recovery_required");
+    expect(second.events).toContainEqual(expect.objectContaining({ type: "workflow_recovery_required", gateId: `${runId}/${STEP}` }));
+    expect(gateOpenedCount(second.events)).toBe(0);
+    expect(second.gates.get(`${runId}/${STEP}`)).toBeUndefined();
+  });
+
   it("keeps the gated decision when the table changes during the pause", async () => {
     const file = scratchFile();
     const first = harness(makeDb(file), "automation");
