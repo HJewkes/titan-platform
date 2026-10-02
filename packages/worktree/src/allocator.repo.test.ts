@@ -80,6 +80,23 @@ describe("worktree allocate", () => {
     expect(fs.existsSync(path.join(alloc.cwd, ".claude", "settings.json"))).toBe(true);
   });
 
+  it("warns and writes nothing outside the tree when the branch committed .claude as a symlink", async () => {
+    const repo = makeRepo();
+    const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "iso-outside-")));
+    tmpdirs.push(outside);
+    fs.symlinkSync(path.join(outside, "dangling"), path.join(repo, ".claude"));
+    git(["add", ".claude"], repo);
+    git(["commit", "-m", "commit .claude as a symlink"], repo);
+    fs.unlinkSync(path.join(repo, ".claude"));
+    fs.mkdirSync(path.join(repo, ".claude"));
+    fs.writeFileSync(path.join(repo, ".claude", "settings.json"), "{}");
+
+    const alloc = await worktreeStrategy.allocate(ctxFor(repo));
+
+    expect(fs.readdirSync(outside)).toEqual([]);
+    expect(alloc.warnings?.some((w) => w.includes("a symlink"))).toBe(true);
+  });
+
   it("allocates against the main repo when called from inside a worktree", async () => {
     const repo = makeRepo();
     const first = await worktreeStrategy.allocate(ctxFor(repo));
