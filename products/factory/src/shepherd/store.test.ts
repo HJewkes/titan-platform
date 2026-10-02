@@ -118,6 +118,32 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 12, "feat/b")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12)).toBeUndefined();
   });
+
+  it("holds a PR whose bare head branch matches a hold registered as refs/heads/<branch>", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "refs/heads/feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "feat/x")).toBe("owner review");
+  });
+
+  it("holds a PR whose head branch is given as refs/heads/<branch> against a hold registered with the bare name", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "refs/heads/feat/x")).toBe("owner review");
+  });
+
+  it("does not match a branch that only shares a prefix or suffix with the held one", () => {
+    const store = openStore();
+    store.register({ ...base, pr: undefined, branch: "refs/heads/feat/x" });
+    store.hold("run-1", "owner review");
+
+    expect(store.heldReason("octo/demo", 12, "feat/xy")).toBeUndefined();
+    expect(store.heldReason("octo/demo", 12, "other/feat/x")).toBeUndefined();
+    expect(store.heldReason("octo/demo", 12, "refs/heads/other/feat/x")).toBeUndefined();
+  });
 });
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {

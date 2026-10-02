@@ -193,6 +193,15 @@ is resumed or replaced by a successor. If no turn starts, one fallback goes out:
 the agent has ended by then, else a second message. If there is still no turn, the wake is
 unhandled.
 
+GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base
+cannot merge into the head. That is not a failure: the land round stops with reason `conflict` and
+takes the same route as a `dirty` PR. The first time, the implementer is woken with the conflict;
+if the conflict is still there on the next `update-branch`, `approve-merge` opens with
+`shepherd-route/conflict`. Any other `update-branch` error still fails the step.
+
+When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
+whose prompt names an older head. A gate at the current head stays pending.
+
 ## Watch
 
 ```sh
