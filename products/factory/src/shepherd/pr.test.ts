@@ -131,6 +131,23 @@ describe("shepherd-pr", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
+  it("stops waiting on a held PR merged outside Shepherd and leaves merging with no merge call", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.store.hold(runId, "owner wants a look");
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
+    Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).not.toBe("merge:0"), { timeout: 500 });
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+  });
+
   it("wakes the implementer with a review wake on FIX_FIRST, before any merge decision on that head", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({

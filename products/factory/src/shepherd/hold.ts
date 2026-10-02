@@ -11,7 +11,7 @@ export class MergeHeldError extends Error {
   override readonly name = "MergeHeldError";
 }
 
-/** Why a merge of `repo#pr` must wait, read fresh; the PR is read for its head branch, so a failed read throws and refuses. */
+/** Why a merge of `repo#pr` must wait, read fresh; a PR merged or closed elsewhere has nothing left to wait for, and a failed read throws and refuses. */
 export type HeldCheck = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
 
 /** The first guard that names a reason decides; later guards are not read. */
@@ -30,7 +30,8 @@ export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
 export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard): HeldCheck {
   return async (repo, pr) => {
     const lookup = holds();
-    const { headRef, baseRef } = await port.getPr(repo, pr);
+    const { headRef, baseRef, state } = await port.getPr(repo, pr);
+    if (state !== "open") return undefined;
     return lookup.heldReason(repo, pr, headRef) ?? (await freeze?.reason(port, repo, pr, baseRef));
   };
 }
