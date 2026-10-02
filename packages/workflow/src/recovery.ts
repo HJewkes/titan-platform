@@ -1,4 +1,4 @@
-import type { RecoveredStep } from "./context.js";
+import type { RecoveredStep } from "./context-deps.js";
 import type {
   ActiveStep,
   LegacyStepRunner,
@@ -145,7 +145,7 @@ async function withTimeout<T>(
   }
 }
 
-function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {
+export function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {
   return "dispatch" in runner && "reconcile" in runner;
 }
 
