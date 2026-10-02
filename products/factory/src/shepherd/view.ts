@@ -4,6 +4,7 @@ import { z } from "zod";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
+import type { TrainHolder } from "./train.js";
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
@@ -93,6 +94,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-sent-back": "awaiting-approval",
   "stuck-behind": "awaiting-approval",
   merge: "merging",
+  "sh-train-leave": "merging",
   "sh-landed": "post-merge",
   "sh-main-ci": "post-merge",
   "main-red": "post-merge",
@@ -146,8 +148,9 @@ const WAITING: Readonly<Record<Phase, string>> = {
   cancelled: "none",
 };
 
-function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration): string {
+function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration, behind: TrainHolder | undefined): string {
   if (gate) return `owner: resolve ${gateStep}`;
+  if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
   return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
 }
@@ -157,10 +160,12 @@ export interface RowInput {
   run: WorkflowRun;
   /** The gate the run waits on now, with the step it belongs to. */
   pending?: { gate: GateRecord; stepId: string };
+  /** The run holding the repo's merge train, if any. */
+  train?: TrainHolder;
 }
 
 /** One watch-list row; stall limits per phase are left to TP-492, so only a failed or parked run reads as stalled. */
-export function watchRow({ registration, run, pending }: RowInput): WatchRow {
+export function watchRow({ registration, run, pending, train }: RowInput): WatchRow {
   const steps = completedSteps(run);
   const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
@@ -174,7 +179,7 @@ export function watchRow({ registration, run, pending }: RowInput): WatchRow {
     phase,
     headSha,
     phaseSince: phaseSince(run, steps, phase),
-    nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration),
+    nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
     stalled: stuck ? { reason: run.error ?? run.status } : null,
