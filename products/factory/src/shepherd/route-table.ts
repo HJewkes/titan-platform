@@ -63,6 +63,13 @@ export const ESCALATIONS = {
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
+/** How a failed-rounds gate names the outcome of its last round. */
+export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
+  "no-verdict": "no reviewer verdict",
+  timeout: "no reviewer verdict before the wait ran out",
+  "external-hold": "no verdict yet from the reviewer the hold names",
+};
+
 /** Why the owner decides one head: which escalation, and what happened there. */
 export interface Escalated {
   escalation: Escalation;

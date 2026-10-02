@@ -11,7 +11,7 @@ import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerStillBusy, clearReviewWait, noteReviewWait, whileBrokerBusy, type BusyTiming } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { reviewerBrief } from "./reviewer-brief.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -80,10 +80,6 @@ export interface ReviewerDispatch {
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string };
-/** Every wait a busy broker cost, oldest first; absent when the broker never refused as busy. */
-type BusyWaits = { busyWaits?: string[] };
-/** The broker stayed busy past the wait, so no reviewer ran and the review never began. */
-type NotStarted = NoReview & { notStarted: true } & BusyWaits;
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
@@ -225,14 +221,6 @@ async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, t
   } finally {
     clearReviewWait(target.repo, target.pr);
   }
-}
-
-const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { busyWaits: waits } : {});
-
-/** A still-busy broker started nobody, so the step says so rather than reading as a review that ran; any other throw stays a refusal. */
-function notStarted(error: unknown, waits: string[]): NotStarted {
-  if (!(error instanceof ReviewerStillBusy)) throw error;
-  return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true, ...busyWaits(waits) };
 }
 
 /** A resumed reviewer is found by its agent id. A spawned one is the only agent under a name nobody held before. */
