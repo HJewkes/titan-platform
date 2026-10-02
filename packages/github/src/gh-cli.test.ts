@@ -84,6 +84,12 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
   });
 
+  it("throws a named error for a required_status_checks rule with no parameters, rather than reading no contexts", async () => {
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
+
+    await expect(ghCliWire(gh.exec).getBranchRules(REPO, "main")).rejects.toThrow(/required_status_checks rule has no required_status_checks list/);
+  });
+
   it("reads the bypass of every ruleset behind a pull_request rule, and is true when each is bypassable", async () => {
     const review = { required_approving_review_count: 1 };
     const rules = [{ type: "pull_request", ruleset_id: 11, parameters: review }, { type: "pull_request", ruleset_id: 11, parameters: review }, { type: "required_status_checks", ruleset_id: 12 }];

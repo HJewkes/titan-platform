@@ -42,6 +42,11 @@ describe("wilson", () => {
     expect(wilson(7, 10)).toEqual(wilson(7, 10, { confidence: 0.95 }));
   });
 
+  it.each([5, 20, 50])("puts the bound at exactly 0 for no successes and exactly 1 for all successes in %i trials", (n) => {
+    expect(wilson(0, n).lower).toBe(0);
+    expect(wilson(n, n).upper).toBe(1);
+  });
+
   it("rejects counts that are not a rate", () => {
     expect(() => wilson(0, 0)).toThrow(RangeError);
     expect(() => wilson(11, 10)).toThrow(RangeError);

@@ -173,7 +173,7 @@ async function gaveUp(deps: TrainDeps, holder: TrainHolder): Promise<boolean> {
 
 const TrainLeftResult = z.looseObject({ left: z.boolean() });
 
-/** Every way out of a land round gives the train up before anything slow: a wake, a gate, or main CI after the merge. */
+/** Every way out of a land round gives the train up before anything slow after it: a post-land wake, a gate, or main CI after the merge. Review and send-back wakes run inside land, with the train held. */
 export async function leaveTrain(ctx: WorkflowContext, repo: RepoSlug, round: number): Promise<void> {
   await step(ctx, `sh-train-leave:${round}`, { repo, runId: ctx.runId }, TrainLeftResult);
 }

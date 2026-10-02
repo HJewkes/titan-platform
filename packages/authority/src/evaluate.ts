@@ -33,12 +33,17 @@ interface RequestSnapshot {
   merge: MergeFacts | undefined;
 }
 
+function ownActorClass(actor: unknown): unknown {
+  if (typeof actor !== "object" || actor === null || !Object.hasOwn(actor, "class")) return undefined;
+  return (actor as { class?: unknown }).class;
+}
+
 // Each field is read exactly once; a value the caller did not set as an own property may restrict a decision, never relax it.
 function snapshotOf(request: AuthorityRequest): RequestSnapshot {
   const tainted: unknown = request.tainted;
   return {
     action: request.action,
-    actor: (request.actor as { class?: unknown } | null | undefined)?.class,
+    actor: ownActorClass(request.actor),
     tainted,
     ownUntainted: Object.hasOwn(request, "tainted") && tainted === false,
     merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
