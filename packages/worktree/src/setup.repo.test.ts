@@ -993,6 +993,21 @@ describe("pnpm-workspace.yaml during worktree setup", () => {
     expect(recorder.calls).toEqual([]);
   });
 
+  it("skips the step, without reading it, when the tree's pnpm-workspace.yaml is a symlink to /dev/zero", async () => {
+    const repo = makeRepo({ command: ["true"] });
+    branchWithDevZeroLink(repo, "agent-chat/alice", PNPM_WORKSPACE_FILE);
+    const recorder = recording();
+
+    const alloc = await createWorktreeAllocator({
+      runSetup: recorder.runner,
+    }).allocate(ctxFor(repo));
+
+    expect(setupWarnings(alloc.warnings)).toEqual([
+      `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
+    ]);
+    expect(recorder.calls).toEqual([]);
+  }, 5_000);
+
   it("still runs the step when the branch keeps the pnpm-workspace.yaml origin has", async () => {
     const repo = makeRepo({ command: ["true"] });
     fs.writeFileSync(path.join(repo, PNPM_WORKSPACE_FILE), "packages: []\n");
@@ -1011,6 +1026,15 @@ describe("pnpm-workspace.yaml during worktree setup", () => {
     expect(recorder.calls).toHaveLength(1);
   });
 });
+
+/** A branch whose `file` is committed as a symlink to a device that never ends. */
+function branchWithDevZeroLink(repo: string, branch: string, file: string): void {
+  git(["switch", "-q", "-c", branch], repo);
+  fs.symlinkSync("/dev/zero", path.join(repo, file));
+  git(["add", file], repo);
+  git(["commit", "-m", `${file} links to /dev/zero`], repo);
+  git(["switch", "-q", "main"], repo);
+}
 
 /** Allocates a reused branch of `repo` with a recording runner. */
 async function allocateRecorded(repo: string) {
@@ -1031,6 +1055,16 @@ describe(".npmrc during worktree setup", () => {
     expect(warnings).toEqual([NPMRC_SKIPPED]);
     expect(calls).toEqual([]);
   });
+
+  it("skips the step, without reading it, when the branch's .npmrc is a symlink to /dev/zero", async () => {
+    const repo = makeRepo({ command: ["true"] });
+    branchWithDevZeroLink(repo, "agent-chat/alice", NPMRC_FILE);
+
+    const { warnings, calls } = await allocateRecorded(repo);
+
+    expect(warnings).toEqual([NPMRC_SKIPPED]);
+    expect(calls).toEqual([]);
+  }, 5_000);
 
   it("skips the step when the branch deletes the .npmrc origin has", async () => {
     const repo = makeRepo({ command: ["true"] });

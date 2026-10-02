@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { lstatSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gitChildEnv } from "./git.js";
@@ -167,13 +167,24 @@ async function gitOutput(
 const declarationAt = (gitRoot: string, sha: string): Promise<string | null> =>
   gitOutput(["cat-file", "blob", `${sha}:${SETUP_FILE}`], gitRoot);
 
-/** The blob id of `file` as the tree holds it, or null when the tree has none; an unhashable file never matches. */
-const blobInTree = (worktree: string, file: string): Promise<string | null> =>
-  existsSync(path.join(worktree, file))
-    ? gitOutput(["hash-object", "--", file], worktree).then(
-        (blob) => blob ?? "unhashable"
-      )
-    : Promise.resolve(null);
+/** The tree's entry for `file`: absent, a regular file, or anything else, which is never read. */
+function kindInTree(worktree: string, file: string): "absent" | "regular" | "other" {
+  try {
+    return lstatSync(path.join(worktree, file)).isFile() ? "regular" : "other";
+  } catch {
+    return "absent";
+  }
+}
+
+/** The blob id of `file` as the tree holds it, or null when the tree has none; a non-regular or unhashable file never matches. */
+function blobInTree(worktree: string, file: string): Promise<string | null> {
+  const kind = kindInTree(worktree, file);
+  if (kind === "absent") return Promise.resolve(null);
+  if (kind === "other") return Promise.resolve("unhashable");
+  return gitOutput(["hash-object", "--", file], worktree).then(
+    (blob) => blob ?? "unhashable"
+  );
+}
 
 /** True when the tree's `file` is not byte-for-byte the one at the trusted base; adding or deleting it counts. */
 async function differsFromBase(
