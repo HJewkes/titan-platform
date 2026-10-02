@@ -273,11 +273,20 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
 other platform these four verbs fail with one line.
+
+`service restart` drains first. It polls `/health` every 5 s until its `busy` list is
+empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
+current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
+its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
+busy refuses the restart instead, because the restart would leave its run `recovery_required`;
+`--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
+that does not answer, or a build from before `busy`, has nothing to drain.
 
 ### The job's `PATH`
 

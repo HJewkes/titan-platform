@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
+import type { BusyRun } from "./restart-drain.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
@@ -36,6 +37,8 @@ interface MachineInit {
   github?: string[];
   /** launchd reports no pid for the job, and /health carries none either. */
   pidless?: boolean;
+  /** The `busy` field of each /health answer in turn; the last one repeats. Absent leaves the field out, as an older build does. */
+  busy?: BusyRun[][];
 }
 
 /** A launchd that refuses to bootstrap a loaded label, as the real one does, so an install that skips bootout fails. */
@@ -46,6 +49,8 @@ function fakeMachine(init: MachineInit = {}) {
   const serves = init.serves ?? true;
   let lingers = 0;
   const github = [...(init.github ?? ["ok"])];
+  const busy = init.busy && [...init.busy];
+  let clock = 0;
   let job: { pid?: number; healthy: boolean } | undefined = init.loaded ? { pid: OLD_PID, healthy: true } : undefined;
   const start = (pid: number): CommandResult => {
     job = { ...(init.pidless ? {} : { pid }), healthy: serves };
@@ -81,7 +86,7 @@ function fakeMachine(init: MachineInit = {}) {
     health: async (port) => {
       if (init.stranger !== undefined) return { ok: true, pid: init.stranger, port };
       if (!job?.healthy) return null;
-      return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2, ...(init.build === undefined ? {} : { build: init.build }) };
+      return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2, ...(init.build === undefined ? {} : { build: init.build }), ...(busy ? { busy: busy.length > 1 ? busy.shift() : busy[0] } : {}) };
     },
     which: (binary) => (init.absent?.includes(binary) ? undefined : TOOLS[binary]),
     mkdir: (dir) => void dirs.push(dir),
@@ -89,9 +94,10 @@ function fakeMachine(init: MachineInit = {}) {
     readFile: (path) => files.get(path),
     exists: (path) => files.has(path),
     remove: (path) => void files.delete(path),
-    sleep: async () => undefined,
+    sleep: async (ms) => void (clock += ms),
+    now: () => clock,
   };
-  return { ports, files, calls, dirs, launchctlCalls: () => calls.filter((call) => !call.startsWith("launchctl print")) };
+  return { ports, elapsed: () => clock, files, calls, dirs, launchctlCalls: () => calls.filter((call) => !call.startsWith("launchctl print")) };
 }
 
 async function service(argv: string[], machine: ReturnType<typeof fakeMachine>): Promise<{ code: number; out: string; err: string }> {
@@ -457,6 +463,45 @@ describe("titan-factory service restart", () => {
 
     expect(code).toBe(EXIT.FAILURE);
     expect(err).toContain("EADDRINUSE");
+  });
+
+  it("waits for a busy review to finish before it kickstarts", async () => {
+    const review: BusyRun = { runId: "run-1", step: "sh-await-verdict:abc1234", phase: "review" };
+    const machine = fakeMachine({ loaded: true, busy: [[review], [review], []] });
+
+    const { code, out } = await service(["restart"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toContain("waiting for 1 busy run(s) before restarting:\n  run-1 sh-await-verdict:abc1234 (review)");
+    expect(machine.launchctlCalls()).toEqual([`launchctl kickstart -k ${TARGET}`]);
+  });
+
+  it("refuses without a kickstart when a park-routed step outlasts --drain-timeout", async () => {
+    const machine = fakeMachine({ loaded: true, busy: [[{ runId: "run-2", step: "post-merge", phase: "park" }]] });
+
+    const { code, err } = await service(["restart", "--drain-timeout", "2m"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("rerun with --force");
+    expect(machine.elapsed()).toBe(120_000);
+    expect(machine.launchctlCalls()).toEqual([]);
+  });
+
+  it("kickstarts over a busy park-routed step with --no-drain --force", async () => {
+    const machine = fakeMachine({ loaded: true, busy: [[{ runId: "run-2", step: "post-merge", phase: "park" }]] });
+
+    const { code } = await service(["restart", "--no-drain", "--force"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(machine.elapsed()).toBe(0);
+    expect(machine.launchctlCalls()).toEqual([`launchctl kickstart -k ${TARGET}`]);
+  });
+
+  it("rejects a --drain-timeout without a unit", async () => {
+    const { code, err } = await service(["restart", "--drain-timeout", "45"], fakeMachine({ loaded: true }));
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain("expected a duration such as 45m");
   });
 
   it("points at install when the job is not loaded", async () => {

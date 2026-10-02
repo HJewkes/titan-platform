@@ -1,10 +1,11 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
-import type { WorkflowStatus } from "@titan-design/workflow";
+import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
+import { busyRuns } from "./restart-drain.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
@@ -101,6 +102,7 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
+  const { routeFor } = routedRunner(options.routes);
   return {
     registry: createFactoryRegistry(),
     createContext: () => factoryContext(host, options.routes),
@@ -110,7 +112,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => ({ ...factoryHealth(host), github: github.status(), build: { sha: build.sha, behindMain: build.status() } }),
+    health: () => ({ ...factoryHealth(host, routeFor), github: github.status(), build: { sha: build.sha, behindMain: build.status() } }),
     logger: options.logger,
   };
 }
@@ -122,10 +124,11 @@ function buildHealth(options: FactoryServerOptions): BehindMain & { sha: string 
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-export function factoryHealth(host: FactoryHost): Record<string, unknown> {
+/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. */
+export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined): Record<string, unknown> {
   const runs = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<WorkflowStatus, number>;
   for (const run of host.runtime.list([...STATUSES])) runs[run.status] += 1;
-  return { runs, pendingGates: host.pendingGates().length };
+  return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(host.runtime.list(["running"]), routeFor) };
 }
 
 interface Sweep {
