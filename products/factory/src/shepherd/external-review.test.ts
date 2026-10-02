@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it, vi } from "vitest";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
-import { SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./seat-verdict.js";
+import { SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");

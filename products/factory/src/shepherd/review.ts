@@ -7,8 +7,7 @@ import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
-import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "./external-review.js";
-import { unlessSeatFixFirst } from "./seat-verdict.js";
+import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
@@ -316,30 +315,16 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     const dispatch = wiring?.dispatch;
     return wiring ? awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster())) : { kind: "none" };
   };
-  const late = (raw: unknown, signal: AbortSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal);
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run)),
-    codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, late)),
+    codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal))),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen)),
     carryRoute(deps.now),
   ];
 };
-
-type VerdictStep = (raw: unknown, signal: AbortSignal) => Promise<AwaitVerdictResult>;
-
-/** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. */
-function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep): VerdictStep {
-  return async (raw, signal) => {
-    const result = await body(raw, signal);
-    const dispatch = wiring?.dispatch;
-    if (!dispatch) return result;
-    const { repo, pr, head } = raw as ReviewTarget;
-    return bounded(await unlessSeatFixFirst(() => dispatch.roster(), wiring.reader, { repo, pr, head }, result));
-  };
-}
 
 /** With no dispatch wired there is no roster to tell an exited reviewer, so the step answers `none` at once. */
 async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined, input: AwaitVerdictInput, signal: AbortSignal): Promise<AwaitVerdictResult> {
