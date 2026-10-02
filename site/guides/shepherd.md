@@ -183,6 +183,16 @@ implementer. Shepherd never reads a reviewer's name out of the hold's reason tex
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
 - `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+
+Each `FIX_FIRST` wake records one `sh-wake-fix-first` step, so the run counts them across
+every head it sees. After the first, every review is a re-review: its brief requires a
+section that starts `Defect class:`, which names the defect class that recurs across the
+rounds and the one boundary where a single fix covers every instance. From the second
+`FIX_FIRST` on, the fixer gets a structural brief instead of another patch round. The brief
+carries the reviewer's defect-class section and the whole findings verbatim, so every
+blocking item reaches the fixer. A re-reviewer that leaves the section out still gives a
+valid verdict. The fixer is then asked to name the class itself before fixing. The brief is
+built from the verdict alone, and nothing can trim it before the wake.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
