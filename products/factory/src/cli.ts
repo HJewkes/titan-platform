@@ -1,9 +1,11 @@
-import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
-import { Command, CommanderError, InvalidArgumentError } from "commander";
-import { resolveDbPath } from "./config.js";
+import { Command, CommanderError } from "commander";
+import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
+import { factoryStateDir, resolveDbPath } from "./config.js";
+import { deployService, type DeployPorts } from "./deploy.js";
+import { systemDeployPorts } from "./deploy-ports.js";
 import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
@@ -12,7 +14,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
-import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
+import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type RestartDrain, type ServicePorts } from "./service-control.js";
 import { systemServicePorts } from "./service-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
@@ -37,6 +39,8 @@ export interface CliDeps {
   stop?: AbortSignal;
   /** What the service verbs run launchctl, claude, fetch and the filesystem through; defaults to the real machine. */
   service?: ServicePorts;
+  /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
+  deploy?: DeployPorts;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
@@ -222,6 +226,7 @@ function registerService(program: Command, verbs: Verbs): void {
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
+  registerServiceDeploy(service, verbs);
 }
 
 function registerServiceControl(service: Command, { io, deps, setExit }: Verbs): void {
@@ -252,23 +257,41 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
-  service
-    .command("restart")
-    .description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")
+  withRestartFlags(service.command("restart").description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")).action(
+    (opts: RestartFlags) => run("restart", (ports) => restartService(ports, io, opts.port, logDir, drainOf(opts))),
+  );
+}
+
+/** restart and deploy take the same port and drain flags. */
+const withRestartFlags = (command: Command): Command =>
+  command
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .option("--drain-timeout <duration>", "longest wait for busy runs, such as 45m, 90s or 1h", parseDuration, DEFAULT_DRAIN_TIMEOUT_MS)
     .option("--no-drain", "restart without waiting for busy runs")
-    .option("--force", "restart even while a park-routed step is busy")
-    .action((opts: RestartFlags) =>
-      run("restart", (ports) => restartService(ports, io, opts.port, logDir, { timeoutMs: opts.drainTimeout, wait: opts.drain, force: opts.force === true })),
-    );
-}
+    .option("--force", "restart even while a park-routed step is busy");
+
+const drainOf = (opts: RestartFlags): RestartDrain => ({ timeoutMs: opts.drainTimeout, wait: opts.drain, force: opts.force === true });
 
 interface RestartFlags {
   port: number;
   drainTimeout: number;
   drain: boolean;
   force?: boolean;
+}
+
+/** The checkout this bin was built in: dist/bin.js and src/cli.ts both sit three levels below its root. */
+const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
+
+function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
+  const deploy = service
+    .command("deploy")
+    .description("fast-forward this checkout's main to a sha, rebuild the factory closure and restart drained; restores dist when the new build fails")
+    .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha);
+  withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
+    const ports = deps.deploy ?? systemDeployPorts(ownCheckout());
+    const options = { checkout: ownCheckout(), stateDir: factoryStateDir(io.env), logDir: serviceLogDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
+    setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options)));
+  });
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
@@ -326,27 +349,6 @@ async function untilSettledOrGated(host: FactoryHost, runId: string, pollMs: num
 
 function describeLand(args: LandArgs, started: LandStarted): string {
   return `run ${started.runId} land-pr ${args.repo}#${args.pr}: ${started.status}${started.created ? "" : " (already unfinished)"}`;
-}
-
-/** node's directory goes on the job's PATH, where ":" separates entries. */
-function parseNodePath(value: string): string {
-  if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
-  if (value.includes(":")) throw new InvalidArgumentError('must not contain ":"');
-  return value;
-}
-
-function parsePort(value: string): number {
-  const port = Number(value);
-  if (!/^[0-9]+$/.test(value) || port > 65_535) throw new InvalidArgumentError("expected a port number");
-  return port;
-}
-
-const DURATION_UNIT_MS: Readonly<Record<string, number>> = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 };
-
-function parseDuration(value: string): number {
-  const match = /^([0-9]+)(ms|s|m|h)$/.exec(value);
-  if (!match) throw new InvalidArgumentError("expected a duration such as 45m, 90s or 1h");
-  return Number(match[1]) * DURATION_UNIT_MS[match[2]!]!;
 }
 
 async function parse(program: Command, argv: string[], io: CliIo, exitCode: () => number): Promise<number> {
