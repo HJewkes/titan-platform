@@ -27,9 +27,10 @@ describe("shepherd phase step families", () => {
     expect(outside(REVIEW_FAMILIES, REVIEW_STEPS)).toEqual([]);
   });
 
-  it("pins sh-wake-implementer and sh-await-new-head to wake.ts, declared and routed there", () => {
-    expect(WAKE_STEPS.map((step) => step.id)).toEqual(["sh-wake-implementer", "sh-await-new-head"]);
-    expect(wakeRoutes(deps).map((route) => route.match)).toEqual(["sh-wake-implementer", "sh-await-new-head"]);
+  it("pins sh-wake-implementer, sh-await-new-head and sh-wake-fix-first to wake.ts, declared and routed there", () => {
+    const ids = ["sh-wake-implementer", "sh-await-new-head", "sh-wake-fix-first"];
+    expect(WAKE_STEPS.map((step) => step.id)).toEqual(ids);
+    expect(wakeRoutes(deps).map((route) => route.match)).toEqual(ids);
   });
 
   it("pins sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict and sh-merge-evidence to review.ts, declared and routed there", () => {

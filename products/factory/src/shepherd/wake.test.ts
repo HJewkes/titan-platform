@@ -90,8 +90,8 @@ function wakeStep(scene: Scene = {}) {
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
-  const run = async (kind: WakeRequest["kind"], payload: unknown = {}) => {
-    const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1" };
+  const run = async (kind: WakeRequest["kind"], payload: unknown = {}, fixFirst?: number) => {
+    const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1", ...(fixFirst !== undefined && { fixFirst }) };
     const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-wake-implementer:0" } as never);
     return { outcome, result: (outcome.ok ? JSON.parse(outcome.output).result : undefined) as WakeStepResult | undefined };
   };
@@ -492,6 +492,37 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(scene.agents.asked).toEqual([]);
   });
 
+  const items = ["1. The loader fails open on a parse error.", "2. The token check passes when the header is absent."];
+  const withClass = [...items, "", "Defect class: fail-open defaults.", "Boundary: the shared guard.", "", "Verdict: FIX_FIRST", "PR: octo/demo#1", `Head: ${H1}`].join("\n");
+
+  it("keeps the ordinary brief for the first FIX_FIRST, even when the review names a defect class", async () => {
+    const { agents, run } = wakeStep({ warmth: warm });
+
+    await run("review", fixFirst(withClass), 1);
+
+    expect(agents.asked[0]!.message).toContain("returned FIX_FIRST. Its findings follow.");
+    expect(agents.asked[0]!.message).not.toContain("structural pass");
+  });
+
+  it.each([2, 3, 5])("sends the structural brief at FIX_FIRST %i, with the defect class fenced before the findings", async (nth) => {
+    const { agents, run } = wakeStep({ warmth: warm });
+
+    await run("review", fixFirst(withClass), nth);
+
+    const message = agents.asked[0]!.message;
+    expect(message).toContain(`, so this is a structural pass.`);
+    expect(message).toContain("```defect class\nDefect class: fail-open defaults.\nBoundary: the shared guard.\n```");
+    expect(message.indexOf("```defect class")).toBeLessThan(message.indexOf("```review findings"));
+  });
+
+  it("carries every blocking item of a structural brief verbatim, inside the whole findings", async () => {
+    const { agents, run } = wakeStep({ warmth: warm });
+
+    await run("review", fixFirst(withClass), 2);
+
+    expect(agents.asked[0]!.message).toContain(`\`\`\`review findings\n${withClass}\n\`\`\``);
+  });
+
   it("returns unhandled when a review wake carries no findings", async () => {
     const { result } = await wakeStep({ warmth: warm }).run("review", { kind: "FIX_FIRST" });
 
@@ -537,7 +568,7 @@ describe("wakePhase", () => {
     const { outcome, stepIds } = await runPhase(agents, fake);
 
     expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
-    expect(stepIds).toEqual(["sh-wake-implementer:0", "sh-await-new-head:0"]);
+    expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
   });
 
   it("is unhandled when the PR closes at the same head", async () => {
@@ -559,6 +590,6 @@ describe("wakePhase", () => {
     const { outcome, stepIds } = await runPhase(agents, fake);
 
     expect(outcome?.kind).toBe("unhandled");
-    expect(stepIds).toEqual(["sh-wake-implementer:0"]);
+    expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0"]);
   });
 });

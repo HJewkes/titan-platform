@@ -898,6 +898,18 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/FIX_FIRST.*defect class.*boundary/);
   });
 
+  it("asks a re-review for a section naming the recurring defect class, and a first review for none", () => {
+    const ask = "your review must include a section that starts with a line `Defect class:`";
+
+    const rereview = reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, fixFirsts: 2 });
+
+    expect(rereview).toContain("This PR already had 2 FIX_FIRST reviews");
+    expect(rereview).toContain(ask);
+    expect(rereview).toMatch(/recurs across this PR's rounds, and the one boundary where a single fix covers every instance/);
+    expect(parseVerdictBlock(rereview).ok).toBe(false);
+    expect(brief()).not.toContain(ask);
+  });
+
   it("tells the reviewer to run checks in the foreground and never call Monitor, ScheduleWakeup or a background Bash", () => {
     expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
   });
