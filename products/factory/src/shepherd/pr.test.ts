@@ -17,6 +17,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { mergeVerdict } from "./review.js";
+import { SUPERSEDED } from "./stale-gates.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -539,7 +540,7 @@ describe("the route table in a run", () => {
 
     Object.assign(w.fake.pr(1), { mergeableState: "clean" });
     w.fake.pushHead(1, resolved);
-    w.host.gates.cancel(gateId(runId, "approve-merge"), `superseded: the pull request moved to head ${resolved}`);
+    w.host.gates.cancel(gateId(runId, "approve-merge"), `${SUPERSEDED}the pull request moved to head ${resolved}`);
     await gateOpened(w.host, gateId(runId, "approve-merge", 1));
 
     expect(reviews.map((review) => review.headSha)).toContain(resolved);

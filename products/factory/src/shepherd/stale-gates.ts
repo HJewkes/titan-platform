@@ -15,10 +15,16 @@ export function expireStaleGates(ctx: WorkflowContext, headSha: string): void {
   ctx.expireGates(`the run moved on to head ${headSha}`, (gate) => HEAD_GATES.test(gate.id) && ![undefined, headSha].includes(gateHead(gate.prompt)));
 }
 
+/** How the head sweep's cancel reason starts; any other cancel of approve-merge still fails the run. */
+export const SUPERSEDED = "superseded: ";
+
 /** Undefined means the head sweep cancelled the gate because the pull request moved past the head it asks about. */
 async function askAtHead(ctx: WorkflowContext, prompt: string, options: AssistedOptions = {}): Promise<StepResult | undefined> {
   const answer = await ctx.assisted("approve-merge", prompt, { ...options, recordCancel: true });
-  return answer.signal === GATE_CANCELLED_SIGNAL ? undefined : answer;
+  if (answer.signal !== GATE_CANCELLED_SIGNAL) return answer;
+  const reason = String(answer.data?.reason);
+  if (reason.startsWith(SUPERSEDED)) return undefined;
+  throw new Error(`approve-merge was cancelled: ${reason}`);
 }
 
 /** The parsed answer, or undefined when the head sweep cancelled the gate. */

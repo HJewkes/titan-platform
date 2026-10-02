@@ -102,6 +102,14 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(fake.pr(1)).toMatchObject({ merged: true, headSha: MOVED });
   });
 
+  it("still fails the run when its approve-merge gate is cancelled for any other reason", async () => {
+    const { host, runId } = await gatedAtSecondHead();
+
+    host.gates.cancel(gateId(runId, "approve-merge"), "the owner cancelled it");
+
+    expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("approve-merge was cancelled: the owner cancelled it") });
+  });
+
   it("leaves a gate alone while the head it asks about is still the pull request's head", async () => {
     const { host, services, runId } = await gatedAtSecondHead();
 
