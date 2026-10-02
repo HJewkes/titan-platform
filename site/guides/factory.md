@@ -274,6 +274,7 @@ titan-factory service install --port 7411 --mcp
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
+| `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
@@ -287,6 +288,39 @@ restart goes ahead, because every Shepherd step repeats safely. A park-routed st
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
 that does not answer, or a build from before `busy`, has nothing to drain.
+
+### `service deploy`: redeploy from main
+
+```sh
+titan-factory service deploy                    # deploy origin/main
+titan-factory service deploy --expect <sha>     # deploy one commit already on origin/main
+```
+
+`service deploy [--expect <sha>]` rebuilds and restarts the service from the checkout the bin
+was built in, which must be on `main` with no tracked changes. It takes the pid lock
+`$XDG_STATE_HOME/titan-factory/deploy.lock` (a dead pid's lock is stale), runs
+`git fetch origin main`, and targets `--expect` or `origin/main`; a target not on `origin/main`
+is refused. A target the running build (`/health` `build.sha`) already contains is a no-op. It
+then diffs the running build sha to the target against the factory closure, the workspace
+packages `pnpm --filter "@titan-design/factory..."` selects, plus the root build inputs
+(`pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `.npmrc`, root `tsconfig*.json`). An
+unknown or dirty build sha counts as touched. When nothing intersects it runs
+`git merge --ff-only` and records `skipped`. Otherwise it copies every closure package's `dist`
+to `deploy-backup/<running sha>/`, fast-forwards, runs `pnpm install --frozen-lockfile` under
+`@titan-design/worktree`'s `setupEnv` pin, builds the closure, and restarts drained as
+`service restart` does. Success means launchd's pid answers `/health` with `github` `ok` and
+`build.sha` equal to the target. A failed install, build, restart or sha check restores the
+snapshot, kickstarts again and records `rolled-back`; that sha is then held until a newer one
+arrives. Every outcome but a no-op goes to `deploy.json`, which `/health` shows as `lastDeploy`.
+The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
+target.
+
+It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
+It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
+refusal names its cause, such as `deploy refused: checkout not clean main: HEAD is feature/x,
+not main`. If `pnpm install` changed `node_modules` in a way the old `dist` cannot load, the
+rollback cannot bring the service back either, and `lastDeploy.why` says so; the service stays
+down until a fix merges.
 
 ### The job's `PATH`
 

@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
-import { resolveDbPath } from "./config.js";
+import { factoryStateDir, resolveDbPath } from "./config.js";
+import { deployService, type DeployPorts } from "./deploy.js";
+import { systemDeployPorts } from "./deploy-ports.js";
 import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
@@ -37,6 +39,8 @@ export interface CliDeps {
   stop?: AbortSignal;
   /** What the service verbs run launchctl, claude, fetch and the filesystem through; defaults to the real machine. */
   service?: ServicePorts;
+  /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
+  deploy?: DeployPorts;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
@@ -222,6 +226,7 @@ function registerService(program: Command, verbs: Verbs): void {
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
+  registerServiceDeploy(service, verbs);
 }
 
 function registerServiceControl(service: Command, { io, deps, setExit }: Verbs): void {
@@ -269,6 +274,32 @@ interface RestartFlags {
   drainTimeout: number;
   drain: boolean;
   force?: boolean;
+}
+
+/** The checkout this bin was built in: dist/bin.js and src/cli.ts both sit three levels below its root. */
+const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
+
+function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
+  service
+    .command("deploy")
+    .description("fast-forward this checkout's main to a sha, rebuild the factory closure and restart drained; restores dist when the new build fails")
+    .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha)
+    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+    .option("--drain-timeout <duration>", "longest wait for busy runs, such as 45m, 90s or 1h", parseDuration, DEFAULT_DRAIN_TIMEOUT_MS)
+    .option("--no-drain", "restart without waiting for busy runs")
+    .option("--force", "restart even while a park-routed step is busy")
+    .action(async (opts: RestartFlags & { expect?: string }) => {
+      const ports = deps.deploy ?? systemDeployPorts(ownCheckout());
+      const options = {
+        checkout: ownCheckout(),
+        stateDir: factoryStateDir(io.env),
+        port: opts.port,
+        logDir: serviceLogDir(io.env),
+        ...(opts.expect === undefined ? {} : { expect: opts.expect }),
+        drain: { timeoutMs: opts.drainTimeout, wait: opts.drain, force: opts.force === true },
+      };
+      setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options)));
+    });
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
@@ -332,6 +363,11 @@ function describeLand(args: LandArgs, started: LandStarted): string {
 function parseNodePath(value: string): string {
   if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
   if (value.includes(":")) throw new InvalidArgumentError('must not contain ":"');
+  return value;
+}
+
+function parseSha(value: string): string {
+  if (!/^[0-9a-f]{7,40}$/.test(value)) throw new InvalidArgumentError("expected a commit sha of 7 to 40 lowercase hex digits");
   return value;
 }
 
