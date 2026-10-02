@@ -1,8 +1,8 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, dispatchToAgentChat, listAgents, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
-import { ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { BrokerUnavailableError, DispatchError, dispatchToAgentChat, listAgents, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
@@ -53,12 +53,17 @@ function checkoutDir(repo: string, cwdFor: AgentChatReviewerDispatchOptions["cwd
   return resolved.dir;
 }
 
-/** Only an unreachable broker is safe to ask again; every other failure, a timeout included, stays a refusal. */
+/** agent-chat's machine guard (headless-agent total or memory floor) refuses with no code, so its reason prefix is the only marker. */
+const MACHINE_GUARD = /(?:^|: )(machine guard: .*)$/s;
+
+/** Only an unreachable broker or its machine guard is safe to ask again; every other failure, a timeout included, stays a refusal. */
 async function askBroker<T>(ask: () => T): Promise<T> {
   try {
     return ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
+    const guard = error instanceof DispatchError ? MACHINE_GUARD.exec(error.message.trim()) : null;
+    if (guard?.[1] !== undefined) throw new ReviewerBrokerBusy(guard[1], { cause: error });
     throw error;
   }
 }
