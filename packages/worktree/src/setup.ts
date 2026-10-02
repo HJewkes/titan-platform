@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gitChildEnv } from "./git.js";
@@ -79,6 +79,9 @@ const PINNED_NPM_CONFIG: Readonly<Record<string, string>> = {
   ignore_pnpmfile: "true",
 };
 
+/** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
+export const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
+
 /** An allowlist of what an install needs: the step runs with the host's authority, outside any permission profile. */
 export function setupEnv(
   env: NodeJS.ProcessEnv = process.env
@@ -153,6 +156,31 @@ async function gitOutput(
 const declarationAt = (gitRoot: string, sha: string): Promise<string | null> =>
   gitOutput(["cat-file", "blob", `${sha}:${SETUP_FILE}`], gitRoot);
 
+/** The blob id of `file` as the tree holds it, or null when the tree has none; an unhashable file never matches. */
+const blobInTree = (worktree: string, file: string): Promise<string | null> =>
+  existsSync(path.join(worktree, file))
+    ? gitOutput(["hash-object", "--", file], worktree).then(
+        (blob) => blob ?? "unhashable"
+      )
+    : Promise.resolve(null);
+
+/** True when the tree's workspace file is not byte-for-byte the one at the trusted base. */
+async function workspaceDiffersFromBase(target: SetupTarget): Promise<boolean> {
+  const [atBase, inTree] = await Promise.all([
+    gitOutput(
+      [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `${target.baseSha}:${PNPM_WORKSPACE_FILE}`,
+      ],
+      target.gitRoot
+    ),
+    blobInTree(target.worktree, PNPM_WORKSPACE_FILE),
+  ]);
+  return (atBase?.trim() ?? null) !== (inTree?.trim() ?? null);
+}
+
 /** Its own process group, so a timeout also kills what the step spawned (npm runs scripts in children). */
 export const runSetupCommand: SetupRunner = (command, cwd, timeoutMs) =>
   new Promise((resolve) => {
@@ -223,6 +251,7 @@ function describeFailure(
  *
  * The step runs with the host's authority, so its declaration comes only from origin's default
  * branch as fetched: a branch that edits the file changes nothing until it lands.
+ * A tree whose pnpm-workspace.yaml differs from that branch's is skipped, since pnpm ranks it over the env pins.
  *
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
@@ -240,6 +269,10 @@ export async function runWorktreeSetup(
   const step = parseSetupStep(declared);
   if (step === null) return [];
   if (typeof step === "string") return [`worktree setup skipped: ${step}`];
+  if (await workspaceDiffersFromBase(target))
+    return [
+      `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
+    ];
   const result = await run(step.command, target.worktree, step.timeoutMs).catch(
     (err: unknown): SetupResult => ({
       exitCode: null,
