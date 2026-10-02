@@ -8,7 +8,7 @@ const failingAgentChat: Exec = async () => ({ code: 1, stdout: "", stderr: "erro
 describe("collectDigest", () => {
   it("turns an agent-chat that cannot print JSON into a gap line and keeps the Shepherd sections", async () => {
     const rows = [
-      watchRow({ pr: 7, phase: "done", phaseSince: "2026-03-10T19:00:00Z", task: "demo/T-7" }),
+      watchRow({ pr: 7, phase: "done", outcome: { kind: "merged", reason: null }, phaseSince: "2026-03-10T19:00:00Z", task: "demo/T-7" }),
       watchRow({ pr: 8, held: { reason: "waiting on a design call" }, phaseSince: "2026-03-10T15:00:00Z" }),
     ];
     const sources = fakeSources({ rows: async () => rows, agentChat: (minutes) => readAgentChat(failingAgentChat, "agent-chat", minutes) });
@@ -27,6 +27,15 @@ describe("collectDigest", () => {
 
     expect(model.merged).toEqual([]);
     expect(model.stuck).toEqual([]);
+  });
+
+  it("reports a run that stopped unmerged under Stuck with its reason, never as merged", async () => {
+    const rows = [watchRow({ pr: 6, phase: "done", outcome: { kind: "stopped", reason: "closed" }, phaseSince: "2026-03-10T19:00:00Z" })];
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => rows }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.merged).toEqual([]);
+    expect(model.stuck).toEqual([{ ref: "acme/widgets#6", reason: "stopped: closed", since: "2026-03-10T19:00:00Z" }]);
   });
 
   it("reads asks, merged PRs and spend from agent-chat JSON", async () => {

@@ -24,7 +24,7 @@ function workspace(): { root: string; env: NodeJS.ProcessEnv } {
 }
 
 const call: FactoryCall = async (name) =>
-  name === "shepherd.list" ? { ok: true, data: [watchRow({ pr: 5, phase: "done", phaseSince: "2026-03-10T19:00:00Z" })] } : { ok: true, data: { gates: [] } };
+  name === "shepherd.list" ? { ok: true, data: [watchRow({ pr: 5, phase: "done", outcome: { kind: "merged", reason: null }, phaseSince: "2026-03-10T19:00:00Z" })] } : { ok: true, data: { gates: [] } };
 const noAgentChat: Exec = async () => ({ code: 1, stdout: "", stderr: "error: unknown option '--json'" });
 
 function capture(env: NodeJS.ProcessEnv) {

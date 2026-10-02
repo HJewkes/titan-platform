@@ -23,6 +23,27 @@ function pausedAt(currentStep: string): WorkflowRun {
   };
 }
 
+function completedWith(stepId: string, result: object): WorkflowRun {
+  const stepResult = { stepId, iteration: 0, completedAt: "2026-01-01T01:00:00.000Z", signal: null, data: { result } };
+  return { ...pausedAt(stepId), status: "completed", currentStep: null, completedAt: "2026-01-01T01:00:00.000Z", stepResults: { [stepId]: stepResult } } as unknown as WorkflowRun;
+}
+
+describe("shepherd view outcomes", () => {
+  it("reads a completed run that stopped on a closed PR as stopped, not merged", () => {
+    const row = watchRow({ registration, run: completedWith("sh-stopped", { kind: "stopped", reason: "closed", headSha: "abc1234" }) });
+
+    expect(row).toMatchObject({ phase: "done", outcome: { kind: "stopped", reason: "closed" } });
+  });
+
+  it("reads a completed run that passed sh-landed as merged", () => {
+    expect(watchRow({ registration, run: completedWith("sh-landed", { mergeSha: "def5678" }) }).outcome).toEqual({ kind: "merged", reason: null });
+  });
+
+  it("leaves the outcome unknown for a completed run with neither record", () => {
+    expect(watchRow({ registration, run: completedWith("merge", {}) }).outcome).toBeNull();
+  });
+});
+
 describe("shepherd view phases", () => {
   it.each(["sh-review-intent:abc1234", "sh-merge-evidence:abc1234"])("reads a run paused at %s as review", (step) => {
     expect(watchRow({ registration, run: pausedAt(step) }).phase).toBe("review");

@@ -24,6 +24,8 @@ export const WatchRowSchema = z.object({
   pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).nullable(),
   held: z.object({ reason: z.string() }).nullable(),
   stalled: z.object({ reason: z.string() }).nullable(),
+  /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
+  outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -159,6 +161,15 @@ export interface RowInput {
   pending?: { gate: GateRecord; stepId: string };
 }
 
+const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
+
+function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
+  if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
+  const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
+  const parsed = stopped && StoppedData.safeParse(stopped.data);
+  return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
+}
+
 /** One watch-list row; stall limits per phase are left to TP-492, so only a failed or parked run reads as stalled. */
 export function watchRow({ registration, run, pending }: RowInput): WatchRow {
   const steps = completedSteps(run);
@@ -178,6 +189,7 @@ export function watchRow({ registration, run, pending }: RowInput): WatchRow {
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
     stalled: stuck ? { reason: run.error ?? run.status } : null,
+    outcome: runOutcome(steps),
   };
 }
 

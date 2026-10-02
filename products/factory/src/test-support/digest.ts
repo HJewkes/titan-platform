@@ -19,6 +19,7 @@ export function watchRow(overrides: Partial<WatchRow>): WatchRow {
     pendingGate: null,
     held: null,
     stalled: null,
+    outcome: null,
     ...overrides,
   };
 }

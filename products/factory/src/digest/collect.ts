@@ -75,15 +75,21 @@ function chatAsks(chat: AgentChatDigest): Ask[] {
   return [...escalations, ...named("ready to merge:", chat.readyToMerge), ...named("needs a grant:", chat.needsGrant)];
 }
 
+const endedSince = (row: WatchRow, since: Date): boolean => row.phase === "done" && Date.parse(row.phaseSince) >= since.getTime();
+
 function shepherdMerged(rows: readonly WatchRow[], since: Date): Merged[] {
-  return rows.filter((row) => row.phase === "done" && Date.parse(row.phaseSince) >= since.getTime()).map((row) => ({ ref: refOf(row), title: row.task, at: row.phaseSince }));
+  return rows.filter((row) => endedSince(row, since) && row.outcome?.kind === "merged").map((row) => ({ ref: refOf(row), title: row.task, at: row.phaseSince }));
 }
 
-/** Held or stalled live runs, plus runs that failed inside the window; older failures are history, not news. */
+/** Held or stalled live runs, plus runs that failed or stopped unmerged inside the window; older endings are history, not news. */
 function shepherdStuck(rows: readonly WatchRow[], since: Date): Stuck[] {
-  return rows
+  const live = rows
     .filter((row) => (row.held || row.stalled) && (!FINISHED.has(row.phase) || (row.phase === "failed" && Date.parse(row.phaseSince) >= since.getTime())))
     .map((row) => ({ ref: refOf(row), reason: row.held ? `held: ${row.held.reason}` : `${row.phase}: ${row.stalled!.reason}`, since: row.phaseSince }));
+  const unmerged = rows
+    .filter((row) => endedSince(row, since) && row.outcome?.kind !== "merged")
+    .map((row) => ({ ref: refOf(row), reason: `stopped: ${row.outcome?.reason ?? "ended without a recorded outcome"}`, since: row.phaseSince }));
+  return [...live, ...unmerged];
 }
 
 function chatStuck(chat: AgentChatDigest): Stuck[] {
