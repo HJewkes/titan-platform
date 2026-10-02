@@ -30,7 +30,11 @@ export interface SetupResult {
   output: string;
 }
 
-export type SetupRunner = (command: readonly string[], cwd: string, timeoutMs: number) => Promise<SetupResult>;
+export type SetupRunner = (
+  command: readonly string[],
+  cwd: string,
+  timeoutMs: number
+) => Promise<SetupResult>;
 
 export interface SetupTarget {
   gitRoot: string;
@@ -63,20 +67,45 @@ const SETUP_ENV_KEYS = new Set([
 ]);
 const SETUP_ENV_PREFIXES = ["LC_", "npm_config_", "NPM_CONFIG_", "COREPACK_"];
 
+/** A resumed tree holds the branch's package.json and .npmrc; env outranks the .npmrc, so no branch program runs. */
+const PINNED_NPM_CONFIG: Readonly<Record<string, string>> = {
+  ignore_scripts: "true",
+  git: "git",
+  // npm reads an empty value as unset, which lets the .npmrc win.
+  node_options: "--no-deprecation",
+  script_shell: "/bin/sh",
+  shell: "/bin/sh",
+};
+
 /** An allowlist of what an install needs: the step runs with the host's authority, outside any permission profile. */
-export function setupEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function setupEnv(
+  env: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: "0" };
   for (const [key, value] of Object.entries(env)) {
-    if (SETUP_ENV_KEYS.has(key) || SETUP_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) out[key] = value;
+    if (
+      SETUP_ENV_KEYS.has(key) ||
+      SETUP_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    )
+      out[key] = value;
+  }
+  for (const [key, value] of Object.entries(PINNED_NPM_CONFIG)) {
+    out[`npm_config_${key}`] = value;
+    out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
   return out;
 }
 
 const isCommand = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.length > 0 && value.every((part) => typeof part === "string" && part !== "");
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every((part) => typeof part === "string" && part !== "");
 
 const isTimeout = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_SETUP_TIMEOUT_MS;
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value > 0 &&
+  value <= MAX_SETUP_TIMEOUT_MS;
 
 /** Keys it does not know are ignored, so a newer declaration still runs on an older host. */
 export function parseSetupStep(text: string): SetupStep | null | string {
@@ -89,17 +118,29 @@ export function parseSetupStep(text: string): SetupStep | null | string {
   }
   const setup = (parsed as { setup?: unknown } | null)?.setup;
   if (setup === undefined) return null;
-  if (typeof setup !== "object" || setup === null) return `${SETUP_FILE} setup must be an object`;
-  const { command, timeoutMs } = setup as { command?: unknown; timeoutMs?: unknown };
-  if (!isCommand(command)) return `${SETUP_FILE} setup.command must be a non-empty array of strings`;
+  if (typeof setup !== "object" || setup === null)
+    return `${SETUP_FILE} setup must be an object`;
+  const { command, timeoutMs } = setup as {
+    command?: unknown;
+    timeoutMs?: unknown;
+  };
+  if (!isCommand(command))
+    return `${SETUP_FILE} setup.command must be a non-empty array of strings`;
   if (timeoutMs !== undefined && !isTimeout(timeoutMs))
     return `${SETUP_FILE} setup.timeoutMs must be a positive integer of at most ${MAX_SETUP_TIMEOUT_MS}`;
   return { command, timeoutMs: timeoutMs ?? DEFAULT_SETUP_TIMEOUT_MS };
 }
 
-async function gitOutput(args: readonly string[], cwd: string): Promise<string | null> {
+async function gitOutput(
+  args: readonly string[],
+  cwd: string
+): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("git", [...args], { cwd, encoding: "utf8", env: gitChildEnv() });
+    const { stdout } = await execFileAsync("git", [...args], {
+      cwd,
+      encoding: "utf8",
+      env: gitChildEnv(),
+    });
     return stdout;
   } catch {
     return null;
@@ -145,7 +186,10 @@ export const runSetupCommand: SetupRunner = (command, cwd, timeoutMs) =>
   });
 
 /** The step's output can carry registry tokens, so it goes to an owner-only file and not into the spawn reply. */
-async function writeSetupLog(worktree: string, output: string): Promise<string | null> {
+async function writeSetupLog(
+  worktree: string,
+  output: string
+): Promise<string | null> {
   const gitDir = await gitOutput(["rev-parse", "--absolute-git-dir"], worktree);
   if (gitDir === null) return null;
   const file = path.join(gitDir.trim(), SETUP_LOG);
@@ -157,11 +201,17 @@ async function writeSetupLog(worktree: string, output: string): Promise<string |
   }
 }
 
-function describeFailure(step: SetupStep, result: SetupResult, log: string | null): string {
+function describeFailure(
+  step: SetupStep,
+  result: SetupResult,
+  log: string | null
+): string {
   const name = step.command.join(" ");
   const how = result.timedOut
     ? `timed out after ${step.timeoutMs}ms and was killed`
-    : `exited with ${result.exitCode === null ? "no exit code" : `code ${result.exitCode}`}`;
+    : `exited with ${
+        result.exitCode === null ? "no exit code" : `code ${result.exitCode}`
+      }`;
   const where = log === null ? "" : `; its output is in ${log}`;
   return `worktree setup step \`${name}\` ${how}${where}; the worktree may be missing its dependencies`;
 }
@@ -175,11 +225,16 @@ function describeFailure(step: SetupStep, result: SetupResult, log: string | nul
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
  */
-export async function runWorktreeSetup(target: SetupTarget, run: SetupRunner = runSetupCommand): Promise<string[]> {
+export async function runWorktreeSetup(
+  target: SetupTarget,
+  run: SetupRunner = runSetupCommand
+): Promise<string[]> {
   const declared = await declarationAt(target.gitRoot, target.baseSha);
   if (declared === null) return [];
   if (!target.fetched)
-    return [`worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`];
+    return [
+      `worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`,
+    ];
   const step = parseSetupStep(declared);
   if (step === null) return [];
   if (typeof step === "string") return [`worktree setup skipped: ${step}`];
@@ -191,5 +246,11 @@ export async function runWorktreeSetup(target: SetupTarget, run: SetupRunner = r
     })
   );
   if (result.exitCode === 0 && !result.timedOut) return [];
-  return [describeFailure(step, result, await writeSetupLog(target.worktree, result.output))];
+  return [
+    describeFailure(
+      step,
+      result,
+      await writeSetupLog(target.worktree, result.output)
+    ),
+  ];
 }
