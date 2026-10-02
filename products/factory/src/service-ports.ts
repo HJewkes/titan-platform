@@ -66,5 +66,6 @@ export function systemServicePorts(): ServicePorts {
     exists: existsSync,
     remove: (path) => rmSync(path, { force: true }),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: Date.now,
   };
 }

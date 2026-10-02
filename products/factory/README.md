@@ -111,12 +111,21 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service restart [--port <n>]` | `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
+| `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
 | `service plist [--port <n>] [--node <path>]` | Prints the plist and touches nothing | always |
 
 Every verb except `plist` needs launchd and fails with one line on another platform. A server
 installed with `--port` needs the same `--port` on `status` and `restart`.
+
+`service restart` drains first. It polls `/health` every 5 s until its `busy` list is
+empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
+current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
+its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
+busy refuses the restart instead, because the restart would leave its run `recovery_required`;
+`--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
+that does not answer, or a build from before `busy`, has nothing to drain.
 
 The plist names `dev.hjewkes.titan-factory`: the absolute node path, the built `dist/bin.js`
 and `serve`, `RunAtLoad` and `KeepAlive` true, and logs at
@@ -152,7 +161,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/evidence.ts` | **The F3 seam** (see below) |
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
 | `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist renderer, and the cached `gh api rate_limit` probe behind health's `github` field |
-| `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `claude`, `/health`, the filesystem). Tests pass fake ports, so none reaches launchd |
+| `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `claude`, `/health`, the filesystem, the clock). Tests pass fake ports, so none reaches launchd |
+| `src/restart-drain.ts` | The busy runs on `/health`, and the drain `service restart` waits on before it kickstarts |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
 | `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd` and `service` |
