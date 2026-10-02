@@ -25,21 +25,42 @@ interface RecordedDecision {
   result?: { outcome?: string; headSha?: string; rule?: { table?: string } };
 }
 
-/** The last merge decision the run recorded, which is the one its pending approve-merge gate asks about. */
-function lastMergeDecision(run: WorkflowRun): RecordedDecision["result"] {
-  const decisions = Object.values(run.stepResults).filter((result) => result.stepId.startsWith("merge-policy"));
-  const last = decisions.sort((a, b) => a.completedAt.localeCompare(b.completedAt)).at(-1);
-  return last ? (JSON.parse(last.output ?? "{}") as RecordedDecision).result : undefined;
+const DECISION_STEP = /^merge-policy(?::r(\d+))?:(\d+)$/;
+
+/** Round, then decision index within the round; land names them `merge-policy[:rN]:i`. */
+function decisionOrder(stepId: string): [number, number] {
+  const match = DECISION_STEP.exec(stepId);
+  return match ? [Number(match[1] ?? 0), Number(match[2])] : [-1, -1];
 }
 
-/** The head a seat-policy gate asks about; a conflict or escalation gate shares the step id but stays with the owner. */
-function seatGateHead(host: FactoryHost, { runId, stepId, gate }: PendingGate): string | undefined {
-  const run = host.runtime.status(runId);
-  if (run?.workflowName !== SHEPHERD_WORKFLOW || stepId !== "approve-merge" || !APPROVE_MERGE_GATE.test(gate.id)) return undefined;
-  const asked = gateHead(gate.prompt);
+function compareOrder([roundA, indexA]: [number, number], [roundB, indexB]: [number, number]): number {
+  return roundA - roundB || indexA - indexB;
+}
+
+/** The last merge decision the run recorded; a result that does not parse reads as none, so its gate stays. */
+function lastMergeDecision(run: WorkflowRun): RecordedDecision["result"] {
+  const decisions = Object.values(run.stepResults).filter((result) => DECISION_STEP.test(result.stepId));
+  const last = decisions.sort((a, b) => compareOrder(decisionOrder(a.stepId), decisionOrder(b.stepId))).at(-1);
+  try {
+    return last ? (JSON.parse(last.output ?? "{}") as RecordedDecision).result : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The head a seat-policy gate asks about: the run's last decision gated that same head under the seat table. */
+export function seatPolicyHead(run: WorkflowRun, prompt: string): string | undefined {
+  const asked = gateHead(prompt);
   const decision = lastMergeDecision(run);
   const seatGate = decision?.outcome === "gate" && decision.rule?.table === SHEPHERD_POLICY_TABLE && decision.headSha === asked;
   return seatGate ? asked : undefined;
+}
+
+/** A conflict or escalation gate shares the approve-merge step id but stays with the owner. */
+function seatGateHead(host: FactoryHost, { runId, stepId, gate }: PendingGate): string | undefined {
+  const run = host.runtime.status(runId);
+  if (run?.workflowName !== SHEPHERD_WORKFLOW || stepId !== "approve-merge" || !APPROVE_MERGE_GATE.test(gate.id)) return undefined;
+  return seatPolicyHead(run, gate.prompt);
 }
 
 /** Cancels each shepherd-pr seat-policy approve-merge gate whose PR moved past the head it asks about; the run then reviews the new head. */

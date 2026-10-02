@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -8,7 +9,7 @@ import { sleep } from "../workflows/land.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { supersedeMovedGates } from "./head-moved.js";
+import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
@@ -80,6 +81,20 @@ async function conflictAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub;
   const fake = fakeGitHub();
   const phases: ShepherdPhases = { review: async () => ({ kind: "none" }), wake: async () => (fake.pushHead(1, GATED), { kind: "woken", agent: "impl-a" }) };
   return { ...(await gatedRun(fake, phases, { headSha: SENT_BACK, mergeableState: "dirty" })), fake };
+}
+
+/** A seat gate at GATED the owner approves just as the PR conflicts; the fixer's push to MOVED still conflicts, so the owner is asked at MOVED. */
+async function conflictAfterSeatGate(): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string }> {
+  const fake = fakeGitHub();
+  const phases: ShepherdPhases = {
+    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: {} }),
+    wake: async () => (fake.pushHead(1, MOVED), { kind: "woken", agent: "impl-a" }),
+  };
+  const run = await gatedRun(fake, phases, { headSha: GATED });
+  Object.assign(fake.pr(1), { mergeableState: "dirty" });
+  run.host.runtime.signal(run.runId, "approve-merge", { decision: "merge", headSha: GATED }, OWNER);
+  await gateOpened(run.host, gateId(run.runId, "approve-merge", 1));
+  return { ...run, fake };
 }
 
 function mergePolicyHeads(host: FactoryHost, runId: string): string[] {
@@ -167,6 +182,18 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
+  it("leaves a conflict gate with the owner when the run's last seat-policy decision was about an older head", async () => {
+    const { host, fake, services, runId } = await conflictAfterSeatGate();
+    fake.pushHead(1, MOVED_AGAIN);
+
+    const superseded = await supersedeMovedGates(host, services);
+
+    expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}? Policy shepherd-route/conflict`);
+    expect(mergePolicyHeads(host, runId)).toEqual([GATED]);
+    expect(superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending");
+  });
+
   it("leaves a gate alone while the head it asks about is still the pull request's head", async () => {
     const { host, services, runId } = await gatedAtSecondHead();
 
@@ -180,5 +207,40 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     expect(await supersedeMovedGates(host, { ...services, port: { ...services.port, getPr: async () => Promise.reject(new Error("offline")) } })).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
+
+describe("seatPolicyHead", () => {
+  const PROMPT = `Merge PR #1 in ${REPO} at head ${GATED}? CI is green.`;
+
+  function decision(stepId: string, result: object, completedAt: string): StepResult {
+    return { stepId, iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt, output: JSON.stringify({ result }) };
+  }
+
+  function runWith(...results: StepResult[]): WorkflowRun {
+    return { stepResults: Object.fromEntries(results.map((result) => [`${result.stepId}:0`, result])) } as unknown as WorkflowRun;
+  }
+
+  const seatGate = { outcome: "gate", headSha: GATED, rule: { table: "shepherd-seat" } };
+
+  it("names the head of a gate the seat policy opened at that head", () => {
+    expect(seatPolicyHead(runWith(decision("merge-policy:r1:0", seatGate, "2026-10-02T00:00:00Z")), PROMPT)).toBe(GATED);
+  });
+
+  it("is undefined when the seat policy allowed that head rather than gating it", () => {
+    expect(seatPolicyHead(runWith(decision("merge-policy:r1:0", { ...seatGate, outcome: "allow" }, "2026-10-02T00:00:00Z")), PROMPT)).toBeUndefined();
+  });
+
+  it("reads the last decision by round and index, not by completion time", () => {
+    const later = decision("merge-policy:r2:0", { ...seatGate, rule: { table: "shepherd-route" } }, "2026-10-01T00:00:00Z");
+    const earlier = decision("merge-policy:r1:3", seatGate, "2026-10-03T00:00:00Z");
+
+    expect(seatPolicyHead(runWith(earlier, later), PROMPT)).toBeUndefined();
+  });
+
+  it("is undefined when the last decision's output does not parse", () => {
+    const broken = { ...decision("merge-policy:r1:0", seatGate, "2026-10-02T00:00:00Z"), output: "{not json" };
+
+    expect(seatPolicyHead(runWith(broken), PROMPT)).toBeUndefined();
   });
 });
