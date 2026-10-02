@@ -159,6 +159,11 @@ const KindSchema = z.enum(TASK_KINDS);
 /** GitHub treats repo names case-insensitively, so a hold on one spelling must hold every spelling. */
 const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
+const REFS_HEADS = "refs/heads/";
+
+/** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
+const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
+
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
   constructor(
@@ -175,7 +180,7 @@ export class ShepherdStore implements HoldLookup {
         `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(repoKey(input.repo), input.pr ?? null, input.branch ?? null, input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+      .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
     return this.byRun(input.runId)!;
   }
 
@@ -188,7 +193,8 @@ export class ShepherdStore implements HoldLookup {
   }
 
   byBranch(repo: RepoSlug, branch: string): Registration | undefined {
-    return this.one("repo = ? AND branch = ?", repoKey(repo), branch);
+    const name = branchName(branch);
+    return this.one("repo = ? AND (branch = ? OR branch = ?)", repoKey(repo), name, `${REFS_HEADS}${name}`);
   }
 
   /** Every registration, oldest first. */
