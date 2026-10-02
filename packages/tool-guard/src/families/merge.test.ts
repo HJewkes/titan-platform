@@ -215,3 +215,50 @@ describe("xargs -I runs the command once per input line", () => {
     expect(bash("printf 'status' | xargs -d, -I{} git {}")).toEqual([]);
   });
 });
+
+describe("xargs -L and -n run the command once per batch", () => {
+  it.each([
+    ["-L1", "printf 'status\\npush origin HEAD:main' | xargs -L1 git"],
+    ["-n 3", "printf 'status a b push origin HEAD:main' | xargs -n 3 git"],
+    ["a size that is not static", "printf 'status\\npush origin HEAD:main' | xargs -L \"$N\" git"],
+    ["a continued line", "printf 'push \\norigin HEAD:main' | xargs -L1 git"],
+    ["a continued line after another", "printf 'x\\npush \\norigin HEAD:main' | xargs -L1 git"],
+    ["-eL1", "printf 'push\\norigin HEAD:main' | xargs -eL1 git"],
+    ["-rL1", "printf 'status\\npush origin HEAD:main' | xargs -rL1 git"],
+    ["-rn3", "printf 'status a b push origin HEAD:main' | xargs -rn3 git"],
+    ["-n with N=3 not static", "printf 'a b c push origin HEAD:main' | xargs -n \"$N\" git"],
+    ["--max-args 3", "printf 'status a b push origin HEAD:main' | xargs --max-args 3 git"],
+    ["quoted input", "printf 'a \"b c\" d push origin HEAD:main' | xargs -n 3 git"],
+  ])("denies a push in a later batch under %s", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("allows a single read-only batch", () => {
+    expect(bash("printf 'status' | xargs -L1 git")).toEqual([]);
+    expect(bash("printf 'status log' | xargs -n 2 git")).toEqual([]);
+  });
+});
+
+describe("xargs -I fails closed when it cannot read the input", () => {
+  it.each([
+    ["a non-static -d value", "printf 'echo hiXgit push origin HEAD:main' | xargs -I{} -d \"$D\" sh -c '{}'"],
+    ["a stdin file", "xargs -I{} git {} < cmds.txt"],
+    ["a stdin file without -I", "xargs -L1 git < cmds.txt"],
+    ["a stdin file with -n and push", "xargs -n3 git push < cmds.txt"],
+    ["a heredoc fed through cat", "cat <<EOF | xargs -I{} git {}\nstatus\nEOF"],
+  ])("denies a push behind %s", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("denies a merge behind a stdin file", () => {
+    expect(spellings(bash("xargs -I{} gh {} < cmds.txt"))).toEqual(["bash.merge.gh-pr-merge"]);
+  });
+
+  it.each([
+    "find . -print0 | xargs -0 git add",
+    "printf 'a\\nb' | xargs -I{} echo {}",
+    "xargs -I{} git -C {} status < repos.txt",
+  ])("still allows %s", (command) => {
+    expect(bash(command)).toEqual([]);
+  });
+});

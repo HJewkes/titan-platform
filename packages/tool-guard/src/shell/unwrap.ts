@@ -35,7 +35,7 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   nice: { values: ["-n"] },
   sudo: { values: ["-u", "-g", "-p", "-C", "-D", "-h", "-r", "-t", "-U"] },
   timeout: { values: ["-s", "-k", "--signal", "--kill-after"], positionals: 1 },
-  xargs: { values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a"] },
+  xargs: { values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args"] },
   stdbuf: { values: ["-i", "-o", "-e"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,
@@ -62,6 +62,11 @@ const RUNNERS: Record<string, { subs: string[]; values: string[]; shellMode?: bo
   bun: { subs: ["x"], values: ["--cwd"] },
 };
 
+export interface XargsBatch {
+  unit: "lines" | "args";
+  size: number | null;
+}
+
 export interface Unwrapped {
   /** The command that runs, or null when no word names one statically. */
   name: string | null;
@@ -77,6 +82,8 @@ export interface Unwrapped {
     replace: string | null;
     /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
     delimiters: string[] | null;
+    /** The `-L`/`-n` batching: how many lines or arguments one run takes; `size` is null when it cannot be read statically. */
+    batch: XargsBatch | null;
   };
   /** Set when `!` negates the command's status. */
   negated?: true;
@@ -129,7 +136,41 @@ function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNul
   const found = xargsDelimiters(options);
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
-  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters };
+  const batch = xargsBatch(options) ?? earlier?.batch ?? null;
+  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters, batch };
+}
+
+function batchSize(word: WordToken | undefined, text: string | undefined = word?.value): number | null {
+  if (!word || (text === word.value && word.dynamic) || !/^\d+$/.test(text ?? "")) return null;
+  return Number(text) > 0 ? Number(text) : null;
+}
+
+/** The last `-L N`, `-lN`, `--max-lines[=N]`, `-n N`, `--max-args N` or a cluster such as `-rL1`; a bare `-l` or `--max-lines` means one line. */
+function xargsBatch(options: WordToken[]): XargsBatch | null {
+  let found: XargsBatch | null = null;
+  options.forEach((word, j) => {
+    const v = word.value;
+    const next = options[j + 1];
+    if (v === "--max-lines") found = { unit: "lines", size: 1 };
+    else if (v === "--max-args") found = { unit: "args", size: batchSize(next) };
+    else if (v.startsWith("--max-lines=")) found = { unit: "lines", size: batchSize(word, v.slice("--max-lines=".length)) };
+    else if (v.startsWith("--max-args=")) found = { unit: "args", size: batchSize(word, v.slice("--max-args=".length)) };
+    else if (/^-[A-Za-z]/.test(v) && !v.startsWith("--")) found = clusterBatch(word, next) ?? found;
+  });
+  return found;
+}
+
+/** The `-L`, `-l` or `-n` option in a short cluster; an option that takes a value ends the scan, as the value is the rest of the word. */
+function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch | null {
+  const v = word.value;
+  for (let k = 1; k < v.length; k++) {
+    const c = v[k] as string;
+    const rest = v.slice(k + 1);
+    if (c === "l") return { unit: "lines", size: rest ? batchSize(word, rest) : 1 };
+    if (c === "L" || c === "n") return { unit: c === "L" ? "lines" : "args", size: rest ? batchSize(word, rest) : batchSize(next) };
+    if (c === "i" || c === "e" || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
+  }
+  return null;
 }
 
 const DELIMITER_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0", "\\": "\\" };
