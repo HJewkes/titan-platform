@@ -1,11 +1,12 @@
-import { GateAlreadyExists, openGate, waitForGate, type GateRecord, type GateStore } from "@titan-design/hitl";
+import { GateAlreadyExists, openGate, waitForGate, type GateRecord } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
-import type { WorkflowAuthorityOptions } from "./runtime-options.js";
-import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey } from "./gate-ids.js";
-import { buildStepVars, type TemplateRenderer } from "./prompt.js";
-import type { SignalParser } from "./signals.js";
+import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape } from "./gate-ids.js";
+import type { ContextDeps, RecoveredStep } from "./context-deps.js";
+import { buildStepVars } from "./prompt.js";
+import { isRecoverable } from "./recovery.js";
+import { messageOf } from "./runtime-values.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
@@ -23,38 +24,16 @@ import {
   type AuthorizeResult,
   type DispatchOptions,
   type DurableStepOutcome,
-  type RecoverableActiveStep,
-  type RecoverableStepRunner,
   type SeedResult,
   type StepOperation,
   type StepResult,
   type StepRunInput,
-  type StepRunner,
   type StepUsage,
   type WorkflowContext,
-  type WorkflowEvent,
   type WorkflowRun,
 } from "./types.js";
 
-export type RecoveredStep =
-  | { kind: "completion"; step: ActiveStep; completion: Promise<DurableStepOutcome> }
-  | { kind: "retry_safe"; step: RecoverableActiveStep };
-
-export interface ContextDeps {
-  gates: GateStore;
-  runner: StepRunner;
-  render: TemplateRenderer;
-  parseSignal: SignalParser;
-  emit: (event: WorkflowEvent) => void;
-  maxRetries: number;
-  gatePollMs: number;
-  maxStepDataBytes: number;
-  executionId: () => string;
-  save: (run: WorkflowRun) => void;
-  recovered: ReadonlyMap<string, RecoveredStep>;
-  authority?: WorkflowAuthorityOptions;
-}
-
+export type { ContextDeps, RecoveredStep } from "./context-deps.js";
 export { assistedGateId, gateIdFor, gateIsPending, memoKey, pendingGateId, type GatePredicate } from "./gate-ids.js";
 
 interface CompletedStep {
@@ -204,13 +183,7 @@ export class RunContext implements WorkflowContext {
   private requireResumedGate(stepId: string, gateId: string): void {
     if (this.resumedGateStep !== stepId) return;
     this.resumedGateStep = null;
-    if (this.deps.gates.get(gateId)) return;
-    const evidence = `gate ${gateId} is missing, but the run was paused on it`;
-    this.run.status = "recovery_required";
-    this.run.error = evidence;
-    this.persist();
-    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId, evidence, gateId });
-    throw new WorkflowRecoveryRequiredError(this.runId, stepId, evidence);
+    if (!this.deps.gates.get(gateId)) this.holdForRecovery(stepId, `gate ${gateId} is missing, but the run was paused on it`, gateId);
   }
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
@@ -338,11 +311,15 @@ export class RunContext implements WorkflowContext {
 
   private requireRecovery(step: ActiveStep, kind: NonNullable<ActiveStep["recovery"]>["kind"], evidence: string): never {
     step.recovery = { kind, evidence, observedAt: nowIso() };
+    return this.holdForRecovery(step.stepId, evidence);
+  }
+
+  private holdForRecovery(stepId: string, evidence: string, gateId?: string): never {
     this.run.status = "recovery_required";
     this.run.error = evidence;
     this.persist();
-    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId: step.stepId, evidence });
-    throw new WorkflowRecoveryRequiredError(this.runId, step.stepId, evidence);
+    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId, evidence, ...(gateId ? { gateId } : {}) });
+    throw new WorkflowRecoveryRequiredError(this.runId, stepId, evidence);
   }
 
   /** Finds what this call position recorded, and refuses a replay that reaches it through a different method. */
@@ -389,17 +366,4 @@ export class RunContext implements WorkflowContext {
   private persist(): void {
     this.deps.save(this.run);
   }
-}
-
-/** The first call position has two key shapes, bare and `:0`, so a lookup checks the one this operation does not write. */
-function otherKeyShape(operation: StepOperation): StepOperation {
-  return operation === "dispatch" ? "assisted" : "dispatch";
-}
-
-function isRecoverable(runner: StepRunner): runner is RecoverableStepRunner {
-  return "dispatch" in runner && "reconcile" in runner;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
