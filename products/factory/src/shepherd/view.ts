@@ -164,12 +164,27 @@ export interface RowInput {
   train?: TrainHolder;
 }
 
-/** One watch-list row; stall limits per phase are left to TP-492, so only a failed or parked run reads as stalled. */
+/** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
+export const MAX_NOT_STARTED_REVIEWS = 3;
+
+/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
+function notStartedStreak(steps: readonly StepResult[]): number {
+  const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
+  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
+}
+
+function stallReason(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
+  const streak = notStartedStreak(steps);
+  return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : undefined;
+}
+
+/** One watch-list row; stall limits per phase are left to TP-492, so a failed or parked run, or a review the broker keeps refusing, reads as stalled. */
 export function watchRow({ registration, run, pending, train }: RowInput): WatchRow {
   const steps = completedSteps(run);
   const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
-  const stuck = run.status === "failed" || run.status === "recovery_required";
+  const stalled = stallReason(run, steps);
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -182,7 +197,7 @@ export function watchRow({ registration, run, pending, train }: RowInput): Watch
     nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
-    stalled: stuck ? { reason: run.error ?? run.status } : null,
+    stalled: stalled === undefined ? null : { reason: stalled },
   };
 }
 
