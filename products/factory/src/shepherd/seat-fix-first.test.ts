@@ -44,7 +44,7 @@ function reviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReader } {
   return { dispatch, reader };
 }
 
-describe("run aa8bf758's shape: Shepherd's reviewer says MERGE and a seat reviewer says FIX_FIRST at the same head", () => {
+describe("Shepherd's reviewer says MERGE and a seat reviewer says FIX_FIRST at the same head", () => {
   it("wakes the fixer with the seat reviewer's findings instead of asking the owner, then asks the owner at the fixer's new head", async () => {
     const fake = fakeGitHub();
     fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
