@@ -120,14 +120,47 @@ describe("strictness inside nested refs", () => {
 });
 
 describe("model ids", () => {
-  it.each(["sonnet", "sonnet[1m]", "opus[1m]", "Sonnet", " sonnet", "claude-sonnet-latest", "claude-opus-5-5 "])(
-    "refuses %j on write, because it is an alias or not an exact id",
-    (model) => {
-      expect(() => parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict")).toThrow(/model/);
-    },
-  );
+  const strictModel = (model: string) => () =>
+    parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict");
 
-  it.each(["claude-opus-5-5", "claude-haiku-4-5-20251001", "gpt-5-codex"])("accepts the exact id %s", (model) => {
-    expect(() => parseSpec(withLlmModel(readFixture<VariantSpec>("variants/single-pass.json"), model), "strict")).not.toThrow();
+  it.each([
+    ["a bare alias", "sonnet"],
+    ["a bare alias with a 1m suffix", "sonnet[1m]"],
+    ["a bare alias without a digit", "opus"],
+    ["mixed case", "Claude-Opus-5-5"],
+    ["a leading space", " sonnet"],
+    ["an id containing a space", "claude opus-5-5"],
+    ["a trailing space", "claude-opus-5-5 "],
+    ["a -latest tag", "claude-sonnet-latest"],
+    ["a -latest tag with a 1m suffix", "claude-sonnet-latest[1m]"],
+    ["a 1m suffix in the middle", "claude-opus-5-5[1m]-x"],
+    ["a 1m suffix at the start", "[1m]claude-opus-5-5"],
+    ["an alias with a Vertex version", "opus@1"],
+    ["an alias with a Bedrock version", "sonnet:1"],
+    ["an alias with a Vertex version and a 1m suffix", "opus@20260101[1m]"],
+    ["a -latest tag with a Vertex version", "claude-sonnet-latest@20260101"],
+    ["a -latest tag with a Bedrock version", "claude-sonnet-latest:0"],
+    ["a Vertex and a Bedrock version together", "claude-opus-5-5@x:y"],
+    ["a Vertex version of latest", "claude-opus-5-5@latest"],
+    ["a Bedrock version of latest", "claude-opus-5-5:latest"],
+    ["a Vertex version ending -latest", "claude-opus-5-5@x-latest"],
+    ["a Vertex version that is a word", "claude-opus-5-5@x"],
+    ["an empty Vertex version", "claude-opus-5-5@"],
+    ["a doubled 1m suffix", "claude-opus-5-5[1m][1m]"],
+  ])("refuses %s on write", (_form, model) => {
+    expect(strictModel(model)).toThrow(/model/);
+  });
+
+  it.each([
+    ["an exact id", "claude-opus-5-5"],
+    ["an exact id with a 1m suffix", "claude-opus-5-5[1m]"],
+    ["a dated id", "claude-haiku-4-5-20251001"],
+    ["a non-Anthropic id", "gpt-5-codex"],
+    ["a Vertex id with @", "claude-opus-5-5@20260101"],
+    ["a Vertex id with @ and a 1m suffix", "claude-opus-5-5@20260101[1m]"],
+    ["a Bedrock id with :", "anthropic.claude-opus-5-5-v1:0"],
+    ["a region-prefixed Bedrock id", "us.anthropic.claude-opus-5-5-v1:0"],
+  ])("accepts %s", (_form, model) => {
+    expect(strictModel(model)).not.toThrow();
   });
 });

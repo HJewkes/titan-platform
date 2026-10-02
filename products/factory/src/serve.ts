@@ -12,6 +12,7 @@ import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./ho
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
+import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
 export type { FactoryContext } from "./registry.js";
@@ -64,8 +65,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
     host.close();
     throw err;
   }
+  const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
-  const sweep = startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
+  const sweep =startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
   const services = options.routes.shepherd;
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
@@ -76,6 +78,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
     await goneSweep?.stop();
     await releaseSweep?.stop();
     await daemon.close();
+    unbindCarry();
     host.close();
   };
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
@@ -105,13 +108,15 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
   });
 }
 
+const stateDirOf = (options: FactoryServerOptions): string => options.stateDir ?? dirname(options.dbPath);
+
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
   const { routeFor } = routedRunner(options.routes);
   return {
     registry: createFactoryRegistry(),
     createContext: () => factoryContext(host, options.routes),
     version: FACTORY_VERSION,
-    stateDir: options.stateDir ?? dirname(options.dbPath),
+    stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
