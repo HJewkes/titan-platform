@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { probeHealth } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import type { CommandResult } from "./service-control.js";
@@ -39,6 +40,16 @@ function createExclusive(path: string, text: string): boolean {
   }
 }
 
+function rename(from: string, to: string): boolean {
+  try {
+    renameSync(from, to);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+}
+
 /** EPERM means the pid exists under another user, which still holds the lock. */
 function isAlive(pid: number): boolean {
   try {
@@ -55,12 +66,14 @@ export function systemDeployPorts(checkout: string): DeployPorts {
   return {
     ...systemServicePorts(),
     pid: process.pid,
+    healthWithin: (port, timeoutMs) => probeHealth(port, { timeoutMs }),
     git: (args) => run("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
     pnpm: (args) => run("pnpm", args, checkout, PNPM_TIMEOUT_MS, pnpmEnv),
     listDirs,
     copyTree: (from, to) => cpSync(from, to, { recursive: true }),
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
     createExclusive,
+    rename,
     isAlive,
   };
 }

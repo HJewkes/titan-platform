@@ -70,3 +70,26 @@ export function touchedPaths(changed: readonly string[] | undefined, closure: re
   if (changed === undefined) return [UNKNOWN_DIFF];
   return changed.filter((path) => isRootInput(path) || closure.some((dir) => path.startsWith(`${dir}/`)));
 }
+
+/** Packages in the factory closure whose install script compiles a native addon; setupEnv's ignore_scripts skips that compile. */
+export const NATIVE_BUILD_PACKAGES: readonly string[] = ["better-sqlite3"];
+const LOCK_KEY = /^ {2}'?(@?[^@\s']+)@([^:(\s']+)/;
+
+/** Every version of `name` that pnpm-lock.yaml keys, sorted; empty when the lockfile is missing. */
+export function lockedVersions(lockfile: string | undefined, name: string): string[] {
+  const versions = new Set<string>();
+  for (const line of (lockfile ?? "").split("\n")) {
+    const match = LOCK_KEY.exec(line);
+    if (match?.[1] === name) versions.add(match[2]!);
+  }
+  return [...versions].sort();
+}
+
+/** One line per native-build package whose locked versions differ, such as `better-sqlite3 13.0.3 -> 13.1.0`. */
+export function nativeBuildChanges(before: string | undefined, after: string | undefined, names: readonly string[] = NATIVE_BUILD_PACKAGES): string[] {
+  return names.flatMap((name) => {
+    const [was, now] = [lockedVersions(before, name), lockedVersions(after, name)];
+    if (was.join() === now.join()) return [];
+    return [`${name} ${was.join(", ") || "absent"} -> ${now.join(", ") || "absent"}`];
+  });
+}

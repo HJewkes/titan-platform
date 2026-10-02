@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
+import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import { SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./service-control.js";
@@ -42,7 +43,15 @@ interface MachineInit {
   crashes?: string[];
   /** Pids `isAlive` reports as running. */
   alive?: number[];
+  /** After each kickstart, this many `healthWithin` probes time out before one answers. */
+  silentProbes?: number;
+  /** After a kickstart, `healthWithin` reports this build sha instead of the one loaded. */
+  misreports?: string;
+  /** pnpm-lock.yaml per commit; others get the base lockfile. */
+  lockfiles?: Record<string, string>;
 }
+
+const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
 
 const at = (sha: string): number => HISTORY.indexOf(sha);
 const resolveRef = (ref: string): string | undefined => (ref === "origin/main" ? TIP : at(ref) >= 0 ? ref : undefined);
@@ -67,6 +76,7 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
       if (from < 0 || to < 0) return failed(128, "fatal: bad object");
       return ok(HISTORY.slice(from + 1, to + 1).flatMap((sha) => CHANGES[sha] ?? []).join("\n"));
     },
+    show: (args) => ok(init.lockfiles?.[args[1]!.split(":")[0]!] ?? lockfile("13.0.3")),
     merge: (args) => {
       if (at(args[2]!) > at(state.head)) state.head = args[2]!;
       return ok();
@@ -83,11 +93,14 @@ function fakeMachine(init: MachineInit = {}) {
   const state = { head: init.head ?? BASE };
   const calls: string[] = [];
   let clock = 0;
-  let job = { pid: OLD_PID, serving: running };
+  let job = { pid: OLD_PID, serving: running, restarted: false };
+  let silent = 0;
+  let probes = 0;
   const git = fakeGit(state, init);
   const kickstart = (): CommandResult => {
     const sha = trees.get(FACTORY_DIST)?.replace("build:", "") ?? null;
-    job = { pid: job.pid + 1, serving: sha !== null && !init.crashes?.includes(sha) ? sha : null };
+    job = { pid: job.pid + 1, serving: sha !== null && !init.crashes?.includes(sha) ? sha : null, restarted: true };
+    silent = init.silentProbes ?? 0;
     return ok();
   };
   const pnpm = (args: readonly string[]): CommandResult => {
@@ -122,6 +135,15 @@ function fakeMachine(init: MachineInit = {}) {
     isDirectory: () => false,
     which: (binary) => `/opt/tools/bin/${binary}`,
     health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: [] }),
+    healthWithin: async (port) => {
+      probes += 1;
+      if (silent > 0) {
+        silent -= 1;
+        return null;
+      }
+      const answer = await ports.health(port);
+      return answer && job.restarted && init.misreports ? { ...answer, build: { sha: init.misreports } } : answer;
+    },
     mkdir: () => undefined,
     writeFile: (path, text) => void files.set(path, text),
     readFile: (path) => files.get(path),
@@ -133,11 +155,18 @@ function fakeMachine(init: MachineInit = {}) {
     copyTree: (from, to) => [...trees].filter(([key]) => under(key, from)).forEach(([key, value]) => trees.set(to + key.slice(from.length), value)),
     removeTree: (path) => [...trees.keys()].filter((key) => under(key, path)).forEach((key) => trees.delete(key)),
     createExclusive: (path, text) => !files.has(path) && files.set(path, text) !== undefined,
+    rename: (from, to) => {
+      const text = files.get(from);
+      if (text === undefined) return false;
+      files.delete(from);
+      files.set(to, text);
+      return true;
+    },
     isAlive: (pid) => init.alive?.includes(pid) ?? false,
   };
   const record = () => parseDeployRecord(files.get(RECORD));
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
-  return { ports, calls, files, trees, state, record, mutations, serving: () => job.serving };
+  return { ports, calls, files, trees, state, record, mutations, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
 }
 
 const OPTIONS: DeployOptions = { checkout: CHECKOUT, stateDir: STATE, port: 7410, logDir: STATE, drain: { timeoutMs: 60_000, wait: true, force: false } };
@@ -202,8 +231,69 @@ describe("titan-factory service deploy", () => {
     expect(code).toBe(1);
     expect(err).toContain("checkout not clean main");
     expect(machine.calls.filter((call) => call.startsWith("git fetch") || call.startsWith("git merge"))).toEqual([]);
-    expect(machine.record()).toMatchObject({ outcome: "refused" });
-    expect(machine.record()?.why).toContain(why);
+    expect(err).toContain(why);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("leaves a rolled-back hold in place when a later run is refused", async () => {
+    const rolledBack = { outcome: "rolled-back", target: TIP, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "build failed" };
+    const machine = fakeMachine({ dirty: " M package.json\n", files: { [RECORD]: JSON.stringify(rolledBack) } });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.record()).toEqual(rolledBack);
+  });
+
+  it("refuses a target behind the checkout's main and names the commit to deploy instead", async () => {
+    const machine = fakeMachine({ head: TIP });
+
+    const { code, err } = await deploy(machine, CORE);
+
+    expect(code).toBe(1);
+    expect(err).toContain(`already past ${CORE}; deploy that commit instead with titan-factory service deploy --expect ${TIP}`);
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("refuses before the fast-forward when the lockfile changes a native-build package, naming it", async () => {
+    const machine = fakeMachine({ lockfiles: { [TIP]: lockfile("13.1.0") } });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("changes a package with a native build (better-sqlite3 13.0.3 -> 13.1.0)");
+    expect(err).toContain(`Deploy it by hand in the checkout: git merge --ff-only ${TIP}`);
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("keeps polling /health through slow answers after the restart and deploys once the target sha answers", async () => {
+    const machine = fakeMachine({ silentProbes: 3 });
+
+    const { code, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.mutations().filter((call) => call.startsWith("launchctl kickstart"))).toHaveLength(1);
+  });
+
+  it("rolls back when /health gives no build sha in the whole poll", async () => {
+    const machine = fakeMachine({ silentProbes: 100 });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("/health answered no build sha in 10 tries") });
+  });
+
+  it("rolls back at the first answer that names the wrong sha, without waiting out the poll", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.record()?.why).toContain(`/health reports build ${STRAY}, not ${TIP}`);
   });
 
   it("refuses an --expect sha that is not on origin/main", async () => {
@@ -285,6 +375,49 @@ describe("titan-factory service deploy", () => {
 
     expect(code).toBe(0);
     expect(machine.files.has(`${STATE}/deploy.lock`)).toBe(false);
+  });
+});
+
+describe("deploy lock", () => {
+  function lockMachine(files: Record<string, string>, beforeRename?: (files: Map<string, string>) => void): LockPorts & { files: Map<string, string> } {
+    const map = new Map(Object.entries(files));
+    return {
+      files: map,
+      pid: DEPLOYER_PID,
+      readFile: (path) => map.get(path),
+      remove: (path) => void map.delete(path),
+      createExclusive: (path, text) => !map.has(path) && map.set(path, text) !== undefined,
+      rename: (from, to) => {
+        beforeRename?.(map);
+        const text = map.get(from);
+        if (text === undefined) return false;
+        map.delete(from);
+        map.set(to, text);
+        return true;
+      },
+      isAlive: (pid) => pid === 888,
+    };
+  }
+
+  it("stands down when another deployer moved the stale lock first", () => {
+    const ports = lockMachine({ "/l": "777" }, (files) => files.delete("/l"));
+
+    expect(takeLock(ports, "/l")).toBe("another deploy took /l first");
+  });
+
+  it("puts back a fresh lock it moved by mistake and stands down", () => {
+    const ports = lockMachine({ "/l": "777" }, (files) => files.set("/l", "888"));
+
+    expect(takeLock(ports, "/l")).toBe("another deploy took /l first");
+    expect(ports.files.get("/l")).toBe("888");
+  });
+
+  it("releases only a lock that still names this process", () => {
+    const ports = lockMachine({ "/l": "888" });
+
+    releaseLock(ports, "/l");
+
+    expect(ports.files.get("/l")).toBe("888");
   });
 });
 

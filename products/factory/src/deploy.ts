@@ -1,10 +1,12 @@
 import { join } from "node:path";
-import { closureDirs, FACTORY_PACKAGE, readWorkspace, touchedPaths } from "./deploy-closure.js";
+import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
+import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
-export interface DeployPorts extends ServicePorts {
-  pid: number;
+export interface DeployPorts extends ServicePorts, LockPorts {
+  /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
+  healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
   /** Runs in the service checkout. */
   git: (args: readonly string[]) => Promise<CommandResult>;
   /** Runs in the service checkout under the worktree setup env, so pnpm never switches versions mid-deploy. */
@@ -12,9 +14,6 @@ export interface DeployPorts extends ServicePorts {
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
   removeTree: (path: string) => void;
-  /** False when the file already exists. */
-  createExclusive: (path: string, text: string) => boolean;
-  isAlive: (pid: number) => boolean;
 }
 
 export interface DeployOptions {
@@ -29,7 +28,8 @@ export interface DeployOptions {
   drain: RestartDrain;
 }
 
-export type DeployOutcome = "deployed" | "skipped" | "refused" | "rolled-back";
+/** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
+export type DeployOutcome = "deployed" | "skipped" | "rolled-back";
 
 /** What `/health` shows as `lastDeploy`. */
 export interface DeployRecord {
@@ -56,7 +56,8 @@ interface Go {
   touched: string[];
 }
 
-type Plan = { kind: "go"; go: Go } | { kind: "stop"; code: number; message: string; record?: DeployRecord };
+type Stop = { kind: "stop"; code: number; message: string; record?: DeployRecord };
+type Plan = { kind: "go"; go: Go } | Stop;
 
 const UNKNOWN = "unknown";
 const DIRTY_SUFFIX = "-dirty";
@@ -64,6 +65,10 @@ const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
 const OUTPUT_TAIL_LINES = 20;
 const FAILURE = 1;
+const SHA_POLLS = 10;
+const SHA_POLL_MS = 1_000;
+const SHA_PROBE_TIMEOUT_MS = 5_000;
+const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const lockPath = (stateDir: string): string => join(stateDir, "deploy.lock");
@@ -95,20 +100,11 @@ export async function deployService(ports: DeployPorts, io: ServiceIo, options: 
     const plan = await planDeploy(deploy);
     return plan.kind === "go" ? await execute(deploy, plan.go) : stop(deploy, plan);
   } finally {
-    ports.remove(lock);
+    releaseLock(ports, lock);
   }
 }
 
-/** A lock whose pid is gone is stale: a deployer killed mid-run must not block every later one. */
-function takeLock(ports: DeployPorts, lock: string): string | undefined {
-  if (ports.createExclusive(lock, String(ports.pid))) return undefined;
-  const holder = Number(ports.readFile(lock)?.trim());
-  if (Number.isInteger(holder) && holder > 0 && ports.isAlive(holder)) return `another deploy is running (pid ${holder} holds ${lock})`;
-  ports.remove(lock);
-  return ports.createExclusive(lock, String(ports.pid)) ? undefined : `another deploy took ${lock} first`;
-}
-
-function stop({ ports, io, options }: Deploy, plan: Extract<Plan, { kind: "stop" }>): number {
+function stop({ ports, io, options }: Deploy, plan: Stop): number {
   if (plan.record) ports.writeFile(deployRecordPath(options.stateDir), `${JSON.stringify(plan.record, null, 2)}\n`);
   (plan.code === 0 ? io.stdout : io.stderr)(`${plan.code === 0 ? "" : "error: "}${plan.message}\n`);
   return plan.code;
@@ -118,19 +114,19 @@ function record(deploy: Deploy, fields: Omit<DeployRecord, "at">): DeployRecord 
   return { ...fields, at: new Date(deploy.ports.now()).toISOString() };
 }
 
-function refuse(deploy: Deploy, why: string, target = deploy.options.expect ?? ORIGIN_MAIN, running?: string): Plan {
-  return { kind: "stop", code: FAILURE, message: `deploy refused: ${why}`, record: record(deploy, { outcome: "refused", target, from: running ?? UNKNOWN, why }) };
+function refuse(why: string): Stop {
+  return { kind: "stop", code: FAILURE, message: `deploy refused: ${why}` };
 }
 
 async function planDeploy(deploy: Deploy): Promise<Plan> {
   const { ports } = deploy;
-  if (ports.which("pnpm") === undefined) return refuse(deploy, "pnpm is not on PATH");
+  if (ports.which("pnpm") === undefined) return refuse("pnpm is not on PATH");
   const guard = await checkoutGuard(ports);
-  if (guard !== undefined) return refuse(deploy, `checkout not clean main: ${guard}`);
+  if (guard !== undefined) return refuse(`checkout not clean main: ${guard}`);
   const fetched = await ports.git(["fetch", "origin", MAIN]);
-  if (fetched.code !== 0) return refuse(deploy, `git fetch origin main failed: ${detail(fetched)}`);
+  if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
-  if (typeof target !== "object") return refuse(deploy, target);
+  if (typeof target !== "object") return refuse(target);
   return planFor(deploy, target.sha);
 }
 
@@ -156,10 +152,24 @@ async function isAncestor(ports: DeployPorts, ancestor: string, of: string): Pro
   return (await ports.git(["merge-base", "--is-ancestor", ancestor, of])).code === 0;
 }
 
-async function runningBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
-  const build = (await ports.health(port))?.build;
+function buildShaOf(health: Record<string, unknown> | null): string | undefined {
+  const build = health?.build;
   const sha = typeof build === "object" && build !== null ? (build as Record<string, unknown>).sha : undefined;
   return typeof sha === "string" ? sha : undefined;
+}
+
+async function runningBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
+  return buildShaOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
+}
+
+/** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer in the whole poll. */
+async function answeredBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
+  for (let poll = 0; poll < SHA_POLLS; poll++) {
+    const sha = await runningBuild(ports, port);
+    if (sha !== undefined) return sha;
+    await ports.sleep(SHA_POLL_MS);
+  }
+  return undefined;
 }
 
 /** A dirty or unknown build has no commit to diff from, so it neither no-ops nor skips. */
@@ -175,12 +185,30 @@ async function planFor(deploy: Deploy, target: string): Promise<Plan> {
   const from = cleanSha(running);
   if (from !== undefined && (await isAncestor(ports, target, from))) return { kind: "stop", code: 0, message: `already deployed: build ${from} contains ${target}` };
   const head = (await ports.git(["rev-parse", "HEAD"])).stdout.trim();
-  if (head !== target && (await isAncestor(ports, target, head))) {
-    return refuse(deploy, `the checkout is at ${head}, past ${target}; rerun without --expect`, target, running);
-  }
+  if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports, from, target);
-  return { kind: "go", go: { target, running, closure, touched: touchedPaths(changed, closure) } };
+  const go = { target, running, closure, touched: touchedPaths(changed, closure) };
+  const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
+  return native === undefined ? { kind: "go", go } : refuse(native);
+}
+
+async function pastTarget(ports: DeployPorts, head: string, target: string): Promise<string> {
+  const past = `the checkout's main is at ${head}, already past ${target}`;
+  if (await isAncestor(ports, head, ORIGIN_MAIN)) return `${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`;
+  return `${past} with commits that are not on ${ORIGIN_MAIN}; push or remove them from the checkout's main, then rerun`;
+}
+
+/** setupEnv pins ignore_scripts, so a changed native addon would install uncompiled and a dist rollback could not undo it. */
+async function nativeBuildRefusal(ports: DeployPorts, head: string, target: string): Promise<string | undefined> {
+  const read = async (sha: string): Promise<string | undefined> => {
+    const shown = await ports.git(["show", `${sha}:${LOCKFILE}`]);
+    return shown.code === 0 ? shown.stdout : undefined;
+  };
+  const changes = nativeBuildChanges(await read(head), await read(target));
+  if (changes.length === 0) return undefined;
+  const steps = `git merge --ff-only ${target}, pnpm install --frozen-lockfile, pnpm --filter "${FACTORY_PACKAGE}..." build, then titan-factory service restart`;
+  return `${LOCKFILE} changes a package with a native build (${changes.join("; ")}), and the deployer installs with ignore_scripts, which skips that build. Deploy it by hand in the checkout: ${steps}`;
 }
 
 async function changedPaths(ports: DeployPorts, from: string, target: string): Promise<string[] | undefined> {
@@ -190,7 +218,7 @@ async function changedPaths(ports: DeployPorts, from: string, target: string): P
 
 async function execute(deploy: Deploy, go: Go): Promise<number> {
   const merged = await fastForward(deploy.ports, go.target);
-  if (merged !== undefined) return finish(deploy, go, "refused", merged);
+  if (merged !== undefined) return stop(deploy, refuse(merged));
   if (go.touched.length === 0) return finish(deploy, go, "skipped", "no changed path reaches the factory build");
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
@@ -245,8 +273,9 @@ async function installAndBuild(ports: DeployPorts): Promise<string | undefined> 
 /** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering. */
 async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | undefined> {
   if ((await restartService(ports, io, options.port, options.logDir, options.drain)) !== 0) return "the restarted service did not come up healthy";
-  const sha = await runningBuild(ports, options.port);
-  return sha === target ? undefined : `/health reports build ${sha ?? "none"}, not ${target}`;
+  const sha = await answeredBuild(ports, options.port);
+  if (sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
+  return sha === target ? undefined : `/health reports build ${sha}, not ${target}`;
 }
 
 /** Whether the old process still runs (`running`) or the new build already replaced it (`restarted`). */
@@ -268,5 +297,5 @@ async function restartRestored(deploy: Deploy, go: Go): Promise<boolean> {
 
 /** After a failed build the old process has its code loaded already, so it should still answer as the running build. */
 async function stillServing({ ports, options }: Deploy, go: Go): Promise<boolean> {
-  return go.running === undefined || (await runningBuild(ports, options.port)) === go.running;
+  return go.running === undefined || (await answeredBuild(ports, options.port)) === go.running;
 }

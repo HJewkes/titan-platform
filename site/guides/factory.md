@@ -298,30 +298,46 @@ titan-factory service deploy --expect <sha>     # deploy one commit already on o
 
 `service deploy [--expect <sha>]` rebuilds and restarts the service from the checkout the bin
 was built in, which must be on `main` with no tracked changes. It takes the pid lock
-`$XDG_STATE_HOME/titan-factory/deploy.lock` (a dead pid's lock is stale), runs
-`git fetch origin main`, and targets `--expect` or `origin/main`; a target not on `origin/main`
-is refused. A target the running build (`/health` `build.sha`) already contains is a no-op. It
-then diffs the running build sha to the target against the factory closure, the workspace
-packages `pnpm --filter "@titan-design/factory..."` selects, plus the root build inputs
+`$XDG_STATE_HOME/titan-factory/deploy.lock`. A lock whose pid is dead is stale; a deployer
+takes it over by renaming it, so two deployers cannot both win, and on exit removes the lock
+only while it still holds its own pid. It runs `git fetch origin main` and targets `--expect`
+or `origin/main`; a target not on `origin/main` is refused. A target the running build
+(`/health` `build.sha`) already contains is a no-op. A target behind the checkout's own `main`
+is refused with the commit to deploy instead. It then diffs the running build sha to the
+target against the factory closure, the workspace packages
+`pnpm --filter "@titan-design/factory..."` selects, plus the root build inputs
 (`pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `.npmrc`, root `tsconfig*.json`). An
 unknown or dirty build sha counts as touched. When nothing intersects it runs
-`git merge --ff-only` and records `skipped`. Otherwise it copies every closure package's `dist`
-to `deploy-backup/<running sha>/`, fast-forwards, runs `pnpm install --frozen-lockfile` under
-`@titan-design/worktree`'s `setupEnv` pin, builds the closure, and restarts drained as
-`service restart` does. Success means launchd's pid answers `/health` with `github` `ok` and
-`build.sha` equal to the target. A failed install or build restores the snapshot and leaves
-the old process running, untouched. A failed restart or sha check restores the snapshot and
-kickstarts again. Both record `rolled-back`, and that sha is then held until a newer one
-arrives. Every outcome but a no-op goes to `deploy.json`, which `/health` shows as `lastDeploy`.
+`git merge --ff-only` and records `skipped`.
+
+A touched range whose `pnpm-lock.yaml` changes the version of a package with a native build
+(`better-sqlite3`, the one in the factory closure) is refused before anything changes. The
+deployer installs under `@titan-design/worktree`'s `setupEnv` pin, whose `ignore_scripts`
+skips that package's compile, and a rollback restores `dist` only, never `node_modules`. The
+refusal names the package and its versions and lists the steps to deploy it by hand.
+
+Otherwise it copies every closure package's `dist` to `deploy-backup/<running sha>/`,
+fast-forwards, runs `pnpm install --frozen-lockfile` under the `setupEnv` pin, builds the
+closure, and restarts drained as `service restart` does. Success means launchd's pid answers
+`/health` with `github` `ok`, and then `build.sha` equals the target. The sha read polls
+`/health` up to 10 times with a 5 s timeout each, so a slow answer under load is not a
+failure; only a wrong sha, or no sha in the whole poll, fails. A failed install or build
+restores the snapshot and leaves the old process running, untouched. A failed restart or sha
+check restores the snapshot and kickstarts again. Both record `rolled-back`, and that sha is
+then held until a newer one arrives.
+
+`deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
+`lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
 It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
 refusal names its cause, such as `deploy refused: checkout not clean main: HEAD is feature/x,
-not main`. If `pnpm install` changed `node_modules` in a way the old `dist` cannot load, the
-rollback cannot bring the service back either, and `lastDeploy.why` says so; the service stays
-down until a fix merges.
+not main`. A rollback cannot undo a `node_modules` change that the old `dist` cannot load.
+The native-build refusal closes the known case. Any other such change leaves the service down
+until a fix merges, and `lastDeploy.why` then ends with "the restored build did not answer
+/health".
 
 ### The job's `PATH`
 
