@@ -1,5 +1,4 @@
 import { GATE_CANCELLED_SIGNAL, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
-import type { ZodType } from "zod";
 import { stepIdMatches } from "../definition.js";
 
 const HEAD_GATES = /\/(approve-merge|sh-sent-back)(:\d+)?$/;
@@ -25,12 +24,6 @@ async function askAtHead(ctx: WorkflowContext, prompt: string, options: Assisted
   const reason = String(answer.data?.reason);
   if (reason.startsWith(SUPERSEDED)) return undefined;
   throw new Error(`approve-merge was cancelled: ${reason}`);
-}
-
-/** The parsed answer, or undefined when the head sweep cancelled the gate. */
-export async function answerAtHead<T>(ctx: WorkflowContext, prompt: string, schema: ZodType<T>): Promise<T | undefined> {
-  const asked = await askAtHead(ctx, prompt, { schema });
-  return asked && schema.parse(asked.data);
 }
 
 /** An approve-merge gate the head sweep cancelled throws `leave()`, so the caller re-reads the pull request's head. */

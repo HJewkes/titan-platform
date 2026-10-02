@@ -1,5 +1,7 @@
-import type { FactoryHost } from "../host.js";
+import type { WorkflowRun } from "@titan-design/workflow";
+import type { FactoryHost, PendingGate } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import { SUPERSEDED, gateHead } from "./stale-gates.js";
 
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
@@ -19,12 +21,34 @@ async function openHead(services: ShepherdServices, runId: string): Promise<stri
   return pr?.state === "open" ? pr.headSha : undefined;
 }
 
-/** Cancels each shepherd-pr approve-merge gate whose PR moved past the head it asks about; the run then reviews the new head. */
+interface RecordedDecision {
+  result?: { outcome?: string; headSha?: string; rule?: { table?: string } };
+}
+
+/** The last merge decision the run recorded, which is the one its pending approve-merge gate asks about. */
+function lastMergeDecision(run: WorkflowRun): RecordedDecision["result"] {
+  const decisions = Object.values(run.stepResults).filter((result) => result.stepId.startsWith("merge-policy"));
+  const last = decisions.sort((a, b) => a.completedAt.localeCompare(b.completedAt)).at(-1);
+  return last ? (JSON.parse(last.output ?? "{}") as RecordedDecision).result : undefined;
+}
+
+/** The head a seat-policy gate asks about; a conflict or escalation gate shares the step id but stays with the owner. */
+function seatGateHead(host: FactoryHost, { runId, stepId, gate }: PendingGate): string | undefined {
+  const run = host.runtime.status(runId);
+  if (run?.workflowName !== SHEPHERD_WORKFLOW || stepId !== "approve-merge" || !APPROVE_MERGE_GATE.test(gate.id)) return undefined;
+  const asked = gateHead(gate.prompt);
+  const decision = lastMergeDecision(run);
+  const seatGate = decision?.outcome === "gate" && decision.rule?.table === SHEPHERD_POLICY_TABLE && decision.headSha === asked;
+  return seatGate ? asked : undefined;
+}
+
+/** Cancels each shepherd-pr seat-policy approve-merge gate whose PR moved past the head it asks about; the run then reviews the new head. */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
-  for (const { runId, gate } of host.pendingGates()) {
-    const asked = APPROVE_MERGE_GATE.test(gate.id) ? gateHead(gate.prompt) : undefined;
-    if (!asked || host.runtime.status(runId)?.workflowName !== SHEPHERD_WORKFLOW) continue;
+  for (const pending of host.pendingGates()) {
+    const { runId, gate } = pending;
+    const asked = seatGateHead(host, pending);
+    if (!asked) continue;
     const head = await openHead(services, runId);
     if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
     host.gates.cancel(gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`);
