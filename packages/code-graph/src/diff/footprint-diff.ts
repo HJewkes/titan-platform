@@ -24,9 +24,9 @@ export function diffFootprints(store: CodeGraphStore, options: DiffFootprintsOpt
   const resolve = symbolAwareResolver(aliasChain(store, fromSnapshotId, toSnapshotId));
   const fromGraph = loadSymbolLayer(store, fromSnapshotId);
   const toGraph = loadSymbolLayer(store, toSnapshotId);
-  const before = computeFootprints(remapGraph(fromGraph, resolve), options);
-  const after = computeFootprints(toGraph, options);
   const { previousIds, mergedAway } = mergeSources(fromGraph.nodes, resolve);
+  const before = computeFootprints(remapGraph(fromGraph, resolve, new Set(mergedAway)), options);
+  const after = computeFootprints(toGraph, options);
   const changes = [
     ...changedOrAdded(after, before, previousIds),
     ...removed(before, after, previousIds, resolve),
@@ -53,10 +53,13 @@ function symbolAwareResolver(aliases: Pick<AliasChain, "resolve">): ResolveId {
   };
 }
 
-function remapGraph(graph: FootprintGraph, resolve: ResolveId): FootprintGraph {
+// Losing merge sources are left out so the merged id's prior footprint is the keeper's alone.
+function remapGraph(graph: FootprintGraph, resolve: ResolveId, losers: ReadonlySet<string>): FootprintGraph {
   return {
-    nodes: graph.nodes.map((n) => ({ ...n, id: resolve(n.id) })),
-    edges: graph.edges.map((e) => ({ ...e, srcId: resolve(e.srcId), dstId: resolve(e.dstId) })),
+    nodes: graph.nodes.filter((n) => !losers.has(n.id)).map((n) => ({ ...n, id: resolve(n.id) })),
+    edges: graph.edges
+      .filter((e) => !losers.has(e.srcId) && !losers.has(e.dstId))
+      .map((e) => ({ ...e, srcId: resolve(e.srcId), dstId: resolve(e.dstId) })),
   };
 }
 

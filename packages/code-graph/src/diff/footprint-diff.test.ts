@@ -168,4 +168,34 @@ describe("diffFootprints", () => {
       { symbolId: "src/c.ts#run", previousId: "src/a.ts#run", status: "changed", reasons: ["renamed"], fileId: "src/c.ts" },
     ]);
   });
+
+  it("compares a merged symbol against the kept source only when two files merge", () => {
+    const from = snapshot(
+      [fileNode("src/a.ts"), fileNode("src/b.ts"), symbol("src/a.ts#run", { signature: "function run(a): void" }), symbol("src/b.ts#run", { signature: "function run(b): void" })],
+      [],
+    );
+    const to = snapshot([fileNode("src/c.ts"), symbol("src/c.ts#run", { signature: "function run(a): void" })], [], [
+      { oldId: "src/a.ts", newId: "src/c.ts", reason: "merge" },
+      { oldId: "src/b.ts", newId: "src/c.ts", reason: "merge" },
+    ]);
+
+    expect(diff(from, to).changes).toEqual([
+      { symbolId: "src/b.ts#run", status: "removed", reasons: [], fileId: "src/c.ts" },
+      { symbolId: "src/c.ts#run", previousId: "src/a.ts#run", status: "changed", reasons: ["renamed"], fileId: "src/c.ts" },
+    ]);
+  });
+
+  it("keeps an unchanged symbol unchanged when another file merges into its file", () => {
+    const from = snapshot(
+      [fileNode("src/c.ts"), fileNode("src/d.ts"), symbol("src/c.ts#run"), symbol("src/d.ts#run", { signature: "function run(d): void" })],
+      [],
+    );
+    const to = snapshot([fileNode("src/c.ts"), symbol("src/c.ts#run")], [], [
+      { oldId: "src/d.ts", newId: "src/c.ts", reason: "merge" },
+    ]);
+
+    expect(diff(from, to).changes).toEqual([
+      { symbolId: "src/d.ts#run", status: "removed", reasons: [], fileId: "src/c.ts" },
+    ]);
+  });
 });
