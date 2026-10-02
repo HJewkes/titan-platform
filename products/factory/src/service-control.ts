@@ -1,4 +1,5 @@
 import { dirname, join, resolve } from "node:path";
+import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { plistPath, renderPlist, SERVICE_LABEL, type PlistOptions } from "./service.js";
 
 export interface CommandResult {
@@ -26,6 +27,7 @@ export interface ServicePorts {
   exists: (path: string) => boolean;
   remove: (path: string) => void;
   sleep: (ms: number) => Promise<void>;
+  now: () => number;
 }
 
 export interface ServiceIo {
@@ -201,10 +203,24 @@ function healthSummary(health: Record<string, unknown>, port: number): string {
     const value = health[key];
     return typeof value === "string" || typeof value === "number" ? [`${key} ${value}`] : [];
   });
+  const build = buildSummary(health.build);
+  if (build) fields.push(build);
   return `ok on port ${port}${fields.length > 0 ? ` (${fields.join(", ")})` : ""}`;
 }
 
-export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string): Promise<number> {
+function buildSummary(build: unknown): string | undefined {
+  if (typeof build !== "object" || build === null) return undefined;
+  const { sha, behindMain } = build as Record<string, unknown>;
+  if (typeof sha !== "string") return undefined;
+  const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;
+  return `build ${sha.slice(0, 12)}${sha.endsWith("-dirty") ? "-dirty" : ""}, ${behind}`;
+}
+
+export type RestartDrain = Omit<DrainOptions, "port">;
+
+export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string, drain: RestartDrain): Promise<number> {
+  const drained = await drainForRestart(ports, io.stdout, { ...drain, port });
+  if (!drained.proceed) return fail(io, drained.why);
   const kickstart = await ports.launchctl(["kickstart", "-k", serviceTarget(ports)]);
   if (kickstart.code !== 0) return fail(io, `launchctl kickstart failed: ${detail(kickstart)}; titan-factory service install loads the job`);
   if (!(await awaitHealthy(ports, io, port, logDir))) return FAILURE;

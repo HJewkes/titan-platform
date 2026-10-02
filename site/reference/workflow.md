@@ -108,7 +108,10 @@ active steps. Legacy agent runs without confirmed attachment remain
   `ctx.iteration(stepId)`, so each call in a loop opens a new gate: the first is keyed
   `stepId` with gate `<runId>/<stepId>`, iteration `n` is keyed `stepId:n` with gate
   `<runId>/<stepId>:n`. `runtime.signal` resolves the call that is waiting, and replay
-  returns recorded answers without reopening their gates.
+  returns recorded answers without reopening their gates. A gate cancelled while the call
+  waits fails the run, unless the call passes `{ recordCancel: true }`. Then the cancel is
+  recorded as the answer, with signal `GATE_CANCELLED_SIGNAL` and data `{ reason }`, and the
+  next call opens a fresh gate.
 
 All three share one call counter per `stepId`, so `seed("x")` then `assisted("x")` gates on
 `<runId>/x:1`, and every result records the method that wrote it as `StepResult.operation`.

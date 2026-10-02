@@ -33,8 +33,14 @@ function registerOutcome(created: boolean, previousRunId: string | undefined): s
 function rowLine(row: WatchRow): string {
   const target = row.pr === null ? `${row.repo} ${row.branch}` : `${row.repo}#${row.pr}`;
   const head = row.headSha === null ? "-" : row.headSha.slice(0, 7);
-  const blockers = [row.held && `held: ${row.held.reason}`, row.stalled && `stalled: ${row.stalled.reason}`].filter(Boolean);
+  const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`].filter(Boolean);
   return `${target} ${row.phase} ${head} ${row.nextAction}${blockers.length > 0 ? ` [${blockers.join("; ")}]` : ""}`;
+}
+
+/** A satisfied hold names the head and the reviewer session whose MERGE lets a merge there through. */
+function heldLine(held: NonNullable<WatchRow["held"]>): string {
+  if (held.satisfiedAt === undefined) return `held: ${held.reason}`;
+  return `held: ${held.reason}, satisfied at ${held.satisfiedAt} by ${held.satisfiedBy ?? "unknown"}`;
 }
 
 function formatRows(rows: WatchRow[]): string {

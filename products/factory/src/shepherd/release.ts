@@ -1,5 +1,5 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -36,6 +36,23 @@ export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   };
 }
 
+/** Waits before each retry of an unreadable registry; the last failure is thrown after these run out. */
+export const REGISTRY_BACKOFF_MS: readonly number[] = [2_000, 4_000, 8_000];
+
+/** A 404 answers at once; a 5xx or network failure is read again after each backoff, and only the last failure is thrown. */
+export function retryingRegistry(registry: PackageRegistry, sleep: (ms: number, signal: AbortSignal) => Promise<void>, signal: AbortSignal): PackageRegistry {
+  return async (name) => {
+    for (const ms of REGISTRY_BACKOFF_MS) {
+      try {
+        return await registry(name);
+      } catch {
+        await sleep(ms, signal);
+      }
+    }
+    return registry(name);
+  };
+}
+
 const MANIFEST_FILE = /^(?:[^/]+\/)*package\.json$/;
 const CHANGELOG_FILE = /^(?:[^/]+\/)*CHANGELOG\.md$/;
 const CONSUMED_CHANGESET = /^\.changeset\/[^/]+\.md$/;
@@ -61,9 +78,14 @@ export interface ReleasePreflight {
   blockers: string[];
   /** The public packages this release publishes. */
   packages: string[];
+  /** The packages npm answered 404 for; each is also one of `blockers`. */
+  unpublished: string[];
 }
 
-/** Every public package in the release must already exist on npm, because only a package that exists can use trusted publishing. */
+/**
+ * Every public package in the release must already exist on npm, because only a package that exists can use trusted
+ * publishing. A registry that cannot be read throws, so no blocked result is stored for a head npm never answered for.
+ */
 export async function releasePreflight(port: GitHubPort, registry: PackageRegistry, target: ReleaseTarget): Promise<ReleasePreflight> {
   const pr = await port.getPr(target.repo, target.pr);
   const blockers = headBlockers(target, pr.headRef, pr.headRepo, pr.headSha);
@@ -73,8 +95,10 @@ export async function releasePreflight(port: GitHubPort, registry: PackageRegist
   const manifests = await readManifests(port, target, pr.baseRef, files);
   blockers.push(...manifests.blockers, ...manifestEditBlockers(manifests.pairs));
   const packages = publicPackages(manifests.pairs);
-  for (const name of packages) blockers.push(...(await registryBlockers(registry, name)));
-  return { head: target.head, blockers, packages };
+  const unpublished: string[] = [];
+  for (const name of packages) if (!(await registry(name))) unpublished.push(name);
+  blockers.push(...unpublished.map((name) => `${name} is not on registry.npmjs.org yet; publish its first version by hand (CLAUDE.md, Releasing)`));
+  return { head: target.head, blockers, packages, unpublished };
 }
 
 function headBlockers(target: ReleaseTarget, headRef: string, headRepo: string | null, headSha: string): string[] {
@@ -82,14 +106,6 @@ function headBlockers(target: ReleaseTarget, headRef: string, headRepo: string |
   if (headRef !== VERSION_PACKAGES_BRANCH || headRepo?.toLowerCase() !== target.repo.toLowerCase()) blockers.push(`its head is not ${VERSION_PACKAGES_BRANCH} in ${target.repo}`);
   if (headSha !== target.head) blockers.push(`its head moved from ${target.head} to ${headSha}`);
   return blockers;
-}
-
-async function registryBlockers(registry: PackageRegistry, name: string): Promise<string[]> {
-  try {
-    return (await registry(name)) ? [] : [`${name} is not on registry.npmjs.org yet; publish its first version by hand (CLAUDE.md, Releasing)`];
-  } catch (error) {
-    return [`the registry read for ${name} failed: ${error instanceof Error ? error.message : String(error)}`];
-  }
 }
 
 const Manifest = z.looseObject({ name: z.string().optional(), version: z.string().optional(), private: z.boolean().optional() });
@@ -167,8 +183,8 @@ interface PreflightInput extends ReleaseTarget {
 /** Marks the head ready only under an auto policy, so a release the owner must approve never holds other merges; a run not yet registered marks nothing. */
 export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): StepRoute[] {
   return [
-    codeRoute(RELEASE_PREFLIGHT_STEP, deps.now, async (input: PreflightInput) => {
-      const preflight = await releasePreflight(deps.port, registry, input);
+    codeRoute(RELEASE_PREFLIGHT_STEP, deps.now, async (input: PreflightInput, signal) => {
+      const preflight = await releasePreflight(deps.port, retryingRegistry(registry, deps.sleep, signal), input);
       const ready = preflight.blockers.length === 0 && input.merge === "auto";
       const store = deps.store.get();
       if (store.byRun(input.runId)) store.setReleaseReady(input.runId, ready ? input.head : null);
@@ -177,7 +193,29 @@ export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): St
   ];
 }
 
-const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()) });
+const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()), unpublished: z.array(z.string()).default([]) });
+
+/** The preflight an owner gate asks about, when packages npm had not seen are its only blockers; a hand publish can clear exactly that. */
+export function blockedOnlyByNpm(stepResults: Readonly<Record<string, StepResult>>, gatePrompt: string): ReleasePreflight | undefined {
+  for (const result of Object.values(stepResults)) {
+    if (!result.stepId.startsWith(`${RELEASE_PREFLIGHT_STEP}:`)) continue;
+    const parsed = PreflightResult.safeParse(result.data?.result);
+    if (!parsed.success || !gatePrompt.includes(`at head ${parsed.data.head}`)) continue;
+    const { blockers, unpublished } = parsed.data;
+    return unpublished.length > 0 && unpublished.length === blockers.length ? parsed.data : undefined;
+  }
+  return undefined;
+}
+
+/** True once npm has every package that blocked the preflight; a registry that cannot be read is asked again on the next sweep. */
+export async function publishedSince(registry: PackageRegistry, preflight: ReleasePreflight): Promise<boolean> {
+  try {
+    for (const name of preflight.unpublished) if (!(await registry(name))) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** The Version Packages PR is reviewed by its preflight, not by an agent: changesets wrote it, and the preflight checks exactly that. */
 export async function releaseVerdict(ctx: WorkflowContext, target: ReleaseTarget, merge: MergeMode): Promise<Verdict> {

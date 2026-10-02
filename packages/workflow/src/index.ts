@@ -33,6 +33,7 @@ export type {
 export {
   AuthorityDeniedError,
   AuthorityRefusedError,
+  GATE_CANCELLED_SIGNAL,
   StepFailedError,
   StepOutputInvalidError,
   WorkflowCancelledError,

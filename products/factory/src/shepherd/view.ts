@@ -23,7 +23,7 @@ export const WatchRowSchema = z.object({
   phaseSince: z.string(),
   nextAction: z.string(),
   pendingGate: z.object({ gateId: z.string(), stepId: z.string(), since: z.string() }).nullable(),
-  held: z.object({ reason: z.string() }).nullable(),
+  held: z.object({ reason: z.string(), satisfiedAt: z.string().optional(), satisfiedBy: z.string().optional() }).nullable(),
   stalled: z.object({ reason: z.string() }).nullable(),
   /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
@@ -99,6 +99,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-train-leave": "merging",
   "sh-landed": "post-merge",
   "sh-main-ci": "post-merge",
+  "sh-redeploy": "post-merge",
   "main-red": "post-merge",
   "after-stages": "post-merge",
   "sh-freeze": "post-merge",
@@ -175,12 +176,35 @@ function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
 }
 
-/** One watch-list row; stall limits per phase are left to TP-492, so only a failed or parked run reads as stalled. */
+/** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
+export const MAX_NOT_STARTED_REVIEWS = 3;
+
+/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
+function notStartedStreak(steps: readonly StepResult[]): number {
+  const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
+  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
+}
+
+function stallReason(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
+  const streak = notStartedStreak(steps);
+  return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : undefined;
+}
+
+/** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
+function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["held"] {
+  if (!held) return null;
+  if (holdSatisfied === null) return { reason: holdReason ?? "held" };
+  const { reviewer, agentId, sessionId } = holdSatisfied.by;
+  return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
+}
+
+/** One watch-list row; stall limits per phase are left to TP-492, so a failed or parked run, or a review the broker keeps refusing, reads as stalled. */
 export function watchRow({ registration, run, pending, train }: RowInput): WatchRow {
   const steps = completedSteps(run);
   const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
-  const stuck = run.status === "failed" || run.status === "recovery_required";
+  const stalled = stallReason(run, steps);
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -192,8 +216,8 @@ export function watchRow({ registration, run, pending, train }: RowInput): Watch
     phaseSince: phaseSince(run, steps, phase),
     nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
-    held: registration.held ? { reason: registration.holdReason ?? "held" } : null,
-    stalled: stuck ? { reason: run.error ?? run.status } : null,
+    held: heldView(registration),
+    stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
   };
 }

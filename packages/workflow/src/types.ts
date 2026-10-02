@@ -99,7 +99,15 @@ export interface AssistedOptions {
   /** Validates the resolution payload; stored as JSON Schema on the gate. */
   schema?: ZodType;
   expiresAt?: Date | string;
+  /**
+   * Record a cancel of the gate as the step's answer instead of throwing `GateCancelled`: the result's signal is
+   * `GATE_CANCELLED_SIGNAL` and its data carries the cancel `reason`, so the next call opens a fresh gate.
+   */
+  recordCancel?: boolean;
 }
+
+/** The signal of an `assisted` result whose gate was cancelled under `recordCancel`. */
+export const GATE_CANCELLED_SIGNAL = "gate-cancelled";
 
 /** An authority request without the actor, which the runtime supplies; `tainted` defaults to false. */
 export type AuthorizeRequest = Omit<AuthorityRequest, "actor" | "tainted"> & { tainted?: boolean };

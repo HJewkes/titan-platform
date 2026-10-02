@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
+import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { defineWorkflow } from "./definition.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
@@ -94,7 +96,21 @@ describe("titan-factory serve", () => {
 
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
-    expect(health).toMatchObject({ ok: true, runs: { paused: 1, completed: 0 }, pendingGates: 1 });
+    expect(health).toMatchObject({ ok: true, runs: { paused: 1, completed: 0 }, pendingGates: 1, busy: [] });
+  });
+
+  it("health lists a run held in a park-routed step as busy", async () => {
+    let entered = (): void => undefined;
+    const reached = new Promise<void>((resolve) => (entered = resolve));
+    const routes: StepRoute[] = [{ match: "chore", onRestart: "park", runner: { run: () => (entered(), new Promise(() => undefined)) } }];
+    const chore = defineWorkflow({ name: "chore", steps: [{ id: "chore", kind: "dispatch" }], run: async (ctx) => void (await ctx.dispatch("chore", "chore")) });
+    const server = await serve(dbFile(), landScenario(), { workflows: [chore], routes });
+    const runId = server.host.runtime.start("chore");
+    await reached;
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.busy).toEqual([{ runId, step: "chore", phase: "park" }]);
   });
 
   it("health carries the github probe result", async () => {
@@ -103,5 +119,22 @@ describe("titan-factory serve", () => {
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
     expect(health.github).toBe("gh: HTTP 401");
+  });
+
+  it("health carries the build sha and how far main has moved", async () => {
+    const build = { sha: "abc123", behindMain: { status: () => 4, refresh: async () => undefined } };
+    const server = await serve(dbFile(), landScenario(), { build });
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.build).toEqual({ sha: "abc123", behindMain: 4 });
+  });
+
+  it("health reports an unknown build when none was baked in", async () => {
+    const server = await serve(dbFile(), landScenario());
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.build).toEqual({ sha: "unknown", behindMain: "unknown" });
   });
 });

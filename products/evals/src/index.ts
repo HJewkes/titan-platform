@@ -5,10 +5,12 @@ export {
   ScorecardSchema,
   SuiteSpecSchema,
   UnitSpecSchema,
+  TrialRecordSchema,
   VariantSpecSchema,
   parseSpec,
+  parseTrialRecord,
 } from "./spec/index.js";
-export type { CheckSpec, EvalCase, Scorecard, Spec, SpecSchemaVersion, StepSpec, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
+export type { CheckSpec, EvalCase, Scorecard, Spec, SpecSchemaVersion, StepSpec, SuiteSpec, TrialRecord, UnitSpec, VariantSpec } from "./spec/index.js";
 export { MODEL_ID_PATTERN, SHA256_PATTERN, SPEC_ID_PATTERN } from "./spec/common.js";
 export type { SpecParseMode } from "./spec/common.js";
 export { CHECK_ROLES, DETERMINISTIC_CHECK_TYPES, EFFICIENCY_METRICS } from "./spec/check.js";
@@ -31,3 +33,5 @@ export {
 export type { ReadPrompt } from "./hash.js";
 export { hashSpec, validateSpec } from "./validate.js";
 export type { SpecValidation } from "./validate.js";
+export { scorecardKeysFor, startTrial } from "./trial.js";
+export type { ChampionOf, TrialStart, UnitRef } from "./trial.js";

@@ -1,4 +1,4 @@
-import { GateAlreadyExists, openGate, waitForGate, type GateRecord } from "@titan-design/hitl";
+import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecord } from "@titan-design/hitl";
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
@@ -10,6 +10,7 @@ import { messageOf } from "./runtime-values.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
+  GATE_CANCELLED_SIGNAL,
   StepFailedError,
   StepOutputInvalidError,
   WorkflowCancelledError,
@@ -165,13 +166,23 @@ export class RunContext implements WorkflowContext {
     this.requireResumedGate(stepId, gateId);
     this.openGateOnce(gateId, prompt, options, stepId);
     this.setCurrent(stepId, "paused");
-    const payload = (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
+    const payload = await this.gatePayload(gateId, options.recordCancel === true);
     const signal = typeof payload?.signal === "string" ? payload.signal : null;
     const result: StepResult = { stepId, iteration, operation: "assisted", agentId: null, signal, completedAt: nowIso(), data: payload ?? undefined };
     this.run.status = "running";
     this.record(key, result);
     this.deps.emit({ type: "step_complete", runId: this.runId, stepId, iteration, signal });
     return this.bump(stepId, result);
+  }
+
+  /** Under `recordCancel` a cancel is the gate's answer; a cancelled run still aborts the wait first. */
+  private async gatePayload(gateId: string, recordCancel: boolean): Promise<Record<string, unknown>> {
+    try {
+      return (await waitForGate(this.deps.gates, gateId, { pollMs: this.deps.gatePollMs, signal: this.signal })) as Record<string, unknown>;
+    } catch (error) {
+      if (!recordCancel || !(error instanceof GateCancelled)) throw error;
+      return { signal: GATE_CANCELLED_SIGNAL, reason: error.reason };
+    }
   }
 
   /** A no-op while the call just made was answered from the record: replay re-runs old callbacks, and a side effect there would hit gates the run still waits on. */

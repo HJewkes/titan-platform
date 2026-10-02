@@ -88,8 +88,13 @@ export function configPath(env: NodeJS.ProcessEnv): string {
   return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "titan-factory", "config.json");
 }
 
+/** Holds the default database, the service logs and the deployer's lock, backups and record. */
+export function factoryStateDir(env: NodeJS.ProcessEnv): string {
+  return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory");
+}
+
 export function defaultDbPath(env: NodeJS.ProcessEnv): string {
-  return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory", "factory.sqlite3");
+  return join(factoryStateDir(env), "factory.sqlite3");
 }
 
 function parseJson(path: string): unknown {

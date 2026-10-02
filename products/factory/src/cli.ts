@@ -1,18 +1,21 @@
-import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
-import { Command, CommanderError, InvalidArgumentError } from "commander";
-import { resolveDbPath } from "./config.js";
+import { Command, CommanderError } from "commander";
+import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
+import { factoryStateDir, resolveDbPath } from "./config.js";
+import { deployService, type DeployPorts } from "./deploy.js";
+import { systemDeployPorts } from "./deploy-ports.js";
 import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
-import { parseSinceOption, runDigestVerb, type DigestFlags, type FactoryCall } from "./digest/command.js";
+import { registerDigest } from "./digest/cli.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
-import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type ServicePorts } from "./service-control.js";
+import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type RestartDrain, type ServicePorts } from "./service-control.js";
 import { systemServicePorts } from "./service-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
@@ -37,6 +40,8 @@ export interface CliDeps {
   stop?: AbortSignal;
   /** What the service verbs run launchctl, claude, fetch and the filesystem through; defaults to the real machine. */
   service?: ServicePorts;
+  /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
+  deploy?: DeployPorts;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
@@ -70,7 +75,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, registerDigest, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -195,27 +200,6 @@ function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>,
   return EXIT.OK;
 }
 
-/** Reads Shepherd and the gates from titan-factory serve when one answers, else from the database here. */
-function registerDigest(program: Command, verbs: Verbs): void {
-  program
-    .command("digest")
-    .description("the owner digest across every coordinator seat")
-    .command("run")
-    .description("collect and render the digest for the current slot, then write <date>-<HH>.md to the digest and iCloud dirs")
-    .option("--since <window>", "window like 90m, 6h or 2d; default runs back to the previous slot", parseSinceOption)
-    .option("--dry-run", "print the markdown and write nothing")
-    .option("--full", "show every ask, merged and stuck item instead of the top few")
-    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
-    .action(async (opts: { since?: number; dryRun?: boolean; full?: boolean; port: number }) => {
-      const flags: DigestFlags = { sinceMinutes: opts.since, dryRun: opts.dryRun, full: opts.full };
-      if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => postRpc(opts.port, name, args), flags));
-      await verbs.withHost((host, routes) => {
-        const call: FactoryCall = async (name, args) => (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
-        return runDigestVerb(verbs.io, call, flags);
-      });
-    });
-}
-
 interface PlistFlags {
   port?: number;
   node?: string;
@@ -243,6 +227,7 @@ function registerService(program: Command, verbs: Verbs): void {
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => verbs.io.stdout(renderPlist(plistOptions(verbs.io, opts, verbs.deps.service ?? systemServicePorts()).plist)));
   registerServiceControl(service, verbs);
+  registerServiceDeploy(service, verbs);
 }
 
 function registerServiceControl(service: Command, { io, deps, setExit }: Verbs): void {
@@ -273,11 +258,41 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
-  service
-    .command("restart")
-    .description("kill and restart the loaded job, then wait for /health")
+  withRestartFlags(service.command("restart").description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")).action(
+    (opts: RestartFlags) => run("restart", (ports) => restartService(ports, io, opts.port, logDir, drainOf(opts))),
+  );
+}
+
+/** restart and deploy take the same port and drain flags. */
+const withRestartFlags = (command: Command): Command =>
+  command
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
-    .action((opts: { port: number }) => run("restart", (ports) => restartService(ports, io, opts.port, logDir)));
+    .option("--drain-timeout <duration>", "longest wait for busy runs, such as 45m, 90s or 1h", parseDuration, DEFAULT_DRAIN_TIMEOUT_MS)
+    .option("--no-drain", "restart without waiting for busy runs")
+    .option("--force", "restart even while a park-routed step is busy");
+
+const drainOf = (opts: RestartFlags): RestartDrain => ({ timeoutMs: opts.drainTimeout, wait: opts.drain, force: opts.force === true });
+
+interface RestartFlags {
+  port: number;
+  drainTimeout: number;
+  drain: boolean;
+  force?: boolean;
+}
+
+/** The checkout this bin was built in: dist/bin.js and src/cli.ts both sit three levels below its root. */
+const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
+
+function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
+  const deploy = service
+    .command("deploy")
+    .description("fast-forward this checkout's main to a sha, rebuild the factory closure and restart drained; restores dist when the new build fails")
+    .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha);
+  withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
+    const ports = deps.deploy ?? systemDeployPorts(ownCheckout());
+    const options = { checkout: ownCheckout(), stateDir: factoryStateDir(io.env), logDir: serviceLogDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
+    setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options)));
+  });
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
@@ -335,19 +350,6 @@ async function untilSettledOrGated(host: FactoryHost, runId: string, pollMs: num
 
 function describeLand(args: LandArgs, started: LandStarted): string {
   return `run ${started.runId} land-pr ${args.repo}#${args.pr}: ${started.status}${started.created ? "" : " (already unfinished)"}`;
-}
-
-/** node's directory goes on the job's PATH, where ":" separates entries. */
-function parseNodePath(value: string): string {
-  if (!isAbsolute(value)) throw new InvalidArgumentError("must be an absolute path");
-  if (value.includes(":")) throw new InvalidArgumentError('must not contain ":"');
-  return value;
-}
-
-function parsePort(value: string): number {
-  const port = Number(value);
-  if (!/^[0-9]+$/.test(value) || port > 65_535) throw new InvalidArgumentError("expected a port number");
-  return port;
 }
 
 async function parse(program: Command, argv: string[], io: CliIo, exitCode: () => number): Promise<number> {

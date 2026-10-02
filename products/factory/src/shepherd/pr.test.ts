@@ -144,6 +144,64 @@ describe("shepherd-pr", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
+  /** Approve PR 1 while it is held, so the run waits at `merge:0`. */
+  async function heldAtMerge(w: World): Promise<string> {
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.store.hold(runId, "owner wants a look");
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
+    return runId;
+  }
+
+  function lastCiVerdict(w: World, runId: string): string | undefined {
+    const reads = stepIds(w.host, runId).filter((stepId) => stepId.startsWith("ci-wait:"));
+    return reads.map((stepId) => (stepResult(w.host, runId, stepId) as { result: { verdict: string } }).result.verdict).at(-1);
+  }
+
+  function landedSteps(w: World, runId: string): string[] {
+    return stepIds(w.host, runId).filter((stepId) => stepId === "sh-landed");
+  }
+
+  it("stops waiting on a held PR merged outside Shepherd and leaves merging with no merge call", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).not.toBe("merge:0"), { timeout: 500 });
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(landedSteps(w, runId)).toHaveLength(1);
+  });
+
+  it("stops waiting on a held PR closed without merging, ends the run as closed, and records no landing", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { state: "closed" });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).not.toBe("merge:0"), { timeout: 500 });
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(landedSteps(w, runId)).toEqual([]);
+    expect(lastCiVerdict(w, runId)).toBe("closed");
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+  });
+
+  it("keeps the hold on a PR whose state reads as unknown, and makes no merge call", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { state: undefined });
+    await sleep(100, new AbortController().signal);
+
+    expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
   it("wakes the implementer with a review wake on FIX_FIRST, before any merge decision on that head", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({
@@ -351,6 +409,32 @@ describe("the route table in a run", () => {
 
     expect(asked).toHaveLength(3);
     expect(gate?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("does not count three reviews a busy broker never started, and merges on the review that runs, with no approve-merge gate", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length <= 3 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([H1, H1, H1, H1].map((head) => [head, false]));
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
+    const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (_ctx, request) => ({ kind: "none", cause: causes[asked.push(request) - 1] ?? "no-verdict" }));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+
+    expect(asked).toHaveLength(5);
+    expect(gate?.prompt).toContain(`3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
     expect(w.fake.effects.merge).toBe(0);
   });
 

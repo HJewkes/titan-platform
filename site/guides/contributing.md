@@ -140,9 +140,11 @@ Merging to main lets the Release workflow open or refresh the "Version Packages"
 request from pending changesets. Merging *that* pull request publishes the bumped packages
 to npm.
 
-Publishing uses npm trusted publishing (OIDC), so there is no token secret: each package
+Publishing uses npm trusted publishing (OIDC), so there is no npm token secret: each package
 has a trusted publisher on npmjs.com pointing at `HJewkes/titan-platform` and
-`release.yml`. Never add a token to `release.yml`.
+`release.yml`. Never add an npm token to `release.yml`. The workflow does use a GitHub App
+key, only to push the release branch and open the pull request (see
+[the loop setup guide](/guides/autonomous-loop-setup#the-github-app)).
 
 A red `lint`, `typecheck`, or `test` on main blocks every publish, since the release job
 runs them first.
@@ -166,7 +168,7 @@ owner's own terminal. Land the package on main first, then:
 4. **Add the trusted publisher.** On the new package's npmjs.com settings page: GitHub
    Actions, user `HJewkes`, repository `titan-platform`, workflow `release.yml`, no
    environment, "Allow npm publish" checked.
-5. **Every later release of that package goes through `release.yml`.** No token is created
+5. **Every later release of that package goes through `release.yml`.** No npm token is created
    at any point in this procedure.
 
 One ordering trap: hold the "Version Packages" pull request until every new package it
