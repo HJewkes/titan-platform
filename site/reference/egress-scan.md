@@ -107,6 +107,13 @@ notices and errors go to stderr.
   against each parent in turn (`--diff-merges=separate`), because git's combined diff ignores
   `--text` and would skip a binary file an evil merge writes into. After a merge of the main
   branch, a line already on main can be reported again under the merge.
+- **Idents and ref names.** Each scanned commit's raw author and committer name and email are
+  scanned, and a finding names the field, such as `commit <sha> committer.email`. `pre-push`
+  also scans the local and remote ref names, reported as `push line <n> local ref` or
+  `remote ref`, so a branch or tag named after a private term is refused. Ref deletions are
+  not scanned, so a leaked ref can still be deleted.
+- **UTF-16 text is not scanned.** Matching is on bytes decoded as UTF-8, so a UTF-16 file
+  passes even with `--text`.
 - **Arguments.** Shas on pre-push stdin must be full hex shas. A `range` base or head must be
   a hex sha or a ref name, and a remote name must not start with a dash. A bad value exits 2
   and the message names its position, never its value.

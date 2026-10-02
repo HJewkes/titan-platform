@@ -1,7 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as path from "node:path";
 import { ConfigError } from "./config.js";
-import { parseDiff, type ScanSource } from "./diff.js";
+import { parseDiff, type IdentField, type ScanSource } from "./diff.js";
 
 /** A git command that failed. The message names the subcommand, never git's output. */
 export class GitError extends Error {
@@ -14,6 +14,12 @@ export class GitError extends Error {
 export interface PushUpdate {
   readonly localSha: string;
   readonly remoteSha: string;
+}
+
+/** One pre-push stdin line: the shas plus the local and remote ref names, which leave the machine too. */
+export interface PushLine extends PushUpdate {
+  readonly localRef: string;
+  readonly remoteRef: string;
 }
 
 /** A commit or tree whose patch text passes this many bytes is refused: over it, V8 cannot hold the text as one string. */
@@ -45,7 +51,9 @@ const PATCH_FLAGS = [
   "--dst-prefix=b/",
 ];
 // A message re-encoded by `i18n.logOutputEncoding` (UTF-16, say) would slip past every rule.
-const MESSAGE_FLAGS = ["--no-patch", "--encoding=UTF-8", "--format=%B"];
+// The raw `%an` forms, not the mailmapped `%aN`, since the raw ident is what the push sends.
+const MESSAGE_FLAGS = ["--no-patch", "--encoding=UTF-8", "--format=%an%x00%ae%x00%cn%x00%ce%x00%B"];
+const IDENT_FIELDS = ["author.name", "author.email", "committer.name", "committer.email"];
 // A combined diff ignores `--text`, so a merge is diffed against each parent in turn instead.
 const COMMIT_PATCH_FLAGS = ["--diff-merges=separate", "--format=", ...PATCH_FLAGS];
 const MAX_BUFFER = 1024 * 1024 * 1024;
@@ -105,7 +113,7 @@ export function hooksDir(cwd: string): string {
 }
 
 /** Parses git's pre-push stdin: `<local-ref> <local-sha> <remote-ref> <remote-sha>` per line. */
-export function parsePrePush(stdin: string): PushUpdate[] {
+export function parsePrePush(stdin: string): PushLine[] {
   return lines(stdin).map((line, i) => {
     const fields = line.trim().split(/\s+/);
     if (fields.length !== 4) throw new ConfigError(`pre-push stdin line ${i + 1}: expected four fields`);
@@ -114,8 +122,21 @@ export function parsePrePush(stdin: string): PushUpdate[] {
         throw new ConfigError(`pre-push stdin line ${i + 1}: field ${field + 1} is not a full sha`);
       }
     }
-    return { localSha: fields[1] ?? "", remoteSha: fields[3] ?? "" };
+    return { localRef: fields[0] ?? "", localSha: fields[1] ?? "", remoteRef: fields[2] ?? "", remoteSha: fields[3] ?? "" };
   });
+}
+
+/** The ref names a push sends, as idents named `push line <n> local ref` and `remote ref`; deletions are skipped. */
+export function refSource(pushLines: readonly PushLine[]): ScanSource {
+  const idents = pushLines.flatMap((line, i): IdentField[] =>
+    isZeroSha(line.localSha)
+      ? []
+      : [
+          { field: `push line ${i + 1} local ref`, text: line.localRef },
+          { field: `push line ${i + 1} remote ref`, text: line.remoteRef },
+        ],
+  );
+  return { files: [], binaryFiles: 0, idents };
 }
 
 function hasCommit(cwd: string, sha: string): boolean {
@@ -159,15 +180,23 @@ function showCommit(cwd: string, sha: string, flags: readonly string[], maxBytes
   return stdoutOf(result, "show");
 }
 
+function splitHeader(text: string): { idents: IdentField[]; message: string[] } {
+  const parts = text.split("\0");
+  const idents = IDENT_FIELDS.map((field, i) => ({ field, text: parts[i] ?? "" }));
+  // A NUL inside the message itself stays in the message rather than shifting the fields.
+  const message = parts.slice(IDENT_FIELDS.length).join("\0").replace(/\n+$/, "").split("\n");
+  return { idents, message };
+}
+
 /**
- * One commit's message and patch, read by separate calls so a merge's per-parent copies of the
- * message never land inside its patch. Throws `PatchTooLargeError` when either is over `maxPatchBytes`.
+ * One commit's idents, message and patch, read by separate calls so a merge's per-parent copies of
+ * the message never land inside its patch. Throws `PatchTooLargeError` when either is over `maxPatchBytes`.
  */
 export function readCommit(cwd: string, sha: string, maxPatchBytes = MAX_PATCH_BYTES): ScanSource {
   requireRevision(sha, "commit");
-  const message = showCommit(cwd, sha, MESSAGE_FLAGS, maxPatchBytes).replace(/\n+$/, "").split("\n");
+  const { idents, message } = splitHeader(showCommit(cwd, sha, MESSAGE_FLAGS, maxPatchBytes));
   const patch = parseDiff(showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxPatchBytes));
-  return requireAllText({ ...patch, sha, message }, `commit ${sha.slice(0, 7)}`);
+  return requireAllText({ ...patch, sha, message, idents }, `commit ${sha.slice(0, 7)}`);
 }
 
 /** Every tracked file at HEAD, as one diff from the empty tree. Throws `PatchTooLargeError` over `maxPatchBytes`. */

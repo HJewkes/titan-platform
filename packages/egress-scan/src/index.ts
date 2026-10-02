@@ -1,6 +1,6 @@
 export type { RuleHit, RuleId, TermRule } from "./rules.js";
 export { matchesAwDataPath, matchesHomePath, matchRules, PLACEHOLDER_SEGMENTS, RULE_IDS } from "./rules.js";
-export type { AddedLine, DiffFile, ScanSource } from "./diff.js";
+export type { AddedLine, DiffFile, IdentField, ScanSource } from "./diff.js";
 export { parseCommit, parseDiff } from "./diff.js";
 export type { AllowableRule, AllowEntry, AllowList } from "./allow.js";
 export { AllowFileError, EMPTY_ALLOW, isAllowed, parseAllow } from "./allow.js";

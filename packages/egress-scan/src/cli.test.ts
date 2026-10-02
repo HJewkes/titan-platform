@@ -303,6 +303,79 @@ describe("pre-push and tree", () => {
   });
 });
 
+describe("commit idents and ref names", () => {
+  function termsEnv(): Record<string, string> {
+    return { TITAN_EGRESS_TERMS: termFile(`${PLANTED_TERM}\n`) };
+  }
+
+  function prePush(repo: TestRepo, stdin: string): Run {
+    return run(repo, ["pre-push", "origin"], termsEnv(), stdin);
+  }
+
+  it.each([
+    ["author.name", { GIT_AUTHOR_NAME: `Zq ${PLANTED_TERM}` }],
+    ["author.email", { GIT_AUTHOR_EMAIL: `${PLANTED_TERM}@example.com` }],
+    ["committer.name", { GIT_COMMITTER_NAME: PLANTED_TERM }],
+    ["committer.email", { GIT_COMMITTER_EMAIL: `zq@${PLANTED_TERM}.example` }],
+  ])("refuses a push whose %s holds a term, naming the field and sha only", (field, env) => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = repo.commit("clean message", env);
+
+    const result = prePush(repo, `refs/heads/main ${leak} refs/heads/main ${base}\n`);
+
+    expect((result.out + result.err).includes(PLANTED_TERM)).toBe(false);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} ${field} private-term #1`);
+  });
+
+  it("finds an ident term in range as well, which CI runs", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = repo.commit("clean message", { GIT_AUTHOR_NAME: PLANTED_TERM });
+
+    const result = run(repo, ["range", base, leak], termsEnv());
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`commit ${leak.slice(0, 7)} author.name private-term #1`);
+  });
+
+  it.each([
+    ["local", `refs/heads/${PLANTED_TERM}`, "refs/heads/main"],
+    ["remote", "refs/heads/main", `refs/tags/v1-${PLANTED_TERM}`],
+  ])("refuses a push whose %s ref name holds a term, naming the push line only", (side, localRef, remoteRef) => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = repo.commit("clean");
+
+    const result = prePush(repo, `${localRef} ${head} ${remoteRef} ${base}\n`);
+
+    expect((result.out + result.err).includes(PLANTED_TERM)).toBe(false);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain(`push line 1 ${side} ref private-term #1`);
+  });
+
+  it("lets a deletion of a ref named after a term through, so a leaked ref can be removed", () => {
+    const repo = newRepo();
+    const sha = repo.commit("base");
+
+    const result = prePush(repo, `(delete) ${ZERO_SHA} refs/heads/${PLANTED_TERM} ${sha}\n`);
+
+    expect(result.code).toBe(0);
+  });
+
+  it("passes a clean push with the term list loaded", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const head = commitFile(repo, "notes.md", "nothing to see\n");
+
+    const result = prePush(repo, `refs/heads/feat/x ${head} refs/heads/feat/x ${base}\n`);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("egress-scan: 0 findings");
+  });
+});
+
 describe("files git calls binary", () => {
   // One NUL byte is enough for git to call a file binary and, without --text, print no lines for it.
   const ONE_NUL = `the ${PLANTED_TERM} seat\n\0\n`;

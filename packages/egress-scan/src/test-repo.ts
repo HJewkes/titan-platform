@@ -6,10 +6,10 @@ import * as path from "node:path";
 /** A throwaway git repository for tests, committed to with the machine's git config ignored. */
 export interface TestRepo {
   readonly dir: string;
-  git(args: readonly string[]): string;
+  git(args: readonly string[], env?: Readonly<Record<string, string>>): string;
   write(relPath: string, contents: string): void;
-  /** Stages everything, commits, and returns the new sha. */
-  commit(message: string): string;
+  /** Stages everything, commits, and returns the new sha; `env` overrides the test idents. */
+  commit(message: string, env?: Readonly<Record<string, string>>): string;
 }
 
 /** Drops injected `GIT_CONFIG_*` pairs that set `core.hooksPath`, renumbering the pairs that remain. */
@@ -58,8 +58,8 @@ export function tempDir(prefix: string): string {
 }
 
 export function makeTestRepo(dir = tempDir("egress-scan-")): TestRepo {
-  const git = (args: readonly string[]): string =>
-    execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: ISOLATED_ENV });
+  const git = (args: readonly string[], env: Readonly<Record<string, string>> = {}): string =>
+    execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: { ...ISOLATED_ENV, ...env } });
   git(["init", "-q", "-b", "main"]);
   return {
     dir,
@@ -68,9 +68,9 @@ export function makeTestRepo(dir = tempDir("egress-scan-")): TestRepo {
       fs.mkdirSync(path.dirname(path.join(dir, relPath)), { recursive: true });
       fs.writeFileSync(path.join(dir, relPath), contents);
     },
-    commit(message) {
+    commit(message, env = {}) {
       git(["add", "-A"]);
-      git(["commit", "-q", "--allow-empty", "-m", message]);
+      git(["commit", "-q", "--allow-empty", "-m", message], env);
       return git(["rev-parse", "HEAD"]).trim();
     },
   };

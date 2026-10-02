@@ -53,10 +53,11 @@ function scanFile(ctx: Context, file: DiffFile, prefix: string): void {
 function scanSource(ctx: Context, source: ScanSource): void {
   const prefix = source.sha === undefined ? "" : `commit ${source.sha.slice(0, 7)} `;
   source.message?.forEach((text, i) => record(ctx, `${prefix}message:${i + 1}`, matchRules(text, ctx.terms)));
+  source.idents?.forEach(({ field, text }) => record(ctx, `${prefix}${field}`, matchRules(text, ctx.terms)));
   for (const file of source.files) scanFile(ctx, file, prefix);
 }
 
-/** Scans added lines, added file paths and commit messages. Messages are never allowable. */
+/** Scans added lines, added file paths, commit messages and idents. Messages and idents are never allowable. */
 export function scan(sources: readonly ScanSource[], options: ScanOptions = {}): ScanResult {
   const ctx: Context = {
     terms: options.terms ?? [],
