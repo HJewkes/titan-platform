@@ -12,7 +12,7 @@ import type { MainRedWiring } from "./main-red.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { mergeVerdict } from "./review.js";
+import { mergeVerdict, type ReviewWiring, type ReviewerAgent } from "./review.js";
 import { ESCALATIONS } from "./route-table.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 
@@ -39,6 +39,8 @@ interface Replay {
   seen: string[];
   wentBehind: Set<string>;
   reviewsAt: Map<string, number>;
+  /** Heads at which the hold's reviewer answered MERGE in its own session. */
+  heldMerges: string[];
   runId: string;
 }
 
@@ -65,6 +67,7 @@ function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | un
   if (answer === undefined) replay.trace.unscripted.push(`head ${replay.seen.indexOf(request.headSha)} review ${index}`);
   if (head.goesBehind && index === (head.reviews?.length ?? 0) - 1) replay.wentBehind.add(request.headSha);
   if (answer !== undefined && !answer.startsWith("held-")) replay.trace.reviewers += 1;
+  if (answer === "held-MERGE") replay.heldMerges.push(request.headSha);
   return answer;
 }
 
@@ -105,6 +108,15 @@ function mainCi(fake: FakeGitHub, main: MainScript): GitHubPort {
   return { ...port, checkRuns: async (repo, sha) => (fake.pr(1).merged && sha === fake.pr(1).mergeSha && atMerge(sha), port.checkRuns(repo, sha)) };
 }
 
+/** The hold's reviewer, independent of the implementer, whose session holds a verdict block for each head it answered MERGE at. */
+function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
+  const reviewer: ReviewerAgent = { name: `rv-${replay.fixture.id}`, agentId: `rv-${replay.fixture.id}`, sessionId: "synthetic-session", presence: "live", spawnedBy: null, predecessor: null };
+  const implementer: ReviewerAgent = { name: "impl-a", agentId: "impl-a", sessionId: "impl-session", presence: "live", spawnedBy: null, predecessor: null };
+  const refuse = async (): Promise<never> => Promise.reject(new Error("the replay starts no reviewer"));
+  const said = (head: string, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: index, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
+  return { dispatch: { roster: async () => [implementer, reviewer], spawn: refuse, resume: refuse }, reader: { read: async () => replay.heldMerges.map(said) } };
+}
+
 function fixerWiring(fixers: string[]): Omit<MainRedWiring, "freezes"> {
   return {
     tasks: { findByTag: async () => undefined, add: async () => "FX-1" },
@@ -118,7 +130,7 @@ function openReplay(replay: Replay): FactoryHost {
   const tick = async (ms: number, signal: AbortSignal): Promise<void> => ((clock += ms), sleep(1, signal));
   const port = mainCi(replay.fake, replay.fixture.main ?? "green");
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => true, mainRed: fixerWiring(replay.trace.fixers) });
+  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => true, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(scriptedPhases(replay)), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   replay.store = store.get();
@@ -128,7 +140,7 @@ function openReplay(replay: Replay): FactoryHost {
 function startReplay(fixture: LedgerFixture): { host: FactoryHost; replay: Replay } {
   const fake = fakeGitHub({ repo: REPO });
   const trace: Trace = { reviewers: 0, unscripted: [], fixers: [] };
-  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), runId: "" };
+  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], runId: "" };
   const host = openReplay(replay);
   fake.reviewBypass = fixture.reviewBypass ?? false;
   fake.addPr({ headSha: fakeSha(`f${fixture.id}-h0`), mergeSha: fakeSha(`f${fixture.id}-test-merge`) });

@@ -49,7 +49,6 @@ export interface LedgerFixture {
 }
 
 const merged = (reviewers: number, fixers = 0): Pinned => ({ outcome: "merged", gates: [], reviewers, fixers });
-const heldInMerge = (reviewers: number): Pinned => ({ outcome: "held-in-merge", gates: [], reviewers, fixers: 0 });
 
 export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
   {
@@ -86,8 +85,7 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     gate: "approve-merge",
     story: "FIX_FIRST, a behind fix, MERGE, update, then held for a named reviewer who sends MERGE",
     heads: [{ reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { hold: true, reviews: ["held-MERGE"] }],
-    today: heldInMerge(2),
-    target: { slice: "TP-779", outcome: "merged", reviewers: 2 },
+    today: merged(2),
   },
   {
     id: 6,
@@ -110,8 +108,7 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     gate: "approve-merge",
     story: "MERGE, behind, update with new commits, then held for a named reviewer who sends MERGE",
     heads: [{ reviews: ["MERGE"], goesBehind: true }, { hold: true, reviews: ["held-MERGE"] }],
-    today: heldInMerge(1),
-    target: { slice: "TP-779", outcome: "merged", reviewers: 1 },
+    today: merged(1),
   },
   {
     id: 9,
