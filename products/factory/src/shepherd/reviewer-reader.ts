@@ -27,12 +27,23 @@ interface FinalText {
   part: number;
 }
 
+const writtenAt = (observation: NormalizedSessionObservation) => (observation.timestamp === null ? Number.NaN : Date.parse(observation.timestamp));
+
 /** One message per assistant text part written in this conversation; user messages and copied history yield none. */
 export function reviewerMessages(agentId: string, observation: NormalizedSessionObservation): ReviewerMessage[] {
   if (observation.kind !== "message" || observation.role !== "assistant" || observation.historyOrigin !== null) return [];
-  const writtenAt = observation.timestamp === null ? Number.NaN : Date.parse(observation.timestamp);
   const sessionId = observation.conversation.nativeId;
-  return observation.content.map((part) => ({ agentId, sessionId, writtenAt, text: part.text, locator: part.locator }));
+  return observation.content.map((part) => ({ agentId, sessionId, writtenAt: writtenAt(observation), text: part.text, locator: part.locator }));
+}
+
+/** A seat reviewer sends its verdict as a chat_send call's `text` input, never as an assistant text part. */
+export function sentMessages(agentId: string, observation: NormalizedSessionObservation): ReviewerMessage[] {
+  if (observation.kind !== "tool_call" || !observation.name.endsWith("chat_send") || observation.historyOrigin !== null) return [];
+  const text = (observation.input as { text?: unknown } | null)?.text;
+  const inputLocator = observation.inputLocator;
+  if (typeof text !== "string" || inputLocator === null) return [];
+  const locator = { ...inputLocator, selector: { ...inputLocator.selector, path: [...inputLocator.selector.path, "text"] } };
+  return [{ agentId, sessionId: observation.conversation.nativeId, writtenAt: writtenAt(observation), text, locator }];
 }
 
 /** The index under `message.content` a path points into, or -1 when it points elsewhere in the record. */
@@ -64,9 +75,12 @@ export function finishedTurnMessages(agentId: string) {
   let continued = false;
   return {
     add(observation: NormalizedSessionObservation): void {
+      // A sent message is kept but is never the final text, so a turn that ends on the call is still unfinished.
+      const sent = sentMessages(agentId, observation);
+      messages.push(...sent);
       const found = reviewerMessages(agentId, observation);
       if (found.length === 0) {
-        continued ||= final !== null && continuesPast(final, observation);
+        continued ||= sent.length > 0 || (final !== null && continuesPast(final, observation));
         return;
       }
       messages.push(...found);

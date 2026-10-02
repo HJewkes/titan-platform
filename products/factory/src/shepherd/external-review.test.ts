@@ -79,6 +79,12 @@ describe("seatFixFirst", () => {
     expect(await seatFixFirst(rosterOf(SEAT, other), readerOf(messages), target)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
   });
 
+  it("blocks on a FIX_FIRST whose block names the repo in another letter case", async () => {
+    const shouted = said(SEAT, verdictAt("FIX_FIRST").replace(`PR: ${REPO}#4`, `PR: ${REPO.toUpperCase()}#4`), 5);
+
+    expect(await seatFixFirst(rosterOf(SEAT), readerOf([shouted]), target)).toMatchObject({ verdict: "FIX_FIRST" });
+  });
+
   it("ignores a FIX_FIRST from an agent whose name is not a seat reviewer's", async () => {
     const coord = agent("design-coord");
 

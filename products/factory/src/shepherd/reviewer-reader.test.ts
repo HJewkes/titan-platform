@@ -1,10 +1,11 @@
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
-import { reviewerMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
+import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
 
 const HEAD = "a".repeat(40);
 const NAMESPACE = "host-a";
@@ -259,5 +260,50 @@ describe("reviewerMessages", () => {
 
     expect(observations.some((observation) => observation.kind === "message")).toBe(true);
     expect(observations.flatMap((observation) => reviewerMessages("agent-rv-1", observation))).toEqual([]);
+  });
+});
+
+describe("a seat reviewer that sends its verdict with chat_send", () => {
+  /** Trimmed from a real seat reviewer transcript; ids, paths and text are synthetic, the record shapes are as Claude Code wrote them. */
+  const FIXTURE_SESSION = "5e47c0de-0000-4000-8000-000000000001";
+  const FIXTURE_HEAD = `c0ffee${"0".repeat(34)}`;
+  const seat = { name: "seat-a-4-review", agentId: "agent-seat-a-4-review", sessionId: FIXTURE_SESSION, presence: "exited", spawnedBy: "coord", transcriptExists: true };
+  const sendVerdict = (verdict: string): Json => ({ type: "tool_use", id: "tool-send", name: "mcp__plugin_agent-chat_agent-chat__chat_send", input: { to: "coord", text: verdict } });
+  const sendRequest = { ...input, reviewerAgentId: seat.agentId };
+
+  it("reads the FIX_FIRST from a real transcript's chat_send input, so the seat check blocks the head", async () => {
+    const transcript = path.join(dir, "project", `${FIXTURE_SESSION}.jsonl`);
+    mkdirSync(path.dirname(transcript), { recursive: true });
+    copyFileSync(new URL(`./fixtures/${FIXTURE_SESSION}.jsonl`, import.meta.url), transcript);
+    const rows = [{ ...seat, transcriptPath: transcript }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+
+    const blocked = await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD });
+
+    expect(blocked).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: FIXTURE_HEAD, reviewer: { agentId: seat.agentId, sessionId: FIXTURE_SESSION } });
+    expect(blocked.kind === "verdict" && (await readSessionSourceText(blocked.locator))).toMatch(/^Verdict: FIX_FIRST\nPR: octo\/demo#4/);
+  });
+
+  it("keeps the final text last, so the dispatched reviewer's final message is still its text", async () => {
+    const records = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(BLOCK)]), toolResult(SESSION, "tool-send", "Delivered."), assistant(SESSION, ["Sent it."])];
+
+    const messages = await read([row(writeTranscript(SESSION, records), { agentId: seat.agentId })], sendRequest);
+
+    expect(messages.map((message) => message.text)).toEqual([BLOCK, "Sent it."]);
+  });
+
+  it("returns nothing when the turn ends on the chat_send call, because its result has not come back", async () => {
+    const records = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(BLOCK)])];
+
+    expect(await read([row(writeTranscript(SESSION, records), { agentId: seat.agentId })], sendRequest)).toEqual([]);
+  });
+
+  it("ignores a text input to a tool that is not chat_send", async () => {
+    const observations: NormalizedSessionObservation[] = [];
+    const other = assistantRecord(SESSION, [{ type: "tool_use", id: "tool-1", name: "Write", input: { text: BLOCK } }]);
+    for await (const observation of readSessionObservations(claudeSourceFromPath(writeTranscript(SESSION, [other]), NAMESPACE))) observations.push(observation);
+
+    expect(observations.some((observation) => observation.kind === "tool_call")).toBe(true);
+    expect(observations.flatMap((observation) => sentMessages("agent-rv-1", observation))).toEqual([]);
   });
 });

@@ -61,13 +61,13 @@ interface AtHead {
   verdict: "MERGE" | "FIX_FIRST";
 }
 
-/** The newest verdict block naming this PR at this head; on a tie in time the FIX_FIRST wins. */
+/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time the FIX_FIRST wins. */
 export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMessage[]): AtHead | undefined {
   let newest: AtHead | undefined;
   for (const message of messages) {
     const block = parseVerdictBlock(message.text);
     if (!block.ok || !Number.isFinite(message.writtenAt)) continue;
-    if (block.repo !== target.repo || block.pr !== target.pr || block.head !== target.head) continue;
+    if (block.repo.toLowerCase() !== target.repo.toLowerCase() || block.pr !== target.pr || block.head !== target.head) continue;
     const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && block.verdict === "FIX_FIRST");
     if (later) newest = { message, verdict: block.verdict };
   }
