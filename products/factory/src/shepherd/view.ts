@@ -97,6 +97,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-train-leave": "merging",
   "sh-landed": "post-merge",
   "sh-main-ci": "post-merge",
+  "sh-redeploy": "post-merge",
   "main-red": "post-merge",
   "after-stages": "post-merge",
   "sh-freeze": "post-merge",
