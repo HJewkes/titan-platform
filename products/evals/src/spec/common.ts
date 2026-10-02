@@ -12,7 +12,8 @@ const BODY_CHARS = "[a-z0-9.-]*";
 const HAS_DIGIT = `(?=${BODY_CHARS}\\d)`;
 const NOT_LATEST = `(?!${BODY_CHARS}-latest(?:[^a-z0-9.-]|$))`;
 const ID_BODY = `${HAS_DIGIT}${NOT_LATEST}[a-z0-9]${BODY_CHARS}`;
-const PROVIDER_VERSION = "(?:[@:][a-z0-9][a-z0-9.-]*)?";
+// A release, never a word: a Vertex date such as @20260101 or a Bedrock revision such as :0.
+const PROVIDER_VERSION = "(?:[@:]\\d+)?";
 const LONG_CONTEXT = "(?:\\[1m\\])?";
 
 /** An exact id: lowercase, no spaces, a digit and no `-latest` in the base id; one Vertex `@` or Bedrock `:` version and a final `[1m]` are allowed. */
