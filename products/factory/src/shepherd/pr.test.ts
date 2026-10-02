@@ -341,6 +341,32 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  it("does not count three reviews a busy broker never started, and merges on the review that runs, with no approve-merge gate", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length <= 3 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([H1, H1, H1, H1].map((head) => [head, false]));
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
+    const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (_ctx, request) => ({ kind: "none", cause: causes[asked.push(request) - 1] ?? "no-verdict" }));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+
+    expect(asked).toHaveLength(5);
+    expect(gate?.prompt).toContain(`3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
   it("counts a FIX_FIRST that yields a new head as progress, so two stuck rounds around it still merge", async () => {
     const late: { w?: World } = {};
     const asked: ReviewRequest[] = [];

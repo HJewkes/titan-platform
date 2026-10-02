@@ -16,7 +16,7 @@ import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./re
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { expireStaleGates } from "./stale-gates.js";
 import { leaveTrain } from "./train.js";
-import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
@@ -216,12 +216,6 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
   return "FIX_FIRST";
 }
 
-const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
-  "no-verdict": "no reviewer verdict",
-  timeout: "no reviewer verdict before the wait ran out",
-  "external-hold": "no verdict yet from the reviewer the hold names",
-};
-
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
 function countRound(run: ShepherdRun, { route, outcome, headSha }: Routed): Escalated | undefined {
   const kind = roundKind(route, outcome);
@@ -244,6 +238,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
     case "merge":
       return true;
     case "fresh-reviewer":
+    case "retry-review":
     case "await-external":
       run.reviews.delete(headSha);
       if (route === "fresh-reviewer") run.fresh.add(headSha);

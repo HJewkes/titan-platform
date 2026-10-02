@@ -11,7 +11,7 @@ import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput } from "
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
-import { DEFAULT_BUSY_WAIT_MS, clearReviewWait, noteReviewWait, whileBrokerBusy, type BusyTiming } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { reviewerBrief } from "./reviewer-brief.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -82,7 +82,7 @@ export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
-export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string } & ReviewIntent) | NoReview;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
 
 export interface AwaitVerdictInput {
   repo: string;
@@ -209,10 +209,13 @@ async function whileBrokerDown<T>(timing: Timing, signal: AbortSignal, ask: () =
   }
 }
 
-/** Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts. */
-async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, brief: string, timing: BusyTiming & Timing, signal: AbortSignal): Promise<void> {
+/** Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one. */
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<void> {
   const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target));
-  const note = (text: string) => noteReviewWait(target.repo, target.pr, `waiting for the broker to start reviewer ${intent.reviewer}: ${text}`);
+  const note = (text: string) => {
+    waits.push(text);
+    noteReviewWait(target.repo, target.pr, `waiting for the broker to start reviewer ${intent.reviewer}: ${text}`);
+  };
   try {
     await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
   } finally {
@@ -284,10 +287,15 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
-  if (!asked) await startReviewer(dispatch, intent, target, reviewerBrief({ ...target, questions: await questions?.(target), fixFirsts }), timing, signal);
+  const waits: string[] = [];
+  if (!asked) {
+    const brief = reviewerBrief({ ...target, questions: await questions?.(target), fixFirsts });
+    const refused = await startReviewer(dispatch, intent, target, brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
+    if (refused) return refused;
+  }
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, ...busyWaits(waits) };
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
@@ -362,7 +370,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent, ...(fixFirsts > 0 && { fixFirsts }) }, Dispatched);
-  if (dispatched.kind !== "dispatched") return { kind: "none", cause: "no-verdict" };
+  if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
   return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
