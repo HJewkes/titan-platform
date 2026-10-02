@@ -7,6 +7,7 @@ import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./ho
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
+import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -27,6 +28,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   logger?: Logger;
   /** How often runs waiting on a gate have their PR checked for a merge or close elsewhere; defaults to 5 minutes. */
   goneSweepMs?: number;
+  /** How often the Version Packages sweep runs; defaults to `RELEASE_SWEEP_MS`. */
+  releaseSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
 }
@@ -56,10 +59,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   await sweep.tick();
   const services = options.routes.shepherd;
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
+  const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     await goneSweep?.stop();
+    await releaseSweep?.stop();
     await daemon.close();
     host.close();
   };
@@ -123,6 +128,10 @@ async function adopt(host: FactoryHost, log: Logger): Promise<void> {
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+}
+
+async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */

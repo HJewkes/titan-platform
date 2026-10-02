@@ -38,6 +38,10 @@ export interface Registration {
   slice: string | null;
   held: boolean;
   holdReason: string | null;
+  /** The reviewer a hold waits on, set only by `hold --reviewer`; never read out of the reason. */
+  holdReviewer: string | null;
+  /** A Version Packages PR's head that passed the release preflight under an auto policy, and when; other merges in the repo wait on it. */
+  releaseReady: { head: string; at: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +77,16 @@ export function shepherdMigration(version = 4): Migration {
 
 export function sliceMigration(version = 8): Migration {
   return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
+}
+
+const TP734_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN hold_reviewer TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN release_ready_head TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN release_ready_at TEXT;`;
+
+/** The hold's structured reviewer, and the head at which a Version Packages PR passed its release preflight. */
+export function holdReviewerMigration(version = 9): Migration {
+  return { version, name: "factory:shepherd_registration_hold_reviewer_release_ready", up: (db) => db.exec(TP734_DDL) };
 }
 
 export const AUTHOR_ROLES = ["implementer", "successor"] as const;
@@ -133,6 +147,9 @@ interface Row {
   slice: string | null;
   held: number;
   hold_reason: string | null;
+  hold_reviewer?: string | null;
+  release_ready_head?: string | null;
+  release_ready_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -208,12 +225,25 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(newRunId)!;
   }
 
-  hold(runId: string, reason: string): Registration {
-    return this.setHeld(runId, true, reason);
+  hold(runId: string, reason: string, reviewer?: string): Registration {
+    return this.setHeld(runId, true, reason, reviewer ?? null);
   }
 
   release(runId: string): Registration {
-    return this.setHeld(runId, false, null);
+    return this.setHeld(runId, false, null, null);
+  }
+
+  /** Marks `head` as ready to land, or clears the mark with null. */
+  setReleaseReady(runId: string, head: string | null): void {
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET release_ready_head = ?, release_ready_at = ?, updated_at = ? WHERE run_id = ?")
+      .run(head, head === null ? null : this.stamp(), this.stamp(), runId).changes;
+    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+  }
+
+  /** Gives up a finished run's claim on its branch, so a later PR from the same branch can register. */
+  releaseBranch(runId: string): void {
+    this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId);
   }
 
   /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. */
@@ -236,8 +266,10 @@ export class ShepherdStore implements HoldLookup {
     return rows.map((row) => ({ runId: row.run_id, agentId: row.agent_id, name: row.name, role: row.role, predecessor: row.predecessor, at: row.at }));
   }
 
-  private setHeld(runId: string, held: boolean, reason: string | null): Registration {
-    const changed = this.db.prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, updated_at = ? WHERE run_id = ?").run(held ? 1 : 0, reason, this.stamp(), runId).changes;
+  private setHeld(runId: string, held: boolean, reason: string | null, reviewer: string | null): Registration {
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, updated_at = ? WHERE run_id = ?")
+      .run(held ? 1 : 0, reason, reviewer, this.stamp(), runId).changes;
     if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
     return this.byRun(runId)!;
   }
@@ -266,6 +298,8 @@ function fromRow(row: Row): Registration {
     slice: row.slice,
     held: row.held === 1,
     holdReason: row.hold_reason,
+    holdReviewer: row.hold_reviewer ?? null,
+    releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

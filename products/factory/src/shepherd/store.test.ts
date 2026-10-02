@@ -1,11 +1,11 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type AuthorInput, type RegistrationInput } from "./store.js";
+import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -32,9 +32,20 @@ describe("shepherd registration store", () => {
     runMigrations(db, [shepherdMigration(4)]);
     db.prepare("INSERT INTO shepherd_registration (repo, pr, run_id, task, implementer, policy, kind, created_at, updated_at) VALUES ('octo/demo', 7, 'run-1', 'demo/1', 'impl-a', ?, 'unknown', 't', 't')").run(JSON.stringify(OWNER_GATE_POLICY));
 
-    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
 
     expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ pr: 7, slice: null });
+  });
+
+  it("adds the hold reviewer column to a database that already holds a hold", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    new ShepherdStore(db).register(base);
+    db.prepare("UPDATE shepherd_registration SET held = 1, hold_reason = 'owner review'").run();
+
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
+
+    expect(new ShepherdStore(db).byRun("run-1")).toMatchObject({ held: true, holdReason: "owner review", holdReviewer: null });
   });
 
   it("refuses a kind outside the known set instead of treating it as unknown", () => {
@@ -86,6 +97,17 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 8)).toBeUndefined();
   });
 
+  it("keeps a hold's reviewer only as given, and release clears it", () => {
+    const store = openStore();
+    store.register(base);
+
+    const named = store.hold("run-1", "awaiting sec-audit-review", "sec-audit-review");
+    const released = store.release("run-1");
+    const unnamed = store.hold("run-1", "awaiting sec-audit-review");
+
+    expect([named.holdReviewer, released.holdReviewer, unnamed.holdReviewer]).toEqual(["sec-audit-review", null, null]);
+  });
+
   it("holds any PR whose head branch has a held registration still waiting for its PR", () => {
     const store = openStore();
     store.register({ ...base, pr: undefined, branch: "feat/a" });
@@ -100,7 +122,7 @@ describe("shepherd registration store", () => {
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9)]);
   return new ShepherdStore(db, () => clock.now);
 }
 
@@ -200,7 +222,7 @@ describe("shepherd store ref", () => {
   it("refuses a second bind until the first is released", () => {
     const ref = shepherdStoreRef();
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), sliceMigration(8)]);
+    runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9)]);
     const unbind = ref.bind(db);
 
     expect(() => ref.bind(db)).toThrow(/already bound/);

@@ -12,6 +12,7 @@ import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -46,14 +47,14 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
@@ -337,6 +338,47 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  it("counts a FIX_FIRST that yields a new head as progress, so two stuck rounds around it still merge", async () => {
+    const late: { w?: World } = {};
+    const asked: ReviewRequest[] = [];
+    const review: ShepherdPhases["review"] = async (ctx, request) => {
+      asked.push(request);
+      if (!request.fresh) return { kind: "none", cause: "timeout" };
+      return request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "missing test" } : merges(ctx, request);
+    };
+    const w = autoWorld(review, async () => (late.w!.fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }));
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.map((request) => [request.headSha, request.fresh ?? false])).toEqual([
+      [H1, false],
+      [H1, true],
+      [H2, false],
+      [H2, true],
+    ]);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("opens approve-merge naming the runaway at the sixth FIX_FIRST, each of which yielded a new head", async () => {
+    const late: { w?: World } = {};
+    const heads: string[] = [];
+    const w = autoWorld(
+      async (_ctx, request) => (heads.push(request.headSha), { kind: "FIX_FIRST", headSha: request.headSha, text: "again" }),
+      async () => (late.w!.fake.pushHead(1, fakeSha(`fix-${heads.length}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(heads).toHaveLength(6);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
   it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {
     const w = autoWorld(async (ctx, request) => merges(ctx, request));
     const runId = shepherdPr1(w);
@@ -397,6 +439,103 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
+describe("the Version Packages PR", () => {
+  const RELEASE_FILES = [
+    { path: "packages/widget/package.json", status: "modified" },
+    { path: "packages/widget/CHANGELOG.md", status: "modified" },
+    { path: ".changeset/brave-otters.md", status: "removed" },
+  ];
+
+  /** The widget manifest bumped from 1.0.0 at the merge base to 1.1.0 at `head`. */
+  function setWidgetManifest(fake: FakeGitHub, head: string): void {
+    fake.files.set(`${fakeSha("base")}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.0.0" }), blobSha: "b0" });
+    fake.files.set(`${head}:packages/widget/package.json`, { content: JSON.stringify({ name: "@demo/widget", version: "1.1.0" }), blobSha: "b1" });
+  }
+
+  /** The changesets PR as PR 1, registered the way the release sweep registers it. */
+  function releaseWorld(registry: PackageRegistry): { w: World; runId: string; reviews: ReviewRequest[] } {
+    const { phases, reviews } = fakePhases({});
+    const w = world(phases, undefined, undefined, undefined, registry);
+    w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, RELEASE_FILES);
+    setWidgetManifest(w.fake, H1);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(AUTO_POLICY) });
+    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: AUTO_POLICY });
+    return { w, runId, reviews };
+  }
+
+  it("lands on green after its release preflight, with no reviewer, no park and no gate", async () => {
+    const { w, runId, reviews } = releaseWorld(async () => true);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+    expect(w.fake.effects.merge).toBe(1);
+    expect(reviews).toEqual([]);
+    expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H1}`);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-park"))).toEqual([]);
+    expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "allow", rule: { table: "shepherd-release", rowId: "version-packages" } } });
+  });
+
+  it("gates with the package's name when npm has never seen it", async () => {
+    const { w, runId } = releaseWorld(async () => false);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(
+      "Policy shepherd-release/preflight-blocked: the release cannot land yet: @demo/widget is not on registry.npmjs.org yet",
+    );
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.store.byRun(runId)?.releaseReady).toBeNull();
+  });
+
+  it("defers another PR's merge while the Version Packages PR is ready, then re-reads CI and merges once it lands", async () => {
+    const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
+    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const merges: ShepherdPhases["review"] = (ctx, request) =>
+      mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
+    const w = world({ review: merges, wake: async () => UNHANDLED });
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    const release = w.fake.addPr({ headSha: H2, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
+    w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: "run-release", task: "demo/version-packages", implementer: "changesets", policy: AUTO_POLICY });
+    w.store.setReleaseReady("run-release", H2);
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("merge:0"));
+    await sleep(100, new AbortController().signal);
+    const whileReady = w.fake.effects.merge;
+    Object.assign(w.fake.pr(release.number), { state: "closed", merged: true });
+    await w.host.runtime.wait(runId);
+
+    expect(whileReady).toBe(0);
+    expect(stepResult(w.host, runId, "merge:0")).toMatchObject({ result: { done: false, skipped: "held" } });
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.runtime.status(runId)?.status).toBe("completed");
+  });
+
+  it("never marks a release ready under an owner-gate seat, so another PR's merge is not deferred", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    const release = w.fake.addPr({ headSha: H2, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
+    w.fake.prFiles.set(release.number, RELEASE_FILES);
+    setWidgetManifest(w.fake, H2);
+    const releaseRun = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: String(release.number), branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: releaseRun, task: "demo/version-packages", implementer: "changesets", policy: OWNER_GATE_POLICY });
+
+    await gateOpened(w.host, gateId(releaseRun, "approve-merge"));
+    const releaseReady = w.store.byRun(releaseRun)?.releaseReady;
+    expect(releaseReady).toBeNull();
+    const runId = shepherdPr1(w);
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(stepResult(w.host, releaseRun, `sh-release-preflight:${H2}`)).toMatchObject({ result: { blockers: [] } });
+    expect(stepResult(w.host, runId, "merge:0")).not.toMatchObject({ result: { skipped: "held" } });
+    expect(w.fake.effects.merge).toBe(1);
   });
 });
 

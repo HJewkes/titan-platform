@@ -44,6 +44,32 @@ describe("deleteRef", () => {
   });
 });
 
+describe("pushEmptyCommit", () => {
+  it("pushes one commit with the head's tree onto the branch, and moves the branch's open PR to it", async () => {
+    const { fake, port } = setup();
+    const pr = fake.addPr({ headRef: "topic", headSha: fakeSha("topic") });
+
+    const pushed = await port.pushEmptyCommit(REPO, "topic", fakeSha("topic"), "Start CI");
+
+    expect(pushed).toMatchObject({ done: true });
+    expect(fake.commits.get(pushed.sha)).toEqual({ sha: pushed.sha, parents: [fakeSha("topic")], tree: fakeSha(`tree:${fakeSha("topic")}`) });
+    expect([fake.refs.get("topic"), fake.pr(pr.number).headSha, fake.effects.updateRef]).toEqual([pushed.sha, pushed.sha, 1]);
+  });
+
+  it("skips a branch that moved past the expected head, and pushes nothing", async () => {
+    const { fake, port } = setup();
+
+    expect(await port.pushEmptyCommit(REPO, "topic", fakeSha("older"), "Start CI")).toEqual({ sha: fakeSha("topic"), done: false, skipped: "head-moved" });
+    expect(fake.calls).not.toContain("createCommit");
+  });
+
+  it("skips a branch that does not exist", async () => {
+    const { port } = setup();
+
+    expect(await port.pushEmptyCommit(REPO, "gone", fakeSha("topic"), "Start CI")).toEqual({ sha: "", done: false, skipped: "absent" });
+  });
+});
+
 describe("listOpenPrs and jobLogTail", () => {
   it("lists only open PRs, filtered by head prefix", async () => {
     const { fake, port } = setup();
