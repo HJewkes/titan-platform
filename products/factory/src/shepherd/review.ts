@@ -15,6 +15,7 @@ import { DEFAULT_BUSY_WAIT_MS, clearReviewWait, noteReviewWait, whileBrokerBusy,
 import { reviewerBrief } from "./reviewer-brief.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
+import { FIX_FIRST_STEP } from "./wake-brief.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
@@ -134,7 +135,8 @@ const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must b
 const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional() });
 /** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody. */
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional() });
-const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema });
+/** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. */
+const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema, fixFirsts: z.number().int().positive().optional() });
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
 const takeovers: Parents = (agent) => [agent.predecessor];
@@ -277,12 +279,12 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
 };
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, ...target }, signal, repeat) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
-  if (!asked) await startReviewer(dispatch, intent, target, reviewerBrief({ ...target, questions: await questions?.(target) }), timing, signal);
+  if (!asked) await startReviewer(dispatch, intent, target, reviewerBrief({ ...target, questions: await questions?.(target), fixFirsts }), timing, signal);
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId };
@@ -358,7 +360,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }) }, Intended);
   if (intent.kind !== "intent") return { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent }, Dispatched);
+  const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent, ...(fixFirsts > 0 && { fixFirsts }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
