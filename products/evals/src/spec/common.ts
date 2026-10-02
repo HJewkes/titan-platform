@@ -7,15 +7,16 @@ export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 export const SPEC_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
-const ID_BODY = "[a-z0-9][a-z0-9.-]*";
-const VERTEX_VERSION = "(?:@[a-z0-9][a-z0-9.-]*)?";
-const BEDROCK_VERSION = "(?::[a-z0-9][a-z0-9.-]*)?";
+const BODY_CHARS = "[a-z0-9.-]*";
+// Both guards run on the base id alone, so a version suffix cannot supply the digit or hide `-latest`.
+const HAS_DIGIT = `(?=${BODY_CHARS}\\d)`;
+const NOT_LATEST = `(?!${BODY_CHARS}-latest(?:[^a-z0-9.-]|$))`;
+const ID_BODY = `${HAS_DIGIT}${NOT_LATEST}[a-z0-9]${BODY_CHARS}`;
+const PROVIDER_VERSION = "(?:[@:][a-z0-9][a-z0-9.-]*)?";
 const LONG_CONTEXT = "(?:\\[1m\\])?";
 
-/** An exact id: lowercase, no spaces, at least one digit, never `-latest`; Vertex `@`, Bedrock `:` and a final `[1m]` are allowed. */
-export const MODEL_ID_PATTERN = new RegExp(
-  `^(?!.*-latest${LONG_CONTEXT}$)(?=[^\\d[]*\\d)${ID_BODY}${VERTEX_VERSION}${BEDROCK_VERSION}${LONG_CONTEXT}$`,
-);
+/** An exact id: lowercase, no spaces, a digit and no `-latest` in the base id; one Vertex `@` or Bedrock `:` version and a final `[1m]` are allowed. */
+export const MODEL_ID_PATTERN = new RegExp(`^${ID_BODY}${PROVIDER_VERSION}${LONG_CONTEXT}$`);
 
 export const nonempty = z.string().min(1);
 export const sha256 = z.string().regex(SHA256_PATTERN);

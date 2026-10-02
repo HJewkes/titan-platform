@@ -135,6 +135,12 @@ describe("model ids", () => {
     ["a -latest tag with a 1m suffix", "claude-sonnet-latest[1m]"],
     ["a 1m suffix in the middle", "claude-opus-5-5[1m]-x"],
     ["a 1m suffix at the start", "[1m]claude-opus-5-5"],
+    ["an alias with a Vertex version", "opus@1"],
+    ["an alias with a Bedrock version", "sonnet:1"],
+    ["an alias with a Vertex version and a 1m suffix", "opus@20260101[1m]"],
+    ["a -latest tag with a Vertex version", "claude-sonnet-latest@20260101"],
+    ["a -latest tag with a Bedrock version", "claude-sonnet-latest:0"],
+    ["a Vertex and a Bedrock version together", "claude-opus-5-5@x:y"],
     ["a doubled 1m suffix", "claude-opus-5-5[1m][1m]"],
   ])("refuses %s on write", (_form, model) => {
     expect(strictModel(model)).toThrow(/model/);
