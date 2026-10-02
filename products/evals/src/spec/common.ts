@@ -7,8 +7,15 @@ export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 export const SPEC_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
-/** An exact id: lowercase, no spaces or brackets, at least one digit, never a moving `-latest` tag. */
-export const MODEL_ID_PATTERN = /^(?!.*-latest$)(?=[^\d]*\d)[a-z0-9][a-z0-9.-]*$/;
+const ID_BODY = "[a-z0-9][a-z0-9.-]*";
+const VERTEX_VERSION = "(?:@[a-z0-9][a-z0-9.-]*)?";
+const BEDROCK_VERSION = "(?::[a-z0-9][a-z0-9.-]*)?";
+const LONG_CONTEXT = "(?:\\[1m\\])?";
+
+/** An exact id: lowercase, no spaces, at least one digit, never `-latest`; Vertex `@`, Bedrock `:` and a final `[1m]` are allowed. */
+export const MODEL_ID_PATTERN = new RegExp(
+  `^(?!.*-latest${LONG_CONTEXT}$)(?=[^\\d[]*\\d)${ID_BODY}${VERTEX_VERSION}${BEDROCK_VERSION}${LONG_CONTEXT}$`,
+);
 
 export const nonempty = z.string().min(1);
 export const sha256 = z.string().regex(SHA256_PATTERN);
@@ -37,7 +44,7 @@ export function objectFor(mode: SpecParseMode) {
 
 export function modelId(mode: SpecParseMode) {
   if (mode === "loose") return nonempty;
-  return nonempty.regex(MODEL_ID_PATTERN, "model must be an exact id; resolve aliases such as sonnet or sonnet[1m] before hashing");
+  return nonempty.regex(MODEL_ID_PATTERN, "model must be an exact id; resolve aliases such as sonnet or sonnet[1m] to an exact id before hashing");
 }
 
 export function unitRef(mode: SpecParseMode) {
