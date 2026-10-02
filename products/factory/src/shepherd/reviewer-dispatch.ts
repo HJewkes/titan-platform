@@ -8,7 +8,7 @@ export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
 const HOME_PREFIXES = ["~/", "$HOME/", "${HOME}/"];
 
-/** A roster row plus the transcript fields the verdict reader needs; `predecessor` and `fillTokens` stay absent, so no such agent is resumed. */
+/** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
 export interface ReviewerRosterRow extends ReviewerAgent {
   transcriptPath: string | null;
   transcriptExists: boolean;
@@ -68,16 +68,28 @@ async function askBroker<T>(ask: () => T): Promise<T> {
   }
 }
 
+/** The broker reports no session times, so a resume shows as the write it makes to the transcript; absent when there is no file. */
+function lastWrittenAt(transcriptPath: string | null): { lastWrittenAt?: number } {
+  try {
+    const written = transcriptPath === null ? undefined : statSync(transcriptPath, { throwIfNoEntry: false })?.mtimeMs;
+    return written === undefined ? {} : { lastWrittenAt: Math.floor(written) };
+  } catch {
+    return {};
+  }
+}
+
 /** agent-dispatch checks only a row's required strings, so the optional fields are narrowed here. */
 function rosterRow(row: AgentRow): ReviewerRosterRow {
+  const transcriptPath = typeof row.transcriptPath === "string" ? row.transcriptPath : null;
   return {
     name: row.name,
     agentId: row.agentId,
     sessionId: row.sessionId,
     presence: row.presence,
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
-    transcriptPath: typeof row.transcriptPath === "string" ? row.transcriptPath : null,
+    transcriptPath,
     transcriptExists: row.transcriptExists === true,
+    ...lastWrittenAt(transcriptPath),
   };
 }
 
