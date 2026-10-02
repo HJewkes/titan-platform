@@ -221,6 +221,11 @@ describe("xargs -L and -n run the command once per batch", () => {
     ["-L1", "printf 'status\\npush origin HEAD:main' | xargs -L1 git"],
     ["-n 3", "printf 'status a b push origin HEAD:main' | xargs -n 3 git"],
     ["a size that is not static", "printf 'status\\npush origin HEAD:main' | xargs -L \"$N\" git"],
+    ["-rL1", "printf 'status\\npush origin HEAD:main' | xargs -rL1 git"],
+    ["-rn3", "printf 'status a b push origin HEAD:main' | xargs -rn3 git"],
+    ["-n with N=3 not static", "printf 'a b c push origin HEAD:main' | xargs -n \"$N\" git"],
+    ["--max-args 3", "printf 'status a b push origin HEAD:main' | xargs --max-args 3 git"],
+    ["quoted input", "printf 'a \"b c\" d push origin HEAD:main' | xargs -n 3 git"],
   ])("denies a push in a later batch under %s", (_how, command) => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
   });

@@ -573,16 +573,22 @@ describe("xargs -L and -n run the command once per batch", () => {
     expect(gitArgs("printf 'status\\nlog' | xargs -L 5 git")).toEqual([["status", "log"]]);
   });
 
-  it("reads every split when the size is not static", () => {
-    expect(gitArgs("printf 'status\\npush origin HEAD:main' | xargs -L \"$N\" git")).toEqual([
-      ["status", "push", "origin", "HEAD:main"],
-      ["status"],
-      PUSH,
-      ["status"],
-      ["push"],
-      ["origin"],
-      ["HEAD:main"],
-    ]);
+  it("reads every contiguous run of words when the size is not static", () => {
+    const runs = gitArgs("printf 'status\\npush origin' | xargs -L \"$N\" git");
+
+    expect(runs).toEqual(expect.arrayContaining([["status", "push", "origin"], ["status"], ["status", "push"], ["push", "origin"], ["origin"]]));
+  });
+
+  it.each([
+    ["-rL1", "printf 'status\\npush origin HEAD:main' | xargs -rL1 git"],
+    ["-tL1", "printf 'status\\npush origin HEAD:main' | xargs -tL1 git"],
+    ["--max-args 3", "printf 'status a b push origin HEAD:main' | xargs --max-args 3 git"],
+    ["-rn3", "printf 'status a b push origin HEAD:main' | xargs -rn3 git"],
+    ["-n with a size that is not static", "printf 'a b c push origin HEAD:main' | xargs -n \"$N\" git"],
+    ["-L with a size that is not static", "printf 'x\\ny\\npush\\norigin HEAD:main' | xargs -L \"$N\" git"],
+    ["quoted input", "printf 'a \"b c\" d push origin HEAD:main' | xargs -n 3 git"],
+  ])("reads a push under %s", (_how, command) => {
+    expect(gitArgs(command)).toContainEqual(PUSH);
   });
 
   it("appends everything when no batch is named", () => {

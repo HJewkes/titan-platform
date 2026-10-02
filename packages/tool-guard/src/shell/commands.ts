@@ -217,15 +217,27 @@ function unknownRuns(cmd: Unwrapped, replace: string): WordToken[][] {
   return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
 }
 
-/** The word groups one `xargs` run each takes. An unreadable batch size adds every split: each line, each word, all words. */
+const MAX_RUN = 16;
+
+/**
+ * The word groups one `xargs` run each takes. Quoted input or an unreadable size shifts the real
+ * boundaries, so every contiguous run of up to MAX_RUN words is read, plus all words together.
+ */
 function batches(stdin: string, batch: XargsBatch | null): string[][] {
   const lines = stdin.split(/\r?\n/).map(wordsOf).filter((l) => l.length > 0);
   const all = lines.flat();
   if (batch === null) return [all];
+  if (batch.size === null || /["'\\]/.test(stdin)) return [all, ...contiguousRuns(all.map((w) => w.replace(/["'\\]/g, "")))];
   const units = batch.unit === "lines" ? lines : all.map((w) => [w]);
-  if (batch.size === null) return [all, ...lines, ...all.map((w) => [w])];
-  const groups = Array.from({ length: Math.ceil(units.length / batch.size) }, (_, i) => units.slice(i * (batch.size as number), (i + 1) * (batch.size as number)).flat());
+  const size = batch.size;
+  const groups = Array.from({ length: Math.ceil(units.length / size) }, (_, i) => units.slice(i * size, (i + 1) * size).flat());
   return groups.length > 0 ? groups : [[]];
+}
+
+function contiguousRuns(words: string[]): string[][] {
+  const runs: string[][] = [];
+  for (let i = 0; i < words.length; i++) for (let n = 1; n <= MAX_RUN && i + n <= words.length; n++) runs.push(words.slice(i, i + n));
+  return runs;
 }
 
 function wordsOf(text: string): string[] {
