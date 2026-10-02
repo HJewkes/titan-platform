@@ -104,4 +104,21 @@ describe("titan-factory serve", () => {
 
     expect(health.github).toBe("gh: HTTP 401");
   });
+
+  it("health carries the build sha and how far main has moved", async () => {
+    const build = { sha: "abc123", behindMain: { status: () => 4, refresh: async () => undefined } };
+    const server = await serve(dbFile(), landScenario(), { build });
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.build).toEqual({ sha: "abc123", behindMain: 4 });
+  });
+
+  it("health reports an unknown build when none was baked in", async () => {
+    const server = await serve(dbFile(), landScenario());
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.build).toEqual({ sha: "unknown", behindMain: "unknown" });
+  });
 });
