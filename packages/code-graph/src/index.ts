@@ -192,6 +192,15 @@ export { computeFootprints, symbolSetHash } from "./diff/footprint.js";
 export type { FootprintChange, FootprintChangeReason, FootprintDiff } from "./diff/types.js";
 export type { DiffFootprintsOptions } from "./diff/footprint-diff.js";
 export { diffFootprints } from "./diff/footprint-diff.js";
+export type {
+  GateResult,
+  GateUnitsInput,
+  RegenerateReason,
+  UnitProvenance,
+  UnitProvenanceInput,
+  UnitRegeneration,
+} from "./diff/gate.js";
+export { gateUnits, unitProvenance } from "./diff/gate.js";
 
 export type {
   EmbedAttempt,
