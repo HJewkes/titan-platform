@@ -262,6 +262,29 @@ describe("lookupSeat repo keys", () => {
   });
 });
 
+describe("read_only repo entries", () => {
+  const owner = seat("owner-seat", "repos:\n  - {path: ~/src/widgets, remote: acme/widgets}\ngrants_extra: [merge-on-green-approve]\n");
+  const listing = (flag: string) =>
+    seat("viewer-seat", `repos:\n  - {path: ~/src/widgets, remote: acme/widgets${flag}}\ngrants_extra: []\n`);
+
+  it("gives the owning seat's grants and auto policy when another seat lists the remote read_only", () => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": owner, "b.md": listing(", read_only: true") }) });
+    const lookup = lookupSeat(book, "acme/widgets");
+    expect(lookup).toMatchObject({ kind: "seat", seat: { name: "owner-seat", grants: ["merge-on-green-approve"] } });
+    expect(resolveEffectivePolicy(lookup).merge).toBe("auto");
+  });
+
+  it("does not treat a seat whose only entry for the remote is read_only as its owner", () => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "b.md": listing(", read_only: true") }) });
+    expect(lookupSeat(book, "acme/widgets")).toEqual({ kind: "none" });
+  });
+
+  it.each([["absent", ""], ["false", ", read_only: false"]])("still narrows grants when read_only is %s", (_case, flag) => {
+    const book = loadSeatBook({ seatsDir: writeSeats({ "a.md": owner, "b.md": listing(flag) }) });
+    expect(lookupSeat(book, "acme/widgets")).toMatchObject({ kind: "seat", seat: { grants: [] } });
+  });
+});
+
 describe("seat paths with inner spaces", () => {
   const SPACED = "~/Library/Application Support/widget/x/bin";
   const load = (repoPath: string, home = "/srv/seat-home") =>
