@@ -89,6 +89,9 @@ const PINNED_COREPACK: Readonly<Record<string, string>> = {
 
 /** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
 export const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
+/** npm exec exports this file's keys as npm_config_* over the env pins, and its registry picks what npx runs. */
+export const NPMRC_FILE = ".npmrc";
+const BASE_ONLY_FILES = [PNPM_WORKSPACE_FILE, NPMRC_FILE];
 
 /** An allowlist of what an install needs: the step runs with the host's authority, outside any permission profile. */
 export function setupEnv(
@@ -172,21 +175,27 @@ const blobInTree = (worktree: string, file: string): Promise<string | null> =>
       )
     : Promise.resolve(null);
 
-/** True when the tree's workspace file is not byte-for-byte the one at the trusted base. */
-async function workspaceDiffersFromBase(target: SetupTarget): Promise<boolean> {
+/** True when the tree's `file` is not byte-for-byte the one at the trusted base; adding or deleting it counts. */
+async function differsFromBase(
+  target: SetupTarget,
+  file: string
+): Promise<boolean> {
   const [atBase, inTree] = await Promise.all([
     gitOutput(
-      [
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        `${target.baseSha}:${PNPM_WORKSPACE_FILE}`,
-      ],
+      ["rev-parse", "--verify", "--quiet", `${target.baseSha}:${file}`],
       target.gitRoot
     ),
-    blobInTree(target.worktree, PNPM_WORKSPACE_FILE),
+    blobInTree(target.worktree, file),
   ]);
   return (atBase?.trim() ?? null) !== (inTree?.trim() ?? null);
+}
+
+/** The first file the env pins cannot outrank whose tree copy differs from base, or null. */
+async function changedBaseOnlyFile(target: SetupTarget): Promise<string | null> {
+  const changed = await Promise.all(
+    BASE_ONLY_FILES.map((file) => differsFromBase(target, file))
+  );
+  return BASE_ONLY_FILES[changed.indexOf(true)] ?? null;
 }
 
 /** Its own process group, so a timeout also kills what the step spawned (npm runs scripts in children). */
@@ -259,7 +268,7 @@ function describeFailure(
  *
  * The step runs with the host's authority, so its declaration comes only from origin's default
  * branch as fetched: a branch that edits the file changes nothing until it lands.
- * A tree whose pnpm-workspace.yaml differs from that branch's is skipped, since pnpm ranks it over the env pins.
+ * A tree whose pnpm-workspace.yaml or .npmrc differs from that branch's is skipped, since each can override the env pins.
  *
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
@@ -277,9 +286,10 @@ export async function runWorktreeSetup(
   const step = parseSetupStep(declared);
   if (step === null) return [];
   if (typeof step === "string") return [`worktree setup skipped: ${step}`];
-  if (await workspaceDiffersFromBase(target))
+  const changed = await changedBaseOnlyFile(target);
+  if (changed !== null)
     return [
-      `worktree setup skipped: the tree's ${PNPM_WORKSPACE_FILE} differs from origin's default branch`,
+      `worktree setup skipped: the tree's ${changed} differs from origin's default branch`,
     ];
   const result = await run(step.command, target.worktree, step.timeoutMs).catch(
     (err: unknown): SetupResult => ({
