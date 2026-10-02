@@ -22,10 +22,17 @@ export const CiSnapshotResult = z.looseObject({
   failing: z.array(FailingCheck).optional(),
 });
 
-export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean() });
+export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional() });
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 
 const PolicyRule = z.looseObject({ table: z.string(), rowId: z.string(), version: z.number() });
 
 export const MergePolicyResult = z.looseObject({ outcome: z.enum(["gate", "allow", "deny"]), headSha: z.string(), rule: PolicyRule, reason: z.string() });
+
+/** Only GitHub's own 422 for an unmergeable base becomes a result; every other failure keeps failing the step. */
+export function conflictOrThrow(error: unknown): "conflict" {
+  const { status, message } = error as { status?: number; message?: string };
+  if (status === 422 && /merge conflict between base and head/i.test(message ?? "")) return "conflict";
+  throw error;
+}
