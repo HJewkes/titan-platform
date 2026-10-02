@@ -14,6 +14,7 @@ import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shephe
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
+import { expireStaleGates } from "./stale-gates.js";
 import { MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 
@@ -141,8 +142,9 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
 }
 
 function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
-  if (outcome.kind !== "stopped" || outcome.reason !== "not-mergeable") return false;
-  return run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
+  if (outcome.kind !== "stopped") return false;
+  const dirty = outcome.reason === "not-mergeable" && run.lastCi?.headSha === outcome.headSha && run.lastCi.mergeableState === "dirty";
+  return outcome.reason === "conflict" || dirty;
 }
 
 /** A woken agent has already awaited its new head, so the caller goes straight to the next land round. */
@@ -160,6 +162,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     signal: ctx.signal,
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
+    expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: (stepId, prompt, options) => ctx.assisted(stepId, prompt, options),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
@@ -176,6 +179,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
   run.lastCi = ci.data;
+  expireStaleGates(run.ctx, ci.data.headSha);
   if (ci.data.verdict !== "green") return;
   run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);

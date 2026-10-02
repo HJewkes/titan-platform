@@ -862,3 +862,21 @@ describe("WorkflowRuntime.signal resolver", () => {
     expect(new SqliteGateStore(db, { migrate: false }).get(`${runId}/approve`)?.resolvedBy).toEqual(OWNER);
   });
 });
+
+describe("RunContext.expireGates", () => {
+  it("cancels only this run's pending gates the predicate picks", () => {
+    const gates = new SqliteGateStore(makeDb(), { migrate: false });
+    const run = newRun("run-a", "mixed", {});
+    gates.create({ id: "run-a/old", prompt: "old head" });
+    gates.create({ id: "run-a/current", prompt: "current head" });
+    gates.create({ id: "run-b/old", prompt: "old head" });
+    const ctx = new RunContext(run, replayDeps(gates), new AbortController());
+
+    const expired = ctx.expireGates("head moved", (gate) => gate.prompt === "old head");
+
+    expect(expired).toEqual(["run-a/old"]);
+    expect(gates.get("run-a/old")).toMatchObject({ status: "cancelled", reason: "head moved" });
+    expect(gates.get("run-a/current")?.status).toBe("pending");
+    expect(gates.get("run-b/old")?.status).toBe("pending");
+  });
+});
