@@ -168,7 +168,7 @@ function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch 
     const rest = v.slice(k + 1);
     if (c === "l") return { unit: "lines", size: rest ? batchSize(word, rest) : 1 };
     if (c === "L" || c === "n") return { unit: c === "L" ? "lines" : "args", size: rest ? batchSize(word, rest) : batchSize(next) };
-    if (c === "i" || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
+    if (c === "i" || c === "e" || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
   }
   return null;
 }

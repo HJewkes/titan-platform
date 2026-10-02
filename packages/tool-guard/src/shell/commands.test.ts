@@ -565,7 +565,7 @@ describe("xargs -L and -n run the command once per batch", () => {
     ["-n3", "printf 'status a b push origin HEAD:main' | xargs -n3 git", [["status", "a", "b"], PUSH]],
     ["--max-args=3", "printf 'status a b push origin HEAD:main' | xargs --max-args=3 git", [["status", "a", "b"], PUSH]],
   ])("splits the input under %s", (_how, command, expected) => {
-    expect(gitArgs(command)).toEqual(expected);
+    expect(gitArgs(command)).toEqual(expect.arrayContaining(expected));
   });
 
   it("keeps a single batch as one command", () => {
@@ -589,6 +589,24 @@ describe("xargs -L and -n run the command once per batch", () => {
     ["quoted input", "printf 'a \"b c\" d push origin HEAD:main' | xargs -n 3 git"],
   ])("reads a push under %s", (_how, command) => {
     expect(gitArgs(command)).toContainEqual(PUSH);
+  });
+
+  it("joins a line ending in a blank with the next, as -L does", () => {
+    expect(gitArgs("printf 'push \\norigin HEAD:main' | xargs -L1 git")).toContainEqual(PUSH);
+    expect(gitArgs("printf 'x\\npush \\norigin HEAD:main' | xargs -L1 git")).toContainEqual(PUSH);
+  });
+
+  it("keeps the whole input as one command alongside the batches", () => {
+    expect(gitArgs("printf 'a\\nb' | xargs -L1 git")).toContainEqual(["a", "b"]);
+  });
+
+  it("reads -eL1 as an end-of-file string, not a batch size", () => {
+    expect(gitArgs("printf 'push\\norigin HEAD:main' | xargs -eL1 git")).toContainEqual(PUSH);
+  });
+
+  it("reads a protected utility's unknown stdin without -I as its worst case", () => {
+    expect(gitArgs("xargs -L1 git < cmds.txt")).toContainEqual(PUSH);
+    expect(gitArgs("xargs git add < files.txt")).not.toContainEqual(PUSH);
   });
 
   it("appends everything when no batch is named", () => {

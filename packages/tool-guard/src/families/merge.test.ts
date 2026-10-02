@@ -221,6 +221,9 @@ describe("xargs -L and -n run the command once per batch", () => {
     ["-L1", "printf 'status\\npush origin HEAD:main' | xargs -L1 git"],
     ["-n 3", "printf 'status a b push origin HEAD:main' | xargs -n 3 git"],
     ["a size that is not static", "printf 'status\\npush origin HEAD:main' | xargs -L \"$N\" git"],
+    ["a continued line", "printf 'push \\norigin HEAD:main' | xargs -L1 git"],
+    ["a continued line after another", "printf 'x\\npush \\norigin HEAD:main' | xargs -L1 git"],
+    ["-eL1", "printf 'push\\norigin HEAD:main' | xargs -eL1 git"],
     ["-rL1", "printf 'status\\npush origin HEAD:main' | xargs -rL1 git"],
     ["-rn3", "printf 'status a b push origin HEAD:main' | xargs -rn3 git"],
     ["-n with N=3 not static", "printf 'a b c push origin HEAD:main' | xargs -n \"$N\" git"],
@@ -240,6 +243,8 @@ describe("xargs -I fails closed when it cannot read the input", () => {
   it.each([
     ["a non-static -d value", "printf 'echo hiXgit push origin HEAD:main' | xargs -I{} -d \"$D\" sh -c '{}'"],
     ["a stdin file", "xargs -I{} git {} < cmds.txt"],
+    ["a stdin file without -I", "xargs -L1 git < cmds.txt"],
+    ["a stdin file with -n and push", "xargs -n3 git push < cmds.txt"],
     ["a heredoc fed through cat", "cat <<EOF | xargs -I{} git {}\nstatus\nEOF"],
   ])("denies a push behind %s", (_how, command) => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);

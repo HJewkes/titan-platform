@@ -201,7 +201,7 @@ function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
   if (!cmd.xargs) return [cmd.args];
   const { replace } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
-  if (stdin === null) return replace === null ? [cmd.args] : unknownRuns(cmd, replace);
+  if (stdin === null) return unknownRuns(cmd, replace);
   if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
   if (shell) return [cmd.args];
@@ -210,10 +210,12 @@ function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
 
 const WORST_CASE: Record<string, string[]> = { git: ["push", "origin", "HEAD:main"], gh: ["pr", "merge", "1"] };
 
-/** Input that cannot be read: a protected utility named by the replace string alone is read as its worst case, so it fails closed. */
-function unknownRuns(cmd: Unwrapped, replace: string): WordToken[][] {
+/** Input that cannot be read: a protected utility is also read with its worst case, as the replace string or as appended words, so it fails closed. */
+function unknownRuns(cmd: Unwrapped, replace: string | null): WordToken[][] {
   const worst = WORST_CASE[cmd.name ?? ""];
-  if (!worst || cmd.args[0]?.value !== replace) return [cmd.args];
+  if (!worst) return [cmd.args];
+  if (replace === null) return [cmd.args, [...cmd.args, ...worst.map(literalWord)]];
+  if (cmd.args[0]?.value !== replace) return [cmd.args];
   return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
 }
 
@@ -224,14 +226,24 @@ const MAX_RUN = 16;
  * boundaries, so every contiguous run of up to MAX_RUN words is read, plus all words together.
  */
 function batches(stdin: string, batch: XargsBatch | null): string[][] {
-  const lines = stdin.split(/\r?\n/).map(wordsOf).filter((l) => l.length > 0);
+  const lines = logicalLines(stdin).map(wordsOf).filter((l) => l.length > 0);
   const all = lines.flat();
   if (batch === null) return [all];
   if (batch.size === null || /["'\\]/.test(stdin)) return [all, ...contiguousRuns(all.map((w) => w.replace(/["'\\]/g, "")))];
   const units = batch.unit === "lines" ? lines : all.map((w) => [w]);
   const size = batch.size;
   const groups = Array.from({ length: Math.ceil(units.length / size) }, (_, i) => units.slice(i * size, (i + 1) * size).flat());
-  return groups.length > 0 ? groups : [[]];
+  return groups.length > 1 ? [all, ...groups] : groups.length === 1 ? groups : [[]];
+}
+
+/** Lines as `-L` counts them: a line ending in a blank continues onto the next. */
+function logicalLines(stdin: string): string[] {
+  return stdin.split(/\r?\n/).reduce<string[]>((out, line, i) => {
+    const prev = out[out.length - 1];
+    if (i > 0 && prev !== undefined && /[ \t]$/.test(prev)) out[out.length - 1] = prev + line;
+    else out.push(line);
+    return out;
+  }, []);
 }
 
 function contiguousRuns(words: string[]): string[][] {
