@@ -18,6 +18,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import { watchRow } from "./view.js";
 import { OWNER } from "../test-support/resolver.js";
 
 const H2 = fakeSha("head2");
@@ -97,6 +98,18 @@ function pushes(fake: FakeGitHub, headSha: string): (request: WakeRequest) => Wa
 }
 
 describe("shepherd-pr", () => {
+  it("records why a run on a PR closed without merging ended, so the watch row reads it as stopped", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1, state: "closed" });
+    const runId = shepherdPr1(w);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(stepResult(w.host, runId, "sh-stopped")).toMatchObject({ result: { kind: "stopped", reason: "closed" } });
+    expect(watchRow({ registration: w.store.byRun(runId)!, run: w.host.runtime.status(runId)! }).outcome).toEqual({ kind: "stopped", reason: "closed" });
+  });
+
   it("waits in sh-await-pr until the registered branch has a PR, then lands that PR", async () => {
     const w = world(fakePhases({}).phases);
     const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, branch: BRANCH });

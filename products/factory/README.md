@@ -34,6 +34,7 @@ titan-factory service deploy [--expect <sha>]                 # fast-forward mai
 titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
+titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -71,6 +72,41 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
 Gate resolution is not a registry command, so no MCP or `/rpc` caller can answer a gate. It
 stays the local `titan-factory gate resolve`.
+
+## Owner digest
+
+`titan-factory digest run` writes one markdown digest across every seat in the seat book:
+a headline, then Needs you, Merged, Stuck, Seats, Spend and, when a source failed, Gaps. The
+file is `<date>-<HH>.md`, named for the latest slot (06, 12 and 18 local by default), in the
+digest dir and again in the iCloud dir. A rerun in the same slot replaces it. The window runs
+back to the previous slot; `--since` overrides it, `--dry-run` prints instead of writing, and
+`--full` lifts the caps (10 asks, 5 merged, 5 stuck) that keep a digest under 400 words.
+
+Its sources:
+
+- Shepherd rows and pending gates, from `titan-factory serve` when one answers, else the database.
+- `agent-chat digest --json --prs --since <window>`, with a 20 s timeout.
+- Each seat's `queues/<seat>.md` numbered items under `## Morning queue (owner only)`.
+- Each seat's `logs/<seat>/dispatch.jsonl`: spawns and estimated dollars.
+
+A source that fails becomes one Gaps line and the rest still render. An ask that names the
+same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
+about the same PR.
+
+```json
+{
+  "digest": {
+    "outDir": "<state>/titan-factory/digests",
+    "icloudDir": "<home>/Library/Mobile Documents/com~apple~CloudDocs/Digests",
+    "timezone": "America/Denver",
+    "slots": [6, 12, 18]
+  }
+}
+```
+
+Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
+`icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
+`shepherd.seatsDir`. Paths must be absolute.
 
 ## Install as a LaunchAgent
 
@@ -211,7 +247,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd` and `service` |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest` and `service` |
+| `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
