@@ -281,6 +281,12 @@ file is dropped from coupling too. `symbolSetHash({ unitId, symbolIds }, footpri
 doc unit's sorted `[symbolId, footprint.hash]` pairs, so it ignores member order and changes when
 a member is added, removed or changed.
 
+`diffFootprints(store, { fromSnapshotId, toSnapshotId, ...options })` compares the footprints of
+two snapshots. From-side ids follow the alias chain first, and a symbol under a moved file follows
+its file, so a move reads as `changed` with `reasons: ["renamed"]` alone when its footprint held.
+Each other change is `added`, `removed`, or `changed` with the differing parts (`signature`,
+`consumers`, `coupling`). `files` rolls the changes up to their declaring files, never to consumers.
+
 `scripts/dag-check-self.mjs` in the repo root runs this repo's DAG check on this engine
 instead of codewatch's CLI.
 
