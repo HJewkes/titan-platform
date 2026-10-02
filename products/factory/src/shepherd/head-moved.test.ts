@@ -18,6 +18,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const SENT_BACK = fakeSha("replay-sent-back");
 const GATED = fakeSha("replay-gated");
 const MOVED = fakeSha("replay-moved");
+const MOVED_AGAIN = fakeSha("replay-moved-again");
 
 type Services = NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
 
@@ -128,6 +129,20 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     host.gates.cancel(gateId(runId, "approve-merge"), "the owner cancelled it");
 
     expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("approve-merge was cancelled: the owner cancelled it") });
+  });
+
+  it("supersedes a later approve-merge iteration when the head moves again", async () => {
+    const { host, fake, services, runId, answerMoved } = await gatedAtSecondHead();
+    fake.pushHead(1, MOVED);
+    await supersedeMovedGates(host, services);
+    answerMoved({ kind: "MERGE", headSha: MOVED, evidence: {} });
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+    fake.pushHead(1, MOVED_AGAIN);
+
+    const superseded = await supersedeMovedGates(host, services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge", 1), from: MOVED, to: MOVED_AGAIN }]);
+    expect(host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("cancelled");
   });
 
   it("leaves an escalation gate at an old head with the owner when the head moves", async () => {
