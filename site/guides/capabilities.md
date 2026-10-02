@@ -575,7 +575,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +255 more in the [reference page](/reference/code-graph)
+- +262 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
