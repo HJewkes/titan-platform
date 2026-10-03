@@ -1,5 +1,16 @@
 # @titan-design/factory
 
+## 0.5.2
+
+### Patch Changes
+
+- 971f9e9: Shepherd checks GitHub's mergeable state against the current base before it opens approve-merge, and again once the owner
+  approves. A head that conflicts goes back to the implementer as a conflict wake. Before, an approval could land on a head
+  whose base had moved into a conflict, and the run then failed at update-branch.
+- 971f9e9: Shepherd: a new head pushed while an `sh-sent-back` gate is pending now resumes the run. The head sweep cancels the gate
+  as superseded, and the run awaits the new head and reviews it, with no owner answer. Before, the gate waited on the owner
+  even after an implementer's successor had pushed the fix.
+
 ## 0.5.1
 
 ### Patch Changes
