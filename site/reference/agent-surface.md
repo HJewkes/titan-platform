@@ -64,6 +64,8 @@ const { code } = await handle.exited!;
   and passes `baseEnv` and `resolveBin` to `runAgent` when it runs the launcher in-process.
 - It does not track which agents are live. `columnAfter` is the host's answer to "which
   pane did the last agent in this column get".
+- It does not decide placement. The host passes `split`, `maxInTab` and `tabWindow`; the
+  surface reports `inTab` and sends a notice when it lands somewhere else.
 - It reads no host config. Seat prefixes and colours arrive through `PaneSources`.
 
 ## Gotchas
