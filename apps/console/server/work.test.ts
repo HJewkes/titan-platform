@@ -53,6 +53,17 @@ describe("the portfolio", () => {
     expect(initiatives.filter((row) => row.personal).map((row) => row.slug)).toEqual(["garden-plan"]);
   });
 
+  it("flags an initiative as personal when active-work reports the charter unread but leaves human_only false", async () => {
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      const answer = fixtureAnswer(command, args) as { initiatives?: Array<{ human_only: boolean }>; human_only_known?: boolean };
+      return command === "inventory" ? { ...answer, human_only_known: false, initiatives: answer.initiatives!.map((entry) => ({ ...entry, human_only: false })) } : answer;
+    });
+    const activeWork = activeWorkClient(daemon.port);
+    expect((await readPortfolio(activeWork)).initiatives.every((row) => row.personal)).toBe(true);
+    expect((await readInitiative(activeWork, "orbit-relay")).initiative.personal).toBe(true);
+    expect((await readPortfolio(activeWork, { excludePersonal: true })).initiatives).toEqual([]);
+  });
+
   it("flags every initiative when active-work cannot say which are personal", async () => {
     const { initiatives, personalKnown } = await readPortfolio(await fakeActiveWork({ humanOnlyKnown: false }));
     expect(personalKnown).toBe(false);
@@ -75,6 +86,12 @@ describe("an initiative", () => {
     expect(detail.notes.map((note) => note.id)).toEqual(["orbit-relay:notes:2031-03-03-backoff-ceiling.md", "orbit-relay:notes:2031-02-27-station-clock-skew.md"]);
     expect(detail.sources.map((source) => source.filename)).toEqual(["deepdive-routing-table.md", "pr-41-handshake.md"]);
     expect(detail.nestedSources).toBe(1);
+  });
+
+  it("caps the open tasks at the limit, keeps the most urgent, and reports the full count", async () => {
+    const detail = await readInitiative(await fakeActiveWork(), "orbit-relay", { taskLimit: 2 });
+    expect(detail.tasks.map((task) => task.id)).toEqual(["OR-12", "OR-14"]);
+    expect(detail.openTasks).toBe(3);
   });
 
   it("sends no absolute file path to the browser", async () => {

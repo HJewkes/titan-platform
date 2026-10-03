@@ -50,7 +50,10 @@ export const initiativeResult = z.object({
   fetchedAt: z.string(),
   initiative: initiativeHead,
   brief: z.object({ body: z.string(), truncated: z.boolean() }),
+  /** The highest-priority open tasks, capped so one large initiative cannot flood the page. */
   tasks: z.array(taskRow),
+  /** Every open task, including the ones past the cap. */
+  openTasks: z.number(),
   sessions: z.array(z.object({ filename: z.string(), started: z.string(), ended: z.string(), track: z.string(), title: z.string() })),
   loops: z.array(
     z.object({ ref: z.string(), kind: z.enum(["task", "pr", "prose"]), text: z.string(), targetRef: z.string().optional(), openedAt: z.string(), sessionFile: z.string() }),
@@ -70,11 +73,19 @@ type PortfolioRow = z.infer<typeof portfolioRow>;
 export interface WorkOptions {
   /** Set by the export: a page that leaves this machine carries no personal initiative. */
   excludePersonal?: boolean;
+  /** Open tasks sent for one initiative. Defaults to 200. */
+  taskLimit?: number;
 }
 
 const SESSION_LIMIT = 20;
+const TASK_LIMIT = 200;
 
-function headOf(item: WireInitiative, inventory: WireInventoryInitiative | undefined): InitiativeHead {
+/** Fails closed twice: when active-work could not say which initiatives are human-only, and when the inventory does not name this one. */
+function isPersonal(known: boolean, inventory: WireInventoryInitiative | undefined): boolean {
+  return !known || (inventory?.human_only ?? true);
+}
+
+function headOf(item: WireInitiative, personal: boolean): InitiativeHead {
   return {
     slug: item.slug,
     title: item.title,
@@ -82,17 +93,16 @@ function headOf(item: WireInitiative, inventory: WireInventoryInitiative | undef
     ...(item.rank !== undefined ? { rank: item.rank } : {}),
     ...(item.ship_target !== undefined ? { shipTarget: item.ship_target } : {}),
     updated: item.updated,
-    // Fails closed: an initiative the inventory does not name is treated as personal.
-    personal: inventory?.human_only ?? true,
+    personal,
   };
 }
 
-function rowOf(item: WireInitiative, tasks: readonly WireTask[], inventory: WireInventoryInitiative | undefined): PortfolioRow {
+function rowOf(item: WireInitiative, tasks: readonly WireTask[], inventory: WireInventoryInitiative | undefined, known: boolean): PortfolioRow {
   const count = (level: (typeof SEVERITIES)[number]): number => tasks.filter((task) => task.severity === level).length;
   const top = tasks[0];
   const classes = inventory?.classes;
   return {
-    ...headOf(item, inventory),
+    ...headOf(item, isPersonal(known, inventory)),
     openTasks: tasks.length,
     severityCounts: { critical: count("critical"), high: count("high"), medium: count("medium"), low: count("low") },
     ...(top ? { topTask: { id: top.id, title: top.title } } : {}),
@@ -113,7 +123,7 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
   const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));
   const rows = list.sections
     .flatMap((section) => section.items)
-    .map((item) => rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug)));
+    .map((item) => rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug), inventory.human_only_known));
   const kept = options.excludePersonal ? rows.filter((row) => !row.personal) : rows;
   const keptSlugs = new Set(kept.map((row) => row.slug));
   return {
@@ -129,7 +139,7 @@ async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiat
   const item = list.sections.flatMap((section) => section.items).find((entry) => entry.slug === slug);
   if (!item) throw failure(`No initiative named "${slug}"`, EXIT.NOINPUT);
   const counted = inventory.initiatives.find((entry) => entry.slug === slug);
-  return { initiative: headOf(item, counted), nestedSources: counted?.classes.nested_sources.files ?? 0 };
+  return { initiative: headOf(item, isPersonal(inventory.human_only_known, counted)), nestedSources: counted?.classes.nested_sources.files ?? 0 };
 }
 
 /** The body under the YAML frontmatter; the header already shows what the frontmatter holds. */
@@ -176,7 +186,9 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     fetchedAt: new Date().toISOString(),
     initiative,
     brief: { body: briefBody(brief.content), truncated: brief.truncated },
-    tasks: tasks.tasks,
+    // active-work answers in priority order, so the cap keeps the most urgent rows.
+    tasks: tasks.tasks.slice(0, options.taskLimit ?? TASK_LIMIT),
+    openTasks: tasks.tasks.length,
     sessions: sessionRows(sessions.sessions),
     loops: loopRows(loops.open),
     notes: notes.notes,

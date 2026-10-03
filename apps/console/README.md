@@ -61,7 +61,7 @@ directory, under the name `active-work`.
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
 | `POST /rpc/work.portfolio` | Every initiative with its state, open-task rollup, note, source and session counts, newest activity and `personal` flag |
-| `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, open tasks, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -84,7 +84,9 @@ active-work, and no absolute file path is sent to it.
 
 **Personal initiatives.** active-work's `inventory` marks an initiative `human_only`, and
 marks every initiative when it cannot read which ones are. The console shows these with a
-`personal` badge. An initiative the inventory does not name is also treated as personal. The
+`personal` badge. The console does not rely on that marking alone: when `human_only_known`
+is false it treats every initiative as personal, and it does the same for an initiative the
+inventory does not name. The
 export builds its registry with `excludePersonal`, so `dist/console.html` holds no personal
 initiative, and none at all when active-work could not say.
 

@@ -87,6 +87,15 @@ describe("an initiative's detail", () => {
     expect(screen.getByText("Tasks (3)")).toBeTruthy();
   });
 
+  it("says how many open tasks are shown when the list is capped", async () => {
+    const capped = await recorded();
+    capped.calls[snapshotKey("work.initiative", { slug: "orbit-relay" })] = successEnvelope(await readInitiative(fixtureActiveWork(), "orbit-relay", { taskLimit: 2 }));
+    renderConsole("#/initiatives/orbit-relay", capped);
+    expect(await screen.findByText("showing first 2 of 3 open")).toBeTruthy();
+    expect(screen.getByText("Tasks (3)")).toBeTruthy();
+    expect(screen.queryByText("Document the routing table format")).toBeNull();
+  });
+
   it("lists its sessions, notes and sources under their tabs", async () => {
     renderConsole("#/initiatives/orbit-relay", await recorded());
     fireEvent.click(await screen.findByText("Sessions (2)"));

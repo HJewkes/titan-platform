@@ -91,8 +91,8 @@ function Panel({ children }: { children: ReactNode }): ReactNode {
 /** The panel sits outside `Tabs`: in a card of automatic height, react-ui's `TabPanels` gets half the room its content needs. */
 function Records({ detail, now }: { detail: Detail; now: number }): ReactNode {
   const [tab, setTab] = useState(0);
-  const { tasks, sessions, notes, sources } = detail;
-  const labels = [`Tasks (${tasks.length})`, `Sessions (${sessions.length})`, `Notes (${notes.length})`, `Sources (${sources.length})`];
+  const { openTasks, sessions, notes, sources } = detail;
+  const labels = [`Tasks (${openTasks})`, `Sessions (${sessions.length})`, `Notes (${notes.length})`, `Sources (${sources.length})`];
   return (
     <VStack gap={4}>
       <Tabs index={tab} onChange={setTab}>
@@ -109,7 +109,10 @@ function Records({ detail, now }: { detail: Detail; now: number }): ReactNode {
 
 function RecordsPanel({ tab, detail, now }: { tab: number; detail: Detail; now: number }): ReactNode {
   const { tasks, sessions, notes, sources } = detail;
-  if (tab === 0) return <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={`${tasks.length} open`} />;
+  if (tab === 0) {
+    const label = tasks.length < detail.openTasks ? `showing first ${tasks.length} of ${detail.openTasks} open` : `${tasks.length} open`;
+    return <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={label} />;
+  }
   if (tab === 1) {
     const summaries = sessions.map((session) => ({ ...session, id: session.filename, body: "" }));
     return <SessionList sessions={summaries} now={now} label={`${sessions.length} most recent`} />;
