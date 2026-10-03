@@ -19,7 +19,7 @@ let handle: DaemonHandle | undefined;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-daemon-"));
-  activeWork = await startFakeDaemon({ ok: true, version: "9.9.9" }, fixtureAnswer);
+  activeWork = await startFakeDaemon({ ok: true, version: "9.9.9", index: {} }, fixtureAnswer);
   config = {
     port: 0,
     stateDir: path.join(dir, "state"),
