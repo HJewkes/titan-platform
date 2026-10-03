@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { contentHash, resumePoint } from "@titan-design/locator";
 import { TranscriptParseError, extractTranscript, type DiscoveredTranscript } from "@titan-design/session-read";
 import { applyDelta } from "./apply.js";
+import { expandHome } from "./expand-home.js";
 import { advanceFacet, backfillFacets } from "./facet.js";
 import { allSessionIds, type SessionGraph } from "./graph.js";
 import { enrichPrs, type PrEnrichment, type PrResolver } from "./outcomes.js";
@@ -176,11 +176,6 @@ async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredT
     marked += 1;
   }
   return marked;
-}
-
-function expandHome(file: string, homeDir: string): string {
-  if (file === "~") return homeDir;
-  return file.startsWith("~/") ? path.join(homeDir, file.slice(2)) : file;
 }
 
 async function exists(absolutePath: string): Promise<boolean> {
