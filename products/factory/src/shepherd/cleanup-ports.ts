@@ -2,6 +2,7 @@ import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
 import type { FixTaskFields, FixTasks } from "./main-red.js";
+import { createRosterReader, mutating, type RosterReader } from "./roster.js";
 
 export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
 export const DEFAULT_ACTIVE_WORK_PORT = 7400;
@@ -11,11 +12,16 @@ export interface AgentChatCalls {
   retire: typeof retire;
 }
 
-/** Roster and retire over the `agent-chat` CLI; the retire passes no options, so it is never forced. */
-export function agentChatCleanupAgents(agentChatBin: string, calls: AgentChatCalls = { listAgents, retire }, timeoutMs = DEFAULT_AGENT_CHAT_TIMEOUT_MS): CleanupAgents {
+/** Roster and retire over the `agent-chat` CLI; the retire passes no options, so it is never forced, and it invalidates `roster` so the settle check reads fresh. */
+export function agentChatCleanupAgents(
+  agentChatBin: string,
+  calls: AgentChatCalls = { listAgents, retire },
+  timeoutMs = DEFAULT_AGENT_CHAT_TIMEOUT_MS,
+  roster: RosterReader = createRosterReader(async () => calls.listAgents(agentChatBin, timeoutMs)),
+): CleanupAgents {
   return {
-    roster: async () => calls.listAgents(agentChatBin, timeoutMs).map(({ name, presence, status }) => ({ name, presence, status })),
-    retire: async (name) => void calls.retire(agentChatBin, name, timeoutMs),
+    roster: async () => (await roster.rows()).map(({ name, presence, status }) => ({ name, presence, status })),
+    retire: (name) => mutating(roster, async () => void calls.retire(agentChatBin, name, timeoutMs)),
   };
 }
 
