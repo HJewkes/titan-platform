@@ -159,6 +159,24 @@ describe("time handling", () => {
     expect(timeline.gaps).toHaveLength(1);
   });
 
+  it("does not call the wait on a long tool call a gap, unless the call never returned", () => {
+    const f = new TimelineFixture();
+    const returned = buildSessionTimeline([
+      f.user("2026-03-01T10:00:00Z", "run the long job"),
+      f.call("2026-03-01T10:00:05Z", "long", "Bash", { command: "make all" }),
+      f.result("2026-03-01T10:25:05Z", "long", false),
+    ]);
+    const abandoned = buildSessionTimeline([
+      f.user("2026-03-01T10:00:00Z", "run the long job"),
+      f.call("2026-03-01T10:00:05Z", "lost", "Bash", { command: "make all" }),
+      f.user("2026-03-01T10:25:05Z", "are you there"),
+    ]);
+
+    expect(returned.gaps).toEqual([]);
+    expect(returned.buckets.map((bucket) => bucket.gapBeforeMs)).toEqual([null, null]);
+    expect(abandoned.gaps).toEqual([expect.objectContaining({ durationMs: 25 * MINUTE })]);
+  });
+
   it("honours a caller's gap threshold", () => {
     const f = new TimelineFixture();
     const observations = [f.user("2026-03-01T10:00:00Z", "first"), f.user("2026-03-01T10:02:00Z", "second")];
@@ -301,6 +319,27 @@ describe("usage", () => {
     expect(timeline.totals).toMatchObject({ requests: null, tokens: { input: 300, cacheRead: 0, cacheWrite: 0, output: 40 } });
   });
 
+  it("joins a compaction's boundary and its summary into one mark at the boundary's time", () => {
+    const f = new TimelineFixture();
+    const timeline = buildSessionTimeline([f.compaction("2026-03-01T10:00:00Z"), f.compaction("2026-03-01T10:00:02Z", "earlier work")]);
+
+    expect(timeline.totals.compactions).toBe(1);
+    expect(timeline.tokens.compactions).toEqual([expect.objectContaining({ atMs: ms("2026-03-01T10:00:00Z"), byteOffset: 0, summary: "earlier work" })]);
+  });
+
+  it("keeps two compactions apart when a request ran between them or each has its own summary", () => {
+    const f = new TimelineFixture();
+    const withRequest = buildSessionTimeline([
+      f.compaction("2026-03-01T10:00:00Z"),
+      f.usage("2026-03-01T10:00:05Z", "r1", { input: 1, output: 1 }),
+      f.compaction("2026-03-01T10:30:00Z", "second"),
+    ]);
+    const summariesOnly = buildSessionTimeline([f.compaction("2026-03-01T10:00:00Z", "first"), f.compaction("2026-03-01T10:30:00Z", "second")]);
+
+    expect(withRequest.tokens.compactions.map((mark) => mark.summary)).toEqual([null, "second"]);
+    expect(summariesOnly.tokens.compactions.map((mark) => mark.summary)).toEqual(["first", "second"]);
+  });
+
   it("carries a compaction summary, capped", () => {
     const f = new TimelineFixture();
     const timeline = buildSessionTimeline([f.compaction("2026-03-01T10:00:00Z", "y".repeat(30))], { maxTextChars: 10 });
@@ -328,6 +367,22 @@ describe("conversation boundaries", () => {
 });
 
 describe("SessionTimelineAccumulator", () => {
+  it("hands out a copy that later observations and the caller's own edits cannot reach", () => {
+    const f = new TimelineFixture();
+    const accumulator = new SessionTimelineAccumulator();
+    accumulator.add(f.user("2026-03-01T10:00:00Z", "go"));
+    accumulator.add(f.call("2026-03-01T10:00:01Z", "a", "Bash", { command: "ls" }));
+
+    const early = accumulator.result();
+    early.turns.length = 0;
+    accumulator.add(f.result("2026-03-01T10:00:02Z", "a", true, "failed"));
+    const late = accumulator.result();
+
+    expect(late.turns[0]?.toolCalls[0]?.outcome).toBe("error");
+    expect(accumulator.result().turns).not.toBe(late.turns);
+    expect(early.tools.byName[0]?.errors).toBe(0);
+  });
+
   it("gives the same result each time it is asked", () => {
     const accumulator = new SessionTimelineAccumulator(options);
     for (const observation of midnightSession()) accumulator.add(observation);

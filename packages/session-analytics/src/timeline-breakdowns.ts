@@ -1,11 +1,11 @@
 import type { ToolFamily } from "@titan-design/session-read";
 import type {
-  ErrorBreakdown,
+  TimelineErrorBreakdown,
   FileBreakdown,
   FileTouch,
   TimelineAgentSpan,
   TimelineToolCall,
-  ToolBreakdown,
+  TimelineToolBreakdown,
   ToolFamilyCount,
   ToolNameCount,
 } from "./timeline-types.js";
@@ -16,7 +16,7 @@ function ascending(times: readonly (number | null)[]): number[] {
   return times.filter((time): time is number => time !== null).sort((a, b) => a - b);
 }
 
-export function toolBreakdown(calls: readonly TimelineToolCall[]): ToolBreakdown {
+export function toolBreakdown(calls: readonly TimelineToolCall[]): TimelineToolBreakdown {
   const byName = new Map<string, ToolNameCount>();
   const byFamily = new Map<ToolFamily, ToolFamilyCount>();
   for (const call of calls) {
@@ -59,7 +59,7 @@ export function fileBreakdown(calls: readonly TimelineToolCall[]): FileBreakdown
   };
 }
 
-export function errorBreakdown(calls: readonly TimelineToolCall[]): ErrorBreakdown {
+export function errorBreakdown(calls: readonly TimelineToolCall[]): TimelineErrorBreakdown {
   const items = calls
     .filter((call) => call.outcome === "error")
     .map((call) => ({

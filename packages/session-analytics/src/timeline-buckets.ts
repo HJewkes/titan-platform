@@ -1,11 +1,11 @@
-import type { MinuteBucket, TimelineGap, TimelineToolCall, TimelineTurn, TokenPoint } from "./timeline-types.js";
+import type { TimelineMinuteBucket, TimelineGap, TimelineToolCall, TimelineTurn, TimelineTokenPoint } from "./timeline-types.js";
 
 const MINUTE_MS = 60_000;
 
 export interface BucketInput {
   turns: readonly TimelineTurn[];
   calls: readonly TimelineToolCall[];
-  points: readonly TokenPoint[];
+  points: readonly TimelineTokenPoint[];
 }
 
 /** Every timed message, tool call, tool result and request, ascending. */
@@ -18,22 +18,28 @@ export function activityTimes(input: BucketInput): number[] {
   return times.filter((time): time is number => time !== null).sort((a, b) => a - b);
 }
 
-export function findGaps(sortedMs: readonly number[], gapMinMs: number): TimelineGap[] {
+/** A quiet stretch covered by a tool call that later returned is work in flight, not a gap. */
+export function findGaps(sortedMs: readonly number[], gapMinMs: number, calls: readonly TimelineToolCall[]): TimelineGap[] {
   const gaps: TimelineGap[] = [];
   for (let i = 1; i < sortedMs.length; i++) {
     const startMs = sortedMs[i - 1] as number;
     const endMs = sortedMs[i] as number;
-    if (endMs - startMs >= gapMinMs) gaps.push({ startMs, endMs, durationMs: endMs - startMs });
+    if (endMs - startMs < gapMinMs || calls.some((call) => inFlightAcross(call, startMs, endMs))) continue;
+    gaps.push({ startMs, endMs, durationMs: endMs - startMs });
   }
   return gaps;
+}
+
+function inFlightAcross(call: TimelineToolCall, startMs: number, endMs: number): boolean {
+  return call.atMs !== null && call.endMs !== null && call.atMs <= startMs && call.endMs >= endMs;
 }
 
 /**
  * Buckets by epoch minute. Every real zone offset is a whole number of minutes, so an epoch
  * minute is a clock minute in any zone and a session that crosses midnight needs no date math.
  */
-export function minuteBuckets(input: BucketInput, gaps: readonly TimelineGap[]): MinuteBucket[] {
-  const buckets = new Map<number, MinuteBucket>();
+export function minuteBuckets(input: BucketInput, gaps: readonly TimelineGap[]): TimelineMinuteBucket[] {
+  const buckets = new Map<number, TimelineMinuteBucket>();
   const at = (ms: number) => bucketAt(buckets, ms);
   for (const turn of input.turns) {
     for (const message of [turn.user, ...turn.assistant]) {
@@ -60,7 +66,7 @@ export function markTurnGaps(turns: readonly TimelineTurn[], gapMinMs: number): 
   }
 }
 
-function bucketAt(buckets: Map<number, MinuteBucket>, ms: number): MinuteBucket {
+function bucketAt(buckets: Map<number, TimelineMinuteBucket>, ms: number): TimelineMinuteBucket {
   const minuteMs = Math.floor(ms / MINUTE_MS) * MINUTE_MS;
   let bucket = buckets.get(minuteMs);
   if (!bucket) {
@@ -70,12 +76,12 @@ function bucketAt(buckets: Map<number, MinuteBucket>, ms: number): MinuteBucket 
   return bucket;
 }
 
-function countEvent(bucket: MinuteBucket, field: "messages" | "toolCalls" | null): void {
+function countEvent(bucket: TimelineMinuteBucket, field: "messages" | "toolCalls" | null): void {
   bucket.events++;
   if (field) bucket[field]++;
 }
 
-function countCall(call: TimelineToolCall, at: (ms: number) => MinuteBucket): void {
+function countCall(call: TimelineToolCall, at: (ms: number) => TimelineMinuteBucket): void {
   if (call.atMs !== null) countEvent(at(call.atMs), "toolCalls");
   if (call.endMs !== null) countEvent(at(call.endMs), null);
   const errorMs = call.endMs ?? call.atMs;

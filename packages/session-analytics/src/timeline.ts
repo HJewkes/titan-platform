@@ -17,7 +17,7 @@ export interface SessionTimelineOptions {
   prices?: readonly PriceRow[];
 }
 
-/** Storage-free fold for a streamed read: `add` each observation, then `result` once. */
+/** Storage-free fold for a streamed read: `add` each observation, then `result`, which returns a fresh copy each time. */
 export class SessionTimelineAccumulator {
   private readonly turns: TurnFold;
   private readonly tokens: TokenFold;
@@ -51,9 +51,10 @@ export class SessionTimelineAccumulator {
     attributeRequests(turns, tokens);
     markTurnGaps(turns, this.gapMinMs);
     const bucketInput = { turns, calls, points: tokens.timeline.points };
-    const gaps = findGaps(activityTimes(bucketInput), this.gapMinMs);
+    const gaps = findGaps(activityTimes(bucketInput), this.gapMinMs, calls);
     const errors = errorBreakdown(calls);
-    return {
+    // A copy, so a later `add` cannot change a result the caller already holds.
+    return structuredClone<SessionTimeline>({
       version: SESSION_TIMELINE_VERSION,
       sessionId: this.conversation?.nativeId ?? null,
       harness: this.conversation?.harness ?? null,
@@ -69,7 +70,7 @@ export class SessionTimelineAccumulator {
       files: fileBreakdown(calls),
       errors,
       agents: agentSpans(calls),
-    };
+    });
   }
 
   private claim(observation: NormalizedSessionObservation): void {

@@ -99,28 +99,30 @@ export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.j
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
 export type {
   CompactionMark,
-  ErrorBreakdown,
   FileBreakdown,
   FileTouch,
-  MinuteBucket,
   ModelRequests,
   SessionTimeline,
   TimelineAgentSpan,
   TimelineError,
+  TimelineErrorBreakdown,
   TimelineGap,
   TimelineMessage,
+  TimelineMinuteBucket,
+  TimelineTokenPoint,
   TimelineTokens,
+  TimelineToolBreakdown,
   TimelineToolCall,
   TimelineToolOutcome,
   TimelineTotals,
   TimelineTurn,
   TimelineTurnOrigin,
-  TokenPoint,
   TokenTimeline,
-  ToolBreakdown,
   ToolFamilyCount,
   ToolNameCount,
 } from "./timeline-types.js";
+/** The tool family on `TimelineToolCall`, re-exported so a consumer of the timeline needs no session-read import. */
+export type { ToolFamily } from "@titan-design/session-read";
 export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from "./timeline-types.js";
 export type { SessionTimelineOptions } from "./timeline.js";
 export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";

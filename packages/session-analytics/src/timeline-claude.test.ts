@@ -8,6 +8,9 @@ import { SessionTimelineAccumulator } from "./timeline.js";
 const SESSION = "session-decoded";
 const USAGE = { input_tokens: 10, cache_read_input_tokens: 70, cache_creation_input_tokens: 20, output_tokens: 5 };
 
+/** The opening words are the harness's fixed compaction marker; the summary after the blank line is invented. */
+const SUMMARY_LINE = "This session is being continued from a previous conversation that ran out of context.\n\nThe files were listed once.";
+
 function line(fields: Record<string, unknown>): string {
   return JSON.stringify({ sessionId: SESSION, ...fields });
 }
@@ -28,6 +31,7 @@ const LINES = [
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-1", is_error: true, content: "ls: no such directory" }] },
   }),
   line({ type: "system", uuid: "s1", subtype: "compact_boundary", timestamp: "2026-03-02T00:00:06Z" }),
+  line({ type: "user", uuid: "u3", timestamp: "2026-03-02T00:00:07Z", message: { role: "user", content: SUMMARY_LINE } }),
   assistant("a3", "2026-03-02T00:00:08Z", [{ type: "tool_use", id: "call-2", name: "Read", input: { file_path: "/repo/notes.md" } }], { isSidechain: true }),
 ];
 
@@ -49,15 +53,30 @@ describe("a timeline built from the Claude transcript decoder", () => {
     const timeline = accumulator.result();
 
     expect(timeline).toMatchObject({ sessionId: SESSION, harness: "claude-code", durationMs: 18_000 });
-    expect(timeline.turns).toHaveLength(1);
-    expect(timeline.turns[0]).toMatchObject({ origin: "prompt", errorCount: 1 });
-    expect(timeline.turns[0]?.toolCalls.map((call) => [call.id, call.outcome, call.sidechain])).toEqual([
-      ["call-1", "error", false],
-      ["call-2", "pending", true],
+    expect(timeline.turns.map((turn) => [turn.origin, turn.errorCount])).toEqual([
+      ["prompt", 1],
+      ["compaction", 0],
+    ]);
+    expect(timeline.turns.flatMap((turn) => turn.toolCalls).map((call) => [call.id, call.turnIndex, call.outcome, call.sidechain])).toEqual([
+      ["call-1", 0, "error", false],
+      ["call-2", 1, "pending", true],
     ]);
     expect(timeline.errors.items[0]?.message).toBe("ls: no such directory");
-    expect(timeline.buckets.map((bucket) => bucket.events)).toEqual([2, 3]);
-    expect(timeline.tokens.compactions).toHaveLength(1);
+    expect(timeline.buckets.map((bucket) => bucket.events)).toEqual([2, 4]);
+  });
+
+  it("counts a compaction once though the transcript writes a boundary line and a summary line", async () => {
+    const file = path.join(dir, `${SESSION}.jsonl`);
+    writeFileSync(file, `${LINES.join("\n")}\n`, "utf8");
+    const accumulator = new SessionTimelineAccumulator();
+
+    for await (const observation of readSessionObservations(claudeSourceFromPath(file, "fixture-host"))) accumulator.add(observation);
+    const timeline = accumulator.result();
+
+    expect(timeline.totals.compactions).toBe(1);
+    expect(timeline.tokens.compactions).toEqual([
+      expect.objectContaining({ atMs: Date.parse("2026-03-02T00:00:06Z"), turnIndex: 0, summary: "The files were listed once.", summaryTruncated: false }),
+    ]);
   });
 
   it("counts the repeated usage of one response once and splits its prompt tokens", async () => {

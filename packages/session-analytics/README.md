@@ -98,9 +98,9 @@ countAtOrBefore(timeline.tools.atMs, scrubbedMs); // tool calls made by that tim
 | Field | What it holds |
 |---|---|
 | `turns` | `TimelineTurn[]`. A user message opens a turn. Each has `user`, `assistant` messages, `toolCalls`, `errorCount`, `tokens`, `costUsd` and `gapBeforeMs`. Sort a turn's messages and tool calls by `seq` to interleave them. |
-| `buckets` | `MinuteBucket[]`, one per clock minute that held activity, with event, message, tool call and error counts, output tokens and cost. |
+| `buckets` | `TimelineMinuteBucket[]`, one per clock minute that held activity, with event, message, tool call and error counts, output tokens and cost. |
 | `gaps` | `TimelineGap[]`: each idle stretch of `TIMELINE_GAP_MIN_MS` (10 minutes) or more. The bucket and the turn after a gap carry `gapBeforeMs`. |
-| `tokens` | `TokenTimeline`: one `TokenPoint` per API request (prompt size, output, cost, running totals, `afterCompaction`), the `CompactionMark`s and the models used. |
+| `tokens` | `TokenTimeline`: one `TimelineTokenPoint` per API request (prompt size, output, cost, running totals, `afterCompaction`), the `CompactionMark`s and the models used. |
 | `tools`, `files`, `errors`, `agents` | Calls by name and by session-read tool family, first touch of each file by access, failed calls, and subagent dispatch spans. Each carries ascending `atMs` arrays for `countAtOrBefore`. |
 | `totals` | Counts, the four disjoint token classes and the cost. |
 

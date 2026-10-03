@@ -75,7 +75,7 @@ export interface TimelineTurn {
 }
 
 /** One UTC clock minute that held activity. Minutes with none are omitted. */
-export interface MinuteBucket {
+export interface TimelineMinuteBucket {
   /** Start of the minute. */
   minuteMs: number;
   /** Messages, tool calls and tool results. */
@@ -89,6 +89,7 @@ export interface MinuteBucket {
   gapBeforeMs: number | null;
 }
 
+/** An idle stretch. Time spent waiting on a tool call that later returned is not idle, so it is never a gap. */
 export interface TimelineGap {
   startMs: number;
   endMs: number;
@@ -96,7 +97,7 @@ export interface TimelineGap {
 }
 
 /** One API request. Points are in source order and cumulative fields run over that order. */
-export interface TokenPoint {
+export interface TimelineTokenPoint {
   atMs: number;
   turnIndex: number | null;
   model: string | null;
@@ -126,9 +127,9 @@ export interface ModelRequests {
 }
 
 export interface TokenTimeline {
-  /** `delta` has per-request points. `snapshot` sources report running totals only, so `points` is empty. */
+  /** `delta` has per-request points. A `snapshot` source reports running totals only: `points` is empty and nothing is priced, so every `costUsd` is 0. */
   basis: "delta" | "snapshot" | "unreported";
-  points: TokenPoint[];
+  points: TimelineTokenPoint[];
   compactions: CompactionMark[];
   /** Most requests first. */
   models: ModelRequests[];
@@ -150,7 +151,7 @@ export interface ToolFamilyCount {
   atMs: number[];
 }
 
-export interface ToolBreakdown {
+export interface TimelineToolBreakdown {
   /** Most calls first. */
   byName: ToolNameCount[];
   byFamily: ToolFamilyCount[];
@@ -183,7 +184,7 @@ export interface TimelineError {
   sidechain: boolean;
 }
 
-export interface ErrorBreakdown {
+export interface TimelineErrorBreakdown {
   /** Failed calls over all calls; 0 with no calls. */
   rate: number;
   items: TimelineError[];
@@ -210,6 +211,7 @@ export interface TimelineTotals {
   requests: number | null;
   unpricedRequests: number;
   tokens: TimelineTokens;
+  /** 0 on a `snapshot` basis, which has no per-request usage to price. */
   costUsd: number;
 }
 
@@ -226,11 +228,11 @@ export interface SessionTimeline {
   durationMs: number;
   totals: TimelineTotals;
   turns: TimelineTurn[];
-  buckets: MinuteBucket[];
+  buckets: TimelineMinuteBucket[];
   gaps: TimelineGap[];
   tokens: TokenTimeline;
-  tools: ToolBreakdown;
+  tools: TimelineToolBreakdown;
   files: FileBreakdown;
-  errors: ErrorBreakdown;
+  errors: TimelineErrorBreakdown;
   agents: TimelineAgentSpan[];
 }

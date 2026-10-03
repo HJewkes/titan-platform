@@ -3,7 +3,7 @@ import { foldUsage } from "@titan-design/agent-protocol";
 import type { NormalizedObservationOf } from "@titan-design/session-read";
 import type { PriceRow } from "./prices.js";
 import { priceRequest } from "./price-request.js";
-import type { CompactionMark, ModelRequests, TimelineTokens, TokenPoint, TokenTimeline } from "./timeline-types.js";
+import type { CompactionMark, ModelRequests, TimelineTokens, TimelineTokenPoint, TokenTimeline } from "./timeline-types.js";
 import { capText } from "./timeline-turns.js";
 
 type Snapshot = Extract<UsageMeasurement, { kind: "snapshot" }>;
@@ -74,9 +74,19 @@ export class TokenFold {
     });
   }
 
+  /**
+   * Claude Code writes one compaction as a boundary line and then a summary line, and the
+   * decoder reports both. The second joins the first: the mark keeps the boundary's time and gains the summary.
+   */
   compaction(observation: NormalizedObservationOf<"compaction">, atMs: number | null, turnIndex: number | null): void {
     const summary = observation.nativeExtensions?.find((entry) => entry.name === "compactionSummary")?.value;
     const capped = typeof summary === "string" ? capText(summary, this.maxTextChars) : null;
+    const open = this.compactedSinceRequest ? this.compactions.at(-1) : undefined;
+    if (open && open.summary === null) {
+      open.summary = capped?.text ?? null;
+      open.summaryTruncated = capped?.truncated ?? false;
+      return;
+    }
     this.compactions.push({
       atMs,
       turnIndex,
@@ -119,8 +129,8 @@ function isoOf(atMs: number | null): string {
   return atMs === null ? "" : new Date(atMs).toISOString();
 }
 
-function cumulativePoints(requests: readonly TokenRequest[]): TokenPoint[] {
-  const points: TokenPoint[] = [];
+function cumulativePoints(requests: readonly TokenRequest[]): TimelineTokenPoint[] {
+  const points: TimelineTokenPoint[] = [];
   let cumulativeOutputTokens = 0;
   let cumulativeCostUsd = 0;
   for (const request of requests) {
