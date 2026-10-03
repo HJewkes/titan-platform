@@ -28,6 +28,12 @@ export type CondenseDelta = z.output<typeof CondenseDeltaSchema>;
 export type CiteDelta = z.output<typeof CiteDeltaSchema>;
 export type ProposeDelta = z.output<typeof ProposeDeltaSchema>;
 
+/** An accepted delta with its position in the reflector's output. */
+export interface IndexedDelta {
+  index: number;
+  delta: CondenseDelta;
+}
+
 export interface RejectedCondenseDelta {
   domain: string;
   /** Position in the reflector's output, or -1 when the output as a whole was unusable. */
@@ -113,17 +119,17 @@ function zodReason(error: z.ZodError): string {
 }
 
 /** Validate the reflector's output shape with zod, then check each delta against the batch it was shown. */
-export function parseCondenseDeltas(raw: unknown, batch: DomainBatch, rejected: RejectedCondenseDelta[]): CondenseDelta[] {
+export function parseCondenseDeltas(raw: unknown, batch: DomainBatch, rejected: RejectedCondenseDelta[]): IndexedDelta[] {
   if (!Array.isArray(raw)) {
     rejected.push({ domain: batch.domain, index: -1, reason: "reflector did not return an array" });
     return [];
   }
-  const accepted: CondenseDelta[] = [];
+  const accepted: IndexedDelta[] = [];
   raw.forEach((item, index) => {
     const parsed = CondenseDeltaSchema.safeParse(item);
     const reason = parsed.success ? ground(parsed.data, batch) : zodReason(parsed.error);
     if (reason !== null) rejected.push({ domain: batch.domain, index, reason });
-    else if (parsed.success) accepted.push(parsed.data);
+    else if (parsed.success) accepted.push({ index, delta: parsed.data });
   });
   return accepted;
 }

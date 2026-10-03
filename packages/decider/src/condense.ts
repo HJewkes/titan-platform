@@ -1,11 +1,12 @@
 import { curate, type CurationReport, type MaturityChange, type PlaybookStore } from "@titan-design/memory";
 import { runMigrations, WatermarkTable, watermarkTableDdl, type Db, type Migration } from "@titan-design/store-sqlite";
-import { domainBatch, isEvidence, parseCondenseDeltas, citationsFor, type CondenseDelta, type DomainBatch, type ProposeDelta, type RejectedCondenseDelta } from "./condense-deltas.js";
+import { citationsFor, domainBatch, isEvidence, parseCondenseDeltas, type CondenseDelta, type DomainBatch, type RejectedCondenseDelta } from "./condense-deltas.js";
+import { resolveProposals } from "./condense-proposals.js";
 import { writePrincipleDocs, type WrittenDoc } from "./docs.js";
 import { applyFeedback, feedbackForRow, type PrincipleFeedback } from "./feedback.js";
 import type { LedgerRow } from "./ledger.js";
 import type { LedgerEntry } from "./store.js";
-import { assertDomain, ledgerRef, principleBullet, principlesByDomain, type Principle } from "./principles.js";
+import { assertDomain, principlesByDomain, type Principle } from "./principles.js";
 import { changesByDomain, type RenderOptions } from "./render.js";
 
 const WATERMARK_TABLE = "condense_watermark";
@@ -109,26 +110,10 @@ function recordFeedback(playbook: PlaybookStore, evidence: readonly LedgerRow[],
   return applyFeedback(playbook, feedback).recorded;
 }
 
-/** Reinforcements are left to the caller, which knows the ledger key behind them. */
 function absorb(run: CondenseRun, report: CurationReport): void {
   run.added.push(...report.added, ...report.inverted.map((i) => i.to));
   run.retired.push(...report.deprecated, ...report.inverted.map((i) => i.from));
   run.maturityChanges.push(...report.maturityChanges);
-}
-
-/** Curate one proposal so its provenance is its own cited rows; a near-duplicate reinforces instead. */
-function addPrinciple(playbook: PlaybookStore, domain: string, delta: ProposeDelta, now: Date, run: CondenseRun): void {
-  const [first] = delta.citedKeys;
-  const add = { type: "add" as const, content: delta.rule, category: domain, isNegative: delta.isNegative ?? false, reasoning: delta.reasoning };
-  const report = curate(playbook, [add], { provenance: { sessionRef: ledgerRef(first ?? "") }, now: () => now });
-  const { sourceSessions } = principleBullet({ rule: delta.rule, domain, citedKeys: delta.citedKeys });
-  for (const id of report.added) playbook.update(id, { sourceSessions });
-  absorb(run, report);
-  run.feedback.push(...report.reinforced.map((principleId) => reinforcement(principleId, first ?? "", now)));
-}
-
-function reinforcement(principleId: string, key: string, now: Date): PrincipleFeedback {
-  return { principleId, type: "helpful", sessionRef: ledgerRef(key), at: now.toISOString(), reason: "restated by a new principle" };
 }
 
 async function reflect(reflector: Reflector, batch: DomainBatch, evidence: readonly LedgerRow[], principles: readonly Principle[], rejected: RejectedCondenseDelta[]) {
@@ -142,8 +127,9 @@ async function condenseDomain(store: CondenseStore, domain: string, entries: rea
   const batch = domainBatch(domain, evidence, principles);
   const rejected: RejectedCondenseDelta[] = [];
   const deltas = await reflect(reflector, batch, evidence, principles, rejected);
-  run.feedback.push(...recordFeedback(store.playbook, evidence, deltas));
-  for (const delta of deltas) if (delta.type === "propose") addPrinciple(store.playbook, domain, delta, now, run);
+  const proposals = resolveProposals(store.playbook, domain, deltas, rejected);
+  run.added.push(...proposals.added);
+  run.feedback.push(...recordFeedback(store.playbook, evidence, [...deltas.map((d) => d.delta), ...proposals.cites]));
   advance(store.watermarks, domain, entries);
   return { domain, rows: entries.length, evidence: evidence.length, flagged: [...batch.flagged], rejected };
 }

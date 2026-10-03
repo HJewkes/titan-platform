@@ -115,6 +115,45 @@ describe("condense", () => {
     ]);
   });
 
+  it("turns repeated restatements of a live principle into one helpful event per cited row, at its answer time", async () => {
+    const principle = seed("Prefer a queue over cron for refresh jobs");
+    const [a, b] = [row(), row()];
+    const restate = { type: "propose", rule: "Prefer a queue over cron for refresh jobs", citedKeys: [a.key] };
+    const reworded = { type: "propose", rule: "prefer a queue over cron for the refresh jobs", citedKeys: [a.key, b.key] };
+    const reflector = scripted([{ type: "cite", rowKey: a.key, principleId: principle.id, verdict: "agrees" }, restate, restate, restate, reworded]);
+
+    const result = await condense(store, ingest([a, b]), reflector, { now: NOW });
+
+    expect(result.added).toEqual([]);
+    expect(store.playbook.feedbackFor(principle.id).map((e) => [e.sessionRef, e.type, e.at])).toEqual([
+      [`ledger:${a.key}`, "helpful", a.answered_at],
+      [`ledger:${b.key}`, "helpful", b.answered_at],
+    ]);
+  });
+
+  it("refuses a proposal that restates a principle in another domain and leaves that principle untouched", async () => {
+    const elsewhere = seed("Retire idle agents after a day", "agent_ops");
+    const owner = row();
+    const reflector = scripted([{ type: "propose", rule: "Retire idle agents after a day", citedKeys: [owner.key] }]);
+
+    const result = await condense(store, ingest([owner]), reflector, { now: NOW });
+
+    expect(store.playbook.feedbackFor(elsewhere.id)).toEqual([]);
+    expect(store.playbook.list()).toHaveLength(1);
+    expect(result.domains[0]?.rejected).toEqual([{ domain: "tech_design", index: 0, reason: `rule restates principle ${elsewhere.id} in domain agent_ops` }]);
+  });
+
+  it("keeps a near-match that flips polarity as a separate principle rather than agreement", async () => {
+    const principle = seed("Squash merge every feature branch into main");
+    const owner = row();
+    const reflector = scripted([{ type: "propose", rule: "Never squash merge every feature branch into main", citedKeys: [owner.key] }]);
+
+    const result = await condense(store, ingest([owner]), reflector, { now: NOW });
+
+    expect(result.added).toHaveLength(1);
+    expect(store.playbook.feedbackFor(principle.id)).toEqual([]);
+  });
+
   it("never counts a decider answer as evidence, even when the reflector cites it", async () => {
     const principle = seed("Prefer a queue over cron");
     const decided = row({ v: 2, answered_by: "decider" });
