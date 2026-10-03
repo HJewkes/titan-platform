@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
-import { stepPhase, watchRow } from "./view.js";
+import { stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -94,11 +94,57 @@ describe("shepherd view stalls", () => {
   }
 
   it("reads a run as stalled after three review dispatches in a row that started no reviewer, and not after two", () => {
-    const two = watchRow({ registration, run: reviewedRun(["started", "not-started", "not-started"]) });
-    const three = watchRow({ registration, run: reviewedRun(["not-started", "started", "not-started", "not-started", "not-started"]) });
+    const now = new Date("2026-01-01T00:01:00.000Z");
+    const two = watchRow({ registration, run: reviewedRun(["started", "not-started", "not-started"]), now });
+    const three = watchRow({ registration, run: reviewedRun(["not-started", "started", "not-started", "not-started", "not-started"]), now });
 
     expect(two.stalled).toBeNull();
     expect(three.stalled).toEqual({ reason: "3 review dispatches in a row started no reviewer" });
     expect(three.phase).toBe("review");
+  });
+
+  describe("time in phase", () => {
+    const minutes = (n: number) => n * 60_000;
+    const started = Date.parse("2026-01-01T00:00:00.000Z");
+
+    /** A run that began long before the current phase: sh-await-pr done at 2026-03-01, now parked in ci-wait. */
+    function inCiSince(): WorkflowRun {
+      const run = pausedAt("ci-wait");
+      run.stepResults["sh-await-pr"] = { stepId: "sh-await-pr", iteration: 0, agentId: null, signal: null, completedAt: "2026-03-01T00:00:00.000Z", data: {} };
+      return run;
+    }
+    const phaseStart = Date.parse("2026-03-01T00:00:00.000Z");
+
+    it("reads a ci run as stalled at 61 minutes in the phase and not at 59, however old the run is", () => {
+      const at59 = watchRow({ registration, run: inCiSince(), now: new Date(phaseStart + minutes(59)) });
+      const at61 = watchRow({ registration, run: inCiSince(), now: new Date(phaseStart + minutes(61)) });
+
+      expect(at59.stalled).toBeNull();
+      expect(at61.stalled).not.toBeNull();
+    });
+
+    it("does not stall a run parked on approve-merge for three days, and names the owner", () => {
+      const run = pausedAt("approve-merge");
+      const gate = { id: "run-1/approve-merge", createdAt: "2026-01-01T00:00:00.000Z" } as never;
+
+      const row = watchRow({ registration, run, pending: { gate, stepId: "approve-merge" }, now: new Date(started + minutes(3 * 24 * 60)) });
+
+      expect(row.stalled).toBeNull();
+      expect(row.nextAction).toBe("owner: resolve approve-merge");
+    });
+
+    it("keeps a malformed sh-wake step as a plain step entry instead of throwing", () => {
+      const run = pausedAt("sh-wake:abc1234");
+      run.stepResults["sh-wake:abc1234#0"] = { stepId: "sh-wake:abc1234", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: { request: 42, outcome: [] } };
+
+      const entries = timelineEntries(run, []);
+
+      expect(entries).toEqual([expect.objectContaining({ kind: "step", stepId: "sh-wake:abc1234" })]);
+    });
+
+    it("maps an unknown step prefix to ci instead of throwing", () => {
+      expect(() => stepPhase("sh-brand-new:abc1234")).not.toThrow();
+      expect(stepPhase("sh-brand-new:abc1234")).toBe("ci");
+    });
   });
 });
