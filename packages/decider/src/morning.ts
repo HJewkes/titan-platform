@@ -21,6 +21,8 @@ const NUMBERED_ITEM = /^(\d+)\.\s+(.*)$/;
 const ANSWER_LINE = /^([A-Za-z]{1,3}\s?)?(\d+(?:\s*[/,]\s*\d+)*)(?:\s*:\s*|\s+)(.+)$/;
 const RECOMMENDATION = /\brecommend(?:ed)?\b[^.]*/i;
 const AFFIRMATIVE = /^(?:yes|accept(?:ed)?|keep|go|approve[d]?|ok|agreed)\b(?![^,.;:]*\bnot\b)/i;
+const HEDGE = /\b(?:but|however|instead|hold|wait|except|unless)\b/i;
+const MORE_ITEMS = /^(?:and|&|\+|,|\/)\s*\d/i;
 
 export interface MorningItem {
   /** The ids the list gives the item, normalized: `hs-25` is `hs25`, `A5` is `a5`, `30.` is `30`. */
@@ -35,6 +37,8 @@ export interface MorningAnswer {
   text: string;
   /** Where the line starts in the answers file. */
   byteOffset: number;
+  /** The text goes on to name more items ("1 and 2: yes"), so one answer cannot be assigned to one. */
+  namesMore: boolean;
 }
 
 export interface ParsedAnswerLines {
@@ -48,6 +52,8 @@ export interface MorningCounts {
   unmatched: number;
   /** Bare answer numbers that fit more than one item. */
   ambiguous: number;
+  /** Answers whose id an earlier line in the same file already answered; the first stands. */
+  duplicate: number;
 }
 
 export interface MorningJoin {
@@ -117,29 +123,26 @@ export function parseOwnerAnswers(text: string): ParsedAnswerLines {
     if (line.trim() === "" || line.startsWith("#")) continue;
     const match = ANSWER_LINE.exec(line);
     if (!match) unparseable += 1;
-    else answers.push({ ids: answerIds(match[1], match[2] ?? ""), text: (match[3] ?? "").trim(), byteOffset: start });
+    else {
+      const text = (match[3] ?? "").trim();
+      answers.push({ ids: answerIds(match[1], match[2] ?? ""), text, byteOffset: start, namesMore: MORE_ITEMS.test(text) });
+    }
   }
   return { answers, unparseable };
 }
 
 type Lookup = { item: MorningItem } | { ambiguous: true } | null;
 
-function numberOf(id: string): string {
-  return /\d+$/.exec(id)?.[0] ?? id;
-}
-
 function lookup(items: readonly MorningItem[], id: string): Lookup {
-  const hasPrefix = /^[a-z]/.test(id);
-  const fits = items.filter((item) =>
-    item.ids.some((own) => (hasPrefix ? own === id : numberOf(own) === id)),
-  );
+  const fits = items.filter((item) => item.ids.includes(id));
   if (fits.length === 0) return null;
   return fits.length === 1 && fits[0] ? { item: fits[0] } : { ambiguous: true };
 }
 
-/** An affirmative lead word takes the recommendation; anything else keeps the owner's words. */
+/** An unhedged affirmative lead word takes the recommendation; anything else keeps the owner's words. */
 function scoredAnswer(item: MorningItem, text: string): string {
-  return item.recommended !== null && AFFIRMATIVE.test(text) ? item.recommended : text;
+  const accepts = AFFIRMATIVE.test(text) && !HEDGE.test(text);
+  return item.recommended !== null && accepts ? item.recommended : text;
 }
 
 function rowFor(item: MorningItem, id: string, answer: MorningAnswer, date: string, answersPath: string): LedgerRowWire {
@@ -162,18 +165,27 @@ function rowFor(item: MorningItem, id: string, answer: MorningAnswer, date: stri
   };
 }
 
-/** Pure join of one day's list and answers; counts say what was left out and why. */
+/** Pure join of one day's list and answers; counts say what was left out and why. A bare number joins only a bare-numbered item. */
 export function joinMorning(date: string, listText: string, answersText: string, answersPath: string): MorningJoin {
   const items = parseMorningList(listText);
   const { answers, unparseable } = parseOwnerAnswers(answersText);
   const rows: LedgerRowWire[] = [];
-  const counts: MorningCounts = { unparseable, unmatched: 0, ambiguous: 0 };
+  const counts: MorningCounts = { unparseable, unmatched: 0, ambiguous: 0, duplicate: 0 };
+  const answered = new Set<string>();
   for (const answer of answers) {
+    if (answer.namesMore) {
+      counts.ambiguous += 1;
+      continue;
+    }
     for (const id of answer.ids) {
       const found = lookup(items, id);
       if (found === null) counts.unmatched += 1;
       else if ("ambiguous" in found) counts.ambiguous += 1;
-      else rows.push(rowFor(found.item, id, answer, date, answersPath));
+      else if (answered.has(id)) counts.duplicate += 1;
+      else {
+        answered.add(id);
+        rows.push(rowFor(found.item, id, answer, date, answersPath));
+      }
     }
   }
   return { rows, counts };
