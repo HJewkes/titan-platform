@@ -1,6 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
+import type { RosterReader } from "./roster.js";
 import type { ShepherdStoreRef } from "./store.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
@@ -46,6 +47,8 @@ export interface ShepherdDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   agentChatBin: string;
+  /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
+  roster?: RosterReader;
   /** Absent means `sh-cleanup` deletes the head ref only, and leaves the task and the agents alone. */
   cleanup?: CleanupPorts;
 }

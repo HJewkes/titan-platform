@@ -17,6 +17,7 @@ import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
@@ -35,6 +36,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   train?: MergeTrainRef;
   holdPollMs?: number;
   agentChatBin?: string;
+  /** The one roster reader every port over `agentChatBin` shares; absent means each wake reads through its own. */
+  roster?: RosterReader;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
   seats?: () => SeatBook;
   /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
@@ -75,7 +78,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", cleanup: deps.cleanup };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", roster: deps.roster, cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
@@ -109,38 +112,44 @@ function checkoutPath(book: SeatBook, repo: string): string | undefined {
 }
 
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
-function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook): FactoryRouteDeps["review"] {
+function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
-  const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo) });
+  const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster });
   return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
-function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv): CleanupPorts | undefined {
+function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined): CleanupPorts | undefined {
   const agentChatBin = shepherd?.agentChatBin;
   if (!agentChatBin) return undefined;
-  return { agents: agentChatCleanupAgents(agentChatBin), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
+  return { agents: agentChatCleanupAgents(agentChatBin, undefined, undefined, roster), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
 }
 
 /** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
-function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv): FactoryRouteDeps["mainRed"] {
+function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined): FactoryRouteDeps["mainRed"] {
   const agentChatBin = shepherd?.agentChatBin;
-  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: agentChatFixers(agentChatBin, shepherd.fixer?.configDir) }) };
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: agentChatFixers(agentChatBin, shepherd.fixer?.configDir, undefined, roster) }) };
 }
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
 
-/** The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per registration and per spawn. */
+/**
+ * The production route set: the post-merge chore and the reviewer come from the config file; the seat book is re-read per
+ * registration and per spawn. Every port over the configured `agent-chat` shares one roster reader, so concurrent runs
+ * start at most one `agent ls` per TTL window.
+ */
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge, shepherd } = loadConfig(configPath(env));
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
-  const review = configuredReview(shepherd, seats);
-  const cleanup = configuredCleanup(shepherd, env);
-  const mainRed = configuredMainRed(shepherd, env);
+  const agentChatBin = shepherd?.agentChatBin;
+  const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
+  const review = configuredReview(shepherd, seats, roster);
+  const cleanup = configuredCleanup(shepherd, env, roster);
+  const mainRed = configuredMainRed(shepherd, env, roster);
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin: shepherd?.agentChatBin, cleanup, mainRed, redeploy, ...overrides, seats });
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin, roster, cleanup, mainRed, redeploy, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

@@ -200,7 +200,10 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "verdict", reviewer: REVIEWER, locator: { source: { path: scene.transcript, conversation: { nativeId: REVIEWER.sessionId } } } });
-    expect(scene.calls().filter((call) => call === "agent ls --json").length).toBeGreaterThanOrEqual(3);
+    const calls = scene.calls();
+    const spawnAt = calls.findIndex((call) => call.startsWith("agent spawn"));
+    expect(calls.slice(0, spawnAt)).toEqual(["agent ls --json"]);
+    expect(calls.slice(spawnAt + 1)).toContain("agent ls --json");
   });
 
   it("starts no agent-chat process and answers none when the config has no shepherd.review key", async () => {
@@ -220,7 +223,7 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
-    expect(scene.calls()).toEqual(["agent ls --json", "agent ls --json"]);
+    expect(scene.calls()).toEqual(["agent ls --json"]);
   });
 
   it("spawns nobody for a repo on a seat deny list, though a seat binds it to a checkout", async () => {
@@ -229,7 +232,7 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
-    expect(scene.calls()).toEqual(["agent ls --json", "agent ls --json"]);
+    expect(scene.calls()).toEqual(["agent ls --json"]);
   });
 
   it("finds the checkout of a repo whose name the PR writes in another case", async () => {
