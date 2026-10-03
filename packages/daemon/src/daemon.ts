@@ -16,7 +16,7 @@ import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
-import { DEFAULT_DAEMON_PORT, daemonPaths, isProcessAlive, readPidFile, removePidFile, writePidFile, type DaemonPaths } from "./lifecycle.js";
+import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import { createMcpServer, type McpServerOptions } from "./mcp.js";
 import type { SurfaceOptions } from "./surface.js";
@@ -26,6 +26,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   version: string;
   /** Directory for `daemon.pid` and `daemon.meta.json`; created if missing. */
   stateDir: string;
+  /** Seam for the stale pid check: when the process at a pid started. Defaults to `ps`. */
+  processStartTime?: (pid: number) => Date | null;
   /** Defaults to 7400. Pass 0 for an ephemeral port; the handle reports the bound one. */
   port?: number;
   /** Defaults to 127.0.0.1. A non-loopback host throws `NonLoopbackBindError` unless the opt-in below is set. */
@@ -72,7 +74,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   const log = options.logger ?? consoleLogger;
   assertBindAllowed(options);
   const paths = daemonPaths(options.stateDir);
-  await assertNotAlreadyRunning(paths);
+  await assertNotAlreadyRunning(paths, options.processStartTime ?? getProcessStartTime, log);
 
   const hub = new EventHub();
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
@@ -132,14 +134,26 @@ function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
 }
 
-async function assertNotAlreadyRunning(paths: DaemonPaths): Promise<void> {
+async function assertNotAlreadyRunning(paths: DaemonPaths, startTimeOf: (pid: number) => Date | null, log: Logger): Promise<void> {
   const existing = await readPidFile(paths);
-  if (existing && isProcessAlive(existing.pid)) {
+  if (existing && (await isThisDaemon(paths, existing, startTimeOf))) {
     throw new DaemonAlreadyRunningError(existing.pid, existing.meta.port);
   }
-  // Stale pid file — clear it so writePidFile lands cleanly. Naming the dead pid keeps
-  // the removal scoped to the file we just inspected.
-  if (existing) await removePidFile(paths, existing.pid);
+  // Stale pid file: the process is gone, or the OS reused its pid after a reboot. Naming
+  // the pid keeps the removal scoped to the file we just inspected.
+  if (existing) {
+    log.warn({ pid: existing.pid }, "removing stale daemon pid file");
+    await removePidFile(paths, existing.pid);
+  }
+}
+
+/** A live pid only counts if it predates its pid file or answers the health probe. */
+async function isThisDaemon(paths: DaemonPaths, existing: PidFileContents, startTimeOf: (pid: number) => Date | null): Promise<boolean> {
+  if (!isProcessAlive(existing.pid)) return false;
+  const started = startTimeOf(existing.pid);
+  const written = await pidFileModifiedAt(paths);
+  if (started && written && started.getTime() <= written.getTime()) return true;
+  return existing.meta.port > 0 && (await probeHealth(existing.meta.port)) !== null;
 }
 
 function startWatcher<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>, hub: EventHub, log: Logger): TreeWatcher | null {
