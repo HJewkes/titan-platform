@@ -33,8 +33,17 @@ const CTRL_U = 21;
 
 const execFileAsync = promisify(execFile);
 
+/** Past this, an Automation prompt or a wedged iTerm2 is not going to answer. */
+export const OSASCRIPT_TIMEOUT_MS = 10_000;
+
 const osascript: AppleScriptRunner = async script =>
-  (await execFileAsync("osascript", ["-e", script], { encoding: "utf8" })).stdout.trim();
+  (
+    await execFileAsync("osascript", ["-e", script], {
+      encoding: "utf8",
+      timeout: OSASCRIPT_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    })
+  ).stdout.trim();
 
 const asString = (value: string): string => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 

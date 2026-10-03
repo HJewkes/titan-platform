@@ -37,10 +37,17 @@ const TAIL_LINES = 5;
 
 const execFileAsync = promisify(execFile);
 
+/** ps on one tty answers at once; this is generous for a loaded machine. */
+export const PS_TIMEOUT_MS = 5_000;
+
 /** `-ww` because ps otherwise cuts the line at 80 columns, before the agent id. */
 export const psProbe: ProcessProbe = async tty => {
   try {
-    const { stdout } = await execFileAsync("ps", ["-ww", "-t", tty, "-o", "command="], { encoding: "utf8" });
+    const { stdout } = await execFileAsync("ps", ["-ww", "-t", tty, "-o", "command="], {
+      encoding: "utf8",
+      timeout: PS_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    });
     return stdout.split("\n").filter(line => line.trim() !== "");
   } catch (err) {
     // ps exits 1 with no output when nothing is on the tty, which is an answer.
