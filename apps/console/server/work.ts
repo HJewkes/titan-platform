@@ -56,7 +56,10 @@ export const initiativeResult = z.object({
     z.object({ ref: z.string(), kind: z.enum(["task", "pr", "prose"]), text: z.string(), targetRef: z.string().optional(), openedAt: z.string(), sessionFile: z.string() }),
   ),
   notes: z.array(z.object({ id: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() })),
-  sources: z.array(z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), nested: z.boolean(), mtime: z.string().nullable() })),
+  /** Top-level sources only; an initiative can hold thousands of nested files. */
+  sources: z.array(z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() })),
+  /** Files under `sources/<dir>/`, counted and not listed. */
+  nestedSources: z.number(),
 });
 
 export type Portfolio = z.infer<typeof portfolioResult>;
@@ -121,11 +124,12 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
   };
 }
 
-async function readHead(activeWork: ActiveWork, slug: string): Promise<InitiativeHead> {
+async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiative: InitiativeHead; nestedSources: number }> {
   const [list, inventory] = await Promise.all([activeWork.read("list"), activeWork.read("inventory")]);
   const item = list.sections.flatMap((section) => section.items).find((entry) => entry.slug === slug);
   if (!item) throw failure(`No initiative named "${slug}"`, EXIT.NOINPUT);
-  return headOf(item, inventory.initiatives.find((entry) => entry.slug === slug));
+  const counted = inventory.initiatives.find((entry) => entry.slug === slug);
+  return { initiative: headOf(item, counted), nestedSources: counted?.classes.nested_sources.files ?? 0 };
 }
 
 /** The body under the YAML frontmatter; the header already shows what the frontmatter holds. */
@@ -157,7 +161,7 @@ function loopRows(loops: ReadResult<"loops">["open"]): InitiativeDetail["loops"]
 /** One initiative's brief, open tasks, recent sessions, open loops, notes and sources. */
 export async function readInitiative(activeWork: ActiveWork, slug: string, options: WorkOptions = {}): Promise<InitiativeDetail> {
   // The lookup comes first, so a slug active-work does not list never reaches a file read.
-  const initiative = await readHead(activeWork, slug);
+  const { initiative, nestedSources } = await readHead(activeWork, slug);
   if (options.excludePersonal && initiative.personal) throw failure(`"${slug}" is a personal initiative and is left out of exports`, EXIT.NOINPUT);
   const [brief, tasks, sessions, loops, notes, sources] = await Promise.all([
     activeWork.read("source.read", { slug, path: "brief.md" }),
@@ -166,7 +170,7 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     // Offline, so opening a page never makes active-work call GitHub.
     activeWork.read("loops", { slug, offline: true }),
     activeWork.read("note.list", { slug }),
-    activeWork.read("source.list", { slug, nested: true }),
+    activeWork.read("source.list", { slug }),
   ]);
   return {
     fetchedAt: new Date().toISOString(),
@@ -177,5 +181,6 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     loops: loopRows(loops.open),
     notes: notes.notes,
     sources: sources.sources,
+    nestedSources,
   };
 }

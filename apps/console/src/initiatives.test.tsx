@@ -93,9 +93,9 @@ describe("an initiative's detail", () => {
     expect(await screen.findByText("Handshake retry spike")).toBeTruthy();
     fireEvent.click(screen.getByText("Notes (2)"));
     expect(await screen.findByText("Cap the backoff at thirty seconds")).toBeTruthy();
-    fireEvent.click(screen.getByText("Sources (3)"));
-    expect(await screen.findByText("captures/station-7.md")).toBeTruthy();
-    expect(screen.getByText("nested")).toBeTruthy();
+    fireEvent.click(screen.getByText("Sources (2)"));
+    expect(await screen.findByText("pr-41-handshake.md")).toBeTruthy();
+    expect(screen.getByText("1 nested file under sources/ is counted here and not listed.")).toBeTruthy();
   });
 
   it("flags a personal initiative", async () => {

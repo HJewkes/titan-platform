@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Alert,
   BreadcrumbItem,
@@ -15,8 +15,6 @@ import {
   Spinner,
   Tab,
   TabList,
-  TabPanel,
-  TabPanels,
   Table,
   TableBody,
   TableCell,
@@ -90,32 +88,42 @@ function Panel({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
+/** The panel sits outside `Tabs`: in a card of automatic height, react-ui's `TabPanels` gets half the room its content needs. */
 function Records({ detail, now }: { detail: Detail; now: number }): ReactNode {
+  const [tab, setTab] = useState(0);
   const { tasks, sessions, notes, sources } = detail;
-  const summaries = sessions.map((session) => ({ ...session, id: session.filename, body: "" }));
+  const labels = [`Tasks (${tasks.length})`, `Sessions (${sessions.length})`, `Notes (${notes.length})`, `Sources (${sources.length})`];
   return (
-    <Tabs defaultIndex={0}>
-      <TabList>
-        <Tab>{`Tasks (${tasks.length})`}</Tab>
-        <Tab>{`Sessions (${sessions.length})`}</Tab>
-        <Tab>{`Notes (${notes.length})`}</Tab>
-        <Tab>{`Sources (${sources.length})`}</Tab>
-      </TabList>
-      <TabPanels>
-        <TabPanel>
-          <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={`${tasks.length} open`} />
-        </TabPanel>
-        <TabPanel>
-          <SessionList sessions={summaries} now={now} label={`${sessions.length} most recent`} />
-        </TabPanel>
-        <TabPanel>
-          <FileTable rows={notes.map((note) => ({ id: note.id, title: note.title, tag: note.kind, file: note.filename, changed: note.mtime }))} tagLabel="Kind" />
-        </TabPanel>
-        <TabPanel>
-          <FileTable rows={sources.map((source) => ({ id: source.id, title: source.title, tag: source.type, file: source.filename, changed: source.mtime, nested: source.nested }))} tagLabel="Type" />
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+    <VStack gap={4}>
+      <Tabs index={tab} onChange={setTab}>
+        <TabList>
+          {labels.map((label) => (
+            <Tab key={label}>{label}</Tab>
+          ))}
+        </TabList>
+      </Tabs>
+      <RecordsPanel tab={tab} detail={detail} now={now} />
+    </VStack>
+  );
+}
+
+function RecordsPanel({ tab, detail, now }: { tab: number; detail: Detail; now: number }): ReactNode {
+  const { tasks, sessions, notes, sources } = detail;
+  if (tab === 0) return <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={`${tasks.length} open`} />;
+  if (tab === 1) {
+    const summaries = sessions.map((session) => ({ ...session, id: session.filename, body: "" }));
+    return <SessionList sessions={summaries} now={now} label={`${sessions.length} most recent`} />;
+  }
+  if (tab === 2) return <FileTable rows={notes.map((note) => ({ id: note.id, title: note.title, tag: note.kind, file: note.filename, changed: note.mtime }))} tagLabel="Kind" />;
+  return (
+    <VStack gap={2}>
+      <FileTable rows={sources.map((source) => ({ id: source.id, title: source.title, tag: source.type, file: source.filename, changed: source.mtime }))} tagLabel="Type" />
+      {detail.nestedSources > 0 ? (
+        <Typography variant="caption" color="secondary">
+          {`${detail.nestedSources} nested ${detail.nestedSources === 1 ? "file" : "files"} under sources/ ${detail.nestedSources === 1 ? "is" : "are"} counted here and not listed.`}
+        </Typography>
+      ) : null}
+    </VStack>
   );
 }
 
@@ -126,7 +134,6 @@ interface FileRow {
   tag: string;
   file: string;
   changed: string | null;
-  nested?: boolean;
 }
 
 /** Notes and sources share one listing until react-ui has the knowledge list (TP-859). */
@@ -156,16 +163,9 @@ function FileTableRow({ row }: { row: FileRow }): ReactNode {
     <TableRow>
       <TableCell>{row.title}</TableCell>
       <TableCell width={120}>
-        <HStack gap={1}>
-          <Pill variant="subtle" size="xs">
-            {row.tag}
-          </Pill>
-          {row.nested ? (
-            <Pill variant="outline" size="xs">
-              nested
-            </Pill>
-          ) : null}
-        </HStack>
+        <Pill variant="subtle" size="xs">
+          {row.tag}
+        </Pill>
       </TableCell>
       <TableCell>
         <Typography variant="mono">{row.file}</Typography>

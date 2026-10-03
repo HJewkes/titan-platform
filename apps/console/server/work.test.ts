@@ -73,7 +73,8 @@ describe("an initiative", () => {
     expect(detail.sessions[0]).toEqual({ filename: "2031-03-04-1500-relay-retry.md", started: "2031-03-04T15:00:00Z", ended: "2031-03-04T16:20:00Z", track: "canonical", title: "Handshake retry spike" });
     expect(detail.loops).toEqual([expect.objectContaining({ kind: "task", targetRef: "OR-12" })]);
     expect(detail.notes.map((note) => note.id)).toEqual(["orbit-relay:notes:2031-03-03-backoff-ceiling.md", "orbit-relay:notes:2031-02-27-station-clock-skew.md"]);
-    expect(detail.sources.map((source) => [source.filename, source.nested])).toContainEqual(["captures/station-7.md", true]);
+    expect(detail.sources.map((source) => source.filename)).toEqual(["deepdive-routing-table.md", "pr-41-handshake.md"]);
+    expect(detail.nestedSources).toBe(1);
   });
 
   it("sends no absolute file path to the browser", async () => {

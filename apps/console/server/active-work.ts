@@ -48,7 +48,7 @@ const loop = z.object({
 
 const note = z.object({ id: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
 
-const source = z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), nested: z.boolean(), mtime: z.string().nullable() });
+const source = z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
 
 /** The active-work reads the console may call, with the part of each answer it uses. There is no write in this list. */
 const READS = {
