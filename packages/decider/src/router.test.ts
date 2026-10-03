@@ -86,4 +86,51 @@ describe("route", () => {
       rule: 1,
     });
   });
+
+  it.each(["Merge_Gate", "merge_gate ", "MONEY", " money", "release-publish"])(
+    "keeps the respelled locked category %s with the owner even if stored data says auto",
+    (category) => {
+      const stored = parseRoutingPolicy({ categories: [{ category, mode: "auto" }] });
+
+      expect(route(q({ category, question: "Which tier?" }), stored, agent)).toMatchObject({
+        route: "owner-queue",
+        rule: 1,
+      });
+    },
+  );
+
+  it.each(["Should I touch-prod now?", "Should I touch  prod now?", "Should I TOUCH_PROD now?"])(
+    "matches a hard stop through punctuation and spacing: %s",
+    (question) => {
+      const withStop = parseRoutingPolicy({
+        hardStops: ["touch prod"],
+        categories: [{ category: "agent_ops", mode: "auto" }],
+      });
+
+      expect(route(q({ question }), withStop, agent)).toMatchObject({ route: "owner-queue", rule: 1 });
+    },
+  );
+
+  it.each(["Finances ", "FINANCES", "finances"])("treats initiative %j as the human-only finances", (initiative) => {
+    const humanOnly = parseRoutingPolicy({
+      humanOnlyInitiatives: ["finances"],
+      categories: [{ category: "agent_ops", mode: "auto" }],
+    });
+
+    expect(route(q({ initiative }), humanOnly, agent)).toMatchObject({ route: "owner-queue", rule: 1 });
+  });
+
+  it.each(["other", "unknown_class"])(
+    "keeps auto-mode %s with the owner because no decider may answer it",
+    (category) => {
+      const auto = setCategoryMode(base, category, "auto");
+
+      expect(route(q({ category, question: "Which one?" }), auto, agent)).toMatchObject({
+        route: "owner-queue",
+        shadow: false,
+        rule: 4,
+        reason: expect.stringContaining("not one a decider may answer"),
+      });
+    },
+  );
 });

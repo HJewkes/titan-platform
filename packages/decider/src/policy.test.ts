@@ -68,3 +68,22 @@ describe("isLockedCategory", () => {
     expect(isLockedCategory("hard_stop:config edits")).toBe(false);
   });
 });
+
+describe("category spelling", () => {
+  it.each(["Merge_Gate", "merge_gate ", "MONEY", " money", "release-publish", "Visual Taste"])(
+    "refuses to raise %s, a respelled locked category",
+    (category) => {
+      expect(() => setCategoryMode(empty, category, "auto")).toThrow(/always-ask/);
+      expect(categoryPolicy(parseRoutingPolicy({ categories: [{ category, mode: "auto" }] }), category).mode).toBe(
+        "off",
+      );
+    },
+  );
+
+  it("treats respellings of an ordinary category as one row", () => {
+    const policy = setCategoryMode(setCategoryMode(empty, "Agent-Ops", "auto"), "agent_ops ", "shadow");
+
+    expect(policy.categories).toHaveLength(1);
+    expect(categoryPolicy(policy, "AGENT OPS")).toMatchObject({ category: "agent_ops", mode: "shadow" });
+  });
+});

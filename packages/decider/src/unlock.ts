@@ -1,6 +1,6 @@
 /**
  * agent-chat's unlock table, ported from `src/broker/decisions.ts` and held to it by
- * `unlock.parity.test.ts`. Every match errs towards the owner: a false positive costs one
+ * `unlock.test.ts`. Every match errs towards the owner: a false positive costs one
  * answer, a false negative is an unlock decided by a model.
  */
 

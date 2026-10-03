@@ -154,6 +154,9 @@ writePrincipleDocs({
   any option, a hard-stop phrase or a human-only initiative keeps the question with the owner
   whatever the category's mode. `setCategoryMode` throws on raising a locked category, and
   `parseRoutingPolicy` forces a stored one back to `off`.
+- Categories, initiatives and hard stops compare after folding case, spaces, `-`, `_` and
+  punctuation, so `Merge-Gate` is `merge_gate`. A category outside agent-chat's decidable set
+  never routes to `decider`, even in `auto`.
 - The unlock table is broad on purpose ("release the claim" matches); `unlock.test.ts`
   pins it to agent-chat's verdicts, so change both together.
 
