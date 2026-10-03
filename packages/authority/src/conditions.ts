@@ -39,6 +39,8 @@ export interface MergeFacts {
   changedPaths: string[];
   seatGrants: string[];
   carry?: CarryFact;
+  /** The kind the pull request was registered with; absent when unregistered. */
+  kind?: string;
 }
 
 export interface ConditionFacts {
@@ -46,6 +48,7 @@ export interface ConditionFacts {
 }
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+const CARRYING_KINDS = new Set(["correctness", "feature", "refactor"]);
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_DIRS = new Set([".github"]);
@@ -71,6 +74,11 @@ function verdictMergeCarriedTreeEqual(facts: MergeFacts): boolean {
   if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
   return typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) && verdict.head === carry.fromHead && carry.head === head &&
     isId(carry.headTree) && carry.headTree === carry.mergeTree;
+}
+
+// Only a known non-security kind passes, so an unregistered or unrecognised kind never carries.
+function prKindNotSecurity(facts: MergeFacts): boolean {
+  return typeof facts.kind === "string" && CARRYING_KINDS.has(facts.kind);
 }
 
 function isNonCanonicalSegment(segment: string): boolean {
@@ -124,6 +132,7 @@ const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "resolver-is-dispatched-reviewer": (facts) => sameAgent(facts.resolver, facts.dispatchedReviewer),
   "verdict-merge-at-head": verdictMergeAtHead,
   "verdict-merge-carried-tree-equal": verdictMergeCarriedTreeEqual,
+  "pr-kind-not-security": prKindNotSecurity,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,
   "merge-tree-clean": (facts) => facts.mergeTreeClean === true,

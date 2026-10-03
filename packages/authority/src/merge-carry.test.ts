@@ -26,6 +26,7 @@ function carriedFacts(): MergeFacts {
     changedPaths: ["packages/x/src/a.ts"],
     seatGrants: ["merge-on-green-approve"],
     carry: { fromHead: FROM_HEAD, head: HEAD, headTree: TREE, mergeTree: TREE },
+    kind: "correctness",
   };
 }
 
@@ -64,10 +65,10 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
 
   it("keeps every MRG-AU-RV condition except verdict-merge-at-head", () => {
     const expected = (row("MRG-AU-RV")?.when ?? []).filter((c) => c !== "verdict-merge-at-head");
-    expect([...(row("MRG-AU-RC")?.when ?? [])].sort()).toEqual([...expected, CARRIED].sort());
+    expect([...(row("MRG-AU-RC")?.when ?? [])].sort()).toEqual([...expected, CARRIED, "pr-kind-not-security"].sort());
   });
 
-  const REFUSALS: [string, (facts: MergeFacts) => void][] = [
+  const REFUSALS: [string, (facts: MergeFacts) => void, string?][] = [
     ["a carry whose trees differ", (f) => { f.carry!.mergeTree = "d".repeat(40); }],
     ["a carry with an empty tree on both sides", (f) => { f.carry!.headTree = ""; f.carry!.mergeTree = ""; }],
     ["a carry for a different head", (f) => { f.carry!.head = "e".repeat(40); }],
@@ -76,13 +77,26 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
     ["a short sha for the reviewed head", (f) => { f.verdict.head = FROM_HEAD.slice(0, 7); f.carry!.fromHead = FROM_HEAD.slice(0, 7); }],
     ["a FIX_FIRST verdict", (f) => { f.verdict.value = "FIX_FIRST"; }],
     ["a carry with no sh-carry output", (f) => { Reflect.deleteProperty(f, "carry"); }],
+    ["a security kind", (f) => { f.kind = "security"; }, "pr-kind-not-security"],
+    ["a missing kind", (f) => { Reflect.deleteProperty(f, "kind"); }, "pr-kind-not-security"],
+    ["an unknown kind", (f) => { f.kind = "unknown"; }, "pr-kind-not-security"],
+    ["a kind that is not a string", (f) => { Reflect.set(f, "kind", ["feature"]); }, "pr-kind-not-security"],
     ["a carry that is not an object", (f) => { Reflect.set(f, "carry", "equal"); }],
   ];
 
-  it.each(REFUSALS)("falls back to the owner gate on %s", (_name, patch) => {
+  it.each(REFUSALS)("falls back to the owner gate on %s", (_name, patch, condition = CARRIED) => {
     const facts = patched(patch);
-    expect(unmetConditions(["verdict-merge-carried-tree-equal"], { merge: facts })).toEqual([CARRIED]);
+    expect(unmetConditions([condition as "pr-kind-not-security"], { merge: facts })).toEqual([condition]);
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+
+  it.each(["correctness", "feature", "refactor"])("allows a carried MERGE of kind %s", (kind) => {
+    expect(decide(patched((f) => { f.kind = kind; }))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RC" });
+  });
+
+  it.each(["correctness", "security", "feature", "refactor", "unknown", undefined])("leaves MRG-AU-RV unchanged for kind %s", (kind) => {
+    const facts = patched((f) => { f.verdict.head = HEAD; Reflect.deleteProperty(f, "carry"); if (kind === undefined) Reflect.deleteProperty(f, "kind"); else f.kind = kind; });
+    expect(decide(facts)).toEqual({ verdict: "allow", ruleId: "MRG-AU-RV" });
   });
 
   it("gates a carried head whose required contexts are not green", () => {

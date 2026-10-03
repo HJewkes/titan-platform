@@ -159,8 +159,8 @@ function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact 
   return { fromHead: carry.fromHead, head: carry.head, headTree: result.headTree, mergeTree: result.mergeTree };
 }
 
-/** Every fact is read from GitHub or the run's own step outputs, never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<Observed> {
+/** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<Observed> {
   const pr = await port.getPr(input.repo, input.pr);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
@@ -184,6 +184,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   };
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
+  if (kind !== undefined) merge.kind = kind;
   return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }) };
 }
 
@@ -230,8 +231,8 @@ export function evidenceComment(record: EvidenceRecord): string {
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen);
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen, kind);
   const unknown = requiredChecksUnknown === undefined ? {} : { requiredChecksUnknown };
   const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, ...unknown });
   const record: EvidenceRecord = {

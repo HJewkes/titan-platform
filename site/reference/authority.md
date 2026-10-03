@@ -114,8 +114,10 @@ the optional `carry` fact names that verdict's head as `carry.fromHead` and `fac
 `carry.head`, both full 40-character lower-case shas, and `carry.headTree` equals
 `carry.mergeTree`. The caller fills `carry` from its tree-equality probe, never from reviewer
 text. It is a separate row so that deleting it revokes carrying and leaves MRG-AU-RV as it
-was. The vocabulary has no pull-request kind fact, so the row cannot exclude `kind: security`
-yet.
+was. It also requires `pr-kind-not-security`: the optional `kind` fact, which the caller
+reads from the run's registration, must be `correctness`, `feature` or `refactor`. The row
+never carries `kind: security` and fails closed on an unknown or missing kind. MRG-AU-RV
+does not read `kind`.
 
 A request with no `facts` fails every condition, and a conditional row matches only when
 `tainted` is an own property set to exactly `false`; an inherited `false`, or any other value (`true`, missing, `null`, `0`, `""`) is

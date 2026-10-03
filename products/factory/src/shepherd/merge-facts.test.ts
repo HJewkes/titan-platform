@@ -49,8 +49,8 @@ function world(files: PrFile[] = [{ path: "src/a.ts", status: "modified" }]): Fa
   return fake;
 }
 
-async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> = {}) {
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523);
+async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> = {}, kind: string | null = "correctness") {
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind ?? undefined);
 }
 
 afterEach(() => vi.mocked(evaluate).mockReset());
@@ -312,6 +312,19 @@ describe("a carried verdict", () => {
     const evidence = await collect(world());
 
     expect(evidence.merge).not.toHaveProperty("carry");
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
+  it.each(["security", "unknown", null])("gates a carried verdict of registered kind %s", async (kind) => {
+    const evidence = await collect(world(), carried(), kind);
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("records the registered kind as a fact and still allows an exact-head verdict of kind security by MRG-AU-RV", async () => {
+    const evidence = await collect(world(), {}, "security");
+
+    expect(evidence.merge.kind).toBe("security");
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
   });
 
