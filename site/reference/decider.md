@@ -39,6 +39,8 @@ source.
 - You need the questions no principle may answer: `ALWAYS_ASK` and `alwaysAskList(hardStops)`.
 - You decide where a question goes before any model runs: `route(question, policy, ctx)` returns
   `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
+- You judge whether a category may graduate: `score(predictions, ledger, { policy, now })` gives
+  per-category agreement, whether to recommend `auto`, and whether 2 overrules in 7 days demote it.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw
 transcript parsing, use [`session-read`](./session-read).

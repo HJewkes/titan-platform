@@ -81,3 +81,13 @@ export type {
   DecideReply,
   DecideValidation,
 } from "./contract.js";
+export {
+  DEMOTE_OVERRULES,
+  DEMOTE_WINDOW_DAYS,
+  applyDemotions,
+  ledgerPredictions,
+  recommendsAuto,
+  score,
+  verdict,
+} from "./shadow.js";
+export type { CategoryScore, ScoreOptions, Verdict } from "./shadow.js";

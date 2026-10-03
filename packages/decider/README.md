@@ -26,6 +26,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `route(question, policy, ctx)` is the pure routing table: `owner-now`, `owner-queue` or `decider`,
   with a shadow flag and a reason. `parseRoutingPolicy` holds one mode row per category and keeps
   always-ask categories `off`. `checkUnlock` is agent-chat's unlock table, parity-tested.
+- `score(predictions, ledger, { policy, now })` is the shadow scorer: per-category agreement, missed
+  redirects and the accept baseline over each policy window, a `recommendAuto` graduation verdict and
+  a `demote` flag on 2 overrules in 7 days. `applyDemotions` drops demoted categories back to shadow.
 - `LedgerStore` (`openLedgerStore(path)`) is append-only by row key, with a watermark per source
   cursor on `@titan-design/store-sqlite`.
 - `LedgerSource` is the port `{ name, read(since) }`; `extractSource` runs one source, drops
