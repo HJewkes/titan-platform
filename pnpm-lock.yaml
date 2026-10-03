@@ -280,6 +280,9 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       zod:
         specifier: ^4.4.3

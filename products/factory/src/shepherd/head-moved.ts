@@ -5,6 +5,7 @@ import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import { SUPERSEDED, gateHead } from "./stale-gates.js";
 
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
+const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
 
 export interface SupersededGate {
   runId: string;
@@ -56,19 +57,21 @@ export function seatPolicyHead(run: WorkflowRun, prompt: string): string | undef
   return seatGate ? asked : undefined;
 }
 
-/** A conflict or escalation gate shares the approve-merge step id but stays with the owner. */
-function seatGateHead(host: FactoryHost, { runId, stepId, gate }: PendingGate): string | undefined {
+/** A conflict or escalation gate shares the approve-merge step id but stays with the owner; a send-back only ever waits for a new head. */
+function supersedableHead(host: FactoryHost, { runId, stepId, gate }: PendingGate): string | undefined {
   const run = host.runtime.status(runId);
-  if (run?.workflowName !== SHEPHERD_WORKFLOW || stepId !== "approve-merge" || !APPROVE_MERGE_GATE.test(gate.id)) return undefined;
+  if (run?.workflowName !== SHEPHERD_WORKFLOW) return undefined;
+  if (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) return gateHead(gate.prompt);
+  if (stepId !== "approve-merge" || !APPROVE_MERGE_GATE.test(gate.id)) return undefined;
   return seatPolicyHead(run, gate.prompt);
 }
 
-/** Cancels each shepherd-pr seat-policy approve-merge gate whose PR moved past the head it asks about; the run then reviews the new head. */
+/** Cancels each shepherd-pr seat-policy approve-merge or sh-sent-back gate whose PR moved past the head it asks about; the run then takes the new head. */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   for (const pending of host.pendingGates()) {
     const { runId, gate } = pending;
-    const asked = seatGateHead(host, pending);
+    const asked = supersedableHead(host, pending);
     if (!asked) continue;
     const head = await openHead(services, runId);
     if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;

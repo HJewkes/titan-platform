@@ -27,7 +27,7 @@ export { answerFor, parseAnswerText, recommendedOption } from "./parse-answer.js
 export type { ParsedAnswers } from "./parse-answer.js";
 export type { LedgerSource, SourceCandidate, SourceRead, SourceWatermark, SourceWatermarks } from "./source.js";
 export { LEDGER_MIGRATIONS, LedgerStore, openLedgerStore } from "./store.js";
-export type { LedgerRowFilter } from "./store.js";
+export type { LedgerEntry, LedgerRowFilter } from "./store.js";
 export { extractSource } from "./extract.js";
 export type { ExtractSummary } from "./extract.js";
 export { TRANSCRIPT_SOURCE, transcriptKey, transcriptSource } from "./transcripts.js";
@@ -42,6 +42,26 @@ export { writePrincipleDocs } from "./docs.js";
 export type { WriteDocsInput, WrittenDoc } from "./docs.js";
 export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
 export type { AlwaysAskEntry } from "./always-ask.js";
+export { CONDENSE_MIGRATIONS, condense, condenseWatermarks } from "./condense.js";
+export type { CondenseOptions, CondenseResult, CondenseRun, CondenseStore, DomainRun, Reflector, ReflectorInput } from "./condense.js";
+export { CiteDeltaSchema, CondenseDeltaSchema, ProposeDeltaSchema, carriesInstruction, isEvidence } from "./condense-deltas.js";
+export type { CiteDelta, CondenseDelta, ProposeDelta, RejectedCondenseDelta } from "./condense-deltas.js";
+export { NOTE_SOURCE, noteKey, noteSource } from "./notes.js";
+export type { NoteSourceOptions } from "./notes.js";
+export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
+export type { UnlockCheck } from "./unlock.js";
+export {
+  CategoryPolicySchema,
+  DECIDER_MODES,
+  RoutingPolicySchema,
+  categoryPolicy,
+  isLockedCategory,
+  parseRoutingPolicy,
+  setCategoryMode,
+} from "./policy.js";
+export type { CategoryPolicy, DeciderMode, RoutingPolicy } from "./policy.js";
+export { route } from "./router.js";
+export type { RouteContext, RouteDecision, RouteQuestion } from "./router.js";
 export {
   DEFAULT_MIN_CONFIDENCE,
   DecideInputSchema,
