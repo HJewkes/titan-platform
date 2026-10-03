@@ -7,6 +7,33 @@ import { UNLOCK_CATEGORIES } from "./unlock.js";
 export const DECIDER_MODES = ["off", "shadow", "auto"] as const;
 export type DeciderMode = (typeof DECIDER_MODES)[number];
 
+/** Higher is more restrictive; folded policy rows keep the highest. */
+export const MODE_RESTRICTIVENESS: Readonly<Record<DeciderMode, number>> = {
+  auto: 0,
+  shadow: 1,
+  off: 2,
+};
+
+export function strictestMode(a: DeciderMode, b: DeciderMode): DeciderMode {
+  return MODE_RESTRICTIVENESS[b] > MODE_RESTRICTIVENESS[a] ? b : a;
+}
+
+/** Rows that normalize to one key collapse to the first, carrying the strictest mode among them. */
+function foldRows(rows: readonly CategoryPolicy[]): CategoryPolicy[] {
+  const folded = new Map<string, CategoryPolicy>();
+  for (const row of rows) {
+    const key = categoryKey(row.category);
+    const seen = folded.get(key);
+    folded.set(
+      key,
+      seen === undefined
+        ? { ...row, category: key }
+        : { ...seen, mode: strictestMode(seen.mode, row.mode) }
+    );
+  }
+  return [...folded.values()];
+}
+
 export const CategoryPolicySchema = z.object({
   category: z.string().min(1),
   mode: z.enum(DECIDER_MODES).default("shadow"),
@@ -25,10 +52,20 @@ export const RoutingPolicySchema = z.object({
 });
 export type RoutingPolicy = z.output<typeof RoutingPolicySchema>;
 
+/** The normalized key, or the trimmed lowercase text when normalizing would empty it, so a symbol-only name never collapses to "". */
+export function categoryKey(text: string): string {
+  return normalizeKey(text) || text.trim().toLowerCase();
+}
+
 /** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
-export function isLockedCategory(category: string, list: readonly AlwaysAskEntry[] = ALWAYS_ASK): boolean {
-  const key = normalizeKey(category);
-  return [...list.map((entry) => entry.id), ...UNLOCK_CATEGORIES].some((id) => normalizeKey(id) === key);
+export function isLockedCategory(
+  category: string,
+  list: readonly AlwaysAskEntry[] = ALWAYS_ASK
+): boolean {
+  const key = categoryKey(category);
+  return [...list.map((entry) => entry.id), ...UNLOCK_CATEGORIES].some(
+    (id) => categoryKey(id) === key
+  );
 }
 
 /** A parsed policy with category names normalized and every locked one forced to `off`, so stored data cannot raise one. */
@@ -36,26 +73,44 @@ export function parseRoutingPolicy(input: unknown): RoutingPolicy {
   const policy = RoutingPolicySchema.parse(input);
   return {
     ...policy,
-    categories: policy.categories.map((row) => {
-      const category = normalizeKey(row.category);
-      return { ...row, category, mode: isLockedCategory(category) ? ("off" as const) : row.mode };
-    }),
+    categories: foldRows(policy.categories).map((row) => ({
+      ...row,
+      mode: isLockedCategory(row.category) ? ("off" as const) : row.mode,
+    })),
   };
 }
 
 /** The category's row, or the defaults: every category starts in shadow, locked ones off. */
-export function categoryPolicy(policy: RoutingPolicy, category: string): CategoryPolicy {
-  const key = normalizeKey(category);
+export function categoryPolicy(
+  policy: RoutingPolicy,
+  category: string
+): CategoryPolicy {
+  const key = categoryKey(category);
   const row =
-    policy.categories.find((c) => normalizeKey(c.category) === key) ?? CategoryPolicySchema.parse({ category: key });
-  return { ...row, category: key, mode: isLockedCategory(key) ? "off" : row.mode };
+    foldRows(policy.categories).find((c) => c.category === key) ??
+    CategoryPolicySchema.parse({ category: key });
+  return {
+    ...row,
+    category: key,
+    mode: isLockedCategory(key) ? "off" : row.mode,
+  };
 }
 
 /** A new policy with the category at `mode`; raising a locked category above `off` throws. */
-export function setCategoryMode(policy: RoutingPolicy, category: string, mode: DeciderMode): RoutingPolicy {
+export function setCategoryMode(
+  policy: RoutingPolicy,
+  category: string,
+  mode: DeciderMode
+): RoutingPolicy {
   if (mode !== "off" && isLockedCategory(category))
     throw new Error(`category "${category}" is always-ask and stays off`);
-  const row = { ...categoryPolicy(policy, category), category: normalizeKey(category), mode };
-  const rest = policy.categories.filter((c) => normalizeKey(c.category) !== row.category);
+  const row = {
+    ...categoryPolicy(policy, category),
+    category: categoryKey(category),
+    mode,
+  };
+  const rest = policy.categories.filter(
+    (c) => categoryKey(c.category) !== row.category
+  );
   return { ...policy, categories: [...rest, row] };
 }
