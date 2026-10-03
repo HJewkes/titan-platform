@@ -5,21 +5,29 @@ export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export interface Route {
   view: ViewKey;
+  /** The initiative a detail route names; only the initiatives view reads it. */
+  slug?: string;
 }
 
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
-  const [, segment = ""] = hash.replace(/^#/, "").split("?")[0]!.split("/");
-  return { view: VIEW_KEYS.find((key) => key === segment) ?? "status" };
+  const [, segment = "", detail = ""] = hash.replace(/^#/, "").split("?")[0]!.split("/");
+  const view = VIEW_KEYS.find((key) => key === segment) ?? "status";
+  return view === "initiatives" && detail ? { view, slug: decodeURIComponent(detail) } : { view };
 }
 
 export function href(route: Route): string {
-  return route.view === "status" ? "#/" : `#/${route.view}`;
+  if (route.view === "status") return "#/";
+  return route.slug ? `#/${route.view}/${encodeURIComponent(route.slug)}` : `#/${route.view}`;
 }
 
 /** Takes the key a nav item reports; an unknown one lands on the status view. */
 export function navigate(key: string): void {
-  window.location.hash = href(parseRoute(`#/${key}`));
+  open(parseRoute(`#/${key}`));
+}
+
+export function open(route: Route): void {
+  window.location.hash = href(route);
 }
 
 function subscribe(onChange: () => void): () => void {
