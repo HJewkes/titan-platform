@@ -94,6 +94,28 @@
       ]
     },
     {
+      "id": "MRG-AU-RC",
+      "action": "merge",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Owner decision of 2026-09-29 extended to automation: a head produced by update-branch inherits the run-dispatched reviewer's MERGE when its tree equals the merge-tree of the reviewed head onto main, attested by the factory's carry probe, never by the reviewer. Every other MRG-AU-RV condition still holds at the new head. A separate row, so deleting it revokes carrying. No kind fact exists yet, so a security-kind pull request is not excluded here.",
+      "when": [
+        "resolver-is-dispatched-reviewer",
+        "verdict-merge-carried-tree-equal",
+        "required-contexts-green",
+        "no-non-green-run",
+        "merge-tree-clean",
+        "repo-not-frozen",
+        "no-protected-path-change",
+        "seat-grants-merge-on-green-approve"
+      ],
+      "evidence": [
+        "E-gate",
+        "E-gh",
+        "E-rev"
+      ]
+    },
+    {
       "id": "REL-OT",
       "action": "release",
       "actor": "owner-terminal",

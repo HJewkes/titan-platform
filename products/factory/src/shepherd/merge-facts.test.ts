@@ -12,6 +12,7 @@ import { decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mer
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
+import type { CarryResult } from "./tree-carry.js";
 import { shepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -290,6 +291,43 @@ function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined
   hosts.push(host);
   return host;
 }
+
+const CARRIED_FROM = fakeSha("merge-facts-reviewed-head");
+const TREE = fakeSha("merge-facts-tree");
+
+/** A MERGE at CARRIED_FROM, with the sh-carry output for HEAD. */
+function carried(result: CarryResult = { equal: true, headTree: TREE, mergeTree: TREE }): Partial<MergeEvidenceInput> {
+  return { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, carry: { fromHead: CARRIED_FROM, head: HEAD, result } };
+}
+
+describe("a carried verdict", () => {
+  it("allows by authority/MRG-AU-RC when the sh-carry output reports equal trees for this head", async () => {
+    const evidence = await collect(world(), carried());
+
+    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: TREE });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RC" } });
+  });
+
+  it("still allows an exact-head verdict by MRG-AU-RV and records no carry without sh-carry output", async () => {
+    const evidence = await collect(world());
+
+    expect(evidence.merge).not.toHaveProperty("carry");
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
+  it.each([
+    ["no sh-carry output", {}],
+    ["a probe that found the trees unequal", carried({ equal: false, reason: "trees differ" })],
+    ["an equal probe with no trees", carried({ equal: true })],
+    ["trees that differ", carried({ equal: true, headTree: TREE, mergeTree: fakeSha("other-tree") })],
+    ["a probe answer for a different head", { ...carried(), carry: { fromHead: CARRIED_FROM, head: OTHER_HEAD, result: { equal: true, headTree: TREE, mergeTree: TREE } } }],
+    ["a carry from a head other than the verdict's", { ...carried(), verdict: { value: "MERGE" as const, head: OTHER_HEAD, locator } }],
+  ])("gates on %s", async (_name, overrides) => {
+    const evidence = await collect(world(), { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, ...overrides });
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+});
 
 describe("approve-merge under merge:auto", () => {
   it("merges with one merge-policy record naming authority/MRG-AU-RV, the evidence record, no hitl row and one comment", async () => {

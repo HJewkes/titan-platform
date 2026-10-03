@@ -30,6 +30,7 @@ export const EVIDENCE_KINDS = ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-n
 export const CONDITION_KINDS = [
   "resolver-is-dispatched-reviewer",
   "verdict-merge-at-head",
+  "verdict-merge-carried-tree-equal",
   "required-contexts-green",
   "no-non-green-run",
   "merge-tree-clean",

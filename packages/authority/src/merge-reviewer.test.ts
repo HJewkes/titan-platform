@@ -5,8 +5,10 @@ import type { AuthorityRequest } from "./evaluate.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
 import type { ActorClass, ConditionKind } from "./vocabulary.js";
-import { CONDITION_KINDS } from "./vocabulary.js";
+import { CONDITION_KINDS as ALL_CONDITION_KINDS } from "./vocabulary.js";
 
+// MRG-AU-RV never checks the carry condition, which belongs to MRG-AU-RC.
+const CONDITION_KINDS = ALL_CONDITION_KINDS.filter((condition) => condition !== "verdict-merge-carried-tree-equal");
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
 const ACTIONS_APP = 15368;
