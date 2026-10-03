@@ -46,3 +46,22 @@ export { CONDENSE_MIGRATIONS, condense, condenseWatermarks } from "./condense.js
 export type { CondenseOptions, CondenseResult, CondenseRun, CondenseStore, DomainRun, Reflector, ReflectorInput } from "./condense.js";
 export { CiteDeltaSchema, CondenseDeltaSchema, ProposeDeltaSchema, carriesInstruction, isEvidence } from "./condense-deltas.js";
 export type { CiteDelta, CondenseDelta, ProposeDelta, RejectedCondenseDelta } from "./condense-deltas.js";
+export {
+  DEFAULT_MIN_CONFIDENCE,
+  DecideInputSchema,
+  DecidePrecedentSchema,
+  DecidePrincipleSchema,
+  DecideReplySchema,
+  decideJsonSchemas,
+  minConfidenceFor,
+  validate,
+} from "./contract.js";
+export type {
+  CategoryThreshold,
+  DecideInput,
+  DecidePolicy,
+  DecidePrecedent,
+  DecidePrinciple,
+  DecideReply,
+  DecideValidation,
+} from "./contract.js";
