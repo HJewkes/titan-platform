@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { probeHealth } from "@titan-design/daemon";
+import { activeWorkClient } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
@@ -73,6 +74,7 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
 export function createSources(config: ConsoleConfig): ConsoleSources {
   return {
     upstreams: createUpstreams(config),
+    activeWork: activeWorkClient(config.activeWorkPort),
     agents: { broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }), seatPrefixes: config.seatPrefixes },
   };
 }

@@ -13,7 +13,10 @@ export function createContext(): BaseContext {
 }
 
 /** The calls the shell makes on first paint; an exported page answers exactly these. */
-const FIRST_PAINT_CALLS = [{ command: "upstreams.health", args: {} }];
+const FIRST_PAINT_CALLS = [
+  { command: "upstreams.health", args: {} },
+  { command: "work.portfolio", args: {} },
+];
 
 /** Answers the first-paint calls in process, for a page that opens from disk with no daemon. */
 export async function recordFirstPaint(registry: CommandRegistry<BaseContext>): Promise<Snapshot> {
