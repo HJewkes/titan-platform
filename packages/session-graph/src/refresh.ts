@@ -1,4 +1,6 @@
 import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { contentHash, resumePoint } from "@titan-design/locator";
 import { TranscriptParseError, extractTranscript, type DiscoveredTranscript } from "@titan-design/session-read";
 import { applyDelta } from "./apply.js";
@@ -33,6 +35,8 @@ export interface RefreshOptions extends IndexOptions {
   full?: boolean;
   /** Stale audit facets re-extracted per pass (default 40). `Infinity` clears the backlog. */
   facetLimit?: number;
+  /** What a leading `~` in a stored source key means when checking for vanished files. Defaults to the OS home directory. */
+  homeDir?: string;
 }
 
 export type TranscriptOutcome =
@@ -133,7 +137,7 @@ export interface RefreshSummary {
  * did. That bounds staleness to one pass.
  */
 export async function refreshCorpus(graph: SessionGraph, transcripts: readonly DiscoveredTranscript[], options: RefreshOptions = {}): Promise<RefreshSummary> {
-  const { resolveTasks, resolveOrigins: originResolver, resolvePrs, isReviewerProfile, full, facetLimit, ...perTranscript } = options;
+  const { resolveTasks, resolveOrigins: originResolver, resolvePrs, isReviewerProfile, full, facetLimit, homeDir, ...perTranscript } = options;
   const counts = { indexed: 0, unchanged: 0, rewound: 0, missing: 0, quarantined: 0 };
   const touched: string[] = [];
   let facts = 0;
@@ -153,13 +157,13 @@ export async function refreshCorpus(graph: SessionGraph, transcripts: readonly D
   const prs = await enrichPrs(graph, resolvePrs);
   const reviews = projectReviewRounds(graph, { isReviewerProfile });
   const tasks = await enrichTasks(graph, resolveTasks, allTaskIds(graph));
-  const markedMissing = await markMissing(graph, transcripts);
+  const markedMissing = await markMissing(graph, transcripts, homeDir ?? os.homedir());
   const facetSummary = { facetsBackfilled: facets.backfilled, facetBacklog: facets.backlog };
   return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, tasks, origins, prs, reviews, markedMissing, ...facetSummary };
 }
 
 /** Rows absent from discovery are only nominated; an `fs.stat` decides, so an empty scan cannot condemn the corpus. */
-async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredTranscript[]): Promise<number> {
+async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredTranscript[], homeDir: string): Promise<number> {
   const present = new Set(discovered.map((t) => t.displayPath));
   const byPath = new Map(discovered.map((t) => [t.displayPath, t.absolutePath]));
   let marked = 0;
@@ -167,11 +171,16 @@ async function markMissing(graph: SessionGraph, discovered: readonly DiscoveredT
     if (row.status === "missing" || present.has(row.sourceKey)) continue;
     const normalized = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) as { descriptor: string } | undefined;
     const absolute = normalized ? (JSON.parse(normalized.descriptor) as { path: string }).path : byPath.get(row.sourceKey) ?? row.sourceKey;
-    if (await exists(absolute)) continue;
+    if (await exists(expandHome(absolute, homeDir))) continue;
     graph.transcripts.markStatus(row.sourceKey, "missing", "source file no longer exists");
     marked += 1;
   }
   return marked;
+}
+
+function expandHome(file: string, homeDir: string): string {
+  if (file === "~") return homeDir;
+  return file.startsWith("~/") ? path.join(homeDir, file.slice(2)) : file;
 }
 
 async function exists(absolutePath: string): Promise<boolean> {

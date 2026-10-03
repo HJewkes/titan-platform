@@ -289,6 +289,17 @@ describe("refreshCorpus", () => {
     expect(graph.transcripts.get(transcript.displayPath)?.status).toBe("ok");
   });
 
+  it("keeps a transcript ok when its source key starts with ~/ and the file exists", async () => {
+    const tilde = { ...transcript, displayPath: "~/s1.jsonl" };
+    await refreshCorpus(graph, [tilde]);
+    graph.db.prepare("DELETE FROM normalized_source").run();
+
+    const pass = await refreshCorpus(graph, [], { homeDir: dir });
+
+    expect(pass.markedMissing).toBe(0);
+    expect(graph.transcripts.get("~/s1.jsonl")?.status).toBe("ok");
+  });
+
   it("leaves a quarantined transcript quarantined when its bytes have not changed", async () => {
     await refreshCorpus(graph, [transcript]);
     graph.transcripts.markStatus(transcript.displayPath, "quarantined", "bad line");
