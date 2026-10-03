@@ -33,8 +33,8 @@ with a watermark per source cursor, and the `AskUserQuestion` transcript source.
 - You need the per-domain principle docs a decider reads: `principlesByDomain`,
   `changesByDomain` and `writePrincipleDocs(dir, ...)`.
 - You run condensation on a schedule: `condense({ playbook, watermarks: condenseWatermarks(db) },
-  rows, reflector, { docsDir })`. The reflector is your model call; its output is validated, and
-  re-running with no rows past a domain's watermark changes nothing.
+  ledger.entries(), reflector, { docsDir })`. The reflector is your model call; its output is validated, and
+  the watermark follows insertion order, so an old answer extracted late is still condensed.
 - You need the questions no principle may answer: `ALWAYS_ASK` and `alwaysAskList(hardStops)`.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw

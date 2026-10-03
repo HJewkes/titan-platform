@@ -4,6 +4,7 @@ import { domainBatch, isEvidence, parseCondenseDeltas, citationsFor, type Conden
 import { writePrincipleDocs, type WrittenDoc } from "./docs.js";
 import { applyFeedback, feedbackForRow, type PrincipleFeedback } from "./feedback.js";
 import type { LedgerRow } from "./ledger.js";
+import type { LedgerEntry } from "./store.js";
 import { assertDomain, ledgerRef, principleBullet, principlesByDomain, type Principle } from "./principles.js";
 import { changesByDomain, type RenderOptions } from "./render.js";
 
@@ -69,12 +70,6 @@ function watermarkKey(domain: string): string {
   return `condense:${domain}`;
 }
 
-/** Evidence time then key: a total order, so the watermark is a single comparable string. */
-function position(row: LedgerRow): string {
-  const at = Date.parse(row.answered_at ?? row.asked_at ?? "");
-  return `${Number.isNaN(at) ? "" : new Date(at).toISOString()}|${row.key}`;
-}
-
 function domainOf(row: LedgerRow): string | null {
   try {
     return assertDomain(row.category);
@@ -84,29 +79,29 @@ function domainOf(row: LedgerRow): string | null {
 }
 
 interface FreshRows {
-  byDomain: Map<string, LedgerRow[]>;
+  byDomain: Map<string, LedgerEntry[]>;
   skipped: string[];
 }
 
-/** Group rows past each domain's watermark, oldest first, one per key. */
-function freshRows(watermarks: WatermarkTable, rows: readonly LedgerRow[]): FreshRows {
-  const unique = [...new Map(rows.map((row) => [row.key, row])).values()];
+/** Group entries past each domain's watermark in insertion order, so a late-extracted old answer is still read. */
+function freshRows(watermarks: WatermarkTable, entries: readonly LedgerEntry[]): FreshRows {
+  const unique = [...new Map(entries.map((e) => [e.row.key, e])).values()];
   const fresh: FreshRows = { byDomain: new Map(), skipped: [] };
-  for (const row of unique.sort((a, b) => position(a).localeCompare(position(b)))) {
-    const domain = domainOf(row);
-    if (domain === null) fresh.skipped.push(row.key);
-    else if (position(row) > (watermarks.get(watermarkKey(domain))?.prefixHash ?? "")) {
-      fresh.byDomain.set(domain, [...(fresh.byDomain.get(domain) ?? []), row]);
+  for (const entry of unique.sort((a, b) => a.seq - b.seq)) {
+    const domain = domainOf(entry.row);
+    if (domain === null) fresh.skipped.push(entry.row.key);
+    else if (entry.seq > (watermarks.get(watermarkKey(domain))?.lastOffset ?? 0)) {
+      fresh.byDomain.set(domain, [...(fresh.byDomain.get(domain) ?? []), entry]);
     }
   }
   return fresh;
 }
 
-function advance(watermarks: WatermarkTable, domain: string, rows: readonly LedgerRow[]): void {
-  const last = rows[rows.length - 1];
+function advance(watermarks: WatermarkTable, domain: string, entries: readonly LedgerEntry[]): void {
+  const last = entries[entries.length - 1];
   if (last === undefined) return;
-  const prior = watermarks.ensure(watermarkKey(domain));
-  watermarks.advance(watermarkKey(domain), { lastOffset: prior.lastOffset + rows.length, prefixHash: position(last) });
+  watermarks.ensure(watermarkKey(domain));
+  watermarks.advance(watermarkKey(domain), { lastOffset: last.seq });
 }
 
 function recordFeedback(playbook: PlaybookStore, evidence: readonly LedgerRow[], deltas: readonly CondenseDelta[]): PrincipleFeedback[] {
@@ -141,23 +136,23 @@ async function reflect(reflector: Reflector, batch: DomainBatch, evidence: reado
   return parseCondenseDeltas(await reflector({ domain: batch.domain, rows: evidence, principles }), batch, rejected);
 }
 
-async function condenseDomain(store: CondenseStore, domain: string, rows: readonly LedgerRow[], reflector: Reflector, now: Date, run: CondenseRun): Promise<DomainRun> {
-  const evidence = rows.filter(isEvidence);
+async function condenseDomain(store: CondenseStore, domain: string, entries: readonly LedgerEntry[], reflector: Reflector, now: Date, run: CondenseRun): Promise<DomainRun> {
+  const evidence = entries.map((e) => e.row).filter(isEvidence);
   const principles = principlesByDomain(store.playbook, now).get(domain) ?? [];
   const batch = domainBatch(domain, evidence, principles);
   const rejected: RejectedCondenseDelta[] = [];
   const deltas = await reflect(reflector, batch, evidence, principles, rejected);
   run.feedback.push(...recordFeedback(store.playbook, evidence, deltas));
   for (const delta of deltas) if (delta.type === "propose") addPrinciple(store.playbook, domain, delta, now, run);
-  advance(store.watermarks, domain, rows);
-  return { domain, rows: rows.length, evidence: evidence.length, flagged: [...batch.flagged], rejected };
+  advance(store.watermarks, domain, entries);
+  return { domain, rows: entries.length, evidence: evidence.length, flagged: [...batch.flagged], rejected };
 }
 
 /**
- * One condensation pass: feed each domain's rows since its watermark to the reflector, record
+ * One condensation pass over ledger entries (`LedgerStore.entries()`): feed each domain's rows since its watermark to the reflector, record
  * owner feedback, curate proposals as candidates, then run inversion and maturity over the playbook.
  */
-export async function condense(store: CondenseStore, rows: readonly LedgerRow[], reflector: Reflector, options: CondenseOptions = {}): Promise<CondenseResult> {
+export async function condense(store: CondenseStore, rows: readonly LedgerEntry[], reflector: Reflector, options: CondenseOptions = {}): Promise<CondenseResult> {
   const now = options.now ?? new Date();
   const run: CondenseRun = { added: [], retired: [], maturityChanges: [], feedback: [] };
   const fresh = freshRows(store.watermarks, rows);

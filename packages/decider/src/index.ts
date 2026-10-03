@@ -27,7 +27,7 @@ export { answerFor, parseAnswerText, recommendedOption } from "./parse-answer.js
 export type { ParsedAnswers } from "./parse-answer.js";
 export type { LedgerSource, SourceCandidate, SourceRead, SourceWatermark, SourceWatermarks } from "./source.js";
 export { LEDGER_MIGRATIONS, LedgerStore, openLedgerStore } from "./store.js";
-export type { LedgerRowFilter } from "./store.js";
+export type { LedgerEntry, LedgerRowFilter } from "./store.js";
 export { extractSource } from "./extract.js";
 export type { ExtractSummary } from "./extract.js";
 export { TRANSCRIPT_SOURCE, transcriptKey, transcriptSource } from "./transcripts.js";
