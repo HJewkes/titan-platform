@@ -21,6 +21,12 @@ export type ItermSurfaceName = Extract<SurfaceName, `iterm-${string}`>;
 /** Returned by the search scripts when the anchor session no longer exists. */
 const NO_ANCHOR = "@@no-anchor@@";
 
+/** Returned by the tab-in-window script when no window has the id it was given. */
+const NO_WINDOW = "@@no-window@@";
+
+/** The third field of a placement answer when a full tab turned a pane into a tab. */
+const OVERFLOWED = "overflow";
+
 /** Returned by the teardown script when it found the session and closed it. */
 const CLOSED = "@@closed@@";
 
@@ -58,17 +64,22 @@ const anchorUuid = (anchor: string | undefined): string | undefined => {
  * no column yet, and no session's unique ID is ever the empty string, so the
  * lookup simply finds nothing, which is also the correct answer when the column
  * pane existed and has since been closed.
+ *
+ * `inTab` is counted here, while the anchor's tab is in hand, because a second
+ * osascript round trip per spawn is what the load data argues against.
  */
 const findSessions = (uuid: string, columnUuid: string): string => `
   set anchorSession to missing value
   set anchorWindow to missing value
   set columnSession to missing value
+  set inTab to 0
   repeat with w in windows
     repeat with t in tabs of w
       repeat with s in sessions of t
         if (unique ID of s) is ${asString(uuid)} then
           set anchorSession to s
           set anchorWindow to w
+          set inTab to (count of sessions of t)
         end if
         if (unique ID of s) is ${asString(columnUuid)} then
           set columnSession to s
@@ -109,30 +120,67 @@ const restoreFocus = `  if priorWindow is not missing value then
  * There is no depth parameter: the anchor is always the requester's own pane, so
  * an agent's own spawns land one column further right for free.
  *
+ * `split: 'below'` starts the stack under the anchor rather than beside it; a
+ * live column is extended downwards either way. A tab at `cap` sessions takes
+ * no more splits: the agent opens as a tab in the anchor's window instead.
+ *
  * The anchor window's tab and session are re-selected afterwards because a
  * split selects the anchor's tab and a new tab selects itself.
  */
-const beside = (surface: ItermSurfaceName, uuid: string, command: string, columnUuid: string = ""): string => {
+interface Beside {
+  surface: ItermSurfaceName;
+  uuid: string;
+  command: string;
+  columnUuid: string | undefined;
+  split: SurfaceOptions["split"];
+  cap: number | undefined;
+}
+
+const beside = ({ surface, uuid, command, columnUuid, split, cap }: Beside): string => {
   const withCommand = `with default profile command ${asString(command)}`;
-  const open =
-    surface === "iterm-pane"
-      ? `  if columnSession is not missing value then
+  const tab = `tell anchorWindow to set spawned to (current session of (create tab ${withCommand}))`;
+  const pane = `if columnSession is not missing value then
     tell columnSession to set spawned to (split horizontally ${withCommand})
   else
-    tell anchorSession to set spawned to (split vertically ${withCommand})
-  end if`
-      : `  tell anchorWindow to set spawned to (current session of (create tab ${withCommand}))`;
-  return `tell application "iTerm2"${findSessions(uuid, columnUuid)}
+    tell anchorSession to set spawned to (split ${split === "below" ? "horizontally" : "vertically"} ${withCommand})
+  end if`;
+  const capped = `if inTab >= ${cap} then
+    ${tab}
+    set overflow to ${asString(OVERFLOWED)}
+  else
+    ${pane.replaceAll("\n", "\n  ")}
+  end if`;
+  const open = surface !== "iterm-pane" ? tab : cap === undefined ? pane : capped;
+  return `tell application "iTerm2"${findSessions(uuid, columnUuid ?? "")}
 ${rememberFocus}
   set anchorTab to current tab of anchorWindow
   set anchorWindowSession to current session of anchorWindow
-${open}
+  set overflow to ""
+  ${open}
   select anchorTab
   select anchorWindowSession
 ${restoreFocus}
-  return unique ID of spawned
+  return (unique ID of spawned) & "|" & inTab & "|" & overflow
 end tell`;
 };
+
+/**
+ * A tab in a window named by id, for a requester with no session to anchor on.
+ * The window's own tab is re-selected because a new tab selects itself.
+ */
+const tabIn = (windowId: string, command: string): string => `tell application "iTerm2"
+  set homeWindow to missing value
+  repeat with w in windows
+    if ((id of w) as text) is ${asString(windowId)} then set homeWindow to w
+  end repeat
+  if homeWindow is missing value then return ${asString(NO_WINDOW)}
+${rememberFocus}
+  set homeTab to current tab of homeWindow
+  tell homeWindow to set spawned to (current session of (create tab with default profile command ${asString(command)}))
+  select homeTab
+${restoreFocus}
+  return unique ID of spawned
+end tell`;
 
 /**
  * Run the command IN the anchor session, rather than opening anything.
@@ -292,27 +340,87 @@ async function reuse(launch: ItermLaunch, uuid: string): Promise<LaunchHandle | 
   return undefined;
 }
 
+/** A cap that is not a positive whole number is no cap, rather than a script that cannot compile. */
+const tabCap = (cap: number | undefined): number | undefined =>
+  cap !== undefined && Number.isInteger(cap) && cap > 0 ? cap : undefined;
+
+/** `uuid|inTab|overflow`; a bare uuid is still an answer, with nothing known about the tab. */
+const parsePlacement = (answer: string): { paneRef: string; inTab: number | undefined; overflowed: boolean } => {
+  const [paneRef = "", count = "", flag] = answer.split("|");
+  const inTab = Number.parseInt(count, 10);
+  return { paneRef, inTab: Number.isNaN(inTab) ? undefined : inTab, overflowed: flag === OVERFLOWED };
+};
+
+/** A rung of the ladder: the handle it opened, or the name of the target that is gone. */
+type Rung = () => Promise<LaunchHandle | string>;
+
+async function besideAnchor(launch: ItermLaunch, uuid: string, command: string): Promise<LaunchHandle | string> {
+  const { surface, options, run } = launch;
+  const cap = tabCap(options.maxInTab);
+  const { columnAfter: columnUuid, split } = options;
+  const answer = await run(beside({ surface, uuid, command, columnUuid, split, cap }));
+  if (answer === NO_ANCHOR) return `anchor session ${uuid}`;
+  const { paneRef, inTab, overflowed } = parsePlacement(answer);
+  if (overflowed)
+    options.onNotice?.(`the anchor's tab holds ${inTab} sessions (cap ${cap}); opening an iTerm tab instead of ${surface}`);
+  const at = overflowed ? "iterm-tab" : surface;
+  return watched({ surface: at, paneRef, ownsSurface: true, ...(inTab === undefined ? {} : { inTab }) }, launch);
+}
+
+async function tabInWindow(launch: ItermLaunch, windowId: string, command: string): Promise<LaunchHandle | string> {
+  const paneRef = await launch.run(tabIn(windowId, command));
+  if (paneRef === NO_WINDOW) return `window ${windowId}`;
+  return watched({ surface: "iterm-tab", paneRef, ownsSurface: true }, launch);
+}
+
+/** A tab with a named window goes there and nowhere else; a pane tries its anchor first. */
+const rungs = (launch: ItermLaunch, uuid: string | undefined, command: string): Rung[] => {
+  const { surface, options } = launch;
+  const windowId = options.tabWindow === undefined ? undefined : String(options.tabWindow);
+  const viaAnchor = uuid === undefined ? [] : [() => besideAnchor(launch, uuid, command)];
+  const viaWindow = windowId === undefined ? [] : [() => tabInWindow(launch, windowId, command)];
+  return surface === "iterm-tab" && viaWindow.length > 0 ? viaWindow : [...viaAnchor, ...viaWindow];
+};
+
+/** Walks the rungs, and says so once when the agent lands somewhere other than where it was asked. */
+async function place(launch: ItermLaunch, uuid: string | undefined, command: string): Promise<LaunchHandle | undefined> {
+  const { surface, options } = launch;
+  const gone: string[] = [];
+  let handle: LaunchHandle | undefined;
+  for (const rung of rungs(launch, uuid, command)) {
+    const result = await rung();
+    if (typeof result !== "string") {
+      handle = result;
+      break;
+    }
+    gone.push(result);
+  }
+  if (gone.length > 0) {
+    const where = handle === undefined ? "an iTerm window" : `an iTerm tab in window ${options.tabWindow}`;
+    options.onNotice?.(`${gone.join(" and ")} ${gone.length > 1 ? "are" : "is"} gone; opening ${where} instead of ${surface}`);
+  }
+  return handle;
+}
+
 /**
- * The ladder, in order: no anchor -> a window; anchor recorded but gone -> a
- * window plus a notice; no iTerm2 at all -> refuse, naming headless.
+ * The ladder, in order: the anchor or the named window -> there; neither given ->
+ * a window; given but gone -> a window plus a notice; no iTerm2 at all ->
+ * refuse, naming headless.
  */
 async function launchIterm(launch: ItermLaunch): Promise<LaunchHandle> {
   const { surface, plan, launcher, options, run } = launch;
   await requireIterm(options, run);
   const uuid = anchorUuid(options.anchor);
   const command = paneCommand(launcher, plan.agentId);
-  const opened = (at: ItermSurfaceName, paneRef: string): LaunchHandle =>
-    watched({ surface: at, paneRef, ownsSurface: true }, launch);
 
   if (options.reuseAnchor && uuid !== undefined) {
     const reused = await reuse(launch, uuid);
     if (reused !== undefined) return reused;
-  } else if (surface !== "iterm-window" && uuid !== undefined) {
-    const paneRef = await run(beside(surface, uuid, command, options.columnAfter));
-    if (paneRef !== NO_ANCHOR) return opened(surface, paneRef);
-    options.onNotice?.(`anchor session ${uuid} is gone; opening an iTerm window instead of ${surface}`);
+  } else if (surface !== "iterm-window") {
+    const placed = await place(launch, uuid, command);
+    if (placed !== undefined) return placed;
   }
-  return opened("iterm-window", await run(newWindow(command)));
+  return watched({ surface: "iterm-window", paneRef: await run(newWindow(command)), ownsSurface: true }, launch);
 }
 
 /**

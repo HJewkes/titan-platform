@@ -32,6 +32,11 @@ export interface LaunchHandle {
   /** iTerm session UUID. */
   paneRef?: string;
   /**
+   * How many sessions the anchor's tab held when this launch looked, before it
+   * opened anything. Only for a launch placed by its anchor.
+   */
+  inTab?: number;
+  /**
    * This launch OPENED the surface, so its owner may also close it.
    *
    * Absent for a pane the launch only wrote INTO: an anchor belongs to whoever
