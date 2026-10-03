@@ -36,6 +36,12 @@ export const LEDGER_MIGRATIONS: Migration[] = [
   },
 ];
 
+/** A row with its insertion sequence: the order rows reached the ledger, whatever their evidence time. */
+export interface LedgerEntry {
+  seq: number;
+  row: LedgerRow;
+}
+
 export interface LedgerRowFilter {
   source?: LedgerSourceName;
   initiative?: string;
@@ -91,6 +97,15 @@ export class LedgerStore {
       )
       .all({ source: filter.source ?? null, initiative: filter.initiative ?? null }) as { row_json: string }[];
     return found.map((r) => LedgerRowSchema.parse(JSON.parse(r.row_json)));
+  }
+
+  /** Rows inserted after `since`, in insertion order; rowid only grows because the ledger never deletes. */
+  entries(since = 0): LedgerEntry[] {
+    const found = this.db.prepare("SELECT rowid AS seq, row_json FROM ledger_row WHERE rowid > ? ORDER BY rowid").all(since) as {
+      seq: number;
+      row_json: string;
+    }[];
+    return found.map((r) => ({ seq: r.seq, row: LedgerRowSchema.parse(JSON.parse(r.row_json)) }));
   }
 
   count(): number {

@@ -25,6 +25,17 @@ describe("LedgerStore", () => {
     expect(store.count()).toBe(2);
   });
 
+  it("lists entries in insertion order whatever their ask time, and a repeated key takes no new sequence", () => {
+    const store = openLedgerStore(":memory:");
+    store.append([v1Row({ key: "queue:new", asked_at: "2026-05-01T00:00:00Z" })]);
+    store.append([v1Row({ key: "queue:new" }), v1Row({ key: "queue:old", asked_at: "2025-01-01T00:00:00Z" })]);
+
+    const entries = store.entries();
+
+    expect(entries.map((e) => e.row.key)).toEqual(["queue:new", "queue:old"]);
+    expect(store.entries(entries[0]?.seq).map((e) => e.row.key)).toEqual(["queue:old"]);
+  });
+
   it("refuses a malformed row without writing it", () => {
     const store = openLedgerStore(":memory:");
 
