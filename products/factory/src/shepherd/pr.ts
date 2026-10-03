@@ -6,6 +6,7 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
@@ -39,6 +40,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
   ...OUTCOME_STEPS,
+  ...CONFLICT_CHECK_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -89,6 +91,7 @@ interface ShepherdRun {
   fixFirsts: number;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
+  conflictChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
   /** Heads whose merge decision is the owner's, with why. */
@@ -110,7 +113,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -157,6 +160,11 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   return outcome.kind === "woken";
 }
 
+/** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
+function leaveOnConflict(headSha: string): LeaveLand {
+  return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
+}
+
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
@@ -168,7 +176,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: supersedingGates(ctx, () => new LeaveLand()),
+    assisted: conflictCheckedGates(supersedingGates(ctx, () => new LeaveLand()), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -376,6 +384,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),
+    conflictCheckRoute(deps),
   ];
 }
 
