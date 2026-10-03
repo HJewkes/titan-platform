@@ -30,7 +30,7 @@ export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown }
   | { kind: "FIX_FIRST"; headSha: string; text: string }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none"; cause?: NoVerdictCause };
+  | { kind: "none"; cause?: NoVerdictCause; reason?: string };
 
 /** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
