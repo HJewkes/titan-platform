@@ -1,7 +1,8 @@
 # session-analytics
 
-**Tier 2 · domain.** Depends on [`session-graph`](/reference/session-graph) and
-[`store-sqlite`](/reference/store-sqlite). `zod` is a peer dependency.
+**Tier 2 · domain.** Depends on [`session-graph`](/reference/session-graph),
+[`store-sqlite`](/reference/store-sqlite), [`session-read`](/reference/session-read) and
+[`agent-protocol`](/reference/agent-protocol). `zod` is a peer dependency.
 
 ```sh
 npm install @titan-design/session-analytics
@@ -93,10 +94,39 @@ Both reports take an optional `scope` of `sessionIds`, an agent-chat `agentPrefi
 of the cost report, framed by its header, caveat and footer. The session miner's
 `titan-miner insights <question>` is built from these two pieces.
 
+## Session timeline
+
+`buildSessionTimeline(observations)` is the read model behind a session view. It folds
+session-read's normalized observations, so it covers Claude Code and Codex and needs no graph.
+`SessionTimelineAccumulator` is the same fold for a streamed read.
+
+```ts
+import { claudeSourceFromPath, readSessionObservations } from "@titan-design/session-read";
+import { SessionTimelineAccumulator, countAtOrBefore } from "@titan-design/session-analytics";
+
+const accumulator = new SessionTimelineAccumulator();
+for await (const observation of readSessionObservations(claudeSourceFromPath(file, namespace))) {
+  accumulator.add(observation);
+}
+const timeline = accumulator.result();
+countAtOrBefore(timeline.tools.atMs, scrubbedMs); // tool calls made by that time
+```
+
+The result is plain JSON. `turns` groups messages and tool calls under the user message that
+opened them. `buckets` has one entry per clock minute that held activity, and `gaps` lists
+each idle stretch of 10 minutes or more. The wait on a tool call that later returned is not
+idle and is never a gap. `tokens` has one point per API request with its
+prompt size, output, cost and running totals, plus the compaction marks. `tools`, `files`,
+`errors` and `agents` are the breakdowns, each with ascending time arrays that
+`countAtOrBefore` searches for a scrubbed time.
+
+Every `*Ms` field is epoch milliseconds and the model holds no time zone. A session that
+crosses midnight is one unbroken run of buckets, and the renderer picks the zone.
+
 ## What it deliberately does not do
 
 It does not read a transcript or the network, it never writes the graph, and it does not
-fetch live prices.
+fetch live prices. The timeline takes observations a caller already read.
 `PRICE_TABLE` is a checked-in constant fitted against 392 `cost-state` rows, and
 `PRICE_TABLE_VERSION` exists so a report can say which fit produced its numbers.
 
@@ -166,6 +196,21 @@ to the latest request at or before it in its transcript, then keeps only request
 maps a block the other way, to the request it feeds. Seat-specific action rules (a seat's
 journal files or scorer scripts) are passed as `actionRules`; the package keeps generic ones.
 
+**The timeline prices every cache write at the 5m rate.** Normalized usage carries one cache
+write count with no 5m and 1h split, so a session that wrote 1h caches under-reads. Use
+`costReport` for a figure that must match the audit.
+
+**A turn's `origin` is read from the head of its opening text.** A typed prompt that the
+harness prefixed with a reminder block reads as `injected`, not `prompt`.
+
+**A snapshot-only source has token totals, no points and no cost.** A source that reports
+running totals instead of per-request usage gets `tokens.basis: "snapshot"`, an empty `points`
+list and `totals.requests: null`. Nothing is priced, so `totals.costUsd` and every turn's
+`costUsd` are 0. Check `basis` before showing a cost.
+
+**A call that never returned does not cover a gap.** Only a tool call with a result counts as
+work in flight. Quiet time after a call the session abandoned is still an idle gap.
+
 **`bandOf` returns `null`, not a fallback label**, for a value no band covers. A negative
 gap means clock skew upstream and should be reported rather than bucketed.
 
@@ -177,3 +222,6 @@ classification rule order and the band edges are ports of `cf_analyze.py` from t
 fired on zero sessions) and its sonnet default price removed. It also absorbs the package
 scaffold TP-239 asked for. The cost report and its renderer are TP-272. Roles and both episode heuristics are TP-273, moved
 in from the worker and coordinator forensics reports and `wf_analyze.py` / `co_analyze.py`.
+
+The session timeline is TP-843. It replaces the precompute and binary-search helpers of an
+earlier dashboard, and a timeline regex behind them that read clock times with no date.
