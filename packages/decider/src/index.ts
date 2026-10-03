@@ -46,6 +46,22 @@ export { CONDENSE_MIGRATIONS, condense, condenseWatermarks } from "./condense.js
 export type { CondenseOptions, CondenseResult, CondenseRun, CondenseStore, DomainRun, Reflector, ReflectorInput } from "./condense.js";
 export { CiteDeltaSchema, CondenseDeltaSchema, ProposeDeltaSchema, carriesInstruction, isEvidence } from "./condense-deltas.js";
 export type { CiteDelta, CondenseDelta, ProposeDelta, RejectedCondenseDelta } from "./condense-deltas.js";
+export { NOTE_SOURCE, noteKey, noteSource } from "./notes.js";
+export type { NoteSourceOptions } from "./notes.js";
+export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
+export type { UnlockCheck } from "./unlock.js";
+export {
+  CategoryPolicySchema,
+  DECIDER_MODES,
+  RoutingPolicySchema,
+  categoryPolicy,
+  isLockedCategory,
+  parseRoutingPolicy,
+  setCategoryMode,
+} from "./policy.js";
+export type { CategoryPolicy, DeciderMode, RoutingPolicy } from "./policy.js";
+export { route } from "./router.js";
+export type { RouteContext, RouteDecision, RouteQuestion } from "./router.js";
 export {
   DEFAULT_MIN_CONFIDENCE,
   DecideInputSchema,

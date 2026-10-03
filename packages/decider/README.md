@@ -1,7 +1,7 @@
 # @titan-design/decider
 
 The owner-decision ledger: the `LedgerRow` v2 schema, the outcome classifier, the
-exclusion check that runs before a row is written, the store and the transcript source.
+exclusion check that runs before a row is written, the store, and the transcript and note sources.
 
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
@@ -23,11 +23,16 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and runs the maturity pass. Decider answers are never evidence, and a row whose question
   carries an instruction can neither ground nor confirm a principle.
 - `ALWAYS_ASK` is the fixed always-ask list; `alwaysAskList(hardStops)` adds the charter's.
+- `route(question, policy, ctx)` is the pure routing table: `owner-now`, `owner-queue` or `decider`,
+  with a shadow flag and a reason. `parseRoutingPolicy` holds one mode row per category and keeps
+  always-ask categories `off`. `checkUnlock` is agent-chat's unlock table, parity-tested.
 - `LedgerStore` (`openLedgerStore(path)`) is append-only by row key, with a watermark per source
   cursor on `@titan-design/store-sqlite`.
 - `LedgerSource` is the port `{ name, read(since) }`; `extractSource` runs one source, drops
   excluded rows before anything is written, appends the rest and advances the watermark.
 - `transcriptSource()` reads `AskUserQuestion` calls from Claude Code transcripts through
   `@titan-design/session-read`, ported from active-work's `src/precedent/transcripts.ts`.
+- `noteSource({ root })` reads decision notes and feedback memory imports under
+  `<root>/<initiative>/sources/notes/`, ported from active-work's `src/precedent/notes.ts`.
 
-Status: slices 1, 2 and 6 of TP-695 (TP-696, TP-697, TP-701).
+Status: slices 1, 2, 2b and 6 of TP-695 (TP-696, TP-697, TP-730, TP-701).

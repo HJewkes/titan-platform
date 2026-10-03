@@ -14,7 +14,8 @@ redirected the asker's recommendation, and nothing kept human-only work out of t
 package adds the ledger row shape that a decider, a shadow scorer and a condensation run can share:
 a v2 schema that still reads v1 rows, a pure outcome classifier, and a pure exclusion check. It
 also holds the ledger itself: an append-only SQLite store keyed by row key, a `LedgerSource` port
-with a watermark per source cursor, and the `AskUserQuestion` transcript source.
+with a watermark per source cursor, the `AskUserQuestion` transcript source and the decision-notes
+source.
 
 ## When to reach for it
 
@@ -36,6 +37,8 @@ with a watermark per source cursor, and the `AskUserQuestion` transcript source.
   ledger.entries(), reflector, { docsDir })`. The reflector is your model call; its output is validated, and
   the watermark follows insertion order, so an old answer extracted late is still condensed.
 - You need the questions no principle may answer: `ALWAYS_ASK` and `alwaysAskList(hardStops)`.
+- You decide where a question goes before any model runs: `route(question, policy, ctx)` returns
+  `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw
 transcript parsing, use [`session-read`](./session-read).
@@ -81,6 +84,16 @@ import { extractSource, openLedgerStore, transcriptSource } from "@titan-design/
 const store = openLedgerStore("/var/example/decider.sqlite3");
 const summary = await extractSource(store, transcriptSource(), policy);
 // { source: "transcript", read, written, alreadyIndexed, excluded: { ... }, pending, errors }
+```
+
+Extracting decision notes from an active-work root, where each initiative keeps notes under
+`<slug>/sources/notes/`:
+
+```ts
+import { extractSource, noteSource } from "@titan-design/decider";
+
+await extractSource(store, noteSource({ root: "/var/example/active-work" }), policy);
+// rows keyed note:<slug>/<file>, outcome "none"
 ```
 
 Principles live in a `memory` playbook. An owner answer that agrees with a principle is helpful
@@ -142,6 +155,9 @@ writePrincipleDocs({
   `transcript:<session>:<tool_use_id>`; later ones add `#<n>`.
 - An unanswered question holds its transcript's watermark at its own line, so the next run
   re-reads from there and writes it once the answer lands.
+- The note source keeps v1's key `note:<slug>/<file>` and writes a `kind: decision` note, or a
+  `memory-import` note tagged or trailed as `feedback`. Its watermark is a note's byte length and
+  sha256, so only a changed note is parsed again; a malformed note is reported once per change.
 - Store migrations are numbered from 3000 so the ledger can share a database file with other
   stores.
 - `feedbackForRow` returns no feedback for rows answered by the decider, unclaimed rows and
@@ -151,10 +167,19 @@ writePrincipleDocs({
   alone rewrite the body without a new version.
 - `ALWAYS_ASK` is frozen data. Hard stops arrive through `alwaysAskList(hardStops)` as
   `hard_stop:<text>` ids; the package never reads a charter.
+- `route` never widens: an always-ask category, an unlock-table phrase in the header, question or
+  any option, a hard-stop phrase or a human-only initiative keeps the question with the owner
+  whatever the category's mode. `setCategoryMode` throws on raising a locked category, and
+  `parseRoutingPolicy` forces a stored one back to `off`.
+- Categories, initiatives and hard stops compare after folding case, spaces, `-`, `_` and
+  punctuation, so `Merge-Gate` is `merge_gate`. A category outside agent-chat's decidable set
+  never routes to `decider`, even in `auto`.
+- The unlock table is broad on purpose ("release the claim" matches); `unlock.test.ts`
+  pins it to agent-chat's verdicts, so change both together.
 
 ## Where it came from
 
 The row shape is a superset of active-work's `PrecedentRow` (`src/precedent/schema.ts`), and the
 outcome mapping follows its `pick_type`. The transcript source, answer parser and category
-seed are ported from its `transcripts.ts`, `parse-answer.ts` and `classify.ts`. Planned in TP-695
-as slices TP-696, TP-697 and TP-701; TP-698 swaps active-work onto this package and deletes its copy.
+seed are ported from its `transcripts.ts`, `parse-answer.ts` and `classify.ts`, and the note
+source from its `notes.ts`. Planned in TP-695 as slices TP-696, TP-697, TP-701 and TP-730; TP-698 swaps active-work onto this package and deletes its copy.
