@@ -42,3 +42,22 @@ export { writePrincipleDocs } from "./docs.js";
 export type { WriteDocsInput, WrittenDoc } from "./docs.js";
 export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
 export type { AlwaysAskEntry } from "./always-ask.js";
+export {
+  DEFAULT_MIN_CONFIDENCE,
+  DecideInputSchema,
+  DecidePrecedentSchema,
+  DecidePrincipleSchema,
+  DecideReplySchema,
+  decideJsonSchemas,
+  minConfidenceFor,
+  validate,
+} from "./contract.js";
+export type {
+  CategoryThreshold,
+  DecideInput,
+  DecidePolicy,
+  DecidePrecedent,
+  DecidePrinciple,
+  DecideReply,
+  DecideValidation,
+} from "./contract.js";
