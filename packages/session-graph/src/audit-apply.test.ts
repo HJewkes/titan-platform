@@ -112,7 +112,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME], [9, "stop storing bulk classes"],
       [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
