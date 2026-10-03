@@ -2,7 +2,7 @@ import { consoleLogger, mountStaticApp, startDaemon, type DaemonHandle, type Log
 import type { ConsoleConfig } from "./config.js";
 import { APP_VERSION } from "./paths.js";
 import { createConsoleRegistry, createContext } from "./registry.js";
-import { createUpstreams } from "./upstreams.js";
+import { createSources } from "./upstreams.js";
 
 export interface ConsoleDaemonOptions {
   config: ConsoleConfig;
@@ -14,9 +14,10 @@ export interface ConsoleDaemonOptions {
 /** The console's one daemon: its commands and, when asked, the built app, on loopback only. */
 export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise<DaemonHandle> {
   const { config, staticRoot } = options;
-  const upstreams = createUpstreams(config);
+  const sources = createSources(config);
+  const { upstreams } = sources;
   return startDaemon({
-    registry: createConsoleRegistry(upstreams),
+    registry: createConsoleRegistry(sources),
     createContext,
     version: APP_VERSION,
     port: config.port,

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeHub } from "./fake-hub.js";
 import { MemoryMirrorState } from "./memory-state.js";
 import { MemoryQueueSource } from "./memory-source.js";
-import { createMirror, type Mirror, type MirrorOptions } from "./mirror.js";
+import { createMirror, MAX_BACKFILL_PAGES, type Mirror, type MirrorOptions } from "./mirror.js";
 import { runMirror } from "./run.js";
 import type { MirrorState, QueueItem, SourceEvent } from "./types.js";
 
@@ -359,5 +359,72 @@ describe("runMirror", () => {
     await vi.waitFor(() => expect(msgIds(hub)).toEqual(["live"]));
     controller.abort();
     await running;
+  });
+});
+
+describe("limited sync batches", () => {
+  const note = (id: string): MatrixEvent => ({ type: "m.room.message", event_id: id, sender: OWNER, content: { msgtype: "m.text", body: id } });
+
+  async function postedPair(): Promise<Rig> {
+    const r = rig();
+    r.source.add(approval("a"));
+    r.source.add(approval("b"));
+    await r.mirror.reconcile();
+    return r;
+  }
+
+  it("applies events from the gap oldest first, once, then the batch", async () => {
+    const r = await postedPair();
+    const [a, b] = [eventIdOf(r.state, "a"), eventIdOf(r.state, "b")];
+    const missedA = reaction(a);
+    const missedB = reaction(b, "❌");
+    const batch = r.hub.deliverLimited("p1", [], { p1: { chunk: [missedB, missedA], start: "p1" } });
+    await r.mirror.applySyncBatch(batch);
+    await r.mirror.applySyncBatch(batch);
+    expect(r.source.resolutions.map((entry) => entry.id)).toEqual(["a", "b"]);
+    expect(r.state.hasApplied(missedA.event_id)).toBe(true);
+    expect(r.state.hasApplied(missedB.event_id)).toBe(true);
+  });
+
+  it("stops paging at the first already applied event", async () => {
+    const r = await postedPair();
+    const seen = reaction(eventIdOf(r.state, "a"));
+    await r.mirror.applySyncBatch(r.hub.deliver(seen));
+    const batch = r.hub.deliverLimited("p1", [], {
+      p1: { chunk: [reaction(eventIdOf(r.state, "b")), seen], start: "p1", end: "p2" },
+      p2: { chunk: [note("$older")], start: "p2" },
+    });
+    await r.mirror.applySyncBatch(batch);
+    expect(r.hub.messageRequests).toEqual(["p1"]);
+    expect(r.source.resolutions.map((entry) => entry.id)).toEqual(["a", "b"]);
+  });
+
+  it("follows prev_batch through several pages until history ends", async () => {
+    const r = await postedPair();
+    const missedB = reaction(eventIdOf(r.state, "b"));
+    const missedA = reaction(eventIdOf(r.state, "a"));
+    const batch = r.hub.deliverLimited("p1", [], {
+      p1: { chunk: [missedB], start: "p1", end: "p2" },
+      p2: { chunk: [missedA], start: "p2" },
+    });
+    await r.mirror.applySyncBatch(batch);
+    expect(r.hub.messageRequests).toEqual(["p1", "p2"]);
+    expect(r.source.resolutions.map((entry) => entry.id)).toEqual(["a", "b"]);
+  });
+
+  it("logs a gap and stops at the page cap", async () => {
+    const r = await postedPair();
+    const pages: Record<string, { chunk: MatrixEvent[]; start: string; end: string }> = {};
+    for (let n = 0; n < MAX_BACKFILL_PAGES + 5; n += 1) pages[`p${n}`] = { chunk: [note(`$n${n}`)], start: `p${n}`, end: `p${n + 1}` };
+    await r.mirror.applySyncBatch(r.hub.deliverLimited("p0", [], pages));
+    expect(r.hub.messageRequests).toHaveLength(MAX_BACKFILL_PAGES);
+    expect(r.logs).toContain("backfill gap: page cap reached");
+    expect(r.state.syncToken()).toBe("s1");
+  });
+
+  it("does not page when the batch is not limited", async () => {
+    const r = await postedPair();
+    await r.mirror.applySyncBatch(r.hub.deliver(note("$x")));
+    expect(r.hub.messageRequests).toEqual([]);
   });
 });

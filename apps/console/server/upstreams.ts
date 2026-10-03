@@ -1,6 +1,9 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { probeHealth } from "@titan-design/daemon";
+import { activeWorkClient } from "./active-work.js";
+import { brokerReader } from "./broker.js";
+import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
@@ -66,4 +69,12 @@ export function createUpstreams(config: ConsoleConfig): Upstream[] {
 
 export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<UpstreamHealth[]> {
   return Promise.all(upstreams.map(async ({ id, label, target, probe }) => ({ id, label, target, ...(await probe()) })));
+}
+
+export function createSources(config: ConsoleConfig): ConsoleSources {
+  return {
+    upstreams: createUpstreams(config),
+    activeWork: activeWorkClient(config.activeWorkPort),
+    agents: { broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }), seatPrefixes: config.seatPrefixes },
+  };
 }

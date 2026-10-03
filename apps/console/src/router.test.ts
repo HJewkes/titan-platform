@@ -11,6 +11,11 @@ describe("hash routes", () => {
     expect(parseRoute("#/nowhere")).toEqual({ view: "status" });
   });
 
+  it("round-trips an initiative detail route, and a slug that needs encoding", () => {
+    expect(parseRoute("#/initiatives/orbit-relay")).toEqual({ view: "initiatives", slug: "orbit-relay" });
+    expect(parseRoute(href({ view: "initiatives", slug: "a b" }))).toEqual({ view: "initiatives", slug: "a b" });
+  });
+
   it("ignores a query string and deeper segments, which later views will own", () => {
     expect(parseRoute("#/sessions/abc?tab=replay")).toEqual({ view: "sessions" });
   });

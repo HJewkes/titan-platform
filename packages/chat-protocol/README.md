@@ -109,6 +109,21 @@ mapping, for whoever writes it at tier 1:
 | **Claude Code channel** | one per session | the channel server | one `text` part | **Outbound is string-only**: any structured part must be serialised into `content` first. **Meta keys must be identifiers**, which is what `DATA_PART_KEY_PATTERN` enforces. The 5-character `request_id` is the only correlation handle, and verdicts do not persist. |
 | **vmcp push** | one per slot | device | `text` plus `data-*` | Slot routing is not uniform: several event types carry no `slot` key at all, and two carry `slot_id`/`partner_slot_id` instead, so a thread-per-slot model still needs a device-level thread. `rep_finalized` fires when the *next* rep begins, so naive chronological rendering reads one rep late. |
 
+## Agent roster and graph (`@titan-design/chat-protocol/agents`)
+
+Pure folds over the agent-chat broker's read API, with no fetch of their own.
+`foldRoster` joins `/api/sessions` presence to the lifecycle rows in
+`/api/history`. Presence knows only working, available and blocked, so every
+other state (spawning, detached, exited, failed, retired) comes from history,
+and each row's `stateSource` says which. `foldAgentGraph` returns the spawn tree
+as nodes plus `spawned` and `message` edges with counts, keyed by stable node
+ids so a respawned name does not merge with its predecessor. `layoutSpawnTree`,
+`treePath`, `sparkRoutes` and the glow helpers are the agent-chat dashboard's
+graph fold, moved here so both front ends share one implementation.
+
+The broker keeps a capped history (1,000 rows at most), so spawn rows age out on
+a busy day. Both folds report the window they saw in `history`.
+
 ## Delivery state
 
 `capDeliveryStatus(status, ceiling)` clamps a claim to what a transport can
