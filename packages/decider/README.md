@@ -17,6 +17,11 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `applyFeedback` records it once per ledger key.
 - `writePrincipleDocs` renders one `<domain>.md` per domain into a directory the caller passes:
   rule, cited examples, counter-examples, confidence, last confirmed, version and changelog.
+- `condense(store, rows, reflector)` is the condensation run. Per domain it feeds the rows
+  inserted since its watermark (`LedgerStore.entries()`, in insertion order) to an injected
+  `Reflector`, validates its deltas with zod, records feedback, curates proposals as candidates
+  and runs the maturity pass. Decider answers are never evidence, and a row whose question
+  carries an instruction can neither ground nor confirm a principle.
 - `ALWAYS_ASK` is the fixed always-ask list; `alwaysAskList(hardStops)` adds the charter's.
 - `route(question, policy, ctx)` is the pure routing table: `owner-now`, `owner-queue` or `decider`,
   with a shadow flag and a reason. `parseRoutingPolicy` holds one mode row per category and keeps

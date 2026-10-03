@@ -33,6 +33,9 @@ source.
   `ledger:<key>`, and `applyFeedback` records it once per key.
 - You need the per-domain principle docs a decider reads: `principlesByDomain`,
   `changesByDomain` and `writePrincipleDocs(dir, ...)`.
+- You run condensation on a schedule: `condense({ playbook, watermarks: condenseWatermarks(db) },
+  ledger.entries(), reflector, { docsDir })`. The reflector is your model call; its output is validated, and
+  the watermark follows insertion order, so an old answer extracted late is still condensed.
 - You need the questions no principle may answer: `ALWAYS_ASK` and `alwaysAskList(hardStops)`.
 - You decide where a question goes before any model runs: `route(question, policy, ctx)` returns
   `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
