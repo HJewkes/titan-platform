@@ -20,8 +20,29 @@ export type BrokerEvent = z.infer<typeof brokerEvent>;
 
 /** Presence statuses, verbatim from the broker's registry. */
 export const PRESENCE_STATES = ["working", "available", "blocked"] as const;
+
+/** The fields of one `/api/sessions` row the roster reads; unknown fields pass through untouched. */
+export const brokerSession = z.object({
+  name: z.string(),
+  workingOn: z.string(),
+  cwd: z.string(),
+  status: z.enum(PRESENCE_STATES),
+  idleMs: z.number(),
+  registeredAt: z.number(),
+  dnd: z.boolean().optional(),
+  provisional: z.boolean().optional(),
+  tags: z.array(z.object({ tag: z.string() })).optional(),
+  observed: z.object({ gitBranch: z.string().optional(), claudeSessionId: z.string().optional() }).optional(),
+  declared: z.record(z.string(), z.string()).optional(),
+});
+export type BrokerSession = z.infer<typeof brokerSession>;
+
+export const brokerSessions = z.object({ sessions: z.array(brokerSession), brokerUptimeMs: z.number() });
+export const brokerHistory = z.object({ items: z.array(brokerEvent) });
 /** Lifecycle states folded from history for an agent with no live presence. `failed` is an exit that never started. */
 export const HISTORY_STATES = ["spawning", "detached", "exited", "failed", "retired"] as const;
+/** History states whose process may still be running; the rest are past. */
+export const LIVE_HISTORY_STATES = ["spawning", "detached"] as const;
 export const agentState = z.enum([...PRESENCE_STATES, ...HISTORY_STATES]);
 export type AgentState = z.infer<typeof agentState>;
 
@@ -51,8 +72,8 @@ export const agentRosterEntry = z.object({
   stateSource: agentStateSource,
   origin: agentOrigin,
   /** The session's declared line from `chat_register`, or the spawn brief's first line. A claim, not a fact. */
-  workingOn: z.string(),
-  cwd: z.string(),
+  workingOn: z.string().nullable(),
+  cwd: z.string().nullable(),
   gitBranch: z.string().nullable(),
   /** The seat whose name prefix this agent carries; null when no configured prefix matches. */
   seat: z.string().nullable(),
@@ -66,9 +87,16 @@ export const agentRosterEntry = z.object({
   claudeSessionId: z.string().nullable(),
   registeredAt: z.number().nullable(),
   spawnedAt: z.number().nullable(),
+  /** Epoch ms of the newest presence or history signal. */
   lastEventAt: z.number().nullable(),
   /** Presence only: milliseconds since the session last spoke. */
   idleMs: z.number().nullable(),
+  /** Presence only: holding pushes. False for a history-only row. */
+  dnd: z.boolean(),
+  /** Presence only: the name was derived from the directory, not chosen. False for a history-only row. */
+  provisional: z.boolean(),
+  /** Presence only: tag labels, never authorization. Empty for a history-only row. */
+  tags: z.array(z.string()),
   costUsd: z.number().nullable(),
   costSource: agentCostSource.nullable(),
 });
@@ -82,7 +110,7 @@ export const historyWindow = z.object({
 });
 export type HistoryWindow = z.infer<typeof historyWindow>;
 
-export const agentRoster = z.object({
+export const agentRosterSnapshot = z.object({
   agents: z.array(agentRosterEntry),
   /** Under about 10 s the broker's registry is still refilling after a restart, so missing presence is not death. */
   brokerUptimeMs: z.number().nullable(),
@@ -90,16 +118,18 @@ export const agentRoster = z.object({
   history: historyWindow,
   generatedAt: z.number(),
 });
-export type AgentRoster = z.infer<typeof agentRoster>;
+export type AgentRosterSnapshot = z.infer<typeof agentRosterSnapshot>;
 
 export const ACTIVITY_CATEGORIES = ["message", "question", "notice", "thinking"] as const;
 export const activityCategorySchema = z.enum(ACTIVITY_CATEGORIES);
 export type ActivityCategory = z.infer<typeof activityCategorySchema>;
 
-export const nodeActivity = z.object({ category: activityCategorySchema, at: z.number() });
-export type NodeActivity = z.infer<typeof nodeActivity>;
+export const nodeActivitySchema = z.object({ category: activityCategorySchema, at: z.number() });
+export type NodeActivity = z.infer<typeof nodeActivitySchema>;
 
 export const agentGraphNode = z.object({
+  /** Stable across a respawn of the same name: the roster id, else the broker agent id, else `name:<name>`. */
+  id: z.string().min(1),
   name: z.string(),
   /** The matching roster entry's `id`, so a view can join the two; null for a name with no roster row. */
   rosterId: z.string().nullable(),
@@ -107,14 +137,14 @@ export const agentGraphNode = z.object({
   /** Spawn-tree column and row from `layoutSpawnTree`; pixels are the renderer's business. */
   depth: z.number().int().nonnegative(),
   row: z.number(),
-  activity: nodeActivity.nullable(),
+  activity: nodeActivitySchema.nullable(),
 });
 export type AgentGraphNode = z.infer<typeof agentGraphNode>;
 
 export const agentGraphEdgeKind = z.enum(["spawned", "message"]);
 export type AgentGraphEdgeKind = z.infer<typeof agentGraphEdgeKind>;
 
-/** `spawned` edges point spawner to child; `message` edges point sender to recipient, one per ordered pair. */
+/** `from` and `to` are node ids. `spawned` points spawner to child; `message` points sender to recipient, one per ordered pair. */
 export const agentGraphEdge = z.object({
   kind: agentGraphEdgeKind,
   from: z.string(),
@@ -125,6 +155,7 @@ export const agentGraphEdge = z.object({
 export type AgentGraphEdge = z.infer<typeof agentGraphEdge>;
 
 export const agentGraph = z.object({
+  /** Ordered by depth, then row. */
   nodes: z.array(agentGraphNode),
   edges: z.array(agentGraphEdge),
   history: historyWindow,
