@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compilePatterns } from "../check/patterns.js";
-import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
+import type { GraphEdge, GraphMetric, GraphNode, NodeRole } from "../types.js";
 import {
   buildReportContext,
   busFactorOf,
@@ -12,7 +12,7 @@ import {
   type ReportContextInput,
 } from "./graph-report-sections.js";
 
-function file(id: string, role?: string): GraphNode {
+function file(id: string, role?: NodeRole): GraphNode {
   return { id, kind: "file", name: id, ...(role ? { role } : {}) };
 }
 
