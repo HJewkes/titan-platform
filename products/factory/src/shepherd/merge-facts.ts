@@ -4,6 +4,7 @@ import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitH
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
+import type { ShepherdStoreRef } from "./store.js";
 import type { CarryResult } from "./tree-carry.js";
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -150,6 +151,15 @@ interface Observed {
   merge: MergeFacts;
   runs: CheckRun[];
   requiredChecksUnknown?: string;
+}
+
+/** A store that is not bound reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
+export function registeredKind(store: ShepherdStoreRef, runId: string): string | undefined {
+  try {
+    return store.get().byRun(runId)?.kind;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Only an equal probe result for this head becomes a fact; the reviewer's text never does. */

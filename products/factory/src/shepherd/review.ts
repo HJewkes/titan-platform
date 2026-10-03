@@ -8,7 +8,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
@@ -298,15 +298,6 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
   return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0).runner.run(step) } };
 }
 
-/** A store that is not bound reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
-function registeredKind(deps: ShepherdDeps, runId: string): string | undefined {
-  try {
-    return deps.store.get().byRun(runId)?.kind;
-  } catch {
-    return undefined;
-  }
-}
-
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
@@ -322,7 +313,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run)),
     codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal))),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps, input.runId))),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId))),
     carryRoute(deps.now),
   ];
 };
