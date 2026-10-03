@@ -10,6 +10,6 @@ export type { GhExec, GhExecOptions, GhResult } from "./exec.js";
 export { GhError, execGh } from "./exec.js";
 export type { GhCliOptions } from "./gh-cli.js";
 export { ghCliWire } from "./gh-cli.js";
-export { GitHubInputError } from "./validate.js";
+export { GitHubInputError, isRepo } from "./validate.js";
 export type { FakeEffects, FakeGitHub } from "./fake.js";
 export { FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";

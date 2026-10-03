@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -7,9 +7,9 @@ import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, describeWake } from "./wake-brief.js";
@@ -26,7 +26,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 
 /** The agent-chat profile a successor starts under; the profile is its tool grant. */
 export const SUCCESSOR_PROFILE = "implementer";
-export const CLI_TIMEOUT_MS = 30_000;
 export { FIX_FIRST_STEP, LOG_BUDGET_BYTES, LOG_TAIL_LINES, STRUCTURAL_FIX_FIRST, defectClassSection, isRegistry, tailBytes } from "./wake-brief.js";
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
@@ -45,16 +44,10 @@ export interface ImplementerAgents {
   spawn(name: string, brief: string, cwd: string): Promise<void>;
 }
 
-/** Every ask invalidates `roster`, so the read that checks whether it took effect is never a cached one. */
-export function agentChatImplementers(agentChatBin: string, timeoutMs = CLI_TIMEOUT_MS, roster: RosterReader = agentChatRoster(agentChatBin)): ImplementerAgents {
-  return {
-    roster: () => roster.rows(),
-    resume: (name, message) => mutating(roster, async () => void resumeAgent(agentChatBin, name, message, timeoutMs)),
-    message: (name, message) => mutating(roster, async () => messageAgent(agentChatBin, name, message, timeoutMs)),
-    spawn: (name, brief, cwd) =>
-      mutating(roster, async () => void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: SUCCESSOR_PROFILE, brief, cwd }, timeoutMs, [SUCCESSOR_PROFILE])),
-  };
-}
+const implementersOver = (agents: AgentChatAgents): ImplementerAgents => ({
+  ...agents,
+  spawn: (name, brief, cwd) => agents.spawn({ name, profile: SUCCESSOR_PROFILE, brief, cwd }),
+});
 
 export interface WakeWiring {
   /** Absent means agent-chat at `deps.agentChatBin`; a relative bin means none is configured, and every wake is unhandled. */
@@ -307,7 +300,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
-  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? agentChatImplementers(deps.agentChatBin, CLI_TIMEOUT_MS, deps.roster) : undefined);
+  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster })) : undefined);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
   try {
     const registration = deps.store.get().byRun(input.runId);

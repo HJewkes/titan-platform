@@ -432,7 +432,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`
-- +45 more in the [reference page](/reference/github)
+- +46 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
