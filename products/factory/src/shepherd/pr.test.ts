@@ -351,6 +351,73 @@ describe("shepherd-pr", () => {
   });
 });
 
+describe("a pull request whose base moved into a conflict while approve-merge was open", () => {
+  /** The base moves under PR 1 while the owner's gate is open: the PR is behind, update-branch would 422, and GitHub settles on `settled`. */
+  async function approvedIntoConflict(wake: Script["wake"], settled: string, settleAfterReads = 0): Promise<{ w: World; runId: string; wakes: WakeRequest[] }> {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const ci = fake.onGetPr!;
+    let unsettledReads = 0;
+    fake.onGetPr = (pr, reads) => (ci(pr, reads), pr.mergeableState === "unknown" && ++unsettledReads > settleAfterReads && (pr.mergeableState = settled));
+    Object.assign(fake.pr(1), { behind: true, mergeableState: settleAfterReads > 0 ? "unknown" : settled });
+    fake.updateBranchConflict = true;
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    return { w, runId, wakes };
+  }
+
+  const resolves = (w: () => World) => (): WakeOutcome => (Object.assign(w().fake.pr(1), { behind: false, mergeableState: "clean" }), w().fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" });
+
+  it("sends the approved head to the implementer's conflict wake, never to update-branch, and lands the resolved head", async () => {
+    const late: { w?: World } = {};
+    const { w, runId, wakes } = await approvedIntoConflict(resolves(() => late.w!), "dirty");
+    late.w = w;
+
+    await approve(w.host, runId, H2, 1);
+    await w.host.runtime.wait(runId);
+
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("update-branch"))).toEqual([]);
+    expect(w.fake.pr(1)).toMatchObject({ merged: true, headSha: H2 });
+  });
+
+  it("waits for GitHub to settle mergeability before it reads the approved head as clear", async () => {
+    const late: { w?: World } = {};
+    const { w, runId, wakes } = await approvedIntoConflict(resolves(() => late.w!), "dirty", 2);
+    late.w = w;
+
+    await approve(w.host, runId, H2, 1);
+    await w.host.runtime.wait(runId);
+
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("update-branch"))).toEqual([]);
+  });
+
+  it("ends the run stopped at the conflict, not failed at update-branch, when no agent takes the wake", async () => {
+    const { w, runId } = await approvedIntoConflict(undefined, "dirty");
+
+    const ended = await w.host.runtime.wait(runId);
+
+    expect(ended.status).toBe("completed");
+    expect(stepResult(w.host, runId, "sh-stopped")).toMatchObject({ result: { kind: "stopped", reason: "not-mergeable", headSha: H1 } });
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("goes on to update-branch when the approved head is only behind", async () => {
+    const { w, runId, wakes } = await approvedIntoConflict(undefined, "clean");
+    w.fake.updateBranchConflict = false;
+
+    await w.host.runtime.wait(runId);
+
+    expect(wakes).toEqual([]);
+    expect(stepIds(w.host, runId)).toContain("update-branch:0");
+    expect(w.fake.effects.merge).toBe(1);
+  });
+});
+
 describe("the route table in a run", () => {
   const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
   const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;

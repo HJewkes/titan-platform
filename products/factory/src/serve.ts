@@ -158,7 +158,7 @@ async function adopt(host: FactoryHost, log: Logger): Promise<void> {
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
-  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded an approve-merge gate whose PR head moved");
+  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
 }
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
