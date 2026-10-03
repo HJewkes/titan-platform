@@ -56,3 +56,22 @@ export {
 export type { CategoryPolicy, DeciderMode, RoutingPolicy } from "./policy.js";
 export { route } from "./router.js";
 export type { RouteContext, RouteDecision, RouteQuestion } from "./router.js";
+export {
+  DEFAULT_MIN_CONFIDENCE,
+  DecideInputSchema,
+  DecidePrecedentSchema,
+  DecidePrincipleSchema,
+  DecideReplySchema,
+  decideJsonSchemas,
+  minConfidenceFor,
+  validate,
+} from "./contract.js";
+export type {
+  CategoryThreshold,
+  DecideInput,
+  DecidePolicy,
+  DecidePrecedent,
+  DecidePrinciple,
+  DecideReply,
+  DecideValidation,
+} from "./contract.js";
