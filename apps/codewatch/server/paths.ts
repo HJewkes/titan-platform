@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** apps/code-report, whichever script imports this. */
+/** apps/codewatch, whichever script imports this. */
 export const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** The git toplevel the index is taken from; excerpts are read from this working tree. */

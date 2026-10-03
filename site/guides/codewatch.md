@@ -1,6 +1,6 @@
 # Running the code report
 
-`apps/code-report` is a browser report over one code-graph snapshot: the big picture first,
+`apps/codewatch` is a browser report over one code-graph snapshot: the big picture first,
 then prioritised findings, then a drill-down into any directory, file or symbol. It composes
 [`code-read`](/reference/code-read), [`rpc-client`](/reference/rpc-client) and
 [`react-app`](/reference/react-app), with components from the separate `react-ui` design
@@ -19,8 +19,8 @@ Node 20 or newer, pnpm 9, and git. The index script runs `git rev-parse` in the 
 
 ```sh
 pnpm install --frozen-lockfile && pnpm build   # the workspace packages the scripts import
-pnpm --filter code-report index                # index this repo into .codewatch/graph.db
-pnpm --filter code-report dev                  # Vite on :5173, read API daemon on :7433
+pnpm --filter codewatch index                  # index this repo into .codewatch/graph.db
+pnpm --filter codewatch dev                    # Vite on :5173, read API daemon on :7433
 ```
 
 `index` prints one line when it finishes:
@@ -33,22 +33,22 @@ Expect a few minutes. Each `index` run adds a snapshot; the report pins the newe
 
 ## Commands
 
-Run each from the repository root (`apps/code-report/package.json`).
+Run each from the repository root (`apps/codewatch/package.json`).
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter code-report index` | indexes the repo into the graph database |
-| `pnpm --filter code-report dev` | starts the read API daemon and a Vite dev server that proxies `/rpc` to it |
-| `pnpm --filter code-report build` | builds the single-file app to `apps/code-report/dist/index.html` |
-| `pnpm --filter code-report serve` | serves the built app and `/rpc` from one daemon on port 7433 |
-| `pnpm --filter code-report export` | writes `dist/report.html`, a self-contained report that needs no server |
-| `pnpm --filter code-report call <command> '<json args>'` | answers one read command in process and prints its size and time |
-| `pnpm --filter code-report fixtures` | rebuilds the two committed test fixtures from real indexes |
+| `pnpm --filter codewatch index` | indexes the repo into the graph database |
+| `pnpm --filter codewatch dev` | starts the read API daemon and a Vite dev server that proxies `/rpc` to it |
+| `pnpm --filter codewatch build` | builds the single-file app to `apps/codewatch/dist/index.html` |
+| `pnpm --filter codewatch serve` | serves the built app and `/rpc` from one daemon on port 7433 |
+| `pnpm --filter codewatch export` | writes `dist/report.html`, a self-contained report that needs no server |
+| `pnpm --filter codewatch call <command> '<json args>'` | answers one read command in process and prints its size and time |
+| `pnpm --filter codewatch fixtures` | rebuilds the two committed test fixtures from real indexes |
 
 ```sh
-pnpm --filter code-report call api.describe '{}'
-pnpm --filter code-report call findings.list '{}'
-CODE_REPORT_PORT=7434 pnpm --filter code-report serve
+pnpm --filter codewatch call api.describe '{}'
+pnpm --filter codewatch call findings.list '{}'
+CODE_REPORT_PORT=7434 pnpm --filter codewatch serve
 ```
 
 `serve` prints the address and answers until SIGINT or SIGTERM:
@@ -67,7 +67,7 @@ against the live registry and fails if an answer differs:
 
 ```
 snapshot 1: recorded 4 calls; every other call is answered by the dataset resolver
-<repo>/apps/code-report/dist/report.html: 12802 KiB (open it from disk; no server needed)
+<repo>/apps/codewatch/dist/report.html: 12802 KiB (open it from disk; no server needed)
 live parity: 4 of 4 recorded answers match the live registry
 ```
 
@@ -84,7 +84,7 @@ violations, so the Priorities page is empty on a clean tree. Use the stricter de
 see findings:
 
 ```sh
-CODE_REPORT_RULES=apps/code-report/rules/strict.json pnpm --filter code-report dev
+CODE_REPORT_RULES=apps/codewatch/rules/strict.json pnpm --filter codewatch dev
 ```
 
 ## Where state lives
@@ -92,7 +92,7 @@ CODE_REPORT_RULES=apps/code-report/rules/strict.json pnpm --filter code-report d
 | What | Where |
 | --- | --- |
 | Graph database | `CODE_REPORT_DB`; the default is gitignored |
-| Built app and exports | `apps/code-report/dist/` (`index.html`, `report.html`, `report-snapshot.json`) |
+| Built app and exports | `apps/codewatch/dist/` (`index.html`, `report.html`, `report-snapshot.json`) |
 | Daemon pid file | `code-report-daemon-<port>/` under the system temp directory |
 | Logs | stdout and stderr of the script; nothing is written to a log file |
 
@@ -101,7 +101,7 @@ CODE_REPORT_RULES=apps/code-report/rules/strict.json pnpm --filter code-report d
 | What you see | Why |
 | --- | --- |
 | `"newest": null` from `api.describe`, and an empty report | the database has no snapshot; run `index` |
-| `… index.html is missing; run pnpm --filter code-report build` | `serve` before `build`; the daemon serves a "not built" page until then |
+| `… index.html is missing; run pnpm --filter codewatch build` | `serve` before `build`; the daemon serves a "not built" page until then |
 | `Daemon already running (pid N, port P)` | another `dev` or `serve` holds the port's pid file |
 | `export` exits non-zero after `live parity` | a recorded answer differs from the live registry |
 | a page reports `not-in-export` | an exported report holds the text of flagged files only |
@@ -109,4 +109,4 @@ CODE_REPORT_RULES=apps/code-report/rules/strict.json pnpm --filter code-report d
 
 The routes, the static export format, the fixture builder and the placeholder seams are
 documented in
-[`apps/code-report/README.md`](https://github.com/HJewkes/titan-platform/blob/main/apps/code-report/README.md).
+[`apps/codewatch/README.md`](https://github.com/HJewkes/titan-platform/blob/main/apps/codewatch/README.md).

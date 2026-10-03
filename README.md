@@ -19,7 +19,7 @@ also lists the proven runtime paths with the credential each one needs, and the 
 ```
 packages/     the shared tiers (published to npm as @titan-design/<name>)
 products/     runnable compositions of the tiers (private): factory, session-miner, retrieval-eval
-apps/         front ends composed from the tiers (private): code-report, console
+apps/         front ends composed from the tiers (private): codewatch, console
 deploy/       deployable stacks (private): hub, the shared Matrix homeserver
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
 scripts/      new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs
@@ -80,7 +80,7 @@ Products, apps and deploy units are private compositions of those tiers. None is
 | `products/factory` | `titan-factory`: code-owned workflows that land pull requests, with durable runs, human gates, and the Shepherd PR watcher | [Factory](https://hjewkes.github.io/titan-platform/guides/factory), [Shepherd](https://hjewkes.github.io/titan-platform/guides/shepherd) |
 | `products/session-miner` | `titan-miner`: indexes Claude Code and Codex transcripts into a session graph and serves search over CLI, MCP, and HTTP | [Session miner](https://hjewkes.github.io/titan-platform/guides/session-miner) |
 | `products/retrieval-eval` | `retrieval-eval`: scores candidate retrievers against query and label pairs mined from transcripts | [Retrieval eval](https://hjewkes.github.io/titan-platform/guides/retrieval-eval) |
-| `apps/code-report` | the layered code report over a code-graph snapshot, served live or exported as one HTML file | [Code report](https://hjewkes.github.io/titan-platform/guides/code-report) |
+| `apps/codewatch` | the layered code report over a code-graph snapshot, served live or exported as one HTML file | [Code report](https://hjewkes.github.io/titan-platform/guides/codewatch) |
 | `apps/console` | `titan-console`: one read-only console and loopback daemon over active-work, the agent-chat broker and the session graph (skeleton) | [apps/console/README.md](apps/console/README.md) |
 | `deploy/hub` | the shared Matrix homeserver (Tuwunel behind Caddy) that `matrix-bus` and `queue-mirror` talk to | [Matrix hub](https://hjewkes.github.io/titan-platform/guides/hub) |
 
