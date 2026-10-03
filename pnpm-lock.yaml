@@ -508,9 +508,15 @@ importers:
 
   packages/session-analytics:
     dependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../agent-protocol
       '@titan-design/session-graph':
         specifier: workspace:^
         version: link:../session-graph
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
