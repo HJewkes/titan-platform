@@ -114,7 +114,8 @@ countAtOrBefore(timeline.tools.atMs, scrubbedMs); // tool calls made by that tim
 
 The result is plain JSON. `turns` groups messages and tool calls under the user message that
 opened them. `buckets` has one entry per clock minute that held activity, and `gaps` lists
-each idle stretch of 10 minutes or more. `tokens` has one point per API request with its
+each idle stretch of 10 minutes or more. The wait on a tool call that later returned is not
+idle and is never a gap. `tokens` has one point per API request with its
 prompt size, output, cost and running totals, plus the compaction marks. `tools`, `files`,
 `errors` and `agents` are the breakdowns, each with ascending time arrays that
 `countAtOrBefore` searches for a scrubbed time.
@@ -202,9 +203,13 @@ write count with no 5m and 1h split, so a session that wrote 1h caches under-rea
 **A turn's `origin` is read from the head of its opening text.** A typed prompt that the
 harness prefixed with a reminder block reads as `injected`, not `prompt`.
 
-**A snapshot-only source has token totals and no points.** A source that reports running
-totals instead of per-request usage gets `tokens.basis: "snapshot"`, an empty `points` list
-and `totals.requests: null`.
+**A snapshot-only source has token totals, no points and no cost.** A source that reports
+running totals instead of per-request usage gets `tokens.basis: "snapshot"`, an empty `points`
+list and `totals.requests: null`. Nothing is priced, so `totals.costUsd` and every turn's
+`costUsd` are 0. Check `basis` before showing a cost.
+
+**A call that never returned does not cover a gap.** Only a tool call with a result counts as
+work in flight. Quiet time after a call the session abandoned is still an idle gap.
 
 **`bandOf` returns `null`, not a fallback label**, for a value no band covers. A negative
 gap means clock skew upstream and should be reported rather than bucketed.

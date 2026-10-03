@@ -99,7 +99,7 @@ countAtOrBefore(timeline.tools.atMs, scrubbedMs); // tool calls made by that tim
 |---|---|
 | `turns` | `TimelineTurn[]`. A user message opens a turn. Each has `user`, `assistant` messages, `toolCalls`, `errorCount`, `tokens`, `costUsd` and `gapBeforeMs`. Sort a turn's messages and tool calls by `seq` to interleave them. |
 | `buckets` | `TimelineMinuteBucket[]`, one per clock minute that held activity, with event, message, tool call and error counts, output tokens and cost. |
-| `gaps` | `TimelineGap[]`: each idle stretch of `TIMELINE_GAP_MIN_MS` (10 minutes) or more. The bucket and the turn after a gap carry `gapBeforeMs`. |
+| `gaps` | `TimelineGap[]`: each idle stretch of `TIMELINE_GAP_MIN_MS` (10 minutes) or more. The bucket and the turn after a gap carry `gapBeforeMs`. The wait on a tool call that later returned is not idle and is never a gap. |
 | `tokens` | `TokenTimeline`: one `TimelineTokenPoint` per API request (prompt size, output, cost, running totals, `afterCompaction`), the `CompactionMark`s and the models used. |
 | `tools`, `files`, `errors`, `agents` | Calls by name and by session-read tool family, first touch of each file by access, failed calls, and subagent dispatch spans. Each carries ascending `atMs` arrays for `countAtOrBefore`. |
 | `totals` | Counts, the four disjoint token classes and the cost. |
@@ -119,7 +119,14 @@ block reads as `injected`.
 Cost comes from `priceRequest` over `PRICE_TABLE`. The normalized usage has no 5m and 1h split
 of cache writes, so every cache write is priced at the 5m rate and the figure under-reads a
 session that wrote 1h caches. A source that reports only running totals (`basis: "snapshot"`)
-gets token totals and no points.
+gets token totals and no points, and nothing is priced: `totals.costUsd` and every turn's
+`costUsd` are 0, and `totals.requests` is null.
+
+Claude Code writes one compaction as a boundary line and then a summary line. The timeline
+reports it as one `CompactionMark`, at the boundary's time, with the summary.
+
+`result()` returns a fresh copy each time, so a result is safe to keep while more observations
+are added. `ToolFamily`, the type of a tool call's `family`, is re-exported from session-read.
 
 ## Wake episodes
 
