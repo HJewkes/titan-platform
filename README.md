@@ -19,7 +19,7 @@ also lists the proven runtime paths with the credential each one needs, and the 
 ```
 packages/     the shared tiers (published to npm as @titan-design/<name>)
 products/     runnable compositions of the tiers (private): factory, session-miner, retrieval-eval
-apps/         front ends composed from the tiers (private): code-report
+apps/         front ends composed from the tiers (private): code-report, console
 deploy/       deployable stacks (private): hub, the shared Matrix homeserver
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
 scripts/      new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs
@@ -81,6 +81,7 @@ Products, apps and deploy units are private compositions of those tiers. None is
 | `products/session-miner` | `titan-miner`: indexes Claude Code and Codex transcripts into a session graph and serves search over CLI, MCP, and HTTP | [Session miner](https://hjewkes.github.io/titan-platform/guides/session-miner) |
 | `products/retrieval-eval` | `retrieval-eval`: scores candidate retrievers against query and label pairs mined from transcripts | [Retrieval eval](https://hjewkes.github.io/titan-platform/guides/retrieval-eval) |
 | `apps/code-report` | the layered code report over a code-graph snapshot, served live or exported as one HTML file | [Code report](https://hjewkes.github.io/titan-platform/guides/code-report) |
+| `apps/console` | `titan-console`: one read-only console and loopback daemon over active-work, the agent-chat broker and the session graph (skeleton) | [apps/console/README.md](apps/console/README.md) |
 | `deploy/hub` | the shared Matrix homeserver (Tuwunel behind Caddy) that `matrix-bus` and `queue-mirror` talk to | [Matrix hub](https://hjewkes.github.io/titan-platform/guides/hub) |
 
 `.codewatch/check.json` is the source of truth. Its `package-layers` rule lists every
