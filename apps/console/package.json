@@ -18,6 +18,7 @@
     "lint": "eslint src server vite.config.ts tsup.config.ts"
   },
   "dependencies": {
+    "@titan-design/chat-protocol": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/react-app": "workspace:*",
     "@titan-design/react-ui": "^0.20.0",

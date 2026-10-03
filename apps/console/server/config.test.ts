@@ -28,4 +28,19 @@ describe("console config", () => {
       path.join(HOME, "graphs", "g.sqlite3"),
     );
   });
+
+  it("reads the agent-chat token from AGENT_CHAT_HOME unless a token path is given", () => {
+    expect(resolveConfig({}, HOME).agentChatTokenPath).toBe(path.join(HOME, ".agent-chat", "ui.token"));
+    expect(resolveConfig({ AGENT_CHAT_HOME: "/var/chat" }, HOME).agentChatTokenPath).toBe("/var/chat/ui.token");
+    expect(resolveConfig({ TITAN_CONSOLE_AGENT_CHAT_TOKEN: "~/t" }, HOME).agentChatTokenPath).toBe(path.join(HOME, "t"));
+  });
+
+  it("parses seat prefixes and refuses a malformed pair", () => {
+    expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
+    expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([
+      { seat: "alpha", prefix: "al" },
+      { seat: "beta", prefix: "be" },
+    ]);
+    expect(() => resolveConfig({ TITAN_CONSOLE_SEATS: "alpha" }, HOME)).toThrow(/seat=prefix/);
+  });
 });
