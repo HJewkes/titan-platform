@@ -29,6 +29,16 @@ describe("TsMorphGraphExtractor", () => {
       ]);
     });
 
+    it("keeps a function declared in a callback under one <anonymous> segment (TP-306)", () => {
+      const [fragment] = fixture.extract("/repo/src/anonymous-scope.ts");
+      const ids = fragment!.nodes.filter((n) => n.kind === "symbol").map((n) => n.id).sort();
+      expect(ids).toEqual([
+        "src/anonymous-scope.ts#App",
+        "src/anonymous-scope.ts#App.<anonymous>.onHash",
+        "src/anonymous-scope.ts#App.onHash",
+      ]);
+    });
+
     it("flags exported vs internal declarations", () => {
       const [fragment] = fixture.extract("/repo/src/model-b.ts");
       expect(symById(fragment!, "src/model-b.ts#pub")?.attrs?.exported).toBe(true);

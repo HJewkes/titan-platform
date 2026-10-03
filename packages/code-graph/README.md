@@ -73,8 +73,9 @@ index version 0.14.0:
   first `#`. A top-level declaration's qualified name is its own name
   (`src/a.ts#createThing`). A member or nested declaration is prefixed by its enclosing named
   scopes, joined with `.`: `src/a.ts#Job.run`, `src/a.ts#outer.helper`, and
-  `src/a.ts#handlers.onClick` for a method of `const handlers = {…}`. An unbound callback argument, object or class
-  expression adds one `<anonymous>` segment, and consecutive anonymous scopes collapse to one, so
+  `src/a.ts#handlers.onClick` for a method of `const handlers = {…}`. An unbound callback
+  argument, object or class expression adds one `<anonymous>` segment, and consecutive
+  anonymous scopes collapse to one, so
   `src/a.ts#App.<anonymous>.onHash` is a function declared inside a callback in `App`. The
   segment keeps it apart from a member `App.onHash`, and ids do not depend on declaration
   order. One scope binds a name once: a getter/setter pair, a Python property's
