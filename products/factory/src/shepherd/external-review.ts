@@ -1,6 +1,7 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
-import type { AwaitVerdictResult, AwaitVerdictTiming, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
+import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
@@ -50,4 +51,88 @@ export async function awaitExternalVerdict(roster: () => Promise<readonly Review
     if (clock.expired()) return { kind: "none" };
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+/** A seat's independent reviewer, as the seats name them; Shepherd's own reviewers are named `rv-*` and never match. */
+export const SEAT_REVIEWER = /-review(-r[0-9]+)?$/;
+
+interface AtHead {
+  message: ReviewerMessage;
+  verdict: "MERGE" | "FIX_FIRST";
+}
+
+/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time the FIX_FIRST wins. */
+export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMessage[]): AtHead | undefined {
+  let newest: AtHead | undefined;
+  for (const message of messages) {
+    const block = parseVerdictBlock(message.text);
+    if (!block.ok || !Number.isFinite(message.writtenAt)) continue;
+    if (block.repo.toLowerCase() !== target.repo.toLowerCase() || block.pr !== target.pr || block.head !== target.head) continue;
+    const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && block.verdict === "FIX_FIRST");
+    if (later) newest = { message, verdict: block.verdict };
+  }
+  return newest;
+}
+
+/** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A failed read rejects. */
+async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<ReviewerMessage[]> {
+  const read = (row: ReviewerAgent) => {
+    const input = { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
+    return reader.readSeat ? reader.readSeat(input) : reader.read(input);
+  };
+  const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
+  return (await Promise.all(rows.map(read))).flat().filter(owned);
+}
+
+/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
+
+const why = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
+  const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
+  return { kind: "verdict", verdict: "FIX_FIRST", head: target.head, locator: message.locator, reviewer: { agentId: message.agentId, sessionId: message.sessionId }, text };
+}
+
+/**
+ * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
+ * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
+ */
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget): Promise<SeatCheck> {
+  let listed: readonly ReviewerAgent[];
+  try {
+    listed = await roster();
+  } catch (error) {
+    return { kind: "none", reason: `seat check: the roster could not be read: ${why(error)}` };
+  }
+  const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
+  let failed: SeatCheck | undefined;
+  for (const name of new Set(rows.map((row) => row.name))) {
+    const read = await readReviewer(reader, target, rows.filter((row) => row.name === name)).then(
+      (messages) => newestAtHead(target, messages),
+      (error: unknown) => void (failed ??= { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(error)}` }),
+    );
+    if (read?.verdict === "FIX_FIRST") return sentBack(name, target, read.message);
+  }
+  return failed ?? { kind: "clear" };
+}
+
+/** A MERGE stands only while the seat check is clear at the same head. */
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult): Promise<AwaitVerdictResult> {
+  if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
+  const check = await seatFixFirst(roster, reader, target);
+  return check.kind === "clear" ? result : check;
+}
+
+type VerdictStep = (raw: unknown, signal: AbortSignal) => Promise<AwaitVerdictResult>;
+
+/** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. */
+export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep): VerdictStep {
+  return async (raw, signal) => {
+    const result = await body(raw, signal);
+    const dispatch = wiring?.dispatch;
+    if (!dispatch) return result;
+    const { repo, pr, head } = raw as ReviewTarget;
+    return bounded(await unlessSeatFixFirst(() => dispatch.roster(), wiring.reader, { repo, pr, head }, result));
+  };
 }

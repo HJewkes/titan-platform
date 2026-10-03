@@ -1,6 +1,6 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
-import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, AwaitVerdictTiming, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
 export const DEFAULT_EXIT_GRACE_MS = 60_000;
@@ -10,6 +10,15 @@ export const HEAD = /^[0-9a-f]{40}$/;
 /** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
 export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
 export const FIX_FIRST_TRUNCATED = "\n[truncated]";
+
+export interface AwaitVerdictTiming {
+  now: () => number;
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  pollMs: number;
+  timeoutMs: number;
+  exitGraceMs?: number;
+  detachGraceMs?: number;
+}
 
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   const input = (raw ?? {}) as Record<string, unknown>;
