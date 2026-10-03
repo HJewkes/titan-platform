@@ -18,6 +18,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `writePrincipleDocs` renders one `<domain>.md` per domain into a directory the caller passes:
   rule, cited examples, counter-examples, confidence, last confirmed, version and changelog.
 - `ALWAYS_ASK` is the fixed always-ask list; `alwaysAskList(hardStops)` adds the charter's.
+- `route(question, policy, ctx)` is the pure routing table: `owner-now`, `owner-queue` or `decider`,
+  with a shadow flag and a reason. `parseRoutingPolicy` holds one mode row per category and keeps
+  always-ask categories `off`. `checkUnlock` is agent-chat's unlock table, parity-tested.
 - `LedgerStore` (`openLedgerStore(path)`) is append-only by row key, with a watermark per source
   cursor on `@titan-design/store-sqlite`.
 - `LedgerSource` is the port `{ name, read(since) }`; `extractSource` runs one source, drops
