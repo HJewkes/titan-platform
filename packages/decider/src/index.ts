@@ -42,3 +42,7 @@ export { writePrincipleDocs } from "./docs.js";
 export type { WriteDocsInput, WrittenDoc } from "./docs.js";
 export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
 export type { AlwaysAskEntry } from "./always-ask.js";
+export { CONDENSE_MIGRATIONS, condense, condenseWatermarks } from "./condense.js";
+export type { CondenseOptions, CondenseResult, CondenseRun, CondenseStore, DomainRun, Reflector, ReflectorInput } from "./condense.js";
+export { CiteDeltaSchema, CondenseDeltaSchema, ProposeDeltaSchema, carriesInstruction, isEvidence } from "./condense-deltas.js";
+export type { CiteDelta, CondenseDelta, ProposeDelta, RejectedCondenseDelta } from "./condense-deltas.js";
