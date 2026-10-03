@@ -922,7 +922,7 @@ describe("reviewerBrief", () => {
   });
 
   it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*rm -rf "\$dir".*exactly that directory/);
+    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*literal path.*not `\$dir`.*rm -rf <that path>.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
