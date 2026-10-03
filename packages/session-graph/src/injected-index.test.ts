@@ -131,3 +131,16 @@ describe("indexing a normalized session with injected context", () => {
     expect(messages.n).toBe(2);
   });
 });
+
+describe("reading a legacy span whose source key starts with ~/", () => {
+  it("expands the key against the given home directory", async () => {
+    const absolutePath = path.join(dir, "s1.jsonl");
+    writeFileSync(absolutePath, LINES.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const transcript: DiscoveredTranscript = { projectDir: "p", absolutePath, displayPath: "~/s1.jsonl", subagentId: null, account: null };
+    await refreshCorpus(graph, [transcript]);
+
+    const hit = promptHits("humanword")[0]!;
+
+    expect(await readIndexedText(graph, hit, { homeDir: dir })).toBe("please rename the humanword module");
+  });
+});
