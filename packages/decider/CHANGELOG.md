@@ -1,5 +1,13 @@
 # @titan-design/decider
 
+## 0.3.0
+
+### Minor Changes
+
+- be90944: Add `condense(store, rows, reflector)`: the condensation run. It feeds each domain's ledger rows since its watermark to an injected `Reflector`, validates the deltas with zod, records owner feedback (an overrule marks the decider's cited principles harmful; decider answers are never evidence), curates proposals as candidates, and can re-render the principle docs. Question text carrying an instruction can neither ground a principle nor confirm one.
+- 6b4a8a6: Add `noteSource`, the decision-notes ledger source ported from active-work's `src/precedent/notes.ts`. It keeps v1's `note:<slug>/<file>` keys, writes `outcome: "none"` rows, and holds one watermark per note file so re-running extraction parses only changed notes.
+- 2928bba: Add `route(question, policy, ctx)`, the deterministic owner-now, owner-queue or decider routing table, with per-category mode policy (`parseRoutingPolicy`, `setCategoryMode`) and agent-chat's unlock table (`checkUnlock`, `unlockTableRow`) ported with a parity fixture.
+
 ## 0.2.0
 
 ### Minor Changes
