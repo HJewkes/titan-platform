@@ -1,5 +1,18 @@
 # @titan-design/workflow
 
+## 0.8.0
+
+### Minor Changes
+
+- 9b219eb: `AssistedOptions.recordCancel`: a gate cancelled while the step waits on it becomes the step's recorded answer, with signal `GATE_CANCELLED_SIGNAL` (`gate-cancelled`) and data `{ reason }`, instead of throwing `GateCancelled`. The next call to the same step opens a fresh gate, and a replay reads the same cancel. Without the option a cancelled gate still fails the run, and cancelling the run still ends it.
+- 9d36afb: `WorkflowRuntime.start` takes an optional `onStart(runId)` hook that runs inside the transaction that inserts the run. A hook that throws rolls the run back and nothing launches, so a caller's own row commits with the run or not at all.
+
+### Patch Changes
+
+- e651365: Hydrate no longer reopens a gate whose row is missing. A run paused on an `assisted` or `authorize` gate that finds no row on resume goes to `recovery_required`, and its `workflow_recovery_required` event carries the `gateId`. Restoring the row lets the next hydrate resume; `cancel` ends the run.
+- Updated dependencies [e54f34e]
+  - @titan-design/authority@0.2.2
+
 ## 0.7.0
 
 ### Minor Changes

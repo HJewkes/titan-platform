@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/evals",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing",
   "type": "module",
   "main": "./dist/index.js",
