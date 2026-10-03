@@ -1,11 +1,11 @@
 import type { ToolFamily } from "@titan-design/session-read";
 import type {
-  TimelineErrorBreakdown,
-  FileBreakdown,
-  FileTouch,
   TimelineAgentSpan,
-  TimelineToolCall,
+  TimelineErrorBreakdown,
+  TimelineFileBreakdown,
+  TimelineFileTouch,
   TimelineToolBreakdown,
+  TimelineToolCall,
   ToolFamilyCount,
   ToolNameCount,
 } from "./timeline-types.js";
@@ -41,8 +41,8 @@ export function toolBreakdown(calls: readonly TimelineToolCall[]): TimelineToolB
 }
 
 /** A call with a path counts as a write for the editing tools and as a read for every other tool. */
-export function fileBreakdown(calls: readonly TimelineToolCall[]): FileBreakdown {
-  const touches = new Map<string, FileTouch>();
+export function fileBreakdown(calls: readonly TimelineToolCall[]): TimelineFileBreakdown {
+  const touches = new Map<string, TimelineFileTouch>();
   for (const call of calls) {
     if (!call.filePath) continue;
     const access = WRITE_TOOLS.has(call.name) ? "write" : "read";

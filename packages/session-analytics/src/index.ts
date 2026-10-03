@@ -99,13 +99,13 @@ export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.j
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
 export type {
   CompactionMark,
-  FileBreakdown,
-  FileTouch,
   ModelRequests,
   SessionTimeline,
   TimelineAgentSpan,
   TimelineError,
   TimelineErrorBreakdown,
+  TimelineFileBreakdown,
+  TimelineFileTouch,
   TimelineGap,
   TimelineMessage,
   TimelineMinuteBucket,

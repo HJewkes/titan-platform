@@ -159,7 +159,7 @@ export interface TimelineToolBreakdown {
   atMs: number[];
 }
 
-export interface FileTouch {
+export interface TimelineFileTouch {
   path: string;
   access: "read" | "write";
   /** First touch of this path with this access. */
@@ -167,9 +167,9 @@ export interface FileTouch {
   calls: number;
 }
 
-export interface FileBreakdown {
+export interface TimelineFileBreakdown {
   /** One row per path and access, ordered by first touch. */
-  touches: FileTouch[];
+  touches: TimelineFileTouch[];
   readCount: number;
   writeCount: number;
 }
@@ -232,7 +232,7 @@ export interface SessionTimeline {
   gaps: TimelineGap[];
   tokens: TokenTimeline;
   tools: TimelineToolBreakdown;
-  files: FileBreakdown;
+  files: TimelineFileBreakdown;
   errors: TimelineErrorBreakdown;
   agents: TimelineAgentSpan[];
 }
