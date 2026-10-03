@@ -97,3 +97,31 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
+export type {
+  CompactionMark,
+  ErrorBreakdown,
+  FileBreakdown,
+  FileTouch,
+  MinuteBucket,
+  ModelRequests,
+  SessionTimeline,
+  TimelineAgentSpan,
+  TimelineError,
+  TimelineGap,
+  TimelineMessage,
+  TimelineTokens,
+  TimelineToolCall,
+  TimelineToolOutcome,
+  TimelineTotals,
+  TimelineTurn,
+  TimelineTurnOrigin,
+  TokenPoint,
+  TokenTimeline,
+  ToolBreakdown,
+  ToolFamilyCount,
+  ToolNameCount,
+} from "./timeline-types.js";
+export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from "./timeline-types.js";
+export type { SessionTimelineOptions } from "./timeline.js";
+export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";
+export { countAtOrBefore } from "./count-at-or-before.js";
