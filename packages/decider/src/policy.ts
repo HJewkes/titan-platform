@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ALWAYS_ASK, isAlwaysAsk, type AlwaysAskEntry } from "./always-ask.js";
+import { DEFAULT_MIN_CONFIDENCE } from "./contract.js";
 import { UNLOCK_CATEGORIES } from "./unlock.js";
 
 export const DECIDER_MODES = ["off", "shadow", "auto"] as const;
@@ -8,7 +9,7 @@ export type DeciderMode = (typeof DECIDER_MODES)[number];
 export const CategoryPolicySchema = z.object({
   category: z.string().min(1),
   mode: z.enum(DECIDER_MODES).default("shadow"),
-  minConfidence: z.number().min(0).max(1).default(0.8),
+  minConfidence: z.number().min(0).max(1).default(DEFAULT_MIN_CONFIDENCE),
   windowDays: z.number().int().positive().default(30),
   minSamples: z.number().int().nonnegative().default(20),
   minAgreement: z.number().min(0).max(1).default(0.9),
