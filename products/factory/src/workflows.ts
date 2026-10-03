@@ -9,7 +9,8 @@ import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanup
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
-import { agentChatFixers, type MainRedWiring } from "./shepherd/main-red.js";
+import { agentChatAgents } from "./shepherd/agents.js";
+import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
@@ -36,6 +37,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   train?: MergeTrainRef;
   holdPollMs?: number;
   agentChatBin?: string;
+  /** The Claude config directory successors spawn under; the fixer's, since a successor is a fixer in a new session. */
+  agentChatConfigDir?: string;
   /** The one roster reader every port over `agentChatBin` shares; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
@@ -78,7 +81,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", roster: deps.roster, cleanup: deps.cleanup };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, cleanup: deps.cleanup };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
@@ -129,7 +132,7 @@ function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
 /** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
 function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined): FactoryRouteDeps["mainRed"] {
   const agentChatBin = shepherd?.agentChatBin;
-  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: agentChatFixers(agentChatBin, shepherd.fixer?.configDir, undefined, roster) }) };
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster })) }) };
 }
 
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
@@ -149,7 +152,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster);
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin, roster, cleanup, mainRed, redeploy, ...overrides, seats });
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;
