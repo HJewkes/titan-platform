@@ -42,3 +42,17 @@ export { writePrincipleDocs } from "./docs.js";
 export type { WriteDocsInput, WrittenDoc } from "./docs.js";
 export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
 export type { AlwaysAskEntry } from "./always-ask.js";
+export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
+export type { UnlockCheck } from "./unlock.js";
+export {
+  CategoryPolicySchema,
+  DECIDER_MODES,
+  RoutingPolicySchema,
+  categoryPolicy,
+  isLockedCategory,
+  parseRoutingPolicy,
+  setCategoryMode,
+} from "./policy.js";
+export type { CategoryPolicy, DeciderMode, RoutingPolicy } from "./policy.js";
+export { route } from "./router.js";
+export type { RouteContext, RouteDecision, RouteQuestion } from "./router.js";
