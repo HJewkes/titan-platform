@@ -25,3 +25,29 @@ export async function closedPort(): Promise<number> {
   await daemon.close();
   return daemon.port;
 }
+
+export interface FakeBrokerData {
+  token: string;
+  sessions: unknown[];
+  items: unknown[];
+  brokerUptimeMs?: number;
+}
+
+/** A loopback agent-chat broker: `/api/sessions` and `/api/history` behind the token header, 401 without it. */
+export async function startFakeBroker(data: FakeBrokerData): Promise<FakeDaemon> {
+  const server = createServer((req, res) => {
+    const route = (req.url ?? "").split("?")[0];
+    const authorized = req.headers["x-agent-chat-token"] === data.token;
+    const body =
+      route === "/api/sessions" ? { sessions: data.sessions, brokerUptimeMs: data.brokerUptimeMs ?? 60_000 } : route === "/api/history" ? { items: data.items } : null;
+    res.writeHead(!authorized ? 401 : body ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify(authorized && body ? body : { error: "nope" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  // A request abandoned mid-Promise.all leaves a keep-alive socket that would hold close() open.
+  const close = (): Promise<void> => {
+    server.closeAllConnections();
+    return closeServer(server);
+  };
+  return { port: (server.address() as AddressInfo).port, close };
+}

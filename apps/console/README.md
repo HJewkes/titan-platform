@@ -7,7 +7,7 @@ talks only to that daemon, through `@titan-design/react-app` hooks typed from th
 command definitions. The app is private and publishes nothing.
 
 This is the skeleton (TP-842). It serves the shell, hash routes and a nav for every planned
-view, and it answers one command, `upstreams.health`. Every view except Status is a
+view, and it answers `upstreams.health`, `agents.roster` and `agents.graph` (TP-847). Every view except Status is a
 placeholder that names the task that builds it.
 
 ## Run it
@@ -42,6 +42,8 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_STATE` | `~/.local/state/titan-console` | Holds the daemon's pid file; a second console over the same directory is refused |
 | `TITAN_CONSOLE_ACTIVE_WORK_PORT` | `7400` | Loopback port of the active-work daemon |
 | `TITAN_CONSOLE_AGENT_CHAT_PORT` | `7600` | Loopback port of the agent-chat broker |
+| `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call |
+| `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
@@ -54,6 +56,8 @@ directory, under the name `active-work`.
 | --- | --- |
 | `GET /health` | The daemon package's health payload, plus the three upstream targets. It does not probe them, so it answers at once |
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
+| `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
+| `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -67,6 +71,14 @@ Three rules hold for every later slice.
 
 The session graph probe uses `stat` only. The file can be larger than a gigabyte and another
 process writes it, so the console does not open it. TP-844 adds the read-only, per-request open.
+
+The `agents.*` commands read the broker's `/api/sessions` and `/api/history?limit=1000` with
+the `X-Agent-Chat-Token` header, which is the path agent-chat's own queue mirror uses. The
+token reaches the broker's page by HTML injection only, so a browser cannot call the broker,
+but a process running as the same OS user can read the 0600 token file. A missing token, a
+rejected token or a silent broker is an error envelope with code 69, never an empty roster.
+`costUsd` comes from the agent's exit report for now; the session-analytics price joins when
+the sessions commands read transcripts.
 
 The upstream ids are the namespaces later commands live under: `work.*`, `agents.*` and
 `sessions.*`. `server/commands.ts` is the single list of commands. `src/data/rpc.ts` derives
