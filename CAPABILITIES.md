@@ -610,7 +610,7 @@ Key exports:
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
 - `parse-answer`: `answerFor`, `parseAnswerText`
-- +92 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
+- +111 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
 
 <a id="cap-memory"></a>
 

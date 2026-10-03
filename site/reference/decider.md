@@ -33,6 +33,8 @@ with a watermark per source cursor, and the `AskUserQuestion` transcript source.
 - You need the per-domain principle docs a decider reads: `principlesByDomain`,
   `changesByDomain` and `writePrincipleDocs(dir, ...)`.
 - You need the questions no principle may answer: `ALWAYS_ASK` and `alwaysAskList(hardStops)`.
+- You decide where a question goes before any model runs: `route(question, policy, ctx)` returns
+  `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw
 transcript parsing, use [`session-read`](./session-read).
@@ -148,6 +150,15 @@ writePrincipleDocs({
   alone rewrite the body without a new version.
 - `ALWAYS_ASK` is frozen data. Hard stops arrive through `alwaysAskList(hardStops)` as
   `hard_stop:<text>` ids; the package never reads a charter.
+- `route` never widens: an always-ask category, an unlock-table phrase in the header, question or
+  any option, a hard-stop phrase or a human-only initiative keeps the question with the owner
+  whatever the category's mode. `setCategoryMode` throws on raising a locked category, and
+  `parseRoutingPolicy` forces a stored one back to `off`.
+- Categories, initiatives and hard stops compare after folding case, spaces, `-`, `_` and
+  punctuation, so `Merge-Gate` is `merge_gate`. A category outside agent-chat's decidable set
+  never routes to `decider`, even in `auto`.
+- The unlock table is broad on purpose ("release the claim" matches); `unlock.test.ts`
+  pins it to agent-chat's verdicts, so change both together.
 
 ## Where it came from
 
