@@ -1,6 +1,10 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
-import { createRosterReader, mutating, ROSTER_TTL_MS } from "./roster.js";
+import { agentChatCleanupAgents } from "./cleanup-ports.js";
+import { agentChatFixers } from "./main-red.js";
+import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
+import { createRosterReader, mutating, ROSTER_TTL_MS, type RosterReader } from "./roster.js";
+import { agentChatImplementers } from "./wake.js";
 
 const row = (name: string): AgentRow => ({
   name,
@@ -115,5 +119,38 @@ describe("the shared roster reader", () => {
 
     expect((await fresh).map((found) => found.name)).toEqual(["impl-a-s1"]);
     expect(s.spawns()).toBe(2);
+  });
+});
+
+const BIN = "/bin/agent-chat";
+
+/** The roster read of each Shepherd port over agent-chat, all wired to one reader. */
+function portReads(roster: RosterReader): (() => Promise<readonly unknown[]>)[] {
+  return [
+    () => agentChatImplementers(BIN, 1_000, roster).roster(),
+    () => agentChatFixers(BIN, undefined, 1_000, roster).roster(),
+    () => agentChatCleanupAgents(BIN, undefined, 1_000, roster).roster(),
+    () => agentChatReviewerDispatch({ agentChatBin: BIN, profile: "reviewer", cwdFor: () => undefined, roster }).roster(),
+  ];
+}
+
+describe("Shepherd's ports over one roster reader", () => {
+  it("make one agent ls for the wake, fixer, cleanup and reviewer reads together", async () => {
+    let reads = 0;
+    const roster = createRosterReader(async () => (reads += 1, [row("impl-a")]), { now: () => 0 });
+
+    const answers = await Promise.all(portReads(roster).map((read) => read()));
+
+    expect(reads).toBe(1);
+    expect(answers.every((rows) => rows.length === 1)).toBe(true);
+  });
+
+  it("each reject on a failed read instead of answering an empty roster", async () => {
+    const broken = new Error("agent-chat agent ls --json printed invalid JSON");
+    const roster = createRosterReader(async () => Promise.reject(broken), { now: () => 0 });
+
+    const settled = await Promise.allSettled(portReads(roster).map((read) => read()));
+
+    expect(settled.map((outcome) => outcome.status)).toEqual(["rejected", "rejected", "rejected", "rejected"]);
   });
 });
