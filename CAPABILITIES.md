@@ -62,6 +62,7 @@ Before adding code:
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against today's injected baseline. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`code-report`](#cap-code-report) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
+| [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. It is also the reference for a react-ui `AppShell` app served by one loopback daemon. |
 
 ## Proven runtime paths
 
@@ -880,6 +881,18 @@ Key exports:
 Tier product, private, `apps/code-report`. codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read
 
 **Use this when:** You want codewatch's layered code report, or a reference app that consumes react-app and code-read.
+
+Key exports:
+
+No library entry point.
+
+<a id="cap-console"></a>
+
+### `titan-console`
+
+Tier product, private, `apps/console`. The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph
+
+**Use this when:** You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. It is also the reference for a react-ui `AppShell` app served by one loopback daemon.
 
 Key exports:
 

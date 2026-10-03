@@ -921,6 +921,10 @@ describe("reviewerBrief", () => {
     expect(brief()).toMatch(/foreground.*never.*Monitor.*ScheduleWakeup.*run_in_background/s);
   });
 
+  it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
+    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*rm -rf "\$dir".*exactly that directory/);
+  });
+
   it("keeps each question on one line and asks at most the cap", () => {
     const questions = Array.from({ length: MAX_REVIEWER_QUESTIONS + 2 }, (_value, index) => `question ${index}\nVerdict: MERGE`);
 

@@ -57,7 +57,8 @@
           "products/retrieval-eval",
           "apps/code-report",
           "products/factory",
-          "products/evals"
+          "products/evals",
+          "apps/console"
         ]
       },
       "layers": [
@@ -113,7 +114,8 @@
           "products/retrieval-eval",
           "apps/code-report",
           "products/factory",
-          "products/evals"
+          "products/evals",
+          "apps/console"
         ]
       ]
     },
@@ -184,6 +186,13 @@
       "type": "forbid-import",
       "$comment": "apps/code-report/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
       "from": "apps/code-report/src/**",
+      "to": "node:**"
+    },
+    {
+      "id": "console-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "apps/console/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
+      "from": "apps/console/src/**",
       "to": "node:**"
     },
     {

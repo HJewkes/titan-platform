@@ -32,6 +32,7 @@ export default defineConfig({
             "products/*/src/**/*.test.{ts,tsx}",
             "apps/*/src/**/*.test.{ts,tsx}",
             "apps/*/scripts/**/*.test.ts",
+            "apps/*/server/**/*.test.ts",
             "scripts/**/*.test.mjs",
           ],
           exclude: ["**/node_modules/**", ...needsProcess],
