@@ -23,67 +23,101 @@ describe("sweepReviewCheckouts", () => {
     return path;
   }
 
-  it("removes a review checkout older than a day", () => {
+  it("removes a review checkout older than a day", async () => {
     const old = dir("review-7-abcdef123456", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
 
-    const removed = sweepReviewCheckouts({ root, now: () => NOW });
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
 
     expect(removed).toEqual([old]);
     expect(existsSync(old)).toBe(false);
   });
 
-  it("keeps a review checkout younger than a day", () => {
+  it("keeps a review checkout younger than a day", async () => {
     const fresh = dir("review-8-abcdef123456", HOUR);
 
-    const removed = sweepReviewCheckouts({ root, now: () => NOW });
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
 
     expect(removed).toEqual([]);
     expect(existsSync(fresh)).toBe(true);
   });
 
-  it("keeps an old directory outside the review- prefix", () => {
+  it("keeps an old directory outside the review- prefix", async () => {
     const other = dir("not-a-review", REVIEW_CHECKOUT_MAX_AGE_MS * 5);
 
-    const removed = sweepReviewCheckouts({ root, now: () => NOW });
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
 
     expect(removed).toEqual([]);
     expect(existsSync(other)).toBe(true);
   });
 
-  it("keeps sweeping past a dangling review- symlink", () => {
+  it("keeps sweeping past a dangling review- symlink", async () => {
     symlinkSync(join(root, "missing-target"), join(root, "review-1-aaaaaaaaaaaa"));
     const old = dir("review-2-bbbbbbbbbbbb", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
     const errors: string[] = [];
 
-    const removed = sweepReviewCheckouts({ root, now: () => NOW, onError: (p) => errors.push(p) });
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW, onError: (p) => errors.push(p) });
 
     expect(removed).toEqual([old]);
     expect(errors).toEqual([]);
     expect(lstatSync(join(root, "review-1-aaaaaaaaaaaa")).isSymbolicLink()).toBe(true);
   });
 
-  it("skips an entry that vanishes between list and stat", () => {
+  it("skips an entry that vanishes between list and stat", async () => {
     const old = dir("review-3-cccccccccccc", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
     const errors: string[] = [];
 
-    const removed = sweepReviewCheckouts({
+    const removed = await sweepReviewCheckouts({
       root,
       now: () => NOW,
-      list: () => ["review-gone-dddddddddddd", "review-3-cccccccccccc"],
+      list: async () => ["review-9-dddddddddddd", "review-3-cccccccccccc"],
       onError: (p) => errors.push(p),
     });
 
     expect(removed).toEqual([old]);
-    expect(errors).toEqual([join(root, "review-gone-dddddddddddd")]);
+    expect(errors).toEqual([join(root, "review-9-dddddddddddd")]);
   });
 
-  it("keeps a plain file named review-x", () => {
-    const file = join(root, "review-x");
+  it("keeps foreign and malformed review- names however old", async () => {
+    const names = ["review-notes", "review-12-ABCDEF123456", "review-0-abcdef123456", "review-12-abcdef12345"];
+    const paths = names.map((name) => dir(name, REVIEW_CHECKOUT_MAX_AGE_MS * 5));
+    const target = dir("real-target", REVIEW_CHECKOUT_MAX_AGE_MS * 5);
+    const link = join(root, "review-13-aaaaaaaaaaaa");
+    symlinkSync(target, link);
+
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
+
+    expect(removed).toEqual([]);
+    for (const path of [...paths, target, link]) expect(existsSync(path)).toBe(true);
+  });
+
+  it("removes review-12-0123456789ab and reports a failed removal while carrying on", async () => {
+    const bad = dir("review-12-0123456789ab", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
+    const good = dir("review-14-0123456789ac", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
+    const errors: Array<[string, unknown]> = [];
+    const failure = new Error("EBUSY");
+
+    const removed = await sweepReviewCheckouts({
+      root,
+      now: () => NOW,
+      list: async () => ["review-12-0123456789ab", "review-14-0123456789ac"],
+      remove: async (path) => {
+        if (path === bad) throw failure;
+        rmSync(path, { recursive: true, force: true });
+      },
+      onError: (path, error) => errors.push([path, error]),
+    });
+
+    expect(errors).toEqual([[bad, failure]]);
+    expect(removed).toEqual([good]);
+  });
+
+  it("keeps a plain file with a valid review name", async () => {
+    const file = join(root, "review-5-eeeeeeeeeeee");
     writeFileSync(file, "x");
     const when = new Date(NOW - REVIEW_CHECKOUT_MAX_AGE_MS * 5);
     utimesSync(file, when, when);
 
-    const removed = sweepReviewCheckouts({ root, now: () => NOW });
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
 
     expect(removed).toEqual([]);
     expect(existsSync(file)).toBe(true);
