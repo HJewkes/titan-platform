@@ -9,7 +9,7 @@ import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
-import { createUpstreams } from "./upstreams.js";
+import { createSources } from "./upstreams.js";
 
 let dir: string;
 let activeWork: FakeDaemon;
@@ -24,6 +24,8 @@ beforeEach(async () => {
     stateDir: path.join(dir, "state"),
     activeWorkPort: activeWork.port,
     agentChatPort: await closedPort(),
+    agentChatTokenPath: path.join(dir, "ui.token"),
+    seatPrefixes: [],
     sessionGraphPath: path.join(dir, "graph.sqlite3"),
   };
   await writeFile(config.sessionGraphPath, "synthetic");
@@ -78,7 +80,7 @@ describe("the console daemon", () => {
 
 describe("the first-paint snapshot", () => {
   it("records upstreams.health so an exported page needs no daemon", async () => {
-    const snapshot = await recordFirstPaint(createConsoleRegistry(createUpstreams(config)));
+    const snapshot = await recordFirstPaint(createConsoleRegistry(createSources(config)));
     expect(snapshot.calls[snapshotKey("upstreams.health", {})]).toMatchObject({ ok: true });
   });
 });
