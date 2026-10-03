@@ -39,7 +39,8 @@
     "@titan-design/locator": "workspace:^",
     "@titan-design/memory": "workspace:^",
     "@titan-design/session-read": "workspace:^",
-    "@titan-design/store-sqlite": "workspace:^"
+    "@titan-design/store-sqlite": "workspace:^",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "zod": "^4.4.3"

@@ -42,6 +42,8 @@ export { writePrincipleDocs } from "./docs.js";
 export type { WriteDocsInput, WrittenDoc } from "./docs.js";
 export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./always-ask.js";
 export type { AlwaysAskEntry } from "./always-ask.js";
+export { NOTE_SOURCE, noteKey, noteSource } from "./notes.js";
+export type { NoteSourceOptions } from "./notes.js";
 export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
 export type { UnlockCheck } from "./unlock.js";
 export {
