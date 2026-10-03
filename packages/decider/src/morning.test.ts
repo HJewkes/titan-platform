@@ -133,6 +133,29 @@ describe("answer lines naming several items", () => {
     expect(rows.map((r) => r.answer)).toEqual(["yes"]);
     expect(counts.duplicate).toBe(1);
   });
+
+  it("writes one row for an item answered under two of its ids and keeps the first", () => {
+    const aliased = "[ws-9, A1] **Recommend c.**\n";
+
+    const { rows, counts } = joinMorning("2026-09-30", aliased, "ws9: yes\nA1: no\n", "a.md");
+
+    expect(rows.map((r) => r.answer)).toEqual(["yes"]);
+    expect(counts.duplicate).toBe(1);
+  });
+
+  it("parses a hyphenated id as the list prints it and joins it", () => {
+    const { rows, counts } = join("ws-2: yes\n");
+
+    expect(rows.map((r) => r.key)).toEqual(["morning:2026-09-30/ws2"]);
+    expect(counts.unparseable).toBe(0);
+  });
+
+  it("still reports an unrelated id as unmatched", () => {
+    const { rows, counts } = join("ws-7: yes\n");
+
+    expect(rows).toEqual([]);
+    expect(counts.unmatched).toBe(1);
+  });
 });
 
 describe("morning source", () => {
@@ -185,7 +208,7 @@ describe("morning source over a growing answers file", () => {
   it("emits exactly one new row when one answer line is appended", async () => {
     await extractSource(store, morningSource({ dir }), POLICY);
 
-    await appendFile(path.join(dir, "2026-09-30-owner-answers.md"), "A1: yes\n");
+    await appendFile(path.join(dir, "2026-09-30-owner-answers.md"), "ws34: yes\n");
     const again = await extractSource(store, morningSource({ dir }), POLICY);
 
     expect(again).toMatchObject({ written: 1, alreadyIndexed: 7 });
