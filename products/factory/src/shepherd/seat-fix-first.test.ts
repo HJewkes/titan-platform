@@ -65,3 +65,25 @@ describe("Shepherd's reviewer says MERGE and a seat reviewer says FIX_FIRST at t
     expect(fake.pr(1).merged).toBe(false);
   });
 });
+
+describe("a seat check that cannot read the roster at every round", () => {
+  it("names the failure, not a wait that ran out, in the owner's failed-rounds gate", async () => {
+    const fake = fakeGitHub();
+    fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const reason = "seat check: the roster could not be read: broker down";
+    const phases = { review: async () => ({ kind: "none" as const, cause: "timeout" as const, reason }), wake: async () => ({ kind: "unhandled" as const, reason: "test" }) };
+    const store = shepherdStoreRef();
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+    hosts.push(host);
+    fake.addPr({ headSha: REVIEWED });
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    const prompt = host.gates.get(gateId(runId, "approve-merge"))?.prompt ?? "";
+
+    expect(prompt).toContain(`the last at ${REVIEWED} ended with ${reason}`);
+    expect(prompt).not.toContain("wait ran out");
+  });
+});

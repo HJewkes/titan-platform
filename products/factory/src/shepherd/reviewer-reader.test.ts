@@ -300,6 +300,45 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
   });
 
+  describe("a seat reviewer's transcript read by presence", () => {
+    const FIX_FIRST_BLOCK = BLOCK.replace("Verdict: MERGE", "Verdict: FIX_FIRST");
+    const PARTIAL = JSON.stringify(assistant(SESSION, ["On reflection"])).slice(0, 60);
+    const sentOnly = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(FIX_FIRST_BLOCK)])];
+    const quiet = [user(SESSION, "review it"), assistant(SESSION, ["Reading."])];
+
+    /** The seat check over one transcript of `records`, with `partial` appended as an unterminated last record. */
+    async function seatCheck(records: readonly Json[], presence: string, partial = false) {
+      const transcript = writeTranscript(SESSION, records);
+      if (partial) appendFileSync(transcript, PARTIAL, "utf8");
+      const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript }];
+      const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+      return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 7, head: HEAD });
+    }
+
+    it.each(["exited", "detached"])("blocks on a FIX_FIRST sent by a %s reviewer whose transcript ends on the chat_send call", async (presence) => {
+      expect(await seatCheck(sentOnly, presence)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: HEAD });
+    });
+
+    it.each(["exited", "detached"])("blocks with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
+      expect(await seatCheck(quiet, presence, true)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${seat.name} could not be read: the ${presence} session ${SESSION} ends in a partial record`,
+      });
+    });
+
+    it("stays clear for a running reviewer whose last record is still being written", async () => {
+      expect(await seatCheck(quiet, "live", true)).toEqual({ kind: "clear" });
+    });
+
+    it("blocks on a running reviewer's FIX_FIRST sent in a complete record before the partial one", async () => {
+      expect(await seatCheck(sentOnly, "live", true)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+    });
+
+    it("leaves the dispatched reviewer's read unchanged: a turn that ends on the call still reads as nothing", async () => {
+      expect(await read([row(writeTranscript(SESSION, sentOnly), { agentId: seat.agentId })], sendRequest)).toEqual([]);
+    });
+  });
+
   it("keeps the final text last, so the dispatched reviewer's final message is still its text", async () => {
     const records = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(BLOCK)]), toolResult(SESSION, "tool-send", "Delivered."), assistant(SESSION, ["Sent it."])];
 

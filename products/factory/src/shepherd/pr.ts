@@ -218,13 +218,15 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 }
 
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
-function countRound(run: ShepherdRun, { route, outcome, headSha }: Routed): Escalated | undefined {
+function countRound(run: ShepherdRun, routed: Routed): Escalated | undefined {
+  const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   if (kind === "fix-first") return ++run.fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail: `the last at ${headSha}` } : undefined;
   if (kind !== "stuck") return undefined;
   run.failedRounds += 1;
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${FAILED_ROUND_WORDS[outcome] ?? outcome}` };
+  const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
 }
 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */

@@ -1310,8 +1310,9 @@ describe("reviewPhase", () => {
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
-      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
-      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason: `seat check: the transcript of ${seat.name} could not be read: unexpected end of JSON input` });
+      const reason = `seat check: the transcript of ${seat.name} could not be read: unexpected end of JSON input`;
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
+      expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason });
       expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
     });
 

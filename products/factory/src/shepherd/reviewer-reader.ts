@@ -99,15 +99,51 @@ function finishedTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictI
   return { ...row, transcriptPath: row.transcriptPath };
 }
 
-/** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
-async function readWholeTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<readonly ReviewerMessage[]> {
+interface Scan {
+  /** The finished turn's messages, or none when the turn did not end on text. */
+  finished: readonly ReviewerMessage[];
+  /** Every chat_send message in a complete record, finished turn or not. */
+  sent: readonly ReviewerMessage[];
+  /** False when the file holds bytes past the last complete record. */
+  whole: boolean;
+}
+
+async function scanTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<Scan> {
   const turn = finishedTurnMessages(agentId);
+  const sent: ReviewerMessage[] = [];
   let consumedBytes = -1;
   const source = claudeSourceFromPath(transcriptPath, namespace);
   for await (const observation of readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset))) {
     turn.add(observation);
+    sent.push(...sentMessages(agentId, observation));
   }
-  return (await stat(transcriptPath)).size === consumedBytes ? turn.result() : [];
+  return { finished: turn.result(), sent, whole: (await stat(transcriptPath)).size === consumedBytes };
+}
+
+/** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
+async function readWholeTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<readonly ReviewerMessage[]> {
+  const scan = await scanTranscript(agentId, transcriptPath, namespace);
+  return scan.whole ? scan.finished : [];
+}
+
+/** Presences whose process may still append to the transcript, so a partial last record is a write in progress. */
+const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
+
+/**
+ * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
+ * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects.
+ */
+async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string }, namespace: string): Promise<readonly ReviewerMessage[]> {
+  const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
+  if (!scan.whole && !RUNNING.has(row.presence)) throw new Error(`the ${row.presence} session ${row.sessionId} ends in a partial record`);
+  return scan.whole && scan.finished.length > 0 ? scan.finished : scan.sent;
+}
+
+/** The transcript of this agent and session whatever its presence, or null when there is none yet. */
+function seatTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): (TranscriptRow & { transcriptPath: string }) | null {
+  const row = rows.find((candidate) => candidate.agentId === input.reviewerAgentId && candidate.sessionId === input.reviewerSessionId);
+  if (!row || !row.transcriptExists || row.transcriptPath === null) return null;
+  return { ...row, transcriptPath: row.transcriptPath };
 }
 
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
@@ -117,6 +153,10 @@ export function transcriptReviewerReader(options: TranscriptReviewerReaderOption
     async read(input) {
       const row = finishedTranscript(await options.roster(), input);
       return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace) : [];
+    },
+    async readSeat(input) {
+      const row = seatTranscript(await options.roster(), input);
+      return row ? readSeatTranscript(row, namespace) : [];
     },
   };
 }

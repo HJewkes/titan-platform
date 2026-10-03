@@ -6,7 +6,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
-import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput } from "./await-verdict.js";
+import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -109,6 +109,8 @@ export interface ReviewerMessage {
 /** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
 export interface ReviewerReader {
   read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
+  /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript. Absent means `read`. */
+  readSeat?(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
 }
 
 export interface AcceptedVerdict {
@@ -121,16 +123,6 @@ export interface AcceptedVerdict {
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
 export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string }) | { kind: "none"; reason?: string };
-
-export interface AwaitVerdictTiming {
-  now: () => number;
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs: number;
-  timeoutMs: number;
-  exitGraceMs?: number;
-  detachGraceMs?: number;
-}
-
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
@@ -386,7 +378,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: object, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const awaited = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold" };
+  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });

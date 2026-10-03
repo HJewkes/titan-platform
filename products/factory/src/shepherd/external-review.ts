@@ -1,7 +1,7 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
-import { bounded } from "./await-verdict.js";
-import type { AwaitVerdictResult, AwaitVerdictTiming, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
+import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
@@ -76,7 +76,10 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
 
 /** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A failed read rejects. */
 async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<ReviewerMessage[]> {
-  const read = (row: ReviewerAgent) => reader.read({ ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
+  const read = (row: ReviewerAgent) => {
+    const input = { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
+    return reader.readSeat ? reader.readSeat(input) : reader.read(input);
+  };
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   return (await Promise.all(rows.map(read))).flat().filter(owned);
 }
