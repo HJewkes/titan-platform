@@ -6,6 +6,7 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -20,8 +21,6 @@ import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./out
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
-
-export const SH_AWAIT_PR_POLL_MS = 30_000;
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -110,7 +109,7 @@ class LeaveLand extends Error {
  * review that sends the PR back wakes an agent first; an unhandled wake leaves the decision to a human.
  */
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
-  const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
+  const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
     ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, fresh: new Set(), escalations: new Map() },
@@ -340,27 +339,6 @@ async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<La
   return merged;
 }
 
-const AwaitPrResult = z.looseObject({ pr: z.number().int().positive(), headSha: z.string() });
-
-interface AwaitPrInput {
-  repo: RepoSlug;
-  branch: string;
-  runId: string;
-}
-
-/** No timeout, because a PR can take days to open; a failed read is polled again, and the step's signal aborts the wait. */
-async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSignal): Promise<object> {
-  for (;;) {
-    signal.throwIfAborted();
-    const found = await deps.port.findPr(input.repo, input.branch).catch(() => null);
-    if (found && (found.state === "open" || found.merged)) {
-      deps.store.get().setPr(input.runId, found.number);
-      return { pr: found.number, headSha: found.headSha };
-    }
-    await deps.sleep(deps.pollMs ?? SH_AWAIT_PR_POLL_MS, signal);
-  }
-}
-
 export interface ShepherdWiring {
   /** Absent means the review steps answer `none` and the owner gate decides. */
   review?: ReviewWiring;
@@ -375,7 +353,7 @@ export interface ShepherdWiring {
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
 export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}): StepRoute[] {
   return [
-    codeRoute("sh-await-pr", deps.now, (input: AwaitPrInput, signal) => awaitPr(deps, input, signal)),
+    awaitPrRoute(deps),
     ...outcomeRoutes(deps.now),
     codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
     ...wakeRoutes(deps),
