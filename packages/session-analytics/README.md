@@ -6,7 +6,9 @@ reads a session graph through a read-only connection and never writes it; `write
 the one function here that writes.
 
 Tier 2 of the titan-platform DAG. It depends on `@titan-design/session-graph` for table
-names and on `@titan-design/store-sqlite` for the `Db` type. `zod` is a peer dependency.
+names, on `@titan-design/store-sqlite` for the `Db` type, and on `@titan-design/session-read`
+and `@titan-design/agent-protocol` for the observations the session timeline folds. `zod` is a
+peer dependency.
 
 ```ts
 import { classifySession, contextBand, priceRequest } from "@titan-design/session-analytics";
@@ -63,6 +65,9 @@ priceRequest(
   segmentation, written through session-graph's `replaceEpisodes`.
 - `initiativeFromCwd(cwd)`, `sessionInitiative(tasks, cwd)` — a session's initiative from its
   task edges, falling back to the `cf_analyze.py` cwd rule.
+- `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
+  `countAtOrBefore(sortedMs, targetMs)` and the `SessionTimeline` types — the read model behind
+  a session view; see "Session timeline" below.
 
 ```ts
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -71,6 +76,50 @@ import { costReport, renderCostReportText } from "@titan-design/session-analytic
 const report = costReport(openDatabase(graphPath, { readonly: true }), { days: 7 });
 process.stdout.write(renderCostReportText(report));
 ```
+
+## Session timeline
+
+`buildSessionTimeline(observations, { gapMinMs, maxTextChars, prices })` is a pure fold over
+session-read's normalized observations, so it reads Claude Code and Codex sessions alike and
+needs no graph. It returns one `SessionTimeline`, plain JSON that a daemon can send as it is:
+
+```ts
+import { claudeSourceFromPath, readSessionObservations } from "@titan-design/session-read";
+import { SessionTimelineAccumulator, countAtOrBefore } from "@titan-design/session-analytics";
+
+const accumulator = new SessionTimelineAccumulator();
+for await (const observation of readSessionObservations(claudeSourceFromPath(file, namespace))) {
+  accumulator.add(observation);
+}
+const timeline = accumulator.result();
+countAtOrBefore(timeline.tools.atMs, scrubbedMs); // tool calls made by that time
+```
+
+| Field | What it holds |
+|---|---|
+| `turns` | `TimelineTurn[]`. A user message opens a turn. Each has `user`, `assistant` messages, `toolCalls`, `errorCount`, `tokens`, `costUsd` and `gapBeforeMs`. Sort a turn's messages and tool calls by `seq` to interleave them. |
+| `buckets` | `MinuteBucket[]`, one per clock minute that held activity, with event, message, tool call and error counts, output tokens and cost. |
+| `gaps` | `TimelineGap[]`: each idle stretch of `TIMELINE_GAP_MIN_MS` (10 minutes) or more. The bucket and the turn after a gap carry `gapBeforeMs`. |
+| `tokens` | `TokenTimeline`: one `TokenPoint` per API request (prompt size, output, cost, running totals, `afterCompaction`), the `CompactionMark`s and the models used. |
+| `tools`, `files`, `errors`, `agents` | Calls by name and by session-read tool family, first touch of each file by access, failed calls, and subagent dispatch spans. Each carries ascending `atMs` arrays for `countAtOrBefore`. |
+| `totals` | Counts, the four disjoint token classes and the cost. |
+
+Every `*Ms` field is epoch milliseconds. The model holds no time zone, so a session that
+crosses midnight is one unbroken run of buckets and the renderer picks the zone. Text is capped
+at `TIMELINE_TEXT_CAP` characters with `truncated` set, and each message and tool call keeps the
+`byteOffset` of its transcript line for reading the full record. `SESSION_TIMELINE_VERSION`
+changes when a field is removed or changes meaning.
+
+A turn's `origin` is `prompt`, `injected` (a harness block such as a channel message or a task
+notification, named in `injectedMarker`), `compaction` (a continuation summary) or `none`
+(activity before any user message). It is read from the head of the opening text with
+session-read's injected markers, so a typed prompt that the harness prefixed with a reminder
+block reads as `injected`.
+
+Cost comes from `priceRequest` over `PRICE_TABLE`. The normalized usage has no 5m and 1h split
+of cache writes, so every cache write is priced at the 5m rate and the figure under-reads a
+session that wrote 1h caches. A source that reports only running totals (`basis: "snapshot"`)
+gets token totals and no points.
 
 ## Wake episodes
 
