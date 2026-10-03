@@ -14,7 +14,7 @@ import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shephe
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { askAtHead, expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
@@ -307,10 +307,11 @@ async function conflictGate(run: ShepherdRun, headSha: string): Promise<LandOutc
 
 const SentBackAnswer = z.object({ decision: z.enum(["await-new-head", "abandon"]) });
 
-/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning; merging is not offered. */
+/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning; a pushed head answers for them. */
 async function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
   const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake. Await a new head or abandon?`;
-  const answer = SentBackAnswer.parse((await run.ctx.assisted("sh-sent-back", prompt, { schema: SentBackAnswer })).data);
+  const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema: SentBackAnswer });
+  const answer = answered ? SentBackAnswer.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: `a human abandoned the PR after a ${kind} review` };
   await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
   return undefined;
