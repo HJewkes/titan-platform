@@ -1,5 +1,17 @@
 # @titan-design/code-graph
 
+## 0.11.0
+
+### Minor Changes
+
+- f2aad0f: Add `diffFootprints(store, { fromSnapshotId, toSnapshotId })`: the symbols whose footprint differs between two snapshots, as `added`, `removed` or `changed` with reasons `signature`, `consumers`, `coupling` or `renamed`, plus a rollup to declaring files. From-side ids follow the alias chain, and a symbol under a moved file follows its file, so a move with an unchanged footprint reports `["renamed"]` alone.
+- 8939d45: Add the per-unit doc gate. `unitProvenance({ unit, footprints, snapshot, model })` records a unit's symbol-set hash with the snapshot's commit hash, and `gateUnits({ prior, units, footprints })` returns the units to regenerate (`new` or `changed`), the units to skip, and the prior units that are orphaned. When every hash matches its prior record, `regenerate` is empty and the caller makes no LLM call.
+
+### Patch Changes
+
+- b2abe3d: The ts-morph extractor drops extracted source files from its own Project in batches, cutting the indexer's live heap peak from about 1000 MB to about 460 MB on this repo with an identical graph.
+- 47a0996: diffFootprints no longer drops a symbol when two files merge into one: the losing from-symbol is reported as removed.
+
 ## 0.10.0
 
 ### Minor Changes

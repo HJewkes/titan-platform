@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.3.2
+
+### Patch Changes
+
+- e54f34e: `getBranchRules` throws a named error when a `required_status_checks` rule carries no check list, instead of reading it as no required contexts.
+
 ## 0.3.1
 
 ### Patch Changes

@@ -13,10 +13,17 @@ export interface DiffFile {
   readonly lines: readonly AddedLine[];
 }
 
-/** One unit of scanned text: a diff, or a commit's message plus its diff. */
+/** A short named value scanned whole, such as a commit's author name or a pushed ref name. */
+export interface IdentField {
+  readonly field: string;
+  readonly text: string;
+}
+
+/** One unit of scanned text: a diff, or a commit's message, idents and diff. */
 export interface ScanSource {
   readonly sha?: string;
   readonly message?: readonly string[];
+  readonly idents?: readonly IdentField[];
   readonly files: readonly DiffFile[];
   readonly binaryFiles: number;
 }

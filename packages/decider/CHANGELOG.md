@@ -1,5 +1,11 @@
 # @titan-design/decider
 
+## 0.2.0
+
+### Minor Changes
+
+- d988182: Add the decide contract: `DecideInput` and `DecideReply` as zod schemas with JSON Schema output, and `validate(reply, input, policy)`, which rejects cited principle ids missing from the input and out-of-range option indexes, and forces escalation under the category's confidence threshold.
+
 ## 0.1.0
 
 ### Minor Changes
