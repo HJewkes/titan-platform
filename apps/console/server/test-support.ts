@@ -1,5 +1,8 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
+
+const RPC_PREFIX = "/rpc/";
 
 export interface FakeDaemon {
   port: number;
@@ -8,12 +11,30 @@ export interface FakeDaemon {
 
 const closeServer = (server: Server): Promise<void> => new Promise((resolve) => server.close(() => resolve()));
 
-/** A loopback server that answers `GET /health` the way a titan daemon does, and 404 for anything else. */
-export async function startFakeDaemon(health: Record<string, unknown>): Promise<FakeDaemon> {
+/** Answers one `POST /rpc/<command>`; a throw becomes a failure envelope. */
+export type RpcAnswer = (command: string, args: Record<string, unknown>) => unknown;
+
+async function answerRpc(req: IncomingMessage, command: string, rpc: RpcAnswer): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  try {
+    return successEnvelope(rpc(command, JSON.parse(Buffer.concat(chunks).toString() || "{}") as Record<string, unknown>));
+  } catch (err) {
+    return errorEnvelope(err instanceof Error ? err.message : String(err), EXIT.USAGE);
+  }
+}
+
+/** A loopback server that answers `GET /health` the way a titan daemon does, `POST /rpc/<command>` when given `rpc`, and 404 for anything else. */
+export async function startFakeDaemon(health: Record<string, unknown>, rpc?: RpcAnswer): Promise<FakeDaemon> {
   const server = createServer((req, res) => {
-    const found = req.url === "/health";
-    res.writeHead(found ? 200 : 404, { "content-type": "application/json" });
-    res.end(JSON.stringify(found ? health : { ok: false }));
+    const send = (status: number, body: unknown): void => {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    const command = req.method === "POST" && req.url?.startsWith(RPC_PREFIX) ? decodeURIComponent(req.url.slice(RPC_PREFIX.length)) : undefined;
+    if (command !== undefined && rpc) void answerRpc(req, command, rpc).then((envelope) => send(200, envelope));
+    else if (req.url === "/health") send(200, health);
+    else send(404, { ok: false });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return { port: (server.address() as AddressInfo).port, close: () => closeServer(server) };
