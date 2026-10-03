@@ -22,6 +22,12 @@ const launcher: Launcher = {
 const handle = await surfaceFor("iterm-pane", launcher, { anchor: process.env.ITERM_SESSION_ID }).launch(plan);
 ```
 
+Placement is the host's decision, passed as options. `split: 'right' | 'below'` picks the
+side of the anchor a pane's stack starts on. `maxInTab` turns a pane into a tab in the
+anchor's window once the tab holds that many sessions. `tabWindow` (an iTerm2 window id)
+opens a tab in that window with no anchor. An anchored launch reports `inTab`, the session
+count of the anchor's tab, on its handle. `iterm-window` ignores all of them.
+
 `AppleScriptRunner`, `SpawnFn` and `ProcessProbe` are injectable, so the suites run on Linux.
 
 ## Command line
