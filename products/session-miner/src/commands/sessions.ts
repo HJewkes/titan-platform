@@ -3,6 +3,7 @@ import { sessionRef } from "@titan-design/session-read";
 import { z } from "zod";
 import { normalizedSessions, normalizedUsage, type SessionGraph } from "@titan-design/session-graph";
 import type { MinerContext } from "../context.js";
+import { hasNormalized } from "../normalized-tables.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -91,6 +92,7 @@ function toSummary(row: Record<string, unknown>): SessionSummary {
 }
 
 function normalizedDetail(graph: SessionGraph, ref: string): Pick<SessionDetail, "turns" | "edges" | "inbound"> {
+  if (!hasNormalized(graph)) return { turns: [], edges: [], inbound: [] };
   const rows = graph.db.prepare(`SELECT turn_ref,MIN(ts) AS started,MAX(ts) AS ended FROM normalized_event
     WHERE conversation_ref = ? AND history_origin IS NULL AND kind = 'native_turn' GROUP BY turn_ref ORDER BY MIN(ts)`).all(ref) as { turn_ref: string; started: string | null; ended: string | null }[];
   const edges = graph.db.prepare("SELECT DISTINCT relationship,related_ref FROM normalized_event WHERE conversation_ref = ? AND kind = 'lineage'").all(ref) as { relationship: string; related_ref: string }[];
