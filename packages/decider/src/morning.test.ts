@@ -105,7 +105,15 @@ describe("answer lines naming several items", () => {
   const list = "[ws-1] **Recommend a.**\n[ws-2] **Recommend b.**\n[ws-9] **Recommend c.**\n3. **Recommend d.**\n";
   const join = (answers: string) => joinMorning("2026-09-30", list, answers, "a.md");
 
-  it.each(["ws1 and 2: yes", "ws1 & 2: yes", "ws1 + 2: yes"])("counts %j as ambiguous and joins neither item", (line) => {
+  it.each([
+    "ws1 and 2: yes",
+    "ws1 & 2: yes",
+    "ws1 + 2: yes",
+    "ws1 and ws2: yes",
+    "ws1, ws2: yes",
+    "ws1 and 2 yes",
+    "1 2: yes",
+  ])("counts %j as ambiguous and joins neither item", (line) => {
     const { rows, counts } = join(`${line}\n`);
 
     expect(rows).toEqual([]);
