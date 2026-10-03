@@ -1,13 +1,13 @@
-import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, dataFence } from "@titan-design/agent-dispatch";
 import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, type FreezeStore } from "./freeze.js";
+import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, seatCheckout, tailBytes } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
@@ -16,7 +16,6 @@ export const SH_MAIN_RED_POLL_MS = 30_000;
 export const FIXER_PROFILE = "implementer";
 /** Where a fix task goes when the merged PR's registration names no `<initiative>/<id>` task. */
 export const DEFAULT_FIX_INITIATIVE = "titan-platform";
-const FIXER_SPAWN_TIMEOUT_MS = 30_000;
 
 export interface FixTaskFields {
   title: string;
@@ -49,13 +48,10 @@ export interface MainRedWiring {
 }
 
 /** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
-export function agentChatFixers(agentChatBin: string, configDir?: string, timeoutMs = FIXER_SPAWN_TIMEOUT_MS, roster: RosterReader = agentChatRoster(agentChatBin)): FixerAgents {
-  return {
-    roster: () => roster.rows(),
-    spawn: (name, brief, cwd) =>
-      mutating(roster, async () => void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: FIXER_PROFILE, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [FIXER_PROFILE])),
-  };
-}
+export const fixersOver = (agents: AgentChatAgents): FixerAgents => ({
+  roster: () => agents.roster(),
+  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FIXER_PROFILE, brief, cwd }),
+});
 
 const slug = (part: string | undefined): string => (part ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
 

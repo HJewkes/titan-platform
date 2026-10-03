@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
@@ -71,6 +71,7 @@ interface Scene {
   checkoutFor?: (repo: string) => string | undefined;
   home?: string;
   pr?: Partial<PullRequest>;
+  agentChatConfigDir?: string;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
   /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
   turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
@@ -86,7 +87,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat" };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -122,6 +123,19 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch \`feat/demo-fix\` and check it out at the PR head ${H1}.`);
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
+  });
+
+  it("spawns a successor under the configured Claude config directory", async () => {
+    const argvFile = join(SCRATCH, "spawn-argv");
+    const bin = join(SCRATCH, "agent-chat");
+    const rows = JSON.stringify([row("impl-a")]);
+    writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
+    chmodSync(bin, 0o755);
+    const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
+
+    await run("review", fixFirst("fix the parser"));
+
+    expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
   });
 
   it("resumes a parked implementer on FIX_FIRST though its tree is gone, since resuming re-creates it at the same path", async () => {
