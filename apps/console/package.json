@@ -1,0 +1,45 @@
+{
+  "name": "titan-console",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph",
+  "type": "module",
+  "license": "MIT",
+  "author": "Henry Jewkes",
+  "bin": {
+    "titan-console": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx server/dev.ts",
+    "build": "vite build && tsup",
+    "serve": "tsx server/cli.ts",
+    "export": "tsx server/export.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src server vite.config.ts tsup.config.ts"
+  },
+  "dependencies": {
+    "@titan-design/daemon": "workspace:^",
+    "@titan-design/react-app": "workspace:*",
+    "@titan-design/react-ui": "^0.20.0",
+    "@titan-design/registry": "workspace:^",
+    "@titan-design/rpc-client": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-native-web": "^0.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.6.1",
+    "jsdom": "^30.1.0",
+    "nativewind": "^4.2.1",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.13",
+    "vite": "^8.0.3"
+  }
+}
