@@ -10,7 +10,8 @@ import { parsePayload, resolveGate } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
-import { createFactoryRegistry, factoryContext, isRepoSlug, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
+import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
+import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
@@ -164,7 +165,7 @@ const PR_VERBS = [
 
 function parseTarget(target: string): { repo: string; pr?: number } {
   if (target.includes("#")) return parsePrRef(target);
-  if (!isRepoSlug(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
+  if (!isRepo(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
   return { repo: target };
 }
 
