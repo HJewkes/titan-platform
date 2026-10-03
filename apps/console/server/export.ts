@@ -4,11 +4,11 @@ import { embedSnapshot } from "@titan-design/react-app";
 import { resolveConfig } from "./config.js";
 import { EXPORT_FILE, PAGE_FILE } from "./paths.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { createUpstreams } from "./upstreams.js";
+import { createSources } from "./upstreams.js";
 
 const page = await readFile(PAGE_FILE, "utf8").catch(() => {
   throw new Error(`${PAGE_FILE} is missing; run \`pnpm --filter titan-console build\` first`);
 });
-const snapshot = await recordFirstPaint(createConsoleRegistry(createUpstreams(resolveConfig())));
+const snapshot = await recordFirstPaint(createConsoleRegistry(createSources(resolveConfig())));
 await writeFile(EXPORT_FILE, embedSnapshot(page, snapshot));
 console.log(`wrote ${EXPORT_FILE} (${Object.keys(snapshot.calls).length} recorded call)`);
