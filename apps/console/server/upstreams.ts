@@ -40,6 +40,11 @@ const IDENTITIES: Partial<Record<UpstreamId, (payload: HealthPayload) => boolean
   agents: (payload) => typeof payload.socket === "string",
 };
 
+/** probeHealth returns whatever JSON the port sent, so a scalar or array body reaches the identity checks unless refused here. */
+function isHealthObject(payload: unknown): payload is HealthPayload {
+  return typeof payload === "object" && payload !== null && !Array.isArray(payload);
+}
+
 /** Session-miner reports `ftsOrphanRatio`, or `indexError` when its graph cannot be read. */
 function describeAnswerer(payload: HealthPayload): string {
   const isMiner = "ftsOrphanRatio" in payload || "indexError" in payload;
@@ -50,8 +55,9 @@ function describeAnswerer(payload: HealthPayload): string {
 /** A daemon on loopback that answers `GET /health` with the identity its upstream expects. */
 export function httpUpstream(id: UpstreamId, label: string, port: number): Upstream {
   const probe = async (): Promise<ProbeResult> => {
-    const payload = await probeHealth(port, { timeoutMs: PROBE_TIMEOUT_MS });
+    const payload: unknown = await probeHealth(port, { timeoutMs: PROBE_TIMEOUT_MS });
     if (!payload) return { reachable: false, detail: "No answer from /health" };
+    if (!isHealthObject(payload)) return { reachable: false, detail: `Port ${port} answers, but /health is not a JSON object` };
     if (IDENTITIES[id]?.(payload) === false) return { reachable: false, detail: `Port ${port} answers, but not as the ${label} (${describeAnswerer(payload)})` };
     return { reachable: true, detail: typeof payload.version === "string" ? `Version ${payload.version}` : "Answering" };
   };

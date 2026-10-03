@@ -51,6 +51,20 @@ describe("a daemon upstream on a port another daemon holds", () => {
   });
 });
 
+describe("a daemon upstream answering /health with a body that is not an object", () => {
+  it.each([["a string", "hello"], ["a number", 5], ["true", true], ["an array", []]])("reads %s as unreachable and does not throw", async (_name, body) => {
+    const daemon = await startFakeDaemon(body as unknown as Record<string, unknown>);
+    try {
+      for (const id of ["work", "agents"] as const) {
+        const probe = await httpUpstream(id, "some daemon", daemon.port).probe();
+        expect(probe).toEqual({ reachable: false, detail: `Port ${daemon.port} answers, but /health is not a JSON object` });
+      }
+    } finally {
+      await daemon.close();
+    }
+  });
+});
+
 describe("a file upstream", () => {
   it("is reachable when the file exists, and reports its size without opening it", async () => {
     const file = path.join(dir, "graph.sqlite3");
