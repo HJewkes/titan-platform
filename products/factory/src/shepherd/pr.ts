@@ -6,6 +6,8 @@ import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
+import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
@@ -14,13 +16,11 @@ import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shephe
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { askAtHead, expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
-
-export const SH_AWAIT_PR_POLL_MS = 30_000;
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -39,6 +39,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
   ...OUTCOME_STEPS,
+  ...CONFLICT_CHECK_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -89,6 +90,7 @@ interface ShepherdRun {
   fixFirsts: number;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
+  conflictChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
   /** Heads whose merge decision is the owner's, with why. */
@@ -107,10 +109,10 @@ class LeaveLand extends Error {
  * review that sends the PR back wakes an agent first; an unhandled wake leaves the decision to a human.
  */
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
-  const pr = params.pr ?? (await step(ctx, "sh-await-pr", { repo: params.repo, branch: params.branch, runId: ctx.runId }, AwaitPrResult)).pr;
+  const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, fresh: new Set(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -157,6 +159,11 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   return outcome.kind === "woken";
 }
 
+/** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
+function leaveOnConflict(headSha: string): LeaveLand {
+  return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
+}
+
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
@@ -168,7 +175,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: supersedingGates(ctx, () => new LeaveLand()),
+    assisted: conflictCheckedGates(supersedingGates(ctx, () => new LeaveLand()), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -307,10 +314,11 @@ async function conflictGate(run: ShepherdRun, headSha: string): Promise<LandOutc
 
 const SentBackAnswer = z.object({ decision: z.enum(["await-new-head", "abandon"]) });
 
-/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning; merging is not offered. */
+/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning; a pushed head answers for them. */
 async function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
   const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake. Await a new head or abandon?`;
-  const answer = SentBackAnswer.parse((await run.ctx.assisted("sh-sent-back", prompt, { schema: SentBackAnswer })).data);
+  const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema: SentBackAnswer });
+  const answer = answered ? SentBackAnswer.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: `a human abandoned the PR after a ${kind} review` };
   await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
   return undefined;
@@ -331,27 +339,6 @@ async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<La
   return merged;
 }
 
-const AwaitPrResult = z.looseObject({ pr: z.number().int().positive(), headSha: z.string() });
-
-interface AwaitPrInput {
-  repo: RepoSlug;
-  branch: string;
-  runId: string;
-}
-
-/** No timeout, because a PR can take days to open; a failed read is polled again, and the step's signal aborts the wait. */
-async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSignal): Promise<object> {
-  for (;;) {
-    signal.throwIfAborted();
-    const found = await deps.port.findPr(input.repo, input.branch).catch(() => null);
-    if (found && (found.state === "open" || found.merged)) {
-      deps.store.get().setPr(input.runId, found.number);
-      return { pr: found.number, headSha: found.headSha };
-    }
-    await deps.sleep(deps.pollMs ?? SH_AWAIT_PR_POLL_MS, signal);
-  }
-}
-
 export interface ShepherdWiring {
   /** Absent means the review steps answer `none` and the owner gate decides. */
   review?: ReviewWiring;
@@ -366,7 +353,7 @@ export interface ShepherdWiring {
 /** The routes only shepherd-pr dispatches to; each reads before it writes, so each repeats safely after a crash. */
 export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}): StepRoute[] {
   return [
-    codeRoute("sh-await-pr", deps.now, (input: AwaitPrInput, signal) => awaitPr(deps, input, signal)),
+    awaitPrRoute(deps),
     ...outcomeRoutes(deps.now),
     codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
     ...wakeRoutes(deps),
@@ -375,6 +362,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),
+    conflictCheckRoute(deps),
   ];
 }
 

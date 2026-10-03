@@ -210,6 +210,57 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
   });
 });
 
+/** FIX_FIRST at SENT_BACK with the wake unhandled, as when the implementer detached; the run waits on the owner's sh-sent-back gate. */
+async function sentBackUnwoken(): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[] }> {
+  const fake = fakeGitHub();
+  fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+  const reviewed: string[] = [];
+  const phases: ShepherdPhases = {
+    review: async (_ctx, request) => (reviewed.push(request.headSha), request.headSha === SENT_BACK ? { kind: "FIX_FIRST", headSha: SENT_BACK, text: "synthetic finding" } : { kind: "MERGE", headSha: request.headSha, evidence: {} }),
+    wake: async () => ({ kind: "unhandled", reason: "the implementer detached" }),
+  };
+  const store = shepherdStoreRef();
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  hosts.push(host);
+  fake.addPr({ headSha: SENT_BACK });
+  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+  store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+  await gateOpened(host, gateId(runId, "sh-sent-back"));
+  return { host, fake, services: routes.shepherd!, runId, reviewed };
+}
+
+describe("a pending sh-sent-back gate whose pull request head moved", () => {
+  it("is superseded, and the run awaits the new head and reviews it with no owner answer", async () => {
+    const { host, fake, services, runId, reviewed } = await sentBackUnwoken();
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-sent-back"), from: SENT_BACK, to: MOVED }]);
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    expect(reviewed).toEqual([SENT_BACK, MOVED]);
+    expect(Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId)).toContain("await-new-head:0");
+    expect(host.gates.get(gateId(runId, "sh-sent-back"))?.status).toBe("cancelled");
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${MOVED}`);
+  });
+
+  it("stays with the owner while the head it asks about is still the pull request's head", async () => {
+    const { host, services, runId } = await sentBackUnwoken();
+
+    expect(await supersedeMovedGates(host, services)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "sh-sent-back"))?.status).toBe("pending");
+  });
+
+  it("still fails the run when the gate is cancelled for any other reason", async () => {
+    const { host, runId } = await sentBackUnwoken();
+
+    host.gates.cancel(gateId(runId, "sh-sent-back"), "the owner cancelled it");
+
+    expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("sh-sent-back was cancelled: the owner cancelled it") });
+  });
+});
+
 describe("seatPolicyHead", () => {
   const PROMPT = `Merge PR #1 in ${REPO} at head ${GATED}? CI is green.`;
 
