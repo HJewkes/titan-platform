@@ -44,3 +44,22 @@ export { ALWAYS_ASK, HARD_STOP_PREFIX, alwaysAskList, isAlwaysAsk } from "./alwa
 export type { AlwaysAskEntry } from "./always-ask.js";
 export { NOTE_SOURCE, noteKey, noteSource } from "./notes.js";
 export type { NoteSourceOptions } from "./notes.js";
+export {
+  DEFAULT_MIN_CONFIDENCE,
+  DecideInputSchema,
+  DecidePrecedentSchema,
+  DecidePrincipleSchema,
+  DecideReplySchema,
+  decideJsonSchemas,
+  minConfidenceFor,
+  validate,
+} from "./contract.js";
+export type {
+  CategoryThreshold,
+  DecideInput,
+  DecidePolicy,
+  DecidePrecedent,
+  DecidePrinciple,
+  DecideReply,
+  DecideValidation,
+} from "./contract.js";
