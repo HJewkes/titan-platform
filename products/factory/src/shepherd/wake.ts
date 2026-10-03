@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, dispatchToAgentChat, listAgents, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -9,6 +9,7 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
+import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, describeWake } from "./wake-brief.js";
@@ -44,13 +45,14 @@ export interface ImplementerAgents {
   spawn(name: string, brief: string, cwd: string): Promise<void>;
 }
 
-export function agentChatImplementers(agentChatBin: string, timeoutMs = CLI_TIMEOUT_MS): ImplementerAgents {
+/** Every ask invalidates `roster`, so the read that checks whether it took effect is never a cached one. */
+export function agentChatImplementers(agentChatBin: string, timeoutMs = CLI_TIMEOUT_MS, roster: RosterReader = agentChatRoster(agentChatBin)): ImplementerAgents {
   return {
-    roster: async () => listAgents(agentChatBin, timeoutMs),
-    resume: async (name, message) => void resumeAgent(agentChatBin, name, message, timeoutMs),
-    message: async (name, message) => messageAgent(agentChatBin, name, message, timeoutMs),
-    spawn: async (name, brief, cwd) =>
-      void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: SUCCESSOR_PROFILE, brief, cwd }, timeoutMs, [SUCCESSOR_PROFILE]),
+    roster: () => roster.rows(),
+    resume: (name, message) => mutating(roster, async () => void resumeAgent(agentChatBin, name, message, timeoutMs)),
+    message: (name, message) => mutating(roster, async () => messageAgent(agentChatBin, name, message, timeoutMs)),
+    spawn: (name, brief, cwd) =>
+      mutating(roster, async () => void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: SUCCESSOR_PROFILE, brief, cwd }, timeoutMs, [SUCCESSOR_PROFILE])),
   };
 }
 
@@ -305,7 +307,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
-  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? agentChatImplementers(deps.agentChatBin) : undefined);
+  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? agentChatImplementers(deps.agentChatBin, CLI_TIMEOUT_MS, deps.roster) : undefined);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
   try {
     const registration = deps.store.get().byRun(input.runId);

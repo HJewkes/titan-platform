@@ -1,7 +1,8 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, DispatchError, dispatchToAgentChat, listAgents, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, dispatchToAgentChat, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -25,6 +26,8 @@ export interface AgentChatReviewerDispatchOptions {
   configDir?: string;
   rosterTimeoutMs?: number;
   spawnTimeoutMs?: number;
+  /** The serve process's shared roster reader; absent means one of this dispatch's own. */
+  roster?: RosterReader;
 }
 
 export interface AgentChatReviewerDispatch extends ReviewerDispatch {
@@ -70,9 +73,9 @@ function busyReason(message: string): string | undefined {
 }
 
 /** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
-async function askBroker<T>(ask: () => T): Promise<T> {
+async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
   try {
-    return ask();
+    return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
@@ -109,16 +112,16 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, profile, cwdFor, configDir } = options;
-  const rosterTimeoutMs = options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS;
+  const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   return {
-    roster: () => askBroker(() => listAgents(agentChatBin, rosterTimeoutMs).map(rosterRow)),
+    roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
     spawn: (name, brief, target) =>
       askBroker(() => {
         const cwd = checkoutDir(target.repo, cwdFor);
         const request = { agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) };
-        dispatchToAgentChat(request, spawnTimeoutMs, [profile]);
+        return mutating(roster, async () => void dispatchToAgentChat(request, spawnTimeoutMs, [profile]));
       }),
-    resume: (name, brief) => askBroker(() => void resumeAgent(agentChatBin, name, brief, spawnTimeoutMs)),
+    resume: (name, brief) => askBroker(() => mutating(roster, async () => void resumeAgent(agentChatBin, name, brief, spawnTimeoutMs))),
   };
 }

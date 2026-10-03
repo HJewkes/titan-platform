@@ -1,4 +1,4 @@
-import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat, listAgents } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, dataFence, dispatchToAgentChat } from "@titan-design/agent-dispatch";
 import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, type FreezeStore } from "./freeze.js";
 import type { ShepherdDeps } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
+import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, seatCheckout, tailBytes } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
@@ -47,11 +48,12 @@ export interface MainRedWiring {
   home?: string;
 }
 
-export function agentChatFixers(agentChatBin: string, configDir?: string, timeoutMs = FIXER_SPAWN_TIMEOUT_MS): FixerAgents {
+/** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
+export function agentChatFixers(agentChatBin: string, configDir?: string, timeoutMs = FIXER_SPAWN_TIMEOUT_MS, roster: RosterReader = agentChatRoster(agentChatBin)): FixerAgents {
   return {
-    roster: async () => listAgents(agentChatBin, timeoutMs),
-    spawn: async (name, brief, cwd) =>
-      void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: FIXER_PROFILE, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [FIXER_PROFILE]),
+    roster: () => roster.rows(),
+    spawn: (name, brief, cwd) =>
+      mutating(roster, async () => void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile: FIXER_PROFILE, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [FIXER_PROFILE])),
   };
 }
 
