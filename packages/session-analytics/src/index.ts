@@ -127,3 +127,5 @@ export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from
 export type { SessionTimelineOptions } from "./timeline.js";
 export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";
 export { countAtOrBefore } from "./count-at-or-before.js";
+export type { ReviewFillReport } from "./review-fill.js";
+export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
