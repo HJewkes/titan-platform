@@ -1,17 +1,19 @@
 import { contentHash, prefixHash } from "@titan-design/locator";
 import type { UsageMeasurement } from "@titan-design/agent-protocol";
 import { readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
+import os from "node:os";
+import { expandHome } from "./expand-home.js";
 import type { SessionGraph } from "./graph.js";
 import { stripInjected } from "./injected-text.js";
 
 export interface IndexedSpan { sourceId: number; byteOffset: number; byteLength: number; field: string; spanId?: number }
 /** One resolver for search and error clustering; never display a raw JSON line. */
-export async function readIndexedText(graph: SessionGraph, span: IndexedSpan): Promise<string | null> {
-  const text = await readSourceText(graph, span);
+export async function readIndexedText(graph: SessionGraph, span: IndexedSpan, options: { homeDir?: string } = {}): Promise<string | null> {
+  const text = await readSourceText(graph, span, options.homeDir ?? os.homedir());
   return text !== null && span.field === "prompt" ? stripInjected(text) : text;
 }
 
-async function readSourceText(graph: SessionGraph, span: IndexedSpan): Promise<string | null> {
+async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: string): Promise<string | null> {
   const row = graph.db.prepare(`SELECT n.locators FROM normalized_span n JOIN search_span s USING(span_id)
     WHERE s.source_id = ? AND s.byte_offset = ? AND s.field = ?`).get(span.sourceId, span.byteOffset, span.field) as { locators: string } | undefined;
   if (row) {
@@ -30,7 +32,7 @@ async function readSourceText(graph: SessionGraph, span: IndexedSpan): Promise<s
   const normalized = graph.db.prepare("SELECT 1 FROM normalized_source WHERE transcript_id = ?").get(span.sourceId);
   if (normalized) return null;
   const legacy = graph.transcripts.list().find(t => t.sourceId === span.sourceId);
-  return legacy ? readSessionText({ path: legacy.sourceKey, byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field as SpanField }) : null;
+  return legacy ? readSessionText({ path: expandHome(legacy.sourceKey, homeDir), byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field as SpanField }) : null;
 }
 
 export interface ConversationSummary {
