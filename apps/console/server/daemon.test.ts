@@ -7,6 +7,7 @@ import { createRpcClient, liveSource, snapshotKey } from "@titan-design/rpc-clie
 import type { ConsoleCommands } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
+import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
 import { createSources } from "./upstreams.js";
@@ -18,7 +19,7 @@ let handle: DaemonHandle | undefined;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-daemon-"));
-  activeWork = await startFakeDaemon({ ok: true, version: "9.9.9" });
+  activeWork = await startFakeDaemon({ ok: true, version: "9.9.9" }, fixtureAnswer);
   config = {
     port: 0,
     stateDir: path.join(dir, "state"),
@@ -51,6 +52,15 @@ describe("the console daemon", () => {
       { id: "agents", reachable: false },
       { id: "sessions", reachable: true },
     ]);
+  });
+
+  it("answers work.portfolio from the active-work daemon it fronts", async () => {
+    handle = await startConsoleDaemon({ config, logger: silentLogger });
+    const client = createRpcClient<ConsoleCommands>(liveSource({ origin: origin() }));
+    const { initiatives } = await client.call("work.portfolio");
+    expect(initiatives).toHaveLength(5);
+    const detail = await client.call("work.initiative", { slug: "lantern-docs" });
+    expect(detail.tasks.map((task) => task.id)).toEqual(["LD-3"]);
   });
 
   it("lists the upstream targets on /health without probing them", async () => {

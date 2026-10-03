@@ -6,9 +6,11 @@ loopback daemon built from `@titan-design/daemon` and `@titan-design/registry`. 
 talks only to that daemon, through `@titan-design/react-app` hooks typed from the daemon's own
 command definitions. The app is private and publishes nothing.
 
-This is the skeleton (TP-842). It serves the shell, hash routes and a nav for every planned
-view, and it answers `upstreams.health`, `agents.roster` and `agents.graph` (TP-847). Every view except Status is a
-placeholder that names the task that builds it.
+The skeleton (TP-842) serves the shell, hash routes and a nav for every planned view. The
+first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
+the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847),
+which no view shows yet. Every other view except Status is a placeholder that names the task
+that builds it.
 
 ## Run it
 
@@ -22,7 +24,7 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 | --- | --- | --- |
 | Dev | `pnpm --filter titan-console dev` | Vite on :5173 proxies `/rpc` to the console daemon on :7500 |
 | Served | `pnpm --filter titan-console serve`, or `node apps/console/dist/cli.js` (the `titan-console` bin) | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
-| From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon |
+| From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon. It records the status and the portfolio, with no personal initiative |
 
 `serve` prints the address and answers until SIGINT or SIGTERM:
 
@@ -58,6 +60,8 @@ directory, under the name `active-work`.
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
+| `POST /rpc/work.portfolio` | Every initiative with its state, open-task rollup, note, source and session counts, newest activity and `personal` flag |
+| `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -68,6 +72,23 @@ Three rules hold for every later slice.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
 - **Read-only.** There is no command that writes, answers a queue item, or controls an agent.
+
+## active-work reads
+
+`server/active-work.ts` is the only code that calls the active-work daemon. It posts to
+`/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
+`READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
+view never makes active-work call GitHub), `note.list`, `source.list` and `source.read`. Each
+answer is parsed against the part of the shape the console uses. The browser never calls
+active-work, and no absolute file path is sent to it.
+
+**Personal initiatives.** active-work's `inventory` marks an initiative `human_only`, and
+marks every initiative when it cannot read which ones are. The console shows these with a
+`personal` badge. The console does not rely on that marking alone: when `human_only_known`
+is false it treats every initiative as personal, and it does the same for an initiative the
+inventory does not name. The
+export builds its registry with `excludePersonal`, so `dist/console.html` holds no personal
+initiative, and none at all when active-work could not say.
 
 The session graph probe uses `stat` only. The file can be larger than a gigabyte and another
 process writes it, so the console does not open it. TP-844 adds the read-only, per-request open.
@@ -92,7 +113,8 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
 | `#/` | Status | Upstream reachability | this slice |
-| `#/initiatives` | Work | Initiative portfolio and detail | TP-861 |
+| `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
+| `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks` | Tasks | Read-only board and task detail | TP-866 |
 | `#/sessions` | Sessions | Sessions list, conversation, sidebar, replay | TP-862, TP-863 |
 | `#/agents` | Agents | Roster with costs, topology, agent-to-agent chat | TP-864, TP-865 |
@@ -107,7 +129,9 @@ The command palette (TP-868) is an overlay, so it has no route.
 
 Every element on screen is a `@titan-design/react-ui` component: `AppShell`, `TopBar`,
 `BrandLockup`, `EmptyState`, `Section`, `Card`, `DataRow`, `Badge`, `Typography`, `Spinner`
-and `Alert`. The app has no component or style of its own. `src/styles.css` holds only the
+and `Alert`, and for the Initiatives view the `custom/ActiveWork` family (`PortfolioOverview`,
+`InitiativeHeader`, `OpenLoops`, `InitiativeBrief`, `TaskTable`, `SessionList`) with `Table`,
+`Tabs`, `Breadcrumbs`, `Link`, `Pill` and `DateTime`. The app has no component or style of its own. `src/styles.css` holds only the
 three Tailwind directives, and `index.html` makes the mount point a full-height frame because
 `AppShell` fills its parent.
 
@@ -119,20 +143,28 @@ existing piece, not worked around with local styles.
 | No `console` brand preset in `shell/brands` | Borrows the `agents` preset and overrides the wordmark |
 | No search, database or chart glyph in `components/icons` | Search uses `TargetIcon`, Stores uses `EqualIcon`, Flow uses `AwardIcon` |
 | No page container for `AppShell`'s content region | Views render flush against the rail, with no inset |
+| `InitiativeCard` has no press handler and no slot for record counts, newest activity or a personal mark | The portfolio adds a `Table` under `PortfolioOverview` that carries the counts, the `personal` badge and the link into the detail |
+| No list or reader for notes and sources (TP-859) | The detail lists both in a dense `Table`; nothing opens a note or a source yet |
+| `TabPanels` is `flex-1`, so in a card of automatic height it gets half the room its content needs and clips | The detail renders `Tabs` with a `TabList` only, and puts the active panel beside it |
+| `SessionSummary` requires the session body, and `SessionList` has no way to ask for it on selection | Sessions are listed with an empty body, so a row shows no task count and opens nothing |
+| `Link` and `BreadcrumbItem` take `href` but render no anchor | Navigation goes through `onPress`; a row cannot be opened in a new tab |
+| No scrolling page container for `AppShell`'s content region | A long view overflows the frame and the document scrolls, top bar included |
 | `NavItem` sets `accessibilityState`, which react-native-web 0.21 does not turn into `aria-selected` | The active item is marked visually only; the test finds it by the accent bar |
 
 ## Layout
 
 ```
-server/   config.ts (ports and paths), upstreams.ts (the three probes), commands.ts,
-          registry.ts, daemon.ts, cli.ts (the bin), dev.ts, export.ts
+server/   config.ts (ports and paths), upstreams.ts (the three probes), active-work.ts (the
+          read-only client), work.ts (the work.* read models), commands.ts, registry.ts,
+          daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers)
 src/      main.tsx, App.tsx (the shell), router.ts, views.tsx (the nav and its placeholders),
           pages/, data/rpc.ts (typed hooks)
 ```
 
 Tests sit beside the code. `server/*.test.ts` start the real daemon on an ephemeral port
-against a fake upstream on loopback. `src/app.test.tsx` renders the whole app from an
-embedded snapshot, the way an exported page runs.
+against a fake upstream on loopback. `src/*.test.tsx` render the whole app from an embedded
+snapshot, the way an exported page runs. Every fixture is synthetic (`server/fixtures.ts`);
+no test reads a real active-work root.
 
 ```sh
 pnpm exec vitest run apps/console
