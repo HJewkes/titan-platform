@@ -47,6 +47,7 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     const messages = await deps.reader.read(read).catch(() => []);
     const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
+    if (verdict.kind === "none" && verdict.reason === "wait" && registration.holdSatisfied?.head === sha) return store.unsatisfyHold(registration.runId);
     if (verdict.kind !== "verdict") {
       const sessions = roster.filter((agent) => agent.name === reviewer && agent.sessionId !== "");
       return carrySatisfaction(deps, registration, { repo, baseRef, head: sha }, await newestOwn(deps.reader, sessions, repo, pr));
@@ -57,25 +58,26 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
   };
 }
 
-/** The newest verdict block on this PR in any session under the reviewer's name, at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time the FIX_FIRST wins. */
-async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[], repo: RepoSlug, pr: number): Promise<"MERGE" | "FIX_FIRST" | undefined> {
-  let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" } | undefined;
+/** The newest verdict block on this PR in any session under the reviewer's name, at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time a FIX_FIRST or WAIT wins; a WAIT stops a carry without unsatisfying. */
+async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[], repo: RepoSlug, pr: number): Promise<"MERGE" | "FIX_FIRST" | "WAIT" | undefined> {
+  let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" | "WAIT" } | undefined;
   for (const row of rows) {
     const messages = await reader.read({ repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }).catch((): readonly ReviewerMessage[] => []);
     for (const message of messages) {
       const block = parseVerdictBlock(message.text);
-      if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !block.ok || block.repo !== repo || block.pr !== pr) continue;
-      if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && block.verdict === "FIX_FIRST")) newest = { at: message.writtenAt, verdict: block.verdict };
+      const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;
+      if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !verdict || !("repo" in block) || block.repo !== repo || block.pr !== pr) continue;
+      if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && verdict !== "MERGE")) newest = { at: message.writtenAt, verdict };
     }
   }
   return newest?.verdict;
 }
 
 /** A satisfaction at an ancestor head moves to a tree-equal update of it; only the probe's answer decides, and a kind that does not carry never moves. */
-async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registration, at: { repo: RepoSlug; baseRef: string; head: string }, newest: "MERGE" | "FIX_FIRST" | undefined): Promise<void> {
+async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registration, at: { repo: RepoSlug; baseRef: string; head: string }, newest: "MERGE" | "FIX_FIRST" | "WAIT" | undefined): Promise<void> {
   const { holdSatisfied, holdReviewer } = registration;
   if (newest === "FIX_FIRST") return deps.store().unsatisfyHold(registration.runId);
-  if (!deps.carry || !holdSatisfied || !holdReviewer || holdSatisfied.head === at.head || !CARRYING_KINDS.has(registration.kind)) return;
+  if (newest === "WAIT" || !deps.carry || !holdSatisfied || !holdReviewer || holdSatisfied.head === at.head || !CARRYING_KINDS.has(registration.kind)) return;
   const result = await deps.carry({ repo: at.repo, baseRef: at.baseRef, fromHead: holdSatisfied.head, head: at.head });
   if (!result.equal || !result.headTree || result.headTree !== result.mergeTree) return;
   deps.store().satisfyHold(registration.runId, holdReviewer, at.head, { agentId: holdSatisfied.by.agentId, sessionId: holdSatisfied.by.sessionId, locator: holdSatisfied.by.locator });

@@ -66,6 +66,11 @@ function once(policy: GatePolicy, extra: Partial<LandOptions> = {}): Body {
   return async (ctx, _fake, outcomes) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1 }, { policy, ...extra }));
 }
 
+/** The heads update-branch made, oldest first: each is the fake's merge commit of the head before it. */
+function updatedHeads(fake: FakeGitHub): string[] {
+  return [...fake.commits.values()].filter((commit) => commit.parents.length === 2).map((commit) => commit.sha);
+}
+
 function stepIds(host: FactoryHost, runId: string): string[] {
   return Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
 }
@@ -232,12 +237,16 @@ describe("land merge policy", () => {
     const runId = world.host.runtime.start("land-rounds");
 
     await gateOpened(world.host, gateId(runId, "stuck-behind"));
+    const prompt = world.host.gates.get(gateId(runId, "stuck-behind"))?.prompt;
     world.host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     await world.host.runtime.wait(runId);
 
+    const heads = [H1, ...updatedHeads(fake)].map((sha) => sha.slice(0, 7)).join(" -> ");
+    const why = `still behind its base after ${MAX_UPDATE_CYCLES} updates, heads ${heads}`;
     expect(fake.effects.updateBranch).toBe(MAX_UPDATE_CYCLES);
     expect(fake.effects.merge).toBe(0);
-    expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
+    expect(prompt).toContain(why);
+    expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind", detail: why });
   });
 
   it(`gives a human approval a fresh ${MAX_UPDATE_CYCLES} updates before stuck-behind`, async () => {

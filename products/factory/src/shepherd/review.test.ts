@@ -77,6 +77,14 @@ describe("acceptVerdict", () => {
     expect(JSON.stringify(result)).not.toContain("Looked at it");
   });
 
+  it("reads a WAIT block for this PR and head as no verdict, with the reason wait, never a MERGE", () => {
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT" }) })])).toEqual({ kind: "none", reason: "wait" });
+  });
+
+  it("reads a WAIT block for another head as plain none", () => {
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+  });
+
   it("carries a FIX_FIRST verdict with the reviewer's words, which the implementer has to read", () => {
     const text = block({ verdict: "FIX_FIRST" });
 
@@ -216,6 +224,15 @@ describe("awaitVerdict", () => {
     expect(result).toEqual({ kind: "none" });
     expect(reads).toBe(4);
     expect(clock.now()).toBe(300);
+  });
+
+  it("keeps the wait reason at the deadline, so the coordinator resumes the same reviewer", async () => {
+    const clock = clockAt(0);
+    const reader: ReviewerReader = { read: async () => [message({ text: block({ verdict: "WAIT" }) })] };
+
+    const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
+
+    expect(result).toEqual({ kind: "none", reason: "wait" });
   });
 
   it("treats a failing read as nothing yet", async () => {
