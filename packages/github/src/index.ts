@@ -6,10 +6,14 @@ export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, Mer
 export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./readiness.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
+export type { AppCredentials, InstallationToken } from "./app-token.js";
+export { appInstallationToken, signAppJwt } from "./app-token.js";
+export type { CheckConclusion, CreateCheckRunRequest } from "./check-run-create.js";
+export { CHECK_CONCLUSIONS } from "./check-run-create.js";
 export type { GhExec, GhExecOptions, GhResult } from "./exec.js";
 export { GhError, execGh } from "./exec.js";
 export type { GhCliOptions } from "./gh-cli.js";
 export { ghCliWire } from "./gh-cli.js";
 export { GitHubInputError, isRepo } from "./validate.js";
 export type { FakeEffects, FakeGitHub } from "./fake.js";
-export { FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
+export { FAKE_APP_ID, FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";

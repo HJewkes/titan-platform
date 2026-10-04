@@ -1,6 +1,9 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
+import { redact } from "./app-token.js";
+import { checkRunBody } from "./check-run-create.js";
 import { execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
+import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
 import { restCaller, type Rest } from "./rest.js";
 
@@ -9,6 +12,11 @@ export interface GhCliOptions {
   budget?: RateBudget;
   /** Most recent conditional GETs whose ETag and body are kept. */
   etagCacheSize?: number;
+  /**
+   * Mints the GitHub App installation token that `createCheckRun` posts under. It is called per
+   * check run, so a cached provider should refresh itself; without it `createCheckRun` refuses.
+   */
+  appToken?: () => Promise<string>;
 }
 
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
@@ -33,6 +41,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
+    createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string } }>(`repos/${repo}/git/commits/${sha}`);
       const committedAt = commit.committer?.date;
@@ -50,6 +59,19 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
   };
+}
+
+/** The token rides in the child env of this one call; any error is rebuilt without it. */
+async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string, request: CreateCheckRunRequest): Promise<{ id: number }> {
+  if (!options.appToken) throw new Error("createCheckRun needs a GitHub App token provider (GhCliOptions.appToken)");
+  const token = await options.appToken();
+  const scoped: GhExec = (args, input, execOptions) => exec(args, input, { ...execOptions, env: { ...execOptions?.env, GH_TOKEN: token } });
+  const api = restCaller(scoped, options.budget ?? sharedRateBudget, 0);
+  try {
+    return { id: (await api.send<{ id: number }>("POST", `repos/${repo}/check-runs`, {}, checkRunBody(request))).id };
+  } catch (error) {
+    throw new Error(redact(error instanceof Error ? error.message : String(error), [token]));
+  }
 }
 
 async function getContent(api: Rest, repo: string, path: string, ref: string): Promise<RepoFile | null> {

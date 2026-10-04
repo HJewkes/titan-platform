@@ -445,8 +445,8 @@ Key exports:
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `exec`: `GhError`
-- +46 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- `app-token`: `appInstallationToken`
+- +54 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 

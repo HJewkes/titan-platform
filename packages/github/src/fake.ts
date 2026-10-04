@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_FILES_CAP } from "./port.js";
+import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -69,8 +70,11 @@ export function successRun(name: string, id: number, startedAt = "2026-01-01T00:
   return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
 }
 
+/** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
+export const FAKE_APP_ID = 424242;
+
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
-export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string } = {}): FakeGitHub {
+export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string; appId?: number } = {}): FakeGitHub {
   const base = options.base ?? "main";
   const repo = options.repo ?? "o/r";
   let counter = 0;
@@ -143,6 +147,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
+    createCheckRun: async (_repo, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
@@ -178,6 +183,14 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
   };
   return fake;
+}
+
+/** Like GitHub, the run is stamped with the posting App's id, which is what `latestCheckRuns` and `mergeReadiness` read. */
+function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: number, request: CreateCheckRunRequest, n: number): { id: number } {
+  const id = 9000 + n;
+  const run: CheckRun = { id, name: request.name, status: "completed", conclusion: request.conclusion, startedAt: "2026-01-01T00:00:00Z", headSha: request.headSha, appId, workflowRunId: null, url: `https://example.test/runs/${id}` };
+  runs.set(request.headSha, [...(runs.get(request.headSha) ?? []), run]);
+  return { id };
 }
 
 function mustPr(prs: Map<number, PullRequest>, number: number): PullRequest {
