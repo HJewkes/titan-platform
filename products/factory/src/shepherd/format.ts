@@ -1,4 +1,5 @@
 import type { MergeEvaluation, Registered } from "./commands.js";
+import type { ResyncReport } from "./resync.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
 /** The human form of each `titan-factory shepherd` verb's result; `--json` prints the result itself instead. */
@@ -13,6 +14,8 @@ export function formatShepherd(name: string, data: unknown): string {
       return formatTimeline(data as PrTimeline);
     case "shepherd.merge":
       return formatMerge(data as MergeEvaluation);
+    case "shepherd.resync":
+      return formatResync(data as ResyncReport);
     default: {
       const { runId, held } = data as { runId: string; held: { reason: string } | null };
       return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
@@ -60,4 +63,11 @@ function formatTimeline({ row, entries }: PrTimeline): string {
 
 function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation): string {
   return `run ${runId} ${phase}: policy says ${decision.outcome} (${decision.reason}); ${held ? `held: ${held.reason}; ` : ""}${waiting}\n`;
+}
+
+function formatResync({ dryRun, ended, orphanGates, superseded }: ResyncReport): string {
+  const verb = dryRun ? "would end" : "ended";
+  const runs = ended.map(({ runId, reason }) => `run ${runId.slice(0, 8)} ${verb}: ${reason}`);
+  const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} moved-head gate(s)`;
+  return `${[...runs, summary].join("\n")}\n`;
 }
