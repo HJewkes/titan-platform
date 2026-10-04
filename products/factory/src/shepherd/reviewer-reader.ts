@@ -99,7 +99,7 @@ export function finishedTurnMessages(agentId: string) {
 }
 
 /** The finished transcript of the dispatched agent and session, or null while there is nothing safe to read. */
-function finishedTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): (TranscriptRow & { transcriptPath: string }) | null {
+function finishedTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): SeatRow | null {
   const row = rows.find((candidate) => candidate.agentId === input.reviewerAgentId);
   if (!row || row.presence !== FINISHED || row.sessionId !== input.reviewerSessionId) return null;
   if (!row.transcriptExists || row.transcriptPath === null) return null;
@@ -149,7 +149,7 @@ const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
  * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said and the brief.
  */
-async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string }, namespace: string): Promise<readonly ReviewerMessage[]> {
+async function readSeatTranscript(row: SeatRow, namespace: string): Promise<readonly ReviewerMessage[]> {
   const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
   if (!scan.whole && !RUNNING.has(row.presence)) {
     throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written, scan.brief);
@@ -158,15 +158,48 @@ async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string 
 }
 
 /** The transcript of this agent and session whatever its presence, or null when there is none yet. */
-function seatTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): (TranscriptRow & { transcriptPath: string }) | null {
+function seatTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): SeatRow | null {
   const row = rows.find((candidate) => candidate.agentId === input.reviewerAgentId && candidate.sessionId === input.reviewerSessionId);
   if (!row || !row.transcriptExists || row.transcriptPath === null) return null;
   return { ...row, transcriptPath: row.transcriptPath };
 }
 
+type SeatRow = TranscriptRow & { transcriptPath: string };
+
+/**
+ * What a seat read depends on: the session, the presence that decides whether a partial record is damage, and the file's
+ * size and mtime, which move when a verdict is appended. Equal signatures read equal.
+ */
+async function seatSignature(row: SeatRow): Promise<string | null> {
+  try {
+    const { size, mtimeMs } = await stat(row.transcriptPath);
+    return [row.agentId, row.sessionId, row.presence, size, mtimeMs].join("|");
+  } catch {
+    return null;
+  }
+}
+
+/** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
+function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly ReviewerMessage[]> {
+  const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
+  return async (row) => {
+    const signature = await seatSignature(row);
+    if (signature === null) return readSeatTranscript(row, namespace);
+    const hit = cache.get(row.transcriptPath);
+    if (hit?.signature === signature) return hit.result;
+    const result = readSeatTranscript(row, namespace);
+    cache.set(row.transcriptPath, { signature, result });
+    result.catch((error: unknown) => {
+      if (!(error instanceof DamagedTranscriptError) && cache.get(row.transcriptPath)?.result === result) cache.delete(row.transcriptPath);
+    });
+    return result;
+  };
+}
+
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
 export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): ReviewerReader {
   const namespace = options.namespace ?? os.hostname();
+  const readSeatOnce = cachedSeatReader(namespace);
   return {
     async read(input) {
       const row = finishedTranscript(await options.roster(), input);
@@ -174,7 +207,7 @@ export function transcriptReviewerReader(options: TranscriptReviewerReaderOption
     },
     async readSeat(input) {
       const row = seatTranscript(await options.roster(), input);
-      return row ? readSeatTranscript(row, namespace) : [];
+      return row ? readSeatOnce(row) : [];
     },
   };
 }
