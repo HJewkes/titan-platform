@@ -1,0 +1,44 @@
+{
+  "schema": "codewatch-pr-report@1",
+  "head": "1111111111111111111111111111111111111111",
+  "base": "0000000000000000000000000000000000000000",
+  "indexVersion": "0.18.0",
+  "check": {
+    "passed": true,
+    "newErrors": 0,
+    "newWarnings": 0,
+    "carryover": 1,
+    "violations": [
+      {
+        "ruleId": "max-file-loc",
+        "severity": "error",
+        "nodeId": "packages/example/src/legacy.ts",
+        "path": "packages/example/src/legacy.ts",
+        "line": null,
+        "message": "loc 410 exceeds max 350",
+        "isCarryover": true
+      }
+    ]
+  },
+  "deltas": [
+    {
+      "path": "packages/example/src/parse.ts",
+      "symbol": null,
+      "metric": "loc",
+      "before": 120,
+      "after": 126,
+      "budget": 350,
+      "status": "worsened"
+    }
+  ],
+  "exports": [
+    {
+      "path": "packages/example/src/parse.ts",
+      "symbol": "parseHeader",
+      "line": 12,
+      "change": "added",
+      "importers": 0
+    }
+  ],
+  "questions": []
+}

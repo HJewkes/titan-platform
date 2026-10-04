@@ -201,7 +201,7 @@ describe("shepherd-pr after land", () => {
     const retired: string[] = [];
     const cleanup: CleanupPorts = {
       tasks: { state: async () => "open", done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async () => undefined },
-      agents: { roster: async () => (retired.includes("impl-a") ? [] : [{ name: "impl-a", presence: "exited", status: "finished" }]), retire: async (name) => void retired.push(name) },
+      agents: { invalidate: () => undefined, roster: async () => (retired.includes("impl-a") ? [] : [{ name: "impl-a", presence: "exited", status: "finished" }]), retire: async (name) => void retired.push(name) },
     };
     const w = shepherdWorld(() => [successRun("validate", 5)], cleanup);
     const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });

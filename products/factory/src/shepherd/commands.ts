@@ -17,6 +17,7 @@ import {
   type EffectivePolicy,
 } from "./policy.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
@@ -327,6 +328,14 @@ const mergeCommand = defineCommand<PrRefArgs, MergeEvaluation, FactoryContext>({
   run: evaluateMerge,
 });
 
+const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryContext>({
+  name: "shepherd.resync",
+  description: "End runs whose PR was merged or closed outside Shepherd, cancel the gates of runs that already ended, and supersede gates whose PR moved head; dryRun only reports",
+  args: z.object({ dryRun: z.boolean().optional() }),
+  result: z.custom<ResyncReport>(),
+  run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
+});
+
 /** Gate resolution is deliberately absent: it stays the local `titan-factory gate resolve`, never a network call. */
 export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = [
   registerCommand,
@@ -336,4 +345,5 @@ export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = [
   holdCommand,
   releaseCommand,
   mergeCommand,
+  resyncCommand,
 ];

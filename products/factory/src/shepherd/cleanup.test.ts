@@ -2,6 +2,8 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
+import type { AgentRow } from "@titan-design/agent-dispatch";
+import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
@@ -32,6 +34,7 @@ function fakeAgents(clock: { now: number }, agents: FakeAgent[]): CleanupAgents 
   const retires: { name: string; at: number }[] = [];
   return {
     retires,
+    invalidate: () => undefined,
     roster: async () => agents.filter((agent) => !retired.has(agent.name)).map((agent): CleanupAgent => ({ name: agent.name, presence: clock.now >= agent.exitAt ? "exited" : "live", status: "finished" })),
     retire: async (name) => {
       retires.push({ name, at: clock.now });
@@ -285,6 +288,21 @@ describe("sh-cleanup retire", () => {
     expect(w.clock.now).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS);
     expect(result.retired).toEqual([]);
     expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: worktree has unpushed commits`]);
+  });
+
+  it("does not retire an agent resumed inside the roster cache window", async () => {
+    const clock = { now: 0 };
+    const rowAt = (): AgentRow => ({ name: IMPLEMENTER, agentId: "id", state: "live", presence: clock.now < 100_000 ? "exited" : "live", status: "finished", profile: "implementer", surface: "headless", model: null, cwd: "/repo", sessionId: "s", transcriptPath: null, transcriptExists: false, spawnedBy: null, account: null, generation: 1, teleportFrom: null });
+    const calls: AgentChatCalls = { listAgents: vi.fn(() => [rowAt()]), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
+    const roster = createRosterReader(async () => calls.listAgents("/bin/agent-chat", 1_000), { now: () => clock.now, ttlMs: SH_CLEANUP_GIVE_UP_MS * 2 });
+    const agents = agentChatCleanupAgents("/bin/agent-chat", calls, 1_000, roster);
+    const w = world();
+    const deps = { port: githubPort(w.fake.wire), store: storeRef().ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup: { agents, tasks: fakeTasks("open") } };
+
+    const result = await runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
+
+    expect(calls.retire).not.toHaveBeenCalled();
+    expect(result.retired).toEqual([]);
   });
 
   it("leaves the task and the agents alone when no ports are wired", async () => {
