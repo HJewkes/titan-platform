@@ -7,6 +7,7 @@ import {
   type SourceFile,
   type VariableDeclaration,
 } from "ts-morph";
+import { declarationQualifiedName } from "./ts-scope.js";
 
 /**
  * Persisted qualitative facts about a declaration (C-79): the one-line type
@@ -45,10 +46,11 @@ export function declarationText(decl: Node): SymbolText {
 }
 
 /**
- * The file-level declaration named `name`, for the non-exported symbol surface
- * (model B, C-64) where only the name + tree-sitter span is known. Class methods
- * are not addressable by file-level name, so they resolve to undefined (no
- * signature) — acceptable, the exported API is the primary target.
+ * The declaration a symbol name addresses. Symbol names are scope-qualified
+ * (`Box.add`, `outer.helper`), which no file-level lookup can reach, so a miss
+ * falls through to matching `declarationQualifiedName` over the whole file.
+ * Index-time signatures (model B, C-64) and on-pull deep AST both resolve
+ * through here, so the two never disagree about which node a name means.
  */
 export function lookupDeclaration(
   sf: SourceFile,
@@ -60,8 +62,19 @@ export function lookupDeclaration(
     sf.getInterface(name) ??
     sf.getTypeAlias(name) ??
     sf.getEnum(name) ??
-    sf.getVariableDeclaration(name)
+    sf.getVariableDeclaration(name) ??
+    qualifiedDeclaration(sf, name)
   );
+}
+
+function qualifiedDeclaration(sf: SourceFile, name: string): Node | undefined {
+  let found: Node | undefined;
+  sf.forEachDescendant((node, traversal) => {
+    if (declarationQualifiedName(node) !== name) return;
+    found = node;
+    traversal.stop();
+  });
+  return found;
 }
 
 function signatureOf(decl: Node): string | undefined {
