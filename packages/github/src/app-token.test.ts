@@ -417,6 +417,33 @@ describe("token shape scrub", () => {
       }
     });
 
+    it("redacts a hex run past any gap or userinfo length that the unbounded forms redacted before", () => {
+      const user = "u".repeat(5000);
+
+      for (const line of [`bearer token${" ".repeat(65)}${hex}`, `token:${" ".repeat(64)}${hex}`, `token:${" ".repeat(65)}${hex}`, `token${" ".repeat(5000)}${hex}`, `https://${user}:${hex}@h`]) {
+        expect(redact(line, [])).not.toContain(hex);
+      }
+    });
+
+    it("keeps the text around a gap-bound or userinfo redaction", () => {
+      expect(redact(`x token:${" ".repeat(70)}${hex} y`, [])).toBe(`x token:${" ".repeat(70)}[redacted] y`);
+      expect(redact(`https://${"u".repeat(300)}:${hex}@h/p`, [])).toBe(`https://${"u".repeat(300)}:[redacted]@h/p`);
+    });
+
+    it("scans a chain of hex runs with colons in linear time", () => {
+      for (const unit of [`${hex}:`, `${hex}:x`, `${hex}@`]) {
+        const text = unit.repeat((1 << 19) / unit.length);
+        const started = performance.now();
+
+        redact(text, []);
+        expect(performance.now() - started).toBeLessThan(500);
+      }
+    });
+
+    it("keeps a dotted snapshot file name that only opens like a JWT", () => {
+      expect(redact("see eyJsonwebtoken.spec.snapshot_file", [])).toBe("see eyJsonwebtoken.spec.snapshot_file");
+    });
+
     it("scans a megabyte of letters and hex in linear time", () => {
       for (const filler of ["a", "z", "ab.", "x:"]) {
         const text = filler.repeat((1 << 20) / filler.length);

@@ -3,17 +3,20 @@
 // it, and a percent-escape such as %26 does not) or as URL userinfo, alone or ahead of a `:password`; and the three-part
 // base64url JWT, whose header always opens with `eyJ` and whose signature runs past ten characters, so a dotted file name
 // such as `eyJsonwebtoken.config.js` is not one while a token with a short payload (`e30`) is.
-// The hex run is matched first and the keyword or scheme is checked behind it by a bounded lookbehind, so a long run of
-// whitespace or letters is never rescanned from every position.
+// The hex run is matched first and the keyword or scheme is checked behind it, so a long run of whitespace or letters is
+// scanned at most once per hex run rather than from every position; that is why the gap and the userinfo behind a hex run
+// have no bound and nothing redacted before stays unredacted. Only the lookahead past a userinfo hex run is bounded
+// (a 255-character password), because every hex run in a `hex:hex:hex:` chain would otherwise rescan the whole tail.
+// A JWT payload is `eyJ...` (any JSON object), `e30` (`{}`), or any ten or more characters, as before.
 const GAP = String.raw`(?:[\s"':=]|%(?:3[ad]|2[027]))`;
 const KEYWORD_START = String.raw`(?:(?<![a-z0-9])|(?<=%[0-9a-f]{2}))`;
 const HEX = "[0-9a-f]{40}";
 const SHAPES = [
   String.raw`gh[pousr](?:_|%5F)[A-Za-z0-9_]{20,}`,
   String.raw`github(?:_|%5F)pat(?:_|%5F)[A-Za-z0-9_]{20,}`,
-  String.raw`${HEX}(?![0-9a-z_])(?<=${KEYWORD_START}(?:token|authorization|bearer)${GAP}{0,64}(?:(?:token|bearer)${GAP}{1,64})?${HEX})`,
-  String.raw`${HEX}(?=@|:[^\s/@]*@)(?<=[a-z][a-z0-9+.-]{0,63}://(?:[^\s/@:]{0,255}:)?${HEX})`,
-  String.raw`${KEYWORD_START}eyJ[\w-]{10,}\.[\w-]{2,}\.[\w-]{10,}`,
+  String.raw`${HEX}(?![0-9a-z_])(?<=${KEYWORD_START}(?:token|authorization|bearer)${GAP}*(?:(?:token|bearer)${GAP}+)?${HEX})`,
+  String.raw`${HEX}(?=@|:[^\s/@]{0,255}@)(?<=[a-z][a-z0-9+.-]*://(?:[^\s/@:]*:)?${HEX})`,
+  String.raw`${KEYWORD_START}eyJ[\w-]{10,}\.(?:eyJ[\w-]*|e30|[\w-]{10,})\.[\w-]{10,}`,
 ].join("|");
 const TOKEN_SHAPE = new RegExp(SHAPES, "gi");
 const WHOLE_TOKEN = new RegExp(`^(?:${SHAPES})$`, "i");
