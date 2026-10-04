@@ -8,6 +8,7 @@ import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
+import { carry } from "./shepherd/tree-carry.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
@@ -93,7 +94,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
 function holdSatisfierFor(deps: FactoryRouteDeps): HoldSatisfier | undefined {
   const dispatch = deps.review?.dispatch;
   if (!deps.review || !dispatch) return undefined;
-  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), reader: deps.review.reader });
+  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), reader: deps.review.reader, carry: (input) => carry(input, deps.review?.carry) });
 }
 
 /** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */
