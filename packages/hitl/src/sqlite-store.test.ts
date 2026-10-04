@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteGateStore, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
-import { GateStoreSchemaOutdated, type GateResolver, type GateRule } from "./types.js";
+import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
+import { GateStoreSchemaOutdated, type GateQuestion, type GateResolver, type GateRule } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
 const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix", confirmEvent: "$evt1" };
@@ -214,7 +214,7 @@ describe("a store whose table predates the resolver column", () => {
     runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
     new SqliteGateStore(db).create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     const versions = db.prepare("SELECT version FROM _migration ORDER BY version").all();
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
     expect(() => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(REMOTE), "g1")).toThrow("hitl: resolver outside the gate rule");
   });
 });
@@ -454,5 +454,89 @@ describe("SqliteGateStore rule round trip", () => {
     const reader = new SqliteGateStore(open(dbPath), { migrate: false });
     expect(reader.get("g1")?.rule).toEqual(TERMINAL_ONLY);
     expect(() => reader.resolve("g1", "ok", REMOTE)).toThrow("does not let owner-remote resolve");
+  });
+});
+
+const BRIEF = {
+  summary: "Release 1.4.0? CI green on main. Recommend release.",
+  evidenceRef: "$ gh run list -c 0123abc",
+  questions: [
+    { id: "decision", question: "Release 1.4.0?", options: [{ id: "release", label: "Release", recommended: true }, { id: "hold", label: "Hold" }] },
+    { id: "notify", question: "Announce it?", options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }] },
+  ] satisfies GateQuestion[],
+};
+
+function v3Db(dbPath?: string): Db {
+  const db = open(dbPath);
+  runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
+  return db;
+}
+
+describe("SqliteGateStore brief round trip", () => {
+  it("summary, evidenceRef and questions read back unchanged", () => {
+    const dbPath = tempDbPath();
+    const writer = new SqliteGateStore(open(dbPath));
+
+    writer.create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY, ...BRIEF });
+
+    const reader = new SqliteGateStore(open(dbPath), { migrate: false });
+    expect(reader.get("g1")).toMatchObject({ rule: TERMINAL_ONLY, ...BRIEF });
+    expect(reader.listPending()[0]?.questions).toEqual(BRIEF.questions);
+  });
+
+  it("stores a summary without questions as a SQL NULL question column", () => {
+    const db = open();
+    const store = new SqliteGateStore(db, { requireBrief: true });
+
+    store.create({ id: "g1", prompt: "release?", summary: BRIEF.summary, evidenceRef: BRIEF.evidenceRef });
+
+    expect(rawRow(db, "g1")).toMatchObject({ summary: BRIEF.summary, evidence_ref: BRIEF.evidenceRef, questions: null });
+    expect(store.get("g1")?.questions).toBeUndefined();
+  });
+});
+
+describe("gateBriefMigration", () => {
+  it("gateBriefMigration is idempotent and leaves a pending pre-migration gate resolvable", () => {
+    const db = v3Db();
+    new SqliteGateStore(db, { migrate: false }).create({ id: "old", prompt: "legacy?" });
+    const migration = gateBriefMigration(12);
+
+    migration.up(db);
+    migration.up(db);
+
+    expect(["summary", "evidence_ref", "questions"].map((column) => columnCount(db, column))).toEqual([1, 1, 1]);
+    const store = new SqliteGateStore(db, { migrate: false, requireBrief: true });
+    expect(store.get("old")).toMatchObject({ status: "pending", summary: undefined, evidenceRef: undefined, questions: undefined });
+    expect(store.resolve("old", "ok", OWNER)).toMatchObject({ status: "resolved", resolvedBy: OWNER });
+  });
+
+  it("takes its version from the product's list and names itself after the table", () => {
+    const db = open();
+
+    runMigrations(db, [gateMigration(1, "asks"), gateResolverMigration(2, "asks"), gateBriefMigration(12, "asks")]);
+
+    const recorded = db.prepare("SELECT version, name FROM _migration WHERE version = 12").get();
+    expect(recorded).toEqual({ version: 12, name: "hitl:brief:asks" });
+  });
+});
+
+describe("a store whose table predates the brief columns", () => {
+  it("a brief on a table without the brief columns throws GateStoreSchemaOutdated", () => {
+    const store = new SqliteGateStore(v3Db(), { migrate: false });
+
+    expect(() => store.create({ id: "g1", prompt: "release?", summary: BRIEF.summary })).toThrow(
+      expect.objectContaining({ name: "GateStoreSchemaOutdated", gateId: "g1", table: "hitl_gate", migration: "gateBriefMigration" }),
+    );
+
+    expect(store.get("g1")).toBeUndefined();
+    expect(store.create({ id: "g2", prompt: "ship it?" }).status).toBe("pending");
+  });
+
+  it("refuses to construct with requireBrief, naming gateBriefMigration", () => {
+    const db = v3Db();
+
+    const construct = () => new SqliteGateStore(db, { migrate: false, requireBrief: true });
+
+    expect(construct).toThrow(expect.objectContaining({ name: "GateStoreSchemaOutdated", gateId: "", migration: "gateBriefMigration" }));
   });
 });
