@@ -430,7 +430,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +40 more in the [reference page](/reference/daemon)
+- +41 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
