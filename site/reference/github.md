@@ -80,11 +80,16 @@ await port.compareFiles("o/r", "main", "feat/x"); // { mergeBaseSha, files: [], 
 const marker = "<!-- shepherd:evidence -->";
 await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: true }
 await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: false, skipped: "exists" }
+
+fake.reviewComments.set(pr.number, [{ id: 1, author: "alice", authorAssociation: "MEMBER", path: "src/a.ts", line: 12, body: "nit", resolved: false }]);
+await port.listReviewComments("o/r", pr.number); // every inline comment, with its author's association and its thread's resolved state
 ```
 
 ## What it deliberately does not do
 
-- No GraphQL and no `gh pr view`. Every call is `gh api` against REST.
+- No `gh pr view`, and no GraphQL but for `listReviewComments`. Every call is `gh api`; only
+  `listReviewComments` posts to `graphql`, because GitHub reports a review thread's resolved state
+  nowhere in REST.
 - No token handling. It runs on the caller's existing `gh` login.
 - No polling, timeouts or retry policy. The caller owns when to read again. The rate budget
   only paces calls; it never drops one.
@@ -158,4 +163,5 @@ Extracted unchanged from `products/factory/src/github/` (TP-458), with its tests
 now depends on this package and its copy is deleted. `appId`, `headRepo`, `jobLogTail`,
 `deleteRef`, `listOpenPrs`, the ETag cache, the rate budget and `mergeReadiness` were added for
 Shepherd, the factory's PR shepherding workflow (TP-459). `listPrFiles`, `compareFiles` and
-`upsertComment` followed for its conflict and evidence steps (TP-517).
+`upsertComment` followed for its conflict and evidence steps (TP-517), and `listReviewComments`
+for the review wake brief (TP-1003).
