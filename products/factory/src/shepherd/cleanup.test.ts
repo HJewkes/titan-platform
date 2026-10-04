@@ -305,6 +305,26 @@ describe("sh-cleanup retire", () => {
     expect(result.retired).toEqual([]);
   });
 
+  it("does not retire when the fresh roster read right before the retire is unreadable, and says so", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+    let fresh = false;
+    const cachedRoster = w.agents.roster;
+    w.agents.invalidate = () => void (fresh = true);
+    w.agents.roster = async () => {
+      if (fresh) {
+        fresh = false;
+        throw new Error("broker unreachable");
+      }
+      return cachedRoster();
+    };
+
+    const result = await w.run();
+
+    expect(w.agents.retires).toEqual([]);
+    expect(result.retired).toEqual([]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: roster unreadable before retire: broker unreachable`]);
+  });
+
   it("leaves the task and the agents alone when no ports are wired", async () => {
     const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
     const deps = { port: githubPort(w.fake.wire), store: storeRef().ref, now: () => 0, sleep: async () => undefined };
