@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
@@ -9,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { DaemonAlreadyRunningError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
 import { NonLoopbackBindError } from "./bind-guard.js";
-import { daemonPaths, readPidFile } from "./lifecycle.js";
+import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
 
@@ -237,3 +238,67 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
   return Promise.race([promise, expiry]);
 }
+
+describe("stale pid file", () => {
+  const minuteAgo = (): Date => new Date(Date.now() - 60_000);
+  const minuteAhead = (): Date => new Date(Date.now() + 60_000);
+
+  async function seedPidFile(pid: number, port: number): Promise<void> {
+    await writePidFile(daemonPaths(stateDir), pid, { port, version: "0.0.1", started: "" });
+  }
+
+  it("starts when a live pid began after the pid file was written (pid reused after reboot)", async () => {
+    await seedPidFile(process.pid, 1);
+
+    handle = await startDaemon(options({ processStartTime: minuteAhead }));
+
+    expect((await readPidFile(daemonPaths(stateDir)))?.pid).toBe(process.pid);
+  });
+
+  it("starts when the recorded pid is dead", async () => {
+    await seedPidFile(2 ** 22 + 12345, 1);
+
+    handle = await startDaemon(options({ processStartTime: minuteAgo }));
+
+    expect(handle.port).toBeGreaterThan(0);
+  });
+
+  it("refuses when the pid is newer than the file but the recorded port answers health", async () => {
+    const live = await startDaemon(options());
+    handle = live;
+
+    await expect(startDaemon(options({ processStartTime: minuteAhead }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  describe("when the process start time is unknown", () => {
+    const unknown = (): null => null;
+
+    async function withHealthStatus(status: number | null, run: (port: number) => Promise<void>): Promise<void> {
+      if (status === null) return run(1);
+      const server = createServer((_req, res) => res.writeHead(status).end("{}"));
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      try {
+        await run((server.address() as AddressInfo).port);
+      } finally {
+        server.close();
+      }
+    }
+
+    it.each([null, 503])("refuses and keeps the pid file when health gives %s", async (status) => {
+      await withHealthStatus(status, async (port) => {
+        await seedPidFile(process.pid, port);
+
+        await expect(startDaemon(options({ processStartTime: unknown }))).rejects.toMatchObject({ name: "DaemonAlreadyRunningError", pid: process.pid });
+
+        expect((await readPidFile(daemonPaths(stateDir)))?.pid).toBe(process.pid);
+      });
+    });
+
+    it("refuses when the meta file is missing too", async () => {
+      await writeFile(daemonPaths(stateDir).pidFile, String(process.pid));
+
+      await expect(startDaemon(options({ processStartTime: unknown }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+    });
+  });
+});

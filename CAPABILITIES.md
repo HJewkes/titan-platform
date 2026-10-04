@@ -148,7 +148,7 @@ Key exports:
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +13 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
+- +14 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
