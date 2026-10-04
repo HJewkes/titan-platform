@@ -162,10 +162,10 @@ describe("broker unavailable", () => {
     ["resume", (bin: string) => resumeAgent(bin, "impl-7", "msg", 5_000)],
     ["ls", (bin: string) => listAgents(bin, 5_000)],
     ["retire", (bin: string) => retire(bin, "impl-7", 5_000)],
-  ])("%s raises BrokerUnavailableError on the CLI's unreachable text", (_, call) => {
+  ])("%s raises BrokerUnavailableError on the CLI's unreachable text", async (_, call) => {
     const bin = fakeAgentChat(BROKER_DOWN);
 
-    expect(() => call(bin)).toThrow(BrokerUnavailableError);
+    await expect((async () => call(bin))()).rejects.toThrow(BrokerUnavailableError);
   });
 
   it.each([
@@ -196,7 +196,7 @@ describe("broker unavailable", () => {
     expect(caught).not.toBeInstanceOf(BrokerUnavailableError);
   });
 
-  it("sets AGENT_CHAT_NO_AUTOSTART=1 on every agent-chat call", () => {
+  it("sets AGENT_CHAT_NO_AUTOSTART=1 on every agent-chat call", async () => {
     const bin = fakeAgentChat(`echo '[]'\n`);
 
     for (const call of [
@@ -206,7 +206,7 @@ describe("broker unavailable", () => {
       () => retire(bin, "impl-7", 5_000),
     ]) {
       rmSync(join(dir, "autostart"), { force: true });
-      call();
+      await call();
       expect(recorded("autostart")).toBe("1");
     }
   });

@@ -378,9 +378,9 @@ Tier 1, `@titan-design/agent-dispatch@0.3.0`. Start and resume agent-chat agents
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `minimalEnv`, `resolveBinaryPath`
-- `resume`: `ResumeError`, `buildResumeAgentArgs`
-- +22 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`, `minimalEnv`, `resolveBinaryPath`
+- `resume`: `ResumeError`
+- +23 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
