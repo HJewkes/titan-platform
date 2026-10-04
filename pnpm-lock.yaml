@@ -369,6 +369,15 @@ importers:
         specifier: ^3.0.0
         version: 3.8.1
 
+  packages/eslint-plugin:
+    devDependencies:
+      '@types/estree':
+        specifier: ^1.0.9
+        version: 1.0.9
+      eslint:
+        specifier: ^9.39.0
+        version: 9.39.5(jiti@1.21.7)
+
   packages/evidence: {}
 
   packages/fix-proof: {}

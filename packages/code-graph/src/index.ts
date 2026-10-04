@@ -173,6 +173,24 @@ export type {
 export { buildSymbolCouplingPayload } from "./analysis/dashboard-symbol-coupling.js";
 export type { CouplingClass, SnapshotContext } from "./analysis/dashboard-coupling.js";
 export { classifyCoupling, pairKey } from "./analysis/dashboard-coupling.js";
+export type { PackageRoot } from "./analysis/package-buckets.js";
+export { bucketFilesByPackage } from "./analysis/package-buckets.js";
+export type {
+  ArchEdge,
+  ArchPackage,
+  ArchResult,
+  ArchSubNode,
+} from "./analysis/graph-arch-types.js";
+export type { ComputeArchInput } from "./analysis/graph-arch-compute.js";
+export {
+  DEFAULT_MAX_PACKAGE_SIZE,
+  EXTERNAL_BUCKET,
+  aggregateEdges,
+  computeArch,
+  filteredFileIds,
+  packagesReferencedByEdges,
+  toSortedEdges,
+} from "./analysis/graph-arch-compute.js";
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";

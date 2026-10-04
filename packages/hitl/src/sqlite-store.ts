@@ -3,6 +3,7 @@ import { BaseGateStore } from "./base-store.js";
 import {
   GateStoreSchemaOutdated,
   type GateAuthorize,
+  type GateQuestion,
   type GateRecord,
   type GateResolver,
   type GateRule,
@@ -143,13 +144,30 @@ export function gateRuleMigration(version: number, name: string = DEFAULT_GATE_T
   };
 }
 
+const BRIEF_COLUMNS = ["summary", "evidence_ref", "questions"] as const;
+
+/** Adds `summary`, `evidence_ref` and `questions`. Idempotent and backfill-free: gates opened before it carry no brief. */
+export function gateBriefMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:brief:${name}`,
+    up: (db) => {
+      for (const column of BRIEF_COLUMNS) {
+        if (!hasColumn(db, name, column)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN ${column} TEXT`);
+      }
+    },
+  };
+}
+
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration`, `gateResolverMigration` and `gateRuleMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration` and `gateBriefMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
   authorize?: GateAuthorize;
+  /** Refuse `create` without a `summary` and an `evidenceRef`. Off by default; needs `gateBriefMigration`. */
+  requireBrief?: boolean;
 }
 
 interface RawGateRow {
@@ -165,6 +183,10 @@ interface RawGateRow {
   resolved_by: string | null;
   /** Absent entirely on a table that has not run `gateRuleMigration`. */
   rule?: string | null;
+  /** These three are absent entirely on a table that has not run `gateBriefMigration`. */
+  summary?: string | null;
+  evidence_ref?: string | null;
+  questions?: string | null;
 }
 
 /**
@@ -174,43 +196,41 @@ interface RawGateRow {
  */
 export class SqliteGateStore extends BaseGateStore {
   private readonly table: string;
-  private ruleColumnSeen = false;
+  private readonly columnsSeen = new Set<string>();
 
   constructor(
     private readonly db: Db,
     options: SqliteGateStoreOptions = {},
   ) {
-    super(options.now ?? Date.now, options.authorize);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
     if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
-    const missing = missingMigration(db, this.table);
+    const missing = missingMigration(db, this.table, options.requireBrief ?? false);
     if (missing) throw new GateStoreSchemaOutdated("", this.table, missing);
   }
 
+  /** Refuses rather than dropping a rule or a brief when the table has no column to hold it. */
   protected insert(record: GateRecord): void {
-    if (record.rule) {
-      this.insertWithRule(record, record.rule);
-      return;
-    }
+    const optional = this.optionalColumns(record);
+    const names = [...BASE_COLUMNS, ...optional.keys()];
     this.db
-      .prepare(
-        `INSERT INTO ${quoteIdent(this.table)}
-           (id, prompt, schema, status, payload, reason, created_at, resolved_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(...columns(record));
+      .prepare(`INSERT INTO ${quoteIdent(this.table)} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`)
+      .run(...columns(record), ...optional.values());
   }
 
-  /** Refuses rather than dropping the rule when the table has no column to hold it. */
-  private insertWithRule(record: GateRecord, rule: GateRule): void {
-    if (!this.ruleColumnPresent()) throw new GateStoreSchemaOutdated(record.id, this.table, "gateRuleMigration");
-    this.db
-      .prepare(
-        `INSERT INTO ${quoteIdent(this.table)}
-           (id, prompt, schema, status, payload, reason, created_at, resolved_at, expires_at, rule)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(...columns(record), JSON.stringify(rule));
+  private optionalColumns(record: GateRecord): Map<string, string | null> {
+    const optional = new Map<string, string | null>();
+    if (record.rule) {
+      this.requireColumn(record.id, "rule", "gateRuleMigration");
+      optional.set("rule", JSON.stringify(record.rule));
+    }
+    if (hasBrief(record)) {
+      this.requireColumn(record.id, "questions", "gateBriefMigration");
+      optional.set("summary", record.summary ?? null);
+      optional.set("evidence_ref", record.evidenceRef ?? null);
+      optional.set("questions", record.questions ? JSON.stringify(record.questions) : null);
+    }
+    return optional;
   }
 
   protected read(id: string): GateRecord | undefined {
@@ -231,9 +251,11 @@ export class SqliteGateStore extends BaseGateStore {
       .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
   }
 
-  private ruleColumnPresent(): boolean {
-    if (!this.ruleColumnSeen) this.ruleColumnSeen = hasColumn(this.db, this.table, "rule");
-    return this.ruleColumnSeen;
+  /** Only a present column is cached: a migration can add one while the store is open, never remove one. */
+  private requireColumn(gateId: string, column: string, migration: string): void {
+    if (this.columnsSeen.has(column)) return;
+    if (!hasColumn(this.db, this.table, column)) throw new GateStoreSchemaOutdated(gateId, this.table, migration);
+    this.columnsSeen.add(column);
   }
 
   protected readByStatus(status: GateStatus): GateRecord[] {
@@ -245,13 +267,20 @@ export class SqliteGateStore extends BaseGateStore {
 }
 
 /** Names the earliest migration the table lacks, so the error points at the step to add. */
-function missingMigration(db: Db, table: string): string | undefined {
+function missingMigration(db: Db, table: string, requireBrief: boolean): string | undefined {
   if (!hasColumn(db, table, "id")) return "gateMigration";
-  return hasResolverColumn(db, table) ? undefined : "gateResolverMigration";
+  if (!hasResolverColumn(db, table)) return "gateResolverMigration";
+  return requireBrief && !hasColumn(db, table, "questions") ? "gateBriefMigration" : undefined;
 }
 
 function defaultMigrations(table: string): Migration[] {
-  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table)];
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table)];
+}
+
+const BASE_COLUMNS = ["id", "prompt", "schema", "status", "payload", "reason", "created_at", "resolved_at", "expires_at"];
+
+function hasBrief(record: GateRecord): boolean {
+  return record.summary !== undefined || record.evidenceRef !== undefined || record.questions !== undefined;
 }
 
 function columns(record: GateRecord): unknown[] {
@@ -286,5 +315,8 @@ function toRecord(row: RawGateRow): GateRecord {
     expiresAt: row.expires_at ?? undefined,
     resolvedBy: row.resolved_by ? (JSON.parse(row.resolved_by) as GateResolver) : undefined,
     rule: row.rule ? (JSON.parse(row.rule) as GateRule) : undefined,
+    summary: row.summary ?? undefined,
+    evidenceRef: row.evidence_ref ?? undefined,
+    questions: row.questions ? (JSON.parse(row.questions) as GateQuestion[]) : undefined,
   };
 }

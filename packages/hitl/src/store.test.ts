@@ -5,17 +5,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryGateStore } from "./memory-store.js";
-import { SqliteGateStore, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
+import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
   GateAuthorizeInvalid,
+  GateBriefInvalid,
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
   GateRuleInvalid,
   type GateAuthorize,
+  type GateQuestion,
   type GateResolver,
   type GateRule,
   type GateStore,
@@ -40,12 +42,17 @@ const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test",
 /** Stands in for a caller that bypasses the type, such as plain JavaScript. */
 const ANONYMOUS = undefined as unknown as GateResolver;
 const TERMINAL_ONLY: GateRule = { table: "F5", version: "1.0.0", ruleId: "REL-CO", resolvers: ["owner-terminal"] };
+const BRIEF = { summary: "Ship 1.4.0? CI green. Recommend ship.", evidenceRef: "https://example.test/runs/1" };
+const SHIP_QUESTIONS: GateQuestion[] = [
+  { id: "decision", question: "Ship 1.4.0?", options: [{ id: "ship", label: "Ship", recommended: true }, { id: "hold", label: "Hold" }] },
+];
 const AGENT_CLASSES = ACTOR_CLASSES.filter((c) => !(RESOLVER_CLASSES as readonly ActorClass[]).includes(c));
 
-function memoryHarness(authorize?: GateAuthorize): Harness {
+function memoryHarness(authorize?: GateAuthorize, requireBrief = false): Harness {
   let millis = T0;
+  const options = { now: () => millis, requireBrief };
   return {
-    store: new MemoryGateStore(authorize ? { now: () => millis, authorize } : { now: () => millis }),
+    store: new MemoryGateStore(authorize ? { ...options, authorize } : options),
     setNow: (value) => {
       millis = value;
     },
@@ -53,12 +60,12 @@ function memoryHarness(authorize?: GateAuthorize): Harness {
   };
 }
 
-function sqliteHarness(authorize?: GateAuthorize): Harness {
+function sqliteHarness(authorize?: GateAuthorize, requireBrief = false): Harness {
   let millis = T0;
   const dir = mkdtempSync(path.join(tmpdir(), "hitl-"));
   const db = openDatabase(path.join(dir, "gates.sqlite3"));
-  runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3)]);
-  const options = { migrate: false, now: () => millis };
+  runMigrations(db, [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3), gateBriefMigration(4)]);
+  const options = { migrate: false, now: () => millis, requireBrief };
   return {
     store: new SqliteGateStore(db, authorize ? { ...options, authorize } : options),
     setNow: (value) => {
@@ -393,6 +400,49 @@ describe.each([
   ])("refuses a rule with %s and creates nothing", (_label, rule) => {
     expect(() => store.create({ id: "g1", prompt: "release?", rule: rule as GateRule })).toThrow(GateRuleInvalid);
     expect(store.get("g1")).toBeUndefined();
+  });
+
+  it("a refused brief writes no row", () => {
+    const strict = scoped(makeHarness(undefined, true)).store;
+
+    expect(() => strict.create({ id: "g1", prompt: "ship it?", evidenceRef: BRIEF.evidenceRef })).toThrow(GateBriefInvalid);
+
+    expect(strict.get("g1")).toBeUndefined();
+  });
+
+  it("a store without requireBrief opens a bare gate as before", () => {
+    const created = store.create({ id: "g1", prompt: "ship it?" });
+
+    expect(created).toMatchObject({ status: "pending", summary: undefined, evidenceRef: undefined, questions: undefined });
+    expect(store.get("g1")?.summary).toBeUndefined();
+  });
+
+  it("a store with requireBrief opens a gate that carries one", () => {
+    const strict = scoped(makeHarness(undefined, true)).store;
+
+    strict.create({ id: "g1", prompt: "ship it?", ...BRIEF, questions: SHIP_QUESTIONS });
+
+    expect(strict.get("g1")).toMatchObject({ ...BRIEF, questions: SHIP_QUESTIONS });
+  });
+
+  it("a store without requireBrief still refuses a malformed brief", () => {
+    expect(() => store.create({ id: "g1", prompt: "ship it?", summary: "  " })).toThrow(GateBriefInvalid);
+
+    expect(store.get("g1")).toBeUndefined();
+  });
+
+  it("mutating the questions array after create does not change the stored gate", () => {
+    const input = structuredClone(SHIP_QUESTIONS);
+    const created = store.create({ id: "g1", prompt: "ship it?", questions: input });
+    const read = store.get("g1");
+
+    input.push(input[0] as GateQuestion);
+    for (const mutated of [created.questions, read?.questions]) {
+      (mutated?.[0]?.options[0] as { label: string }).label = "changed";
+      mutated?.pop();
+    }
+
+    expect(store.get("g1")?.questions).toEqual(SHIP_QUESTIONS);
   });
 
   function scoped(extra: Harness): Harness {

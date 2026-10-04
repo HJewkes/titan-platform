@@ -219,7 +219,7 @@ function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
 describe("gh api adapter, REST only", () => {
   it("drives every port method with argv that never names graphql or pr view", async () => {
     const gh = routedGh();
-    const port = githubPort(ghCliWire(gh.exec));
+    const port = githubPort(ghCliWire(gh.exec, { appToken: async () => "app-token" }));
     const calls: Record<keyof typeof port, () => Promise<unknown>> = {
       getHeadSha: () => port.getHeadSha(REPO, "topic"),
       ensureBranch: () => port.ensureBranch(REPO, "topic", H1),
@@ -234,6 +234,7 @@ describe("gh api adapter, REST only", () => {
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
+      createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
