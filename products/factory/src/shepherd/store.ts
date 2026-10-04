@@ -276,11 +276,9 @@ export class ShepherdStore implements HoldLookup {
     return changed === 1;
   }
 
-  /** Withdraws a satisfaction at `head`, as when the reviewer's newest verdict there is FIX_FIRST. */
-  unsatisfyHold(runId: string, head: string): void {
-    this.db
-      .prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND hold_satisfied_head = ?")
-      .run(this.stamp(), runId, head);
+  /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */
+  unsatisfyHold(runId: string): void {
+    this.db.prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?").run(this.stamp(), runId);
   }
 
   /** Marks `head` as ready to land, or clears the mark with null. */

@@ -189,7 +189,7 @@ export async function serviceStatus(ports: ServicePorts, io: ServiceIo, port: nu
 }
 
 /** serve reports `checking` until its first gh probe lands, within its 10 s timeout. */
-async function settledHealth(ports: ServicePorts, port: number): Promise<Record<string, unknown> | null> {
+export async function settledHealth(ports: ServicePorts, port: number): Promise<Record<string, unknown> | null> {
   for (let poll = 0; poll < GITHUB_SETTLE_POLLS; poll++) {
     const health = await ports.health(port);
     if (health?.github !== GITHUB_CHECKING) return health;

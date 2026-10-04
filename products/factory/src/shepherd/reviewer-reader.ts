@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
+import { DamagedTranscriptError } from "./external-review.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
@@ -51,6 +52,12 @@ function contentIndex(path: readonly (string | number)[]): number {
   return path[0] === "message" && path[1] === "content" && typeof path[2] === "number" ? path[2] : -1;
 }
 
+/** The text of a user message written in this conversation, or null for any other observation. */
+function userText(observation: NormalizedSessionObservation): string | null {
+  if (observation.kind !== "message" || observation.role !== "user" || observation.historyOrigin !== null) return null;
+  return observation.content.map((part) => part.text).join("\n");
+}
+
 /** Records that are not part of the conversation: titles, hook summaries and the like. An unknown kind is not one of them. */
 function isBookkeeping(observation: NormalizedSessionObservation): boolean {
   if (observation.kind === "metadata") return !observation.entries.some((entry) => entry.name === "model");
@@ -92,7 +99,7 @@ export function finishedTurnMessages(agentId: string) {
 }
 
 /** The finished transcript of the dispatched agent and session, or null while there is nothing safe to read. */
-function finishedTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): (TranscriptRow & { transcriptPath: string }) | null {
+function finishedTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): SeatRow | null {
   const row = rows.find((candidate) => candidate.agentId === input.reviewerAgentId);
   if (!row || row.presence !== FINISHED || row.sessionId !== input.reviewerSessionId) return null;
   if (!row.transcriptExists || row.transcriptPath === null) return null;
@@ -104,6 +111,10 @@ interface Scan {
   finished: readonly ReviewerMessage[];
   /** Every chat_send message in a complete record, finished turn or not. */
   sent: readonly ReviewerMessage[];
+  /** Every assistant text and chat_send message in a complete record. */
+  written: readonly ReviewerMessage[];
+  /** The first user message in a complete record: the brief the reviewer was started with. */
+  brief: string | null;
   /** False when the file holds bytes past the last complete record. */
   whole: boolean;
 }
@@ -111,13 +122,18 @@ interface Scan {
 async function scanTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<Scan> {
   const turn = finishedTurnMessages(agentId);
   const sent: ReviewerMessage[] = [];
+  const written: ReviewerMessage[] = [];
+  let brief: string | null = null;
   let consumedBytes = -1;
   const source = claudeSourceFromPath(transcriptPath, namespace);
   for await (const observation of readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset))) {
     turn.add(observation);
-    sent.push(...sentMessages(agentId, observation));
+    const sentHere = sentMessages(agentId, observation);
+    sent.push(...sentHere);
+    written.push(...reviewerMessages(agentId, observation), ...sentHere);
+    brief ??= userText(observation);
   }
-  return { finished: turn.result(), sent, whole: (await stat(transcriptPath)).size === consumedBytes };
+  return { finished: turn.result(), sent, written, brief, whole: (await stat(transcriptPath)).size === consumedBytes };
 }
 
 /** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
@@ -131,24 +147,59 @@ const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
 
 /**
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
- * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects.
+ * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said and the brief.
  */
-async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string }, namespace: string): Promise<readonly ReviewerMessage[]> {
+async function readSeatTranscript(row: SeatRow, namespace: string): Promise<readonly ReviewerMessage[]> {
   const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
-  if (!scan.whole && !RUNNING.has(row.presence)) throw new Error(`the ${row.presence} session ${row.sessionId} ends in a partial record`);
+  if (!scan.whole && !RUNNING.has(row.presence)) {
+    throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written, scan.brief);
+  }
   return scan.whole && scan.finished.length > 0 ? scan.finished : scan.sent;
 }
 
 /** The transcript of this agent and session whatever its presence, or null when there is none yet. */
-function seatTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): (TranscriptRow & { transcriptPath: string }) | null {
+function seatTranscript(rows: readonly TranscriptRow[], input: AwaitVerdictInput): SeatRow | null {
   const row = rows.find((candidate) => candidate.agentId === input.reviewerAgentId && candidate.sessionId === input.reviewerSessionId);
   if (!row || !row.transcriptExists || row.transcriptPath === null) return null;
   return { ...row, transcriptPath: row.transcriptPath };
 }
 
+type SeatRow = TranscriptRow & { transcriptPath: string };
+
+/**
+ * What a seat read depends on: the session, the presence that decides whether a partial record is damage, and the file's
+ * size and mtime, which move when a verdict is appended. Equal signatures read equal.
+ */
+async function seatSignature(row: SeatRow): Promise<string | null> {
+  try {
+    const { size, mtimeMs } = await stat(row.transcriptPath);
+    return [row.agentId, row.sessionId, row.presence, size, mtimeMs].join("|");
+  } catch {
+    return null;
+  }
+}
+
+/** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
+function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly ReviewerMessage[]> {
+  const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
+  return async (row) => {
+    const signature = await seatSignature(row);
+    if (signature === null) return readSeatTranscript(row, namespace);
+    const hit = cache.get(row.transcriptPath);
+    if (hit?.signature === signature) return hit.result;
+    const result = readSeatTranscript(row, namespace);
+    cache.set(row.transcriptPath, { signature, result });
+    result.catch((error: unknown) => {
+      if (!(error instanceof DamagedTranscriptError) && cache.get(row.transcriptPath)?.result === result) cache.delete(row.transcriptPath);
+    });
+    return result;
+  };
+}
+
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
 export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): ReviewerReader {
   const namespace = options.namespace ?? os.hostname();
+  const readSeatOnce = cachedSeatReader(namespace);
   return {
     async read(input) {
       const row = finishedTranscript(await options.roster(), input);
@@ -156,7 +207,7 @@ export function transcriptReviewerReader(options: TranscriptReviewerReaderOption
     },
     async readSeat(input) {
       const row = seatTranscript(await options.roster(), input);
-      return row ? readSeatTranscript(row, namespace) : [];
+      return row ? readSeatOnce(row) : [];
     },
   };
 }

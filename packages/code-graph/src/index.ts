@@ -147,6 +147,32 @@ export {
 } from "./analysis/graph-report-sections.js";
 export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export { computeReportDrift } from "./analysis/graph-report-drift.js";
+export type { HealthComponent } from "./analysis/dashboard-health.js";
+export { computeHealth } from "./analysis/dashboard-health.js";
+export type {
+  BlastRadiusEntry,
+  HotExport,
+  NodeMetrics,
+  SymbolUtil,
+} from "./analysis/dashboard-node-metrics.js";
+export {
+  buildBlastRadius,
+  buildCentralFiles,
+  buildHotExports,
+  buildNodeMetrics,
+  collectNodeMetrics,
+  collectSymbolUtil,
+  referencedNodes,
+} from "./analysis/dashboard-node-metrics.js";
+export type {
+  SymbolConsumerGroup,
+  SymbolConsumerRow,
+  SymbolCouplingPayload,
+  SymbolCouplingRow,
+} from "./analysis/dashboard-symbol-coupling.js";
+export { buildSymbolCouplingPayload } from "./analysis/dashboard-symbol-coupling.js";
+export type { CouplingClass, SnapshotContext } from "./analysis/dashboard-coupling.js";
+export { classifyCoupling, pairKey } from "./analysis/dashboard-coupling.js";
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";

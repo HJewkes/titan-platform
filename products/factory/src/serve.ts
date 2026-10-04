@@ -13,7 +13,7 @@ import { createFactoryRegistry, factoryContext, type FactoryContext } from "./re
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
-import { resyncShepherd } from "./shepherd/resync.js";
+import { recheckHeld, resyncShepherd } from "./shepherd/resync.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -74,8 +74,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
   const services = options.routes.shepherd;
-  if (services && options.resyncOnStart !== false) await resync(host, services, log);
-  const sweep = startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
+  const held = new Set<string>();
+  if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
+  const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
   await goneSweep?.tick();
@@ -161,9 +162,16 @@ interface Sweep {
   stop(): Promise<void>;
 }
 
-async function adopt(host: FactoryHost, log: Logger): Promise<void> {
+/** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. */
+async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger): Promise<void> {
+  if (services) await recheckBeforeAdopt(host, services, held, log);
   const ids = await host.adopt();
+  for (const id of ids) held.delete(id);
   if (ids.length > 0) log.info({ runs: ids }, "adopted runs");
+}
+
+async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices, held: Set<string>, log: Logger): Promise<void> {
+  for (const ended of await recheckHeld(host, services, held)) log.info({ ...ended }, "ended a held run whose PR left Shepherd before adoption");
 }
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
@@ -172,9 +180,10 @@ async function endGone(host: FactoryHost, services: ShepherdServices, log: Logge
 }
 
 /** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
-async function resync(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+async function resync(host: FactoryHost, services: ShepherdServices, log: Logger, held: Set<string>): Promise<void> {
   try {
     const report = await resyncShepherd(host, services);
+    for (const runId of report.held) held.add(runId);
     for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
     log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
   } catch (err) {

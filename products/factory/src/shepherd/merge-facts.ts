@@ -60,6 +60,8 @@ export interface EvidenceRecord {
   verdictLocator: SourceTextLocator;
   reviewer: AgentIdentity;
   decision: GateDecision;
+  /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
+  carry?: CarryFact;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -235,7 +237,8 @@ export function locatorReference(locator: SourceTextLocator): LocatorReference {
 
 export function evidenceComment(record: EvidenceRecord): string {
   const { decision } = record;
-  const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}`;
+  const carried = record.carry ? ` Carried the MERGE reviewed at \`${record.carry.fromHead}\` (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.` : "";
+  const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}${carried}`;
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(posted, null, 2), "```", ""].join("\n");
 }
@@ -256,6 +259,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     verdictLocator: input.verdict.locator,
     reviewer: input.resolver,
     decision,
+    ...(merge.carry && { carry: merge.carry }),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, ...unknown, commentId: comment.id };
