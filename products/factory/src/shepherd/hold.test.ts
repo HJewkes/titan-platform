@@ -71,6 +71,16 @@ describe("a hold that names a reviewer", () => {
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdSatisfied: { head: H1, by: { reviewer: REVIEWER, agentId: `agent-${REVIEWER}`, sessionId: `session-${REVIEWER}` } } });
   });
 
+  it("merges when the reviewer writes the repo in a different letter case than the run was registered with", async () => {
+    const r = rig();
+    say(r, verdictAt(H1, "MERGE", 1, "Octo/Demo"));
+
+    const merged = await mergeAt(r, H1);
+
+    expect(merged.done).toBe(true);
+    expect(r.store.byRun("run-1")).toMatchObject({ holdSatisfied: { head: H1 } });
+  });
+
   it("keeps waiting when the MERGE names an older head", async () => {
     const r = rig();
     say(r, verdictAt(H1));
