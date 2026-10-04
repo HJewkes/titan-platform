@@ -1,5 +1,31 @@
 # @titan-design/factory
 
+## 0.6.0
+
+### Minor Changes
+
+- 32adb30: Add the `verdict-merge-carried-tree-equal` and `pr-kind-not-security` conditions and a separate automation row, MRG-AU-RC, that lets a MERGE verdict carry to a tree-equal head. It keeps every MRG-AU-RV condition except `verdict-merge-at-head`, which stays unchanged, and never carries `kind: security` or an unknown or missing kind. `MergeFacts` gains optional `carry` and `kind` facts. Shepherd's merge-facts collector fills `carry` only from the `sh-carry` step output and `kind` only from the run's registration.
+
+### Patch Changes
+
+- 02c5d99: Count Shepherd's review wait deadline and exit grace from the review's dispatch, so a restart no longer gives a review a fresh 30 minutes. A restart 25 minutes into a review leaves it 5 minutes; a reviewer already exited past its grace ends the wait at once. A detached reviewer keeps its 10-minute grace from first sight.
+- e6512c2: List every kind of agent factory dispatches in its CAPABILITY.md: reviewer, main-red fixer, successor implementer, and the detached deployer.
+- 92cc2ea: Shepherd reaches agent-chat through one adapter. A wake successor now spawns under the configured `shepherd.fixer.configDir`, as the fixer does, instead of the default Claude account.
+- 7e2ce6d: Tell Shepherd reviewers to remove their `$TMPDIR/review-*` checkout after the verdict, and sweep any such directory older than a day at serve start and hourly.
+- c5a341a: The Shepherd review-checkout sweep skips a bad entry and carries on, removes only real review-\* directories (never files or symlinks), and the reviewer brief names the literal checkout path to remove.
+- 92a7d8b: The review-checkout sweep now matches only `review-<pr>-<12 hex>` directories instead of any `review-*` name in the temp dir. It removes them with async `fs/promises` calls so the daemon loop is not blocked, and `serve` logs a warning with the path and message when an entry cannot be removed.
+- 76d4c43: Shepherd cleanup re-reads the agent roster fresh just before retiring, so an agent resumed inside the roster cache window is no longer retired.
+- 295c5df: Shepherd watch rows now read as stalled when a run stays in `ci`, `fixing`, `review` or `merging` past that phase's limit, measured from the phase start. Phases that wait on a person or an agent never stall on time.
+- 06193b5: Shepherd's wake, fixer, cleanup and reviewer ports now read the agent-chat roster through one shared reader in the serve process. Concurrent callers share one in-flight `agent-chat agent ls --json`, and a known roster is reused for 12 s. A spawn, resume, message or retire invalidates the reader. A failed read is reported as unknown and is never cached, so the next caller reads again.
+- Updated dependencies [32adb30]
+- Updated dependencies [b62813c]
+- Updated dependencies [f390fc0]
+  - @titan-design/authority@0.3.0
+  - @titan-design/daemon@0.3.3
+  - @titan-design/github@0.4.0
+  - @titan-design/hitl@0.4.1
+  - @titan-design/workflow@0.8.1
+
 ## 0.5.2
 
 ### Patch Changes

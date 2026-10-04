@@ -1,5 +1,12 @@
 # @titan-design/hitl
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [32adb30]
+  - @titan-design/authority@0.3.0
+
 ## 0.4.0
 
 ### Minor Changes

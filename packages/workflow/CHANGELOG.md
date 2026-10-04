@@ -1,5 +1,13 @@
 # @titan-design/workflow
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [32adb30]
+  - @titan-design/authority@0.3.0
+  - @titan-design/hitl@0.4.1
+
 ## 0.8.0
 
 ### Minor Changes

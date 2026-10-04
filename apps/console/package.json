@@ -1,6 +1,6 @@
 {
   "name": "titan-console",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph",
   "type": "module",
