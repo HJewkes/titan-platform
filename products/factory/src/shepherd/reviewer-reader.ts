@@ -179,10 +179,15 @@ async function seatSignature(row: SeatRow): Promise<string | null> {
   }
 }
 
+interface SeatReader {
+  read: (row: SeatRow) => Promise<readonly ReviewerMessage[]>;
+  retain: (rows: readonly TranscriptRow[]) => void;
+}
+
 /** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
-function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly ReviewerMessage[]> {
+function cachedSeatReader(namespace: string): SeatReader {
   const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
-  return async (row) => {
+  const read = async (row: SeatRow) => {
     const signature = await seatSignature(row);
     if (signature === null) return readSeatTranscript(row, namespace);
     const hit = cache.get(row.transcriptPath);
@@ -194,20 +199,30 @@ function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly
     });
     return result;
   };
+  /** Drops the entries of transcripts the roster no longer lists, so a retired reviewer's messages are not held for the process's life. */
+  const retain = (rows: readonly TranscriptRow[]): void => {
+    const listed = new Set(rows.map((candidate) => candidate.transcriptPath));
+    for (const key of cache.keys()) if (!listed.has(key)) cache.delete(key);
+  };
+  return { read, retain };
 }
 
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
 export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): ReviewerReader {
   const namespace = options.namespace ?? os.hostname();
-  const readSeatOnce = cachedSeatReader(namespace);
+  const seats = cachedSeatReader(namespace);
   return {
     async read(input) {
-      const row = finishedTranscript(await options.roster(), input);
+      const rows = await options.roster();
+      seats.retain(rows);
+      const row = finishedTranscript(rows, input);
       return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace) : [];
     },
     async readSeat(input) {
-      const row = seatTranscript(await options.roster(), input);
-      return row ? readSeatOnce(row) : [];
+      const rows = await options.roster();
+      seats.retain(rows);
+      const row = seatTranscript(rows, input);
+      return row ? seats.read(row) : [];
     },
   };
 }
