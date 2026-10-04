@@ -317,7 +317,8 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const text = hasC ? (positional?.value ?? stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { text, wrap: hasC ? "sh-c" : "heredoc-shell" };
-  return hasC || positional || stdin === null ? null : { text: stdin, wrap: "piped-shell" };
+  // bash and sh drop NUL from a piped script; zsh keeps it, but reading the stricter text only over-blocks.
+  return hasC || positional || stdin === null ? null : { text: stdin.replaceAll("\0", ""), wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {

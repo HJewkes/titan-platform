@@ -63,3 +63,19 @@ describe("octal in echo and printf %b", () => {
     expect(printed("printf", "'%5b'", "'a\\c'")).toBe("a");
   });
 });
+
+describe("NUL bytes in piped text", () => {
+  const pushed = ["push", "origin", "HEAD:main"];
+  it.each([
+    ["printf octal \\000", "printf 'git pu\\000sh origin HEAD:main\\n' | bash"],
+    ["printf \\0", "printf 'git pu\\0sh origin HEAD:main\\n' | bash"],
+    ["printf %b", "printf '%b' 'git pu\\0sh origin HEAD:main' | sh"],
+    ["echo -e", "echo -e 'git pu\\0sh origin HEAD:main' | bash"],
+  ])("drops NUL as bash and sh do: %s", (_how, src) => {
+    expect(gitArgs(src).at(-1)).toEqual(pushed);
+  });
+
+  it("keeps NUL for xargs -0, which splits on it", () => {
+    expect(printed("printf", "'a\0b'")).toBe("a\0b");
+  });
+});
