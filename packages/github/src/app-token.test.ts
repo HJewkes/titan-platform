@@ -361,4 +361,70 @@ describe("token shape scrub", () => {
       expect((error as Error).message).not.toContain(hex);
     });
   });
+
+  describe("TP-1504 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+    const SHORT_JWT = "eyJhbGciOiJIUzI1NiJ9.e30.c2lnbmF0dXJlLXg";
+    const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
+      const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
+      const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+      return (error as GhError).message;
+    };
+
+    it.each([
+      [`https://${hex}:x-oauth-basic@github.com/o/r`, hex],
+      [`next?a=1%26token=${hex}`, hex],
+      [`access_token%3D${hex}`, hex],
+      [`Authorization: Bearer%20${SHORT_JWT}`, "c2lnbmF0dXJl"],
+      [`Bearer%20${JWT}`, "eyJhbGci"],
+      [`token:       ${hex}`, hex],
+      [`token${" ".repeat(40)}${hex}`, hex],
+      [`GH_TOKEN ${hex}`, hex],
+    ])("redacts the secret in the thrown message for %s", async (line, secret) => {
+      const message = await throwsWith("", line);
+
+      expect(message).not.toContain(secret);
+      expect(message).toContain("[redacted]");
+    });
+
+    it.each([
+      ["GH_TOKEN", `=${hex} (HTTP 403)`],
+      ["tok", `en=${hex} (HTTP 403)`],
+      ["warning: GH_TOKEN\n", `: ${hex} (HTTP 403)`],
+    ])("scrubs a keyword ending stdout and a hex run inside stderr: %j | %j", async (stdout, stderr) => {
+      const message = await throwsWith(stdout, `${stderr}`);
+
+      expect(message).not.toContain(hex);
+      expect(message).toContain("(HTTP 403)");
+    });
+
+    it("keeps the text between a split keyword and its hex run", () => {
+      expect(redactStreams("GH_TOKEN", `=${hex} tail`, [])).toEqual(["GH_TOKEN", "=[redacted] tail"]);
+    });
+
+    it("redacts a JWT with a short payload and keeps dotted file names that only open like one", () => {
+      expect(redact(`jwt ${SHORT_JWT}`, [])).toBe("jwt [redacted]");
+      expect(redact("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts", [])).toBe("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts");
+    });
+
+    it("scans a megabyte of whitespace after a keyword in linear time", () => {
+      for (const keyword of ["bearer", "token", "bearer token"]) {
+        const text = `${keyword}${" ".repeat(1 << 20)}`;
+        const started = performance.now();
+
+        expect(redact(text, [])).toBe(text);
+        expect(performance.now() - started).toBeLessThan(100);
+      }
+    });
+
+    it("scans a megabyte of letters and hex in linear time", () => {
+      for (const filler of ["a", "z", "ab.", "x:"]) {
+        const text = filler.repeat((1 << 20) / filler.length);
+        const started = performance.now();
+
+        redact(text, []);
+        expect(performance.now() - started).toBeLessThan(500);
+      }
+    });
+  });
 });
