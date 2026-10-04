@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/tool-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer",
   "type": "module",

@@ -1,5 +1,11 @@
 # @titan-design/tool-guard
 
+## 0.1.1
+
+### Patch Changes
+
+- 31c57a2: Decode `echo -e` and `printf %b` octal as `\0nnn`, and stop at `\c`, so `echo -e '\0147it push' | sh` is read as `git push`. A printf format string keeps the `$'...'` `\nnn` rule.
+
 ## 0.1.0
 
 ### Minor Changes

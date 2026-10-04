@@ -168,7 +168,7 @@ Key exports:
 
 ### [`cluster`](https://hjewkes.github.io/titan-platform/reference/cluster)
 
-Tier 0, `@titan-design/cluster@0.1.2`. Deterministic Drain template mining with pluggable line masking
+Tier 0, `@titan-design/cluster@0.1.3`. Deterministic Drain template mining with pluggable line masking
 
 **Use this when:** You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. Ids are deterministic for a given input order and survive restarts via snapshot; merged lines take the founding line's id.
 

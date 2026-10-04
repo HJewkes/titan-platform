@@ -1,5 +1,11 @@
 # @titan-design/cluster
 
+## 0.1.3
+
+### Patch Changes
+
+- fe76ae0: State the template-id contract as it is: ids are deterministic for a given input order and stable across restarts through snapshot and restore, and lines that Drain merges share the id of whichever line founded the cluster. No change to how ids are computed.
+
 ## 0.1.2
 
 ### Patch Changes
