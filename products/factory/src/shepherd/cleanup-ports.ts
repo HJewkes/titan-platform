@@ -21,6 +21,7 @@ export function agentChatCleanupAgents(
 ): CleanupAgents {
   return {
     roster: async () => (await roster.rows()).map(({ name, presence, status }) => ({ name, presence, status })),
+    invalidate: () => roster.invalidate(),
     retire: (name) => mutating(roster, async () => void calls.retire(agentChatBin, name, timeoutMs)),
   };
 }
