@@ -16,6 +16,7 @@ import {
   readBaseBaseline,
   updatedBaseline,
 } from "./dead-code-check.mjs";
+import { maskSource } from "./dead-code-check-source.mjs";
 
 const file = (id, role = "source") => ({ id, kind: "file", name: id.split("/").pop(), role });
 const symbol = (fileId, name, exported = true) => ({
@@ -113,6 +114,12 @@ describe("modules imported whole", () => {
     expect(importedBy('const internal = await import("./internal.js");')).toEqual([]);
   });
 
+  it("ignores a namespace import written inside a comment or a string", () => {
+    expect(importedBy('// import * as internal from "./internal.js";\nconst s = \'import * as internal from "./internal.js"\';')).toEqual([
+      `${INTERNAL}#orphan`,
+    ]);
+  });
+
   it("still lists exports when the import named a binding code-graph could not resolve to a symbol", () => {
     expect(importedBy('import { reexportedFromNpm } from "./internal.js";')).toEqual([`${INTERNAL}#orphan`]);
   });
@@ -127,23 +134,42 @@ describe("modules imported whole", () => {
 });
 
 describe("exports used only inside their own file", () => {
-  it("marks an export another symbol of its file uses as local-only", () => {
-    const { nodes, edges } = demoGraph();
-    nodes.push(symbol(INTERNAL, "caller"));
-    edges.push(edge(`${INTERNAL}#caller`, `${INTERNAL}#orphan`, "calls"), edge(API, `${INTERNAL}#caller`, "references"));
-    expect(findingsIn({ nodes, edges })).toEqual([{ id: `${INTERNAL}#orphan`, name: "orphan", file: INTERNAL, localOnly: true }]);
+  const localOnlyIn = (source) => findingsIn(demoGraph(), { sources: { [INTERNAL]: source } })[0].localOnly;
+
+  it("marks an export its own file uses in a type position as local-only", () => {
+    expect(localOnlyIn("export interface orphan { a: number }\nexport function used(o: orphan): void {}\n")).toBe(true);
   });
 
-  it("does not count a recursive call as a local use", () => {
-    const { nodes, edges } = demoGraph();
-    edges.push(edge(`${INTERNAL}#orphan`, `${INTERNAL}#orphan`, "calls"));
-    expect(findingsIn({ nodes, edges })[0].localOnly).toBe(false);
+  it("marks an export its own file uses at module top level as local-only", () => {
+    expect(localOnlyIn("export const orphan = 5;\nconst rows = load(orphan);\n")).toBe(true);
+  });
+
+  it("marks an export used inside a template expression as local-only", () => {
+    expect(localOnlyIn("export const orphan = 5;\nconst label = `limit ${orphan}`;\n")).toBe(true);
+  });
+
+  it("does not count comments, strings, property names or an export list as uses", () => {
+    const source = 'export const orphan = 1; // orphan\n/* orphan */ const s = "orphan" + `orphan`;\nconst p = obj.orphan;\nexport { orphan as alias };\n';
+    expect(localOnlyIn(source)).toBe(false);
   });
 
   it("tells the author to drop the export keyword rather than delete the code", () => {
     expect(deadExportMessage({ name: "helper", file: "src/a.ts", localOnly: true })).toBe(
       "`helper` in `src/a.ts` is used only inside its own file. Drop the export keyword. If an external consumer needs it, export it from the package entry.",
     );
+  });
+});
+
+describe("masking comments and literals in source", () => {
+  it("blanks comment, string and template text to spaces and keeps every offset", () => {
+    const source = 'a("x") // c\nb(`t ${y} u`) /* d */';
+    const masked = maskSource(source);
+    expect(masked).toHaveLength(source.length);
+    expect(masked).toBe('a(" ")     \nb(`  ${y}  `)        ');
+  });
+
+  it("does not let a quote inside a regex literal swallow the code after it", () => {
+    expect(maskSource("const r = /'/;\nuse(orphan);\n")).toContain("use(orphan);");
   });
 });
 
@@ -217,12 +243,14 @@ describe("the script header", () => {
   const header = readFileSync(new URL("./dead-code-check.mjs", import.meta.url), "utf8")
     .split("\n")
     .filter((line) => line.startsWith("//"))
+    .map((line) => line.replace(/^\/\/\s*/, ""))
     .join(" ");
 
   it("documents the exit codes the script really returns", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
-    expect(header).toContain("Exits 2 on an index failure or a lock timeout");
+    expect(header).toContain("Exits 2 on an index failure, a lock timeout, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain('or a --db path that does not exist or holds no "head" snapshot');
   });
 });
 
@@ -271,6 +299,13 @@ describe("the report", () => {
     expect(deadExportMessage({ name: "orphan", file: "src/internal.ts" })).toBe(
       "`orphan` in `src/internal.ts` has no importer. Delete it and its tests. If an external consumer needs it, export it from the package entry.",
     );
+  });
+
+  it("says a report-only run failed when the baseline grew", () => {
+    const fresh = [{ id: "a.ts#x", name: "x", file: "a.ts" }];
+    const report = formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true, grew: true });
+    expect(report).toContain("the baseline grew — failed.");
+    expect(report).not.toContain("not failing");
   });
 
   it("says a report-only run does not fail", () => {

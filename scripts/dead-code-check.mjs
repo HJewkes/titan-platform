@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Lists exports no other module imports (R12), against the shrink-only baseline in .codewatch/dead-exports.json.
 // Exits 1 on a new dead export, or 0 under --report-only; with BASE_REF set, exits 1 whenever the baseline gained
-// an entry over BASE_REF's copy, report-only or not. Exits 2 on an index failure or a lock timeout; an
+// an entry over BASE_REF's copy, report-only or not. Exits 2 on an index failure, a lock timeout, a BASE_REF that
+// names no commit, an unknown flag, or a --db path that does not exist or holds no "head" snapshot; an
 // out-of-memory abort under the 1 GB heap cap kills the process with V8's own code (134), not 2.
 // --update drops fixed entries from the baseline and never adds one. --db <path> reads the latest "head"
 // snapshot of an existing code-graph database instead of indexing, and so takes no lock.
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
 import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -88,20 +90,13 @@ function memoize(fn) {
   };
 }
 
-/** Symbols used from another file, and symbols used only by another symbol of their own file. */
-function symbolUses(edges) {
+function importedSymbols(edges) {
   const imported = new Set();
-  const local = new Set();
   for (const e of edges) {
-    if (!IMPORTER_EDGES.has(e.kind) || e.srcId === e.dstId) continue;
-    (fileOf(e.srcId) === fileOf(e.dstId) ? local : imported).add(e.dstId);
+    if (IMPORTER_EDGES.has(e.kind) && fileOf(e.srcId) !== fileOf(e.dstId)) imported.add(e.dstId);
   }
-  return { imported, local };
+  return imported;
 }
-
-const quoted = (specifier) => `["']${specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`;
-const namespaceImport = (specifier) => new RegExp(`import\\s+(?:type\\s+)?\\*\\s*as\\s+[\\w$]+\\s+from\\s*${quoted(specifier)}`);
-const dynamicImport = (specifier) => new RegExp(`import\\(\\s*${quoted(specifier)}\\s*\\)`);
 
 function readRepoFile(id) {
   try {
@@ -111,18 +106,26 @@ function readRepoFile(id) {
   }
 }
 
+function sourceReader(readSource) {
+  return memoize((id) => {
+    const text = readSource(id);
+    const masked = maskSource(text);
+    return { masked, ...wholeImportSpecifiers(text, masked) };
+  });
+}
+
 /**
  * Files imported whole, and every file they re-export. code-graph gives `import * as ns` only the file-level
  * `imports` edge, as it does a named import of a name the target re-exports from npm, so the importer's source
  * decides. A dynamic `import()` counts unless a destructured binding already left a `references` edge.
  */
-function wholeModuleImports(edges, files, readSource) {
+function wholeModuleImports(edges, files, source) {
   const key = (e) => `${fileOf(e.srcId)}\0${e.attrs?.specifier}`;
   const named = new Set(edges.filter((e) => e.kind === "references").map(key));
   const isWhole = (e) => {
-    const source = readSource(fileOf(e.srcId));
-    const specifier = e.attrs?.specifier ?? "";
-    return namespaceImport(specifier).test(source) || (!named.has(key(e)) && dynamicImport(specifier).test(source));
+    const { namespace, dynamic } = source(fileOf(e.srcId));
+    const specifier = e.attrs?.specifier;
+    return namespace.includes(specifier) || (!named.has(key(e)) && dynamic.includes(specifier));
   };
   const whole = edges.filter((e) => e.kind === "imports" && files.has(e.dstId) && fileOf(e.srcId) !== e.dstId && isWhole(e));
   return publicFiles(whole.map((e) => e.dstId), edges);
@@ -131,12 +134,15 @@ function wholeModuleImports(edges, files, readSource) {
 /** Exported symbols of non-entry modules that no other file imports, sorted by id. */
 export function findDeadExports({ nodes, edges, entries, readSource = readRepoFile }) {
   const files = new Map(nodes.filter((n) => n.kind === "file").map((n) => [n.id, n]));
-  const exempt = new Set([...publicFiles(entries, edges), ...wholeModuleImports(edges, files, memoize(readSource))]);
-  const { imported, local } = symbolUses(edges);
+  const source = sourceReader(readSource);
+  const exempt = new Set([...publicFiles(entries, edges), ...wholeModuleImports(edges, files, source)]);
+  const imported = importedSymbols(edges);
+  // Any mention past the declaration is a use in its own file, in a value or a type position alike.
+  const localOnly = (n) => identifierMentions(source(n.parentId).masked, n.name) > 1;
   return nodes
     .filter((n) => n.kind === "symbol" && n.attrs?.exported === true && !imported.has(n.id))
     .filter((n) => !exempt.has(n.parentId) && !ROOT_ROLES.has(files.get(n.parentId)?.role))
-    .map((n) => ({ id: n.id, name: n.name, file: n.parentId, localOnly: local.has(n.id) }))
+    .map((n) => ({ id: n.id, name: n.name, file: n.parentId, localOnly: localOnly(n) }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -176,13 +182,17 @@ export function exitCode({ growth, fresh, reportOnly }) {
   return growth.length > 0 || (fresh.length > 0 && !reportOnly) ? 1 : 0;
 }
 
-export function formatReport({ fresh, carried, fixed }, { reportOnly }) {
-  const lines = fresh.map((f) => `  NEW    ${deadExportMessage(f)}`);
-  lines.push(...carried.map((f) => `  CARRY  ${f.id}`));
-  if (fixed.length > 0) lines.push(`${fixed.length} baselined export(s) are gone; run pnpm dead:check --update to shrink the baseline.`);
+function statusLine({ fresh, carried }, { reportOnly, grew }) {
   const status = `${fresh.length} new, ${carried.length} baselined dead export(s)`;
-  if (fresh.length === 0) lines.push(`✓ ${status}.`);
-  else lines.push(reportOnly ? `${status}; report-only, not failing.` : `${status} — failed.`);
+  if (grew || (fresh.length > 0 && !reportOnly)) return `${status}${grew ? "; the baseline grew" : ""} — failed.`;
+  return fresh.length === 0 ? `✓ ${status}.` : `${status}; report-only, not failing.`;
+}
+
+export function formatReport(result, { reportOnly, grew = false }) {
+  const lines = result.fresh.map((f) => `  NEW    ${deadExportMessage(f)}`);
+  lines.push(...result.carried.map((f) => `  CARRY  ${f.id}`));
+  if (result.fixed.length > 0) lines.push(`${result.fixed.length} baselined export(s) are gone; run pnpm dead:check --update to shrink the baseline.`);
+  lines.push(statusLine(result, { reportOnly, grew }));
   return lines.join("\n");
 }
 
@@ -286,7 +296,7 @@ async function main() {
     return 0;
   }
   const result = compareBaseline(findings, baseline ?? []);
-  console.log(formatReport(result, { reportOnly }));
+  console.log(formatReport(result, { reportOnly, grew: growth.length > 0 }));
   return exitCode({ growth, fresh: result.fresh, reportOnly });
 }
 
