@@ -135,6 +135,23 @@ await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); /
 - `mergeSha` on an open PR is GitHub's test merge. It means the merge commit only once
   `merged` is true.
 
+### Check runs under a GitHub App
+
+`appInstallationToken({ appId, installationId, privateKeyPem, now })` signs an RS256 JWT with
+`node:crypto` (`iss` is the app id, `iat` 60 s in the past, `exp` under 10 minutes) and exchanges
+it at `/app/installations/{id}/access_tokens`. It returns `{ token, expiresAtMs }`. A malformed
+key throws `GitHubInputError` before `gh` runs, and an exchange that answers an already expired
+token throws.
+
+`createCheckRun(repo, { name, headSha, conclusion, title, summary, externalId })` is on the
+wire, the port and `fakeGitHub`. `conclusion` is `success`, `failure` or `action_required`; any
+other value throws `GitHubInputError` before a wire call. `ghCliWire(exec, { appToken })` calls
+the provider for each run and hands the token to `gh` as `GH_TOKEN` in the child env of that one
+call (`GhExecOptions.env`), never in argv and never in `process.env`. An error from the
+exchange or the post has the token, the JWT and the PEM replaced with `[redacted]`. A wire built
+without `appToken` refuses `createCheckRun`. `fakeGitHub({ appId })` records the run under that
+app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it.
+
 ## Where it came from
 
 Extracted unchanged from `products/factory/src/github/` (TP-458), with its tests. The factory
