@@ -77,7 +77,7 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
+own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
 nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
@@ -324,6 +324,38 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
+
+### Growth and untested risks
+
+The scaling-smell and under-tested-hotspot sections of codewatch's `graph report` are pure
+functions over a `ReportContext`, so they run in a browser too:
+
+```ts
+import { buildReportContext, topGrowthRisks, topUntestedRisks } from "@titan-design/code-graph";
+
+const nodes = [{ id: "loopy.ts", kind: "file", name: "loopy.ts" }];
+const metric = (name: string, value: number) => ({ nodeId: "loopy.ts", name, value, unit: "count" });
+const metrics = [
+  metric("loop_depth", 2),
+  metric("churn_30d", 10),
+  metric("cognitive_max", 5),
+  metric("coverage_pct", 0),
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+topGrowthRisks(ctx, 10);
+// [ { nodeId: 'loopy.ts', loopDepth: 2, smells: [ 'quadratic-shaped loop nesting' ] } ]
+
+topUntestedRisks(ctx, 10);
+// [ { nodeId: 'loopy.ts', coverage: 0, hotspot: 50, score: 50 } ]
+```
+
+- `topGrowthRisks` returns `GrowthRiskRow[]`: files with loop nesting of depth 2 or more,
+  recursive functions, or linear searches inside loops. A heuristic, not a Big-O bound.
+  Ranked by loop depth, then smell count.
+- `topUntestedRisks` returns `UntestedRiskRow[]`, ranked by `hotspot × (1 − coverage / 100)`.
+  Files with no `coverage_pct` metric, or full coverage, are omitted, so without a coverage
+  overlay the list is empty.
 
 ## Partition quality
 

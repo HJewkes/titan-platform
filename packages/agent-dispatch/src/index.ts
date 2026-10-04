@@ -12,6 +12,7 @@ export {
   ExecError,
   ExecTimeoutError,
   execSafe,
+  execSafeAsync,
   minimalEnv,
   resolveBinaryPath,
   type SafeExecResult,
