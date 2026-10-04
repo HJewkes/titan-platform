@@ -19,7 +19,7 @@ import type { ServicePorts } from "./service-control.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
-export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
+export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2, UNAVAILABLE: 69 } as const;
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -119,11 +119,12 @@ function registerLand(program: Command, verbs: Verbs): void {
 interface ShepherdOpts {
   port: number;
   json?: boolean;
+  offline?: boolean;
 }
 
 type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
-/** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here. */
+/** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 function registerShepherd(program: Command, verbs: Verbs): void {
   const shepherd = program.command("shepherd").description("shepherd PRs to a merge; gate resolve stays its own verb and is never a shepherd command");
   const verb = (spec: string, description: string): Command =>
@@ -141,6 +142,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
+    .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts), opts));
   verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
@@ -189,6 +191,10 @@ async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opt
     return verbs.setExit(EXIT.USAGE);
   }
   if (await probeHealth(opts.port)) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts.json));
+  if (name === "shepherd.register" && !opts.offline) {
+    verbs.io.stderr(`error: no titan-factory serve answered on port ${opts.port}; nothing was recorded (pass --offline to record the run here anyway)\n`);
+    return verbs.setExit(EXIT.UNAVAILABLE);
+  }
   await verbs.withHost(async (host, routes) => {
     const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
     if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
