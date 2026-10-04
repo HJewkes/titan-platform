@@ -11,7 +11,7 @@ const CONTROL_OR_BACKSLASH = /[\0-\x09\x0b-\x1f\x7f-\x9f\p{Cf}\\]/gu
 const NAMED: Record<string, string> = { "\t": "\\t", "\r": "\\r", "\\": "\\\\" }
 
 /** Built by `pnpm factory:install` next to the bundled bin. */
-export const defaultHelperPath = (): string => join(dirname(fileURLToPath(import.meta.url)), "owner-presence")
+const defaultHelperPath = (): string => join(dirname(fileURLToPath(import.meta.url)), "owner-presence")
 
 const defaultRunner: HelperRunner = (file, args) =>
   new Promise((resolve, reject) => {
@@ -28,7 +28,7 @@ function escapeOne(char: string): string {
 }
 
 /** Control bytes would redraw or hide what the owner reads in the dialog. */
-export const escapeReason = (reason: string): string => reason.replace(CONTROL_OR_BACKSLASH, escapeOne)
+const escapeReason = (reason: string): string => reason.replace(CONTROL_OR_BACKSLASH, escapeOne)
 
 /**
  * Asks the owner for Touch ID or their login password. Returns the helper's proof id, or
