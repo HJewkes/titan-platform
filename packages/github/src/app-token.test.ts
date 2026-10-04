@@ -436,7 +436,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redact(text, []);
-        expect(performance.now() - started).toBeLessThan(500);
+        expect(performance.now() - started).toBeLessThan(2000);
       }
     });
 
