@@ -680,13 +680,14 @@ Tier 2, `@titan-design/session-graph@0.12.1`. Fold session events into the activ
 Key exports:
 
 - `graph`: `SessionGraphNotMigratedError`, `allSessionIds`, `openSessionGraph`, `resetIndex`
+- `schema`: `derivedTables`
 - `audit-apply`: `applyAudit`
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
-- `refresh`: `indexTranscript`, `refreshCorpus`
-- +80 more in the [reference page](/reference/session-graph)
+- `refresh`: `indexTranscript`
+- +83 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 

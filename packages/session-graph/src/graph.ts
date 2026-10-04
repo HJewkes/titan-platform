@@ -1,5 +1,6 @@
 import { EdgeTable, MIGRATION_TABLE_NAME, SpanFtsTables, WatermarkTable, hasTable, openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { DERIVED_TABLES, KIT, MIGRATIONS } from "./schema.js";
+import { ensureNormalizedSchema } from "./normalized-schema.js";
+import { KIT, MIGRATIONS, derivedTables } from "./schema.js";
 
 /** One open session graph: the connection plus the kit helpers bound to its tables. */
 export interface SessionGraph {
@@ -21,6 +22,8 @@ export interface OpenSessionGraphOptions {
    * the graph must already carry every migration this package declares.
    */
   readonly?: boolean;
+  /** Keep the `normalized_*` tables the Codex path reads and writes. Off by default: a graph holds none unless asked. Ignored when read-only. */
+  normalized?: boolean;
 }
 
 export class SessionGraphNotMigratedError extends Error {
@@ -34,6 +37,7 @@ export function openSessionGraph(dbPath: string, options: OpenSessionGraphOption
   const db = openDatabase(dbPath, { schemaVersion: options.schemaVersion, readonly: options.readonly });
   if (options.readonly) assertMigratedOrClose(db);
   else runMigrations(db, MIGRATIONS);
+  if (options.normalized && !options.readonly) ensureNormalizedSchema(db);
   return {
     db,
     transcripts: new WatermarkTable(db, { name: KIT.watermark }),
@@ -64,7 +68,7 @@ function appliedNames(db: Db): Map<number, string | null> {
  */
 export function resetIndex(graph: SessionGraph): void {
   graph.db.transaction(() => {
-    for (const table of DERIVED_TABLES) graph.db.exec(`DELETE FROM "${table}"`);
+    for (const table of derivedTables(graph.db)) graph.db.exec(`DELETE FROM "${table}"`);
     graph.spans.clearIndex();
     for (const row of graph.transcripts.list()) graph.transcripts.rewind(row.sourceKey);
   })();

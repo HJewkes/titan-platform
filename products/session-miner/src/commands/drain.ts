@@ -4,6 +4,7 @@ import { readIndexedText, type SessionGraph } from "@titan-design/session-graph"
 import { nowIso } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { hasNormalized } from "../normalized-tables.js";
 
 /** Error blobs are partitioned as one tool type until tool names are threaded through facts. */
 const PARTITION = "tool_result";
@@ -65,24 +66,22 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
 
 /** Error facts not yet clustered, joined to their transcript path. */
 function pendingErrorFacts(graph: SessionGraph, limit?: number): ErrorFact[] {
-  return graph.db
-    .prepare(
-      `SELECT f.fact_id, f.transcript_id, f.byte_offset, f.byte_length, f.session_id, f.ts, t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
+  const parts = [CLAUDE_ERROR_FACTS, ...(hasNormalized(graph) ? [NORMALIZED_ERROR_FACTS] : [])];
+  return graph.db.prepare(`${parts.join(" UNION ALL ")} ORDER BY ts LIMIT ?`).all(limit ?? -1) as ErrorFact[];
+}
+
+const CLAUDE_ERROR_FACTS = `SELECT f.fact_id, f.transcript_id, f.byte_offset, f.byte_length, f.session_id, f.ts, t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
        FROM fact f JOIN transcript t ON t.source_id = f.transcript_id
        LEFT JOIN occurrence o ON o.transcript_id = f.transcript_id AND o.byte_offset = f.byte_offset
        LEFT JOIN drain_screened d ON d.transcript_id = f.transcript_id AND d.byte_offset = f.byte_offset AND d.source_hash = COALESCE(t.content_hash,t.prefix_hash,'')
-       WHERE f.event_type = 'tool_result_error' AND o.template_id IS NULL AND d.transcript_id IS NULL AND t.status = 'ok'
-       UNION ALL
-       SELECT 0 AS fact_id,n.transcript_id,n.byte_offset,MAX(n.byte_length),n.conversation_ref AS session_id,COALESCE(MIN(n.ts),t.created_at) AS ts,t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
+       WHERE f.event_type = 'tool_result_error' AND o.template_id IS NULL AND d.transcript_id IS NULL AND t.status = 'ok'`;
+
+const NORMALIZED_ERROR_FACTS = `SELECT 0 AS fact_id,n.transcript_id,n.byte_offset,MAX(n.byte_length),n.conversation_ref AS session_id,COALESCE(MIN(n.ts),t.created_at) AS ts,t.source_key AS path, COALESCE(t.content_hash,t.prefix_hash,'') AS source_hash
        FROM normalized_event n JOIN transcript t ON t.source_id = n.transcript_id
        LEFT JOIN occurrence o ON o.transcript_id = n.transcript_id AND o.byte_offset = n.byte_offset
        LEFT JOIN drain_screened d ON d.transcript_id = n.transcript_id AND d.byte_offset = n.byte_offset AND d.source_hash = COALESCE(t.content_hash,t.prefix_hash,'')
        WHERE n.kind = 'tool_result' AND n.is_error IS NOT 0 AND o.template_id IS NULL AND d.transcript_id IS NULL AND t.status = 'ok'
-       GROUP BY n.transcript_id,n.byte_offset
-       ORDER BY ts LIMIT ?`,
-    )
-    .all(limit ?? -1) as ErrorFact[];
-}
+       GROUP BY n.transcript_id,n.byte_offset`;
 
 function recordOccurrence(graph: SessionGraph, fact: ErrorFact, templateId: string, maskedSignature: string, params: Record<string, string>): void {
   graph.db
