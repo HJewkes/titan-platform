@@ -340,13 +340,29 @@ describe("a git command whose subcommand word is dynamic", () => {
     ["an unquoted --namespace value", "git --namespace=$D origin HEAD:main"],
     ["an unquoted -c value", "git -c $V origin HEAD:main"],
     ["a dynamic option flag", "git -$X origin HEAD:main"],
+    ["a -C value with an empty quote after the variable", 'git -C $D"" origin HEAD:main'],
+    ["a -C value with an unquoted variable after a quoted one", 'git -C "$D"$E origin HEAD:main'],
+    ["a -C value with an unquoted variable after empty quotes", 'git -C ""$D origin HEAD:main'],
+    ["a --git-dir value with an empty quote after the variable", 'git --git-dir=$D"" origin HEAD:main'],
+    ["a --git-dir value with an unquoted variable after a quoted one", 'git --git-dir="$D"$E origin HEAD:main'],
+    ["a -c value with an empty quote after the variable", 'git -c $V"" origin HEAD:main'],
+    ["a -c value with an unquoted variable after a quoted one", 'git -c "$V"$E origin HEAD:main'],
+    ["a command substitution after a quoted -C value", 'git -C "$D"$(pwd) origin HEAD:main'],
   ])("counts %s as a push to an unknown branch", (_name, command) => {
     const actions = bash(command).filter((a) => a.spelling === "bash.merge.git-push-protected");
     expect(actions.map((a) => a.subject)).toEqual([{ branch: "unknown" }]);
   });
 
-  it("still allows a quoted -C value, which cannot word-split", () => {
-    expect(bash('git -C "$D" status')).toEqual([]);
+  it.each([['git -C "$D"x status'], ['git -C x"$D" status'], ['git -C "$D" status'], ['git --git-dir="$D" status']])(
+    "still allows %s, whose variable is fully quoted",
+    (command) => {
+      expect(bash(command)).toEqual([]);
+    },
+  );
+
+  it.each([["--attr-source HEAD"], ["--super-prefix x"]])("reads the push behind the separate-value option %s", (option) => {
+    const actions = bash(`git ${option} push origin HEAD:main`);
+    expect(actions.map((a) => [a.spelling, a.subject])).toEqual([["bash.merge.git-push-protected", { branch: "main" }]]);
   });
 
   it("still allows a literal git status", () => {

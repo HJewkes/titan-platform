@@ -1,7 +1,7 @@
 import type { WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 
-const GLOBAL_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
+const GLOBAL_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source", "--super-prefix"]);
 
 export interface GitInvocation {
   /** Directory git operates in after `-C`, null when unknown. */
@@ -38,7 +38,7 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
 }
 
 /** An unquoted dynamic word word-splits, so it can carry the subcommand itself. */
-const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && !word.quoted);
+const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
 
 function option(args: WordToken[], i: number, valueOpts: Set<string>) {
   const word = args[i] as WordToken;
