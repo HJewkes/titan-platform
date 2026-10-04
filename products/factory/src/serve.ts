@@ -164,14 +164,18 @@ interface Sweep {
 
 /** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. */
 async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger): Promise<void> {
-  if (services) await recheckBeforeAdopt(host, services, held, log);
-  const ids = await host.adopt();
+  const exclude = services ? await recheckBeforeAdopt(host, services, held, log) : new Set<string>();
+  const ids = await host.adopt({ exclude });
   for (const id of ids) held.delete(id);
   if (ids.length > 0) log.info({ runs: ids }, "adopted runs");
 }
 
-async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices, held: Set<string>, log: Logger): Promise<void> {
-  for (const ended of await recheckHeld(host, services, held)) log.info({ ...ended }, "ended a held run whose PR left Shepherd before adoption");
+/** The held runs whose PR could not be read are returned, so adoption leaves them for the next tick instead of failing open. */
+async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices, held: Set<string>, log: Logger): Promise<Set<string>> {
+  const { ended, unreadable } = await recheckHeld(host, services, held);
+  for (const run of ended) log.info({ ...run }, "ended a held run whose PR left Shepherd before adoption");
+  for (const [runId, cause] of unreadable) log.warn({ runId, cause }, "left a held run unadopted: its PR could not be read");
+  return new Set(unreadable.keys());
 }
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
@@ -185,6 +189,7 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
     const report = await resyncShepherd(host, services);
     for (const runId of report.held) held.add(runId);
     for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
+    if (report.supersedeError) log.error({ err: report.supersedeError }, "shepherd resync could not supersede moved gates");
     log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
   } catch (err) {
     log.error({ err }, "shepherd resync at start failed");

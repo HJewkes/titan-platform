@@ -688,6 +688,26 @@ describe("sh-review", () => {
     expect(dispatch.spawns[0]!.brief).toContain("- Does octo/demo#7 fail open anywhere?");
   });
 
+  it("asks the codewatch questions ahead of the bank and records the report on the step", async () => {
+    const dispatch = fakeDispatch();
+    const codewatch = async () => ({ questions: ["src/a.ts:3 breaks a rule?"], evidence: { found: true, schema: "codewatch-pr-report@1", questions: 1, dropped: 0 } });
+
+    const { result } = await shReview(dispatch, { wiring: { codewatch, questions: async () => ["Does it fail open?"] } });
+
+    const brief = dispatch.spawns[0]!.brief;
+    expect(brief.indexOf("- src/a.ts:3 breaks a rule?")).toBeLessThan(brief.indexOf("- Does it fail open?"));
+    expect(result).toMatchObject({ kind: "dispatched", codewatch: { found: true, schema: "codewatch-pr-report@1", questions: 1, dropped: 0 } });
+  });
+
+  it("still dispatches the reviewer when the codewatch report is missing", async () => {
+    const dispatch = fakeDispatch();
+    const codewatch = async () => ({ questions: [], evidence: { found: false, schema: null, questions: 0, dropped: 0 } });
+
+    const { result } = await shReview(dispatch, { wiring: { codewatch } });
+
+    expect(result).toMatchObject({ kind: "dispatched", codewatch: { found: false, schema: null, questions: 0 } });
+  });
+
   it("takes the next free name when an earlier agent held the PR's reviewer name, and resumes nobody", async () => {
     const dispatch = fakeDispatch([agent("rv-octo-demo-7", { fillTokens: 1_000 })]);
 

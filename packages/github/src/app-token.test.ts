@@ -1,6 +1,7 @@
 import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { appInstallationToken, signAppJwt } from "./app-token.js";
+import { redact, redactStreams } from "./redact.js";
 import { GhError, type GhExec, type GhExecOptions, type GhResult } from "./exec.js";
 import { fakeGitHub, fakeSha, FAKE_APP_ID } from "./fake.js";
 import { ghCliWire } from "./gh-cli.js";
@@ -214,5 +215,97 @@ describe("fake createCheckRun round trip", () => {
 
     expect(fake.calls).toEqual(["createCheckRun"]);
     expect((await port.checkRuns(REPO, HEAD))[0]?.appId).toBe(FAKE_APP_ID);
+  });
+});
+
+describe("token shape scrub", () => {
+  const SHAPED = "ghs_" + "A1b2C3d4".repeat(5);
+  const JWT = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiIxIn0.c2ln-nature_x";
+  const exchange = (stdout: string, stderr: string) => appInstallationToken(credentials, scripted(() => ({ code: 1, stdout, stderr })).exec).catch((caught: Error) => caught.message);
+  const checkRun = (result: GhResult, appToken = async () => TOKEN) =>
+    githubPort(ghCliWire(scripted(() => result).exec, { budget: rateBudget(), appToken })).createCheckRun(REPO, request).catch((caught: Error) => caught);
+
+  it("scrubs a bare token in stderr with empty stdout, with or without a newline", async () => {
+    for (const echoed of [`denied ${SHAPED}`, `denied ${SHAPED}\n`, `denied ${JWT}\n`]) {
+      expect(await exchange("", echoed)).not.toMatch(/ghs_A1b2|eyJhbGci/);
+      const error = (await checkRun({ code: 1, stdout: "", stderr: echoed })) as GhError;
+      expect(error.result.stderr).not.toMatch(/ghs_A1b2|eyJhbGci/);
+    }
+  });
+
+  it("scrubs escaped JSON that never forms a closed token pair", async () => {
+    const message = await exchange(`{\\"token\\":\\"${SHAPED}`, `{\\"token\\":\\"${SHAPED}\\"}`);
+
+    expect(message).toContain("[redacted]");
+    expect(message).not.toContain("ghs_A1b2");
+  });
+
+  it("cuts a token split across stdout and stderr from both halves", () => {
+    const [out, err] = redactStreams(`partial ${SHAPED.slice(0, 15)}`, `${SHAPED.slice(15)} tail`, []);
+
+    expect(out + err).not.toMatch(/A1b2/);
+    expect(out).toBe("partial [redacted]");
+    expect(err).toBe("[redacted] tail");
+  });
+
+  it("redacts a token quoted by a rejecting appToken provider", async () => {
+    const error = await checkRun(ok({ id: 1 }), async () => { throw new Error(`mint failed for ${SHAPED}`); });
+
+    expect((error as Error).message).toBe("mint failed for [redacted]");
+  });
+
+  it("leaves ordinary text alone", () => {
+    expect(redact("gh: not found at api.github.com/repos/a.b", [])).toBe("gh: not found at api.github.com/repos/a.b");
+  });
+
+  it("keeps dotted names that only open like a JWT, and still redacts a real JWT", () => {
+    expect(redact("load eyJson.config.js and keyJar.x.y", [])).toBe("load eyJson.config.js and keyJar.x.y");
+    expect(redact(`bearer ${JWT}`, [])).toBe("bearer [redacted]");
+  });
+
+  it("redacts a classic 40-hex token after a token keyword, in any case, and leaves a bare sha alone", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+
+    for (const line of [`token ${hex}`, `Authorization: token ${hex}`, `BEARER ${hex}`, `{"token": "${hex}"}`]) {
+      expect(redact(line, [])).not.toContain(hex);
+    }
+    expect(redact(`commit ${hex}`, [])).toBe(`commit ${hex}`);
+  });
+
+  it("redacts a token whose underscore is URL-encoded", () => {
+    expect(redact(`next=${SHAPED.replace("_", "%5F")}&x=1`, [])).toBe("next=[redacted]&x=1");
+    expect(redact(`next=${SHAPED.replace("_", "%5f")}`, [])).toBe("next=[redacted]");
+  });
+
+  it("keeps the first word of stderr when stdout ends in a whole token with no newline", () => {
+    const [out, err] = redactStreams(`minted ${SHAPED}`, "gh: Not Found (HTTP 404)", []);
+
+    expect(out).toBe("minted [redacted]");
+    expect(err).toBe("gh: Not Found (HTTP 404)");
+  });
+
+  it("cuts a token split by a newline at the end of stdout from both halves", () => {
+    const [out, err] = redactStreams(`partial ${SHAPED.slice(0, 15)}\n`, `${SHAPED.slice(15)} tail`, []);
+
+    expect(out).toBe("partial [redacted]");
+    expect(err).toBe("[redacted] tail");
+  });
+
+  it("throws a REST error whose message carries neither half of a split token", async () => {
+    for (const stdout of [`partial ${SHAPED.slice(0, 15)}`, `partial ${SHAPED.slice(0, 15)}\n`]) {
+      const result = { code: 1, stdout, stderr: `${SHAPED.slice(15)} (HTTP 403)` };
+      const error = await githubPort(ghCliWire(scripted(() => result).exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+
+      expect(error).toBeInstanceOf(GhError);
+      expect((error as GhError).message).toMatch(/failed \(1\): \[redacted\] \(HTTP 403\)$/);
+      expect((error as GhError).message).not.toMatch(/A1b2|C3d4/);
+    }
+  });
+
+  it("redacts a token quoted in a GraphQL error message", async () => {
+    const body = { errors: [{ message: `bad credential ${SHAPED}` }] };
+    const exec = scripted(() => ({ code: 0, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(body)}`, stderr: "" })).exec;
+
+    await expect(githubPort(ghCliWire(exec, { budget: rateBudget() })).listReviewComments(REPO, 7)).rejects.toThrow(/bad credential \[redacted\]$/);
   });
 });

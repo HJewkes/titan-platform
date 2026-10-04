@@ -1,10 +1,4 @@
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +10,7 @@ import {
   dispatchToAgentChat as dispatchWithAllowlist,
   type DispatchRequest,
 } from "./dispatch.js";
+import { installExecutable } from "./test-support.js";
 
 // relay's profile names; the allowlist is the caller's policy, passed in.
 const DISPATCH_PROFILE = "relay-implementer";
@@ -41,7 +36,7 @@ afterEach(() => {
  */
 function fakeAgentChat(script = "exit 0\n"): string {
   const path = join(dir, "agent-chat");
-  writeFileSync(
+  installExecutable(
     path,
     `#!/bin/sh\n` +
       `: >"${dir}/argv"\n` +
@@ -54,7 +49,6 @@ function fakeAgentChat(script = "exit 0\n"): string {
       `cat >"${dir}/stdin"\n` +
       script,
   );
-  chmodSync(path, 0o755);
   return path;
 }
 

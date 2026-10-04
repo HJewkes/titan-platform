@@ -8,7 +8,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { DaemonAlreadyRunningError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
+import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
 import { NonLoopbackBindError } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
@@ -300,5 +300,33 @@ describe("stale pid file", () => {
 
       await expect(startDaemon(options({ processStartTime: unknown }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
     });
+  });
+});
+
+describe("startDaemon port conflicts", () => {
+  async function freePort(): Promise<number> {
+    const probe = createServer();
+    probe.listen(0, "127.0.0.1");
+    await once(probe, "listening");
+    const { port } = probe.address() as AddressInfo;
+    probe.close();
+    await once(probe, "close");
+    return port;
+  }
+
+  it("rejects the second daemon on a taken port while the first keeps serving", async () => {
+    const port = await freePort();
+    const otherStateDir = await mkdtemp(path.join(tmpdir(), "titan-daemon-other-"));
+    handle = await startDaemon(options({ port }));
+    try {
+      const failure = await startDaemon(options({ port, stateDir: otherStateDir })).catch((err: unknown) => err);
+      expect(failure).toBeInstanceOf(DaemonPortInUseError);
+      expect((failure as DaemonPortInUseError).port).toBe(port);
+      expect((failure as Error).message).toContain(String(port));
+      const health = await fetch(`http://127.0.0.1:${port}/health`);
+      expect(health.status).toBe(200);
+    } finally {
+      await rm(otherStateDir, { recursive: true, force: true });
+    }
   });
 });

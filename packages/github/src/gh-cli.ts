@@ -1,5 +1,5 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
-import { redact } from "./app-token.js";
+import { redact, redactStreams } from "./redact.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
@@ -81,7 +81,8 @@ async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string,
 function redactedError(error: unknown, secrets: readonly string[]): Error {
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
-    return new GhError(error.args, { code, stdout: redact(stdout, secrets), stderr: redact(stderr, secrets) }, error.status);
+    const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }
@@ -264,7 +265,7 @@ interface GhGraphql<T> {
 async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
   const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
   const value = answer.data === undefined ? undefined : pick(answer.data);
-  if (value === null || value === undefined) throw new Error(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`);
+  if (value === null || value === undefined) throw new Error(redact(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`, []));
   return value;
 }
 

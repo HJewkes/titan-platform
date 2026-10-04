@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { runCli } from "../cli.js";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -16,7 +16,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
 import { SHEPHERD_WORKFLOW } from "./commands.js";
-import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
+import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ORPHANED, resyncShepherd } from "./resync.js";
@@ -243,6 +243,28 @@ function approveThenMerge(): WorkflowDefinition {
   });
 }
 
+describe("resyncShepherd when superseding moved gates throws", () => {
+  it("still reports the runs it ended and the error", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    merge(w.fake, 1);
+    const routes = w.freshRoutes();
+    const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
+    cleanups.push(() => host.close());
+    const services = routes.shepherd!;
+    const broken: FactoryHost = Object.assign(Object.create(host) as FactoryHost, {
+      pendingGates: () => {
+        throw new Error("gate store down");
+      },
+    });
+
+    const report = await resyncShepherd(broken, services);
+
+    expect(report.ended.map((ended) => ended.runId)).toEqual([runId]);
+    expect(report.supersedeError).toBe("gate store down");
+  });
+});
+
 describe("endRunsGoneElsewhere while the run moves on", () => {
   it("keeps a run whose own merge is recorded while its PR read is in flight", async () => {
     const w = world({ workflows: [approveThenMerge()] });
@@ -356,6 +378,7 @@ describe("titan-factory shepherd resync", () => {
 
 describe("recheck before adoption", () => {
   const LEASE_MS = 40;
+  afterEach(() => vi.useRealTimers());
 
   /** The seed died a second ago: its lease is still live at `now`, so start resync cannot cancel its run. */
   async function crashRestart(w: World, now: { value: number }): Promise<FactoryServer> {
@@ -384,15 +407,95 @@ describe("recheck before adoption", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  describe("a held run whose PR read fails", () => {
+    /** Fake only the sweep interval, so the test steps ticks itself instead of sleeping through real lease time. */
+    const fakeSweepTimer = (): void => void vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const tickFor = async (ms: number): Promise<void> => void (await vi.advanceTimersByTimeAsync(ms));
+
+    /** getPr rejects for PR 1 only, while `unreadable.value` is set, with `failure`. */
+    function flakyRoutes(w: World, unreadable: { value: boolean }, failure: Error = new Error("rate limited")): FactoryRoutes {
+      const fresh = w.freshRoutes();
+      const getPr = fresh.shepherd!.port.getPr.bind(fresh.shepherd!.port);
+      const port = { ...fresh.shepherd!.port, getPr: async (repo: string, pr: number) => (unreadable.value && pr === 1 ? Promise.reject(failure) : getPr(repo, pr)) };
+      return Object.assign([...fresh], { database: fresh.database, shepherd: { ...fresh.shepherd!, port } });
+    }
+
+    async function twoHeldRuns(unreadable: { value: boolean }, failure?: Error) {
+      fakeSweepTimer();
+      const w = world({ hangAt: "land-rules" });
+      const runs = [await stuckRun(w, 1, "land-rules"), await stuckRun(w, 2, "land-rules")] as const;
+      const now = { value: T0 + 1_000 };
+      const server = await serve(w, { now: () => now.value, leaseMs: LEASE_MS, routes: flakyRoutes(w, unreadable, failure) });
+      now.value = AFTER_LEASE;
+      await tickFor(LEASE_MS);
+      await gateOpened(server.host, gateId(runs[1], "approve-merge"));
+      return { w, server, runs };
+    }
+
+    it("is neither adopted nor driven while another run in the same tick is, then adopted once the read succeeds", async () => {
+      const unreadable = { value: true };
+      const { server, runs } = await twoHeldRuns(unreadable);
+      await tickFor(3 * LEASE_MS);
+
+      expect(server.host.gates.get(gateId(runs[0], "approve-merge"))).toBeUndefined();
+      expect(server.host.runtime.status(runs[0])?.status).toBe("running");
+
+      unreadable.value = false;
+      await tickFor(LEASE_MS);
+      await gateOpened(server.host, gateId(runs[0], "approve-merge"));
+      expect(server.host.runtime.status(runs[0])?.status).toBe("paused");
+    });
+
+    it("stays unreadable on a 502, then is adopted once a later read succeeds", async () => {
+      const unreadable = { value: true };
+      const { server, runs } = await twoHeldRuns(unreadable, Object.assign(new Error("bad gateway"), { status: 502 }));
+      await tickFor(3 * LEASE_MS);
+
+      expect(server.host.runtime.status(runs[0])?.status).toBe("running");
+
+      unreadable.value = false;
+      await tickFor(LEASE_MS);
+      await gateOpened(server.host, gateId(runs[0], "approve-merge"));
+      expect(server.host.runtime.status(runs[0])?.status).toBe("paused");
+    });
+
+    it("is ended as gone, naming the 404, when its PR answers not found", async () => {
+      const { server, runs } = await twoHeldRuns({ value: true }, new FakeHttpError(404, "no pull 1"));
+      await tickFor(LEASE_MS);
+      const run = await settled(server.host, runs[0]);
+
+      expect(run.status).toBe("cancelled");
+      expect(run.error?.startsWith(DELETED_ELSEWHERE)).toBe(true);
+      expect(run.error).toContain("404");
+      expect(never(run)).toEqual([]);
+    });
+
+    it("is ended, never driven, when a later read finds its PR merged", async () => {
+      const unreadable = { value: true };
+      const { w, server, runs } = await twoHeldRuns(unreadable);
+      await sleep(3 * LEASE_MS, new AbortController().signal);
+      merge(w.fake, 1);
+      unreadable.value = false;
+      await tickFor(LEASE_MS);
+      const run = await settled(server.host, runs[0]);
+
+      expect(run.status).toBe("cancelled");
+      expect(run.error?.startsWith(LANDED_ELSEWHERE)).toBe(true);
+      expect(never(run)).toEqual([]);
+    });
+  });
+
   it("a skipped run whose PR is still open is adopted and driven as before", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const w = world();
     const runId = await gatedRun(w, 1);
     const now = { value: T0 + 1_000 };
 
     const server = await crashRestart(w, now);
     now.value = AFTER_LEASE;
+    await vi.advanceTimersByTimeAsync(LEASE_MS);
     await gateOpened(server.host, gateId(runId, "approve-merge"));
-    await sleep(3 * LEASE_MS, new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(3 * LEASE_MS);
 
     expect(server.host.runtime.status(runId)?.status).toBe("paused");
     expect(server.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");

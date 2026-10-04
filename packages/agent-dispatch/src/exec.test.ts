@@ -11,6 +11,7 @@ import {
   minimalEnv,
   resolveBinaryPath,
 } from "./exec.js";
+import { installExecutable } from "./test-support.js";
 
 let dir: string;
 
@@ -24,8 +25,7 @@ afterEach(() => {
 
 function writeScript(contents: string): string {
   const path = join(dir, "script.sh");
-  writeFileSync(path, contents);
-  chmodSync(path, 0o755);
+  installExecutable(path, contents);
   return path;
 }
 

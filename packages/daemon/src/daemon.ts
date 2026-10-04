@@ -70,6 +70,14 @@ export class DaemonAlreadyRunningError extends Error {
   }
 }
 
+/** The requested port is already bound; `port` and `host` name what was asked for. */
+export class DaemonPortInUseError extends Error {
+  constructor(readonly port: number, readonly host: string, options?: ErrorOptions) {
+    super(`Port ${port} on ${host} is already in use`, options);
+    this.name = "DaemonPortInUseError";
+  }
+}
+
 export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<DaemonHandle> {
   const log = options.logger ?? consoleLogger;
   assertBindAllowed(options);
@@ -266,8 +274,17 @@ function listen(
   port: number,
   mcp: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null,
 ): Promise<ServerType> {
-  return new Promise((resolve) => {
-    const server = serve({ fetch: app.fetch, hostname, port }, () => resolve(server));
+  return new Promise((resolve, reject) => {
+    const server = serve({ fetch: app.fetch, hostname, port }, () => {
+      server.off("error", onBindError);
+      resolve(server);
+    });
+    // serve() attaches no error listener; without this a bind failure is an uncaught exception.
+    const onBindError = (err: NodeJS.ErrnoException): void => {
+      server.off("error", onBindError);
+      reject(err.code === "EADDRINUSE" ? new DaemonPortInUseError(port, hostname, { cause: err }) : err);
+    };
+    server.on("error", onBindError);
     if (mcp) spliceMcpRoute(server, mcp);
   });
 }

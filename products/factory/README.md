@@ -278,6 +278,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
+| `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
