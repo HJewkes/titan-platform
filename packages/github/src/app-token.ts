@@ -2,6 +2,7 @@ import { createPrivateKey, createSign } from "node:crypto";
 import { execGh, type GhExec } from "./exec.js";
 import { GitHubInputError } from "./validate.js";
 import { parseIncluded } from "./rest.js";
+import { redact, redactStreams } from "./redact.js";
 
 export interface AppCredentials {
   appId: number;
@@ -33,25 +34,6 @@ export function signAppJwt(appId: number, privateKeyPem: string, nowMs: number):
     // The node error can quote key material, so none of it is carried over.
     throw new GitHubInputError("privateKeyPem", "[redacted]", "not a usable RSA private key in PEM form");
   }
-}
-
-// GitHub token prefixes (ghs_, ghu_, gho_, ghp_, ghr_, github_pat_) and the three-part base64url JWT, which always opens with `eyJ`.
-const TOKEN_SHAPE = /gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|eyJ[\w-]+\.[\w-]+\.[\w-]+/g;
-
-/** Replaces every secret and every token-shaped string in `text`, so an error or log line built from `gh` output cannot leak one. */
-export function redact(text: string, secrets: readonly string[]): string {
-  const exact = secrets.filter((secret) => secret.length > 0).reduce((out, secret) => out.split(secret).join("[redacted]"), text);
-  return exact.replace(TOKEN_SHAPE, "[redacted]");
-}
-
-/** Redacts two streams as one text, so a token split across them is cut from both halves. */
-export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
-  const joined = first + second;
-  const cuts = [...joined.matchAll(TOKEN_SHAPE)].filter((m) => m.index < first.length && m.index + m[0].length > first.length);
-  if (cuts.length === 0) return [redact(first, secrets), redact(second, secrets)];
-  const head = first.slice(0, Math.min(...cuts.map((m) => m.index)));
-  const tail = second.slice(Math.max(...cuts.map((m) => m.index + m[0].length)) - first.length);
-  return [redact(head, secrets) + "[redacted]", "[redacted]" + redact(tail, secrets)];
 }
 
 /** Exchanges a freshly signed App JWT for an installation token; the JWT reaches `gh` as `GH_TOKEN` for this call only. */

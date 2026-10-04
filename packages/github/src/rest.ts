@@ -1,5 +1,6 @@
 import type { RateBudget } from "./budget.js";
-import { GhError, type GhExec } from "./exec.js";
+import { GhError, type GhExec, type GhResult } from "./exec.js";
+import { redactStreams } from "./redact.js";
 
 export interface HttpResponse {
   status: number;
@@ -72,9 +73,15 @@ function runner(exec: GhExec, budget: RateBudget): Run {
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
-    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, result, response?.status);
+    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, scrubbed(result), response?.status);
     return response ?? { status: 200, headers: new Map(), body: result.stdout };
   };
+}
+
+/** Every non-exchange call's error quotes raw `gh` output, which can carry a token shape. */
+function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
+  const [cleanOut, cleanErr] = redactStreams(stdout, stderr, []);
+  return { code, stdout: cleanOut, stderr: cleanErr };
 }
 
 function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[]) => Promise<HttpResponse> {
