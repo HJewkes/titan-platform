@@ -14,6 +14,9 @@ const ENTRIES = [
   "dashboard-coupling.ts",
   "dashboard-health.ts",
   "dashboard-node-metrics.ts",
+  "graph-arch-compute.ts",
+  "graph-arch-types.ts",
+  "package-buckets.ts",
 ];
 // dashboard-symbol-coupling.ts is left out: symbol-coupling.ts reaches node:path through
 // extractors/ids.ts, so the coupling payload is not yet browser-safe.
