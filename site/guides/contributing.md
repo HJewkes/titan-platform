@@ -222,3 +222,5 @@ catalog after bumping versions. The script fails when a unit has no `CAPABILITY.
 
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.
+
+This paragraph is a Shepherd proof PR (TP-580). Do not merge.
