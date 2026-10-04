@@ -168,6 +168,15 @@ post-merge read, a close stops. `titan-factory serve` also checks, every 5 minut
 request of each run that is waiting on a gate. When that pull request was merged or closed
 elsewhere, the serve process cancels the run and its gate.
 
+Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
+whose pull request was merged outside Shepherd ends with a reason that starts
+`landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
+pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
+request moved head is superseded. A run that recorded its own `merge` step or a post-merge
+step is Shepherd's merge and is never ended this way. A pull request that cannot be read leaves
+its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
+prints what it would end, cancel or supersede and writes nothing.
+
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
 head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt
