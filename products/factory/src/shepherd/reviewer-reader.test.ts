@@ -2,7 +2,7 @@ import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFile
 import os from "node:os";
 import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -305,25 +305,41 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const PARTIAL = JSON.stringify(assistant(SESSION, ["On reflection"])).slice(0, 60);
     const sentOnly = [user(SESSION, "review it"), assistantRecord(SESSION, [sendVerdict(FIX_FIRST_BLOCK)])];
     const quiet = [user(SESSION, "review it"), assistant(SESSION, ["Reading."])];
+    /** A MERGE on PR 7 at an older head, then more work: the transcript names its PR before it breaks. */
+    const reviewingPr7 = [user(SESSION, "review it"), assistant(SESSION, [BLOCK.replace(HEAD, "b".repeat(40))]), assistant(SESSION, ["Looking again."])];
 
     /** The seat check over one transcript of `records`, with `partial` appended as an unterminated last record. */
-    async function seatCheck(records: readonly Json[], presence: string, partial = false) {
+    async function seatCheck(records: readonly Json[], presence: string, partial = false, pr = 7, warn = vi.fn()) {
       const transcript = writeTranscript(SESSION, records);
       if (partial) appendFileSync(transcript, PARTIAL, "utf8");
       const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript }];
       const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-      return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 7, head: HEAD });
+      return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr, head: HEAD }, warn);
     }
 
     it.each(["exited", "detached"])("blocks on a FIX_FIRST sent by a %s reviewer whose transcript ends on the chat_send call", async (presence) => {
       expect(await seatCheck(sentOnly, presence)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: HEAD });
     });
 
-    it.each(["exited", "detached"])("blocks with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
-      expect(await seatCheck(quiet, presence, true)).toEqual({
+    it.each(["exited", "detached"])("blocks its own PR with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
+      expect(await seatCheck(reviewingPr7, presence, true)).toEqual({
         kind: "none",
         reason: `seat check: the transcript of ${seat.name} could not be read: the ${presence} session ${SESSION} ends in a partial record`,
       });
+    });
+
+    it("leaves another PR's MERGE standing and warns when an exited reviewer of PR 7 ends in a partial record", async () => {
+      const warn = vi.fn();
+
+      expect(await seatCheck(reviewingPr7, "exited", true, 8, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${seat.name} is not the reviewer of octo/demo#8`));
+    });
+
+    it("does not block on a damaged transcript that names no PR, and warns", async () => {
+      const warn = vi.fn();
+
+      expect(await seatCheck(quiet, "exited", true, 7, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("ends in a partial record"));
     });
 
     it("stays clear for a running reviewer whose last record is still being written", async () => {
