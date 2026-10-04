@@ -66,8 +66,11 @@ function supersedableHead(host: FactoryHost, { runId, stepId, gate }: PendingGat
   return seatPolicyHead(run, gate.prompt);
 }
 
-/** Cancels each shepherd-pr seat-policy approve-merge or sh-sent-back gate whose PR moved past the head it asks about; the run then takes the new head. */
-export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices): Promise<SupersededGate[]> {
+/**
+ * Cancels each shepherd-pr seat-policy approve-merge or sh-sent-back gate whose PR moved past the head it asks about; the
+ * run then takes the new head. `dryRun` reports those gates and cancels none.
+ */
+export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   for (const pending of host.pendingGates()) {
     const { runId, gate } = pending;
@@ -75,7 +78,7 @@ export async function supersedeMovedGates(host: FactoryHost, services: ShepherdS
     if (!asked) continue;
     const head = await openHead(services, runId);
     if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
-    host.gates.cancel(gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`);
+    if (!dryRun) host.gates.cancel(gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`);
     superseded.push({ runId, gateId: gate.id, from: asked, to: head });
   }
   return superseded;
