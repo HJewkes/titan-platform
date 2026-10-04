@@ -84,10 +84,20 @@ export class RunContext implements WorkflowContext {
   }
 
   dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
-    const pending = this.dispatchStep(stepId, template, options) as Promise<StepResult<T>>;
+    const pending = this.reportingFailure(stepId, () => this.dispatchStep(stepId, template, options)) as Promise<StepResult<T>>;
     this.inFlight.add(pending);
     void pending.then(() => this.inFlight.delete(pending), () => this.inFlight.delete(pending));
     return pending;
+  }
+
+  /** Wraps each step operation rather than each throw site, so a new `StepFailedError` path cannot skip the event. */
+  private async reportingFailure<T>(stepId: string, step: () => Promise<T>): Promise<T> {
+    try {
+      return await step();
+    } catch (error) {
+      if (error instanceof StepFailedError) this.deps.emit({ type: "step_failed", runId: this.runId, stepId, error: error.reason });
+      throw error;
+    }
   }
 
   async settleDispatches(): Promise<void> {
@@ -206,7 +216,11 @@ export class RunContext implements WorkflowContext {
     }
   }
 
-  async authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
+  authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
+    return this.reportingFailure(stepId, () => this.authorizeStep(stepId, request, options));
+  }
+
+  private async authorizeStep(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions): Promise<AuthorizeResult> {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
     if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
