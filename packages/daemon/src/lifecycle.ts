@@ -147,12 +147,18 @@ export function getProcessCommand(pid: number): string | null {
 export function getProcessStartTime(pid: number): Date | null {
   if (!Number.isFinite(pid) || pid <= 0) return null;
   try {
-    const raw = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 500, env: { ...process.env, LC_ALL: "C" } }).trim();
-    const started = new Date(raw);
-    return raw && !Number.isNaN(started.getTime()) ? started : null;
+    const raw = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 500, env: { ...process.env, LC_ALL: "C" } });
+    return parsePsStartTime(raw);
   } catch {
     return null;
   }
+}
+
+/** Parse `ps -o lstart=` output (C locale, e.g. `Sat Oct  3 09:19:13 2026`, local time). */
+export function parsePsStartTime(raw: string): Date | null {
+  const text = raw.trim();
+  const started = new Date(text);
+  return text && !Number.isNaN(started.getTime()) ? started : null;
 }
 
 export async function pidFileModifiedAt(paths: DaemonPaths): Promise<Date | null> {

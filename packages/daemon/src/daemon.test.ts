@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
@@ -267,5 +268,37 @@ describe("stale pid file", () => {
     handle = live;
 
     await expect(startDaemon(options({ processStartTime: minuteAhead }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  describe("when the process start time is unknown", () => {
+    const unknown = (): null => null;
+
+    async function withHealthStatus(status: number | null, run: (port: number) => Promise<void>): Promise<void> {
+      if (status === null) return run(1);
+      const server = createServer((_req, res) => res.writeHead(status).end("{}"));
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      try {
+        await run((server.address() as AddressInfo).port);
+      } finally {
+        server.close();
+      }
+    }
+
+    it.each([null, 503])("refuses and keeps the pid file when health gives %s", async (status) => {
+      await withHealthStatus(status, async (port) => {
+        await seedPidFile(process.pid, port);
+
+        await expect(startDaemon(options({ processStartTime: unknown }))).rejects.toMatchObject({ name: "DaemonAlreadyRunningError", pid: process.pid });
+
+        expect((await readPidFile(daemonPaths(stateDir)))?.pid).toBe(process.pid);
+      });
+    });
+
+    it("refuses when the meta file is missing too", async () => {
+      await writeFile(daemonPaths(stateDir).pidFile, String(process.pid));
+
+      await expect(startDaemon(options({ processStartTime: unknown }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+    });
   });
 });

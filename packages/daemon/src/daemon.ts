@@ -147,12 +147,18 @@ async function assertNotAlreadyRunning(paths: DaemonPaths, startTimeOf: (pid: nu
   }
 }
 
-/** A live pid only counts if it predates its pid file or answers the health probe. */
+/**
+ * A live pid is this daemon if it predates its pid file. Only a start time proven later
+ * than the file marks the pid as reused; when the start time is unknown we cannot tell,
+ * so we refuse rather than risk a second daemon. A reused pid that answers health on the
+ * recorded port is still this daemon.
+ */
 async function isThisDaemon(paths: DaemonPaths, existing: PidFileContents, startTimeOf: (pid: number) => Date | null): Promise<boolean> {
   if (!isProcessAlive(existing.pid)) return false;
   const started = startTimeOf(existing.pid);
   const written = await pidFileModifiedAt(paths);
-  if (started && written && started.getTime() <= written.getTime()) return true;
+  if (!started || !written) return true;
+  if (started.getTime() <= written.getTime()) return true;
   return existing.meta.port > 0 && (await probeHealth(existing.meta.port)) !== null;
 }
 
