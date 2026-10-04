@@ -17,7 +17,8 @@ import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type RestartDrain, type ServicePorts } from "./service-control.js";
-import { systemServicePorts } from "./service-ports.js";
+import { systemCheckPorts, systemServicePorts } from "./service-ports.js";
+import { checkService, type CheckPorts } from "./service-check.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -41,6 +42,8 @@ export interface CliDeps {
   stop?: AbortSignal;
   /** What the service verbs run launchctl, claude, fetch and the filesystem through; defaults to the real machine. */
   service?: ServicePorts;
+  /** What `service check` reads launchctl, ps, /health and the installed build through; defaults to the real machine. */
+  check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
 }
@@ -259,6 +262,15 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
+  service
+    .command("check")
+    .description("exit 0 when /health answers from the launchd pid with github ok; otherwise one line naming the cause, never changing the service")
+    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+    .option("--json", "print cause, pid, health and the cause's details as one JSON object")
+    .action(async (opts: { port: number; json?: boolean }) => {
+      const ports = deps.check ?? systemCheckPorts();
+      setExit(await runServiceVerb("check", ports, io, () => checkService(ports, io, opts.port, opts.json === true)));
+    });
   withRestartFlags(service.command("restart").description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")).action(
     (opts: RestartFlags) => run("restart", (ports) => restartService(ports, io, opts.port, logDir, drainOf(opts))),
   );

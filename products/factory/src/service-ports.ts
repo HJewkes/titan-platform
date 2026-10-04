@@ -2,7 +2,9 @@ import { execFile } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
-import { probeHealth } from "@titan-design/daemon";
+import { isProcessAlive, probeHealth } from "@titan-design/daemon";
+import { buildSha } from "./build-info.js";
+import type { CheckPorts } from "./service-check.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 
 const COMMAND_TIMEOUT_MS = 30_000;
@@ -68,4 +70,15 @@ export function systemServicePorts(): ServicePorts {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: Date.now,
   };
+}
+
+/** `ps` reports whole seconds in local time; the C locale keeps the format parseable. */
+async function processStartedAt(pid: number): Promise<Date | null> {
+  const result = await runCommand("ps", ["-o", "lstart=", "-p", String(pid)], { LC_ALL: "C" });
+  const started = new Date(result?.stdout.trim() ?? "");
+  return result?.code === 0 && !Number.isNaN(started.getTime()) ? started : null;
+}
+
+export function systemCheckPorts(): CheckPorts {
+  return { ...systemServicePorts(), isAlive: isProcessAlive, processStartedAt, installedBuildSha: buildSha };
 }
