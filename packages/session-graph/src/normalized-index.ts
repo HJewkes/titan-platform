@@ -4,12 +4,14 @@ import { contentHash } from "@titan-design/locator";
 import { conversationRef } from "@titan-design/agent-protocol";
 import { SPAN_TEXT_CAP, readCodexObservations, type CodexReadResult, type NormalizedSessionObservation, type SessionSourceDescriptor, type SourceTextLocator } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
+import { ensureNormalizedSchema } from "./normalized-schema.js";
 import { insertObservation, observationText } from "./normalized-project.js";
 
 export interface NormalizedIndexResult { status: "indexed" | "unchanged" | "missing" | "quarantined"; conversationRef: string; observations: number; reason?: string }
 
 /** Replay changed sources into temporary staging; swap rows and watermark atomically. */
 export async function indexCodexSource(graph: SessionGraph, source: SessionSourceDescriptor): Promise<NormalizedIndexResult> {
+  ensureNormalizedSchema(graph.db);
   const ref = conversationRef(source.conversation);
   const base = { conversationRef: ref, observations: 0 };
   const row = graph.transcripts.ensure(source.sourceId);
