@@ -353,3 +353,48 @@ describe("titan-factory shepherd resync", () => {
     expect(w.seed.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 });
+
+describe("recheck before adoption", () => {
+  const LEASE_MS = 40;
+
+  /** The seed died a second ago: its lease is still live at `now`, so start resync cannot cancel its run. */
+  async function crashRestart(w: World, now: { value: number }): Promise<FactoryServer> {
+    return serve(w, { now: () => now.value, leaseMs: LEASE_MS });
+  }
+
+  const never = (run: WorkflowRun): string[] => Object.keys(run.stepResults).filter((key) => key.startsWith("sh-main-ci") || key.startsWith("sh-landed") || key.startsWith("sh-outcome"));
+
+  it.each([
+    ["merged", LANDED_ELSEWHERE, (w: World) => merge(w.fake, 1)],
+    ["closed", CLOSED_ELSEWHERE, (w: World) => void (w.fake.pr(1).state = "closed")],
+  ])("a run skipped for a live foreign lease on a PR %s elsewhere is ended at adoption, never driven", async (_name, reason, leave) => {
+    const w = world({ hangAt: "land-rules" });
+    const runId = await stuckRun(w, 1, "land-rules");
+    leave(w);
+    const now = { value: T0 + 1_000 };
+
+    const server = await crashRestart(w, now);
+    expect(server.host.runtime.status(runId)?.status).toBe("running");
+    now.value = AFTER_LEASE;
+    const run = await settled(server.host, runId);
+
+    expect(run.status).toBe("cancelled");
+    expect(run.error?.startsWith(reason)).toBe(true);
+    expect(never(run)).toEqual([]);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("a skipped run whose PR is still open is adopted and driven as before", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    const now = { value: T0 + 1_000 };
+
+    const server = await crashRestart(w, now);
+    now.value = AFTER_LEASE;
+    await gateOpened(server.host, gateId(runId, "approve-merge"));
+    await sleep(3 * LEASE_MS, new AbortController().signal);
+
+    expect(server.host.runtime.status(runId)?.status).toBe("paused");
+    expect(server.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});

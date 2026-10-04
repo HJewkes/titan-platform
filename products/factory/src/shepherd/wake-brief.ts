@@ -11,10 +11,12 @@ export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
 
-/** Files a build regenerates from source; a conflict confined to them is settled by regenerating, never by hand-merging. */
-const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"]);
-const REGISTRY_DIR = "site/reference/";
-export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path) || (path.startsWith(REGISTRY_DIR) && path.length > REGISTRY_DIR.length);
+/**
+ * Files a script rewrites whole (`pnpm capabilities`, `pnpm docs:reference`); a conflict confined to them is settled by
+ * regenerating. The per-package reference pages and .codewatch/check.json are hand-edited, so they are not listed.
+ */
+const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/guides/capabilities.md", "site/reference/index.md", "site/.vitepress/reference-sidebar.json"]);
+export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path);
 
 /** What a wake is about: the brief reads nothing else. */
 export interface WakeFacts {
@@ -80,7 +82,7 @@ function conflictList(conflict: Conflict): string {
   return [...lines, ...(conflict.truncated ? ["GitHub truncated the base comparison, so this list may be missing files."] : [])].join("\n");
 }
 
-const REGENERATE = "run `pnpm build` then `pnpm capabilities`, commit the regenerated files and push";
+const REGENERATE = "run `pnpm capabilities` and `pnpm docs:reference`, commit the regenerated files and push";
 
 function conflictReason(input: WakeFacts, conflict: Conflict): string {
   const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below.`;

@@ -7,7 +7,16 @@ import { describe, expect, it } from "vitest";
 // import closure may reach no package and no Node builtin.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ENTRIES = ["graph-report-sections.ts", "graph-report-drift.ts", "graph-report-types.ts"];
+const ENTRIES = [
+  "graph-report-sections.ts",
+  "graph-report-drift.ts",
+  "graph-report-types.ts",
+  "dashboard-coupling.ts",
+  "dashboard-health.ts",
+  "dashboard-node-metrics.ts",
+];
+// dashboard-symbol-coupling.ts is left out: symbol-coupling.ts reaches node:path through
+// extractors/ids.ts, so the coupling payload is not yet browser-safe.
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 // Type-only imports are erased at build time, so they cannot pull a module into a bundle.
