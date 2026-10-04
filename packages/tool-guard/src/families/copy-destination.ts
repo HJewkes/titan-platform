@@ -27,8 +27,10 @@ export function copyDestination(cmd: SimpleCommand): WordToken | null {
       break;
     }
     if (targetable && isLongTarget(word.value)) return word.value.includes("=") ? word : (cmd.args[i + 1] ?? null);
-    if (targetable && endsInTarget(word.value)) return cmd.args[i + 1] ?? null;
-    if (valueOpts.has(word.value) || consumesNext(word.value, valueOpts)) i++;
+    const flag = valueFlag(word.value, valueOpts, targetable);
+    if (flag?.target) return flag.rest ? { ...word, value: flag.rest } : (cmd.args[i + 1] ?? null);
+    if (flag) i += flag.rest ? 0 : 1;
+    else if (valueOpts.has(word.value)) i++;
     else if (!word.value.startsWith("-")) operands.push(word);
   }
   return operands.length >= 2 ? (operands.at(-1) ?? null) : null;
@@ -41,13 +43,13 @@ function isLongTarget(value: string): boolean {
   return name.length >= 3 && LONG_TARGET.startsWith(name);
 }
 
-/** A short-flag cluster whose last flag is `t`, such as `-t`, `-rt` or `-at`; its directory is the next word. */
-function endsInTarget(value: string): boolean {
-  return /^-[A-Za-z]*t$/.test(value) && !value.startsWith("--");
-}
-
-/** A glued short cluster such as `-ae` whose final flag takes a value from the next word. */
-function consumesNext(value: string, valueOpts: Set<string>): boolean {
-  if (!/^-[A-Za-z]{2,}$/.test(value)) return false;
-  return valueOpts.has(`-${value.at(-1)}`);
+/** Walks a short-flag cluster letter by letter: the first value-taking letter (`t` or one of the copier's) owns the rest of the word, or the next word when nothing follows. */
+function valueFlag(value: string, valueOpts: Set<string>, targetable: boolean): { target: boolean; rest: string } | null {
+  if (!/^-[A-Za-z]+/.test(value)) return null;
+  for (let j = 1; j < value.length; j++) {
+    const letter = value[j] as string;
+    const target = targetable && letter === "t";
+    if (target || valueOpts.has(`-${letter}`)) return { target, rest: value.slice(j + 1) };
+  }
+  return null;
 }
