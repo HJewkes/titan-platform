@@ -92,8 +92,8 @@ function assertNoInternalOnlyBarrels(
     type: "no-internal-only-barrels",
     id: r.id as string,
     packageRoots: r.packageRoots as string[],
-    severity: r.severity as Severity | undefined,
-    exclude: parseStringArray(r.exclude),
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
   };
 }
 
@@ -122,7 +122,7 @@ function assertLayeredDeps(r: Record<string, unknown>): LayeredDepsRule {
     type: "layered-deps",
     id: r.id as string,
     layers: r.layers as string[][],
-    severity: r.severity as Severity | undefined,
+    severity: parseSeverity(r),
   };
 }
 
@@ -145,9 +145,9 @@ function assertMetricProductMax(
     id: ruleId,
     metrics: r.metrics.map((m) => healMetricName(m, ruleId, warn)),
     max: r.max,
-    kind: r.kind as MetricProductMaxRule["kind"],
-    severity: r.severity as Severity | undefined,
-    exclude: parseStringArray(r.exclude),
+    kind: parseOptionalKind(r),
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
     excludeRoles: parseRoleArray(ruleId, r.excludeRoles, warn),
   };
 }
@@ -161,9 +161,9 @@ function assertMetricMax(r: Record<string, unknown>, warn: Warn): MetricMaxRule 
     id: ruleId,
     metric: healMetricName(r.metric, ruleId, warn),
     max: r.max,
-    kind: r.kind as MetricMaxRule["kind"],
-    severity: r.severity as Severity | undefined,
-    exclude: parseStringArray(r.exclude),
+    kind: parseOptionalKind(r),
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
     excludeRoles: parseRoleArray(ruleId, r.excludeRoles, warn),
   };
 }
@@ -177,9 +177,9 @@ function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule 
     id: ruleId,
     metric: healMetricName(r.metric, ruleId, warn),
     min: r.min,
-    kind: r.kind as MetricMinRule["kind"],
-    severity: r.severity as Severity | undefined,
-    exclude: parseStringArray(r.exclude),
+    kind: parseOptionalKind(r),
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
     excludeRoles: parseRoleArray(ruleId, r.excludeRoles, warn),
   };
 }
@@ -188,9 +188,7 @@ const NODE_KINDS: ReadonlySet<NodeKind> = new Set(["package", "module", "file", 
 
 function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutlierRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
-  if (typeof r.kind !== "string" || !NODE_KINDS.has(r.kind as NodeKind)) {
-    throw new Error(`${r.id}: kind must be one of ${[...NODE_KINDS].join(", ")}`);
-  }
+  if (!isNodeKind(r.kind)) throw kindError(r.id);
   if (typeof r.percentile !== "number" || r.percentile < 50 || r.percentile > 100) {
     throw new Error(`${r.id}: percentile must be a number from 50 to 100`);
   }
@@ -208,12 +206,12 @@ function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutl
     type: "metric-outlier",
     id: ruleId,
     metric: healMetricName(r.metric, ruleId, warn),
-    kind: r.kind as NodeKind,
+    kind: r.kind,
     percentile: r.percentile,
     minSample: r.minSample as number | undefined,
     floor: r.floor as number | undefined,
     rankNonZero: r.rankNonZero as boolean | undefined,
-    severity: r.severity as Severity | undefined,
+    severity: parseSeverity(r),
   };
 }
 
@@ -225,12 +223,39 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
     id: r.id as string,
     from: r.from,
     to: r.to,
-    severity: r.severity as Severity | undefined,
+    severity: parseSeverity(r),
   };
 }
 
-function parseStringArray(value: unknown): string[] | undefined {
-  return Array.isArray(value) ? (value as string[]) : undefined;
+function isNodeKind(value: unknown): value is NodeKind {
+  return typeof value === "string" && NODE_KINDS.has(value as NodeKind);
+}
+
+function kindError(ruleId: unknown): Error {
+  return new Error(`${ruleId}: kind must be one of ${[...NODE_KINDS].join(", ")}`);
+}
+
+/** A misspelled kind matches no node, so the rule would silently never fire. */
+function parseOptionalKind(r: Record<string, unknown>): NodeKind | undefined {
+  if (r.kind === undefined) return undefined;
+  if (!isNodeKind(r.kind)) throw kindError(r.id);
+  return r.kind;
+}
+
+/** Anything but "error" would count as a warning and leave the check passing. */
+function parseSeverity(r: Record<string, unknown>): Severity | undefined {
+  if (r.severity === undefined || r.severity === "error" || r.severity === "warning") {
+    return r.severity;
+  }
+  throw new Error(`${r.id}: severity must be "error" or "warning"`);
+}
+
+function parseExclude(r: Record<string, unknown>): string[] | undefined {
+  if (r.exclude === undefined) return undefined;
+  if (!Array.isArray(r.exclude) || !r.exclude.every((e) => typeof e === "string")) {
+    throw new Error(`${r.id}: exclude must be an array of strings`);
+  }
+  return r.exclude;
 }
 
 const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([

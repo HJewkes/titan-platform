@@ -161,6 +161,54 @@ describe("validateRules", () => {
     expect(bad({ rankNonZero: "yes" })).toThrow(/rankNonZero must be a boolean/);
   });
 
+  it("rejects a severity other than error or warning on every rule type", () => {
+    const rules = [
+      { id: "r", type: "metric-max", metric: "loc", max: 1 },
+      { id: "r", type: "metric-min", metric: "loc", min: 1 },
+      { id: "r", type: "metric-product-max", metrics: ["loc", "fan_in"], max: 1 },
+      { id: "r", type: "metric-outlier", metric: "loc", kind: "file", percentile: 90 },
+      { id: "r", type: "forbid-import", from: "a/**", to: "b/**" },
+      { id: "r", type: "layered-deps", layers: [["a"], ["b"]] },
+      { id: "r", type: "no-internal-only-barrels", packageRoots: ["packages/a"] },
+    ];
+    for (const rule of rules) {
+      expect(() => validateRules({ rules: [{ ...rule, severity: "Error" }] })).toThrow(
+        'r: severity must be "error" or "warning"',
+      );
+      expect(() => validateRules({ rules: [{ ...rule, severity: "warning" }] })).not.toThrow();
+    }
+  });
+
+  it("rejects a metric rule kind outside NodeKind", () => {
+    const rules = [
+      { id: "r", type: "metric-max", metric: "loc", max: 1 },
+      { id: "r", type: "metric-min", metric: "loc", min: 1 },
+      { id: "r", type: "metric-product-max", metrics: ["loc", "fan_in"], max: 1 },
+    ];
+    for (const rule of rules) {
+      expect(() => validateRules({ rules: [{ ...rule, kind: "files" }] })).toThrow(
+        /r: kind must be one of package, module, file, symbol, external/,
+      );
+      expect(() => validateRules({ rules: [{ ...rule, kind: "file" }] })).not.toThrow();
+    }
+  });
+
+  it("rejects an exclude that is not a string array", () => {
+    const rules = [
+      { id: "r", type: "metric-max", metric: "loc", max: 1 },
+      { id: "r", type: "metric-min", metric: "loc", min: 1 },
+      { id: "r", type: "metric-product-max", metrics: ["loc", "fan_in"], max: 1 },
+      { id: "r", type: "no-internal-only-barrels", packageRoots: ["packages/a"] },
+    ];
+    for (const rule of rules) {
+      for (const exclude of ["tests/**", ["ok", 3]]) {
+        expect(() => validateRules({ rules: [{ ...rule, exclude }] })).toThrow(
+          "r: exclude must be an array of strings",
+        );
+      }
+    }
+  });
+
   it("normalizes a metric-outlier rule with floor and rankNonZero", () => {
     const [rule] = validateRules({
       rules: [{ id: "long", type: "metric-outlier", metric: "symbol_loc", kind: "symbol", percentile: 90, floor: 0.5, rankNonZero: true }],
