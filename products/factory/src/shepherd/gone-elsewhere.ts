@@ -10,14 +10,14 @@ export const LANDED_ELSEWHERE = "landed elsewhere: ";
 export const CLOSED_ELSEWHERE = "closed elsewhere: ";
 
 /** `gated` walks runs waiting on a pending gate, as the periodic sweep does; `live` walks every running or paused run. */
-export type GoneScope = "gated" | "live";
+type GoneScope = "gated" | "live";
 
 export interface EndedRun {
   runId: string;
   reason: string;
 }
 
-export interface GoneOptions {
+interface GoneOptions {
   scope?: GoneScope;
   /** Reports the runs it would end and cancels nothing. */
   dryRun?: boolean;
