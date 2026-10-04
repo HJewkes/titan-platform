@@ -41,8 +41,33 @@ export function registerLayer(checkJsonText, prefix, tier) {
   if (!rule?.$tiers) throw new Error("check.json needs a layered-deps rule with $tiers");
   const tierPackages = (rule.$tiers[tier] ??= []);
   if (!tierPackages.includes(prefix)) tierPackages.push(prefix);
-  rule.layers = TIER_ORDER.map((t) => rule.$tiers[t] ?? []).filter((layer) => layer.length > 0);
+  rule.layers = layersFromTiers(rule.$tiers);
+  const others = config.rules.filter((r) => !r.id?.startsWith(PRODUCT_ISOLATION));
+  const at = others.indexOf(rule) + 1;
+  config.rules = [...others.slice(0, at), ...productIsolationRules(rule.$tiers.product), ...others.slice(at)];
   return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export function layersFromTiers(tiers) {
+  return TIER_ORDER.map((t) => tiers[t] ?? []).filter((layer) => layer.length > 0);
+}
+
+const PRODUCT_ISOLATION = "product-isolation:";
+
+// Products share one layer, and layered-deps allows same-layer imports. forbid-import has no
+// negation, so each ordered pair of products gets its own rule.
+export function productIsolationRules(products = []) {
+  return products.flatMap((from) =>
+    products
+      .filter((to) => to !== from)
+      .map((to) => ({
+        id: `${PRODUCT_ISOLATION}${from}->${to}`,
+        type: "forbid-import",
+        $comment: "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+        from: `${from}/**`,
+        to: `${to}/**`,
+      })),
+  );
 }
 
 /**

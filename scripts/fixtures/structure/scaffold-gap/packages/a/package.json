@@ -1,0 +1,4 @@
+{
+  "name": "@titan-design/a",
+  "scripts": { "build": "tsup", "typecheck": "tsc --noEmit", "lint": "eslint src" }
+}
