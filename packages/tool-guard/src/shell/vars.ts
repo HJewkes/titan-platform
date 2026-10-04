@@ -19,6 +19,8 @@ const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
 /** A hidden slot's name is no shell identifier, so no command the user writes can assign or read it. */
 const SLOT_ASSIGNMENT_RE = /^local@\d+=/;
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+/** Bash rejects a subscripted name here as no valid identifier, so the variable keeps its value. */
+const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null {
   if (vars.has(name)) return vars.get(name) ?? null;
@@ -72,7 +74,7 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   if (DECLARERS.has(name)) {
     for (const arg of args) {
       const assignment = parseAssignment(arg);
-      if (assignment) assign(vars, assignment);
+      if (assignment && !(assignment[2] === "element" && SCALAR_DECLARERS.has(name))) assign(vars, assignment);
     }
     return;
   }
