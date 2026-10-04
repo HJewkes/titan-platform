@@ -18,6 +18,8 @@ export interface CleanupAgent {
 
 export interface CleanupAgents {
   roster(): Promise<readonly CleanupAgent[]>;
+  /** Drops any cached roster, so the next `roster()` reads the broker. */
+  invalidate(): void;
   /** Never forced: a forced retire discards work the agent's worktree still holds. */
   retire(name: string): Promise<void>;
 }
@@ -185,6 +187,10 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
     if (row === undefined || (row !== "unread" && row.status === "retired")) return undefined;
     if (row !== "unread") exitedAt = row.presence === "exited" ? (exitedAt ?? wait.now()) : undefined;
     if (exitedAt !== undefined && wait.now() >= Math.max(exitedAt + SH_CLEANUP_GRACE_MS, nextTry)) {
+      if (await resumedSince(agents, name)) {
+        exitedAt = undefined;
+        continue;
+      }
       const refused = await agents.retire(name).then(() => undefined, (error: unknown) => error);
       if (refused === undefined || alreadyGone(refused)) return undefined;
       last = message(refused);
@@ -193,6 +199,13 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
     if (wait.clock.expired()) return `retire ${name}: ${last}`;
     await wait.clock.sleep(wait.pollMs, wait.signal);
   }
+}
+
+/** The cached roster may predate a resume, so the final decision reads the broker afresh; an unreadable roster blocks the retire. */
+async function resumedSince(agents: CleanupAgents, name: string): Promise<boolean> {
+  agents.invalidate();
+  const row = await rosterRow(agents, name).catch(() => "unread" as const);
+  return row === "unread" || (row !== undefined && row.presence !== "exited" && row.status !== "retired");
 }
 
 async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAgent | undefined> {
