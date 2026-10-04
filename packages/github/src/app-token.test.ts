@@ -308,4 +308,57 @@ describe("token shape scrub", () => {
 
     await expect(githubPort(ghCliWire(exec, { budget: rateBudget() })).listReviewComments(REPO, 7)).rejects.toThrow(/bad credential \[redacted\]$/);
   });
+
+  describe("TP-1500 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+    const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
+      const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
+      const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+      return (error as GhError).message;
+    };
+
+    it.each([
+      [`GH_TOKEN=${hex}`],
+      [`GITHUB_TOKEN: ${hex}`],
+      [`{"access_token":"${hex}"}`],
+      [`https://${hex}@github.com/o/r`],
+      [`https://x-access-token:${hex}@github.com/o/r`],
+    ])("redacts a 40-hex token in %s", async (line) => {
+      const message = await throwsWith("", line);
+
+      expect(message).not.toContain(hex);
+      expect(message).toContain("[redacted]");
+    });
+
+    it("redacts a JWT right after an underscore and keeps a dotted file name that only opens like one", () => {
+      expect(redact(`X_${JWT}`, [])).toBe("X_[redacted]");
+      expect(redact("see eyJsonwebtoken.config.js", [])).toBe("see eyJsonwebtoken.config.js");
+    });
+
+    it("keeps a bare commit sha and a sha in a URL path", () => {
+      expect(redact(`sha ${hex} https://github.com/o/r/commit/${hex}`, [])).toBe(`sha ${hex} https://github.com/o/r/commit/${hex}`);
+    });
+
+    it.each([
+      [`partial ${SHAPED.slice(0, 15)}\n\n`, `${SHAPED.slice(15)} (HTTP 403)`],
+      [`partial ${SHAPED.slice(0, 15)} \n`, `${SHAPED.slice(15)} (HTTP 403)`],
+      [`partial ${SHAPED.slice(0, 15)}\n`, `\n${SHAPED.slice(15)} (HTTP 403)`],
+      [`Authorization: Bearer `, `${hex} (HTTP 403)`],
+    ])("scrubs a token split across %j and %j", async (stdout, stderr) => {
+      const message = await throwsWith(stdout, stderr);
+
+      expect(message).not.toMatch(/A1b2|C3d4|0123456789abcdef/);
+      expect(message).toContain("(HTTP 403)");
+    });
+
+    it("redacts a token in the Link next URL of a refused page", async () => {
+      const link = `<https://evil.example/p?access_token=${hex}>; rel="next"`;
+      const exec = scripted(() => ({ code: 0, stdout: `HTTP/2.0 200 OK\r\nLink: ${link}\r\n\r\n[]`, stderr: "" })).exec;
+
+      const error = await ghCliWire(exec, { budget: rateBudget() }).listIssueComments(REPO, 7).catch((caught: Error) => caught);
+
+      expect((error as Error).message).toContain("refusing to follow");
+      expect((error as Error).message).not.toContain(hex);
+    });
+  });
 });
