@@ -39,21 +39,35 @@ function isFlakyRed(input: FlakyTarget, red: CiSnapshot, flaky: FlakyState): boo
   return failing.every((check) => check.workflowRunId !== null && rule.checks.includes(check.name));
 }
 
-/** Waits the configured time, reruns once, then waits until GitHub replaces the failed checks so the next read is not the old red. */
-/** True when the red head was flaky and has been rerun, so the caller reads CI again instead of reporting the red. */
+/** True when the caller should read CI again instead of reporting the red: the head was rerun, or moved on during the wait. False falls through to the red path. */
 export async function rerunIfFlaky(port: GitHubPort, input: FlakyTarget, red: CiSnapshot, timing: FlakyTiming, signal: AbortSignal, flaky: FlakyState): Promise<boolean> {
   if (!isFlakyRed(input, red, flaky)) return false;
-  await rerunFlaky(port, input, red, timing, signal, flaky);
+  const failing = red.failing ?? [];
+  await timing.sleep(flaky.rules[input.repo.toLowerCase()]!.waitSeconds * 1000, signal);
+  const state = await failedRunsState(port, input, red.headSha, failing);
+  if (state === "unknown") return false;
+  if (state === "moved") return true;
+  if (!(await rerunAll(port, input.repo, failing))) return false;
+  flaky.rerun.add(flakyKey(input, red.headSha));
+  const clock = deadline({ ...timing, timeoutMs: 5 * 60_000 });
+  while (!clock.expired() && !(await replaced(port, input, red.headSha, failing))) await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   return true;
 }
 
-async function rerunFlaky(port: GitHubPort, input: FlakyTarget, red: CiSnapshot, timing: FlakyTiming, signal: AbortSignal, flaky: FlakyState): Promise<void> {
-  flaky.rerun.add(flakyKey(input, red.headSha));
-  const failing = red.failing ?? [];
-  await timing.sleep(flaky.rules[input.repo.toLowerCase()]!.waitSeconds * 1000, signal);
-  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) await port.rerunFailed(input.repo, runId);
-  const clock = deadline({ ...timing, timeoutMs: 5 * 60_000 });
-  while (!clock.expired() && !(await replaced(port, input, red.headSha, failing))) await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
+/** The wait is long enough for a push or a manual rerun, so the failed runs are read again before anything is rerun. */
+async function failedRunsState(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<"failed" | "moved" | "unknown"> {
+  const read = await Promise.all([port.getPr(input.repo, input.pr), port.latestCheckRuns(input.repo, headSha)]).catch(() => undefined);
+  if (read === undefined) return "unknown";
+  if (read[0].headSha !== headSha || read[0].state !== "open") return "moved";
+  const stillFailed = failing.every((check) => read[1].some((run) => run.url === check.url && run.status === "completed"));
+  return stillFailed ? "failed" : "moved";
+}
+
+/** False when GitHub refused any rerun (e.g. a run still in progress), so no rerun is claimed. */
+async function rerunAll(port: GitHubPort, repo: string, failing: FailingCheck[]): Promise<boolean> {
+  let all = true;
+  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) all = (await port.rerunFailed(repo, runId)).done && all;
+  return all;
 }
 
 async function replaced(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<boolean> {

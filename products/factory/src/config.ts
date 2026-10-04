@@ -57,7 +57,8 @@ export const DigestConfigSchema = z.strictObject({
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
 export const FlakyChecksSchema = z.strictObject({
   checks: z.array(z.string().min(1)).min(1),
-  waitSeconds: z.number().int().min(0),
+  /** Below the ci-wait route's own 45 minute timeout, which the wait, the rerun and the settle all run inside. */
+  waitSeconds: z.number().int().min(0).max(900),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;

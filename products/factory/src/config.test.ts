@@ -57,6 +57,13 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
   });
 
+  it("rejects an empty checks list and a wait beyond the cap", () => {
+    const flaky = (rule: object) => configPath(xdg({ shepherd: { flakyChecks: { "acme/web": rule } } }));
+
+    expect(() => loadConfig(flaky({ checks: [], waitSeconds: 60 }))).toThrow(/flakyChecks/);
+    expect(() => loadConfig(flaky({ checks: ["validate"], waitSeconds: 3600 }))).toThrow(/flakyChecks/);
+  });
+
   it("reads each repo's flaky checks and wait, and rejects a repo that is not owner/name", () => {
     const flakyChecks = { "acme/web": { checks: ["validate"], waitSeconds: 60 } };
 
