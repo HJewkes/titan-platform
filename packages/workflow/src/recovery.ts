@@ -1,8 +1,10 @@
 import type { RecoveredStep } from "./context-deps.js";
 import type {
   ActiveStep,
+  DurableStepOutcome,
   LegacyStepRunner,
   RecoverableStepRunner,
+  StepRunInput,
   StepRunner,
   WorkflowEvent,
   WorkflowRun,
@@ -158,4 +160,12 @@ class ReconcileTimeout extends Error {
     super(`reconciliation timed out after ${milliseconds}ms`);
     this.name = "ReconcileTimeout";
   }
+}
+
+/** Runs a legacy step once and maps its outcome onto the durable shape, adopting the runner ref on success. */
+export async function runLegacyStep(runner: LegacyStepRunner, step: ActiveStep, input: StepRunInput): Promise<DurableStepOutcome> {
+  const outcome = await runner.run(input);
+  if (!outcome.ok) return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
+  if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
+  return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
 }
