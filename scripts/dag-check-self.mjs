@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // scripts/dag-check.sh on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
+// --report <file> also writes codewatch-pr-report@1 (scripts/codewatch-report.mjs); a failed write never changes the exit code.
 // The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once.
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectReport, writeReport } from "./codewatch-report.mjs";
 import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -91,6 +93,8 @@ async function check() {
     const run = graph.checkSnapshot(store, { snapshot: "head", baseline: baseRef ? "baseline" : undefined, rules });
     const json = { ...run, baselineSnapshot: run.baselineSnapshot ?? null, configPath: CONFIG };
     console.log(process.argv.includes("--json") ? JSON.stringify(json, null, 2) : formatText(run));
+    const reportAt = process.argv.indexOf("--report");
+    if (reportAt >= 0) writeReport(process.argv[reportAt + 1], () => collectReport(graph, store, run, rules));
     return run.result.passed ? 0 : 1;
   } finally {
     store.close();

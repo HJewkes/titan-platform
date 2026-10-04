@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codewatch-pr-report@1",
+  "$comment": "Written by `node scripts/dag-check-self.mjs --report <file>` (scripts/codewatch-report.mjs) and read by Shepherd's review wiring. Advisory only: dag-check's exit code never depends on it. It holds repo paths, symbols and metrics only.",
+  "type": "object",
+  "required": ["schema", "head", "base", "indexVersion", "check", "deltas", "exports", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "codewatch-pr-report@1" },
+    "head": { "$ref": "#/$defs/sha" },
+    "base": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+    "indexVersion": { "type": "string" },
+    "check": {
+      "type": "object",
+      "required": ["passed", "newErrors", "newWarnings", "carryover", "violations"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "newErrors": { "$ref": "#/$defs/count" },
+        "newWarnings": { "$ref": "#/$defs/count" },
+        "carryover": { "$ref": "#/$defs/count" },
+        "violations": { "type": "array", "items": { "$ref": "#/$defs/violation" } }
+      }
+    },
+    "deltas": {
+      "description": "Advisory metric changes on source files, top 20 by after/budget.",
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/delta" }
+    },
+    "exports": {
+      "description": "Changed exported symbols, top 10 by importer count.",
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/export" }
+    },
+    "questions": {
+      "description": "Reviewer questions in a fixed order, each naming path:line.",
+      "type": "array",
+      "maxItems": 3,
+      "items": { "type": "string", "maxLength": 200 }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "line": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+    "violation": {
+      "type": "object",
+      "required": ["ruleId", "severity", "nodeId", "path", "line", "message", "isCarryover"],
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": { "type": "string" },
+        "severity": { "enum": ["error", "warning"] },
+        "nodeId": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "$ref": "#/$defs/line" },
+        "message": { "type": "string" },
+        "isCarryover": { "type": "boolean" }
+      }
+    },
+    "delta": {
+      "type": "object",
+      "required": ["path", "symbol", "metric", "before", "after", "budget", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "symbol": { "type": ["string", "null"] },
+        "metric": { "enum": ["loc", "cyclomatic_max", "cognitive", "max_nesting_depth"] },
+        "before": { "type": ["number", "null"] },
+        "after": { "type": "number" },
+        "budget": { "type": ["number", "null"] },
+        "status": { "enum": ["new", "worsened", "near-budget"] }
+      }
+    },
+    "export": {
+      "type": "object",
+      "required": ["path", "symbol", "change", "importers"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "symbol": { "type": "string" },
+        "line": { "$ref": "#/$defs/line", "description": "Declaration line, so a question can name path:line. Optional addition to the plan's shape." },
+        "change": { "enum": ["added", "removed", "signature"] },
+        "importers": { "$ref": "#/$defs/count" }
+      }
+    }
+  }
+}
