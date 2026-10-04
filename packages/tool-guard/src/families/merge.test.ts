@@ -239,6 +239,67 @@ describe("xargs -L and -n run the command once per batch", () => {
   });
 });
 
+describe("xargs -0 and -d split appended words on their separators", () => {
+  it.each([
+    ["-d,", "printf 'push,origin,HEAD:main' | xargs -d, git"],
+    ["-0", "printf 'push\\0origin\\0HEAD:main' | xargs -0 git"],
+    ["--null", "printf 'push\\0origin\\0HEAD:main' | xargs --null git"],
+    ["-d, with a trailing newline", "echo push,origin,HEAD:main | xargs -d, git"],
+    ["-d, with -n2 after the subcommand", "printf 'origin,HEAD:main' | xargs -d, -n2 git push"],
+    ["a -d value that is not static", "printf 'push;origin;HEAD:main' | xargs -d \"$SEP\" git"],
+  ])("denies a push to main under %s", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("keeps a record that holds blanks as one argument", () => {
+    expect(bash("printf 'log,--grep=push origin HEAD:main' | xargs -d, git")).toEqual([]);
+  });
+
+  it("splits plain input on blanks as before", () => {
+    expect(spellings(bash("printf 'push origin\\nHEAD:main' | xargs git"))).toEqual(["bash.merge.git-push-protected"]);
+    expect(bash("printf 'push,origin,HEAD:main' | xargs git")).toEqual([]);
+  });
+
+  it("reads --delimiter's separate value as the separator, not the command", () => {
+    expect(spellings(bash("printf 'push,origin,HEAD:main' | xargs --delimiter , git"))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it.each([
+    ["--delimiter ,"],
+    ["--arg-file cmds.txt"],
+    ["--max-procs 4"],
+    ["--max-chars 4096"],
+    ["--process-slot-var SLOT"],
+    ["--eof"],
+    ["--eof=END"],
+  ])("reads the command after %s", (option) => {
+    expect(spellings(bash(`xargs ${option} git push origin HEAD:main < /dev/null`))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it.each([
+    "git ls-files -z | xargs -0 rm",
+    "find . -print0 | xargs -0 grep push",
+    "printf 'a.txt\\0b.txt' | xargs -0 rm",
+  ])("does not read %s as a push", (command) => {
+    expect(bash(command)).toEqual([]);
+  });
+
+  it.each([
+    ["--delim ,", "printf 'push,origin,HEAD:main' | xargs --delim , git"],
+    ["--delim=,", "printf 'push,origin,HEAD:main' | xargs --delim=, git"],
+    ["--del=,", "printf 'push,origin,HEAD:main' | xargs --del=, git"],
+    ["--nu", "printf 'push\\0origin\\0HEAD:main' | xargs --nu git"],
+    ["--max-a 1", "xargs --max-a 1 git push origin HEAD:main </dev/null"],
+    ["--arg f", "xargs --arg f git push origin HEAD:main </dev/null"],
+    ["--max-p 4", "xargs --max-p 4 git push origin HEAD:main </dev/null"],
+    ["--proc S", "xargs --proc S git push origin HEAD:main </dev/null"],
+    ["the ambiguous --max before a value", "xargs --max 1 git push origin HEAD:main </dev/null"],
+    ["the ambiguous --max before the command", "xargs --max git push origin HEAD:main </dev/null"],
+  ])("reads the long option prefix %s as getopt does", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+});
+
 describe("xargs -I fails closed when it cannot read the input", () => {
   it.each([
     ["a non-static -d value", "printf 'echo hiXgit push origin HEAD:main' | xargs -I{} -d \"$D\" sh -c '{}'"],

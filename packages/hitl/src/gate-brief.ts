@@ -1,10 +1,11 @@
-/*
+/*!
  * The question bounds and `questionsIssue` are adapted from openrig,
  * https://github.com/mvschwarz/openrig, packages/daemon/src/domain/human-questions.ts
  * (parseHumanQuestions). Copyright 2026 Mike Schwarz, licensed under the Apache License 2.0,
  * http://www.apache.org/licenses/LICENSE-2.0.
  * Changed here: the checks report through GateBriefInvalid instead of a result union, and
  * `recommended` keeps only `true`.
+ * @license Apache-2.0
  */
 import { GateBriefInvalid, type GateQuestion, type GateQuestionOption } from "./types.js";
 
