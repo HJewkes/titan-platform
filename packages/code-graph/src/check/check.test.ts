@@ -585,6 +585,70 @@ describe("runChecks — layered-deps", () => {
       db.close();
     }
   });
+
+  it("names both the source and destination file in the message", async () => {
+    fixture = await createFixture((db, snapshotId) => {
+      db.insertNodes(snapshotId, [
+        { id: "core/foo.ts", kind: "file", name: "" },
+        { id: "cli/bar.ts", kind: "file", name: "" },
+      ]);
+      db.insertEdges(snapshotId, [{ srcId: "core/foo.ts", dstId: "cli/bar.ts", kind: "imports" }]);
+    });
+    const db = openCodeGraph(fixture.dbPath);
+    try {
+      const result = runChecks(db, {
+        snapshotId: fixture.snapshotId,
+        rules: [{ id: "layers", type: "layered-deps", layers }],
+      });
+      expect(result.violations[0]!.message).toContain("core/foo.ts");
+      expect(result.violations[0]!.message).toContain("cli/bar.ts");
+    } finally {
+      db.close();
+    }
+  });
+
+  describe("excludeRoles", () => {
+    const edge = { srcId: "core/foo.ts", dstId: "cli/bar.ts", kind: "imports" as const };
+
+    async function violationCount(
+      srcRole: "test" | "source",
+      dstRole: "test" | "source",
+      excludeRoles?: ("test" | "source")[],
+    ): Promise<number> {
+      fixture = await createFixture((db, snapshotId) => {
+        db.insertNodes(snapshotId, [
+          { id: "core/foo.ts", kind: "file", name: "", role: srcRole },
+          { id: "cli/bar.ts", kind: "file", name: "", role: dstRole },
+        ]);
+        db.insertEdges(snapshotId, [edge]);
+      });
+      const db = openCodeGraph(fixture.dbPath);
+      try {
+        return runChecks(db, {
+          snapshotId: fixture.snapshotId,
+          rules: [{ id: "layers", type: "layered-deps", layers, excludeRoles }],
+        }).violations.length;
+      } finally {
+        db.close();
+      }
+    }
+
+    it("drops a violation whose source file has an excluded role", async () => {
+      expect(await violationCount("test", "source", ["test"])).toBe(0);
+    });
+
+    it("drops a violation whose destination file has an excluded role", async () => {
+      expect(await violationCount("source", "test", ["test"])).toBe(0);
+    });
+
+    it("keeps the violation when neither file has an excluded role", async () => {
+      expect(await violationCount("source", "source", ["test"])).toBe(1);
+    });
+
+    it("keeps the violation when excludeRoles is not set", async () => {
+      expect(await violationCount("test", "test")).toBe(1);
+    });
+  });
 });
 
 describe("runChecks — no-internal-only-barrels", () => {

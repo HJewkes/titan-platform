@@ -7,7 +7,7 @@
  * minimal environment (never `...process.env` — T7/M8 forbid it).
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute } from "node:path";
@@ -153,4 +153,35 @@ export function execSafe(
     }
     throw new ExecError(`${bin} could not be started: ${e.message}`);
   }
+}
+
+/**
+ * `execSafe` without blocking the event loop: same timeout, no-shell and
+ * error mapping, for callers (a long-lived server) that cannot afford to
+ * stall while a slow child answers.
+ */
+export function execSafeAsync(
+  bin: string,
+  args: string[],
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<SafeExecResult> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      bin,
+      args,
+      { env, timeout: timeoutMs, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err === null) return resolve({ stdout, stderr, status: 0 });
+        const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null };
+        if (e.killed === true || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
+          return reject(new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`));
+        }
+        if (typeof e.code === "number") return resolve({ stdout, stderr, status: e.code });
+        reject(new ExecError(`${bin} could not be started: ${e.message}`));
+      },
+    );
+    // execFileSync closes the child's stdin; a child that reads it would otherwise wait forever.
+    child.stdin?.end();
+  });
 }

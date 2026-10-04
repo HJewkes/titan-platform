@@ -65,6 +65,8 @@ export interface LayeredDepsRule {
   id: string;
   layers: string[][];
   severity?: Severity;
+  /** An import is dropped when its source or destination file has one of these roles. */
+  excludeRoles?: NodeRole[];
 }
 
 export interface NoInternalOnlyBarrelsRule {

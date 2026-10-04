@@ -230,7 +230,8 @@ the file is unreadable.
 The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
-fail a check.
+fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
+destination file has an excluded role.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -435,6 +436,19 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
+
+### Growth and untested risks
+
+Ported with TP-1468 from codewatch's `graph report`, unchanged apart from import paths. Both
+take a `ReportContext` and a limit, return `GrowthRiskRow[]` and `UntestedRiskRow[]`, and drop
+files that `keepNode` rejects:
+
+- `topGrowthRisks(ctx, limit)` lists files with a structural scaling smell: loop nesting of
+  depth 2 or more, `recursive_functions`, or `search_in_loop`. It is a heuristic, not a Big-O
+  bound. Ranked by `loop_depth`, then smell count.
+- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`. Files with no
+  `coverage_pct` metric or full coverage are left out, so a repo with no coverage overlay
+  gets an empty list.
 
 ### Partition quality
 

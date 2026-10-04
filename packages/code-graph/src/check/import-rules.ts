@@ -21,9 +21,15 @@ function layerIndex(layers: readonly string[][]): Map<string, number> {
 export function runLayeredDepsRule(rule: LayeredDepsRule, ctx: RuleContext): CheckViolation[] {
   const packageLayer = layerIndex(rule.layers);
   const packageOf = longestPrefixMatcher([...packageLayer.keys()]);
+  const excludedRoles = new Set(rule.excludeRoles ?? []);
+  const hasExcludedRole = (id: string): boolean => {
+    const role = ctx.nodesById.get(id)?.role;
+    return role !== undefined && excludedRoles.has(role);
+  };
   const out: CheckViolation[] = [];
   for (const edge of ctx.edges) {
     if (!isImportEdge(edge)) continue;
+    if (hasExcludedRole(edge.srcId) || hasExcludedRole(edge.dstId)) continue;
     const srcPkg = packageOf(edge.srcId);
     const dstPkg = packageOf(edge.dstId);
     if (srcPkg === null || dstPkg === null) continue;
@@ -35,7 +41,7 @@ export function runLayeredDepsRule(rule: LayeredDepsRule, ctx: RuleContext): Che
       severity: severityOf(rule),
       nodeId: edge.srcId,
       destinationId: edge.dstId,
-      message: `${srcPkg} (layer ${srcLayer}) imports ${dstPkg} (layer ${dstLayer})`,
+      message: `${edge.srcId} (${srcPkg}, layer ${srcLayer}) imports ${edge.dstId} (${dstPkg}, layer ${dstLayer})`,
     });
   }
   return out;
