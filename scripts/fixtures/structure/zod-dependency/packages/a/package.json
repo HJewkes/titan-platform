@@ -1,0 +1,4 @@
+{
+  "name": "@titan-design/a",
+  "dependencies": { "zod": "^4.0.0" }
+}

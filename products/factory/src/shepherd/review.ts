@@ -111,7 +111,7 @@ export interface ReviewerMessage {
 /** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
 export interface ReviewerReader {
   read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-  /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript. Absent means `read`. */
+  /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript, with a `DamagedTranscriptError` for a partial last record. Absent means `read`. */
   readSeat?(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
 }
 

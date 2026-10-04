@@ -5,6 +5,7 @@ import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-des
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { ReviewerMachineHold } from "./review-wait.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
@@ -63,14 +64,18 @@ const RETRYABLE_TRAILER = /\n\s*code: (\S+) retryable: true$/;
 const MACHINE_GUARD = /(?:^|: )(machine guard: .*)$/s;
 const REFUSAL_PREFIX = /^agent-chat refused the \w+: (?:Not spawned: )?/;
 
-/** The reason a refusal that clears with time gives, without the CLI's prefixes or trailer; undefined for any other refusal. */
-function busyReason(message: string): string | undefined {
+/** The code the broker refuses with while the machine stop holds (CC-487). */
+const MACHINE_HOLD_CODE = "machine_hold";
+
+/** The reason a refusal that clears with time gives, without the CLI's prefixes or trailer, and its code; undefined for any other refusal. */
+function busyReason(message: string): { reason: string; code?: string } | undefined {
   const text = message.trim();
   const trailer = RETRYABLE_TRAILER.exec(text);
   const reason = trailer ? text.slice(0, trailer.index) : text;
+  const code = trailer?.[1];
   const guard = MACHINE_GUARD.exec(reason)?.[1];
-  if (guard !== undefined) return guard;
-  return trailer ? `${reason.replace(REFUSAL_PREFIX, "")} (${trailer[1]})` : undefined;
+  if (guard !== undefined) return { reason: guard, code };
+  return trailer ? { reason: `${reason.replace(REFUSAL_PREFIX, "")} (${code})`, code } : undefined;
 }
 
 /** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
@@ -80,7 +85,8 @@ async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
-    if (busy !== undefined) throw new ReviewerBrokerBusy(busy, { cause: error });
+    if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
+    if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });
     throw error;
   }
 }
