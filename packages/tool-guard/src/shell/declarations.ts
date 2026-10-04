@@ -5,8 +5,19 @@ const LOCAL_MAKERS = new Set(["local", "declare", "typeset"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 const BARE_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)(\+?)=$/;
 const APPEND_RE = /^[A-Za-z_][A-Za-z0-9_]*\+=/;
+const DECLARED_NAME = /^([A-Za-z_][A-Za-z0-9_]*)(?:\+?=|$)/;
+const PATTERN_OPS = new Set(["(", ")", "|"]);
+const SEPARATOR: OpToken = { type: "op", value: ";" };
 
 type Group = "{" | "(";
+
+interface Body {
+  group: Group;
+  /** The depth of its group outside it. */
+  depth: number;
+  /** Each local the body made, with the hidden variable holding the value it had outside. */
+  saved: Array<[name: string, slot: string]>;
+}
 
 interface Pass {
   out: Token[];
@@ -15,18 +26,26 @@ interface Pass {
   /** `function` was read and its name is next, or `NAME ()` or `function NAME` was read and its body is next. */
   header: "name" | "body" | null;
   depths: Record<Group, number>;
-  /** Open function bodies, each with the depth of its group outside it. */
-  bodies: Array<{ group: Group; depth: number }>;
+  bodies: Body[];
   /** The command makes a new local, so an append in it starts from empty. */
   local: boolean;
+  /** Open `case` commands; `awaitIn` waits for the `in` before the first pattern, `pattern` is set while one is read. */
+  cases: number;
+  awaitIn: boolean;
+  pattern: boolean;
+  slots: number;
 }
 
 /**
- * Rewrites the assignments variable tracking cannot read word by word: `NAME=(a b)` becomes `NAME=a`,
- * the element 0 that `$NAME` reads, and an append that makes a new function local loses its `+`.
+ * Rewrites what variable tracking cannot read word by word. `NAME=(a b)` becomes `NAME=a`, the element 0
+ * that `$NAME` reads. An append that makes a new function local loses its `+`, and a `{ }` function body
+ * saves each local's outer value before it and restores it at the closing brace, as bash does on return.
  */
 export function normalizeDeclarations(tokens: Token[]): Token[] {
-  const p: Pass = { out: [], start: true, header: null, depths: { "{": 0, "(": 0 }, bodies: [], local: false };
+  const p: Pass = {
+    out: [], start: true, header: null, depths: { "{": 0, "(": 0 }, bodies: [], local: false,
+    cases: 0, awaitIn: false, pattern: false, slots: 0,
+  };
   let i = 0;
   while (i < tokens.length) {
     const token = tokens[i] as Token;
@@ -37,10 +56,14 @@ export function normalizeDeclarations(tokens: Token[]): Token[] {
   return p.out;
 }
 
+/** A case pattern's `(`, `|` and `)` become separators, so they neither pipe nor open or close a group. */
 function op(tokens: Token[], i: number, p: Pass): number {
   const token = tokens[i] as OpToken;
   const next = tokens[i + 1];
-  if (token.value === "(" && next?.type === "op" && next.value === ")" && p.out.at(-1)?.type === "word") {
+  if (p.pattern && PATTERN_OPS.has(token.value)) {
+    p.out.push(SEPARATOR);
+    p.pattern = token.value !== ")";
+  } else if (token.value === "(" && next?.type === "op" && next.value === ")" && p.out.at(-1)?.type === "word") {
     p.out.push(token, next);
     p.header = "body";
     i++;
@@ -49,6 +72,7 @@ function op(tokens: Token[], i: number, p: Pass): number {
     if (token.value === ")") close(p, "(");
     p.out.push(token);
   }
+  if (token.value === ";;" && p.cases > 0) p.pattern = true;
   p.start = true;
   p.local = false;
   return i + 1;
@@ -63,8 +87,8 @@ function word(tokens: Token[], i: number, p: Pass): number {
     functionName(w, next, p);
     return i + 1;
   }
-  if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(w, p);
-  else if (p.local && /^-[A-Za-z]*g/.test(w.value)) p.local = false;
+  if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
+  else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
   p.out.push(p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w);
   return i + 1;
 }
@@ -72,31 +96,67 @@ function word(tokens: Token[], i: number, p: Pass): number {
 /** Ends `function NAME` as a command of its own, as `NAME ()` already is, so the body's first word starts a command. */
 function functionName(w: WordToken, next: Token | undefined, p: Pass): void {
   p.out.push(w);
-  if (next?.type !== "op" || next.value !== "(") p.out.push({ type: "op", value: ";" });
+  if (next?.type !== "op" || next.value !== "(") p.out.push(SEPARATOR);
   p.header = "body";
   p.start = true;
 }
 
-/** `declare -g` and `export` stay global; `local`, and `declare` or `typeset` in a function body, make a local. */
-function commandWord(w: WordToken, p: Pass): void {
+function commandWord(tokens: Token[], i: number, p: Pass): void {
+  const w = tokens[i] as WordToken;
   const keyword = w.quoted ? "" : w.value;
   if (keyword === "{") open(p, "{");
   else if (keyword === "}") close(p, "{");
   else p.header = keyword === "function" ? "name" : null;
+  if (keyword === "case") [p.cases, p.awaitIn] = [p.cases + 1, true];
+  if (keyword === "esac") [p.cases, p.pattern] = [Math.max(0, p.cases - 1), false];
   p.start = COMMAND_STARTS.has(keyword);
-  p.local = w.value === "local" || (LOCAL_MAKERS.has(w.value) && p.bodies.length > 0);
+  const names = localNames(tokens, i, p);
+  p.local = names !== null;
+  if (names) saveLocals(names, p);
+}
+
+/** `local`, or `declare` or `typeset` without `-g` in a function body: the names it makes local, else null. */
+function localNames(tokens: Token[], i: number, p: Pass): string[] | null {
+  const value = (tokens[i] as WordToken).value;
+  if (value !== "local" && !(LOCAL_MAKERS.has(value) && p.bodies.length > 0)) return null;
+  const end = tokens.findIndex((t, j) => j > i && t.type === "op");
+  const args = tokens.slice(i + 1, end < 0 ? undefined : end).filter((t): t is WordToken => t.type === "word");
+  if (args.some((a) => /^-[A-Za-z]*g/.test(a.value))) return null;
+  return args.flatMap((a) => DECLARED_NAME.exec(a.value)?.[1] ?? []);
+}
+
+/** Copies each name's value into a hidden variable before the declaration, for the closing brace to restore. */
+function saveLocals(names: string[], p: Pass): void {
+  const body = p.bodies.at(-1);
+  if (body?.group !== "{" || names.length === 0) return;
+  const saves = names.map((name) => {
+    const slot = `__tool_guard_local_${p.slots++}`;
+    body.saved.push([name, slot]);
+    return copyWord(slot, name);
+  });
+  p.out.push(...saves, SEPARATOR);
+}
+
+/** `TARGET=$SOURCE`, which takes the source's value when it is known and leaves the target unknown otherwise. */
+function copyWord(target: string, source: string): WordToken {
+  const value = `${target}=$${source}`;
+  const ref = { name: source, start: target.length + 1, end: value.length };
+  return { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: false, refs: [ref], subs: [] };
 }
 
 function open(p: Pass, group: Group): void {
-  if (p.header === "body") p.bodies.push({ group, depth: p.depths[group] });
+  if (p.header === "body") p.bodies.push({ group, depth: p.depths[group], saved: [] });
   p.header = null;
   p.depths[group]++;
 }
 
+/** A `( )` body is already a subshell to the walk; a `{ }` body restores its locals, latest first. */
 function close(p: Pass, group: Group): void {
   p.depths[group] = Math.max(0, p.depths[group] - 1);
   const body = p.bodies.at(-1);
-  if (body?.group === group && body.depth === p.depths[group]) p.bodies.pop();
+  if (body?.group !== group || body.depth !== p.depths[group]) return;
+  p.bodies.pop();
+  p.out.push(...body.saved.reverse().map(([name, slot]) => copyWord(name, slot)));
 }
 
 function withoutPlus(w: WordToken): WordToken {
@@ -106,8 +166,8 @@ function withoutPlus(w: WordToken): WordToken {
 }
 
 /**
- * `NAME=(a b)` as one word whose value is element 0, unknown unless it is plainly literal.
- * An append to a variable that is not a new local keeps the element 0 it has, so it appends nothing.
+ * `NAME=(a b)` as one word whose value is element 0, unknown unless it is plainly literal: a brace, glob or
+ * `[i]=` element can change it. An append to a variable that is not a new local keeps its element 0.
  */
 function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): number {
   const w = tokens[i] as WordToken;
@@ -123,7 +183,8 @@ function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): 
   if (append && !p.local) p.out.push({ ...w, value: `${name}+=`, subs });
   else {
     const first = elements[0];
-    const known = first !== undefined && !first.dynamic && !/[[*?]/.test(first.value);
+    const subscripted = elements.some((e) => e.value.startsWith("["));
+    const known = first !== undefined && !first.dynamic && !subscripted && !/[[*?{]/.test(first.value);
     p.out.push({ ...w, value: `${name}=${first?.value ?? ""}`, dynamic: !known, refs: [], subs });
   }
   return end + 1;

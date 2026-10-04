@@ -47,6 +47,13 @@ describe("variables built up before the command they name", () => {
     ["a declare append after a function body", "f() { :; }; Y=pu; declare Y+=sh; git $Y origin HEAD:main"],
     ["a declare append in a plain group", "Y=pu; { declare Y+=sh; git $Y origin HEAD:main; }"],
     ["an array's element 0", "Y=(push x); git $Y origin HEAD:main"],
+    ["a local append undone on return", "Y=push; f() { local Y+=x; }; f; git $Y origin HEAD:main"],
+    ["a declare append undone on return", "Y=push; f() { declare Y+=x; }; f; git $Y origin HEAD:main"],
+    ["a local undone on return (TP-1473)", "Y=push; f() { local Y=status; }; f; git $Y origin HEAD:main"],
+    ["a typeset local undone on return (TP-1473)", "Y=push; function f { typeset Y=status; }; f; git $Y origin HEAD:main"],
+    ["a global set in a function", "Y=status; f() { Y=push; }; f; git $Y origin HEAD:main"],
+    ["a declare -g set in a function", "Y=status; f() { declare -g Y=push; }; f; git $Y origin HEAD:main"],
+    ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
   ])("%s still reads as a push to main", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
@@ -80,6 +87,9 @@ describe("variables built up before the command they name", () => {
     ["led by a substitution", "Y=($(cmd) x); git $Y"],
     ["led by a subscript", "Y=([1]=push); git $Y"],
     ["led by a glob", "Y=(pu*); git $Y"],
+    ["led by a brace list", "Y=({push,x}); git $Y"],
+    ["led by a brace suffix", "Y=(pu{sh,x}); git $Y"],
+    ["with a later [0]= element", "Y=(x [0]=push); git $Y"],
   ])("leaves an array %s unknown", (_, command) => {
     expect(gitArgs(command)).toEqual([["$Y"]]);
   });
