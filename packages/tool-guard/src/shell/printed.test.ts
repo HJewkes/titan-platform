@@ -52,4 +52,14 @@ describe("octal in echo and printf %b", () => {
   it("keeps quote escapes literal in echo -e", () => {
     expect(printed("echo", "-e", "'\\\"x\\?'")).toBe('\\"x\\?');
   });
+
+  it("keeps printing after a literal U+10FFFF argument", () => {
+    const text = printed("printf", "'%s\\ngit push origin HEAD:main\\n'", "$'\\U0010ffff'");
+    expect(text).toBe("\u{10ffff}\ngit push origin HEAD:main\n");
+    expect(printed("printf", "'%b\\ngit push'", "'\\U0010ffff'")).toBe("\u{10ffff}\ngit push");
+  });
+
+  it("does not pad a %b argument that ends at \\c", () => {
+    expect(printed("printf", "'%5b'", "'a\\c'")).toBe("a");
+  });
 });

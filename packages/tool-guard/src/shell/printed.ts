@@ -38,36 +38,38 @@ function printfText(values: string[]): string | null {
   return out;
 }
 
-/** Marks where a `%b` argument's `\\c` cut printf's output short. */
-const STOP = "\u{10ffff}";
-
 const DIRECTIVE = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
 
 /** A `*` count printf would read as `-1` or `0x8` is not guessed: only plain decimals are understood. */
 function applyFormat(format: string, args: string[]): { text: string; used: number; stopped: boolean } | null {
   let used = 0;
   let understood = true;
-  let stopped = false;
   const next = () => args[used++] ?? "";
   const count = () => {
     const v = next();
     if (!/^\d+$/.test(v)) understood = false;
     return v;
   };
-  const text = format.replace(DIRECTIVE, (whole, flags: string, width: string, precision?: string, conv = "") => {
-    if (whole === "%%") return "%";
+  let text = "";
+  let at = 0;
+  for (const m of format.matchAll(DIRECTIVE)) {
+    const [whole, flags = "", width = "", precision, conv = ""] = m;
+    text += format.slice(at, m.index);
+    at = (m.index ?? 0) + whole.length;
+    if (whole === "%%") {
+      text += "%";
+      continue;
+    }
     if (!"sbcdi".includes(conv) || conv === "") understood = false;
     const w = width === "*" ? count() : width;
     const p = precision === "*" ? count() : precision;
     const arg = next();
-    const padded = pad(convert(conv, arg, p), w, flags.includes("-"));
-    if (conv !== "b" || !decodeEscapes(arg, "printf-b").stopped) return padded;
-    stopped = true;
-    return padded + STOP;
-  });
-  if (!understood) return null;
-  const end = text.indexOf(STOP);
-  return end < 0 ? { text, used, stopped } : { text: text.slice(0, end), used, stopped };
+    if (conv === "b" && decodeEscapes(arg, "printf-b").stopped) {
+      return understood ? { text: text + convert(conv, arg, p), used, stopped: true } : null;
+    }
+    text += pad(convert(conv, arg, p), w, flags.includes("-"));
+  }
+  return understood ? { text: text + format.slice(at), used, stopped: false } : null;
 }
 
 /** `%.3s` truncates to three characters, the one directive that can turn `git push` into `git`. */
