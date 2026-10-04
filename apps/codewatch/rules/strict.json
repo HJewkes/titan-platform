@@ -1,5 +1,5 @@
 {
-  "$comment": "Demo thresholds, stricter than .codewatch/check.json, so the report has findings on a repo whose CI keeps its own rules at zero. Run with CODE_REPORT_RULES=apps/code-report/rules/strict.json.",
+  "$comment": "Demo thresholds, stricter than .codewatch/check.json, so the report has findings on a repo whose CI keeps its own rules at zero. Run with CODE_REPORT_RULES=apps/codewatch/rules/strict.json.",
   "rules": [
     {
       "id": "report-file-loc",

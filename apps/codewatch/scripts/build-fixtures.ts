@@ -1,4 +1,4 @@
-// Rebuilds the committed report fixtures: `pnpm --filter code-report fixtures [--full] [--only platform|design] [--reuse] [--with-dataset] [--require-clean]`.
+// Rebuilds the committed report fixtures: `pnpm --filter codewatch fixtures [--full] [--only platform|design] [--reuse] [--with-dataset] [--require-clean]`.
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";

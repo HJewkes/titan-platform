@@ -1,4 +1,4 @@
-# code-report
+# codewatch
 
 ## 0.0.12
 
