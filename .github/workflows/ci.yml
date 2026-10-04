@@ -54,6 +54,9 @@ jobs:
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm dag:check
+      # Report-only until the false-positive count is reviewed (TP-970); then drop the flag to fail on a new dead export.
+      - name: Check for exports with no importer
+        run: pnpm dead:check --report-only
 
   # A merge gate, not an egress control: a pushed branch is public before this runs. The pre-push hook is the control.
   egress-scan:

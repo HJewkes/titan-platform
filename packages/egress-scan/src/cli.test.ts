@@ -51,6 +51,7 @@ function run(
     cwd: repo.dir,
     env: { HOME: emptyHome(), ...env },
     readStdin: () => stdin,
+    readFile: (file) => fs.readFileSync(file, "utf-8"),
     out: (line) => out.push(line),
     err: (line) => err.push(line),
     maxPatchBytes,
