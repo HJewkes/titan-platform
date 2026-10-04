@@ -11,6 +11,8 @@ const ENTRIES = [
   "graph-report-sections.ts",
   "graph-report-drift.ts",
   "graph-report-types.ts",
+  "dead-modules.ts",
+  "unused-exports.ts",
   "dashboard-coupling.ts",
   "dashboard-health.ts",
   "dashboard-node-metrics.ts",

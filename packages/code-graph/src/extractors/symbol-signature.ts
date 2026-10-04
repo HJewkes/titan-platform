@@ -3,7 +3,9 @@ import {
   type ArrowFunction,
   type FunctionDeclaration,
   type FunctionExpression,
+  type GetAccessorDeclaration,
   type MethodDeclaration,
+  type SetAccessorDeclaration,
   type SourceFile,
   type VariableDeclaration,
 } from "ts-morph";
@@ -48,38 +50,67 @@ export function declarationText(decl: Node): SymbolText {
 /**
  * The declaration a symbol name addresses. Symbol names are scope-qualified
  * (`Box.add`, `outer.helper`), which no file-level lookup can reach, so a miss
- * falls through to matching `declarationQualifiedName` over the whole file.
- * Index-time signatures (model B, C-64) and on-pull deep AST both resolve
- * through here, so the two never disagree about which node a name means.
+ * falls through to a qualified-name map of the whole file, built on the first
+ * miss and shared by every later lookup through the same resolver. Index-time
+ * signatures (model B, C-64) and on-pull deep AST both resolve through here, so
+ * the two never disagree about which node a name means.
  */
-export function lookupDeclaration(
-  sf: SourceFile,
-  name: string,
-): Node | undefined {
+export function createDeclarationLookup(sf: SourceFile): (name: string) => Node | undefined {
+  let qualified: ReadonlyMap<string, Node> | undefined;
+  return (name) => {
+    const fileLevel = fileLevelDeclaration(sf, name);
+    if (fileLevel) return fileLevel;
+    qualified ??= qualifiedDeclarations(sf);
+    return qualified.get(name);
+  };
+}
+
+/** One-shot `createDeclarationLookup`, for a caller resolving a single name. */
+export function lookupDeclaration(sf: SourceFile, name: string): Node | undefined {
+  return createDeclarationLookup(sf)(name);
+}
+
+function fileLevelDeclaration(sf: SourceFile, name: string): Node | undefined {
   return (
     sf.getFunction(name) ??
     sf.getClass(name) ??
     sf.getInterface(name) ??
     sf.getTypeAlias(name) ??
     sf.getEnum(name) ??
-    sf.getVariableDeclaration(name) ??
-    qualifiedDeclaration(sf, name)
+    sf.getVariableDeclaration(name)
   );
 }
 
-function qualifiedDeclaration(sf: SourceFile, name: string): Node | undefined {
-  let found: Node | undefined;
-  sf.forEachDescendant((node, traversal) => {
-    if (declarationQualifiedName(node) !== name) return;
-    found = node;
-    traversal.stop();
+function qualifiedDeclarations(sf: SourceFile): ReadonlyMap<string, Node> {
+  const byName = new Map<string, Node>();
+  sf.forEachDescendant((node) => {
+    const name = declarationQualifiedName(node);
+    if (name === null) return;
+    const held = byName.get(name);
+    if (!held || outranks(node, held)) byName.set(name, node);
   });
-  return found;
+  return byName;
+}
+
+/**
+ * Which of two declarations sharing a qualified name speaks for it: an
+ * overload's implementation over its signatures (a declaration file has none,
+ * so the first overload stands), and a getter over its setter, since the getter
+ * carries the property's type. Otherwise the first in source order stays.
+ */
+function outranks(candidate: Node, held: Node): boolean {
+  if (Node.isOverloadable(held) && held.isOverload()) {
+    return !(Node.isOverloadable(candidate) && candidate.isOverload());
+  }
+  return Node.isGetAccessorDeclaration(candidate) && Node.isSetAccessorDeclaration(held);
 }
 
 function signatureOf(decl: Node): string | undefined {
   if (Node.isFunctionDeclaration(decl) || Node.isMethodDeclaration(decl)) {
     return callableSignature(decl, decl.getName() ?? "");
+  }
+  if (Node.isGetAccessorDeclaration(decl) || Node.isSetAccessorDeclaration(decl)) {
+    return accessorSignature(decl);
   }
   if (Node.isVariableDeclaration(decl)) return variableSignature(decl);
   if (Node.isClassDeclaration(decl)) return clamp(`class ${decl.getName() ?? ""}`.trim());
@@ -101,13 +132,29 @@ function variableSignature(decl: VariableDeclaration): string | undefined {
   return type ? clamp(`${decl.getName()}: ${type}`) : undefined;
 }
 
+/**
+ * An accessor is signed as the property it exposes, `name: type`: the getter's
+ * declared or clean inferred return type, or for a lone setter its parameter's.
+ */
+function accessorSignature(decl: GetAccessorDeclaration | SetAccessorDeclaration): string {
+  const type = Node.isGetAccessorDeclaration(decl) ? returnType(decl) : setterType(decl);
+  return clamp(type ? `${decl.getName()}: ${type}` : decl.getName());
+}
+
+function setterType(decl: SetAccessorDeclaration): string | undefined {
+  const param = decl.getParameters()[0];
+  if (!param) return undefined;
+  const node = param.getTypeNode();
+  return node ? oneLine(node.getText()) : cleanType(() => param.getType().getText());
+}
+
 function callableSignature(decl: Callable, name: string): string {
   const params = decl.getParameters().map((p) => oneLine(p.getText())).join(", ");
   const ret = returnType(decl);
   return clamp(`${name}(${params})${ret ? `: ${ret}` : ""}`);
 }
 
-function returnType(decl: Callable): string | undefined {
+function returnType(decl: Callable | GetAccessorDeclaration): string | undefined {
   const node = decl.getReturnTypeNode();
   if (node) return oneLine(node.getText());
   return cleanType(() => decl.getReturnType().getText());

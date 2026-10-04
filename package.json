@@ -20,7 +20,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
     "dag:check": "node scripts/dag-check-self.mjs",
-    "dead:check": "node --max-old-space-size=1024 scripts/dead-code-check.mjs",
+    "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",

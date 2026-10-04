@@ -150,7 +150,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
 
 describe("the seat check of a carry", () => {
   const seat = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: null, predecessor: null });
-  const verdict = (head: string, value: "MERGE" | "FIX_FIRST", from: ReviewerAgent): ReviewerMessage => ({
+  const verdict = (head: string, value: "MERGE" | "FIX_FIRST" | "WAIT", from: ReviewerAgent): ReviewerMessage => ({
     agentId: from.agentId,
     sessionId: from.sessionId,
     writtenAt: 1,
@@ -174,6 +174,14 @@ describe("the seat check of a carry", () => {
 
   it("refuses when a seat reviewer said FIX_FIRST at a head between", async () => {
     await expect(checked((reviewer) => [verdict(REVIEWED, "FIX_FIRST", reviewer)])).resolves.toBe(false);
+  });
+
+  it("refuses when a seat reviewer said WAIT at the carried head, as its checks had not finished", async () => {
+    await expect(checked((reviewer) => [verdict(NEW_HEAD, "WAIT", reviewer)])).resolves.toBe(false);
+  });
+
+  it("refuses when a seat reviewer said WAIT at a head between", async () => {
+    await expect(checked((reviewer) => [verdict(REVIEWED, "WAIT", reviewer)])).resolves.toBe(false);
   });
 
   it("clears when no seat reviewer objected", async () => {

@@ -10,6 +10,8 @@
  *   on a bare line of the same character at least as long. An unclosed fence hides the rest.
  * - An HTML comment hides every line that starts inside it, until a line holding `-->` with
  *   no `<!--` after its last `-->`.
+ * - `Verdict: WAIT` (required checks unfinished at the head) is read as a block too, but never as `ok`: it
+ *   returns `{ ok: false, reason: "wait" }` with the PR and head it names, so no MERGE path can take it.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -27,6 +29,7 @@ export type VerdictBlockRefusal =
 
 export type VerdictBlockResult =
   | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number }
+  | { ok: false; reason: "wait"; repo: string; pr: number; head: string; lineOffset: number }
   | { ok: false; reason: VerdictBlockRefusal };
 
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
@@ -95,7 +98,7 @@ function indentOf(raw: string): number {
 
 function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   const verdict = lines[at] ?? "";
-  if (verdict !== "Verdict: MERGE" && verdict !== "Verdict: FIX_FIRST") return { ok: false, reason: "bad_verdict" };
+  if (verdict !== "Verdict: MERGE" && verdict !== "Verdict: FIX_FIRST" && verdict !== "Verdict: WAIT") return { ok: false, reason: "bad_verdict" };
   const prLine = lines[at + 1];
   if (prLine == null || !prLine.startsWith("PR:")) return { ok: false, reason: "missing_pr_line" };
   const pr = PR_LINE.exec(prLine);
@@ -107,14 +110,9 @@ function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   if (headLine == null || !headLine.startsWith("Head:")) return { ok: false, reason: "missing_head_line" };
   const head = HEAD_LINE.exec(headLine);
   if (!head) return { ok: false, reason: "bad_head" };
-  return {
-    ok: true,
-    verdict: verdict === "Verdict: MERGE" ? "MERGE" : "FIX_FIRST",
-    repo: `${pr[1]}/${pr[2]}`,
-    pr: number,
-    head: head[1]!,
-    lineOffset: at,
-  };
+  const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
+  if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
+  return { ok: true, verdict: verdict === "Verdict: MERGE" ? "MERGE" : "FIX_FIRST", ...named };
 }
 
 function isDotName(name: string): boolean {

@@ -419,6 +419,23 @@ are pure functions over rows the caller has already read, so they run in a brows
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
 
+### Unused exports and dead modules
+
+Ported with TP-1467 from codewatch's `graph report`, unchanged apart from import paths. Both
+are leads, not verdicts, and both drop files that `keepNode` rejects:
+
+- `topUnusedExports(symbolNodes, publicApi, ctx, limit)` lists exported symbols whose
+  `utilization` is 0 or absent, ranked internal first, then by `symbol_cognitive`
+  descending. `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
+  node re-exports one hop away, whose exports may still have npm consumers.
+- `topDeadModules(nodes, edges, ctx, limit)` lists files that a forward walk over `imports`
+  and `re-exports` edges never reaches, ranked by `loc`. The walk starts from files with the
+  role `entry`, `barrel`, `test`, `script`, `config` or `fixture`, and from any
+  `main.{ts,tsx,js,jsx}`.
+
+These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
+re-exports transitively from package-manifest entries.
+
 ### Partition quality
 
 `computePartitionQuality` scores a package partition of the file graph: per-package cohesion,

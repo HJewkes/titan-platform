@@ -70,13 +70,13 @@ jobs:
           path: ${{ runner.temp }}/codewatch-report.json
           retention-days: 30
           if-no-files-found: warn
-      # Report-only until the false-positive count is reviewed (TP-970); then drop the flag to fail on a new dead export.
-      # BASE_REF fails the step now, report-only or not, if the PR adds an entry to the shrink-only baseline.
+      # Blocking: a new dead export fails the step (TP-1406).
+      # BASE_REF also fails the step if the PR adds an entry to the shrink-only baseline.
       # Reads the head graph dag-check kept, instead of indexing the tree a second time.
       - name: Check for exports with no importer
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dead:check --report-only --db "$RUNNER_TEMP/graph.db"
+        run: pnpm dead:check --db "$RUNNER_TEMP/graph.db"
 
   # A merge gate, not an egress control: a pushed branch is public before this runs. The pre-push hook is the control.
   egress-scan:
