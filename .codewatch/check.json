@@ -18,7 +18,8 @@
           "packages/authority",
           "packages/egress-scan",
           "packages/fix-proof",
-          "packages/tool-guard"
+          "packages/tool-guard",
+          "packages/eslint-plugin"
         ],
         "1": [
           "packages/retrieval",
@@ -75,7 +76,8 @@
           "packages/authority",
           "packages/egress-scan",
           "packages/fix-proof",
-          "packages/tool-guard"
+          "packages/tool-guard",
+          "packages/eslint-plugin"
         ],
         [
           "packages/retrieval",

@@ -7,6 +7,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
+import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
@@ -77,6 +78,7 @@ export interface LandDeps {
   pollMs?: number;
   ciTimeoutMs?: number;
   updateTimeoutMs?: number;
+  flakyChecks?: Record<string, FlakyChecks>;
 }
 
 interface LandRules {
@@ -216,9 +218,10 @@ export async function step<R>(ctx: WorkflowContext, stepId: string, input: objec
 export function landRoutes(deps: LandDeps): StepRoute[] {
   const now = deps.now ?? Date.now;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000 };
+  const flaky = flakyState(deps.flakyChecks);
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps.port, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal)),
+    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps.port, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky)),
     codeRoute("update-branch", now, (input: UpdateInput, signal) => updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal)),
     codeRoute("merge", now, async (input: MergeInput) => deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow)),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
@@ -265,12 +268,13 @@ interface CiInput {
 }
 
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signal: AbortSignal): Promise<CiSnapshot> {
+async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState): Promise<CiSnapshot> {
   const clock = deadline(timing);
   let last = "no read yet";
   for (;;) {
     try {
       const snapshot = await readCi(port, input);
+      if (snapshot.verdict === "red" && (await rerunIfFlaky(port, input, snapshot, timing, signal, flaky))) continue;
       if (snapshot.verdict !== "pending") return snapshot;
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
     } catch (error) {
