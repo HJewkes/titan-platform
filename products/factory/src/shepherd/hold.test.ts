@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } fro
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerAgent, ReviewerMessage } from "./review.js";
@@ -35,13 +36,13 @@ interface Rig {
   pr: number;
 }
 
-function rig(): Rig {
+function rig(kind?: string): Rig {
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: H1 });
-  store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+  store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, ...(kind && { kind }) });
   store.recordAuthor("run-1", { agentId: "agent-impl-a", name: "impl-a", role: "implementer" });
   store.hold("run-1", "awaiting a named review", REVIEWER);
   return { fake, port: githubPort(fake.wire), store, roster: [...CREW], messages: [], pr };
@@ -151,5 +152,53 @@ describe("a hold that names a reviewer", () => {
     expect(result.ok).toBe(true);
     expect(ran).toBe(false);
     expect(r.store.heldReason(REPO, r.pr, undefined, H1)).toBeUndefined();
+  });
+});
+
+describe("a satisfied hold across an update of the reviewed head", () => {
+  const EQUAL: CarryResult = { equal: true, headTree: "tree-a", mergeTree: "tree-a" };
+
+  /** A rig whose reviewer sent MERGE at H1 and whose PR has since been updated to H2, with the probe answering `answer`. */
+  async function updated(kind: string | undefined, answer: CarryResult | undefined) {
+    const r = rig(kind);
+    const probed: unknown[] = [];
+    const carry = answer && (async (input: unknown) => (probed.push(input), answer));
+    const satisfy = holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: { read: async () => r.messages }, carry });
+    say(r, verdictAt(H1));
+    await satisfy(REPO, r.pr, H1, "main");
+    r.fake.pushHead(r.pr, H2);
+    return { r, probed, satisfy };
+  }
+
+  it("moves to a tree-equal head, for the same reviewer and session, and asks the probe about the satisfied head", async () => {
+    const { r, probed, satisfy } = await updated("correctness", EQUAL);
+
+    await satisfy(REPO, r.pr, H2, "main");
+
+    expect(probed).toEqual([{ repo: REPO, baseRef: "main", fromHead: H1, head: H2 }]);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toMatchObject({ head: H2, by: { reviewer: REVIEWER, agentId: `agent-${REVIEWER}`, sessionId: `session-${REVIEWER}` } });
+  });
+
+  it.each([
+    ["a probe that answers not equal", "correctness", { equal: false, headTree: "a", mergeTree: "b" }],
+    ["trees that differ", "correctness", { equal: true, headTree: "a", mergeTree: "b" }],
+    ["a security PR", "security", EQUAL],
+    ["a PR registered without a kind", undefined, EQUAL],
+    ["no probe wired", "correctness", undefined],
+  ] as const)("stays at the reviewed head for %s", async (_name, kind, answer) => {
+    const { r, satisfy } = await updated(kind, answer);
+
+    await satisfy(REPO, r.pr, H2, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+  });
+
+  it("does not carry when the reviewer's newest verdict at the new head is FIX_FIRST", async () => {
+    const { r, satisfy } = await updated("correctness", EQUAL);
+    say(r, verdictAt(H2, "FIX_FIRST"));
+
+    await satisfy(REPO, r.pr, H2, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
   });
 });
