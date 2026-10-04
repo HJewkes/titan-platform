@@ -88,7 +88,7 @@ describe("a graph another owner has also migrated", () => {
 
     expect(code).not.toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({ ok: false });
-    expect(migrationRows(foreign).map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 1001, 1002]);
+    expect(migrationRows(foreign).map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1001, 1002]);
   });
 });
 
