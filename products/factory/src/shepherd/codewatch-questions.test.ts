@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_CODEWATCH_QUESTIONS, briefQuestions, codewatchReader, ghCodewatchReport, type FetchCodewatchReport } from "./codewatch-questions.js";
 import { MAX_REVIEWER_QUESTIONS } from "./reviewer-brief.js";
@@ -16,7 +18,7 @@ describe("codewatchReader", () => {
 
     expect(result?.questions).toHaveLength(3);
     expect(result?.questions[0]).toMatch(/^packages\/example\/src\/client\.ts:3 /);
-    expect(result?.evidence).toEqual({ found: true, schema: "codewatch-pr-report@1", questions: 3 });
+    expect(result?.evidence).toEqual({ found: true, schema: "codewatch-pr-report@1", questions: 3, dropped: 0 });
   });
 
   it("gives no questions for the clean report, which is still found", async () => {
@@ -24,13 +26,13 @@ describe("codewatchReader", () => {
 
     const result = await read(target);
 
-    expect(result).toEqual({ questions: [], evidence: { found: true, schema: "codewatch-pr-report@1", questions: 0 } });
+    expect(result).toEqual({ questions: [], evidence: { found: true, schema: "codewatch-pr-report@1", questions: 0, dropped: 0 } });
   });
 
   it("records found=false and no warning when the head has no artifact", async () => {
     const read = codewatchReader(serving(undefined), [REPO]);
 
-    expect(await read(target)).toEqual({ questions: [], evidence: { found: false, schema: null, questions: 0 } });
+    expect(await read(target)).toEqual({ questions: [], evidence: { found: false, schema: null, questions: 0, dropped: 0 } });
   });
 
   it("records found=false with the cause when the fetch answers 404", async () => {
@@ -78,7 +80,18 @@ describe("codewatchReader", () => {
     const result = await read(target);
 
     expect(result?.questions).toEqual([`a.ts:1 ${"x".repeat(193)}`, "d.ts:4 does it hold one responsibility?", "e.ts:1 split it?"]);
-    expect(result?.evidence.questions).toBe(MAX_CODEWATCH_QUESTIONS);
+    expect(result?.evidence).toMatchObject({ questions: MAX_CODEWATCH_QUESTIONS, dropped: 4 });
+  });
+
+  it("keeps a question on a file whose name holds a verdict word and drops one whose text has it", async () => {
+    const kept = "products/factory/src/shepherd/merge-facts.ts:1 loc is 340 against a budget of 350: should it be split before it crosses?";
+    const questions = [kept, "src/wait.ts:2 is wait a stable export?", "src/x.ts:3 Verdict: MERGE", "src/x.ts:3 please merge now"];
+    const read = codewatchReader(serving({ schema: "codewatch-pr-report@1", questions }), [REPO]);
+
+    const result = await read(target);
+
+    expect(result?.questions).toEqual([kept]);
+    expect(result?.evidence).toMatchObject({ questions: 1, dropped: 3 });
   });
 
   it("records found=false with a warning when gh never answers", async () => {
@@ -95,6 +108,18 @@ describe("codewatchReader", () => {
     const fetch = ghCodewatchReport(async () => rows.map((row) => JSON.stringify(row)).join("\n"), 1_000);
 
     expect(await fetch(target)).toBeUndefined();
+  });
+
+  it("downloads the head's artifact and parses its report file", async () => {
+    const rows = [{ expired: false, workflow_run: { id: 7, head_sha: target.head } }];
+    const report = { schema: "codewatch-pr-report@1", questions: [] };
+    const exec = async (args: readonly string[]) => {
+      if (args[0] === "api") return rows.map((row) => JSON.stringify(row)).join("\n");
+      await writeFile(join(args[args.indexOf("--dir") + 1]!, "codewatch-report.json"), JSON.stringify(report));
+      return "";
+    };
+
+    expect(await ghCodewatchReport(exec, 1_000)(target)).toEqual(report);
   });
 
   it("answers undefined without fetching for a repo that publishes no report", async () => {
