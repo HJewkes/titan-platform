@@ -3,6 +3,7 @@ import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
+import { namesTarget } from "./verdict-target.js";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
@@ -26,7 +27,7 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   const own = messages.filter((message) => message.agentId === row.agentId && message.sessionId === row.sessionId);
   const atHead = own.flatMap((message) => {
     const block = parseVerdictBlock(message.text);
-    const named = "repo" in block && block.repo === input.repo && block.pr === input.pr && block.head === input.head;
+    const named = "repo" in block && namesTarget(block, input);
     return named ? [{ message, block }] : [];
   });
   const merges = (entry: { block: { ok: boolean } }) => (entry.block.ok ? 1 : 0);
@@ -73,7 +74,7 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
     const block = parseVerdictBlock(message.text);
     const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;
     if (!verdict || !("repo" in block) || !Number.isFinite(message.writtenAt)) continue;
-    if (block.repo.toLowerCase() !== target.repo.toLowerCase() || block.pr !== target.pr || block.head !== target.head) continue;
+    if (!namesTarget(block, target)) continue;
     const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && verdict !== "MERGE");
     if (later) newest = { message, verdict };
   }

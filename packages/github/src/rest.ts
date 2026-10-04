@@ -1,6 +1,6 @@
 import type { RateBudget } from "./budget.js";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
-import { redactStreams } from "./redact.js";
+import { redact, redactStreams } from "./redact.js";
 
 export interface HttpResponse {
   status: number;
@@ -121,7 +121,7 @@ export function parseIncluded(stdout: string): HttpResponse | null {
 function nextPage(link: string | undefined): string | null {
   const next = link ? /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] : undefined;
   if (!next) return null;
-  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${next}`);
+  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${redact(next, [])}`);
   return next.slice(API_ORIGIN.length);
 }
 
