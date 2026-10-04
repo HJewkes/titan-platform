@@ -1,4 +1,4 @@
-import { createSign } from "node:crypto";
+import { createPrivateKey, createSign } from "node:crypto";
 import { execGh, type GhExec } from "./exec.js";
 import { GitHubInputError } from "./validate.js";
 import { parseIncluded } from "./rest.js";
@@ -27,6 +27,7 @@ export function signAppJwt(appId: number, privateKeyPem: string, nowMs: number):
   const iat = Math.floor(nowMs / 1000) - JWT_BACKDATE_S;
   const unsigned = `${base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${base64url(JSON.stringify({ iat, exp: iat + JWT_BACKDATE_S + JWT_LIFETIME_S, iss: String(appId) }))}`;
   try {
+    if (createPrivateKey(privateKeyPem).asymmetricKeyType !== "rsa") throw new Error("not RSA");
     return `${unsigned}.${base64url(createSign("RSA-SHA256").update(unsigned).sign(privateKeyPem))}`;
   } catch {
     // The node error can quote key material, so none of it is carried over.
@@ -49,13 +50,20 @@ export async function appInstallationToken(credentials: AppCredentials, exec: Gh
   const jwt = signAppJwt(appId, privateKeyPem, nowMs);
   const secrets = [jwt, privateKeyPem];
   const args = ["api", "-i", "-X", "POST", `app/installations/${installationId}/access_tokens`];
-  const result = await exec(args, undefined, { env: { GH_TOKEN: jwt } });
+  const result = await exec(args, undefined, { env: { GH_TOKEN: jwt } }).catch((error: unknown) => {
+    throw new Error(redact(`installation token exchange could not run: ${error instanceof Error ? error.message : String(error)}`, secrets));
+  });
   const response = parseIncluded(result.stdout);
   if (result.code !== 0 || !response || response.status >= 400) {
-    const detail = redact(result.stderr.trim() || result.stdout.trim(), secrets);
+    // Stdout may hold a token the call just minted, so only stderr is echoed, and any token in it is redacted too.
+    const detail = redact(result.stderr.trim(), [...secrets, ...tokensIn(result.stdout), ...tokensIn(result.stderr)]);
     throw new Error(`installation token exchange failed (${result.code}${response ? `, HTTP ${response.status}` : ""}): ${detail}`);
   }
   return readToken(response.body, nowMs, secrets);
+}
+
+function tokensIn(text: string): string[] {
+  return [...text.matchAll(/"token"\s*:\s*"([^"]+)"/g)].map((match) => match[1]!);
 }
 
 function readToken(body: string, nowMs: number, secrets: readonly string[]): InstallationToken {

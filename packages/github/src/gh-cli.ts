@@ -1,7 +1,7 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { redact } from "./app-token.js";
 import { checkRunBody } from "./check-run-create.js";
-import { execGh, type GhExec } from "./exec.js";
+import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
@@ -64,14 +64,24 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
 /** The token rides in the child env of this one call; any error is rebuilt without it. */
 async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string, request: CreateCheckRunRequest): Promise<{ id: number }> {
   if (!options.appToken) throw new Error("createCheckRun needs a GitHub App token provider (GhCliOptions.appToken)");
-  const token = await options.appToken();
-  const scoped: GhExec = (args, input, execOptions) => exec(args, input, { ...execOptions, env: { ...execOptions?.env, GH_TOKEN: token } });
-  const api = restCaller(scoped, options.budget ?? sharedRateBudget, 0);
+  let token = "";
   try {
+    token = await options.appToken();
+    const scoped: GhExec = (args, input, execOptions) => exec(args, input, { ...execOptions, env: { ...execOptions?.env, GH_TOKEN: token } });
+    const api = restCaller(scoped, options.budget ?? sharedRateBudget, 0);
     return { id: (await api.send<{ id: number }>("POST", `repos/${repo}/check-runs`, {}, checkRunBody(request))).id };
   } catch (error) {
-    throw new Error(redact(error instanceof Error ? error.message : String(error), [token]));
+    throw redactedError(error, [token]);
   }
+}
+
+/** Keeps `GhError.status` so callers can still branch on the HTTP status. */
+function redactedError(error: unknown, secrets: readonly string[]): Error {
+  if (error instanceof GhError) {
+    const { code, stdout, stderr } = error.result;
+    return new GhError(error.args, { code, stdout: redact(stdout, secrets), stderr: redact(stderr, secrets) }, error.status);
+  }
+  return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }
 
 async function getContent(api: Rest, repo: string, path: string, ref: string): Promise<RepoFile | null> {

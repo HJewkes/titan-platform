@@ -1,7 +1,7 @@
 import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { appInstallationToken, signAppJwt } from "./app-token.js";
-import type { GhExec, GhExecOptions, GhResult } from "./exec.js";
+import { GhError, type GhExec, type GhExecOptions, type GhResult } from "./exec.js";
 import { fakeGitHub, fakeSha, FAKE_APP_ID } from "./fake.js";
 import { ghCliWire } from "./gh-cli.js";
 import { rateBudget } from "./budget.js";
@@ -74,6 +74,46 @@ describe("appInstallationToken", () => {
     await expect(attempt).rejects.not.toThrow(new RegExp(TOKEN));
   });
 
+  it("never echoes stdout, so a token in a failed or status-less answer stays out of the error", async () => {
+    const failed = scripted(() => ({ code: 1, stdout: `HTTP/2.0 201 Created\r\n\r\n{"token":"${TOKEN}"}`, stderr: "" }));
+    const bare = scripted(() => ({ code: 0, stdout: `{"token":"${TOKEN}"}`, stderr: "" }));
+    const leaky = scripted(() => ({ code: 1, stdout: `{"token":"${TOKEN}"}`, stderr: `boom ${TOKEN}` }));
+
+    for (const gh of [failed, bare, leaky]) {
+      const error = await appInstallationToken(credentials, gh.exec).catch((caught: Error) => caught);
+      expect((error as Error).message).toContain("installation token exchange failed");
+      expect((error as Error).message).not.toContain(TOKEN);
+    }
+  });
+
+  it("redacts the JWT from an exec that throws while quoting its env", async () => {
+    const exec: GhExec = async (_args, _input, options) => {
+      throw new Error(`spawn failed with env ${JSON.stringify(options!.env)}`);
+    };
+
+    const error = await appInstallationToken(credentials, exec).catch((caught: Error) => caught);
+
+    expect((error as Error).message).toContain("could not run");
+    expect((error as Error).message).not.toMatch(/eyJ/);
+  });
+
+  it("refuses a body that is not JSON without echoing it", async () => {
+    const gh = scripted(() => ({ code: 0, stdout: `HTTP/2.0 201 Created\r\n\r\nnot json ${TOKEN}`, stderr: "" }));
+
+    const error = await appInstallationToken(credentials, gh.exec).catch((caught: Error) => caught);
+
+    expect((error as Error).message).toMatch(/not JSON/);
+    expect((error as Error).message).not.toContain(TOKEN);
+  });
+
+  it("refuses a non-RSA key", async () => {
+    const ec = generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const gh = scripted(() => ok({}));
+
+    await expect(appInstallationToken({ ...credentials, privateKeyPem: ec }, gh.exec)).rejects.toBeInstanceOf(GitHubInputError);
+    expect(gh.calls).toEqual([]);
+  });
+
   it("redacts the JWT and the PEM from a failed exchange", async () => {
     const gh = scripted(({ options }) => ({ code: 1, stdout: "", stderr: `gh: Bad credentials ${options!.env!.GH_TOKEN} ${PEM} (HTTP 401)` }));
 
@@ -131,6 +171,18 @@ describe("createCheckRun", () => {
     expect(PEM).not.toContain(TOKEN);
   });
 
+  it("keeps the HTTP status on a rethrown failure and redacts a rejecting token provider", async () => {
+    const gh = scripted(() => ({ code: 1, stdout: "", stderr: `gh: nope ${TOKEN} (HTTP 422)` }));
+
+    const failure = await githubPort(wireWith(gh)).createCheckRun(REPO, request).catch((caught: GhError) => caught);
+    const minting = await githubPort(wireWith(gh, async () => { throw new Error("mint failed"); })).createCheckRun(REPO, request).catch((caught: Error) => caught);
+
+    expect(failure).toBeInstanceOf(GhError);
+    expect((failure as GhError).status).toBe(422);
+    expect((failure as GhError).message).not.toContain(TOKEN);
+    expect((minting as Error).message).toBe("mint failed");
+  });
+
   it("refuses when the wire has no token provider", async () => {
     const gh = scripted(() => ok({ id: 1 }));
 
@@ -149,6 +201,7 @@ describe("fake createCheckRun round trip", () => {
     const { id } = await port.createCheckRun(REPO, request);
     const latest = await port.latestCheckRuns(REPO, HEAD);
 
+    expect(fake.createdCheckRuns).toEqual([{ id, repo: REPO, request }]);
     expect(latest).toMatchObject([{ id, name: "shepherd", status: "completed", conclusion: "success", appId: 31337, headSha: HEAD }]);
   });
 
