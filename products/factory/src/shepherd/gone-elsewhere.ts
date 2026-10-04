@@ -21,6 +21,10 @@ export interface GoneOptions {
   scope?: GoneScope;
   /** Reports the runs it would end and cancels nothing. */
   dryRun?: boolean;
+  /** Limits the walk to these runs. */
+  only?: ReadonlySet<string>;
+  /** Called for a run whose PR left Shepherd but whose lease a live holder still keeps, so it could not be cancelled. */
+  onHeld?: (runId: string) => void;
 }
 
 const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
@@ -73,9 +77,11 @@ function tryCancel(host: FactoryHost, runId: string, reason: string): boolean {
 export async function endRunsGoneElsewhere(host: FactoryHost, services: ShepherdServices, options: GoneOptions = {}): Promise<EndedRun[]> {
   const ended: EndedRun[] = [];
   for (const { id: runId } of candidateRuns(host, options.scope ?? "gated")) {
+    if (options.only && !options.only.has(runId)) continue;
     const reason = await goneReason(services, runId);
     if (reason === undefined || !endable(host.runtime.status(runId))) continue;
     if (options.dryRun || tryCancel(host, runId, reason)) ended.push({ runId, reason });
+    else options.onHeld?.(runId);
   }
   return ended;
 }

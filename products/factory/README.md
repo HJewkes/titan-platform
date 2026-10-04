@@ -29,7 +29,7 @@ titan-factory land owner/repo#N [--task <t>]                  # start land-pr on
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist, load it, wait for /health
-titan-factory service status|restart|uninstall                # macOS only, like install
+titan-factory service status|check|restart|uninstall               # macOS only, like install
 titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
 titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
@@ -148,6 +148,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd pid with `github` `ok` |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |

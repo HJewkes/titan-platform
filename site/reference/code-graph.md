@@ -246,6 +246,38 @@ These metrics need edges from every file, so they are recomputed on each index. 
 and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 `includeReferences`.
 
+### Dashboard derivations
+
+The derivations behind codewatch's `graph dashboard` payload are pure functions over rows
+you have already read, so they also run in a browser:
+
+```ts
+import {
+  buildSymbolCouplingPayload,
+  classifyCoupling,
+  collectNodeMetrics,
+  computeHealth,
+  pairKey,
+} from "@titan-design/code-graph";
+
+collectNodeMetrics([{ nodeId: "a.ts", name: "cognitive_max", value: 18 }]).get("a.ts");
+// { cognitiveMax: 18 }
+
+computeHealth({ scary: 2, newViolations: 0, carryViolations: 0, maxComplexity: 10, hiddenCoupling: 0 }).health;
+// 80
+
+const ctx = {
+  connectedNodes: new Set(["a.ts", "b.ts"]),
+  linkedPairs: new Set([pairKey("a.ts", "b.ts")]),
+  centrality: new Map(), metrics: new Map(), symbols: [], consumersBySymbol: new Map(),
+};
+classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
+```
+
+`buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
+node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
+caps symbol coupling at 40 pairs and 15 consumer groups.
+
 ## Partition quality
 
 Scores a package partition of the file graph. Verified against this release, over this
@@ -284,6 +316,44 @@ re-export target — so it is off by default. On this repo it takes Q from 0.774
 
 `invertBuckets(fileByPackage)` is the file-id-to-package-id lookup the same callers need,
 skipping the `""` unassigned bucket.
+
+## Package architecture
+
+`computeArch` turns a snapshot's file edges into a package-level dependency graph. You pass
+the package roots; the moved code reads no filesystem, and a test walks its imports to keep
+it free of Node builtins.
+
+```ts
+import { bucketFilesByPackage, computeArch } from "@titan-design/code-graph";
+
+const packages = [
+  { id: "packages/app", name: "@x/app" },
+  { id: "packages/core", name: "@x/core" },
+];
+const file = (id: string) => ({ id, kind: "file" as const, name: id });
+const nodes = [
+  file("packages/app/src/a.ts"),
+  file("packages/app/src/b.ts"),
+  file("packages/core/src/x.ts"),
+  file("scripts/run.ts"),
+];
+const edges = [
+  { srcId: "packages/app/src/a.ts", dstId: "packages/core/src/x.ts", kind: "imports" as const },
+  { srcId: "packages/app/src/b.ts", dstId: "packages/core/src/x.ts", kind: "imports" as const },
+];
+
+const { packages: active, edges: arch } = computeArch({ snapshot, nodes, edges, packages });
+active; // [{ id: "packages/app", name: "@x/app", files: 2 }, { id: "packages/core", name: "@x/core", files: 1 }]
+arch; // [{ from: "packages/app", to: "packages/core", count: 2 }]
+
+bucketFilesByPackage(nodes.map((n) => n.id), packages).get(""); // ["scripts/run.ts"]
+```
+
+Test and fixture files are always left out; `exclude` globs and `excludeRole` add to that.
+`includeExternal` folds edges to `kind: "external"` nodes into one `EXTERNAL_BUCKET` node,
+`minEdges` hides weaker package pairs, and `depth: "modules"` or `maxPackageSize` (default
+`DEFAULT_MAX_PACKAGE_SIZE`, 30) splits larger packages into `subNodes`, one per top-level
+directory below the package's common source root.
 
 ## Pruning snapshots
 

@@ -16,6 +16,10 @@ export interface HeadScript {
   reviews?: ReviewAnswer[];
   /** The base moves during the last review at this head, so the PR reads behind after it. */
   goesBehind?: boolean;
+  /** This head is the newest reviewed head merged cleanly onto main: the tree probe answers equal and no review is asked. */
+  treeEqual?: boolean;
+  /** A seat reviewer (a `*-review` agent) said FIX_FIRST at this head, whether or not a review was asked there. */
+  seatFixFirst?: boolean;
 }
 
 /** Main CI at the merge commit: red freezes and fixes, `cancelled-superseded` is read on the newer main push. */
@@ -42,10 +46,8 @@ export interface LedgerFixture {
   main?: MainScript;
   /** The gate's own approval rule is bypassable, so GitHub's `blocked` is no block. */
   reviewBypass?: boolean;
-  /** What main does today; the slice that removes the gate changes this pin. */
+  /** How the replay settles now that TP-737 has landed. */
   today: Pinned;
-  /** The end state TP-737 aims for, and the slice that delivers it. */
-  target?: { slice: "TP-779" | "TP-780"; outcome: ReplayOutcome; reviewers: number };
 }
 
 const merged = (reviewers: number, fixers = 0): Pinned => ({ outcome: "merged", gates: [], reviewers, fixers });
@@ -91,17 +93,15 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     id: 6,
     gate: "approve-merge",
     story: "behind, update, MERGE, tree-equal update",
-    heads: [{ state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(2),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 1 },
+    heads: [{ state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
+    today: merged(1),
   },
   {
     id: 7,
     gate: "approve-merge",
     story: "two updates, FIX_FIRST, a behind fix, MERGE, tree-equal update",
-    heads: [{ state: "behind" }, { state: "behind" }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(3),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 2 },
+    heads: [{ state: "behind" }, { state: "behind" }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
+    today: merged(2),
   },
   {
     id: 8,
@@ -114,17 +114,15 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     id: 9,
     gate: "approve-merge",
     story: "two FIX_FIRSTs, MERGE, tree-equal update",
-    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(4),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 3 },
+    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
+    today: merged(3),
   },
   {
     id: 10,
     gate: "approve-merge",
     story: "two FIX_FIRSTs, a conflict the fixer takes, update, MERGE, tree-equal update",
-    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "dirty" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(4),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 3 },
+    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "dirty" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
+    today: merged(3),
   },
   {
     id: 11,
@@ -145,9 +143,8 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     id: 13,
     gate: "approve-merge",
     story: "three FIX_FIRSTs, update, MERGE, two tree-equal updates",
-    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(6),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 4 },
+    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true, goesBehind: true }, { treeEqual: true }],
+    today: merged(4),
   },
   {
     id: 14,
@@ -176,8 +173,7 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     id: 17,
     gate: "approve-merge",
     story: "three updates, MERGE, tree-equal update",
-    heads: [{ state: "behind" }, { state: "behind" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { reviews: ["MERGE"] }],
-    today: merged(2),
-    target: { slice: "TP-780", outcome: "merged", reviewers: 1 },
+    heads: [{ state: "behind" }, { state: "behind" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
+    today: merged(1),
   },
 ];
