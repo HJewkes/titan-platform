@@ -10,8 +10,14 @@ const DIALOG_TIMEOUT_MS = 120_000
 const CONTROL_OR_BACKSLASH = /[\0-\x09\x0b-\x1f\x7f-\x9f\p{Cf}\\]/gu
 const NAMED: Record<string, string> = { "\t": "\\t", "\r": "\\r", "\\": "\\\\" }
 
-/** Built by `pnpm factory:install` next to the bundled bin. */
-const defaultHelperPath = (): string => join(dirname(fileURLToPath(import.meta.url)), "owner-presence")
+/** The helper's v4 UUID: anything else on stdout is not a proof, however the helper exited. */
+const PROOF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+/**
+ * Built by `pnpm factory:install` into native/build, outside dist, because tsup's clean wipes dist on every build.
+ * Resolved from this module's own location; no environment variable or argument can point it elsewhere.
+ */
+export const defaultHelperPath = (): string => join(dirname(fileURLToPath(import.meta.url)), "..", "native", "build", "owner-presence")
 
 const defaultRunner: HelperRunner = (file, args) =>
   new Promise((resolve, reject) => {
@@ -32,8 +38,9 @@ const escapeReason = (reason: string): string => reason.replace(CONTROL_OR_BACKS
 
 /**
  * Asks the owner for Touch ID or their login password. Returns the helper's proof id, or
- * undefined on cancel, a missing helper, a non-zero exit or no GUI session. There is no
- * environment fallback: an agent can set any variable, but cannot satisfy the dialog.
+ * undefined on cancel, a missing helper, a non-zero exit, no GUI session or output that is
+ * not a UUID. There is no environment fallback: an agent can set any variable, but cannot
+ * satisfy the dialog.
  */
 export async function confirmOwner(
   reason: string,
@@ -41,7 +48,7 @@ export async function confirmOwner(
 ): Promise<string | undefined> {
   try {
     const proof = (await run(helperPath, [escapeReason(reason)])).trim()
-    return proof === "" ? undefined : proof
+    return PROOF.test(proof) ? proof : undefined
   } catch {
     return undefined
   }

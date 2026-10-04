@@ -1,5 +1,6 @@
 import type { RateBudget } from "./budget.js";
-import { GhError, type GhExec } from "./exec.js";
+import { GhError, type GhExec, type GhResult } from "./exec.js";
+import { redact, redactStreams } from "./redact.js";
 
 export interface HttpResponse {
   status: number;
@@ -72,9 +73,15 @@ function runner(exec: GhExec, budget: RateBudget): Run {
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
-    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, result, response?.status);
+    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, scrubbed(result), response?.status);
     return response ?? { status: 200, headers: new Map(), body: result.stdout };
   };
+}
+
+/** Every non-exchange call's error quotes raw `gh` output, which can carry a token shape. */
+function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
+  const [cleanOut, cleanErr] = redactStreams(stdout, stderr, []);
+  return { code, stdout: cleanOut, stderr: cleanErr };
 }
 
 function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[]) => Promise<HttpResponse> {
@@ -114,7 +121,7 @@ export function parseIncluded(stdout: string): HttpResponse | null {
 function nextPage(link: string | undefined): string | null {
   const next = link ? /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] : undefined;
   if (!next) return null;
-  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${next}`);
+  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${redact(next, [])}`);
   return next.slice(API_ORIGIN.length);
 }
 

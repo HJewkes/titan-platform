@@ -42,9 +42,30 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 Owner-specific bindings live in that config file, never in this repo.
 
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
-`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set resolves as `coordinator`, which hitl refuses,
-so the command exits 1 and the gate stays pending. `CLAUDECODE` does not count, because the owner's
-`!` commands in Claude Code set it too.
+`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
+an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
+login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
+resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
+a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
+which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
+dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
+hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
+agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because
+the owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof
+or a helper path.
+
+The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
+an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
+to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
+decides whether every `gate resolve` asks for presence, including a plain terminal.
+
+`pnpm factory:install` compiles the helper into `native/build/owner-presence`, outside `dist`, so a
+`pnpm build` leaves it in place. `service deploy` only installs and builds, so it does not compile
+the helper: after updating to a release that moved the helper, rerun `pnpm factory:install` or
+`node scripts/factory-build-helper.mjs`. Until then the helper is missing, and a resolve from a shell
+with `AGENT_CHAT_AGENT_ID`, including your own `!` command, is refused as `coordinator`. The helper
+and `dist/bin.js` are both writable by your OS user, so an agent that rewrites either can forge a
+proof.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run

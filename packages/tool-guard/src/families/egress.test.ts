@@ -84,3 +84,20 @@ describe("reads and allowlisted hosts classify nothing", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("a git command whose subcommand word is dynamic", () => {
+  it("gives the unknown destination for a read-set subcommand", () => {
+    const actions = bash("Y=status; read Y < list; git $Y origin HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
+    expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
+  });
+
+  it("gives the unknown destination for a mapfile-set subcommand (TP-1491)", () => {
+    const actions = bash("Y=status; mapfile Y < list; git $Y origin HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
+    expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
+  });
+
+  it("gives the unknown destination for a push to a dynamic remote", () => {
+    const actions = bash("git push $R HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
+    expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
+  });
+});

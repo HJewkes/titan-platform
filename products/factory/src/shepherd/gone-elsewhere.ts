@@ -8,6 +8,9 @@ export const GONE_SWEEP_MS = 5 * 60_000;
 
 export const LANDED_ELSEWHERE = "landed elsewhere: ";
 export const CLOSED_ELSEWHERE = "closed elsewhere: ";
+export const DELETED_ELSEWHERE = "deleted elsewhere: ";
+
+const CAUSE_MAX_CHARS = 200;
 
 /** `gated` walks runs waiting on a pending gate, as the periodic sweep does; `live` walks every running or paused run. */
 type GoneScope = "gated" | "live";
@@ -26,7 +29,7 @@ interface GoneOptions {
   /** Called for a run whose PR left Shepherd but whose lease a live holder still keeps, so it could not be cancelled. */
   onHeld?: (runId: string) => void;
   /** Called for a run whose PR could not be read; the run is left alone and the caller decides what that means for it. */
-  onUnreadable?: (runId: string) => void;
+  onUnreadable?: (runId: string, cause: string) => void;
 }
 
 const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
@@ -40,15 +43,24 @@ export function mergedByShepherd(run: WorkflowRun): boolean {
 
 class UnreadablePr extends Error {}
 
+/** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
+const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
+
+const causeOf = (error: unknown): string => (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim().slice(0, CAUSE_MAX_CHARS);
+
 /** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
 async function goneReason(services: ShepherdServices, runId: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
-  const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => {
-    throw new UnreadablePr();
-  });
-  if (!pr || pr.state === "open") return undefined;
   const target = `${registration.repo}#${registration.pr}`;
+  let notFound = false;
+  const pr = await services.port.getPr(registration.repo, registration.pr).catch((error: unknown) => {
+    if (!isNotFound(error)) throw new UnreadablePr(causeOf(error));
+    notFound = true;
+    return undefined;
+  });
+  if (notFound) return `${DELETED_ELSEWHERE}${target} answered 404, so the PR or its repo is gone`;
+  if (!pr || pr.state === "open") return undefined;
   return pr.merged ? `${LANDED_ELSEWHERE}${target} was merged outside Shepherd` : `${CLOSED_ELSEWHERE}${target} was closed outside Shepherd`;
 }
 
@@ -89,7 +101,7 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
       reason = await goneReason(services, runId);
     } catch (error) {
       if (!(error instanceof UnreadablePr)) throw error;
-      options.onUnreadable?.(runId);
+      options.onUnreadable?.(runId, error.message);
       continue;
     }
     if (reason === undefined || !endable(host.runtime.status(runId))) continue;

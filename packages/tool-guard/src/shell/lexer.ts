@@ -23,6 +23,8 @@ export interface WordToken {
   /** Quotes or escapes split the word, or `$'...'` decoded it: `~/".x"`, `.n''x`, `.n\x`. */
   spliced: boolean;
   computed: boolean;
+  /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
+  unquotedExpansion?: true;
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
@@ -117,6 +119,7 @@ function step(s: LexState): void {
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
+  if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
   if (c === "#" && !s.word) return skipComment(s);
   if (c === "&" && s.src[s.i + 1] === ">") return readRedirect(s);
