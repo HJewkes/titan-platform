@@ -226,15 +226,40 @@ const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentI
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
-async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
+const ROSTER_ERROR_MAX_CHARS = 200;
+
+interface StartedReviewer {
+  agent?: ReviewerAgent;
+  /** The last failed roster read's error, kept so a timeout says why the reviewer was never seen. */
+  rosterError?: string;
+}
+
+async function readRoster(dispatch: ReviewerDispatch): Promise<{ agents: readonly ReviewerAgent[]; error?: string }> {
+  try {
+    return { agents: await dispatch.roster() };
+  } catch (error) {
+    return { agents: [], error: (error instanceof Error ? error.message : String(error)).slice(0, ROSTER_ERROR_MAX_CHARS) };
+  }
+}
+
+/** A failed roster read is retried until the deadline; the last failure is kept for the timeout's reason. */
+async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<StartedReviewer> {
   const clock = deadline(timing);
+  let rosterError: string | undefined;
   for (;;) {
-    const found = (await dispatch.roster().catch(() => [])).filter(holds(intent));
-    if (found.length > 1) return undefined;
-    if (found[0] && found[0].sessionId !== "") return found[0];
-    if (clock.expired()) return undefined;
+    const read = await readRoster(dispatch);
+    rosterError = read.error ?? rosterError;
+    const found = read.agents.filter(holds(intent));
+    if (found.length > 1) return {};
+    if (found[0] && found[0].sessionId !== "") return { agent: found[0] };
+    if (clock.expired()) return rosterError === undefined ? {} : { rosterError };
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined): NoReview {
+  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
+  return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
 export interface ReviewWiring {
@@ -293,8 +318,8 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     const refused = await startReviewer(dispatch, intent, target, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
-  const started = await startedReviewer(dispatch, intent, timing, signal);
-  if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
+  const { agent: started, rosterError } = await startedReviewer(dispatch, intent, timing, signal);
+  if (!started) return notStartedInTime(intent, rosterError);
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
