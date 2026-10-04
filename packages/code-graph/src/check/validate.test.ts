@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateRules } from "./validate.js";
-import type { CheckRule, MetricMaxRule, MetricProductMaxRule } from "./types.js";
+import type { CheckRule, LayeredDepsRule, MetricMaxRule, MetricProductMaxRule } from "./types.js";
 
 describe("validateRules", () => {
   it("rejects non-object input", () => {
@@ -281,6 +281,30 @@ describe("validateRules — schema healing", () => {
             max: 1,
             excludeRoles: ["banana"],
           },
+        ],
+      }),
+    ).toThrow(/unknown role/);
+  });
+
+  it("parses and heals excludeRoles on a layered-deps rule", () => {
+    const warnings: string[] = [];
+    const [rule] = validateRules(
+      {
+        rules: [
+          { id: "r", type: "layered-deps", layers: [["a"], ["b"]], excludeRoles: ["tests"] },
+        ],
+      },
+      { onWarn: (m) => warnings.push(m) },
+    ) as LayeredDepsRule[];
+    expect(rule!.excludeRoles).toEqual(["test"]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("rejects an unknown role in layered-deps excludeRoles", () => {
+    expect(() =>
+      validateRules({
+        rules: [
+          { id: "r", type: "layered-deps", layers: [["a"], ["b"]], excludeRoles: ["banana"] },
         ],
       }),
     ).toThrow(/unknown role/);

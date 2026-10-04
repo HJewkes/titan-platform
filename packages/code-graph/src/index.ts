@@ -149,6 +149,8 @@ export {
 } from "./analysis/graph-report-sections.js";
 export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
+export { topGrowthRisks } from "./analysis/growth-risks.js";
+export { topUntestedRisks } from "./analysis/untested-risks.js";
 export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export { computeReportDrift } from "./analysis/graph-report-drift.js";
 export type { HealthComponent } from "./analysis/dashboard-health.js";
