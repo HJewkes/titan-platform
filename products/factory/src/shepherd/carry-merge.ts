@@ -11,8 +11,8 @@ import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
 import { carryStep, type CarryResult } from "./tree-carry.js";
 
-export const CARRY_SCOPE_STEP = "sh-carry-scope";
-export const CARRY_SEAT_STEP = "sh-carry-seat";
+const CARRY_SCOPE_STEP = "sh-carry-scope";
+const CARRY_SEAT_STEP = "sh-carry-seat";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
   { id: CARRY_SEAT_STEP, kind: "dispatch" },

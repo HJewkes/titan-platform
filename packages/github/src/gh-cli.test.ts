@@ -202,6 +202,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
+  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } } }],
 ];
 
 function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
@@ -216,8 +217,11 @@ function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
   return { exec, argv };
 }
 
+/** Review-thread resolution exists only in GraphQL, so `listReviewComments` is the one method that posts to it. */
+const GRAPHQL_METHODS = ["listReviewComments"];
+
 describe("gh api adapter, REST only", () => {
-  it("drives every port method with argv that never names graphql or pr view", async () => {
+  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments", async () => {
     const gh = routedGh();
     const port = githubPort(ghCliWire(gh.exec, { appToken: async () => "app-token" }));
     const calls: Record<keyof typeof port, () => Promise<unknown>> = {
@@ -244,13 +248,20 @@ describe("gh api adapter, REST only", () => {
       listPrFiles: () => port.listPrFiles(REPO, 7),
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
+      listReviewComments: () => port.listReviewComments(REPO, 7),
     };
+    const graphqlCalls: string[] = [];
 
-    for (const call of Object.values(calls)) await call();
+    for (const [name, call] of Object.entries(calls)) {
+      const before = gh.argv.length;
+      await call();
+      if (gh.argv.slice(before).some((args) => args.some((arg) => /graphql/i.test(arg)))) graphqlCalls.push(name);
+    }
 
     expect(Object.keys(calls).sort()).toEqual(Object.keys(port).sort());
     expect(gh.argv.every((args) => args[0] === "api")).toBe(true);
-    expect(gh.argv.filter((args) => args.some((arg) => /graphql/i.test(arg)) || args.join(" ").includes("pr view"))).toEqual([]);
+    expect(graphqlCalls).toEqual(GRAPHQL_METHODS);
+    expect(gh.argv.filter((args) => args.join(" ").includes("pr view"))).toEqual([]);
   });
 
   it("reads the head repo, deletes a ref with DELETE, lists open PRs and tails a job log", async () => {
@@ -277,6 +288,53 @@ describe("gh api adapter, REST only", () => {
     const open = await githubPort(ghCliWire(gh.exec)).listOpenPrs(REPO, "shepherd/");
 
     expect(open.map((pr) => pr.number)).toEqual([8]);
+  });
+});
+
+type ThreadComment = { id: number; login: string | null; path: string; line: number | null; body: string };
+const commentNodes = (comments: ThreadComment[], endCursor: string | null = null) => ({
+  pageInfo: { hasNextPage: endCursor !== null, endCursor },
+  nodes: comments.map((c) => ({ databaseId: c.id, body: c.body, path: c.path, line: c.line, authorAssociation: c.login === null ? "NONE" : "MEMBER", author: c.login === null ? null : { login: c.login } })),
+});
+const thread = (id: string, isResolved: boolean, comments: ThreadComment[], commentsCursor: string | null = null) => ({ id, isResolved, comments: commentNodes(comments, commentsCursor) });
+const threadsPage = (nodes: unknown[], endCursor: string | null) => ({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: endCursor !== null, endCursor }, nodes } } } } });
+
+describe("gh api adapter, review comments", () => {
+  it("reads every page of review threads and stamps each comment with its author's association and its thread's resolved state", async () => {
+    const gh = scriptedGhSequence([
+      included(200, {}, threadsPage([thread("T1", true, [{ id: 1, login: "alice", path: "a.ts", line: 3, body: "done" }])], "c1")),
+      included(200, {}, threadsPage([thread("T2", false, [{ id: 2, login: null, path: "b.ts", line: null, body: "outdated" }])], null)),
+    ]);
+
+    const comments = await githubPort(ghCliWire(gh.exec)).listReviewComments(REPO, 7);
+
+    expect(comments).toEqual([
+      { id: 1, author: "alice", authorAssociation: "MEMBER", path: "a.ts", line: 3, body: "done", resolved: true },
+      { id: 2, author: "", authorAssociation: "NONE", path: "b.ts", line: null, body: "outdated", resolved: false },
+    ]);
+    expect(gh.calls.map((call) => call.args.slice(0, 5).join(" "))).toEqual(["api -i -X POST graphql", "api -i -X POST graphql"]);
+    expect(JSON.parse(gh.calls[1]!.input!).variables).toEqual({ owner: "octo", name: "demo", number: 7, cursor: "c1" });
+  });
+
+  it("reads a thread past its first page of comments by the thread's node id", async () => {
+    const gh = scriptedGhSequence([
+      included(200, {}, threadsPage([thread("T1", false, [{ id: 1, login: "alice", path: "a.ts", line: 1, body: "first" }], "k1")], null)),
+      included(200, {}, { data: { node: { comments: commentNodes([{ id: 2, login: "bob", path: "a.ts", line: 1, body: "second" }]) } } }),
+    ]);
+
+    const comments = await githubPort(ghCliWire(gh.exec)).listReviewComments(REPO, 7);
+
+    expect(comments.map((comment) => [comment.id, comment.resolved])).toEqual([
+      [1, false],
+      [2, false],
+    ]);
+    expect(JSON.parse(gh.calls[1]!.input!).variables).toEqual({ id: "T1", cursor: "k1" });
+  });
+
+  it("throws with GitHub's message when the query answers errors and no data", async () => {
+    const gh = scriptedGhSequence([included(200, {}, { errors: [{ message: "Could not resolve to a PullRequest" }] })]);
+
+    await expect(githubPort(ghCliWire(gh.exec)).listReviewComments(REPO, 7)).rejects.toThrow(/Could not resolve to a PullRequest/);
   });
 });
 
