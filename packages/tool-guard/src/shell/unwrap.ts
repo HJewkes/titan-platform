@@ -115,6 +115,11 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
+      if (commandName(w.value) === "xargs") {
+        const spelled = spellXargsOptions(words, i + 1);
+        if (typeof spelled === "number") return { ...command(words, i, assigned), script: ambiguousReadings(words, i, spelled) };
+        words = spelled;
+      }
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
@@ -133,6 +138,44 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
   if (!first) return { name: null, path: null, args: [], assigned };
   if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };
   return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned };
+}
+
+/** Every long option of findutils xargs; getopt_long also takes any unambiguous prefix of one. */
+const XARGS_LONG = [
+  "null", "arg-file", "delimiter", "eof", "replace", "max-lines", "max-args", "open-tty", "interactive",
+  "no-run-if-empty", "max-chars", "verbose", "show-limits", "exit", "max-procs", "process-slot-var", "version", "help",
+];
+
+/** The long option `v` abbreviates, spelled out with any `=value` kept; null when the prefix fits several. */
+function fullXargsOption(v: string): string | null {
+  const eq = v.indexOf("=");
+  const name = v.slice(2, eq < 0 ? undefined : eq);
+  if (XARGS_LONG.includes(name)) return v;
+  const matches = XARGS_LONG.filter((o) => o.startsWith(name));
+  if (matches.length > 1) return null;
+  return matches.length === 1 ? `--${matches[0]}${eq < 0 ? "" : v.slice(eq)}` : v;
+}
+
+/** The words with each xargs long option from `start` on spelled out, or the index of an ambiguous one. */
+function spellXargsOptions(words: WordToken[], start: number): WordToken[] | number {
+  const out = [...words];
+  for (let j = start; j < out.length && (out[j] as WordToken).value.startsWith("-") && (out[j] as WordToken).value !== "--"; j++) {
+    const word = out[j] as WordToken;
+    const full = word.value.startsWith("--") && !word.dynamic ? fullXargsOption(word.value) : word.value;
+    if (full === null) return j;
+    out[j] = { ...word, value: full };
+    if (takesValue(full, WRAPPERS.xargs?.values)) j++;
+  }
+  return out;
+}
+
+/**
+ * xargs refuses an ambiguous prefix, but which word is the command depends on whether it takes a value,
+ * so both readings run as script text and either one can block.
+ */
+function ambiguousReadings(words: WordToken[], i: number, at: number): string {
+  const kept = words.slice(i, at);
+  return [words.slice(at + 1), words.slice(at + 2)].map((rest) => scriptText("", [...kept, ...rest])).join("\n");
 }
 
 function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNullable<Unwrapped["xargs"]> {

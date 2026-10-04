@@ -259,6 +259,7 @@ describe("xargs -0 and -d split appended words on their separators", () => {
     expect(spellings(bash("printf 'push origin\\nHEAD:main' | xargs git"))).toEqual(["bash.merge.git-push-protected"]);
     expect(bash("printf 'push,origin,HEAD:main' | xargs git")).toEqual([]);
   });
+
   it("reads --delimiter's separate value as the separator, not the command", () => {
     expect(spellings(bash("printf 'push,origin,HEAD:main' | xargs --delimiter , git"))).toEqual(["bash.merge.git-push-protected"]);
   });
@@ -278,9 +279,24 @@ describe("xargs -0 and -d split appended words on their separators", () => {
   it.each([
     "git ls-files -z | xargs -0 rm",
     "find . -print0 | xargs -0 grep push",
-    "printf 'a.txt\0b.txt' | xargs -0 rm",
+    "printf 'a.txt\\0b.txt' | xargs -0 rm",
   ])("does not read %s as a push", (command) => {
     expect(bash(command)).toEqual([]);
+  });
+
+  it.each([
+    ["--delim ,", "printf 'push,origin,HEAD:main' | xargs --delim , git"],
+    ["--delim=,", "printf 'push,origin,HEAD:main' | xargs --delim=, git"],
+    ["--del=,", "printf 'push,origin,HEAD:main' | xargs --del=, git"],
+    ["--nu", "printf 'push\\0origin\\0HEAD:main' | xargs --nu git"],
+    ["--max-a 1", "xargs --max-a 1 git push origin HEAD:main </dev/null"],
+    ["--arg f", "xargs --arg f git push origin HEAD:main </dev/null"],
+    ["--max-p 4", "xargs --max-p 4 git push origin HEAD:main </dev/null"],
+    ["--proc S", "xargs --proc S git push origin HEAD:main </dev/null"],
+    ["the ambiguous --max before a value", "xargs --max 1 git push origin HEAD:main </dev/null"],
+    ["the ambiguous --max before the command", "xargs --max git push origin HEAD:main </dev/null"],
+  ])("reads the long option prefix %s as getopt does", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
   });
 });
 
