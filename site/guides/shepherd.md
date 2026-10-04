@@ -172,8 +172,9 @@ Every `titan-factory serve` start resyncs before it adopts a run. Each running o
 whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
-request moved head is superseded. A run that recorded its own `merge` step or a post-merge
-step is Shepherd's merge and is never ended this way. A pull request that cannot be read leaves
+request moved head is superseded. A run that recorded its own `merge`, `sh-landed` or a
+post-merge step is Shepherd's merge and is never ended this way. The run is read again after
+its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
 its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
 

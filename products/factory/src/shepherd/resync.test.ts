@@ -263,6 +263,23 @@ describe("endRunsGoneElsewhere while the run moves on", () => {
     expect(w.seed.gates.get(gateId(runId, "main-red"))?.status).toBe("pending");
   });
 
+  it("does not count a run that ended while its PR read was in flight", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    merge(w.fake, 1);
+    const services = w.routes.shepherd!;
+    const getPr: typeof services.port.getPr = async (repo, pr) => {
+      w.seed.runtime.cancel(runId, "abandoned by the owner");
+      await w.seed.runtime.wait(runId);
+      return services.port.getPr(repo, pr);
+    };
+
+    const ended = await endRunsGoneElsewhere(w.seed, { ...services, port: { ...services.port, getPr } });
+
+    expect(ended).toEqual([]);
+    expect(w.seed.runtime.status(runId)?.error).toBe("abandoned by the owner");
+  });
+
   it("counts a recorded sh-landed step as Shepherd's own merge", () => {
     const landed = { stepResults: { "sh-landed": {} }, activeSteps: {} } as unknown as WorkflowRun;
     const reviewing = { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } } as unknown as WorkflowRun;
