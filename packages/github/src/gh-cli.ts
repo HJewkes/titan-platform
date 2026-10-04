@@ -4,7 +4,7 @@ import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks, ReviewComment } from "./port.js";
 import { restCaller, type Rest } from "./rest.js";
 
 export interface GhCliOptions {
@@ -58,6 +58,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
+    listReviewComments: (repo, number) => listReviewComments(api, repo, number),
   };
 }
 
@@ -214,6 +215,45 @@ async function listPrFiles(api: Rest, repo: string, number: number): Promise<{ f
 async function listIssueComments(api: Rest, repo: string, number: number): Promise<IssueComment[]> {
   const comments = await api.pages(`repos/${repo}/issues/${number}/comments`, { per_page: "100" }, (page: { id: number; body: string; user: { login: string } | null }[]) => page);
   return comments.map((comment) => ({ id: comment.id, body: comment.body, author: comment.user?.login ?? "" }));
+}
+
+const REVIEW_THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { isResolved comments(first: 100) { nodes { databaseId body path line author { login } } } }
+      }
+    }
+  }
+}`;
+
+interface GhReviewThreads {
+  data?: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GhReviewThread[] } } | null } | null };
+  errors?: { message: string }[];
+}
+
+interface GhReviewThread {
+  isResolved: boolean;
+  comments: { nodes: { databaseId: number; body: string; path: string; line: number | null; author: { login: string } | null }[] };
+}
+
+/** Only GraphQL review threads carry the resolved state; REST review comments do not. */
+async function listReviewComments(api: Rest, repo: string, number: number): Promise<ReviewComment[]> {
+  const [owner, name] = repo.split("/");
+  const comments: ReviewComment[] = [];
+  for (let cursor: string | null = null, more = true; more; ) {
+    const page: GhReviewThreads = await api.send<GhReviewThreads>("POST", "graphql", {}, JSON.stringify({ query: REVIEW_THREADS_QUERY, variables: { owner, name, number, cursor } }));
+    const threads = page.data?.repository?.pullRequest?.reviewThreads;
+    if (!threads) throw new Error(`review threads of ${repo}#${number} unreadable: ${page.errors?.map((error) => error.message).join("; ") ?? "no pull request"}`);
+    comments.push(...threads.nodes.flatMap(threadComments));
+    ({ hasNextPage: more, endCursor: cursor } = threads.pageInfo);
+  }
+  return comments;
+}
+
+function threadComments(thread: GhReviewThread): ReviewComment[] {
+  return thread.comments.nodes.map((comment) => ({ id: comment.databaseId, author: comment.author?.login ?? "", path: comment.path, line: comment.line, body: comment.body, resolved: thread.isResolved }));
 }
 
 interface GhComparePage {

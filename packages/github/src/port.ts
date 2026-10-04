@@ -104,6 +104,18 @@ export interface IssueComment {
   author: string;
 }
 
+/** One inline review comment; a comment is resolved when its review thread is. */
+export interface ReviewComment {
+  id: number;
+  /** Login of the reviewer; empty for a deleted account. */
+  author: string;
+  path: string;
+  /** The line in the head's version of `path`; null when the comment is outdated or on the whole file. */
+  line: number | null;
+  body: string;
+  resolved: boolean;
+}
+
 export interface OpenPrRequest {
   head: string;
   base: string;
@@ -146,6 +158,7 @@ export interface GitHubWire {
   getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
+  listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -193,6 +206,8 @@ export interface GitHubPort {
    * `exists`. The body should carry the marker. Two concurrent callers can both post; there is no lock.
    */
   upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
+  /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
+  listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
 }
 
 /** A write whose precondition no longer holds, such as a blob that changed under an edit. */
@@ -240,6 +255,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
+    listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
   };
 }
 
