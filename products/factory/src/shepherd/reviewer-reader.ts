@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
+import { DamagedTranscriptError } from "./external-review.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
@@ -104,6 +105,8 @@ interface Scan {
   finished: readonly ReviewerMessage[];
   /** Every chat_send message in a complete record, finished turn or not. */
   sent: readonly ReviewerMessage[];
+  /** Every assistant text and chat_send message in a complete record. */
+  written: readonly ReviewerMessage[];
   /** False when the file holds bytes past the last complete record. */
   whole: boolean;
 }
@@ -111,13 +114,16 @@ interface Scan {
 async function scanTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<Scan> {
   const turn = finishedTurnMessages(agentId);
   const sent: ReviewerMessage[] = [];
+  const written: ReviewerMessage[] = [];
   let consumedBytes = -1;
   const source = claudeSourceFromPath(transcriptPath, namespace);
   for await (const observation of readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset))) {
     turn.add(observation);
-    sent.push(...sentMessages(agentId, observation));
+    const sentHere = sentMessages(agentId, observation);
+    sent.push(...sentHere);
+    written.push(...reviewerMessages(agentId, observation), ...sentHere);
   }
-  return { finished: turn.result(), sent, whole: (await stat(transcriptPath)).size === consumedBytes };
+  return { finished: turn.result(), sent, written, whole: (await stat(transcriptPath)).size === consumedBytes };
 }
 
 /** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
@@ -131,11 +137,13 @@ const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
 
 /**
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
- * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects.
+ * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said.
  */
 async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string }, namespace: string): Promise<readonly ReviewerMessage[]> {
   const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
-  if (!scan.whole && !RUNNING.has(row.presence)) throw new Error(`the ${row.presence} session ${row.sessionId} ends in a partial record`);
+  if (!scan.whole && !RUNNING.has(row.presence)) {
+    throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written);
+  }
   return scan.whole && scan.finished.length > 0 ? scan.finished : scan.sent;
 }
 

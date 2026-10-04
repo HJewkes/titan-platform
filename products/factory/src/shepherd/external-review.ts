@@ -87,7 +87,38 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
 /** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
 
+/** A stopped reviewer's transcript that ends in a partial record; `readable` is what its complete records said. */
+export class DamagedTranscriptError extends Error {
+  readonly readable: readonly ReviewerMessage[];
+
+  constructor(message: string, readable: readonly ReviewerMessage[]) {
+    super(message);
+    this.name = "DamagedTranscriptError";
+    this.readable = readable;
+  }
+}
+
 const why = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** A verdict block naming this PR at any head marks the reviewer as the PR's own. */
+function reviewsThisPr(target: ReviewTarget, messages: readonly ReviewerMessage[]): boolean {
+  return messages.some((message) => {
+    const block = parseVerdictBlock(message.text);
+    return block.ok && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
+  });
+}
+
+/**
+ * A damaged transcript blocks only the PR its complete records name in a verdict block; one that names no PR, or only
+ * other PRs, cannot be tied to this one, so it warns instead of blocking every PR on the machine. Any other failure blocks.
+ */
+function failedRead(name: string, target: ReviewTarget, error: unknown, warn: (line: string) => void): SeatCheck | undefined {
+  if (error instanceof DamagedTranscriptError && !reviewsThisPr(target, error.readable)) {
+    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${error.message}`);
+    return undefined;
+  }
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(error)}` };
+}
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
   const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
@@ -98,7 +129,7 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage):
  * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
  * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget): Promise<SeatCheck> {
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
   let listed: readonly ReviewerAgent[];
   try {
     listed = await roster();
@@ -110,7 +141,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   for (const name of new Set(rows.map((row) => row.name))) {
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name)).then(
       (messages) => newestAtHead(target, messages),
-      (error: unknown) => void (failed ??= { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(error)}` }),
+      (error: unknown) => void (failed ??= failedRead(name, target, error, warn)),
     );
     if (read?.verdict === "FIX_FIRST") return sentBack(name, target, read.message);
   }
@@ -118,9 +149,9 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
 }
 
 /** A MERGE stands only while the seat check is clear at the same head. */
-export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult): Promise<AwaitVerdictResult> {
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
-  const check = await seatFixFirst(roster, reader, target);
+  const check = await seatFixFirst(roster, reader, target, warn);
   return check.kind === "clear" ? result : check;
 }
 

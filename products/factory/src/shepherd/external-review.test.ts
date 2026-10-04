@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it, vi } from "vitest";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
-import { SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
+import { DamagedTranscriptError, SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -115,6 +115,48 @@ describe("seatFixFirst", () => {
     const reader: ReviewerReader = { read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("bad json")) : [said(SEAT, verdictAt("FIX_FIRST"), 5)]) };
 
     expect(await seatFixFirst(rosterOf(broken, SEAT), reader, target)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId } });
+  });
+
+  describe("a seat reviewer whose transcript ends in a partial record", () => {
+    const damaged = agent("seat-f-3-review");
+    /** A reader whose damaged reviewer's complete records hold `readable`; every other reviewer has said nothing. */
+    const damagedReader = (readable: readonly ReviewerMessage[]): ReviewerReader => ({
+      read: async (input) => (input.reviewerAgentId === damaged.agentId ? Promise.reject(new DamagedTranscriptError("the exited session ends in a partial record", readable)) : []),
+    });
+    const reviewing = (pr: number) => [said(damaged, `Findings.\n\nVerdict: MERGE\nPR: ${REPO}#${pr}\nHead: ${OLD_HEAD}\n`, 3)];
+
+    it("leaves another PR's MERGE standing and warns when the damaged reviewer reviews a different PR", async () => {
+      const warn = vi.fn();
+
+      expect(await unlessSeatFixFirst(rosterOf(damaged, SEAT), damagedReader(reviewing(5)), target, shepherdMerge, warn)).toEqual(shepherdMerge);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${damaged.name} is not the reviewer of ${REPO}#4`));
+    });
+
+    it("blocks the PR whose own reviewer's transcript is damaged", async () => {
+      const warn = vi.fn();
+
+      expect(await unlessSeatFixFirst(rosterOf(damaged), damagedReader(reviewing(4)), target, shepherdMerge, warn)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${damaged.name} could not be read: the exited session ends in a partial record`,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("warns without blocking when the damaged transcript names no PR, since it cannot be tied to this one", async () => {
+      const warn = vi.fn();
+
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader([said(damaged, "Reading the diff.", 2)]), target, warn)).toEqual({ kind: "clear" });
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("still blocks on a later reviewer's failed read after an unrelated damaged transcript", async () => {
+      const broken = agent("seat-g-4-review");
+      const reader: ReviewerReader = {
+        read: async (input) => (input.reviewerAgentId === broken.agentId ? Promise.reject(new Error("EACCES")) : damagedReader(reviewing(5)).read(input)),
+      };
+
+      expect(await seatFixFirst(rosterOf(damaged, broken), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(broken.name) });
+    });
   });
 
   it("does not block on a running seat reviewer whose transcript has nothing to read yet", async () => {
