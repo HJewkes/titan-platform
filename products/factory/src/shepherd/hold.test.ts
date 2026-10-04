@@ -277,8 +277,8 @@ describe("a satisfied hold across an update of the reviewed head", () => {
     await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
   });
 
-  it.each(["FIX_FIRST", "WAIT"] as const)("does not carry past a mixed-case-repo %s at an update nobody asked the hold about", async (verdict) => {
-    const r = rig();
+  it.each([["FIX_FIRST", null], ["WAIT", H1]] as const)("does not carry past a mixed-case-repo %s at an update nobody asked the hold about", async (verdict, kept) => {
+    const r = rig("correctness");
     const satisfy = holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: { read: async () => r.messages }, carry: async () => EQUAL });
     say(r, verdictAt(H1, "MERGE", 1, "Octo/Demo"));
     await satisfy(REPO, r.pr, H1, "main");
@@ -289,7 +289,7 @@ describe("a satisfied hold across an update of the reviewed head", () => {
 
     await satisfy(REPO, r.pr, H3, "main");
 
-    expect(r.store.byRun("run-1")?.holdSatisfied?.head).not.toBe(H3);
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head ?? null).toBe(kept);
     await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
   });
 
