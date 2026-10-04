@@ -90,7 +90,7 @@ function word(tokens: Token[], i: number, p: Pass): number {
     return i + 1;
   }
   if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
-  else if (w.value === "esac" && !w.quoted) endCase(p);
+  else if (w.value === "esac" && !w.quoted && (p.start || p.pattern)) endCase(p);
   else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
   p.out.push(p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w);
   return i + 1;
@@ -118,8 +118,8 @@ function commandWord(tokens: Token[], i: number, p: Pass): void {
 }
 
 /**
- * `esac` ends the case wherever it stands, even straight after `in`. Ending one early only leaves a pattern's
- * `)` or `|` as an operator, as before this pass; ending one late would turn a real pipe into a separator.
+ * `esac` ends the case where bash reads it as a keyword: at a command's start or in pattern position, even
+ * straight after `in`. As an argument (`echo esac`) it is a plain word; ending the case there would end it early.
  */
 function endCase(p: Pass): void {
   p.cases = Math.max(0, p.cases - 1);
