@@ -7,7 +7,7 @@ import { detectGitHead, detectGitToplevel } from "./git-renames.js";
 import { computeAliasBridge } from "./identity/index-aliases.js";
 import { ALIAS_BASE_ATTR } from "./identity/lineage.js";
 import { annotateRoles, computeRoleHints } from "./roles.js";
-import { walkSourceFiles } from "./file-walk.js";
+import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
 import {
@@ -58,6 +58,8 @@ export interface IndexOptions {
   churnWindows?: number[];
   /** Also store an all-time `lifetime` churn and ownership window over full git history. */
   lifetime?: boolean;
+  /** Where files are listed and read from. Defaults to {@link workingTreeSource}. */
+  source?: IndexSource;
 }
 
 export interface IndexResult {
@@ -165,7 +167,8 @@ function historyOptions(options: IndexOptions): HistoryMetricsOptions {
  */
 export async function indexPaths(store: CodeGraphStore, options: IndexOptions): Promise<IndexResult> {
   const { rootDirs, idRoot } = resolveRoots(options.paths);
-  const readFiles = await readSourceFiles(await walkSourceFiles(rootDirs, LANGUAGES));
+  const source = options.source ?? workingTreeSource();
+  const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
   const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
   const currentFileIds = new Set(readFiles.map((rf) => fileId(idRoot, rf.filePath)));
@@ -183,10 +186,11 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
       parsedByPath,
       reuse,
       cosmeticFileIds: classified.cosmeticFileIds,
-      extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig }),
+      extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig, source }),
     }),
   );
-  const annotated = annotateRoles([...accumulator.nodes.values()], computeRoleHints(readFiles, idRoot, fileId));
+  const roleHints = computeRoleHints(readFiles, idRoot, fileId, source);
+  const annotated = annotateRoles([...accumulator.nodes.values()], roleHints);
   accumulator.nodes = new Map(annotated.map((n) => [n.id, n]));
   pruneDanglingReferences(accumulator.nodes, accumulator.edges);
 

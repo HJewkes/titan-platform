@@ -378,9 +378,9 @@ Tier 1, `@titan-design/agent-dispatch@0.3.0`. Start and resume agent-chat agents
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `minimalEnv`, `resolveBinaryPath`
-- `resume`: `ResumeError`, `buildResumeAgentArgs`
-- +22 more in the [reference page](/reference/agent-dispatch)
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`, `minimalEnv`, `resolveBinaryPath`
+- `resume`: `ResumeError`
+- +23 more in the [reference page](/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
@@ -587,11 +587,11 @@ Key exports:
 - `store`: `CodeGraphStore`, `openCodeGraph`
 - `prune`: `planPrune`, `runPrune`
 - `indexer`: `indexPaths`
+- `index-source`: `workingTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
-- `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +342 more in the [reference page](/reference/code-graph)
+- +346 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 

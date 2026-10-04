@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { indexPaths, type IndexResult } from "./indexer.js";
+import { indexPaths, type IndexOptions, type IndexResult } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 
 export const A_TS = "export const A = 1;\n";
@@ -58,7 +58,7 @@ const FIXTURE_TSCONFIG = fileURLToPath(new URL("./incremental.test-tsconfig.json
 export function runIndex(
   store: CodeGraphStore,
   rootDir: string,
-  options: { incremental?: boolean } = {},
+  options: Pick<IndexOptions, "incremental" | "source"> = {},
 ): Promise<IndexResult> {
   return indexPaths(store, {
     paths: [rootDir],
