@@ -9,6 +9,7 @@ import {
 } from "ts-morph";
 import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import type { GraphEdge, GraphFragment, GraphNode } from "../types.js";
+import { workingTreeSource, type IndexSource } from "../index-source.js";
 import { buildFileModuleNodes } from "./file-nodes.js";
 import { externalId, fileId, symbolId } from "./ids.js";
 import {
@@ -48,6 +49,7 @@ export interface TsMorphGraphExtractorOptions {
   repoRoot: string;
   tsConfigPath?: string;
   project?: Project;
+  source?: IndexSource;
 }
 
 const RETIRE_BATCH = 100;
@@ -58,13 +60,16 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
   private readonly tsConfigPath?: string;
   private project?: Project;
   private readonly ownsProject: boolean;
+  private readonly source: IndexSource;
   private readonly retired: SourceFile[] = [];
+  private readonly fileExists = (abs: string): boolean => this.source.fileExists(abs);
 
   constructor(options: TsMorphGraphExtractorOptions) {
     this.repoRoot = options.repoRoot;
     this.tsConfigPath = options.tsConfigPath;
     this.project = options.project;
     this.ownsProject = options.project === undefined;
+    this.source = options.source ?? workingTreeSource();
   }
 
   extract(file: ParsedFile): GraphFragment[] {
@@ -93,15 +98,18 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
       repoRoot: this.repoRoot,
       srcFileId: fileId(this.repoRoot, sourceFile.getFilePath()),
       localSymbols: new Set(symbolNodes.map((n) => n.name)),
+      fileExists: this.fileExists,
     });
     return [{ nodes: [...nodes, ...symbolNodes, ...externalNodes], edges: [...edges, ...calls] }];
   }
 
   private ensureProject(): Project {
     if (this.project) return this.project;
+    const fileSystem = this.source.fileSystem;
     this.project = this.tsConfigPath
-      ? new Project({ tsConfigFilePath: this.tsConfigPath })
+      ? new Project({ tsConfigFilePath: this.tsConfigPath, fileSystem })
       : new Project({
+          fileSystem,
           compilerOptions: {
             allowJs: true,
             target: ScriptTarget.ESNext,
@@ -216,7 +224,7 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
       const decls = targetSf.getExportedDeclarations().get(importedName);
       const originSf =
         decls && decls.length > 0 ? decls[0]!.getSourceFile() : targetSf;
-      const originId = this.inRepoFileId(remapDistToSrc(originSf.getFilePath()));
+      const originId = this.inRepoFileId(remapDistToSrc(originSf.getFilePath(), this.fileExists));
       return originId ? symbolId(originId, importedName) : null;
     }
     // ts-morph couldn't link the specifier (extensionless / out-of-project);
@@ -271,7 +279,7 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
 
   private resolveInternal(target: SourceFile | undefined): string | null {
     if (!target) return null;
-    return this.inRepoFileId(remapDistToSrc(target.getFilePath()));
+    return this.inRepoFileId(remapDistToSrc(target.getFilePath(), this.fileExists));
   }
 
   /**
