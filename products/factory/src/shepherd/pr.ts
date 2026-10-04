@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
-import { AWAIT_HEAD_STEPS, AwaitHeadResult } from "../workflows/await-head.js";
+import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
@@ -17,11 +17,13 @@ import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shephe
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
-import { askAtHead, expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, escalationReason, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
+import { conflictGate, sentBackGate, type PrTarget } from "./gates.js";
+import { repairGate, spendRepair } from "./repair.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -67,11 +69,6 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   const rawPolicy = ctx.param("policy");
   const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
   return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
-}
-
-interface PrTarget {
-  repo: RepoSlug;
-  pr: number;
 }
 
 interface ShepherdRun {
@@ -141,6 +138,15 @@ async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOp
 
 /** Undefined means land the next round; anything else ends the run. */
 async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
+  try {
+    return await routeLanded(run, outcome);
+  } catch (error) {
+    if (error instanceof LeaveLand) return error.outcome;
+    throw error;
+  }
+}
+
+async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
   if (outcome.kind === "ci-failed") {
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return onCiFailed(run.ctx, run.target, outcome, run.state);
@@ -156,8 +162,13 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
   return outcome.reason === "conflict" || dirty;
 }
 
-/** A woken agent has already awaited its new head, so the caller goes straight to the next land round. */
+/**
+ * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
+ * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
+ * a wake past the budget asks the owner instead and leaves the round.
+ */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
   return outcome.kind === "woken";
 }
@@ -301,32 +312,10 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
   return { kind: "stopped", reason: "not-mergeable", headSha, detail: "mergeable_state is dirty and no agent took the conflict wake" };
 }
 
-function conflictAnswer(headSha: string) {
-  return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
-}
-
-/** `merge` waits for a head that resolves the conflict and lands it through the normal rounds; it trusts no head. */
-async function conflictGate(run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> {
-  const { repo, pr } = run.target;
-  const reason = escalationReason("conflict", `mergeable_state is dirty at ${headSha} after a fixer's attempt`);
-  const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? Policy shepherd-route/conflict: ${reason}. Answer merge to have Shepherd land the next resolved head, or abandon.`;
-  const schema = conflictAnswer(headSha);
-  const answer = schema.parse((await run.ctx.assisted("approve-merge", prompt, { schema })).data);
-  if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human abandoned the PR at a conflict" };
-  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
-  return undefined;
-}
-
-const SentBackAnswer = z.object({ decision: z.enum(["await-new-head", "abandon"]) });
-
-/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning; a pushed head answers for them. */
-async function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
+/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning. */
+function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
   const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake. Await a new head or abandon?`;
-  const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema: SentBackAnswer });
-  const answer = answered ? SentBackAnswer.parse(answered.data) : { decision: "await-new-head" };
-  if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: `a human abandoned the PR after a ${kind} review` };
-  await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
-  return undefined;
+  return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`);
 }
 
 const RegistrationPolicyResult = z.looseObject({ policy: EffectivePolicySchema.nullable() });
