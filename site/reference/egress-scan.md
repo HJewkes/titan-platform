@@ -95,6 +95,7 @@ The package ships a `titan-egress-scan` bin. It needs git 2.24 or later.
 titan-egress-scan pre-push <remote>     # the commits a push sends; reads git's pre-push stdin
 titan-egress-scan range <base> <head>   # every commit in base..head, for CI
 titan-egress-scan tree                  # every tracked file at HEAD, once at rollout
+titan-egress-scan text [--file <path>]  # free text from stdin or a file: PR title, body, branch name
 titan-egress-scan install-hook          # write the pre-push hook
 ```
 
@@ -107,6 +108,11 @@ notices and errors go to stderr.
   against each parent in turn (`--diff-merges=separate`), because git's combined diff ignores
   `--text` and would skip a binary file an evil merge writes into. After a merge of the main
   branch, a line already on main can be reported again under the merge.
+- **Free text.** `text` scans a PR title, body or branch name for the CC-269 and CC-270
+  callers, with the generic rules and the private term list. It reads stdin, or `--file <path>`
+  but never both; an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>]` and
+  never the matched text. `\r\n` counts as one line break. Input over the 128 MiB limit exits 2.
+  It needs no git repo and applies no allow file. Exit codes match `range` and `pre-push`.
 - **Idents and ref names.** Each scanned commit's raw author and committer name and email are
   scanned, and a finding names the field, such as `commit <sha> committer.email`. `pre-push`
   also scans the local and remote ref names, reported as `push line <n> local ref` or
