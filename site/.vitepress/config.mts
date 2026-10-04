@@ -53,7 +53,7 @@ export default withMermaid(
             { text: "Shepherd", link: "/guides/shepherd" },
             { text: "Session miner", link: "/guides/session-miner#run-it" },
             { text: "Retrieval eval", link: "/guides/retrieval-eval" },
-            { text: "Code report", link: "/guides/code-report" },
+            { text: "Code report", link: "/guides/codewatch" },
             { text: "Matrix hub", link: "/guides/hub" },
           ],
         },

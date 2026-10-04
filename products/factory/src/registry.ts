@@ -1,3 +1,4 @@
+import { isRepo } from "@titan-design/github";
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
@@ -50,16 +51,7 @@ export interface GateSummary {
   resolve: string;
 }
 
-const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
-const GITHUB_REPO = /^[A-Za-z0-9._-]+$/;
 const PR_NUMBER = /^[1-9][0-9]*$/;
-
-/** Exactly `owner/repo`: two segments, GitHub's name characters, and no `.` or `..` that could walk a path. */
-export function isRepoSlug(value: string): boolean {
-  const [owner, name, ...extra] = value.split("/");
-  if (extra.length > 0 || owner === undefined || name === undefined) return false;
-  return GITHUB_OWNER.test(owner) && GITHUB_REPO.test(name) && name !== "." && !name.includes("..");
-}
 
 /** Parse `owner/repo#N` strictly; throws on anything else, including `#0` and `#01`. */
 export function parsePrRef(ref: string): PrRef {
@@ -67,7 +59,7 @@ export function parsePrRef(ref: string): PrRef {
   if (hash < 0) throw new Error(`expected owner/repo#N, got ${JSON.stringify(ref)}: no #`);
   const repo = ref.slice(0, hash);
   const number = ref.slice(hash + 1);
-  if (!isRepoSlug(repo)) throw new Error(`expected owner/repo#N, got ${JSON.stringify(ref)}: ${JSON.stringify(repo)} is not owner/repo`);
+  if (!isRepo(repo)) throw new Error(`expected owner/repo#N, got ${JSON.stringify(ref)}: ${JSON.stringify(repo)} is not owner/repo`);
   if (!PR_NUMBER.test(number) || !Number.isSafeInteger(Number(number))) {
     throw new Error(`expected owner/repo#N, got ${JSON.stringify(ref)}: ${JSON.stringify(number)} is not a PR number`);
   }
@@ -103,7 +95,7 @@ const land = defineCommand<LandArgs, LandStarted, FactoryContext>({
   name: "factory.land",
   description: "Start land-pr for owner/repo#pr, or return the unfinished run already landing it",
   args: z.object({
-    repo: z.string().refine(isRepoSlug, "must be owner/repo"),
+    repo: z.string().refine(isRepo, "must be owner/repo"),
     pr: z.number().int().positive(),
     task: z.string().min(1).optional(),
   }),

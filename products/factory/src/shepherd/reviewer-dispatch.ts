@@ -1,8 +1,9 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, DispatchError, dispatchToAgentChat, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
-import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
+import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
+import { agentChatAgents } from "./agents.js";
+import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -114,14 +115,10 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const { agentChatBin, profile, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
+  const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster });
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target) =>
-      askBroker(() => {
-        const cwd = checkoutDir(target.repo, cwdFor);
-        const request = { agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) };
-        return mutating(roster, async () => void dispatchToAgentChat(request, spawnTimeoutMs, [profile]));
-      }),
-    resume: (name, brief) => askBroker(() => mutating(roster, async () => void resumeAgent(agentChatBin, name, brief, spawnTimeoutMs))),
+    spawn: (name, brief, target) => askBroker(() => agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor) })),
+    resume: (name, brief) => askBroker(() => agents.resume(name, brief)),
   };
 }

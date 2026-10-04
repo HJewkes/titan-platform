@@ -97,3 +97,35 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
+export type {
+  CompactionMark,
+  ModelRequests,
+  SessionTimeline,
+  TimelineAgentSpan,
+  TimelineError,
+  TimelineErrorBreakdown,
+  TimelineFileBreakdown,
+  TimelineFileTouch,
+  TimelineGap,
+  TimelineMessage,
+  TimelineMinuteBucket,
+  TimelineTokenPoint,
+  TimelineTokens,
+  TimelineToolBreakdown,
+  TimelineToolCall,
+  TimelineToolOutcome,
+  TimelineTotals,
+  TimelineTurn,
+  TimelineTurnOrigin,
+  TokenTimeline,
+  ToolFamilyCount,
+  ToolNameCount,
+} from "./timeline-types.js";
+/** The tool family on `TimelineToolCall`, re-exported so a consumer of the timeline needs no session-read import. */
+export type { ToolFamily } from "@titan-design/session-read";
+export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from "./timeline-types.js";
+export type { SessionTimelineOptions } from "./timeline.js";
+export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";
+export { countAtOrBefore } from "./count-at-or-before.js";
+export type { ReviewFillReport } from "./review-fill.js";
+export { reviewFillReport, reviewFillSchema } from "./review-fill.js";

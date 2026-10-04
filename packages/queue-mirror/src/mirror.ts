@@ -5,7 +5,7 @@ import type { Backoff } from "./supervise.js";
 import type { MirrorLogger, MirrorState, PostedItem, QueueItem, QueueSource, ResolveResult, SourceEvent, VerdictInput } from "./types.js";
 
 /** The slice of AppserviceClient the mirror drives; tests pass a fake hub. */
-export type MirrorBus = Pick<AppserviceClient, "send" | "syncLoop" | "userId">;
+export type MirrorBus = Pick<AppserviceClient, "send" | "syncLoop" | "messages" | "userId">;
 
 export interface MirrorOptions {
   ownerUserId: string;
@@ -28,6 +28,10 @@ export interface Mirror {
   applySyncBatch(batch: SyncBatch): Promise<void>;
   sweepExpired(): Promise<void>;
 }
+
+/** Upper bound on /messages pages followed per limited batch; past it the gap is logged, not chased. */
+export const MAX_BACKFILL_PAGES = 10;
+const BACKFILL_PAGE_SIZE = 100;
 
 export const SILENT: MirrorLogger = { info: () => {}, warn: () => {} };
 
@@ -85,8 +89,26 @@ class QueueMirror implements Mirror {
 
   /** Persists `since` only after every event is handled; a throw leaves it for the retry. */
   async applySyncBatch(batch: SyncBatch): Promise<void> {
-    for (const event of batch.events) await this.applyEvent(event);
+    const missed = batch.limited && batch.prev_batch !== undefined ? await this.backfill(batch.prev_batch) : [];
+    for (const event of [...missed, ...batch.events]) await this.applyEvent(event);
     this.state.commit({ syncToken: batch.since });
+  }
+
+  /** Pages backwards from `token` until an applied event, the end of history or the page cap; returns oldest first. */
+  private async backfill(token: string): Promise<MatrixEvent[]> {
+    const newestFirst: MatrixEvent[] = [];
+    let from: string | undefined = token;
+    for (let page = 0; from !== undefined; page += 1) {
+      if (page === MAX_BACKFILL_PAGES) {
+        this.log.warn("backfill gap: page cap reached", { pages: page, resumeToken: from });
+        break;
+      }
+      const result = await this.bus.messages(this.options.roomId, { from, dir: "b", limit: BACKFILL_PAGE_SIZE });
+      const seenAt = result.chunk.findIndex((event) => this.state.hasApplied(event.event_id));
+      newestFirst.push(...(seenAt === -1 ? result.chunk : result.chunk.slice(0, seenAt)));
+      from = seenAt === -1 && result.chunk.length > 0 ? result.end : undefined;
+    }
+    return newestFirst.reverse();
   }
 
   async sweepExpired(): Promise<void> {

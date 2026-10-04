@@ -30,7 +30,7 @@ replacing a product's hand-written server.
 ## The front-end kit
 
 A daemon's web front end, or a static report that needs no daemon, uses three packages.
-[`apps/code-report`](https://github.com/HJewkes/titan-platform/tree/main/apps/code-report)
+[`apps/codewatch`](https://github.com/HJewkes/titan-platform/tree/main/apps/codewatch)
 composes all three.
 
 - [`rpc-protocol`](/reference/rpc-protocol): the wire contract as dependency-free data and

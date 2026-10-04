@@ -84,7 +84,7 @@ describe("migration 5", () => {
     first.db.close();
     const second = openSessionGraph(file);
 
-    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 1001, 1002]);
+    expect(migrationsAfterFirst.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 1001, 1002]);
     expect(migrationsAfterFirst.find((r) => r.version === 5)?.name).toBe("origin, episodes, prices");
     expect(ORIGIN_MIGRATION_NAME).toBe("origin, episodes, prices");
     expect(migrationRows(second.db)).toEqual(migrationsAfterFirst);
