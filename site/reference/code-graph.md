@@ -53,6 +53,12 @@ listEdges(store, snapshotId);
 `paths` are resolved against the process working directory; pass absolute paths if you run
 from elsewhere. There is no `cwd` option.
 
+Every read goes through `IndexOptions.source`, an `IndexSource`: the walk (`listFiles`), file
+content (`readFile`), existence checks for Python imports and the `dist` to `src` remap
+(`fileExists`), `.gitattributes`, and the ts-morph `FileSystemHost` that resolves TypeScript
+imports. It defaults to `workingTreeSource()`, which reads the checkout through `node:fs`. A
+source answers for the same absolute paths a checkout would, so node ids do not change.
+
 ## Checking a snapshot
 
 The rules engine turns a snapshot into pass/fail against a `check.json`. Verified against

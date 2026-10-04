@@ -60,8 +60,22 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/**
+ * The service checkout only ever holds a reviewed main commit, so its packageManager pin is
+ * trusted: without the switch a global pnpm 10 installs a layout every pinned pnpm then purges.
+ * With no TTY pnpm's purge prompt exits 0 without installing; pnpm 9 skips that prompt only under CI.
+ */
+export function deployPnpmEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...setupEnv(env),
+    npm_config_manage_package_manager_versions: "true",
+    NPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS: "true",
+    CI: "true",
+  };
+}
+
 export function systemDeployPorts(checkout: string): DeployPorts {
-  const pnpmEnv = setupEnv(process.env);
+  const pnpmEnv = deployPnpmEnv(process.env);
   const gitEnv = gitChildEnv(process.env);
   return {
     ...systemServicePorts(),

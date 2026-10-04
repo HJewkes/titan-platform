@@ -20,6 +20,8 @@ export { planPrune, runPrune } from "./prune.js";
 
 export type { IndexOptions, IndexResult } from "./indexer.js";
 export { INDEX_VERSION, indexPaths } from "./indexer.js";
+export type { IndexSource } from "./index-source.js";
+export { workingTreeSource } from "./index-source.js";
 
 export type { Extractor, ParsedFile } from "@titan-design/code-parser";
 export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";

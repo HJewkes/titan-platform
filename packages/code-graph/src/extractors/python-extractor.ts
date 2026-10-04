@@ -1,8 +1,8 @@
 import * as path from "node:path";
-import { existsSync } from "node:fs";
 import type { Node } from "web-tree-sitter";
 import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import { collectDeclaredSpans } from "../declared-names.js";
+import { workingTreeSource, type IndexSource } from "../index-source.js";
 import { buildFileModuleNodes } from "./file-nodes.js";
 import { paramAttrs } from "./call-sites.js";
 import { collectParamShapes } from "./callable-params.js";
@@ -27,7 +27,10 @@ function* candidates(base: string): Iterable<string> {
 export class PythonGraphExtractor implements Extractor<GraphFragment> {
   readonly name = "python-graph";
 
-  constructor(private readonly repoRoot: string) {}
+  constructor(
+    private readonly repoRoot: string,
+    private readonly source: IndexSource = workingTreeSource(),
+  ) {}
 
   extract(file: ParsedFile): GraphFragment[] {
     if (file.language !== "python") return [];
@@ -69,7 +72,7 @@ export class PythonGraphExtractor implements Extractor<GraphFragment> {
     for (const root of roots) {
       for (const candidate of candidates(path.join(root, ...parts))) {
         const id = inRepoFileId(this.repoRoot, candidate);
-        if (id !== null && existsSync(candidate)) return id;
+        if (id !== null && this.source.fileExists(candidate)) return id;
       }
     }
     return null;

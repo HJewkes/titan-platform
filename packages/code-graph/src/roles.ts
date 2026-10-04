@@ -1,5 +1,6 @@
 import type { GraphNode, NodeRole } from "./types.js";
 import { isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
+import type { IndexSource } from "./index-source.js";
 
 const TEST_RE = /(?:^|\/)(?:__tests__\/|tests?\/)|\.(?:test|spec)(?:\.[a-z]+)?$/;
 const FIXTURE_RE = /(?:^|\/)fixtures(?:\/|$)/;
@@ -71,8 +72,9 @@ export function computeRoleHints(
   readFiles: readonly ReadFileLike[],
   idRoot: string,
   toId: (root: string, filePath: string) => string,
+  source?: IndexSource,
 ): AnnotateRolesOptions {
-  const patterns = loadGeneratedPatterns(idRoot);
+  const patterns = loadGeneratedPatterns(idRoot, source);
   const shebangIds = new Set<string>();
   const generatedIds = new Set<string>();
   for (const rf of readFiles) {

@@ -587,11 +587,11 @@ Key exports:
 - `store`: `CodeGraphStore`, `openCodeGraph`
 - `prune`: `planPrune`, `runPrune`
 - `indexer`: `indexPaths`
+- `index-source`: `workingTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
-- `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +344 more in the [reference page](/reference/code-graph)
+- +346 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
