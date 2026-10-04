@@ -157,8 +157,6 @@
   "products/factory/src/shepherd/freeze.ts#FreezeGuardDeps",
   "products/factory/src/shepherd/freeze.ts#greenHead",
   "products/factory/src/shepherd/freeze.ts#RegistrationTasks",
-  "products/factory/src/shepherd/gone-elsewhere.ts#EndedRun",
-  "products/factory/src/shepherd/head-moved.ts#SupersededGate",
   "products/factory/src/shepherd/hold.ts#HoldSatisfierDeps",
   "products/factory/src/shepherd/main-red.ts#DEFAULT_FIX_INITIATIVE",
   "products/factory/src/shepherd/main-red.ts#failingLogs",

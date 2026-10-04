@@ -5,6 +5,7 @@ import {
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
+  type GateQuestion,
   type GateRecord,
   type GateResolver,
   type GateStore,
@@ -18,6 +19,10 @@ export interface OpenGateOptions<T> {
   /** Stored as JSON Schema so the resolving process can validate without it, and reused here to type the answer. */
   schema?: ZodType<T>;
   expiresAt?: Date | string;
+  /** Required, with `evidenceRef`, when the store has `requireBrief`. */
+  summary?: string;
+  evidenceRef?: string;
+  questions?: GateQuestion[];
 }
 
 export interface WaitOptions<T> {
@@ -41,6 +46,9 @@ export function openGate<T = unknown>(store: GateStore, options: OpenGateOptions
   const input: Parameters<GateStore["create"]>[0] = { prompt: options.prompt };
   if (options.id !== undefined) input.id = options.id;
   if (options.expiresAt !== undefined) input.expiresAt = options.expiresAt;
+  if (options.summary !== undefined) input.summary = options.summary;
+  if (options.evidenceRef !== undefined) input.evidenceRef = options.evidenceRef;
+  if (options.questions !== undefined) input.questions = options.questions;
   if (options.schema) input.schema = toJSONSchema(options.schema) as Record<string, unknown>;
 
   const record = store.create(input);

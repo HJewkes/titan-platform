@@ -2,6 +2,7 @@ export type { SqliteGateStoreOptions } from "./sqlite-store.js";
 export {
   DEFAULT_GATE_TABLE,
   SqliteGateStore,
+  gateBriefMigration,
   gateMigration,
   gateResolverMigration,
   gateRuleMigration,

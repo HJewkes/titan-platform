@@ -22,6 +22,40 @@ export interface GateRecord {
   resolvedBy: GateResolver | undefined;
   /** The authority rule that opened the gate; unset for a gate no rule governs. */
   rule: GateRule | undefined;
+  /** One line for the owner: the decision and the recommendation. Unset for a gate opened without a brief. */
+  summary: string | undefined;
+  /** Where the owner checks the facts: an https URL, an absolute path, or `$ <command>`. */
+  evidenceRef: string | undefined;
+  /** A fixed menu a surface can render as buttons; the gate's `schema` still validates the answer. */
+  questions: GateQuestion[] | undefined;
+}
+
+export interface GateQuestionOption {
+  /** 1-40 letters, digits, `-` or `_`; unique within its question. */
+  id: string;
+  /** 1-75 characters, the Slack button limit. */
+  label: string;
+  /** At most one option per question; omitted means false. */
+  recommended?: true;
+}
+
+export interface GateQuestion {
+  /** 1-40 letters, digits, `-` or `_`; unique within the gate. */
+  id: string;
+  /** 1-500 characters. */
+  question: string;
+  /** 2-4 options. */
+  options: GateQuestionOption[];
+}
+
+/** What the owner reads instead of the machine-facing prompt. A store with `requireBrief` refuses a gate without one. */
+export interface GateBrief {
+  /** 1-280 characters on one line. */
+  summary: string;
+  /** 1-500 characters on one line. */
+  evidenceRef: string;
+  /** 1-4 questions; absent means the gate's schema alone defines the answer. */
+  questions?: GateQuestion[];
 }
 
 /** Binds a gate to the authority rule that opened it, so only that rule's resolver classes may answer. */
@@ -56,6 +90,10 @@ export interface GateInput {
   schema?: JsonSchema;
   expiresAt?: Date | string;
   rule?: GateRule;
+  /** Required, with `evidenceRef`, when the store has `requireBrief`. */
+  summary?: string;
+  evidenceRef?: string;
+  questions?: GateQuestion[];
 }
 
 /**
@@ -165,6 +203,15 @@ export class GateRuleInvalid extends GateError {
     readonly reason: string,
   ) {
     super(`gate ${gateId} has an invalid rule: ${reason}`, gateId);
+  }
+}
+
+export class GateBriefInvalid extends GateError {
+  constructor(
+    gateId: string,
+    readonly issues: string[],
+  ) {
+    super(`gate ${gateId} brief is invalid: ${issues.join("; ")}`, gateId);
   }
 }
 
