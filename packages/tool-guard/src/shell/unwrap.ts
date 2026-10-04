@@ -35,7 +35,10 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   nice: { values: ["-n"] },
   sudo: { values: ["-u", "-g", "-p", "-C", "-D", "-h", "-r", "-t", "-U"] },
   timeout: { values: ["-s", "-k", "--signal", "--kill-after"], positionals: 1 },
-  xargs: { values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args"] },
+  // `--eof`, `--max-lines` and `--replace` take their value only after `=`, so they stay out.
+  xargs: {
+    values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
+  },
   stdbuf: { values: ["-i", "-o", "-e"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,

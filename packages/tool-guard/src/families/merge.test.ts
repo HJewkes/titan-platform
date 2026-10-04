@@ -259,6 +259,29 @@ describe("xargs -0 and -d split appended words on their separators", () => {
     expect(spellings(bash("printf 'push origin\\nHEAD:main' | xargs git"))).toEqual(["bash.merge.git-push-protected"]);
     expect(bash("printf 'push,origin,HEAD:main' | xargs git")).toEqual([]);
   });
+  it("reads --delimiter's separate value as the separator, not the command", () => {
+    expect(spellings(bash("printf 'push,origin,HEAD:main' | xargs --delimiter , git"))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it.each([
+    ["--delimiter ,"],
+    ["--arg-file cmds.txt"],
+    ["--max-procs 4"],
+    ["--max-chars 4096"],
+    ["--process-slot-var SLOT"],
+    ["--eof"],
+    ["--eof=END"],
+  ])("reads the command after %s", (option) => {
+    expect(spellings(bash(`xargs ${option} git push origin HEAD:main < /dev/null`))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it.each([
+    "git ls-files -z | xargs -0 rm",
+    "find . -print0 | xargs -0 grep push",
+    "printf 'a.txt\0b.txt' | xargs -0 rm",
+  ])("does not read %s as a push", (command) => {
+    expect(bash(command)).toEqual([]);
+  });
 });
 
 describe("xargs -I fails closed when it cannot read the input", () => {
