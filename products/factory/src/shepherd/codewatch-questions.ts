@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { MAX_REVIEWER_QUESTIONS } from "./reviewer-brief.js";
+import { MAX_REVIEWER_QUESTIONS, reviewerBrief, type ReviewerBriefInput } from "./reviewer-brief.js";
 
 /** The part of a review target the report is looked up by. */
 interface CodewatchTarget {
@@ -67,6 +67,15 @@ export function codewatchReader(fetchReport: FetchCodewatchReport, repos: readon
 /** Codewatch questions go first; the bank fills what is left of the brief's cap. */
 export function briefQuestions(codewatch: readonly string[], bank: readonly string[]): string[] {
   return [...codewatch.slice(0, MAX_CODEWATCH_QUESTIONS), ...bank].slice(0, MAX_REVIEWER_QUESTIONS);
+}
+
+type BriefTarget = Omit<ReviewerBriefInput, "questions">;
+
+/** The reviewer brief with the codewatch questions ahead of the bank's, and the evidence the sh-review step records. */
+export async function reviewBrief(input: BriefTarget, codewatch?: CodewatchReader, bank?: (target: BriefTarget) => Promise<readonly string[]>): Promise<{ brief: string; codewatch?: CodewatchEvidence }> {
+  const report = await codewatch?.(input);
+  const questions = briefQuestions(report?.questions ?? [], (await bank?.(input)) ?? []);
+  return { brief: reviewerBrief({ ...input, questions }), ...(report && { codewatch: report.evidence }) };
 }
 
 const run = promisify(execFile);
