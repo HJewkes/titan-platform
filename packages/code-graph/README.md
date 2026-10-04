@@ -399,6 +399,21 @@ snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ fil
 The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 `computeSymbolCoupling` take node and edge arrays instead of a store.
 
+### Dashboard derivations
+
+Ported with TP-918 from codewatch's `graph dashboard`, unchanged apart from import paths. All
+are pure functions over rows the caller has already read, so they run in a browser:
+
+- `collectNodeMetrics` folds metric rows into per-node `NodeMetrics`; `collectSymbolUtil`
+  pairs symbol nodes with their utilization; `buildNodeMetrics`, `buildCentralFiles`,
+  `buildHotExports`, and `buildBlastRadius` shape them for the files a `GraphReportResult`
+  references (`referencedNodes`).
+- `buildSymbolCouplingPayload` caps `computeSymbolCoupling` and `computeSymbolConsumers`
+  into co-imported pairs and per-file consumer groups.
+- `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
+  `SnapshotContext`; build its `linkedPairs` with `pairKey`.
+- `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
+
 ### Partition quality
 
 `computePartitionQuality` scores a package partition of the file graph: per-package cohesion,
