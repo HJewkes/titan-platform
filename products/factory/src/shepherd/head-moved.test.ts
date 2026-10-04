@@ -123,6 +123,17 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.runtime.status(runId)?.status).toBe("running");
   });
 
+  it("a dry run reports the moved gate and supersedes nothing", async () => {
+    const { host, fake, services, runId } = await gatedAtSecondHead();
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, services, { dryRun: true });
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(host.runtime.status(runId)?.status).toBe("paused");
+  });
+
   it("asks the owner again at the new head once its review says MERGE, and merges that head", async () => {
     const { host, fake, services, runId, answerMoved } = await gatedAtSecondHead();
     fake.pushHead(1, MOVED);
