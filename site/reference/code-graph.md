@@ -317,6 +317,44 @@ re-export target — so it is off by default. On this repo it takes Q from 0.774
 `invertBuckets(fileByPackage)` is the file-id-to-package-id lookup the same callers need,
 skipping the `""` unassigned bucket.
 
+## Package architecture
+
+`computeArch` turns a snapshot's file edges into a package-level dependency graph. You pass
+the package roots; the moved code reads no filesystem, and a test walks its imports to keep
+it free of Node builtins.
+
+```ts
+import { bucketFilesByPackage, computeArch } from "@titan-design/code-graph";
+
+const packages = [
+  { id: "packages/app", name: "@x/app" },
+  { id: "packages/core", name: "@x/core" },
+];
+const file = (id: string) => ({ id, kind: "file" as const, name: id });
+const nodes = [
+  file("packages/app/src/a.ts"),
+  file("packages/app/src/b.ts"),
+  file("packages/core/src/x.ts"),
+  file("scripts/run.ts"),
+];
+const edges = [
+  { srcId: "packages/app/src/a.ts", dstId: "packages/core/src/x.ts", kind: "imports" as const },
+  { srcId: "packages/app/src/b.ts", dstId: "packages/core/src/x.ts", kind: "imports" as const },
+];
+
+const { packages: active, edges: arch } = computeArch({ snapshot, nodes, edges, packages });
+active; // [{ id: "packages/app", name: "@x/app", files: 2 }, { id: "packages/core", name: "@x/core", files: 1 }]
+arch; // [{ from: "packages/app", to: "packages/core", count: 2 }]
+
+bucketFilesByPackage(nodes.map((n) => n.id), packages).get(""); // ["scripts/run.ts"]
+```
+
+Test and fixture files are always left out; `exclude` globs and `excludeRole` add to that.
+`includeExternal` folds edges to `kind: "external"` nodes into one `EXTERNAL_BUCKET` node,
+`minEdges` hides weaker package pairs, and `depth: "modules"` or `maxPackageSize` (default
+`DEFAULT_MAX_PACKAGE_SIZE`, 30) splits larger packages into `subNodes`, one per top-level
+directory below the package's common source root.
+
 ## Pruning snapshots
 
 ```ts
