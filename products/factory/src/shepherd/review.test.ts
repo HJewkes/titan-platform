@@ -629,7 +629,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn", agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7" });
+    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn", agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START });
     expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
   });
 
@@ -693,7 +693,7 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch, { registered: optIn("rv-standing") });
 
-    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing", sessionId: "session-rv-standing" });
+    expect(result).toEqual({ kind: "dispatched", head: HEAD, reviewer: "rv-standing", at: START, mode: "resume", agentId: "agent-rv-standing", sessionId: "session-rv-standing", startedAt: START });
     expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-standing"]);
     expect(dispatch.resumes[0]!.brief).toContain(`Head: ${HEAD}`);
     expect(dispatch.spawns).toEqual([]);
@@ -827,7 +827,7 @@ describe("sh-review", () => {
       const { result } = await steps.review(spawnIntent);
 
       const waits = [1, 2, 4].map((n) => `${GUARD}; asking again in ${n} min`);
-      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", busyWaits: waits });
+      expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START + 7 * 60_000, busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
       expect(seen).toEqual(waits.map((wait) => `waiting for the broker to start reviewer rv-octo-demo-7: ${wait}`));
@@ -922,7 +922,7 @@ describe("reviewerBrief", () => {
   });
 
   it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*rm -rf "\$dir".*exactly that directory/);
+    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*literal path.*not `\$dir`.*rm -rf <that path>.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
@@ -1020,6 +1020,24 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "dispatched", busyWaits: [expect.any(String), expect.any(String), expect.any(String)] });
     expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  it("takes a verdict written just after a busy broker's delayed start in sh-await-verdict, not the late read", async () => {
+    const dispatch = fakeDispatch();
+    const spawn = dispatch.spawn;
+    let refusals = 3;
+    dispatch.spawn = async (...args) => (refusals-- > 0 ? Promise.reject(new ReviewerBrokerBusy("machine guard: 11 live headless agents machine-wide")) : spawn(...args));
+    let firstRead: number | undefined;
+    const read: Scene["read"] = (input, { agents }, now) => {
+      firstRead ??= now;
+      const writtenAt = firstRead + 2_000;
+      return now < writtenAt ? [] : agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), writtenAt));
+    };
+
+    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
   });
 
   it("answers not-started, not no-verdict, when the machine guard outlasts the busy wait, and starts nobody", async () => {

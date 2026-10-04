@@ -1,10 +1,9 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
 import { agentChatCleanupAgents } from "./cleanup-ports.js";
-import { agentChatFixers } from "./main-red.js";
+import { agentChatAgents } from "./agents.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import { createRosterReader, mutating, ROSTER_TTL_MS, type RosterReader } from "./roster.js";
-import { agentChatImplementers } from "./wake.js";
 
 const row = (name: string): AgentRow => ({
   name,
@@ -127,8 +126,8 @@ const BIN = "/bin/agent-chat";
 /** The roster read of each Shepherd port over agent-chat, all wired to one reader. */
 function portReads(roster: RosterReader): (() => Promise<readonly unknown[]>)[] {
   return [
-    () => agentChatImplementers(BIN, 1_000, roster).roster(),
-    () => agentChatFixers(BIN, undefined, 1_000, roster).roster(),
+    () => agentChatAgents(BIN, { timeoutMs: 1_000, roster }).roster(),
+    () => agentChatAgents(BIN, { timeoutMs: 1_000, roster }).roster(),
     () => agentChatCleanupAgents(BIN, undefined, 1_000, roster).roster(),
     () => agentChatReviewerDispatch({ agentChatBin: BIN, profile: "reviewer", cwdFor: () => undefined, roster }).roster(),
   ];

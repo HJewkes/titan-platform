@@ -13,8 +13,9 @@ import { createFactoryRegistry, factoryContext, type FactoryContext } from "./re
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
+import { resyncShepherd } from "./shepherd/resync.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
-import { sweepReviewCheckouts } from "./shepherd/review-checkout-sweep.js";
+import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
 export type { FactoryContext } from "./registry.js";
@@ -45,6 +46,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   build?: { sha: string; behindMain?: BehindMain };
   /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
   deployStateDir?: string;
+  /** Resync Shepherd's runs and gates with GitHub before the first adoption; defaults to true. */
+  resyncOnStart?: boolean;
 }
 
 export interface FactoryServer {
@@ -70,12 +73,14 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   }
   const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
-  const sweep =startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
-  await sweep.tick();
   const services = options.routes.shepherd;
+  if (services && options.resyncOnStart !== false) await resync(host, services, log);
+  const sweep = startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
+  await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  await goneSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
-  const checkoutSweep = services && startSweep(async () => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
+  const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
@@ -166,12 +171,25 @@ async function endGone(host: FactoryHost, services: ShepherdServices, log: Logge
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
 }
 
+/** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
+async function resync(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  try {
+    const report = await resyncShepherd(host, services);
+    for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
+    log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
+  } catch (err) {
+    log.error({ err }, "shepherd resync at start failed");
+  }
+}
+
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
 }
 
-function sweepCheckouts(log: Logger): void {
-  for (const path of sweepReviewCheckouts()) log.info({ path }, "removed a stale review checkout");
+export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {
+  const onError = (path: string, error: unknown): void =>
+    log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
+  for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */

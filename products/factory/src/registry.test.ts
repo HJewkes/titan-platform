@@ -39,7 +39,7 @@ describe("factory registry", () => {
   it("surfaces the factory and shepherd commands as MCP tools, with no prefix doubling and no resolve tool", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    const shepherd = ["hold", "list", "merge", "register", "release", "status", "timeline"].map((verb) => `shepherd__${verb}`);
+    const shepherd = ["hold", "list", "merge", "register", "release", "resync", "status", "timeline"].map((verb) => `shepherd__${verb}`);
     expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__land", "factory__status", ...shepherd]);
   });
 

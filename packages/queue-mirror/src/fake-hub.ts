@@ -1,10 +1,11 @@
-import { ITEM_KEY, assertSendable, type MatrixEvent, type SyncBatch, type SyncOptions } from "@titan-design/matrix-bus";
+import { ITEM_KEY, assertSendable, type MatrixEvent, type MessagesPage, type SyncBatch, type SyncOptions } from "@titan-design/matrix-bus";
 import type { MirrorBus } from "./mirror.js";
 
 interface Batch {
   since: string;
   events: MatrixEvent[];
   limited: boolean;
+  prev_batch?: string;
 }
 
 /** A test-only in-memory homeserver: dedupes txnIds, records every send, and serves injected /sync batches. */
@@ -13,6 +14,8 @@ export class FakeHub implements MirrorBus {
   private readonly txns = new Map<string, string>();
   private readonly batches: Batch[] = [];
   private readonly waiters = new Set<() => void>();
+  private readonly history = new Map<string, MessagesPage>();
+  readonly messageRequests: string[] = [];
   private failSends = 0;
   private failSyncs = 0;
 
@@ -51,6 +54,20 @@ export class FakeHub implements MirrorBus {
     this.batches.push(batch);
     for (const wake of [...this.waiters]) wake();
     return batch;
+  }
+
+  /** Queues a limited /sync batch whose gap is served by `pages`, keyed by the token each is fetched with. */
+  deliverLimited(prevBatch: string, events: MatrixEvent[], pages: Record<string, MessagesPage>): SyncBatch {
+    for (const [token, page] of Object.entries(pages)) this.history.set(token, page);
+    const batch = { since: `s${this.batches.length + 1}`, events, limited: true, prev_batch: prevBatch };
+    this.batches.push(batch);
+    for (const wake of [...this.waiters]) wake();
+    return batch;
+  }
+
+  async messages(_roomId: string, { from }: { from?: string } = {}): Promise<MessagesPage> {
+    this.messageRequests.push(from ?? "");
+    return this.history.get(from ?? "") ?? { chunk: [], start: from ?? "" };
   }
 
   async *syncLoop({ since, signal }: SyncOptions = {}): AsyncGenerator<SyncBatch> {

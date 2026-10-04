@@ -4,7 +4,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { endRunsGoneElsewhere } from "./gone-elsewhere.js";
+import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
@@ -41,7 +41,7 @@ describe("endRunsGoneElsewhere", () => {
     const ended = await endRunsGoneElsewhere(host, services);
     await host.runtime.wait(runs[0]!);
 
-    expect(ended).toEqual([{ runId: runs[0], reason: `${REPO}#1 was merged outside Shepherd` }]);
+    expect(ended).toEqual([{ runId: runs[0], reason: `${LANDED_ELSEWHERE}${REPO}#1 was merged outside Shepherd` }]);
     expect(host.runtime.status(runs[0]!)?.status).toBe("cancelled");
     expect(host.gates.get(gateId(runs[0]!, "approve-merge"))?.status).toBe("cancelled");
     expect(host.runtime.status(runs[1]!)?.status).toBe("paused");
@@ -54,7 +54,7 @@ describe("endRunsGoneElsewhere", () => {
 
     const ended = await endRunsGoneElsewhere(host, services);
 
-    expect(ended).toEqual([{ runId: runs[1], reason: `${REPO}#2 was closed outside Shepherd` }]);
+    expect(ended).toEqual([{ runId: runs[1], reason: `${CLOSED_ELSEWHERE}${REPO}#2 was closed outside Shepherd` }]);
   });
 
   it("leaves every run waiting when GitHub cannot be read", async () => {

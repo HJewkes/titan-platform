@@ -12,7 +12,9 @@ export class GitHubInputError extends Error {
   }
 }
 
-const REPO_PART = /^[A-Za-z0-9._-]+$/;
+const REPO_NAME = /^[A-Za-z0-9._-]+$/;
+/** GitHub's owner grammar: 1 to 39 alphanumerics and single hyphens, never leading or trailing. */
+const REPO_OWNER = /^(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const SHA = /^[0-9a-f]{40}$/;
 /** git check-ref-format's forbidden characters, plus `?`, `#` and `%`, which a URL path would decode or split on. */
 const REF_FORBIDDEN = /[ ~^:?*[\\#%]/;
@@ -23,10 +25,19 @@ function hasControl(text: string): boolean {
 }
 const MERGE_METHODS: readonly MergeMethod[] = ["merge", "squash", "rebase"];
 
+/**
+ * True for a bare `owner/name`. A `.git` suffix is refused: it names the same repo as the bare form
+ * but compares unequal, so it would slip past a deny list. Never throws.
+ */
+export function isRepo(value: string): boolean {
+  const [owner, name, ...extra] = value.split("/");
+  if (extra.length > 0 || owner === undefined || name === undefined) return false;
+  if (!REPO_OWNER.test(owner) || !REPO_NAME.test(name)) return false;
+  return !/^\.+$/.test(name) && !name.includes("..") && !/\.git$/i.test(name);
+}
+
 export function checkRepo(repo: string): string {
-  const parts = repo.split("/");
-  const bad = parts.length !== 2 || parts.some((part) => !REPO_PART.test(part) || part === "." || part === "..");
-  if (bad) throw new GitHubInputError("repo", repo, "expected owner/name of [A-Za-z0-9._-]");
+  if (!isRepo(repo)) throw new GitHubInputError("repo", repo, "expected a bare owner/name");
   return repo;
 }
 

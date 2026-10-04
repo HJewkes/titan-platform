@@ -18,7 +18,7 @@ export const MORNING_SOURCE = "morning";
 const ANSWERS_SUFFIX = "-owner-answers.md";
 const BRACKET_ITEM = /^\[([^\]]+)\]\s+(.*)$/;
 const NUMBERED_ITEM = /^(\d+)\.\s+(.*)$/;
-const ANSWER_LINE = /^([A-Za-z]{1,3}\s?)?(\d+(?:\s*[/,]\s*\d+)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
+const ANSWER_LINE = /^([A-Za-z]{1,3}-?\s?)?(\d+(?:\s*[/,]\s*\d+)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
 const RECOMMENDATION = /\brecommend(?:ed)?\b[^.]*/i;
 const AFFIRMATIVE = /^(?:yes|accept(?:ed)?|keep|go|approve[d]?|ok|agreed)\b(?![^,.;:]*\bnot\b)/i;
 const HEDGE = /\b(?:but|however|instead|hold|wait|except|unless)\b/i;
@@ -52,7 +52,7 @@ export interface MorningCounts {
   unmatched: number;
   /** Bare answer numbers that fit more than one item. */
   ambiguous: number;
-  /** Answers whose id an earlier line in the same file already answered; the first stands. */
+  /** Answers whose id an earlier line in the same file already answered, under any id of the item; the first stands. */
   duplicate: number;
 }
 
@@ -108,7 +108,7 @@ export function parseMorningList(text: string): MorningItem[] {
 }
 
 function answerIds(prefix: string | undefined, numbers: string): string[] {
-  const letters = (prefix ?? "").trim().toLowerCase();
+  const letters = normalizeId(prefix ?? "");
   return numbers.split(/[/,]/).map((n) => `${letters}${n.trim()}`);
 }
 
@@ -171,7 +171,7 @@ export function joinMorning(date: string, listText: string, answersText: string,
   const { answers, unparseable } = parseOwnerAnswers(answersText);
   const rows: LedgerRowWire[] = [];
   const counts: MorningCounts = { unparseable, unmatched: 0, ambiguous: 0, duplicate: 0 };
-  const answered = new Set<string>();
+  const answered = new Set<MorningItem>();
   for (const answer of answers) {
     if (answer.namesMore) {
       counts.ambiguous += 1;
@@ -181,9 +181,9 @@ export function joinMorning(date: string, listText: string, answersText: string,
       const found = lookup(items, id);
       if (found === null) counts.unmatched += 1;
       else if ("ambiguous" in found) counts.ambiguous += 1;
-      else if (answered.has(id)) counts.duplicate += 1;
+      else if (answered.has(found.item)) counts.duplicate += 1;
       else {
-        answered.add(id);
+        answered.add(found.item);
         rows.push(rowFor(found.item, id, answer, date, answersPath));
       }
     }

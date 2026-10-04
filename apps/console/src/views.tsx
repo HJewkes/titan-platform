@@ -28,10 +28,7 @@ const ICON_SIZE = 20;
 /** The planned views in rail order. Search, Stores and Flow borrow the nearest glyph until react-ui has one. */
 export const VIEWS: readonly ViewSpec[] = [
   { key: "status", label: "Status", title: "Status", icon: <ActivityIcon size={ICON_SIZE} /> },
-  {
-    key: "initiatives", label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} />,
-    planned: { summary: "The initiative portfolio and each initiative's brief, tasks, sessions and open loops.", tasks: "TP-861" },
-  },
+  { key: "initiatives", label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
   {
     key: "tasks", label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} />,
     planned: { summary: "A read-only board with derived columns, and task detail with its dependency tree.", tasks: "TP-866" },

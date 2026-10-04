@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
+import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
+import type { ShepherdStoreRef } from "./store.js";
+import type { CarryResult } from "./tree-carry.js";
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 
-/** The only rule that lets Shepherd merge without the owner; any other allow still gates. */
+/** The rules that let Shepherd merge without the owner; any other allow still gates. */
 export const MERGE_BY_REVIEWER_RULE = "MRG-AU-RV";
+export const MERGE_BY_CARRIED_VERDICT_RULE = "MRG-AU-RC";
+const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CARRIED_VERDICT_RULE];
 
 /** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */
 export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
@@ -33,6 +37,8 @@ export interface MergeEvidenceInput {
   /** The reviewer this run dispatched, read from the dispatch record, so a mismatch with the resolver gates. */
   dispatchedReviewer: AgentIdentity;
   seatGrants: string[];
+  /** The `sh-carry` step's answer for this head, with the head it asked about; absent means no carry was probed. */
+  carry?: { fromHead: string; head: string; result: CarryResult };
 }
 
 export interface EvidenceCheckRun {
@@ -87,7 +93,7 @@ export function isGithubPath(path: string): boolean {
   return first.toLowerCase().replace(/[ .]+$/, "") === ".github";
 }
 
-/** The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head allows. */
+/** The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, or MRG-AU-RC for a tree-equal carry of the verdict to it, allows. */
 export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
@@ -97,10 +103,10 @@ export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | u
   const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
   if (workflowPaths.length > 0) return { outcome: "gate", rule: guardRule("github-path"), reason: `the owner decides changes under .github/: ${workflowPaths.join(", ")}` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
-  if (decision.verdict === "allow" && decision.ruleId === MERGE_BY_REVIEWER_RULE) {
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${MERGE_BY_REVIEWER_RULE} holds at ${headSha}` };
+  if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}` };
   }
-  const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${MERGE_BY_REVIEWER_RULE} merges without the owner` : decision.reason;
+  const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason };
 }
 
@@ -147,8 +153,24 @@ interface Observed {
   requiredChecksUnknown?: string;
 }
 
-/** Every fact is read from GitHub or the run's own step outputs, never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<Observed> {
+/** A store that is not bound reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
+export function registeredKind(store: ShepherdStoreRef, runId: string): string | undefined {
+  try {
+    return store.get().byRun(runId)?.kind;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Only an equal probe result for this head becomes a fact; the reviewer's text never does. */
+function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact | undefined {
+  const { result } = carry ?? {};
+  if (!carry || carry.head !== head || !result?.equal || !result.headTree || !result.mergeTree) return undefined;
+  return { fromHead: carry.fromHead, head: carry.head, headTree: result.headTree, mergeTree: result.mergeTree };
+}
+
+/** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<Observed> {
   const pr = await port.getPr(input.repo, input.pr);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
@@ -170,6 +192,9 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     changedPaths: paths,
     seatGrants: input.seatGrants,
   };
+  const carry = carryFact(input.carry, input.head);
+  if (carry) merge.carry = carry;
+  if (kind !== undefined) merge.kind = kind;
   return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }) };
 }
 
@@ -216,8 +241,8 @@ export function evidenceComment(record: EvidenceRecord): string {
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen);
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen, kind);
   const unknown = requiredChecksUnknown === undefined ? {} : { requiredChecksUnknown };
   const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, ...unknown });
   const record: EvidenceRecord = {

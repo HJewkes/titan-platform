@@ -19,7 +19,7 @@ Before adding code:
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
 | [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
-| [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. |
+| [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates, deterministically, with no model. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead. |
@@ -58,10 +58,10 @@ Before adding code:
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead. |
-| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for one kind of agent, the Shepherd reviewer. Relay and agent-chat keep every other dispatch. |
+| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against today's injected baseline. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
-| [`code-report`](#cap-code-report) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
+| [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. It is also the reference for a react-ui `AppShell` app served by one loopback daemon. |
 
 ## Proven runtime paths
@@ -148,7 +148,7 @@ Key exports:
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +13 more in the [reference page](/reference/authority)
+- +14 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -156,7 +156,7 @@ Key exports:
 
 Tier 0, `@titan-design/chat-protocol@0.1.0`. The canonical chat message document and envelope every agent-chat surface speaks
 
-**Use this when:** You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging.
+**Use this when:** You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph.
 
 Key exports:
 
@@ -207,13 +207,12 @@ Tier 0, `@titan-design/egress-scan@0.3.0`. Scan git diff text for home paths, pr
 
 Key exports:
 
-- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
 - `diff`: `parseCommit`, `parseDiff`
 - `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
 - `terms`: `parseTerms`, `TermFileError`
 - `scan`: `scan`
-- `report`: `formatReport`
-- +18 more in the [reference page](/reference/egress-scan)
+- +20 more in the [reference page](/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -432,7 +431,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `exec`: `GhError`
-- +45 more in the [reference page](/reference/github)
+- +46 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -576,7 +575,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +275 more in the [reference page](/reference/code-graph)
+- +303 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -667,7 +666,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +201 more in the [reference page](/reference/session-analytics)
+- +204 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -680,13 +679,14 @@ Tier 2, `@titan-design/session-graph@0.12.1`. Fold session events into the activ
 Key exports:
 
 - `graph`: `SessionGraphNotMigratedError`, `allSessionIds`, `openSessionGraph`, `resetIndex`
+- `schema`: `derivedTables`
 - `audit-apply`: `applyAudit`
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
-- `refresh`: `indexTranscript`, `refreshCorpus`
-- +80 more in the [reference page](/reference/session-graph)
+- `refresh`: `indexTranscript`
+- +83 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -832,7 +832,7 @@ Key exports:
 
 Tier product, private, `products/factory`. Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams
 
-**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for one kind of agent, the Shepherd reviewer. Relay and agent-chat keep every other dispatch.
+**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
 
 Key exports:
 
@@ -874,11 +874,11 @@ Key exports:
 - `cli`: `runCli`
 - +11 more in `products/session-miner/src/index.ts`
 
-<a id="cap-code-report"></a>
+<a id="cap-codewatch"></a>
 
-### `code-report`
+### `codewatch`
 
-Tier product, private, `apps/code-report`. codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read
+Tier product, private, `apps/codewatch`. codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read
 
 **Use this when:** You want codewatch's layered code report, or a reference app that consumes react-app and code-read.
 

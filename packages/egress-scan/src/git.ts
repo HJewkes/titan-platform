@@ -33,7 +33,7 @@ export class PatchTooLargeError extends Error {
   }
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   const mib = 1024 * 1024;
   return bytes % mib === 0 ? `${bytes / mib} MiB` : `${bytes} bytes`;
 }
