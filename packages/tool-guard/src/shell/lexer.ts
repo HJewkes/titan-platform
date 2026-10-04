@@ -28,6 +28,8 @@ export interface WordToken {
   subs: Token[][];
   /** The text before literal variables were expanded into it; absent when nothing was expanded. */
   typed?: string;
+  /** Set on a word variable tracking adds itself, never by the lexer; only such a word can assign a hidden slot. */
+  hidden?: true;
 }
 
 export interface OpToken {
