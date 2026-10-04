@@ -63,6 +63,13 @@ describe("collectMetrics", () => {
     expect(report.notes.private_symbols).toMatch(/functions, methods and classes only.*methods of exported classes.*consts, types and interfaces/);
   });
 
+  it("names the Python leading-underscore rule and the same-name method skip as undercount sources", () => {
+    const note = collectMetrics(fakeStore(), SNAPSHOT).notes.private_symbols;
+
+    expect(note).toMatch(/same name|sharing its name/);
+    expect(note).toMatch(/leading-underscore.*isPublicName/);
+  });
+
   it("writes one row per file with public and private symbol counts from the exported flag", () => {
     const report = collectMetrics(fakeStore(), SNAPSHOT);
 
