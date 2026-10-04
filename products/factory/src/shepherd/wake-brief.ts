@@ -5,6 +5,8 @@ import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
+/** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
+export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
 export const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;

@@ -84,6 +84,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   rerun: "ci",
   "sh-wake-implementer": "fixing",
   "sh-wake-fix-first": "fixing",
+  "sh-repair": "fixing",
   "await-new-head": "fixing",
   "sh-await-new-head": "fixing",
   "sh-park": "review",

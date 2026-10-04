@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCli } from "./codewatch-metrics.mjs";
 
 export const SCHEMA_ID = "codewatch-pr-report@1";
 const DELTA_LIMIT = 20;
@@ -245,4 +246,9 @@ function clip(text) {
 
 function compare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// The PR report is written through dag-check-self.mjs; the command line serves the full-tree mode.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await runCli(process.argv.slice(2));
 }

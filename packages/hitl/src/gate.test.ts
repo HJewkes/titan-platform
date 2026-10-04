@@ -37,6 +37,19 @@ describe("openGate", () => {
     expect(store.get(gate.id)?.schema).toMatchObject({ type: "object", required: ["approved"] });
   });
 
+  it("passes the brief through to a store that requires one", () => {
+    const store = new MemoryGateStore({ requireBrief: true });
+    const brief = {
+      summary: "Ship 1.4.0? Recommend ship.",
+      evidenceRef: "https://example.test/runs/1",
+      questions: [{ id: "decision", question: "Ship?", options: [{ id: "ship", label: "Ship" }, { id: "hold", label: "Hold" }] }],
+    };
+
+    const gate = openGate(store, { id: "g1", prompt: "ship it?", ...brief });
+
+    expect(store.get(gate.id)).toMatchObject(brief);
+  });
+
   it("resolves with the validated payload once someone answers", async () => {
     const store = new MemoryGateStore();
     const gate = openGate(store, { prompt: "ship it?", schema: approval });

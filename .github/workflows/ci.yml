@@ -53,7 +53,23 @@ jobs:
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check
+        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json"
+      # On a pull request the report's head is GitHub's merge commit (the tree dag-check indexed), not the PR head.
+      - name: Summarize the codewatch report
+        if: always()
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node scripts/codewatch-summary.mjs "$RUNNER_TEMP/codewatch-report.json" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR_HEAD_SHA" ]; then echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload the codewatch report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codewatch-report
+          path: ${{ runner.temp }}/codewatch-report.json
+          retention-days: 30
+          if-no-files-found: warn
       # Report-only until the false-positive count is reviewed (TP-970); then drop the flag to fail on a new dead export.
       # BASE_REF fails the step now, report-only or not, if the PR adds an entry to the shrink-only baseline.
       - name: Check for exports with no importer

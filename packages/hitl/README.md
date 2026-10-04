@@ -203,6 +203,50 @@ covers only pending rows. A raw `REPLACE` of a cancelled or resolved rule-bound 
 and can leave a pending rule-less row. That is outside the store API: `create` is a plain
 insert and throws on an existing id, and no store method replaces a row.
 
+## Gate briefs
+
+A gate's `prompt` is written for the machine. A brief is what the owner reads: pass
+`summary`, `evidenceRef` and optionally `questions` to `create` or `openGate`.
+
+```ts
+openGate(store, {
+  id: "release-approval",
+  prompt: "release-1.4.0",
+  schema: z.object({ decision: z.enum(["release", "hold"]) }),
+  summary: "Release 1.4.0? CI green on main. Recommend release.",
+  evidenceRef: "https://github.com/acme/thing/actions/runs/1",
+  questions: [{
+    id: "decision",
+    question: "Release 1.4.0?",
+    options: [{ id: "release", label: "Release", recommended: true }, { id: "hold", label: "Hold" }],
+  }],
+});
+```
+
+| Field | Bound |
+| --- | --- |
+| `summary` | 1-280 characters on one line: the decision and the recommendation |
+| `evidenceRef` | 1-500 characters on one line: an https URL, an absolute path, or `$ <command>` |
+| `questions` | 1-4 questions with unique ids; each has 1-500 characters of text and 2-4 options |
+| option | unique id (1-40 letters, digits, `-`, `_`), a label of at most 75 characters (the Slack button limit), at most one `recommended: true` per question |
+
+A store built with `requireBrief: true` refuses `create` without a `summary` and an
+`evidenceRef`. Without it both stay optional, but a brief field that is present is still
+checked. A refused brief throws `GateBriefInvalid`, whose `issues` names each problem, and
+writes no row. `questions` is the presentation contract only: `schema` still validates the
+answer, and hitl does not cross-check the two. `snapshotBrief` is the same check, exported for
+a surface that wants to validate before it opens a gate.
+
+On SQLite the brief lives in `summary`, `evidence_ref` and `questions` columns that
+`gateBriefMigration(n)` adds. It is idempotent and does not backfill: gates opened before it
+read back with all three undefined, and still resolve. `migrate: true` runs it as version 4.
+A store whose table lacks the columns throws `GateStoreSchemaOutdated` naming
+`gateBriefMigration` when handed a brief, rather than dropping it, and refuses to construct
+at all when `requireBrief` is set.
+
+The question bounds are adapted from openrig (Apache-2.0); `src/gate-brief.ts` carries the
+attribution.
+
 ## Settling
 
 A gate is `pending`, then exactly one of `resolved`, `cancelled`, or `expired`.

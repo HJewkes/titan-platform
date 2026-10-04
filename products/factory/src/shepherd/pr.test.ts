@@ -14,6 +14,7 @@ import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
+import { MAX_REPAIRS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { mergeVerdict } from "./review.js";
@@ -949,5 +950,89 @@ describe("a restarted run", () => {
 
     expect(second.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
     expect(second.host.runtime.status(runId)?.status).toBe("paused");
+  });
+});
+
+describe("the repair budget", () => {
+  const redHead = (n: number) => fakeSha(`red${n}`);
+
+  /** Every head is red; each ci-red wake pushes a fresh red head, so no wake ever finds green. */
+  function alwaysRed(dbPath?: string): { w: World; wakes: WakeRequest[] } {
+    const fake = fakeGitHub();
+    let pushed = 0;
+    const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, redHead(++pushed)), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, () => "failure", fake, undefined, undefined, dbPath);
+    fake.addPr({ headSha: H1 });
+    return { w, wakes };
+  }
+
+  const repairs = (host: FactoryHost, runId: string) => stepIds(host, runId).filter((id) => id === "sh-repair").length;
+
+  it("wakes at most MAX_REPAIRS times across new heads, then opens one gate naming the wake kind and the failing check", async () => {
+    const { w, wakes } = alwaysRed();
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(wakes).toHaveLength(MAX_REPAIRS);
+    expect(wakes.every((wake) => wake.kind === "ci-red")).toBe(true);
+    expect(new Set(wakes.map((wake) => wake.headSha)).size).toBe(MAX_REPAIRS);
+    expect(repairs(w.host, runId)).toBe(MAX_REPAIRS);
+    const prompt = String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt);
+    expect(prompt).toContain("ci-red");
+    expect(prompt).toContain("validate");
+    expect(prompt).toContain(`${MAX_REPAIRS} fixer wakes at this run`);
+  });
+
+  it("does not reset the count at the next round or head when the owner awaits a new head", async () => {
+    const { w, wakes } = alwaysRed();
+    const runId = shepherdPr1(w);
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    w.fake.pushHead(1, fakeSha("by-hand"));
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" }, OWNER);
+    await gateOpened(w.host, gateId(runId, "sh-sent-back", 1));
+
+    expect(wakes).toHaveLength(MAX_REPAIRS);
+  });
+
+  it("shares one budget across ci-red, conflict and FIX_FIRST wakes", async () => {
+    const fake = fakeGitHub();
+    const [h2, h3] = [fakeSha("h2"), fakeSha("h3")];
+    let pushed = 0;
+    const next = (): WakeOutcome => {
+      const head = [h2, h3][wakes.length - 1] ?? redHead(++pushed);
+      fake.pushHead(1, head);
+      fake.pr(1).mergeableState = head === h2 ? "dirty" : "clean";
+      return { kind: "woken", agent: "impl-a" };
+    };
+    const { phases, wakes } = fakePhases({
+      review: (request) => (request.headSha === h3 ? { kind: "FIX_FIRST", headSha: h3, text: "missing test" } : { kind: "none" }),
+      wake: next,
+    });
+    const w = world(phases, (sha) => (sha === h2 || sha === h3 ? "success" : "failure"), fake);
+    fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(wakes.slice(0, 3).map((wake) => wake.kind)).toEqual(["ci-red", "conflict", "review"]);
+    expect(wakes).toHaveLength(MAX_REPAIRS);
+    expect(repairs(w.host, runId)).toBe(MAX_REPAIRS);
+  });
+
+  it("does not count a wake twice when the run is replayed after a restart", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp1192-")), "factory.db");
+    const first = alwaysRed(dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+
+    const second = alwaysRed(dbPath);
+    await second.w.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(repairs(second.w.host, runId)).toBe(MAX_REPAIRS);
+    expect(second.w.host.gates.get(gateId(runId, "sh-sent-back"))?.status).toBe("pending");
   });
 });
