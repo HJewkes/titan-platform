@@ -176,7 +176,7 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
-  if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
+  trackVars(cmd, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
@@ -305,7 +305,7 @@ function literalWord(value: string): WordToken {
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [name, value, append] of cmd.assigned) if (value !== null && !append) env[name] = value;
+  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
   return env;
 }
 

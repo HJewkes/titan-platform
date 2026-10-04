@@ -626,6 +626,27 @@ describe("sh-review", () => {
     expect(steps.clock.sleeps).toBe(2);
   });
 
+  it("names the last roster error when the started reviewer is never seen because every later roster read failed", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ === 0 ? roster() : Promise.reject(new Error(`roster read ${reads} failed`)));
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(dispatch.spawns).toHaveLength(1);
+    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: roster read ${reads} failed` });
+  });
+
+  it("says only that the reviewer did not start in time when every roster read succeeded", async () => {
+    const dispatch = fakeDispatch([], { onSpawn: () => undefined });
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", reason: "reviewer rv-octo-demo-7 did not start one session in time" });
+  });
+
   it("sh-review answers none and starts nobody when it is given an intent and no dispatch is wired", async () => {
     const { result } = await reviewSteps(undefined).review(spawnIntent);
 
