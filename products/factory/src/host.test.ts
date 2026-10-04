@@ -37,7 +37,7 @@ const approval = defineWorkflow({
   },
 });
 
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 } };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
 
 async function cli(dbPath: string, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   return cliWithEnv(dbPath, {}, ...argv);
@@ -148,6 +148,18 @@ describe("titan-factory resume and gate resolve", () => {
 
     expect(code).toBe(EXIT.FAILURE);
     expect(err).toContain("refused a resolution by coordinator");
+    expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({ status: "pending", resolvedBy: undefined });
+  });
+
+  it("gate resolve refuses a proof passed as a flag and the gate stays pending", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+
+    const proof = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
+    const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}', "--proof", proof);
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain("unknown option '--proof'");
     expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 
