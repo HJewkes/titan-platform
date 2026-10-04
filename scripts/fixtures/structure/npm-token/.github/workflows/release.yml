@@ -1,0 +1,10 @@
+name: Release
+# A comment naming NPM_TOKEN is allowed; the env entry below is not.
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
