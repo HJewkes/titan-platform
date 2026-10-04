@@ -1,0 +1,84 @@
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+
+/** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
+const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
+
+export interface FailingCheck {
+  name: string;
+  conclusion: string | null;
+  url: string;
+  workflowRunId: number | null;
+}
+
+type CiVerdict = "pending" | "green" | "red" | "behind" | "merged" | "closed" | "not-mergeable";
+
+export interface CiSnapshot {
+  verdict: CiVerdict;
+  headSha: string;
+  mergeableState: string;
+  mergeSha?: string | null;
+  failing?: FailingCheck[];
+  waitingOn?: string[];
+  /** On a `behind` read: the PR's own required checks are green at this head, so it can be reviewed before any update. */
+  checksGreen?: boolean;
+}
+
+export interface CiInput {
+  repo: string;
+  pr: number;
+  contexts: string[];
+  strict: boolean;
+}
+
+export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapshot> {
+  const pr = await port.getPr(input.repo, input.pr);
+  const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
+  if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
+  if (pr.state === "closed") return { ...base, verdict: "closed" };
+  const runs = await port.checkRuns(input.repo, pr.headSha);
+  const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind", ...(findings.length === 0 && !pr.draft && { checksGreen: true }) };
+  const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
+  if (failing.length > 0) return { ...base, verdict: "red", failing };
+  if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
+  const verdict = await settledVerdict(port, input, pr);
+  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
+  return { ...base, verdict };
+}
+
+/** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */
+async function baseMovedSinceGreen(port: GitHubPort, input: CiInput, pr: PullRequest, runs: CheckRun[]): Promise<boolean> {
+  const tip = await port.getHeadSha(input.repo, pr.baseRef);
+  if (!tip) return true;
+  const committedAt = Date.parse((await port.getCommit(input.repo, tip)).committedAt ?? "");
+  const greenAt = greenStartedAt(runs, pr.headSha, input.contexts);
+  return Number.isNaN(committedAt) || greenAt === null || committedAt > greenAt;
+}
+
+/** The earliest start among the required runs that made the head green; a pull_request run tests the base as it stood then. */
+function greenStartedAt(runs: CheckRun[], headSha: string, contexts: string[]): number | null {
+  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && contexts.includes(run.name));
+  const starts = latestPerName(required).map((run) => Date.parse(run.startedAt ?? ""));
+  if (starts.length === 0 || starts.some(Number.isNaN)) return null;
+  return Math.min(...starts);
+}
+
+function failingCheck(run: CheckRun): FailingCheck {
+  return { name: run.name, conclusion: run.conclusion, url: run.url, workflowRunId: run.workflowRunId };
+}
+
+function findingName(finding: CheckFinding): string {
+  return finding.kind === "missing" ? finding.name : finding.run.name;
+}
+
+/** A blocked PR is green when its only block is an approval rule the caller can bypass, which GitHub reports as blocked all the same. */
+async function settledVerdict(port: GitHubPort, input: CiInput, pr: PullRequest): Promise<CiVerdict> {
+  const verdict = mergeVerdict(pr);
+  if (verdict === "pending" && pr.mergeableState === "blocked" && (await port.reviewRulesBypassable(input.repo, pr.baseRef))) return "green";
+  return verdict;
+}
+
+function mergeVerdict(pr: PullRequest): CiVerdict {
+  if (pr.draft || pr.mergeableState === "dirty") return "not-mergeable";
+  return MERGEABLE.has(pr.mergeableState) ? "green" : "pending";
+}
