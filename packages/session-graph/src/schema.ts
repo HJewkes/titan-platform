@@ -4,7 +4,7 @@ import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from 
 import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./audit-schema-v7.js";
 import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./audit-schema-v8.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
-import { SQL_NOW, kitMigration, type Migration } from "@titan-design/store-sqlite";
+import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";
 
 /** Kit table names this graph uses. `watermark` rows are transcripts; `search_*` are the FTS spans. */
 export const KIT = { watermark: "transcript", edge: "edge", spanFts: "search" } as const;
@@ -132,9 +132,6 @@ export const DOMAIN_DDL = `
     fact_id          INTEGER
   );
   CREATE INDEX IF NOT EXISTS idx_subagent_child ON subagent(child_session_id);
-  CREATE TABLE IF NOT EXISTS artifact (
-    artifact_ref TEXT PRIMARY KEY, kind TEXT, title TEXT, url TEXT, path TEXT, created_at TEXT
-  );
   CREATE TABLE IF NOT EXISTS pr_merge_observation (
     number INTEGER NOT NULL, repo_hint TEXT, merged_at TEXT NOT NULL,
     PRIMARY KEY (number, repo_hint, merged_at)
@@ -144,11 +141,11 @@ export const DOMAIN_DDL = `
   );
 `;
 
-/** Every derived table, in an order safe to clear. The watermark table is not derived. */
-export const DERIVED_TABLES = [
-  "normalized_span",
-  "normalized_event",
-  "normalized_source",
+/** Opt-in tables: absent from a graph opened without `normalized: true`. */
+export const NORMALIZED_TABLES = ["normalized_span", "normalized_event", "normalized_source"] as const;
+
+/** Every derived table that always exists, in an order safe to clear. The watermark table is not derived. */
+const ALWAYS_DERIVED = [
   `${KIT.spanFts}_span`,
   KIT.edge,
   "turn",
@@ -170,8 +167,23 @@ export const DERIVED_TABLES = [
   "branch",
   "file",
   "task",
-  "artifact",
 ] as const;
+
+/** Derived tables present in this database; the opt-in normalized ones come first so they clear first. */
+export function derivedTables(db: Db): string[] {
+  return [...NORMALIZED_TABLES.filter((t) => hasTable(db, t)), ...ALWAYS_DERIVED];
+}
+
+export const DERIVED_TABLES = [...NORMALIZED_TABLES, ...ALWAYS_DERIVED] as const;
+
+/** DDL only: no row is deleted. The normalized tables go only when all three are empty, so no evidence is lost. */
+function stopStoringBulkClasses(db: Db): void {
+  db.exec("DROP TABLE IF EXISTS artifact");
+  const present = NORMALIZED_TABLES.filter((t) => hasTable(db, t));
+  const empty = present.every((t) => db.prepare(`SELECT 1 FROM ${t} LIMIT 1`).get() === undefined);
+  if (empty) for (const t of present) db.exec(`DROP TABLE ${t}`);
+  db.exec("CREATE TABLE IF NOT EXISTS session_state (session_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT, PRIMARY KEY (session_id, key))");
+}
 
 export const MIGRATIONS: Migration[] = [
   kitMigration(1, { watermark: KIT.watermark, edge: KIT.edge, spanFts: KIT.spanFts }, "kit tables"),
@@ -182,4 +194,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 6, name: EPISODE_TRANSCRIPT_MIGRATION_NAME, up: applyEpisodeTranscriptSchema },
   { version: 7, name: ORIGIN_TASK_LINK_MIGRATION_NAME, up: applyOriginTaskLinkSchema },
   { version: 8, name: REVIEW_VERDICT_MIGRATION_NAME, up: applyReviewVerdictSchema },
+  { version: 9, name: "stop storing bulk classes", up: stopStoringBulkClasses },
 ];

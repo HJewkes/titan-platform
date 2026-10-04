@@ -1,5 +1,5 @@
 export type { RuleHit, RuleId, TermRule } from "./rules.js";
-export { matchesAwDataPath, matchesHomePath, matchRules, PLACEHOLDER_SEGMENTS, RULE_IDS } from "./rules.js";
+export { matchesAwDataPath, locateRules, matchesHomePath, matchRules, PLACEHOLDER_SEGMENTS, RULE_IDS } from "./rules.js";
 export type { AddedLine, DiffFile, IdentField, ScanSource } from "./diff.js";
 export { parseCommit, parseDiff } from "./diff.js";
 export type { AllowableRule, AllowEntry, AllowList } from "./allow.js";
@@ -9,3 +9,4 @@ export type { Finding, RuleCounts, ScanOptions, ScanResult } from "./scan.js";
 export { scan } from "./scan.js";
 export type { ReportSummary } from "./report.js";
 export { formatReport } from "./report.js";
+export { scanText } from "./text.js";

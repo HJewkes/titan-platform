@@ -6,6 +6,8 @@ export const RULE_IDS: readonly RuleId[] = ["home-path", "aw-data-path", "privat
 export interface TermRule {
   readonly index: number;
   matches(text: string): boolean;
+  /** Offset of the first match, or -1. Optional so a bare matcher still works; a hit then reports column 1. */
+  search?(text: string): number;
 }
 
 export interface RuleHit {
@@ -52,15 +54,33 @@ function isPlaceholder(rawSegment: string): boolean {
   return PLACEHOLDER_SET.has(segment.toLowerCase());
 }
 
-export function matchesHomePath(text: string): boolean {
+/** Offset of the first home path that is not a placeholder, or -1. */
+export function homePathIndex(text: string): number {
   for (const match of text.matchAll(HOME_PATH)) {
-    if (!isPlaceholder(match[1] ?? "")) return true;
+    if (!isPlaceholder(match[1] ?? "")) return match.index;
   }
-  return false;
+  return -1;
+}
+
+export function matchesHomePath(text: string): boolean {
+  return homePathIndex(text) >= 0;
 }
 
 export function matchesAwDataPath(text: string): boolean {
   return AW_DATA_PATH.test(text);
+}
+
+/** Like `matchRules`, with the 0-based offset of each hit in `text`. */
+export function locateRules(text: string, terms: readonly TermRule[] = []): (RuleHit & { readonly offset: number })[] {
+  const hits: (RuleHit & { readonly offset: number })[] = [];
+  const home = homePathIndex(text);
+  if (home >= 0) hits.push({ rule: "home-path", offset: home });
+  const aw = AW_DATA_PATH.exec(text);
+  if (aw) hits.push({ rule: "aw-data-path", offset: aw.index });
+  for (const term of terms) {
+    if (term.matches(text)) hits.push({ rule: "private-term", termIndex: term.index, offset: Math.max(term.search?.(text) ?? 0, 0) });
+  }
+  return hits;
 }
 
 export function matchRules(text: string, terms: readonly TermRule[] = []): RuleHit[] {

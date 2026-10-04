@@ -148,7 +148,7 @@ Key exports:
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +13 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
+- +14 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -207,13 +207,12 @@ Tier 0, `@titan-design/egress-scan@0.3.0`. Scan git diff text for home paths, pr
 
 Key exports:
 
-- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
 - `diff`: `parseCommit`, `parseDiff`
 - `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
 - `terms`: `parseTerms`, `TermFileError`
 - `scan`: `scan`
-- `report`: `formatReport`
-- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+- +20 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -576,7 +575,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +275 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +303 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -680,13 +679,14 @@ Tier 2, `@titan-design/session-graph@0.12.1`. Fold session events into the activ
 Key exports:
 
 - `graph`: `SessionGraphNotMigratedError`, `allSessionIds`, `openSessionGraph`, `resetIndex`
+- `schema`: `derivedTables`
 - `audit-apply`: `applyAudit`
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
-- `refresh`: `indexTranscript`, `refreshCorpus`
-- +80 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
+- `refresh`: `indexTranscript`
+- +83 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
 

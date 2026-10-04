@@ -13,6 +13,7 @@ import { createFactoryRegistry, factoryContext, type FactoryContext } from "./re
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
+import { resyncShepherd } from "./shepherd/resync.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -45,6 +46,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   build?: { sha: string; behindMain?: BehindMain };
   /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
   deployStateDir?: string;
+  /** Resync Shepherd's runs and gates with GitHub before the first adoption; defaults to true. */
+  resyncOnStart?: boolean;
 }
 
 export interface FactoryServer {
@@ -70,10 +73,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   }
   const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
-  const sweep =startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
-  await sweep.tick();
   const services = options.routes.shepherd;
+  if (services && options.resyncOnStart !== false) await resync(host, services, log);
+  const sweep = startSweep(() => adopt(host, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
+  await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  await goneSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
@@ -164,6 +169,17 @@ async function adopt(host: FactoryHost, log: Logger): Promise<void> {
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
+}
+
+/** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
+async function resync(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  try {
+    const report = await resyncShepherd(host, services);
+    for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
+    log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
+  } catch (err) {
+    log.error({ err }, "shepherd resync at start failed");
+  }
 }
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {

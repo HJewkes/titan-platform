@@ -1,0 +1,66 @@
+{
+  "schema": "codewatch-pr-report@1",
+  "head": "2222222222222222222222222222222222222222",
+  "base": "0000000000000000000000000000000000000000",
+  "indexVersion": "0.18.0",
+  "check": {
+    "passed": false,
+    "newErrors": 1,
+    "newWarnings": 0,
+    "carryover": 0,
+    "violations": [
+      {
+        "ruleId": "package-layers",
+        "severity": "error",
+        "nodeId": "packages/example/src/client.ts",
+        "path": "packages/example/src/client.ts",
+        "line": 3,
+        "message": "packages/example (tier 0) imports packages/example-engine (tier 1)",
+        "isCarryover": false
+      }
+    ]
+  },
+  "deltas": [
+    {
+      "path": "packages/example/src/render.ts",
+      "symbol": null,
+      "metric": "loc",
+      "before": 260,
+      "after": 301,
+      "budget": 350,
+      "status": "near-budget"
+    },
+    {
+      "path": "packages/example/src/table.ts",
+      "symbol": null,
+      "metric": "loc",
+      "before": null,
+      "after": 268,
+      "budget": 350,
+      "status": "new"
+    },
+    {
+      "path": "packages/example/src/render.ts",
+      "symbol": null,
+      "metric": "cyclomatic_max",
+      "before": 9,
+      "after": 14,
+      "budget": 30,
+      "status": "worsened"
+    }
+  ],
+  "exports": [
+    {
+      "path": "packages/example/src/index.ts",
+      "symbol": "renderRow",
+      "line": 40,
+      "change": "removed",
+      "importers": 4
+    }
+  ],
+  "questions": [
+    "packages/example/src/client.ts:3 breaks package-layers (new error): does this belong here, or should the code move?",
+    "packages/example/src/render.ts:1 loc is 301 against a budget of 350, was 260: should it be split before it crosses?",
+    "packages/example/src/table.ts:1 is a new 268-line file: does it hold one responsibility, or should it start split?"
+  ]
+}
