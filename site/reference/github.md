@@ -153,9 +153,13 @@ wire, the port and `fakeGitHub`. `conclusion` is `success`, `failure` or `action
 other value throws `GitHubInputError` before a wire call. `ghCliWire(exec, { appToken })` calls
 the provider for each run and hands the token to `gh` as `GH_TOKEN` in the child env of that one
 call (`GhExecOptions.env`), never in argv and never in `process.env`. An error from the
-exchange or the post has the token, the JWT and the PEM replaced with `[redacted]`. A wire built
+exchange or the post has the token, the JWT and the PEM replaced with `[redacted]`, and so does any string shaped like
+a GitHub token (`ghs_`, `ghu_`, `gho_`, `ghp_`, `ghr_`, `github_pat_`) or a three-part JWT, in
+stdout, stderr and the thrown message, even when `appToken` itself rejects while quoting one.
+A token split across stdout and stderr is cut from both halves. A wire built
 without `appToken` refuses `createCheckRun`. `fakeGitHub({ appId })` records the run under that
-app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it.
+app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it; each posted run is also
+appended to `fake.createdCheckRuns` as `{ id, repo, request }`.
 
 ## Where it came from
 

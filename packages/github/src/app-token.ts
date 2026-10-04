@@ -35,9 +35,23 @@ export function signAppJwt(appId: number, privateKeyPem: string, nowMs: number):
   }
 }
 
-/** Replaces every secret in `text`, so an error or log line built from `gh` output cannot leak one. */
+// GitHub token prefixes (ghs_, ghu_, gho_, ghp_, ghr_, github_pat_) and the three-part base64url JWT, which always opens with `eyJ`.
+const TOKEN_SHAPE = /gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|eyJ[\w-]+\.[\w-]+\.[\w-]+/g;
+
+/** Replaces every secret and every token-shaped string in `text`, so an error or log line built from `gh` output cannot leak one. */
 export function redact(text: string, secrets: readonly string[]): string {
-  return secrets.filter((secret) => secret.length > 0).reduce((out, secret) => out.split(secret).join("[redacted]"), text);
+  const exact = secrets.filter((secret) => secret.length > 0).reduce((out, secret) => out.split(secret).join("[redacted]"), text);
+  return exact.replace(TOKEN_SHAPE, "[redacted]");
+}
+
+/** Redacts two streams as one text, so a token split across them is cut from both halves. */
+export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
+  const joined = first + second;
+  const cuts = [...joined.matchAll(TOKEN_SHAPE)].filter((m) => m.index < first.length && m.index + m[0].length > first.length);
+  if (cuts.length === 0) return [redact(first, secrets), redact(second, secrets)];
+  const head = first.slice(0, Math.min(...cuts.map((m) => m.index)));
+  const tail = second.slice(Math.max(...cuts.map((m) => m.index + m[0].length)) - first.length);
+  return [redact(head, secrets) + "[redacted]", "[redacted]" + redact(tail, secrets)];
 }
 
 /** Exchanges a freshly signed App JWT for an installation token; the JWT reaches `gh` as `GH_TOKEN` for this call only. */
@@ -56,7 +70,8 @@ export async function appInstallationToken(credentials: AppCredentials, exec: Gh
   const response = parseIncluded(result.stdout);
   if (result.code !== 0 || !response || response.status >= 400) {
     // Stdout may hold a token the call just minted, so only stderr is echoed, and any token in it is redacted too.
-    const detail = redact(result.stderr.trim(), [...secrets, ...tokensIn(result.stdout), ...tokensIn(result.stderr)]);
+    const [, stderr] = redactStreams(result.stdout, result.stderr, [...secrets, ...tokensIn(result.stdout), ...tokensIn(result.stderr)]);
+    const detail = stderr.trim();
     throw new Error(`installation token exchange failed (${result.code}${response ? `, HTTP ${response.status}` : ""}): ${detail}`);
   }
   return readToken(response.body, nowMs, secrets);
