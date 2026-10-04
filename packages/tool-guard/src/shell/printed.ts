@@ -1,4 +1,4 @@
-import { decodeAnsiC } from "./ansi-c.js";
+import { decodeAnsiC, decodeEscapes } from "./ansi-c.js";
 import type { WordToken } from "./lexer.js";
 
 /** Text `echo` or `printf` writes to stdout, or null when an argument is dynamic or the format is not understood. */
@@ -19,7 +19,7 @@ function echoText(values: string[]): string {
     if (/[eE]/.test(flags)) escapes = flags.lastIndexOf("e") > flags.lastIndexOf("E");
   }
   const text = values.slice(i).join(" ");
-  return escapes ? decodeAnsiC(text) : text;
+  return escapes ? decodeAnsiC(text, "echo") : text;
 }
 
 /** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */
@@ -32,7 +32,7 @@ function printfText(values: string[]): string | null {
     const pass = applyFormat(decodeAnsiC(format), rest);
     if (pass === null) return null;
     out += pass.text;
-    if (pass.used === 0) break;
+    if (pass.stopped || pass.used === 0) break;
     rest = rest.slice(pass.used);
   } while (rest.length > 0);
   return out;
@@ -41,7 +41,7 @@ function printfText(values: string[]): string | null {
 const DIRECTIVE = /%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(.?)/g;
 
 /** A `*` count printf would read as `-1` or `0x8` is not guessed: only plain decimals are understood. */
-function applyFormat(format: string, args: string[]): { text: string; used: number } | null {
+function applyFormat(format: string, args: string[]): { text: string; used: number; stopped: boolean } | null {
   let used = 0;
   let understood = true;
   const next = () => args[used++] ?? "";
@@ -50,19 +50,31 @@ function applyFormat(format: string, args: string[]): { text: string; used: numb
     if (!/^\d+$/.test(v)) understood = false;
     return v;
   };
-  const text = format.replace(DIRECTIVE, (whole, flags: string, width: string, precision?: string, conv = "") => {
-    if (whole === "%%") return "%";
+  let text = "";
+  let at = 0;
+  for (const m of format.matchAll(DIRECTIVE)) {
+    const [whole, flags = "", width = "", precision, conv = ""] = m;
+    text += format.slice(at, m.index);
+    at = (m.index ?? 0) + whole.length;
+    if (whole === "%%") {
+      text += "%";
+      continue;
+    }
     if (!"sbcdi".includes(conv) || conv === "") understood = false;
     const w = width === "*" ? count() : width;
     const p = precision === "*" ? count() : precision;
-    return pad(convert(conv, next(), p), w, flags.includes("-"));
-  });
-  return understood ? { text, used } : null;
+    const arg = next();
+    if (conv === "b" && decodeEscapes(arg, "printf-b").stopped) {
+      return understood ? { text: text + convert(conv, arg, p), used, stopped: true } : null;
+    }
+    text += pad(convert(conv, arg, p), w, flags.includes("-"));
+  }
+  return understood ? { text: text + format.slice(at), used, stopped: false } : null;
 }
 
 /** `%.3s` truncates to three characters, the one directive that can turn `git push` into `git`. */
 function convert(conv: string, arg: string, precision: string | undefined): string {
-  const value = conv === "b" ? decodeAnsiC(arg) : conv === "c" ? arg.slice(0, 1) : arg;
+  const value = conv === "b" ? decodeAnsiC(arg, "printf-b") : conv === "c" ? arg.slice(0, 1) : arg;
   if (precision === undefined || !"sb".includes(conv)) return value;
   return value.slice(0, Number.parseInt(precision, 10) || 0);
 }

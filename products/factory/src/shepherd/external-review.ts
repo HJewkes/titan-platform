@@ -118,7 +118,7 @@ const why = (error: unknown) => (error instanceof Error ? error.message : String
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** True when `text` names this PR as `<owner>/<repo>#<n>` or `<repo>#<n>`, the repo in any letter case. */
-export function namesPr(target: ReviewTarget, text: string): boolean {
+function namesPr(target: ReviewTarget, text: string): boolean {
   const [owner = "", repo = ""] = target.repo.split("/");
   const pattern = new RegExp(`(?:^|[^\\w./-])(?:${escaped(owner)}/)?${escaped(repo)}#${target.pr}(?!\\d)`, "i");
   return pattern.test(text);

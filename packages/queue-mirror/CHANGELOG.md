@@ -1,5 +1,16 @@
 # @titan-design/queue-mirror
 
+## 0.4.2
+
+### Patch Changes
+
+- 3db6e9d: Follow `prev_batch` backwards when a sync batch is `limited`, so events dropped in a gappy sync are applied oldest-first before the batch. Paging stops at the first already-applied event, the end of history or 10 pages, and logs a `backfill gap` warning when the cap is hit.
+- Updated dependencies [775af4a]
+- Updated dependencies [117c3ae]
+- Updated dependencies [3a4d4ed]
+  - @titan-design/hitl@0.5.0
+  - @titan-design/store-sqlite@0.3.2
+
 ## 0.4.1
 
 ### Patch Changes
