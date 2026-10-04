@@ -5,6 +5,7 @@ import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 
 export interface GhCliOptions {
@@ -58,6 +59,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
+    listReviewComments: (repo, number) => listReviewComments(api, repo, number),
   };
 }
 
@@ -214,6 +216,79 @@ async function listPrFiles(api: Rest, repo: string, number: number): Promise<{ f
 async function listIssueComments(api: Rest, repo: string, number: number): Promise<IssueComment[]> {
   const comments = await api.pages(`repos/${repo}/issues/${number}/comments`, { per_page: "100" }, (page: { id: number; body: string; user: { login: string } | null }[]) => page);
   return comments.map((comment) => ({ id: comment.id, body: comment.body, author: comment.user?.login ?? "" }));
+}
+
+const COMMENT_FIELDS = "pageInfo { hasNextPage endCursor } nodes { databaseId body path line authorAssociation author { login } }";
+
+const REVIEW_THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id isResolved comments(first: 100) { ${COMMENT_FIELDS} } }
+      }
+    }
+  }
+}`;
+
+const THREAD_COMMENTS_QUERY = `query($id: ID!, $cursor: String) {
+  node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { ${COMMENT_FIELDS} } } }
+}`;
+
+interface GhPage<T> {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: T[];
+}
+
+interface GhReviewComment {
+  databaseId: number;
+  body: string;
+  path: string;
+  line: number | null;
+  authorAssociation: string;
+  author: { login: string } | null;
+}
+
+interface GhReviewThread {
+  id: string;
+  isResolved: boolean;
+  comments: GhPage<GhReviewComment>;
+}
+
+interface GhGraphql<T> {
+  data?: T;
+  errors?: { message: string }[];
+}
+
+/** GraphQL answers 200 with `errors` and no data on a failed query, so a missing value is the failure. */
+async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
+  const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
+  const value = answer.data === undefined ? undefined : pick(answer.data);
+  if (value === null || value === undefined) throw new Error(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`);
+  return value;
+}
+
+/** Only GraphQL review threads carry the resolved state; REST review comments do not. */
+async function listReviewComments(api: Rest, repo: string, number: number): Promise<ReviewComment[]> {
+  const [owner, name] = repo.split("/");
+  const comments: ReviewComment[] = [];
+  for (let cursor: string | null = null, more = true; more; ) {
+    const threads: GhPage<GhReviewThread> = await graphql(api, `review threads of ${repo}#${number}`, REVIEW_THREADS_QUERY, { owner, name, number, cursor }, (data: { repository?: { pullRequest?: { reviewThreads: GhPage<GhReviewThread> } | null } | null }) => data.repository?.pullRequest?.reviewThreads);
+    for (const thread of threads.nodes) comments.push(...(await threadComments(api, thread)));
+    ({ hasNextPage: more, endCursor: cursor } = threads.pageInfo);
+  }
+  return comments;
+}
+
+/** A thread past its first 100 comments is read on by its node id. */
+async function threadComments(api: Rest, thread: GhReviewThread): Promise<ReviewComment[]> {
+  const nodes = [...thread.comments.nodes];
+  for (let page = thread.comments.pageInfo; page.hasNextPage; ) {
+    const next: GhPage<GhReviewComment> = await graphql(api, `review thread ${thread.id}`, THREAD_COMMENTS_QUERY, { id: thread.id, cursor: page.endCursor }, (data: { node?: { comments?: GhPage<GhReviewComment> } | null }) => data.node?.comments);
+    nodes.push(...next.nodes);
+    page = next.pageInfo;
+  }
+  return nodes.map((comment) => ({ id: comment.databaseId, author: comment.author?.login ?? "", authorAssociation: comment.authorAssociation, path: comment.path, line: comment.line, body: comment.body, resolved: thread.isResolved }));
 }
 
 interface GhComparePage {

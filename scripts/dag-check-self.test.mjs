@@ -58,6 +58,6 @@ describe("the dag CI job", () => {
 
   it("hands dag:check's graph to dead:check instead of indexing twice", () => {
     expect(ci).toContain('pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"');
-    expect(ci).toContain('pnpm dead:check --report-only --db "$RUNNER_TEMP/graph.db"');
+    expect(ci).toContain('pnpm dead:check --db "$RUNNER_TEMP/graph.db"');
   });
 });
