@@ -126,8 +126,9 @@ FTS5 — `"daemon OR 503"`, not `"daemon 503"`, unless you want the implicit AND
 
 **Contentless FTS strands rows.** `search` always joins the FTS table through the span
 table, because a contentless FTS5 table cannot delete a row without its original text. Purges
-leave orphan FTS rows; the join hides them, `orphanRatio()` tells you when to `clearIndex()`
-and re-stream.
+leave orphan FTS rows, and the join hides them. When `orphanRatio()` climbs, rebuild: call
+`clearIndex()`, then call `index()` again for every surviving span. `index()` puts back the
+FTS row of a span that has lost it, so span ids stay stable and the orphans are gone.
 
 ## Where it came from
 

@@ -99,3 +99,19 @@ describe("check-then-act port over the fake", () => {
     expect(fake.effects.rerunFailedJobs).toBe(1);
   });
 });
+
+describe("review comments over the fake", () => {
+  it("lists the PR's review comments, resolved ones included, as copies", async () => {
+    const fake = fakeGitHub();
+    const comment = { id: 1, author: "alice", authorAssociation: "MEMBER", path: "a.ts", line: 3, body: "nit", resolved: true };
+    fake.reviewComments.set(7, [comment]);
+    const port = githubPort(fake.wire);
+
+    const listed = await port.listReviewComments(REPO, 7);
+    listed[0]!.body = "changed";
+
+    expect(await port.listReviewComments(REPO, 7)).toEqual([comment]);
+    expect(await port.listReviewComments(REPO, 8)).toEqual([]);
+    await expect(port.listReviewComments(REPO, 0)).rejects.toThrow();
+  });
+});

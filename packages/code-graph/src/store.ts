@@ -73,6 +73,16 @@ export class CodeGraphStore {
     return Number(result.lastInsertRowid);
   }
 
+  /**
+   * Run `write` in one transaction so a reader on another connection sees a new
+   * snapshot only once every row written for it is committed, never a snapshot
+   * row whose nodes or edges are still being inserted. The per-table inserts
+   * nest as savepoints inside it.
+   */
+  atomically<T>(write: () => T): T {
+    return this.db.transaction(write)();
+  }
+
   insertNodes(snapshotId: number, nodes: readonly GraphNode[]): void {
     const stmt = this.statements.insertNode;
     this.db.transaction(() => {

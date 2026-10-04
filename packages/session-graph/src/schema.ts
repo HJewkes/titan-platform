@@ -147,6 +147,7 @@ export const NORMALIZED_TABLES = ["normalized_span", "normalized_event", "normal
 
 /** Every derived table that always exists, in an order safe to clear. The watermark table is not derived. */
 const ALWAYS_DERIVED = [
+  // Dropped too, not only FTS rows: spans of a deleted or rewritten transcript are never re-streamed and would survive.
   `${KIT.spanFts}_span`,
   KIT.edge,
   "turn",
