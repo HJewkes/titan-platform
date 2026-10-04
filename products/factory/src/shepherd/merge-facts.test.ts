@@ -378,12 +378,16 @@ describe("the evidence comment of a carried MERGE", () => {
   it("names both heads and both trees, and records the carry", async () => {
     const evidence = await collect(world(), carried());
 
-    const body = evidenceComment(evidence.record);
-
     expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE });
-    expect(body).toContain(CARRIED_FROM);
-    expect(body).toContain(input.head);
-    expect(body).toContain(TREE);
+  });
+
+  it("names the head's tree and the merge-tree separately in the summary", async () => {
+    const evidence = await collect(world(), carried());
+    const carry = { fromHead: CARRIED_FROM, head: input.head, headTree: "tree-on-the-head-side", mergeTree: "tree-on-the-merge-side" };
+
+    const [, summary = ""] = evidenceComment({ ...evidence.record, carry }).split("\n");
+
+    for (const named of Object.values(carry)) expect(summary).toContain(named);
   });
 
   it("says nothing of a carry for a MERGE reviewed at its own head", async () => {

@@ -155,6 +155,9 @@ describe("a hold that names a reviewer", () => {
   });
 });
 
+const guardedWith = (r: Rig, answer: CarryResult): GitHubPort =>
+  holdingPort(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: { read: async () => r.messages }, carry: async () => answer }));
+
 describe("a satisfied hold across an update of the reviewed head", () => {
   const EQUAL: CarryResult = { equal: true, headTree: "tree-a", mergeTree: "tree-a" };
 
@@ -193,12 +196,25 @@ describe("a satisfied hold across an update of the reviewed head", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
   });
 
-  it("does not carry when the reviewer's newest verdict at the new head is FIX_FIRST", async () => {
+  it("does not carry past a FIX_FIRST at an update nobody asked the hold about", async () => {
+    const { r, satisfy } = await updated("correctness", EQUAL);
+    say(r, verdictAt(H2, "FIX_FIRST"));
+    const H3 = fakeSha("head-3");
+    r.fake.pushHead(r.pr, H3);
+
+    await satisfy(REPO, r.pr, H3, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+    await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.fake.pr(r.pr).merged).toBe(false);
+  });
+
+  it("withdraws the satisfaction when the reviewer's newest verdict at the new head is FIX_FIRST", async () => {
     const { r, satisfy } = await updated("correctness", EQUAL);
     say(r, verdictAt(H2, "FIX_FIRST"));
 
     await satisfy(REPO, r.pr, H2, "main");
 
-    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 });

@@ -1,10 +1,11 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import { parseVerdictBlock } from "@titan-design/session-read";
 import { redactForEvidence } from "../redact.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
-import { provablyIndependent, type ReviewerAgent, type ReviewerReader } from "./review.js";
+import { provablyIndependent, type ReviewerAgent, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
@@ -44,17 +45,30 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const row = latestSession(reviewer, roster);
     if (row === undefined || !independent(row, registration, roster, store)) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
-    const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, await deps.reader.read(read).catch(() => []));
-    if (verdict.kind !== "verdict") return carrySatisfaction(deps, registration, { repo, baseRef, head: sha });
-    if (verdict.verdict === "FIX_FIRST") return store.unsatisfyHold(registration.runId, sha);
+    const messages = await deps.reader.read(read).catch(() => []);
+    const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
+    if (verdict.kind !== "verdict") return carrySatisfaction(deps, registration, { repo, baseRef, head: sha }, newestOwn(row, repo, pr, messages));
+    if (verdict.verdict === "FIX_FIRST") return store.unsatisfyHold(registration.runId);
     if (registration.holdSatisfied?.head === sha) return;
     store.satisfyHold(registration.runId, reviewer, sha, { ...verdict.reviewer, locator: { ...verdict.locator } });
   };
 }
 
+/** The reviewer's newest verdict block on this PR at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time the FIX_FIRST wins. */
+function newestOwn(row: ReviewerAgent, repo: RepoSlug, pr: number, messages: readonly ReviewerMessage[]): "MERGE" | "FIX_FIRST" | undefined {
+  let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" } | undefined;
+  for (const message of messages) {
+    const block = parseVerdictBlock(message.text);
+    if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !block.ok || block.repo !== repo || block.pr !== pr) continue;
+    if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && block.verdict === "FIX_FIRST")) newest = { at: message.writtenAt, verdict: block.verdict };
+  }
+  return newest?.verdict;
+}
+
 /** A satisfaction at an ancestor head moves to a tree-equal update of it; only the probe's answer decides, and a kind that does not carry never moves. */
-async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registration, at: { repo: RepoSlug; baseRef: string; head: string }): Promise<void> {
+async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registration, at: { repo: RepoSlug; baseRef: string; head: string }, newest: "MERGE" | "FIX_FIRST" | undefined): Promise<void> {
   const { holdSatisfied, holdReviewer } = registration;
+  if (newest === "FIX_FIRST") return deps.store().unsatisfyHold(registration.runId);
   if (!deps.carry || !holdSatisfied || !holdReviewer || holdSatisfied.head === at.head || !CARRYING_KINDS.has(registration.kind)) return;
   const result = await deps.carry({ repo: at.repo, baseRef: at.baseRef, fromHead: holdSatisfied.head, head: at.head });
   if (!result.equal || !result.headTree || result.headTree !== result.mergeTree) return;
