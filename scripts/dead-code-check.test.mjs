@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,6 +18,7 @@ import {
   updatedBaseline,
 } from "./dead-code-check.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
+import { release, tryAcquire } from "./dag-check-lock.mjs";
 
 const file = (id, role = "source") => ({ id, kind: "file", name: id.split("/").pop(), role });
 const symbol = (fileId, name, exported = true) => ({
@@ -250,12 +252,39 @@ describe("the script header", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 2 on an index failure, a lock timeout, a BASE_REF that names no commit, an unknown flag,");
-    expect(header).toContain('or a --db path that does not exist or holds no "head" snapshot');
+    expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
 
 describe("reading an existing code-graph database", () => {
   const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
+  const SCRIPT = new URL("./dead-code-check.mjs", import.meta.url).pathname;
+
+  function writeNodes(store, snapshotId, name) {
+    store.insertNodes(snapshotId, [file("src/lib.ts"), symbol("src/lib.ts", name)]);
+  }
+
+  function writeHead(store, name) {
+    writeNodes(store, store.createSnapshot({ ref: "head", indexVersion: "" }), name);
+  }
+
+  /** The real CLI, with HOME moved so its dag-check lock is this test's own. */
+  function spawnDeadCheck(dbPath, home) {
+    const env = { ...process.env, HOME: home };
+    delete env.BASE_REF;
+    const child = spawn(process.execPath, [SCRIPT, "--report-only", "--db", dbPath], { env });
+    child.out = "";
+    child.stdout.on("data", (chunk) => (child.out += chunk));
+    return child;
+  }
+
+  function waitForOutput(stream, text) {
+    let seen = "";
+    return new Promise((resolve, reject) => {
+      stream.on("data", (chunk) => (seen += chunk).includes(text) && resolve());
+      stream.on("end", () => reject(new Error(`stream ended without "${text}": ${seen}`)));
+    });
+  }
 
   async function indexFixture(sources) {
     const dir = scratchDir();
@@ -286,6 +315,25 @@ describe("reading an existing code-graph database", () => {
     const lib = nodes.find((n) => n.kind === "file" && n.id.endsWith("src/lib.ts")).id;
     expect(edges.filter((e) => e.dstId.startsWith(lib)).map((e) => e.kind)).toEqual(["imports"]);
   });
+
+  it("waits for a writer holding the dag-check lock instead of reading its half-written head snapshot", async () => {
+    const graph = await import(ENTRY.href);
+    const home = scratchDir();
+    const dbPath = path.join(home, "graph.db");
+    const store = graph.openCodeGraph(dbPath);
+    writeHead(store, "first");
+    const lockDir = path.join(home, ".cache", "titan-platform", "dag-check.lock");
+    expect(tryAcquire(lockDir)).toBeNull();
+    const pending = store.createSnapshot({ ref: "head", indexVersion: "" });
+    const reader = spawnDeadCheck(dbPath, home);
+    await waitForOutput(reader.stderr, "waiting for dag-check lock");
+    writeNodes(store, pending, "second");
+    store.close();
+    release(lockDir);
+    const [code] = await once(reader, "exit");
+    expect(code).toBe(0);
+    expect(reader.out).toContain("`second` in `src/lib.ts` has no importer");
+  }, 30000);
 
   it("refuses a database path that does not exist rather than creating an empty one", async () => {
     const dbPath = path.join(scratchDir(), "missing.db");
