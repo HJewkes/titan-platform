@@ -243,6 +243,28 @@ function approveThenMerge(): WorkflowDefinition {
   });
 }
 
+describe("resyncShepherd when superseding moved gates throws", () => {
+  it("still reports the runs it ended and the error", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    merge(w.fake, 1);
+    const routes = w.freshRoutes();
+    const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
+    cleanups.push(() => host.close());
+    const services = routes.shepherd!;
+    const broken: FactoryHost = Object.assign(Object.create(host) as FactoryHost, {
+      pendingGates: () => {
+        throw new Error("gate store down");
+      },
+    });
+
+    const report = await resyncShepherd(broken, services);
+
+    expect(report.ended.map((ended) => ended.runId)).toEqual([runId]);
+    expect(report.supersedeError).toBe("gate store down");
+  });
+});
+
 describe("endRunsGoneElsewhere while the run moves on", () => {
   it("keeps a run whose own merge is recorded while its PR read is in flight", async () => {
     const w = world({ workflows: [approveThenMerge()] });
@@ -382,6 +404,52 @@ describe("recheck before adoption", () => {
     expect(run.error?.startsWith(reason)).toBe(true);
     expect(never(run)).toEqual([]);
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  describe("a held run whose PR read fails", () => {
+    /** getPr rejects for PR 1 only, while `unreadable.value` is set. */
+    function flakyRoutes(w: World, unreadable: { value: boolean }): FactoryRoutes {
+      const fresh = w.freshRoutes();
+      const getPr = fresh.shepherd!.port.getPr.bind(fresh.shepherd!.port);
+      const port = { ...fresh.shepherd!.port, getPr: async (repo: string, pr: number) => (unreadable.value && pr === 1 ? Promise.reject(new Error("rate limited")) : getPr(repo, pr)) };
+      return Object.assign([...fresh], { database: fresh.database, shepherd: { ...fresh.shepherd!, port } });
+    }
+
+    async function twoHeldRuns(unreadable: { value: boolean }) {
+      const w = world({ hangAt: "land-rules" });
+      const runs = [await stuckRun(w, 1, "land-rules"), await stuckRun(w, 2, "land-rules")] as const;
+      const now = { value: T0 + 1_000 };
+      const server = await serve(w, { now: () => now.value, leaseMs: LEASE_MS, routes: flakyRoutes(w, unreadable) });
+      now.value = AFTER_LEASE;
+      await gateOpened(server.host, gateId(runs[1], "approve-merge"));
+      return { w, server, runs };
+    }
+
+    it("is neither adopted nor driven while another run in the same tick is, then adopted once the read succeeds", async () => {
+      const unreadable = { value: true };
+      const { server, runs } = await twoHeldRuns(unreadable);
+      await sleep(3 * LEASE_MS, new AbortController().signal);
+
+      expect(server.host.gates.get(gateId(runs[0], "approve-merge"))).toBeUndefined();
+      expect(server.host.runtime.status(runs[0])?.status).toBe("running");
+
+      unreadable.value = false;
+      await gateOpened(server.host, gateId(runs[0], "approve-merge"));
+      expect(server.host.runtime.status(runs[0])?.status).toBe("paused");
+    });
+
+    it("is ended, never driven, when a later read finds its PR merged", async () => {
+      const unreadable = { value: true };
+      const { w, server, runs } = await twoHeldRuns(unreadable);
+      await sleep(3 * LEASE_MS, new AbortController().signal);
+      merge(w.fake, 1);
+      unreadable.value = false;
+      const run = await settled(server.host, runs[0]);
+
+      expect(run.status).toBe("cancelled");
+      expect(run.error?.startsWith(LANDED_ELSEWHERE)).toBe(true);
+      expect(never(run)).toEqual([]);
+    });
   });
 
   it("a skipped run whose PR is still open is adopted and driven as before", async () => {

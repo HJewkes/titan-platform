@@ -25,22 +25,28 @@ interface GoneOptions {
   only?: ReadonlySet<string>;
   /** Called for a run whose PR left Shepherd but whose lease a live holder still keeps, so it could not be cancelled. */
   onHeld?: (runId: string) => void;
+  /** Called for a run whose PR could not be read; the run is left alone and the caller decides what that means for it. */
+  onUnreadable?: (runId: string) => void;
 }
 
 const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
 const stepName = (key: string): string => key.split(":")[0]!;
-const LIVE: ReadonlySet<string> = new Set(["running", "paused"]);
+export const LIVE: ReadonlySet<string> = new Set(["running", "paused"]);
 
 /** A run that merged its PR itself, recorded it landed, or started what follows a merge reads merged on GitHub and is still Shepherd's. */
 export function mergedByShepherd(run: WorkflowRun): boolean {
   return [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
 }
 
-/** Why the run's PR is no longer Shepherd's to land, or undefined while it is open or cannot be read. */
+class UnreadablePr extends Error {}
+
+/** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
 async function goneReason(services: ShepherdServices, runId: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
-  const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => undefined);
+  const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => {
+    throw new UnreadablePr();
+  });
   if (!pr || pr.state === "open") return undefined;
   const target = `${registration.repo}#${registration.pr}`;
   return pr.merged ? `${LANDED_ELSEWHERE}${target} was merged outside Shepherd` : `${CLOSED_ELSEWHERE}${target} was closed outside Shepherd`;
@@ -78,7 +84,14 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
   const ended: EndedRun[] = [];
   for (const { id: runId } of candidateRuns(host, options.scope ?? "gated")) {
     if (options.only && !options.only.has(runId)) continue;
-    const reason = await goneReason(services, runId);
+    let reason: string | undefined;
+    try {
+      reason = await goneReason(services, runId);
+    } catch (error) {
+      if (!(error instanceof UnreadablePr)) throw error;
+      options.onUnreadable?.(runId);
+      continue;
+    }
     if (reason === undefined || !endable(host.runtime.status(runId))) continue;
     if (options.dryRun || tryCancel(host, runId, reason)) ended.push({ runId, reason });
     else options.onHeld?.(runId);
