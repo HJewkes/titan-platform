@@ -2,7 +2,7 @@ import type { SessionGraph } from "./graph.js";
 
 /** USD per million tokens for one model prefix from one date. Shaped so session-analytics' `PRICE_TABLE` passes straight through. */
 export interface PriceInput {
-  /** Matched against `request.model` by longest prefix in `request_cost`. */
+  /** Matched against `request.model` in `request_cost` by longest prefix at an id boundary: the id itself, or followed by -YYYYMMDD or [..]. */
   modelPrefix: string;
   /** ISO date or timestamp; compared as text against `request.ts`. */
   effectiveFrom: string;

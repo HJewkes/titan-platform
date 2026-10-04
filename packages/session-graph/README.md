@@ -277,6 +277,8 @@ empty tables, so existing rows are untouched.
 - `request_dedup` collapses fan-out copies of a request to the earliest one. Every cost
   query reads it, never `request`. `request_cost` prices each row by longest model prefix
   and latest `effective_from`; an unmatched model reads `priced = 0` and costs 0.
+  A price row matches only when the model id equals its prefix or continues with `[..]` or
+  `-YYYYMMDD` (optionally followed by `[..]`), so `claude-opus-5` never prices `claude-opus-5-9`.
   `context_contribution` attributes each request's context growth to the blocks before it.
 
 Migration 6, `episode transcript ids`, adds nullable `start_transcript_id` and

@@ -84,6 +84,35 @@ describe("request_cost", () => {
     expect(row.input_cost_usd).toBeCloseTo(5, 9);
   });
 
+  it("an unlisted model sharing a listed prefix is unpriced, not billed at the shorter row", () => {
+    addRequest({ request_id: "r", model: "claude-opus-5-9", input_tokens: 1_000_000 });
+
+    expect(cost("r")).toMatchObject({ priced: 0, price_model: null, cost_usd: 0 });
+  });
+
+  it("does not let claude-opus-5 price claude-opus-5-5 when the 5-5 row is absent", () => {
+    addRequest({ request_id: "r", model: "claude-opus-5-5", input_tokens: 1_000_000 });
+
+    expect(cost("r")).toMatchObject({ priced: 0, price_model: null, cost_usd: 0 });
+  });
+
+  it("a dated snapshot id prices at its base row, with or without a [..] suffix", () => {
+    const HAIKU: PriceInput = { ...OPUS, modelPrefix: "claude-haiku-4-5", input: 1 };
+    syncPrices(graph, [OPUS, HAIKU], { tableVersion: 2 });
+    addRequest({ request_id: "dated", model: "claude-haiku-4-5-20251001", input_tokens: 1_000_000 });
+    addRequest({ request_id: "dated-1m", model: "claude-haiku-4-5-20251001[1m]", input_tokens: 1_000_000 });
+
+    expect(cost("dated")).toMatchObject({ price_model: "claude-haiku-4-5", priced: 1, input_cost_usd: 1 });
+    expect(cost("dated-1m")).toMatchObject({ price_model: "claude-haiku-4-5", priced: 1, input_cost_usd: 1 });
+  });
+
+  it("rejects suffixes that only resemble a boundary", () => {
+    const models = ["claude-opus-5-2025100", "claude-opus-5-202510011", "claude-opus-5-20251001x", "claude-opus-5-20251001[1m", "claude-opus-5x[1m]"];
+    models.forEach((model, i) => addRequest({ request_id: `r${i}`, model, input_tokens: 1_000_000 }));
+
+    expect(models.map((_, i) => cost(`r${i}`).priced)).toEqual(models.map(() => 0));
+  });
+
   it("an unpriced model has priced = 0 and cost 0", () => {
     addRequest({ request_id: "r", model: "gpt-9", input_tokens: 1_000_000, output_tokens: 1_000_000 });
 
@@ -153,7 +182,7 @@ describe("reconcilePrices", () => {
 
   it("adds a missing model so request_cost prices it at its own rate after the refresh", () => {
     addRequest({ request_id: "r1", model: "claude-opus-5-5", input_tokens: 1_000_000 });
-    expect(cost("r1").cost_usd).toBe(5);
+    expect(cost("r1")).toMatchObject({ priced: 0, cost_usd: 0 });
 
     const result = reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 2 });
 
@@ -192,9 +221,9 @@ describe("reconcilePrices", () => {
   });
 
   it("prunes a stale row of the same source whose longer prefix would otherwise win", () => {
-    const stale: PriceInput = { ...OPUS, modelPrefix: "claude-opus-5-5-preview", input: 50 };
+    const stale: PriceInput = { ...OPUS, modelPrefix: "claude-opus-5-5[1m]", input: 50 };
     reconcilePrices(graph, [OPUS, stale], { tableVersion: 1, source: "sa" });
-    addRequest({ request_id: "r2", model: "claude-opus-5-5-preview", input_tokens: 1_000_000 });
+    addRequest({ request_id: "r2", model: "claude-opus-5-5[1m]", input_tokens: 1_000_000 });
     expect(cost("r2").cost_usd).toBe(50);
 
     const result = reconcilePrices(graph, [OPUS, OPUS_5_5], { tableVersion: 2, source: "sa" });

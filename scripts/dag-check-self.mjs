@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // scripts/dag-check.sh on the ported code-graph engine; BASE_REF marks existing violations carryover, --json prints the result, exit 0/1/2 as codewatch.
 // --report <file> also writes codewatch-pr-report@1 (scripts/codewatch-report.mjs); a failed write never changes the exit code.
-// The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once.
-import { execFileSync, spawn } from "node:child_process";
-import { once } from "node:events";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+// The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once;
+// an OOM exits 2 and says so. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
+import { execFileSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
-import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
+import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -21,6 +21,7 @@ const WORKER_FLAG = "--locked-worker";
 // Fixed beside the lock, so the next holder clears whatever a killed run left behind.
 const WORK_DIR = path.join(path.dirname(DEFAULT_LOCK_DIR), "dag-check-work");
 const BASELINE_DIR = path.join(WORK_DIR, "baseline");
+const WORK_DB = path.join(WORK_DIR, "graph.db");
 
 async function indexTree(graph, store, dir, ref) {
   // apps/ is absent from baselines taken before the first app landed.
@@ -85,7 +86,7 @@ function formatText({ snapshot, baselineSnapshot, result }) {
 async function check() {
   const graph = await import(ENTRY);
   const baseRef = process.env.BASE_REF;
-  const store = graph.openCodeGraph(path.join(WORK_DIR, "graph.db"));
+  const store = graph.openCodeGraph(WORK_DB);
   try {
     await indexTree(graph, store, ROOT, "head");
     if (baseRef) await indexBaseline(graph, store, baseRef);
@@ -114,22 +115,33 @@ function clearWorkDir() {
   git("worktree", "prune");
 }
 
-async function runWorker(cleanups) {
-  const args = [`--max-old-space-size=${HEAP_CAP_MB}`, SCRIPT, WORKER_FLAG, ...process.argv.slice(2)];
-  // Its own process group, so one kill also stops the git the indexer is waiting on.
-  const child = spawn(process.execPath, args, { stdio: "inherit", detached: true });
-  cleanups.push(() => killGroup(child.pid));
-  const [code, signal] = await once(child, "exit");
-  if (signal) console.error(`dag-check indexer died with ${signal}`);
-  return code ?? 2;
+export function keptDbPath(argv) {
+  const at = argv.indexOf("--db");
+  if (at < 0) return null;
+  if (!argv[at + 1]) throw new Error("--db needs a path");
+  return path.resolve(argv[at + 1]);
 }
 
-function killGroup(pid) {
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch (err) {
-    if (err.code !== "ESRCH") throw err;
-  }
+function removeDb(dbPath) {
+  for (const suffix of ["", "-wal", "-shm"]) rmSync(`${dbPath}${suffix}`, { force: true });
+}
+
+/** Copies a closed graph out of the work dir, which the next holder clears; a failed index keeps nothing, never a stale graph. */
+export function keepDb({ workDb, dbPath, code }) {
+  removeDb(dbPath);
+  if (code !== 0 && code !== 1) return;
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  copyFileSync(workDb, dbPath);
+}
+
+async function indexUnderLock(cleanups, dbPath) {
+  clearWorkDir();
+  mkdirSync(WORK_DIR, { recursive: true });
+  const args = [WORKER_FLAG, ...process.argv.slice(2)];
+  const log = (m) => console.error(m);
+  const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log });
+  if (dbPath) keepDb({ workDb: WORK_DB, dbPath, code });
+  return code;
 }
 
 async function supervise() {
@@ -137,23 +149,24 @@ async function supervise() {
     console.error(`${ENTRY} not found; run pnpm build first`);
     return 2;
   }
+  const dbPath = keptDbPath(process.argv.slice(2));
   const cleanups = [];
   cleanupOnSignal(cleanups);
   await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log: (m) => console.error(m) });
   cleanups.push(() => release(DEFAULT_LOCK_DIR), clearWorkDir);
   try {
-    clearWorkDir();
-    mkdirSync(WORK_DIR, { recursive: true });
-    return await runWorker(cleanups);
+    return await indexUnderLock(cleanups, dbPath);
   } finally {
     runCleanups(cleanups);
   }
 }
 
-(process.argv.includes(WORKER_FLAG) ? check() : supervise()).then(
-  (code) => process.exit(code),
-  (err) => {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(2);
-  },
-);
+if (process.argv[1] === SCRIPT) {
+  (process.argv.includes(WORKER_FLAG) ? check() : supervise()).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(2);
+    },
+  );
+}

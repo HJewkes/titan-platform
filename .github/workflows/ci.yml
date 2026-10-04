@@ -53,7 +53,7 @@ jobs:
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json"
+        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"
       # On a pull request the report's head is GitHub's merge commit (the tree dag-check indexed), not the PR head.
       - name: Summarize the codewatch report
         if: always()
@@ -72,10 +72,11 @@ jobs:
           if-no-files-found: warn
       # Report-only until the false-positive count is reviewed (TP-970); then drop the flag to fail on a new dead export.
       # BASE_REF fails the step now, report-only or not, if the PR adds an entry to the shrink-only baseline.
+      # Reads the head graph dag-check kept, instead of indexing the tree a second time.
       - name: Check for exports with no importer
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dead:check --report-only
+        run: pnpm dead:check --report-only --db "$RUNNER_TEMP/graph.db"
 
   # A merge gate, not an egress control: a pushed branch is public before this runs. The pre-push hook is the control.
   egress-scan:

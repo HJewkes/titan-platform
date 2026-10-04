@@ -1,4 +1,7 @@
 // A machine-wide exclusive lock for dag-check: a directory holding the owner pid, taken by an atomic rename.
+// Every writer of a dag-check graph.db holds it, so a reader that takes it never sees a half-written snapshot.
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -120,4 +123,34 @@ export function runCleanups(cleanups) {
       console.error(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+}
+
+/** The holder's exit code for an indexer child; V8 aborts on its heap cap, so an abort is named and becomes 2. */
+export function workerExitCode({ code, signal, name, heapCapMb, log }) {
+  if (signal === "SIGABRT" || code === 134) {
+    log(`${name} ran out of memory: V8 aborted it at the ${heapCapMb} MB heap cap`);
+    return 2;
+  }
+  if (signal) {
+    log(`${name} died with ${signal}`);
+    return 2;
+  }
+  return code;
+}
+
+function killGroup(pid) {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (err) {
+    if (err.code !== "ESRCH") throw err;
+  }
+}
+
+/** Run a script under a heap cap in its own process group, so one kill also stops the git it is waiting on. */
+export async function runCappedWorker({ script, args, name, heapCapMb, cleanups, log }) {
+  const argv = [`--max-old-space-size=${heapCapMb}`, script, ...args];
+  const child = spawn(process.execPath, argv, { stdio: "inherit", detached: true });
+  cleanups.push(() => killGroup(child.pid));
+  const [code, signal] = await once(child, "exit");
+  return workerExitCode({ code, signal, name, heapCapMb, log });
 }
