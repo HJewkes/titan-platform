@@ -1,11 +1,4 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,6 +12,7 @@ import {
 } from "./dispatch.js";
 import { dataFence } from "./fence.js";
 import { resumeAgent } from "./resume.js";
+import { installExecutable } from "./test-support.js";
 
 let dir: string;
 
@@ -33,7 +27,7 @@ afterEach(() => {
 /** A fake `agent-chat` recording argv (NUL-separated), stdin and its env's autostart flag. */
 function fakeAgentChat(script = "exit 0\n"): string {
   const path = join(dir, "agent-chat");
-  writeFileSync(
+  installExecutable(
     path,
     `#!/bin/sh\n` +
       `: >"${dir}/argv"\n` +
@@ -42,7 +36,6 @@ function fakeAgentChat(script = "exit 0\n"): string {
       `cat >"${dir}/stdin"\n` +
       script,
   );
-  chmodSync(path, 0o755);
   return path;
 }
 
