@@ -1,5 +1,20 @@
 # @titan-design/session-graph
 
+## 0.13.0
+
+### Minor Changes
+
+- c67ee7a: Migration 9 stops storing bulk classes. A graph no longer has an `artifact` table, and the `normalized_*` tables exist only when `openSessionGraph` is given `normalized: true` (they are dropped only while empty, so a graph that holds rows keeps them). This changes the default: callers that read or write the Codex path must pass `normalized: true`. `resetIndex` clears only the tables that exist, `markMissing` no longer reads `normalized_source` when it is absent, and `refreshCorpus` accepts `present` source keys that count as existing without being visited. Adds `session_state`, `ensureNormalizedSchema` and `derivedTables`.
+- b7a44ca: Migration 10 recreates the `request_cost` view so a price row matches only at a model-id boundary: the model equals the prefix, or the prefix is followed by `[..]` or by `-YYYYMMDD` with an optional `[..]`. This is the rule session-analytics `findPrice` already applies. An unlisted `claude-opus-5-9` now reads `priced = 0` and shows under the cost report's `unpricedModels`, instead of being billed at the `claude-opus-5` rate.
+
+### Patch Changes
+
+- ed058da: `refreshCorpus` expands a leading `~/` (or a bare `~`) in a stored source key before checking whether the file still exists, so transcripts keyed under the home directory no longer flip to missing. A new `homeDir` option overrides the OS home directory.
+- 3a4d4ed: Build README example paths from `os.homedir()`; Node never expands a literal `~`.
+- 30e1fdf: Expand a leading `~/` in a legacy source key before `readIndexedText` reads its spans; the new optional `homeDir` option defaults to the real home directory.
+- Updated dependencies [3a4d4ed]
+  - @titan-design/store-sqlite@0.3.2
+
 ## 0.12.1
 
 ### Patch Changes
