@@ -54,6 +54,13 @@ export const DigestConfigSchema = z.strictObject({
   logsDir: absolutePath.optional(),
 });
 
+/** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
+export const FlakyChecksSchema = z.strictObject({
+  checks: z.array(z.string().min(1)).min(1),
+  /** Below the ci-wait route's own 45 minute timeout, which the wait, the rerun and the settle all run inside. */
+  waitSeconds: z.number().int().min(0).max(900),
+});
+
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
@@ -69,6 +76,7 @@ export const FactoryConfigSchema = z.object({
       agentChatBin: absolutePath.optional(),
       review: ReviewConfigSchema.optional(),
       fixer: FixerConfigSchema.optional(),
+      flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

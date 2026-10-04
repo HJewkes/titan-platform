@@ -3,7 +3,10 @@ export { DEFAULT_POLL_MS, cancelGate, openGate, resolveGate, waitForGate } from 
 export type {
   GateAuthorization,
   GateAuthorize,
+  GateBrief,
   GateInput,
+  GateQuestion,
+  GateQuestionOption,
   GateRecord,
   GateResolver,
   GateRule,
@@ -16,6 +19,7 @@ export {
   GateAlreadyExists,
   GateAlreadySettled,
   GateAuthorizeInvalid,
+  GateBriefInvalid,
   GateCancelled,
   GateError,
   GateExpired,
@@ -29,4 +33,6 @@ export { BaseGateStore } from "./base-store.js";
 export type { MemoryGateStoreOptions } from "./memory-store.js";
 export { MemoryGateStore } from "./memory-store.js";
 export { defaultResolverRefusal, ruleResolverRefusal, snapshotResolver } from "./resolver-policy.js";
+export type { GateBriefSnapshot } from "./gate-brief.js";
+export { snapshotBrief } from "./gate-brief.js";
 export { checkAgainstJsonSchema } from "./json-schema.js";

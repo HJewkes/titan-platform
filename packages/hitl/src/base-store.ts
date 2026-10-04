@@ -1,3 +1,4 @@
+import { snapshotBrief } from "./gate-brief.js";
 import { checkAgainstJsonSchema } from "./json-schema.js";
 import { defaultResolverRefusal, readDecision, ruleResolverRefusal, snapshotResolver, snapshotRule } from "./resolver-policy.js";
 import {
@@ -22,6 +23,7 @@ export abstract class BaseGateStore implements GateStore {
   protected constructor(
     protected readonly clock: () => number,
     private readonly authorize?: GateAuthorize,
+    private readonly requireBrief = false,
   ) {}
 
   protected abstract insert(record: GateRecord): void;
@@ -32,6 +34,7 @@ export abstract class BaseGateStore implements GateStore {
   create(input: GateInput): GateRecord {
     const id = input.id ?? globalThis.crypto.randomUUID();
     const rule = input.rule === undefined ? undefined : snapshotRule(id, input.rule);
+    const brief = snapshotBrief(id, input, this.requireBrief);
     if (this.read(id)) throw new GateAlreadyExists(id);
     const record: GateRecord = {
       id,
@@ -45,6 +48,7 @@ export abstract class BaseGateStore implements GateStore {
       expiresAt: toIso(input.expiresAt),
       resolvedBy: undefined,
       rule,
+      ...brief,
     };
     this.insert(record);
     return record;
