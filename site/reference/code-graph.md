@@ -246,6 +246,38 @@ These metrics need edges from every file, so they are recomputed on each index. 
 and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 `includeReferences`.
 
+### Dashboard derivations
+
+The derivations behind codewatch's `graph dashboard` payload are pure functions over rows
+you have already read, so they also run in a browser:
+
+```ts
+import {
+  buildSymbolCouplingPayload,
+  classifyCoupling,
+  collectNodeMetrics,
+  computeHealth,
+  pairKey,
+} from "@titan-design/code-graph";
+
+collectNodeMetrics([{ nodeId: "a.ts", name: "cognitive_max", value: 18 }]).get("a.ts");
+// { cognitiveMax: 18 }
+
+computeHealth({ scary: 2, newViolations: 0, carryViolations: 0, maxComplexity: 10, hiddenCoupling: 0 }).health;
+// 80
+
+const ctx = {
+  connectedNodes: new Set(["a.ts", "b.ts"]),
+  linkedPairs: new Set([pairKey("a.ts", "b.ts")]),
+  centrality: new Map(), metrics: new Map(), symbols: [], consumersBySymbol: new Map(),
+};
+classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
+```
+
+`buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
+node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
+caps symbol coupling at 40 pairs and 15 consumer groups.
+
 ## Partition quality
 
 Scores a package partition of the file graph. Verified against this release, over this

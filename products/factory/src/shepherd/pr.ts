@@ -7,6 +7,7 @@ import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
+import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -35,6 +36,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...WAKE_STEPS,
   ...PARK_STEPS,
   ...REVIEW_STEPS,
+  ...CARRY_SCOPE_STEPS,
   ...RELEASE_STEPS,
   ...POST_MERGE_STEPS,
   ...OBSERVE_STEPS,
@@ -82,6 +84,7 @@ interface ShepherdRun {
   /** The run param narrowed by every registration read so far; it only ever tightens. */
   policy: EffectivePolicy;
   policyReads: number;
+  carryScopeReads: number;
   release: boolean;
   lastCi?: CiSnapshot;
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
@@ -111,7 +114,7 @@ class LeaveLand extends Error {
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
-    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, release: params.release },
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
     ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
@@ -270,9 +273,11 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
   return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
 }
 
-/** A verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
+/** A tree-equal update of a reviewed head carries its MERGE; otherwise a verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
+  const carried = await carriedVerdict(run.ctx, run.target, run.reviews, headSha, run.carryScopeReads++);
+  if (carried) return carried;
   const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }) });
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
@@ -359,6 +364,8 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
+    carryScopeRoute(deps),
+    carrySeatRoute(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),

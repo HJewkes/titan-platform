@@ -214,15 +214,12 @@ describe("a hold satisfied by its reviewer's MERGE", () => {
     expect(store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 
-  it("withdraws the satisfaction at its own head only", () => {
+  it("withdraws the satisfaction whatever head the FIX_FIRST was read at", () => {
     const store = heldFor("rv-sec");
     store.satisfyHold("run-1", "rv-sec", H1, by);
 
-    store.unsatisfyHold("run-1", H2);
-    const kept = store.byRun("run-1")?.holdSatisfied?.head;
-    store.unsatisfyHold("run-1", H1);
+    store.unsatisfyHold("run-1");
 
-    expect(kept).toBe(H1);
     expect(store.heldReason("octo/demo", 7, undefined, H1)).toBe("awaiting a named review");
   });
 });

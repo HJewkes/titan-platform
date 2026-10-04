@@ -475,14 +475,14 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
   }
 
   it("marks a conflict generated-only when every conflicting file is a declared registry", async () => {
-    const registries = ["CAPABILITIES.md", "site/reference/store.md", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"];
+    const registries = ["CAPABILITIES.md", "site/guides/capabilities.md", "site/reference/index.md", "site/.vitepress/reference-sidebar.json"];
     const scene = conflictScene(registries);
 
     await scene.run("conflict", { mergeableState: "dirty" });
 
     const message = scene.agents.asked[0]!.message;
     expect(message).toContain("The conflict is generated-only");
-    expect(message).toContain("take the base's side of those files, run `pnpm build` then `pnpm capabilities`, commit the regenerated files and push. Do not hand-merge them.");
+    expect(message).toContain("take the base's side of those files, run `pnpm capabilities` and `pnpm docs:reference`, commit the regenerated files and push. Do not hand-merge them.");
     expect(message).toContain(`\`\`\`conflict candidates\n${registries.join("\n")}\n\`\`\``);
   });
 
@@ -494,7 +494,18 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     const message = scene.agents.asked[0]!.message;
     expect(message).not.toContain("generated-only");
     expect(message).toContain("The files both sides changed follow. Do not hand-merge a file marked (generated registry)");
-    expect(message).toContain("```conflict candidates\nsrc/b.ts\nCAPABILITIES.md (generated registry)\nsite/reference/store.md (generated registry)\n```");
+    expect(message).toContain("```conflict candidates\nsrc/b.ts\nCAPABILITIES.md (generated registry)\nsite/reference/store.md\n```");
+  });
+
+  it.each([["site/reference/store.md"], [".codewatch/check.json"]])("treats a conflict on hand-edited %s as a hand merge, never taking the base's side", async (path) => {
+    const scene = conflictScene([path]);
+
+    await scene.run("conflict", { mergeableState: "dirty" });
+
+    const message = scene.agents.asked[0]!.message;
+    expect(message).not.toContain("generated");
+    expect(message).not.toContain("take the base's side");
+    expect(message).toContain(`\`\`\`conflict candidates\n${path}\n\`\`\``);
   });
 
   it("returns unhandled when the base branch is not a valid ref name", async () => {
