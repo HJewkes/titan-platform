@@ -40,6 +40,25 @@ describe("Clusterer", () => {
     expect(run()).toEqual(run());
   });
 
+  it("gives Drain-merged lines the id of whichever line founded the cluster", () => {
+    const x = bash("TypeError: Cannot find module 'x'");
+    const y = bash("TypeError: Cannot find module 'y'");
+    const run = (lines: { partition: string; text: string }[]) => {
+      const c = new Clusterer();
+      return lines.map((line) => c.cluster(line));
+    };
+
+    const [xFirst, yAfterX] = run([x, y]);
+    const [yFirst, xAfterY] = run([y, x]);
+
+    expect(xFirst!.maskedSignature).not.toBe(yFirst!.maskedSignature);
+    expect(yAfterX!.templateId).toBe(xFirst!.templateId);
+    expect(xAfterY!.templateId).toBe(yFirst!.templateId);
+    expect(xFirst!.templateId).toBe(templateId("Bash", xFirst!.maskedSignature));
+    expect(yFirst!.templateId).toBe(templateId("Bash", yFirst!.maskedSignature));
+    expect(xFirst!.templateId).not.toBe(yFirst!.templateId);
+  });
+
   it("restores from a snapshot with bindings and learned wildcards intact", () => {
     const first = new Clusterer({ drain: { simTh: 0.5 } });
     const original = first.cluster(bash("error TS1234: Cannot find module a.ts"));
