@@ -1,5 +1,9 @@
+import type { Command } from "commander";
+import { parsePort } from "./cli-options.js";
+import { FACTORY_PORT } from "./serve.js";
 import { SERVICE_LABEL } from "./service.js";
-import { settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
+import { runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
+import { systemCheckPorts } from "./service-ports.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
 export type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down";
@@ -115,4 +119,16 @@ export async function checkService(ports: CheckPorts, io: ServiceIo, port: numbe
   const result = await diagnoseService(ports, port);
   io.stdout(json ? `${JSON.stringify(result)}\n` : `${result.cause === null ? "" : `${result.cause}: `}${result.message}\n`);
   return result.ok ? 0 : FAILURE;
+}
+
+export function registerServiceCheck(service: Command, io: ServiceIo, injected: CheckPorts | undefined, setExit: (code: number) => void): void {
+  service
+    .command("check")
+    .description("exit 0 when /health answers from the launchd pid with github ok; otherwise one line naming the cause, never changing the service")
+    .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
+    .option("--json", "print cause, pid, health and the cause's details as one JSON object")
+    .action(async (opts: { port: number; json?: boolean }) => {
+      const ports = injected ?? systemCheckPorts();
+      setExit(await runServiceVerb("check", ports, io, () => checkService(ports, io, opts.port, opts.json === true)));
+    });
 }
