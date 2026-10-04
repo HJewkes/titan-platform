@@ -29,12 +29,15 @@ point. The waiter polls, because the resolver may be a different process writing
 the same SQLite file.
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openGate } from "@titan-design/hitl";
 import { z } from "zod";
 
-const store = new SqliteGateStore(openDatabase("~/.local/state/thing/gates.sqlite3"));
+const dbPath = path.join(os.homedir(), ".local/state/thing/gates.sqlite3");
+const store = new SqliteGateStore(openDatabase(dbPath));
 
 const gate = openGate(store, {
   id: "deploy-approval",
