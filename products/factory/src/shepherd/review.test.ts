@@ -39,7 +39,7 @@ import {
   type ReviewTarget,
   type ReviewWiring,
 } from "./review.js";
-import { reviewWait } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
@@ -865,6 +865,73 @@ describe("sh-review", () => {
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
       expect(repeated.result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
       expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+    });
+  });
+
+  describe("a broker that refuses the spawn while the machine stop holds", () => {
+    const HOLD = "machine stop holds: load5 34 (machine_hold)";
+    const GUARD = "machine guard: 11 live headless agents machine-wide (machine_headless_limit)";
+
+    /** Refuses as held until `holdMs` has passed on the clock, then as `after` says: start the reviewer, or refuse as busy for good. */
+    function heldFor(clock: { now: number }, holdMs: number, after: "start" | "busy" = "start"): FakeDispatch {
+      const dispatch = fakeDispatch();
+      const spawn = dispatch.spawn;
+      dispatch.spawn = async (...args) => {
+        if (clock.now - START < holdMs) throw new ReviewerMachineHold(HOLD);
+        if (after === "busy") throw new ReviewerBrokerBusy(GUARD);
+        return spawn(...args);
+      };
+      return dispatch;
+    }
+
+    it("waits out a 45 minute hold beyond the 30 minute busy wait and spawns the reviewer once", async () => {
+      const clock = { now: START, sleeps: 0 };
+      const dispatch = heldFor(clock, 45 * 60_000);
+
+      const { result } = await reviewSteps(dispatch, { clock }).review(spawnIntent);
+
+      expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
+      expect(result).not.toHaveProperty("notStarted");
+      expect((result as { busyWaits: string[] }).busyWaits.every((wait) => wait.startsWith(`held by the machine stop: ${HOLD}`))).toBe(true);
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("accepts no spawn during the hold and asks again at most every eight minutes", async () => {
+      const clock = { now: START, sleeps: 0 };
+      const dispatch = heldFor(clock, 45 * 60_000);
+      const slept: number[] = [];
+      const acceptedDuringHold: number[] = [];
+      const onSleep = (ms: number) => {
+        slept.push(ms / 60_000);
+        acceptedDuringHold.push(dispatch.spawns.length);
+      };
+
+      await reviewSteps(dispatch, { clock, onSleep }).review(spawnIntent);
+
+      expect(slept).toEqual([1, 2, 4, 8, 8, 8, 8, 8]);
+      expect(acceptedDuringHold.every((accepted) => accepted === 0)).toBe(true);
+    });
+
+    it("still stops a machine_headless_limit refusal at 30 minutes once the hold lifts", async () => {
+      const clock = { now: START, sleeps: 0 };
+      const dispatch = heldFor(clock, 45 * 60_000, "busy");
+
+      const { result } = await reviewSteps(dispatch, { clock }).review(spawnIntent);
+
+      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)` });
+      expect(clock.now - START).toBe(47 * 60_000 + DEFAULT_BUSY_WAIT_MS);
+      expect(dispatch.spawns).toEqual([]);
+    });
+
+    it("answers not-started naming the machine stop when the hold outlasts three hours", async () => {
+      const clock = { now: START, sleeps: 0 };
+      const dispatch = heldFor(clock, Infinity);
+
+      const { result } = await reviewSteps(dispatch, { clock }).review(spawnIntent);
+
+      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: `the reviewer dispatch was refused: ${HOLD} (still held by the machine stop after 180 min)` });
+      expect(clock.now - START).toBe(DEFAULT_HOLD_WAIT_MS);
+      expect(dispatch.spawns).toEqual([]);
     });
   });
 
