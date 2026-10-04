@@ -142,6 +142,7 @@ function pushSpecs(specs: string[], git: GitInvocation, ctx: ClassifyContext): C
 
 function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   const inv = parseGit(cmd.args, cmd.dir, ctx.home);
+  if (inv.subDynamic) return [classified("bash.merge.git-push-protected", { branch: UNKNOWN })];
   if (inv.sub === "merge") return gitMerge(inv, ctx);
   return inv.sub === "push" ? gitPush(inv, ctx) : [];
 }
@@ -195,7 +196,7 @@ function guardsChain(cmd: SimpleCommand): boolean {
 function switchedHead(sw: Switch, succeeded: boolean, ctx: ClassifyContext): string {
   if (sw.dir === null || !sw.created || sw.created.dynamic) return UNKNOWN;
   if (succeeded) return sw.created.value;
-  return isProtected(headOf({ dir: sw.dir, otherPaths: [], config: [], sub: null, subArgs: [] }, ctx)) ? UNKNOWN : sw.created.value;
+  return isProtected(headOf({ dir: sw.dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] }, ctx)) ? UNKNOWN : sw.created.value;
 }
 
 function switched(sw: Switch, head: string, ctx: ClassifyContext): ClassifyContext {
