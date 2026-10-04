@@ -46,6 +46,10 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
+A repeat without `--kind` keeps the stored kind, so it cannot drop a `correctness` or
+`security` run out of the fix-proof gate. An explicit `--kind` replaces the stored kind,
+including with a looser one; unlike the policy, kind does not only narrow.
+
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
 needs `gh`. A `--branch` that is not the pull request's head is refused.
