@@ -4,7 +4,8 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, expandWord, lookup, markArrayAssignment, trackVars } from "./vars.js";
+import { assign, expandWord, lookup, trackVars } from "./vars.js";
+import { normalizeDeclarations } from "./declarations.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -95,9 +96,8 @@ function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of tokens) {
+  for (const token of normalizeDeclarations(tokens)) {
     if (token.type === "op") {
-      if (token.value === "(") markArrayAssignment(words);
       const cmd = emit(words, redirects, w, token.value);
       w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
       words = [];

@@ -102,7 +102,6 @@
   "packages/tool-guard/src/mentions.ts#Site",
   "packages/tool-guard/src/mentions.ts#Via",
   "packages/tool-guard/src/shell/unwrap.ts#commandName",
-  "packages/tool-guard/src/shell/vars.ts#ASSIGNMENT_RE",
   "packages/workflow/src/step-output.ts#ParsedStepOutput",
   "products/evals/src/cli.ts#buildProgram",
   "products/evals/src/spec/unit.ts#ACCEPTANCE_LEVELS",

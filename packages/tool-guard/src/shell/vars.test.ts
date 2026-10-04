@@ -35,6 +35,19 @@ describe("variables built up before the command they name", () => {
     ["a spaced array append", "Y=push; Y+=( x ); git $Y origin HEAD:main"],
     ["a declared array append", "Y=push; declare Y+=(x); git $Y origin HEAD:main"],
     ["a declare -a array append", "Y=push; declare -a Y+=(x); git $Y origin HEAD:main"],
+    ["a local append in a function", "Y=status; f() { local Y+=push; git $Y origin HEAD:main; }; f"],
+    ["a declare append in a function", "Y=status; f() { declare Y+=push; git $Y origin HEAD:main; }; f"],
+    ["a typeset append in a function", "Y=status; f() { typeset Y+=push; git $Y origin HEAD:main; }; f"],
+    ["a local array append in a function", "Y=status; f() { local Y+=(push); git $Y origin HEAD:main; }; f"],
+    ["a push in a function keyword body", "function f { git push origin HEAD:main; }"],
+    ["a declare append in a function keyword body", "Y=status; function f { declare Y+=push; git $Y origin HEAD:main; }; f"],
+    ["a declare append in a subshell body", "Y=status; f() ( declare Y+=push; git $Y origin HEAD:main ); f"],
+    ["a global append in a function", "Y=pu; f() { declare -g Y+=sh; git $Y origin HEAD:main; }; f"],
+    ["an export append in a function", "Y=pu; f() { export Y+=sh; git $Y origin HEAD:main; }; f"],
+    ["a declare append after a function body", "f() { :; }; Y=pu; declare Y+=sh; git $Y origin HEAD:main"],
+    ["a declare append in a plain group", "Y=pu; { declare Y+=sh; git $Y origin HEAD:main; }"],
+    ["an array's element 0", "Y=(push x); git $Y origin HEAD:main"],
+    ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
   ])("%s still reads as a push to main", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
@@ -51,18 +64,28 @@ describe("variables built up before the command they name", () => {
     ["a command substitution", "Y=pu; Y+=$(cmd); git $Y origin HEAD:main"],
     ["an unset earlier value", "Y+=sh; git $Y origin HEAD:main"],
     ["an array to an unset variable", "Y+=(sh); git $Y origin HEAD:main"],
-    ["to an array", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
-    ["through declare to an array", "declare -a Y=(pu); declare Y+=(sh); git $Y origin HEAD:main"],
   ])("leaves the variable unknown when appending %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["$Y", "origin", "HEAD:main"]]);
   });
 
-  it("keeps element 0 when appending an array to a set variable", () => {
-    expect(gitArgs("Y=pu; Y+=(sh); git $Y origin HEAD:main")).toEqual([["pu", "origin", "HEAD:main"]]);
+  it.each([
+    ["an array to a set variable", "Y=pu; Y+=(sh); git $Y"],
+    ["through declare to an array", "declare -a Y=(pu); declare Y+=(sh); git $Y"],
+  ])("keeps element 0 when appending %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["pu"]]);
   });
 
-  it("leaves an array assignment unknown", () => {
-    expect(gitArgs("Y=(push); git $Y origin HEAD:main")).toEqual([["$Y", "origin", "HEAD:main"]]);
+  it.each([
+    ["empty", "Y=(); git $Y"],
+    ["led by a substitution", "Y=($(cmd) x); git $Y"],
+    ["led by a subscript", "Y=([1]=push); git $Y"],
+    ["led by a glob", "Y=(pu*); git $Y"],
+  ])("leaves an array %s unknown", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  it("still runs a substitution inside an array", () => {
+    expect(extractCommands("Y=(a $(git push origin HEAD:main))").map((c) => c.name)).toEqual(["git"]);
   });
 
   it("stores the text printf -vNAME would print", () => {
