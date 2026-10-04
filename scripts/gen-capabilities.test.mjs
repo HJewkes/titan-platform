@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { keyExports, parseExports, parseUseWhen } from "./gen-capabilities.mjs";
+import { keyExports, parseExports, parseUseWhen, tableRow } from "./gen-capabilities.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -64,5 +64,13 @@ describe("reading a CAPABILITY.md", () => {
   it("ships in the package template so every stamped package starts with one", () => {
     const template = readFileSync(join(REPO, "templates", "package", "CAPABILITY.md"), "utf8");
     expect(parseUseWhen(template)).toContain("__NAME__");
+  });
+});
+
+describe("writing a table row", () => {
+  it("escapes a pipe inside a cell so the row keeps its cell count", () => {
+    const row = tableRow(["path", "`pkg`", "none", "`printf 'x' | agent-chat spawn`"]);
+    expect(row).toBe("| path | `pkg` | none | `printf 'x' \\| agent-chat spawn` |");
+    expect(row.split(/(?<!\\)\|/)).toHaveLength(6);
   });
 });
