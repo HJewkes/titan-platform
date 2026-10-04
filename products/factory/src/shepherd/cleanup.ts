@@ -208,8 +208,8 @@ async function heldByFreshRoster(agents: CleanupAgents, name: string): Promise<s
   agents.invalidate();
   let unreadable = "";
   const row = await rosterRow(agents, name).catch((error: unknown) => ((unreadable = `roster unreadable before retire: ${message(error)}`), "unread" as const));
-  if (row === "unread" || (row !== undefined && row.presence !== "exited" && row.status !== "retired")) return row === "unread" ? unreadable : "resumed before retire";
-  return undefined;
+  if (row === "unread") return unreadable;
+  return row !== undefined && row.presence !== "exited" && row.status !== "retired" ? "resumed before retire" : undefined;
 }
 
 async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAgent | undefined> {
