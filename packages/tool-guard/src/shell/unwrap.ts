@@ -191,7 +191,7 @@ function xargsDelimiters(options: WordToken[]): string[] | null {
     if (v === "--null") out.push("\0");
     else if (v === "--delimiter") out.push(delimiterOf(options[++j]) ?? "");
     else if (v.startsWith("--delimiter=")) out.push(delimiterOf(options[j], v.slice("--delimiter=".length)) ?? "");
-    else if (/^-[A-Za-z]/.test(v)) j = clusterDelimiters(options, j, out);
+    else if (/^-[A-Za-z0]/.test(v)) j = clusterDelimiters(options, j, out);
   }
   return out.includes("") ? null : out;
 }

@@ -239,6 +239,28 @@ describe("xargs -L and -n run the command once per batch", () => {
   });
 });
 
+describe("xargs -0 and -d split appended words on their separators", () => {
+  it.each([
+    ["-d,", "printf 'push,origin,HEAD:main' | xargs -d, git"],
+    ["-0", "printf 'push\\0origin\\0HEAD:main' | xargs -0 git"],
+    ["--null", "printf 'push\\0origin\\0HEAD:main' | xargs --null git"],
+    ["-d, with a trailing newline", "echo push,origin,HEAD:main | xargs -d, git"],
+    ["-d, with -n2 after the subcommand", "printf 'origin,HEAD:main' | xargs -d, -n2 git push"],
+    ["a -d value that is not static", "printf 'push;origin;HEAD:main' | xargs -d \"$SEP\" git"],
+  ])("denies a push to main under %s", (_how, command) => {
+    expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("keeps a record that holds blanks as one argument", () => {
+    expect(bash("printf 'log,--grep=push origin HEAD:main' | xargs -d, git")).toEqual([]);
+  });
+
+  it("splits plain input on blanks as before", () => {
+    expect(spellings(bash("printf 'push origin\\nHEAD:main' | xargs git"))).toEqual(["bash.merge.git-push-protected"]);
+    expect(bash("printf 'push,origin,HEAD:main' | xargs git")).toEqual([]);
+  });
+});
+
 describe("xargs -I fails closed when it cannot read the input", () => {
   it.each([
     ["a non-static -d value", "printf 'echo hiXgit push origin HEAD:main' | xargs -I{} -d \"$D\" sh -c '{}'"],

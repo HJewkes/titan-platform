@@ -199,13 +199,15 @@ function xargsStdin(redirects: RedirectToken[], piped: string | null): string | 
 /** The argument lists `xargs` runs the command with: one per input line under a replace string, one per `-L`/`-n` batch, else one with the piped words appended. */
 function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
   if (!cmd.xargs) return [cmd.args];
-  const { replace } = cmd.xargs;
+  const { replace, delimiters, batch } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
   if (stdin === null) return unknownRuns(cmd, replace);
-  if (replace !== null) return inputRecords(stdin, cmd.xargs.delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
+  if (replace !== null) return inputRecords(stdin, delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
   if (shell) return [cmd.args];
-  return batches(stdin, cmd.xargs.batch).map((words) => [...cmd.args, ...words.map(literalWord)]);
+  return inputReadings(stdin, delimiters)
+    .flatMap((lines) => batches(stdin, lines, batch))
+    .map((words) => [...cmd.args, ...words.map(literalWord)]);
 }
 
 const WORST_CASE: Record<string, string[]> = { git: ["push", "origin", "HEAD:main"], gh: ["pr", "merge", "1"] };
@@ -225,8 +227,7 @@ const MAX_RUN = 16;
  * The word groups one `xargs` run each takes. Quoted input or an unreadable size shifts the real
  * boundaries, so every contiguous run of up to MAX_RUN words is read, plus all words together.
  */
-function batches(stdin: string, batch: XargsBatch | null): string[][] {
-  const lines = logicalLines(stdin).map(wordsOf).filter((l) => l.length > 0);
+function batches(stdin: string, lines: string[][], batch: XargsBatch | null): string[][] {
   const all = lines.flat();
   if (batch === null) return [all];
   if (batch.size === null || /["'\\]/.test(stdin)) return [all, ...contiguousRuns(all.map((w) => w.replace(/["'\\]/g, "")))];
@@ -234,6 +235,22 @@ function batches(stdin: string, batch: XargsBatch | null): string[][] {
   const size = batch.size;
   const groups = Array.from({ length: Math.ceil(units.length / size) }, (_, i) => units.slice(i * size, (i + 1) * size).flat());
   return groups.length > 1 ? [all, ...groups] : groups.length === 1 ? groups : [[]];
+}
+
+/**
+ * The ways the input may split into lines of words. Blanks split it unless `-0`/`-d` name separators,
+ * which then end each record and nothing else; an unreadable `-d` adds a reading per character of the input, so it fails closed.
+ */
+function inputReadings(stdin: string, delimiters: string[] | null): string[][][] {
+  const blanks = logicalLines(stdin).map(wordsOf).filter((l) => l.length > 0);
+  if (delimiters !== null && delimiters.length === 0) return [blanks];
+  if (delimiters !== null) return [delimitedRecords(stdin, delimiters)];
+  return [blanks, ...[...new Set(stdin)].map((c) => delimitedRecords(stdin, [c]))];
+}
+
+/** One argument per record; a trailing newline, as `echo` leaves, is dropped so the last record still reads as typed. */
+function delimitedRecords(stdin: string, delimiters: string[]): string[][] {
+  return splitOn(stdin, delimiters).map((r) => [r.replace(/\r?\n$/, "")]);
 }
 
 /** Lines as `-L` counts them: a line ending in a blank continues onto the next. */
