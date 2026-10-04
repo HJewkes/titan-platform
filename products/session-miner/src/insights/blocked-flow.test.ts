@@ -24,6 +24,7 @@ const MESSAGES = [
   message("2026-09-12T11:00:00Z", "seat-a", verdict("MERGE", "acme/gadgets#3", HEAD_A)),
   message("2026-09-12T11:00:00Z", "seat-a", verdict("MERGE", "acme/gadgets#4", HEAD_B)),
   message("2026-09-12T11:00:00Z", "seat-b", verdict("MERGE", "acme/widgets#5", HEAD_A)),
+  message("2026-09-12T11:30:00Z", "seat-a", verdict("WAIT", "acme/widgets#6", HEAD_A)),
   message("2026-09-12T11:05:00Z", "seat-a", "Status: DONE\nPR: acme/widgets#5"),
 ];
 
@@ -33,6 +34,7 @@ const PULLS = [
   { repo: "acme/gadgets", pr: 3, state: "open", mergedAt: null, headSha: HEAD_A },
   { repo: "acme/gadgets", pr: 4, state: "open", mergedAt: null, headSha: HEAD_A },
   { repo: "acme/widgets", pr: 5, state: "closed", mergedAt: "2026-09-12T11:02:00Z", headSha: HEAD_A },
+  { repo: "acme/widgets", pr: 6, state: "open", mergedAt: null, headSha: HEAD_A },
 ];
 
 function transcriptLines(): string {
@@ -88,6 +90,15 @@ describe("insights blocked-flow", () => {
     expect(all).toMatchObject({ repo: "all", prs: 4, staleHead: 1 });
     expect([all.before!.medianMin, all.after!.medianMin, all.after!.censored]).toEqual([90, 1, 1]);
     expect(answer.openHoldingMerge.rows).toMatchObject([{ repo: "acme/gadgets", pr: 3, seat: "seat-a", ageMin: 60 }]);
+  });
+
+  it("never counts a WAIT verdict as a MERGE: its PR has no wait, no row and no open hold", async () => {
+    const answer = await ask([...WINDOW, "--seat", "seat-a"]);
+    const prs = answer.verdictToMerge.rows.filter((row) => row.repo === "acme/widgets").map((row) => row.prs);
+
+    expect(answer.verdictToMerge.rows.at(-1)).toMatchObject({ repo: "all", prs: 4 });
+    expect(prs).toEqual([2]);
+    expect(answer.openHoldingMerge.rows.map((row) => row.pr)).not.toContain(6);
   });
 
   it("counts transcript denials by reason and the action actually refused", async () => {
