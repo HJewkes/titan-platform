@@ -20,6 +20,7 @@ export const CiSnapshotResult = z.looseObject({
   mergeableState: z.string(),
   mergeSha: z.string().nullish(),
   failing: z.array(FailingCheck).optional(),
+  checksGreen: z.boolean().optional(),
 });
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional() });

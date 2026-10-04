@@ -42,6 +42,33 @@ describe("SpanFtsTables", () => {
     expect(fts.search("alpha")).toEqual([]);
     expect(fts.orphanRatio()).toBe(0);
   });
+
+  it("rebuilds a cleared index when surviving spans are re-streamed through index", () => {
+    const { fts } = setup();
+    const first = fts.index(span("session:a", 0), "alpha");
+    fts.clearIndex();
+
+    const again = fts.index(span("session:a", 0), "alpha");
+
+    expect(again).toBe(first);
+    expect(fts.search("alpha").map((h) => h.spanId)).toEqual([first]);
+    expect(fts.index(span("session:a", 0), "alpha")).toBe(first);
+    expect(fts.search("alpha")).toHaveLength(1);
+  });
+
+  it("drops orphans when a purge is followed by clearIndex and a re-stream", () => {
+    const { fts } = setup();
+    fts.index(span("session:a", 0), "alpha");
+    fts.index(span("session:b", 1), "beta");
+    fts.purgeOwner("session:a");
+    fts.clearIndex();
+
+    fts.index(span("session:b", 1), "beta");
+
+    expect(fts.orphanRatio()).toBe(0);
+    expect(fts.search("alpha")).toEqual([]);
+    expect(fts.search("beta").map((h) => h.ownerRef)).toEqual(["session:b"]);
+  });
 });
 
 describe("SpanFtsTables scope", () => {

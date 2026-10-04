@@ -7,6 +7,7 @@ import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
+import { behindAt, inheritEscalation, reviewable } from "./behind.js";
 import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
 import { FREEZE_HOLD_STEPS, freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
@@ -199,19 +200,20 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
       if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
+      if (stepIdMatches("update-branch", stepId)) inheritEscalation(run.escalations, run.lastCi, done.data?.result);
       return done;
     },
   };
 }
 
-/** A green head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
+/** A reviewable head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
 async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
   run.lastCi = ci.data;
   expireStaleGates(run.ctx, ci.data.headSha);
-  if (ci.data.verdict !== "green") return;
-  run.conflictWakes = 0;
+  if (!reviewable(ci.data)) return;
+  if (ci.data.verdict === "green") run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
   await narrowToRegistration(run);
 }
@@ -279,6 +281,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       throw new LeaveLand(endedOutcome(routed));
     case "update-branch":
     case "new-cycle":
+      if (route === "update-branch" && behindAt(run.lastCi, headSha)) return true;
       throw new LeaveLand();
   }
 }
