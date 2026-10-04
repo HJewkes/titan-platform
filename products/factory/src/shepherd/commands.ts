@@ -128,7 +128,12 @@ function sliceAfter(existing: Registration, args: RegisterArgs): string | undefi
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
-  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+  try {
+    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+  } catch (error) {
+    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
+    throw error;
+  }
   if (args.pr !== undefined && existing.pr === null) store.setPr(runId, args.pr);
   return { runId, created: false, registration: store.byRun(runId)! };
 }

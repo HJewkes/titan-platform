@@ -1,11 +1,18 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { EffectivePolicySchema, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy.js";
 
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
+
+const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "security"]);
+
+/** The kinds a fix PR is held to the fix-proof gate for; every other kind, `unknown` included, skips it. */
+function requiresFixProof(kind: TaskKind): boolean {
+  return FIX_PROOF_KINDS.has(kind);
+}
 
 /** A PR, or a branch whose PR does not exist yet, handed to one shepherd-pr run. */
 export interface RegistrationInput {
@@ -228,6 +235,7 @@ export class ShepherdStore implements HoldLookup {
   /**
    * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
    * An omitted kind keeps the stored one, so a repeat without `--kind` cannot drop a run out of the fix-proof gate.
+   * An explicit kind that would move a gated run to a kind that skips the gate is refused.
    */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);
@@ -236,6 +244,9 @@ export class ShepherdStore implements HoldLookup {
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = stricterPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
+      if (requiresFixProof(stored.kind) && !requiresFixProof(kind)) {
+        throw new RegistrationRefused(`run ${runId} is kind ${stored.kind}, which requires the fix-proof gate; kind ${kind} skips it`);
+      }
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);

@@ -143,6 +143,19 @@ describe("shepherd.register races", () => {
   });
 });
 
+describe("shepherd.register kind", () => {
+  it("a repeat that would move a correctness run to unknown is refused and keeps the stored kind", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, kind: "correctness" });
+
+    const envelope = await w.call("shepherd.register", { ...pr1, kind: "unknown" });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
+    expect((await registered(w, pr1)).registration.kind).toBe("correctness");
+  });
+});
+
 describe("shepherd.register slice", () => {
   it("a re-register without a slice keeps the stored slice", async () => {
     const w = world({ frozen: true });
