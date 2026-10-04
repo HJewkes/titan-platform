@@ -13,6 +13,7 @@ import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { registerService } from "./cli-service.js";
+import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import { formatShepherd } from "./shepherd/format.js";
@@ -154,6 +155,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+  registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
