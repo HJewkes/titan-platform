@@ -28,6 +28,8 @@ describe("variables built up before the command they name", () => {
     ["an append of a known variable", "A=sh; Y=pu; Y+=$A; git $Y origin HEAD:main"],
     ["printf -v with the name attached", "X=status; printf -vX push; git $X origin HEAD:main"],
     ["printf -v with the name apart", "X=status; printf -v X push; git $X origin HEAD:main"],
+    ["a -vNAME word printf only prints", "X=push; printf '%s\\n' -vX; git $X origin HEAD:main"],
+    ["a -vNAME word after --", "X=push; printf -- -vX; git $X origin HEAD:main"],
   ])("%s still reads as a push to main", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
@@ -43,8 +45,15 @@ describe("variables built up before the command they name", () => {
   it.each([
     ["a command substitution", "Y=pu; Y+=$(cmd); git $Y origin HEAD:main"],
     ["an unset earlier value", "Y+=sh; git $Y origin HEAD:main"],
+    ["an array", "Y=pu; Y+=(sh); git $Y origin HEAD:main"],
+    ["to an array", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
+    ["through declare to an array", "declare -a Y=(pu); declare Y+=(sh); git $Y origin HEAD:main"],
   ])("leaves the variable unknown when appending %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["$Y", "origin", "HEAD:main"]]);
+  });
+
+  it("leaves an array assignment unknown", () => {
+    expect(gitArgs("Y=(push); git $Y origin HEAD:main")).toEqual([["$Y", "origin", "HEAD:main"]]);
   });
 
   it("stores the text printf -vNAME would print", () => {

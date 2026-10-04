@@ -38,6 +38,12 @@ export function parseAssignment(w: WordToken): Assignment | null {
   return [w.value.slice(0, eq), value];
 }
 
+/** `NAME=(a b)` lexes as `NAME=` and a subshell; the array is not tracked, so the assignment is marked unknown. */
+export function markArrayAssignment(words: WordToken[]): void {
+  const last = words.at(-1);
+  if (last && /^[A-Za-z_][A-Za-z0-9_]*\+?=$/.test(last.value)) words[words.length - 1] = { ...last, dynamic: true };
+}
+
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
 export function assign(vars: Vars, [name, value, append]: Assignment): void {
   if (!append) vars.set(name, value);
@@ -67,13 +73,12 @@ function clobberedNames(name: string, args: WordToken[]): string[] {
   return [];
 }
 
-/** `printf -v NAME` or `printf -vNAME` stores the text it would print; an option anywhere but first is not read. */
+/** `printf -v NAME` or `printf -vNAME` stores the text it would print; only a first word is an option, so `printf -- -vX` sets nothing. */
 function printfVar(args: WordToken[], vars: Vars): void {
-  const at = args.findIndex((a) => a.value.startsWith("-v"));
-  if (at < 0) return;
-  const attached = (args[at] as WordToken).value.slice(2);
-  const target = attached || args[at + 1]?.value;
+  const first = args[0]?.value;
+  if (first === undefined || !first.startsWith("-v")) return;
+  const attached = first.slice(2);
+  const target = attached || args[1]?.value;
   if (target === undefined) return;
-  const format = args.slice(at + (attached ? 1 : 2));
-  vars.set(target, at === 0 ? printedText("printf", format) : null);
+  vars.set(target, printedText("printf", args.slice(attached ? 1 : 2)));
 }
