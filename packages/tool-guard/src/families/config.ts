@@ -4,7 +4,6 @@ import type { Mention } from "../mentions.js";
 import { GUARDED_PATHS } from "../paths.js";
 import type { SimpleCommand } from "../shell/commands.js";
 import { parseGit } from "../shell/git.js";
-import type { WordToken } from "../shell/lexer.js";
 import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
