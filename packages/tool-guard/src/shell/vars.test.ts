@@ -53,6 +53,11 @@ describe("variables built up before the command they name", () => {
     ["a typeset local undone on return (TP-1473)", "Y=push; function f { typeset Y=status; }; f; git $Y origin HEAD:main"],
     ["a global set in a function", "Y=status; f() { Y=push; }; f; git $Y origin HEAD:main"],
     ["a declare -g set in a function", "Y=status; f() { declare -g Y=push; }; f; git $Y origin HEAD:main"],
+    ["a pipe to bash after an empty case", "case x in esac; echo 'git push origin HEAD:main' | bash"],
+    ["a pipe to sh after an empty case", "case x in esac; echo 'git push origin HEAD:main' | sh"],
+    ["a local in a subshell of a function", "Y=push; f() { ( local Y=status ); }; f; git $Y origin HEAD:main"],
+    ["a local whose slot name the user writes", "Y=push; f() { local Y=x; __tool_guard_local_0=status; }; f; git $Y origin HEAD:main"],
+    ["a local whose hidden slot name the user writes", "Y=push; f() { local Y=x; local@0=status; }; f; git $Y origin HEAD:main"],
     ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
   ])("%s still reads as a push to main", (_, command) => {

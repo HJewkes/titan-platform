@@ -15,6 +15,8 @@ interface Body {
   group: Group;
   /** The depth of its group outside it. */
   depth: number;
+  /** The `( )` depth inside it: a local in a deeper subshell ends with that subshell, which the walk already scopes. */
+  parens: number;
   /** Each local the body made, with the hidden variable holding the value it had outside. */
   saved: Array<[name: string, slot: string]>;
 }
@@ -88,6 +90,7 @@ function word(tokens: Token[], i: number, p: Pass): number {
     return i + 1;
   }
   if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
+  else if (w.value === "esac" && !w.quoted) endCase(p);
   else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
   p.out.push(p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w);
   return i + 1;
@@ -108,11 +111,21 @@ function commandWord(tokens: Token[], i: number, p: Pass): void {
   else if (keyword === "}") close(p, "{");
   else p.header = keyword === "function" ? "name" : null;
   if (keyword === "case") [p.cases, p.awaitIn] = [p.cases + 1, true];
-  if (keyword === "esac") [p.cases, p.pattern] = [Math.max(0, p.cases - 1), false];
   p.start = COMMAND_STARTS.has(keyword);
   const names = localNames(tokens, i, p);
   p.local = names !== null;
   if (names) saveLocals(names, p);
+}
+
+/**
+ * `esac` ends the case wherever it stands, even straight after `in`. Ending one early only leaves a pattern's
+ * `)` or `|` as an operator, as before this pass; ending one late would turn a real pipe into a separator.
+ */
+function endCase(p: Pass): void {
+  p.cases = Math.max(0, p.cases - 1);
+  p.awaitIn = false;
+  p.pattern = false;
+  p.start = false;
 }
 
 /** `local`, or `declare` or `typeset` without `-g` in a function body: the names it makes local, else null. */
@@ -128,24 +141,24 @@ function localNames(tokens: Token[], i: number, p: Pass): string[] | null {
 /** Copies each name's value into a hidden variable before the declaration, for the closing brace to restore. */
 function saveLocals(names: string[], p: Pass): void {
   const body = p.bodies.at(-1);
-  if (body?.group !== "{" || names.length === 0) return;
+  if (body?.group !== "{" || body.parens !== p.depths["("] || names.length === 0) return;
   const saves = names.map((name) => {
-    const slot = `__tool_guard_local_${p.slots++}`;
+    const slot = `local@${p.slots++}`;
     body.saved.push([name, slot]);
     return copyWord(slot, name);
   });
   p.out.push(...saves, SEPARATOR);
 }
 
-/** `TARGET=$SOURCE`, which takes the source's value when it is known and leaves the target unknown otherwise. */
+/** A hidden `TARGET=$SOURCE`, which takes the source's value when it is known and leaves the target unknown otherwise. */
 function copyWord(target: string, source: string): WordToken {
   const value = `${target}=$${source}`;
   const ref = { name: source, start: target.length + 1, end: value.length };
-  return { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: false, refs: [ref], subs: [] };
+  return { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: false, refs: [ref], subs: [], hidden: true };
 }
 
 function open(p: Pass, group: Group): void {
-  if (p.header === "body") p.bodies.push({ group, depth: p.depths[group], saved: [] });
+  if (p.header === "body") p.bodies.push({ group, depth: p.depths[group], parens: p.depths["("], saved: [] });
   p.header = null;
   p.depths[group]++;
 }

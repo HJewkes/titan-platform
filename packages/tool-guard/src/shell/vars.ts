@@ -8,6 +8,8 @@ export type Vars = Map<string, string | null>;
 export type Assignment = [name: string, value: string | null, append?: true];
 
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
+/** A hidden slot's name is no shell identifier, so no command the user writes can assign or read it. */
+const SLOT_ASSIGNMENT_RE = /^local@\d+=/;
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null {
@@ -31,7 +33,7 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
-  if (!ASSIGNMENT_RE.test(w.value)) return null;
+  if (!ASSIGNMENT_RE.test(w.value) && !(w.hidden && SLOT_ASSIGNMENT_RE.test(w.value))) return null;
   const eq = w.value.indexOf("=");
   const value = w.dynamic ? null : w.value.slice(eq + 1);
   if (w.value[eq - 1] === "+") return [w.value.slice(0, eq - 1), value, true];
