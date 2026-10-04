@@ -119,9 +119,10 @@ describe("seatFixFirst", () => {
 
   describe("a seat reviewer whose transcript ends in a partial record", () => {
     const damaged = agent("seat-f-3-review");
-    /** A reader whose damaged reviewer's complete records hold `readable`; every other reviewer has said nothing. */
-    const damagedReader = (readable: readonly ReviewerMessage[]): ReviewerReader => ({
-      read: async (input) => (input.reviewerAgentId === damaged.agentId ? Promise.reject(new DamagedTranscriptError("the exited session ends in a partial record", readable)) : []),
+    const torn = (readable: readonly ReviewerMessage[], brief: string | null = null) => new DamagedTranscriptError("the exited session ends in a partial record", readable, brief);
+    /** A reader whose damaged reviewer's complete records hold `readable` and `brief`; every other reviewer has said nothing. */
+    const damagedReader = (readable: readonly ReviewerMessage[], brief: string | null = null): ReviewerReader => ({
+      read: async (input) => (input.reviewerAgentId === damaged.agentId ? Promise.reject(torn(readable, brief)) : []),
     });
     const reviewing = (pr: number) => [said(damaged, `Findings.\n\nVerdict: MERGE\nPR: ${REPO}#${pr}\nHead: ${OLD_HEAD}\n`, 3)];
 
@@ -156,6 +157,55 @@ describe("seatFixFirst", () => {
       };
 
       expect(await seatFixFirst(rosterOf(damaged, broken), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(broken.name) });
+    });
+
+    it("blocks the PR its brief names when the reviewer was torn before any verdict, and leaves another PR's MERGE standing", async () => {
+      const reader = damagedReader([said(damaged, "Reading the diff.", 2)], `Review ${REPO}#4 at ${HEAD}.`);
+
+      expect(await unlessSeatFixFirst(rosterOf(damaged), reader, target, shepherdMerge, vi.fn())).toMatchObject({ kind: "none" });
+      expect(await unlessSeatFixFirst(rosterOf(damaged), reader, { ...target, pr: 5 }, shepherdMerge, vi.fn())).toEqual(shepherdMerge);
+    });
+
+    it.each([`Review OCTO/Demo#4 now.`, `Review demo#4 now.`, `(octo/DEMO#4)`])("ties the reviewer to PR 4 by the brief %s", async (brief) => {
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toMatchObject({ kind: "none" });
+    });
+
+    it.each([`Review octo/demo#40 now.`, `Review other/demo#4 now.`, `Review octo/demo-x#4 now.`])("does not tie the reviewer to PR 4 by the brief %s", async (brief) => {
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader([], brief), target, vi.fn())).toEqual({ kind: "clear" });
+    });
+
+    it("ties the reviewer to the PR by a verdict block that names the repo in another letter case", async () => {
+      const shouted = [said(damaged, `Findings.\n\nVerdict: MERGE\nPR: OCTO/Demo#4\nHead: ${OLD_HEAD}\n`, 3)];
+
+      expect(await seatFixFirst(rosterOf(damaged), damagedReader(shouted), target, vi.fn())).toMatchObject({ kind: "none" });
+    });
+
+    describe("under a name with two sessions", () => {
+      const first = agent("seat-h-5-review", "session-1");
+      const second = agent("seat-h-5-review", "session-2");
+      /** Session 1 is whole and says `earlier`; session 2 is damaged, untied unless its complete records say otherwise. */
+      const twoSessions = (earlier: readonly ReviewerMessage[]): ReviewerReader => ({
+        read: async (input) => (input.reviewerSessionId === second.sessionId ? Promise.reject(torn([said(second, "Reading.", 9)])) : earlier),
+      });
+
+      it("keeps session 1's FIX_FIRST at the head when session 2 is damaged and untied", async () => {
+        const reader = twoSessions([said(first, verdictAt("FIX_FIRST"), 5)]);
+
+        expect(await unlessSeatFixFirst(rosterOf(first, second), reader, target, shepherdMerge, vi.fn())).toMatchObject({ verdict: "FIX_FIRST", reviewer: { sessionId: first.sessionId } });
+      });
+
+      it("blocks when session 1's verdict ties the name to the PR and session 2 is damaged", async () => {
+        const reader = twoSessions([said(first, verdictAt("MERGE", OLD_HEAD), 5)]);
+
+        expect(await seatFixFirst(rosterOf(first, second), reader, target, vi.fn())).toMatchObject({ kind: "none", reason: expect.stringContaining(first.name) });
+      });
+
+      it("warns without blocking when neither session ties the name to the PR", async () => {
+        const warn = vi.fn();
+
+        expect(await seatFixFirst(rosterOf(first, second), twoSessions([said(first, "Reading.", 5)]), target, warn)).toEqual({ kind: "clear" });
+        expect(warn).toHaveBeenCalledOnce();
+      });
     });
   });
 

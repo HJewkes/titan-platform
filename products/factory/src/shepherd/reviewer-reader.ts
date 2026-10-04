@@ -52,6 +52,12 @@ function contentIndex(path: readonly (string | number)[]): number {
   return path[0] === "message" && path[1] === "content" && typeof path[2] === "number" ? path[2] : -1;
 }
 
+/** The text of a user message written in this conversation, or null for any other observation. */
+function userText(observation: NormalizedSessionObservation): string | null {
+  if (observation.kind !== "message" || observation.role !== "user" || observation.historyOrigin !== null) return null;
+  return observation.content.map((part) => part.text).join("\n");
+}
+
 /** Records that are not part of the conversation: titles, hook summaries and the like. An unknown kind is not one of them. */
 function isBookkeeping(observation: NormalizedSessionObservation): boolean {
   if (observation.kind === "metadata") return !observation.entries.some((entry) => entry.name === "model");
@@ -107,6 +113,8 @@ interface Scan {
   sent: readonly ReviewerMessage[];
   /** Every assistant text and chat_send message in a complete record. */
   written: readonly ReviewerMessage[];
+  /** The first user message in a complete record: the brief the reviewer was started with. */
+  brief: string | null;
   /** False when the file holds bytes past the last complete record. */
   whole: boolean;
 }
@@ -115,6 +123,7 @@ async function scanTranscript(agentId: string, transcriptPath: string, namespace
   const turn = finishedTurnMessages(agentId);
   const sent: ReviewerMessage[] = [];
   const written: ReviewerMessage[] = [];
+  let brief: string | null = null;
   let consumedBytes = -1;
   const source = claudeSourceFromPath(transcriptPath, namespace);
   for await (const observation of readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset))) {
@@ -122,8 +131,9 @@ async function scanTranscript(agentId: string, transcriptPath: string, namespace
     const sentHere = sentMessages(agentId, observation);
     sent.push(...sentHere);
     written.push(...reviewerMessages(agentId, observation), ...sentHere);
+    brief ??= userText(observation);
   }
-  return { finished: turn.result(), sent, written, whole: (await stat(transcriptPath)).size === consumedBytes };
+  return { finished: turn.result(), sent, written, brief, whole: (await stat(transcriptPath)).size === consumedBytes };
 }
 
 /** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
@@ -137,12 +147,12 @@ const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
 
 /**
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
- * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said.
+ * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said and the brief.
  */
 async function readSeatTranscript(row: TranscriptRow & { transcriptPath: string }, namespace: string): Promise<readonly ReviewerMessage[]> {
   const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
   if (!scan.whole && !RUNNING.has(row.presence)) {
-    throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written);
+    throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written, scan.brief);
   }
   return scan.whole && scan.finished.length > 0 ? scan.finished : scan.sent;
 }

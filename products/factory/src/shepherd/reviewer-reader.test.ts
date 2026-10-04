@@ -335,6 +335,13 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${seat.name} is not the reviewer of octo/demo#8`));
     });
 
+    it("blocks the PR its brief names when the reviewer was torn before any verdict, and leaves another PR clear", async () => {
+      const briefed = [user(SESSION, "Review octo/demo#7 and send a verdict."), assistant(SESSION, ["Reading."])];
+
+      expect(await seatCheck(briefed, "exited", true, 7)).toMatchObject({ kind: "none", reason: expect.stringContaining("ends in a partial record") });
+      expect(await seatCheck(briefed, "exited", true, 8)).toEqual({ kind: "clear" });
+    });
+
     it("does not block on a damaged transcript that names no PR, and warns", async () => {
       const warn = vi.fn();
 
