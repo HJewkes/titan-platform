@@ -19,7 +19,7 @@ function echoText(values: string[]): string {
     if (/[eE]/.test(flags)) escapes = flags.lastIndexOf("e") > flags.lastIndexOf("E");
   }
   const text = values.slice(i).join(" ");
-  return escapes ? decodeAnsiC(text) : text;
+  return escapes ? decodeAnsiC(text, "echo") : text;
 }
 
 /** Handles `%s`, `%b`, `%c`, `%d`, `%i` and `%%` with width and precision, reusing the format as printf does. */
@@ -62,7 +62,7 @@ function applyFormat(format: string, args: string[]): { text: string; used: numb
 
 /** `%.3s` truncates to three characters, the one directive that can turn `git push` into `git`. */
 function convert(conv: string, arg: string, precision: string | undefined): string {
-  const value = conv === "b" ? decodeAnsiC(arg) : conv === "c" ? arg.slice(0, 1) : arg;
+  const value = conv === "b" ? decodeAnsiC(arg, "echo") : conv === "c" ? arg.slice(0, 1) : arg;
   if (precision === undefined || !"sb".includes(conv)) return value;
   return value.slice(0, Number.parseInt(precision, 10) || 0);
 }

@@ -21,27 +21,36 @@ const NUMERIC: Array<[RegExp, number]> = [
   [/^U[0-9A-Fa-f]{1,8}/, 16],
 ];
 
-/** Decodes the body of a `$'...'` string the way bash does, so `$'\x7e'` reads as `~`. */
-export function decodeAnsiC(body: string): string {
+const ECHO_OCTAL = /^0[0-7]{0,3}/;
+
+/**
+ * Decodes the body of a `$'...'` string the way bash does, so `$'\x7e'` reads as `~`.
+ * The `echo` mode is for `echo -e` and `printf %b`: octal is `\0nnn` there, and `\c` ends the output.
+ */
+export function decodeAnsiC(body: string, mode: "ansi-c" | "echo" = "ansi-c"): string {
   let out = "";
   for (let i = 0; i < body.length; ) {
     if (body[i] !== "\\" || i + 1 >= body.length) {
       out += body[i++];
       continue;
     }
-    const { text, width } = decodeEscape(body.slice(i + 1));
+    const rest = body.slice(i + 1);
+    if (mode === "echo" && rest[0] === "c") return out;
+    const { text, width } = decodeEscape(rest, mode);
     out += text;
     i += 1 + width;
   }
   return out;
 }
 
-function decodeEscape(rest: string): { text: string; width: number } {
+function decodeEscape(rest: string, mode: "ansi-c" | "echo"): { text: string; width: number } {
   const c = rest[0] ?? "";
+  if (mode === "echo" && c >= "1" && c <= "7") return { text: `\\${c}`, width: 1 };
   const simple = SIMPLE[c];
   if (simple !== undefined) return { text: simple, width: 1 };
   if (c === "c" && rest.length > 1) return { text: String.fromCharCode(rest.charCodeAt(1) & 0x1f), width: 2 };
-  for (const [re, radix] of NUMERIC) {
+  const numeric = mode === "echo" ? [[ECHO_OCTAL, 8] as [RegExp, number], ...NUMERIC.slice(1)] : NUMERIC;
+  for (const [re, radix] of numeric) {
     const match = re.exec(rest)?.[0];
     if (!match) continue;
     const code = parseInt(radix === 8 ? match : match.slice(1), radix);
