@@ -2,4 +2,4 @@
 
 <!-- One to three sentences for a reader deciding whether to reuse this or build something new. Feeds CAPABILITIES.md. -->
 
-Placeholder: replace with the situation that should send a reader to eslint-plugin, and name the neighbouring unit for the situations that should not.
+You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
