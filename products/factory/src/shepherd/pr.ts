@@ -8,6 +8,7 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
+import { FREEZE_HOLD_STEPS, freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -44,6 +45,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...OBSERVE_STEPS,
   ...OUTCOME_STEPS,
   ...CONFLICT_CHECK_STEPS,
+  ...FREEZE_HOLD_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -91,6 +93,8 @@ interface ShepherdRun {
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   conflictChecks: number;
+  /** Red heads checked against a frozen main's failures. */
+  freezeChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
   /** Heads whose merge decision is the owner's, with why. */
@@ -112,7 +116,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, fresh: new Set(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -148,6 +152,7 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
 
 async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
   if (outcome.kind === "ci-failed") {
+    if (await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++)) return undefined;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return onCiFailed(run.ctx, run.target, outcome, run.state);
   }
@@ -359,6 +364,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),
     conflictCheckRoute(deps),
+    ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
   ];
 }
 
