@@ -6,14 +6,16 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_EVIDENCE_STEP, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
 import type { CarryResult } from "./tree-carry.js";
-import { shepherdStoreRef } from "./store.js";
+import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -338,6 +340,66 @@ describe("a carried verdict", () => {
   ])("gates on %s", async (_name, overrides) => {
     const evidence = await collect(world(), { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, ...overrides });
 
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+});
+
+const EVIDENCE_RUN = "run-1";
+
+/** The sh-merge-evidence route of the review wiring, run on a carried MERGE; `kind` undefined leaves the run unregistered in a bound store. */
+async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
+  const store = shepherdStoreRef();
+  const db = openDatabase(":memory:");
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  if (bind) store.bind(db);
+  if (kind !== undefined) new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: EVIDENCE_RUN, task: "demo/1", implementer: "impl-a", policy: AUTO, kind });
+  const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
+  const route = reviewRoutes(deps).find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
+  const prompt = JSON.stringify({ ...input, runId: EVIDENCE_RUN, ...carried() });
+  const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+  if (!outcome.ok) throw new Error(outcome.error);
+  const { result } = JSON.parse(outcome.output) as { result: MergeEvidence };
+  return result;
+}
+
+describe("the carry fact", () => {
+  it.each([
+    ["a probe answer for a different head", { ...carried(), carry: { fromHead: CARRIED_FROM, head: OTHER_HEAD, result: { equal: true, headTree: TREE, mergeTree: TREE } } }],
+    ["a probe that said not equal even though it named equal trees", carried({ equal: false, headTree: TREE, mergeTree: TREE })],
+  ])("is not recorded for %s", async (_name, overrides) => {
+    const evidence = await collect(world(), overrides);
+
+    expect(evidence.merge).not.toHaveProperty("carry");
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+});
+
+describe("the sh-merge-evidence route reads the registered kind", () => {
+  it("allows a carried MERGE of a run registered as correctness, and records that kind", async () => {
+    const evidence = await carriedThroughRoute("correctness");
+
+    expect(evidence.merge.kind).toBe("correctness");
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RC" } });
+  });
+
+  it("gates a carried MERGE of a run registered as security, and records that kind", async () => {
+    const evidence = await carriedThroughRoute("security");
+
+    expect(evidence.merge.kind).toBe("security");
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("gates a carried MERGE when the run has no registration, and records no kind", async () => {
+    const evidence = await carriedThroughRoute(undefined);
+
+    expect(evidence.merge).not.toHaveProperty("kind");
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("gates a carried MERGE when the store is not bound, and records no kind", async () => {
+    const evidence = await carriedThroughRoute("correctness", false);
+
+    expect(evidence.merge).not.toHaveProperty("kind");
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 });
