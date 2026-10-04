@@ -6,6 +6,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { briefQuestions, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
@@ -84,7 +85,7 @@ export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
-export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
 
 export interface AwaitVerdictInput {
   repo: string;
@@ -243,6 +244,8 @@ export interface ReviewWiring {
   dispatch?: ReviewerDispatch;
   /** Questions chosen by code for this PR and added to the reviewer brief. */
   questions?: (target: ReviewTarget) => Promise<readonly string[]>;
+  /** The head's codewatch report questions, which go ahead of `questions`; absent, or undefined for a target, records nothing. */
+  codewatch?: CodewatchReader;
   timeoutMs?: number;
   lateVerdictMs?: number;
   sessionStartTimeoutMs?: number;
@@ -280,20 +283,23 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
 };
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ...target }, signal, repeat) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
+  let report: CodewatchEvidence | undefined;
   if (!asked) {
-    const brief = reviewerBrief({ ...target, questions: await questions?.(target), fixFirsts });
+    const found = await codewatch?.(target);
+    report = found?.evidence;
+    const brief = reviewerBrief({ ...target, questions: briefQuestions(found?.questions ?? [], (await questions?.(target)) ?? []), fixFirsts });
     const refused = await startReviewer(dispatch, intent, target, brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits) };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(report && { codewatch: report }) };
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
