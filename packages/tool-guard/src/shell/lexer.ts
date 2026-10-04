@@ -207,7 +207,7 @@ function readDouble(s: LexState): void {
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
       if (next !== "\n") w.value += next;
       s.i += 2;
-    } else if (c === "$") readDollar(s);
+    } else if (c === "$" && next !== "'") readDollar(s);
     else if (c === "`") readBacktick(s);
     else appendChar(s, c);
   }
