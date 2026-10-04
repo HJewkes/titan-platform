@@ -23,14 +23,17 @@ const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"])
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 /** An `r` in an option cluster: whether an element write then lands differs across bash versions. */
 const READONLY_FLAG_RE = /^-[A-Za-z]*r/;
-const DECLARE_LETTERS = new Set("aAfFgiIlnrtuxp");
-/** The option letters each builtin accepts; bash rejects any other and assigns nothing. */
+const DECLARE_LETTERS = new Set("airtx");
+/**
+ * The option letters that assign the value as written in bash 3.2 and 5 alike. Any other may assign nothing
+ * (`-f` names a function, `-p` prints, bash 3.2 rejects `-g`, `-A`, `-n` and `-I`) or change the value (`-l`, `-u`).
+ */
 const OPTION_LETTERS: Record<string, Set<string>> = {
   declare: DECLARE_LETTERS,
   typeset: DECLARE_LETTERS,
   local: DECLARE_LETTERS,
-  export: new Set("fnp"),
-  readonly: new Set("aAfp"),
+  export: new Set("n"),
+  readonly: new Set("a"),
 };
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null {
@@ -92,7 +95,7 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const target of clobberedNames(name, args)) vars.set(target, null);
 }
 
-/** A word known only at run time may be any assignment; an option bash rejects may leave any assignment unmade. */
+/** A word known only at run time may be any assignment; an option outside the stable set may leave any unmade or changed. */
 function unreadableDeclareWord(name: string, arg: WordToken): boolean {
   if (arg.dynamic) return parseAssignment(arg) === null;
   const v = arg.value;

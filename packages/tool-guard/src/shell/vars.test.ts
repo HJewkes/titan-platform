@@ -80,6 +80,17 @@ describe("variables built up before the command they name", () => {
     ["an export with a declare-only option (TP-1491)", "Y=push; export -r Y=status; git $Y origin HEAD:main"],
     ["an export with a glob option (TP-1491)", "Y=push; export -* Y=status; git $Y origin HEAD:main"],
     ["a readonly with a declare-only option (TP-1491)", "Y=push; readonly -x Y=status; git $Y origin HEAD:main"],
+    ["a declare -p element that only prints (TP-1491)", "Y=push; declare -p 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare -f element that names a function (TP-1491)", "Y=push; declare -f 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare -F element that names a function (TP-1491)", "Y=push; declare -F 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a typeset -f element that names a function (TP-1491)", "Y=push; typeset -f 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare -g element bash 3.2 rejects (TP-1491)", "Y=push; declare -g 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare -l scalar bash 5 lowercases (TP-1491)", "Y=push; declare -l Y=status; git $Y origin HEAD:main"],
+    ["a declare -u scalar bash 5 uppercases (TP-1491)", "Y=push; declare -u Y=status; git $Y origin HEAD:main"],
+    ["a declare -A element bash 3.2 rejects (TP-1491)", "Y=push; declare -A 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare -n scalar that names a reference (TP-1491)", "Y=push; declare -n Y=status; git $Y origin HEAD:main"],
+    ["an export -f scalar that names a function (TP-1491)", "Y=push; export -f Y=status; git $Y origin HEAD:main"],
+    ["a readonly -f scalar that names a function (TP-1491)", "Y=push; readonly -f Y=status; git $Y origin HEAD:main"],
     ["a declare with a lone dash (TP-1491)", "Y=push; declare - Y=status; git $Y origin HEAD:main"],
     ["a run-time declare word (TP-1491)", "Y=status; F=$(cmd); declare \"$F\"; git $Y origin HEAD:main"],
     ["a substituted export word (TP-1491)", "Y=status; export $(cmd); git $Y origin HEAD:main"],
@@ -172,13 +183,13 @@ describe("variables built up before the command they name", () => {
   });
 
   it.each([
-    ["declare -aAfFgiIlnrtuxp", "declare -aAfFgiIlnrtuxp Z=1; git $Y"],
+    ["declare -airtx", "declare -airtx Z=1; git $Y"],
     ["typeset +x", "typeset +x Z=1; git $Y"],
-    ["local -n in a function", "f() { local -n Z=W; git $Y; }; f"],
-    ["export -fnp", "export -fnp Z=1; git $Y"],
-    ["readonly -aAfp", "readonly -aAfp Z=1; git $Y"],
+    ["local -r in a function", "f() { local -r Z=1; git $Y; }; f"],
+    ["export -n", "export -n Z=1; git $Y"],
+    ["readonly -a", "readonly -a Z=1; git $Y"],
     ["declare --", "declare -- Z=1; git $Y"],
-  ])("keeps a variable known after %s, whose options are all valid (TP-1491)", (_, command) => {
+  ])("keeps a variable known after %s, whose options assign as written (TP-1491)", (_, command) => {
     expect(gitArgs(`Y=status; ${command}`)).toEqual([["status"]]);
   });
 
