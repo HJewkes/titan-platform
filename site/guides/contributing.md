@@ -220,5 +220,7 @@ memory and fails when either file differs, so edit the sources and rerun the scr
 "Version Packages" pull request stays green because `pnpm version-packages` regenerates the
 catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 
+Each runtime path in `runtimePaths` names the credential it needs and a smoke check you can run to prove it on a machine, so the catalog lists only paths someone has exercised.
+
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.
