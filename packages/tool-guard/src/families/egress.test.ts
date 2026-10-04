@@ -84,3 +84,10 @@ describe("reads and allowlisted hosts classify nothing", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("a git command whose subcommand word is dynamic", () => {
+  it("gives the unknown destination for a read-set subcommand", () => {
+    const actions = bash("Y=status; read Y < list; git $Y origin HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
+    expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
+  });
+});

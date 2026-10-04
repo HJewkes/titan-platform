@@ -327,3 +327,19 @@ describe("xargs -I fails closed when it cannot read the input", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("a git command whose subcommand word is dynamic", () => {
+  it.each([
+    ["a read variable", "Y=status; read Y < list; git $Y origin HEAD:main"],
+    ["an unset variable", "git $Y origin HEAD:main"],
+    ["a non-zero array index", "Y[1]=x; git $Y origin HEAD:main"],
+    ["a quoted unknown variable", 'git "$Y" status'],
+  ])("counts %s as a push to an unknown branch", (_name, command) => {
+    const actions = bash(command).filter((a) => a.spelling === "bash.merge.git-push-protected");
+    expect(actions.map((a) => a.subject)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it("still allows a literal git status", () => {
+    expect(bash("git status")).toEqual([]);
+  });
+});

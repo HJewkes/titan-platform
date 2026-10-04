@@ -11,12 +11,14 @@ export interface GitInvocation {
   /** `-c key=value` overrides. */
   config: string[];
   sub: string | null;
+  /** True when the subcommand word is a variable git could expand to anything, so `sub` stays null. */
+  subDynamic: boolean;
   subArgs: WordToken[];
 }
 
 /** Parses `git [global options] <subcommand> [args]` and resolves where it operates. */
 export function parseGit(args: WordToken[], dir: string | null, home: string | null = null): GitInvocation {
-  const inv: GitInvocation = { dir, otherPaths: [], config: [], sub: null, subArgs: [] };
+  const inv: GitInvocation = { dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] };
   let i = 0;
   for (; i < args.length && (args[i] as WordToken).value.startsWith("-"); i++) {
     const { flag, value, width } = option(args, i, GLOBAL_VALUE_OPTS);
@@ -26,7 +28,8 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
     else if (flag === "-c" && value) inv.config.push(value.value);
   }
   const sub = args[i];
-  if (sub && !sub.dynamic) {
+  if (sub?.dynamic) inv.subDynamic = true;
+  else if (sub) {
     inv.sub = sub.value;
     inv.subArgs = args.slice(i + 1);
   }
