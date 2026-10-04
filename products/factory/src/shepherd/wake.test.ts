@@ -259,6 +259,35 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
     expect(agents.asked).toEqual([]);
   });
+
+  /** Read 1 is the wake's own PR read; read 2 is the first head check, which fails. */
+  function unreadableOnce(scene: ReturnType<typeof wakeStep>) {
+    scene.fake.onGetPr = (_pr, reads) => {
+      if (reads === 2) throw new Error("HTTP 502: bad gateway");
+    };
+  }
+
+  it("asks a live implementer nothing on a poll whose PR read fails, then messages it once the next read shows the same head", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], onSleep: (_ms, _fake, agents) => expect(agents.asked).toEqual([]) });
+    unreadableOnce(scene);
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(scene.clock.sleeps).toEqual([1_000]);
+    expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
+  });
+
+  it("asks a live implementer nothing when the read after a failed one shows it already pushed a new head", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], onSleep: (_ms, fake) => fake.pushHead(1, H2) });
+    unreadableOnce(scene);
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(scene.clock.sleeps).toEqual([1_000]);
+    expect(scene.agents.asked).toEqual([]);
+  });
 });
 
 describe("sh-wake-implementer: the woken agent must start a turn", () => {
