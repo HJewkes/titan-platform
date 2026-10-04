@@ -1,6 +1,9 @@
 // codewatch-pr-report@1 (M4 A1): an advisory report built from the head and baseline dag-check already indexed.
 // It carries repo paths, symbols and metrics only, because CI publishes it as a public artifact.
-import { writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const SCHEMA_ID = "codewatch-pr-report@1";
 const DELTA_LIMIT = 20;
@@ -14,6 +17,9 @@ const STORED_METRIC = { loc: "loc", cyclomatic_max: "cyclomatic_max", cognitive:
 const REPORT_METRIC = new Map(Object.entries(STORED_METRIC).map(([report, stored]) => [stored, report]));
 // Budgets in check.json exclude these roles, so their metrics would only add noise.
 const SKIPPED_ROLES = new Set(["test", "fixture"]);
+// The indexer only gives a fixtures/ directory the fixture role; a *.fixture.ts file beside its test is one too.
+const FIXTURE_FILE = /\.fixture\.[cm]?[jt]sx?$/;
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Best effort: a failure logs to stderr and never reaches the caller, so dag-check's exit code holds. */
 export function writeReport(file, build) {
@@ -25,18 +31,22 @@ export function writeReport(file, build) {
   }
 }
 
-export function collectReport(graph, store, { snapshot, baselineSnapshot, result }, rules) {
+/** Questions come from every row; the top-N cut applies only to the deltas and exports tables. */
+export function collectReport(graph, store, { snapshot, baselineSnapshot, result }, rules, options = {}) {
   const baseId = baselineSnapshot?.id;
-  const report = {
+  const base = baselineSnapshot?.commitHash ?? null;
+  const lineOf = declarationLines(options.readSource ?? gitSource(base));
+  const full = {
     schema: SCHEMA_ID,
     head: snapshot.commitHash,
-    base: baselineSnapshot?.commitHash ?? null,
+    base,
     indexVersion: snapshot.indexVersion,
     check: checkBlock(result),
     deltas: baseId === undefined ? [] : collectDeltas(graph, store, snapshot.id, baseId, budgets(rules)),
-    exports: baseId === undefined ? [] : collectExports(graph, store, snapshot.id, baseId),
+    exports: baseId === undefined ? [] : collectExports(graph, store, snapshot.id, baseId, lineOf),
   };
-  return { ...report, questions: renderQuestions(report) };
+  const questions = renderQuestions(full);
+  return { ...full, deltas: full.deltas.slice(0, DELTA_LIMIT), exports: full.exports.slice(0, EXPORT_LIMIT), questions };
 }
 
 function checkBlock(result) {
@@ -77,12 +87,15 @@ function collectDeltas(graph, store, headId, baseId, budgetByMetric) {
     .filter((c) => sourceFiles.has(c.nodeId) && REPORT_METRIC.has(c.name) && c.after !== null)
     .map((c) => classify(c, budgetByMetric.get(REPORT_METRIC.get(c.name)) ?? null))
     .filter((d) => d !== null)
-    .sort(byBudgetShare)
-    .slice(0, DELTA_LIMIT);
+    .sort(byBudgetShare);
 }
 
 function isSourceFile(node) {
-  return node.kind === "file" && !SKIPPED_ROLES.has(node.role);
+  return node.kind === "file" && !SKIPPED_ROLES.has(fileRole(node));
+}
+
+function fileRole(node) {
+  return FIXTURE_FILE.test(node.id) ? "fixture" : node.role;
 }
 
 function classify(change, budget) {
@@ -104,13 +117,13 @@ function byBudgetShare(a, b) {
   return share(b) - share(a) || compare(a.path, b.path) || compare(a.metric, b.metric);
 }
 
-function collectExports(graph, store, headId, baseId) {
-  const head = symbolLayer(graph, store, headId);
-  const base = symbolLayer(graph, store, baseId);
-  return [...exportChanges(head, base)].sort(byImporters).slice(0, EXPORT_LIMIT);
+function collectExports(graph, store, headId, baseId, lineOf) {
+  const head = symbolLayer(graph, store, headId, "head");
+  const base = symbolLayer(graph, store, baseId, "base");
+  return [...exportChanges(head, base, lineOf)].sort(byImporters);
 }
 
-function symbolLayer(graph, store, snapshotId) {
+function symbolLayer(graph, store, snapshotId, side) {
   const nodes = store.listNodes(snapshotId, { includeSymbols: true }).filter((n) => n.kind === "symbol");
   const edges = store.listEdges(snapshotId, { includeReferences: true });
   const importers = new Map();
@@ -118,18 +131,18 @@ function symbolLayer(graph, store, snapshotId) {
     if (e.kind !== "references") continue;
     importers.set(e.dstId, (importers.get(e.dstId) ?? new Set()).add(e.srcId));
   }
-  return { symbols: new Map(nodes.map((n) => [n.id, n])), footprints: graph.computeFootprints({ nodes, edges }), importers };
+  return { side, symbols: new Map(nodes.map((n) => [n.id, n])), footprints: graph.computeFootprints({ nodes, edges }), importers };
 }
 
-function* exportChanges(head, base) {
+function* exportChanges(head, base, lineOf) {
   for (const node of head.symbols.values()) {
     if (!isExported(node)) continue;
     const prior = base.symbols.get(node.id);
-    if (!isExported(prior)) yield exportEntry(node, "added", head);
-    else if (signatureChanged(node.id, head, base)) yield exportEntry(node, "signature", head);
+    if (!isExported(prior)) yield exportEntry(node, "added", head, lineOf);
+    else if (signatureChanged(node.id, head, base)) yield exportEntry(node, "signature", head, lineOf);
   }
   for (const node of base.symbols.values()) {
-    if (isExported(node) && !isExported(head.symbols.get(node.id))) yield exportEntry(node, "removed", base);
+    if (isExported(node) && !isExported(head.symbols.get(node.id))) yield exportEntry(node, "removed", base, lineOf);
   }
 }
 
@@ -143,9 +156,53 @@ function signatureChanged(id, head, base) {
   return footprintMoved && head.symbols.get(id).attrs.signature !== base.symbols.get(id).attrs.signature;
 }
 
-function exportEntry(node, change, layer) {
+function exportEntry(node, change, layer, lineOf) {
   const users = [...(layer.importers.get(node.id) ?? [])].filter((file) => file !== node.parentId);
-  return { path: node.parentId, symbol: node.name, line: node.attrs.startLine ?? null, change, importers: users.length };
+  const line = node.attrs.startLine ?? lineOf(layer.side, node.parentId, node.name);
+  return { path: node.parentId, symbol: node.name, line, change, importers: users.length };
+}
+
+// The indexer records spans for functions and classes only, so types, interfaces and consts are found in the source text.
+function declarationLines(readSource) {
+  const texts = new Map();
+  return (side, file, name) => {
+    const key = `${side}:${file}`;
+    if (!texts.has(key)) texts.set(key, readSource(side, file)?.split("\n") ?? []);
+    return firstLine(texts.get(key), declarationPattern(name)) ?? firstLine(texts.get(key), exportPattern(name));
+  };
+}
+
+function firstLine(lines, pattern) {
+  const index = lines.findIndex((text) => pattern.test(text));
+  return index < 0 ? null : index + 1;
+}
+
+// Fallback for destructured consts and export lists: the export statement that names the symbol.
+function exportPattern(name) {
+  return new RegExp(`^\\s*export\\b.*(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
+}
+
+function declarationPattern(name) {
+  const modifiers = "(?:export\\s+)?(?:declare\\s+)?(?:default\\s+)?(?:abstract\\s+)?";
+  const keyword = "(?:const\\s+enum|type|interface|enum|const|let|var|class|function\\*?|namespace)";
+  return new RegExp(`^\\s*${modifiers}${keyword}\\s+${escapeRegExp(name)}\\b`);
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Head is the indexed working tree; base is read from git at the baseline commit. A missing file reads as null. */
+function gitSource(baseCommit) {
+  return (side, file) => {
+    try {
+      if (side === "head") return readFileSync(path.join(ROOT, file), "utf8");
+      if (!baseCommit) return null;
+      return execFileSync("git", ["show", `${baseCommit}:${file}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch {
+      return null;
+    }
+  };
 }
 
 function byImporters(a, b) {

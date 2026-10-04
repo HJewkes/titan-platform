@@ -84,6 +84,21 @@ describe("registering a package in the layered-deps rule", () => {
     const rule = layeredRule(registerLayer(baseCheck, "packages/store-sqlite", "0"));
     expect(rule.$tiers[0]).toEqual(["packages/store-sqlite"]);
   });
+
+  it("forbids each product from importing every other product, right after the tiers rule", () => {
+    const withMiner = registerLayer(baseCheck, "products/session-miner", "product");
+    const rules = JSON.parse(registerLayer(withMiner, "apps/console", "product")).rules;
+    expect(rules.slice(1).map((r) => [r.type, r.from, r.to])).toEqual([
+      ["forbid-import", "products/session-miner/**", "apps/console/**"],
+      ["forbid-import", "apps/console/**", "products/session-miner/**"],
+    ]);
+  });
+
+  it("keeps one copy of each product rule when a lower tier is registered later", () => {
+    const withProducts = registerLayer(registerLayer(baseCheck, "products/a", "product"), "products/b", "product");
+    const rules = JSON.parse(registerLayer(withProducts, "packages/locator", "0")).rules;
+    expect(rules.filter((r) => r.type === "forbid-import")).toHaveLength(2);
+  });
 });
 
 describe("stamping the reference page the docs build demands", () => {

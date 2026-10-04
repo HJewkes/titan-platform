@@ -15,6 +15,7 @@ bin does that work for a pre-push hook and a CI job. Tracked by TP-405.
 titan-egress-scan pre-push <remote>     # the commits a push sends; reads git's pre-push stdin
 titan-egress-scan range <base> <head>   # every commit in base..head, for CI
 titan-egress-scan tree                  # every tracked file at HEAD, once per repo at rollout
+titan-egress-scan text [--file <path>]  # free text from stdin or a file: PR title, body, branch name
 titan-egress-scan install-hook          # write the pre-push hook
 ```
 
@@ -27,6 +28,12 @@ notices and errors to stderr.
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
   both diffs name is reported once. The message is read with `--encoding=UTF-8`, so
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
+- **Text.** `text` scans free text (a PR title, body or branch name) with the generic rules and
+  the private term list, for the CC-269 and CC-270 callers. It reads stdin, or `--file <path>`
+  (never both); an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>]`, never
+  the matched text; `\r\n` counts as one line break, and a column counts UTF-16 units from 1.
+  Input over the 128 MiB limit exits 2. It needs no git repo and applies no allow file, since
+  prose has no path to allow. Exit codes match `range` and `pre-push`.
 - **Idents and ref names.** Each scanned commit's raw author and committer name and email are
   scanned too, and a finding names the field (`commit <sha> author.name`, `author.email`,
   `committer.name`, `committer.email`). `pre-push` also scans the local and remote ref names on

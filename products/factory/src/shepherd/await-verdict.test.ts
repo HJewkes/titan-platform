@@ -1,6 +1,6 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { awaitLateVerdict, awaitVerdict, type AwaitVerdictTiming } from "./await-verdict.js";
+import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 
 const MINUTE = 60_000;
@@ -134,5 +134,20 @@ describe("awaitLateVerdict after the dispatch-anchored wait ran out", () => {
     const result = await awaitLateVerdict(reader, async () => false, input, { ...clock.timing, timeoutMs: 10 * MINUTE }, signal);
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+});
+
+describe("parseAwaitVerdictInput startedAt", () => {
+  it("keeps a finite startedAt", () => {
+    expect(parseAwaitVerdictInput({ ...input, startedAt: DISPATCHED_AT + MINUTE })).toEqual({ ...input, startedAt: DISPATCHED_AT + MINUTE });
+  });
+
+  it.each([
+    ["a string", "1000"],
+    ["NaN", Number.NaN],
+    ["infinity", Number.POSITIVE_INFINITY],
+    ["null", null],
+  ])("rejects a startedAt that is %s", (_name, startedAt) => {
+    expect(() => parseAwaitVerdictInput({ ...input, startedAt })).toThrow("sh-await-verdict: startedAt must be epoch milliseconds");
   });
 });

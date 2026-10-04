@@ -2,6 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
+import { SHEPHERD_STEPS } from "./pr.js";
 import { stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
@@ -134,12 +135,22 @@ describe("shepherd view stalls", () => {
     });
 
     it("keeps a malformed sh-wake step as a plain step entry instead of throwing", () => {
-      const run = pausedAt("sh-wake:abc1234");
-      run.stepResults["sh-wake:abc1234#0"] = { stepId: "sh-wake:abc1234", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: { request: 42, outcome: [] } };
+      const run = pausedAt("sh-wake-implementer:0");
+      run.stepResults["sh-wake-implementer:0#0"] = { stepId: "sh-wake-implementer:0", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: { request: 42, outcome: [] } };
 
       const entries = timelineEntries(run, []);
 
-      expect(entries).toEqual([expect.objectContaining({ kind: "step", stepId: "sh-wake:abc1234" })]);
+      expect(entries).toEqual([expect.objectContaining({ kind: "step", stepId: "sh-wake-implementer:0" })]);
+    });
+
+    it.each(["sh-wake-implementer:0", "sh-wake-fix-first:0"])("reads a run at %s as fixing", (step) => {
+      expect(watchRow({ registration, run: pausedAt(step) }).phase).toBe("fixing");
+    });
+
+    it("gives every declared Shepherd step id an explicit phase, never the ci fallback", () => {
+      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "rerun"].includes(id));
+
+      expect(unmapped).toEqual([]);
     });
 
     it("maps an unknown step prefix to ci instead of throwing", () => {

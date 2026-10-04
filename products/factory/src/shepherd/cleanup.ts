@@ -187,7 +187,9 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
     if (row === undefined || (row !== "unread" && row.status === "retired")) return undefined;
     if (row !== "unread") exitedAt = row.presence === "exited" ? (exitedAt ?? wait.now()) : undefined;
     if (exitedAt !== undefined && wait.now() >= Math.max(exitedAt + SH_CLEANUP_GRACE_MS, nextTry)) {
-      if (await resumedSince(agents, name)) {
+      const held = await heldByFreshRoster(agents, name);
+      if (held !== undefined) {
+        last = held;
         exitedAt = undefined;
         continue;
       }
@@ -201,11 +203,13 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
   }
 }
 
-/** The cached roster may predate a resume, so the final decision reads the broker afresh; an unreadable roster blocks the retire. */
-async function resumedSince(agents: CleanupAgents, name: string): Promise<boolean> {
+/** The cached roster may predate a resume, so the final decision reads the broker afresh. Returns why the retire must wait; an unreadable roster blocks it too. */
+async function heldByFreshRoster(agents: CleanupAgents, name: string): Promise<string | undefined> {
   agents.invalidate();
-  const row = await rosterRow(agents, name).catch(() => "unread" as const);
-  return row === "unread" || (row !== undefined && row.presence !== "exited" && row.status !== "retired");
+  let unreadable = "";
+  const row = await rosterRow(agents, name).catch((error: unknown) => ((unreadable = `roster unreadable before retire: ${message(error)}`), "unread" as const));
+  if (row === "unread") return unreadable;
+  return row !== undefined && row.presence !== "exited" && row.status !== "retired" ? "resumed before retire" : undefined;
 }
 
 async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAgent | undefined> {

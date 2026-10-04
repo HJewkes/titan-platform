@@ -374,6 +374,30 @@ describe("the carry fact", () => {
   });
 });
 
+describe("the evidence comment of a carried MERGE", () => {
+  it("names both heads and both trees, and records the carry", async () => {
+    const evidence = await collect(world(), carried());
+
+    expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE });
+  });
+
+  it("names the head's tree and the merge-tree separately in the summary", async () => {
+    const evidence = await collect(world(), carried());
+    const carry = { fromHead: CARRIED_FROM, head: input.head, headTree: "tree-on-the-head-side", mergeTree: "tree-on-the-merge-side" };
+
+    const [, summary = ""] = evidenceComment({ ...evidence.record, carry }).split("\n");
+
+    for (const named of Object.values(carry)) expect(summary).toContain(named);
+  });
+
+  it("says nothing of a carry for a MERGE reviewed at its own head", async () => {
+    const evidence = await collect(world());
+
+    expect(evidence.record).not.toHaveProperty("carry");
+    expect(evidenceComment(evidence.record)).not.toContain("Carried");
+  });
+});
+
 describe("the sh-merge-evidence route reads the registered kind", () => {
   it("allows a carried MERGE of a run registered as correctness, and records that kind", async () => {
     const evidence = await carriedThroughRoute("correctness");
