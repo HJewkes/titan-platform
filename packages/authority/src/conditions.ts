@@ -13,6 +13,16 @@ export interface CheckRunFact {
   conclusion: string | null;
 }
 
+/** The tree-equality probe's answer for a head that updates a reviewed head; the caller reads it from its probe step, never from reviewer text. */
+export interface CarryFact {
+  /** The head whose MERGE verdict is carried. */
+  fromHead: string;
+  /** The head the carry is for. */
+  head: string;
+  headTree: string;
+  mergeTree: string;
+}
+
 /** What the caller observed about a pull request it wants to merge. The evaluator re-derives every condition from these. */
 export interface MergeFacts {
   head: string;
@@ -28,6 +38,9 @@ export interface MergeFacts {
   /** Every path the pull request touches, including both sides of a rename. */
   changedPaths: string[];
   seatGrants: string[];
+  carry?: CarryFact;
+  /** The kind the pull request was registered with; absent when unregistered. */
+  kind?: string;
 }
 
 export interface ConditionFacts {
@@ -35,6 +48,7 @@ export interface ConditionFacts {
 }
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+const CARRYING_KINDS = new Set(["correctness", "feature", "refactor"]);
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_DIRS = new Set([".github"]);
@@ -53,6 +67,18 @@ function sameAgent(a: AgentIdentity, b: AgentIdentity): boolean {
 function verdictMergeAtHead(facts: MergeFacts): boolean {
   const { head } = facts;
   return facts.verdict.value === "MERGE" && typeof head === "string" && FULL_SHA.test(head) && facts.verdict.head === head;
+}
+
+function verdictMergeCarriedTreeEqual(facts: MergeFacts): boolean {
+  const { head, carry, verdict } = facts;
+  if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
+  return typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) && verdict.head === carry.fromHead && carry.head === head &&
+    isId(carry.headTree) && carry.headTree === carry.mergeTree;
+}
+
+// Only a known non-security kind passes, so an unregistered or unrecognised kind never carries.
+function prKindNotSecurity(facts: MergeFacts): boolean {
+  return typeof facts.kind === "string" && CARRYING_KINDS.has(facts.kind);
 }
 
 function isNonCanonicalSegment(segment: string): boolean {
@@ -105,6 +131,8 @@ function noProtectedPathChange(facts: MergeFacts): boolean {
 const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "resolver-is-dispatched-reviewer": (facts) => sameAgent(facts.resolver, facts.dispatchedReviewer),
   "verdict-merge-at-head": verdictMergeAtHead,
+  "verdict-merge-carried-tree-equal": verdictMergeCarriedTreeEqual,
+  "pr-kind-not-security": prKindNotSecurity,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,
   "merge-tree-clean": (facts) => facts.mergeTreeClean === true,

@@ -148,7 +148,7 @@ Key exports:
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - `table`: `DEFAULT_TABLE`
-- +13 more in the [reference page](/reference/authority)
+- +14 more in the [reference page](/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
