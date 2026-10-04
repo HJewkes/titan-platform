@@ -38,10 +38,13 @@ export function parseAssignment(w: WordToken): Assignment | null {
   return [w.value.slice(0, eq), value];
 }
 
-/** `NAME=(a b)` lexes as `NAME=` and a subshell; the array is not tracked, so the assignment is marked unknown. */
+/**
+ * `NAME=(a b)` lexes as `NAME=` and a subshell; the array is not tracked, so the assignment is marked unknown.
+ * `NAME+=(a)` is left as an append of nothing: bash keeps element 0, which `$NAME` reads, when NAME was set.
+ */
 export function markArrayAssignment(words: WordToken[]): void {
   const last = words.at(-1);
-  if (last && /^[A-Za-z_][A-Za-z0-9_]*\+?=$/.test(last.value)) words[words.length - 1] = { ...last, dynamic: true };
+  if (last && /^[A-Za-z_][A-Za-z0-9_]*=$/.test(last.value)) words[words.length - 1] = { ...last, dynamic: true };
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
