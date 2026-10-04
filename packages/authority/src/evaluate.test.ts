@@ -41,9 +41,9 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 41 allow, 6 gate and 44 deny rows", () => {
+  it("holds 42 allow, 6 gate and 44 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 41, gate: 6, deny: 44 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 42, gate: 6, deny: 44 });
   });
 
   it("denies exactly the hand-listed rows", () => {
