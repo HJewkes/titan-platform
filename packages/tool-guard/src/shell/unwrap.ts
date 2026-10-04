@@ -1,6 +1,7 @@
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
+import type { Assignment } from "./vars.js";
 import { spellXargsOptions } from "./xargs-long.js";
 
 interface WrapperSpec {
@@ -76,7 +77,7 @@ export interface Unwrapped {
   name: string | null;
   args: WordToken[];
   /** Leading `NAME=value` words, values null when only known at run time. */
-  assigned: Array<[string, string | null]>;
+  assigned: Assignment[];
   /** The command word as typed, after literal expansion: `./x.sh`, `/usr/bin/git`; null when `name` is. */
   path: string | null;
   /** Shell text a wrapper option runs (`npx -c`, `env -S`); `name` is then the wrapper. */
@@ -101,7 +102,7 @@ export function commandName(value: string): string {
 
 /** Strips keywords, assignments and wrappers. Returns null for a wrapper that does not run its command. */
 export function unwrap(words: WordToken[]): Unwrapped | null {
-  const assigned: Array<[string, string | null]> = [];
+  const assigned: Assignment[] = [];
   let xargs: Unwrapped["xargs"];
   let negated = false;
   let i = 0;

@@ -49,7 +49,7 @@ describe("literal assignments", () => {
   it.each([
     ["a substitution", "F=$(echo ~/.x); cat $F"],
     ["read", "read F; cat $F"],
-    ["printf -v", "printf -v F %s x; cat $F"],
+    ["printf -v of a substitution", "printf -v F %s \"$(cmd)\"; cat $F"],
     ["a for loop", "for F in a b; do cat $F; done"],
     ["an unassigned variable", "cat $F"],
   ])("leaves a value set by %s dynamic", (_how, src) => {
