@@ -193,8 +193,10 @@ with its transcript. `pr_ref` stays null until a later pass resolves it.
 `resetIndex` drops `pr` rows and forge review rows with everything else, so `commit_times`,
 `review_rounds_gh` and the forge reviews return only when a resolver answers again.
 
-Everything except `transcript` is derivable, which is what makes the schema safe to evolve by
-drop-and-rederive.
+Not everything is derivable from transcripts. Original sources can be pruned, so schema
+migrations must preserve `fact` and `session` rows rather than assuming a replay is possible.
+`session_origin`, `session_external_event`, `price`, `session_state`, `conversation` and
+`conversation_alias` are not derived from transcripts at all, so a drop-and-replay would lose them.
 
 ## Injected context
 
