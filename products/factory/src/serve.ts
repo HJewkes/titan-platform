@@ -174,8 +174,8 @@ async function adopt(host: FactoryHost, services: ShepherdServices | undefined, 
 async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices, held: Set<string>, log: Logger): Promise<Set<string>> {
   const { ended, unreadable } = await recheckHeld(host, services, held);
   for (const run of ended) log.info({ ...run }, "ended a held run whose PR left Shepherd before adoption");
-  if (unreadable.size > 0) log.warn({ runs: [...unreadable] }, "left held runs unadopted: their PR could not be read");
-  return unreadable;
+  for (const [runId, cause] of unreadable) log.warn({ runId, cause }, "left a held run unadopted: its PR could not be read");
+  return new Set(unreadable.keys());
 }
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
