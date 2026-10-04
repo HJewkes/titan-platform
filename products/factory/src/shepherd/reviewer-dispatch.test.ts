@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
+import { ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 
 const PROFILE = "rv-readonly";
@@ -224,6 +225,21 @@ describe("agentChatReviewerDispatch spawn", () => {
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
     expect((error as Error).message).toBe(guard);
+  });
+
+  it("reports a refusal coded machine_hold as a machine hold", async () => {
+    const error = await failure(dispatchOver(`echo 'Not spawned: machine stop holds: load5 34'\necho 'code: machine_hold retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerMachineHold);
+    expect((error as Error).message).toBe("machine stop holds: load5 34 (machine_hold)");
+  });
+
+  it("keeps a machine guard refusal coded machine_headless_limit plain busy, not a machine hold", async () => {
+    const guard = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents)";
+    const error = await failure(dispatchOver(`echo 'Not spawned: ${guard}'\necho 'code: machine_headless_limit retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect(error).not.toBeInstanceOf(ReviewerMachineHold);
   });
 
   it("reports any other refusal marked retryable as busy, naming its code", async () => {
