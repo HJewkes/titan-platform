@@ -111,12 +111,52 @@ describe("shepherd surfaces on titan-factory serve", () => {
 });
 
 describe("titan-factory shepherd with no server", () => {
-  it("registers against the database, and a second register returns the same run", async () => {
+  it("register exits 69 with one stderr line naming the port and --offline, and records no run", async () => {
     const fixture = shepherdFixture({ frozen: true });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
     const common = ["--db", dbFile(), "shepherd"];
     const port = String(await deadPort());
-    const args = [`${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--json", "--port", port];
+
+    const result = await cli([...common, "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--port", port], fixture);
+    const list = await cli([...common, "list", "--state", "all", "--json", "--port", port], fixture);
+
+    expect(result.code).toBe(69);
+    expect(result.out).toBe("");
+    expect(result.err.split("\n").filter(Boolean)).toEqual([expect.stringMatching(new RegExp(`port ${port}.*--offline`))]);
+    expect(JSON.parse(list.out)).toEqual([]);
+  });
+
+  it("register --offline records the run here with today's output", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const port = String(await deadPort());
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--port", port], fixture);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toMatch(new RegExp(`^run \\S+ shepherd-pr ${REPO}#1 \\(${BRANCH}\\): `));
+    expect(result.err).toBe(`no titan-factory serve answered on port ${port}, so the run was recorded here; titan-factory serve drives it\n`);
+  });
+
+  it("status reads an offline registration from the database", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const common = ["--db", dbFile(), "shepherd"];
+    const port = String(await deadPort());
+
+    const registered = await cli([...common, "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--json", "--port", port], fixture);
+    const status = await cli([...common, "status", `${REPO}#1`, "--json", "--port", port], fixture);
+
+    expect(status.code).toBe(0);
+    expect(JSON.parse(status.out)).toMatchObject([{ repo: REPO, pr: 1, runId: JSON.parse(registered.out).runId }]);
+  });
+
+  it("register --offline against the database twice returns the same run", async () => {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const common = ["--db", dbFile(), "shepherd"];
+    const port = String(await deadPort());
+    const args = [`${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--json", "--port", port];
 
     const first = await cli([...common, "register", ...args], fixture);
     const second = await cli([...common, "register", ...args], fixture);
@@ -127,14 +167,14 @@ describe("titan-factory shepherd with no server", () => {
     expect(list.out).toMatch(new RegExp(`^${REPO}#1 `));
   });
 
-  it("register --json carries previousRunId when it replaces a failed run", async () => {
+  it("register --offline --json carries previousRunId when it replaces a failed run", async () => {
     const fixture = shepherdFixture({ frozen: true });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
     const dbPath = dbFile();
     const failedRunId = await seedFailedRegistration(fixture, dbPath);
     const port = String(await deadPort());
 
-    const result = await cli(["--db", dbPath, "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--json", "--port", port], fixture);
+    const result = await cli(["--db", dbPath, "shepherd", "register", `${REPO}#1`, "--task", "demo/T-1", "--implementer", "impl-a", "--offline", "--json", "--port", port], fixture);
 
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out)).toMatchObject({ created: true, previousRunId: failedRunId });
