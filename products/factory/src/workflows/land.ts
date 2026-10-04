@@ -39,6 +39,18 @@ export interface LandInput {
   method?: MergeMethod;
   /** Which entry into `land` this is within one run; a pilot that re-enters after a rerun or a new head passes the next round. */
   round?: number;
+  /** Updates since the last human gate, counted across every round of the run; a caller that re-enters `land` passes the same bound each time. */
+  updateBound?: UpdateBound;
+}
+
+export interface UpdateBound {
+  sinceGate: number;
+  /** The heads each of those updates started from, so a stuck-behind gate names them. */
+  from: string[];
+}
+
+export function newUpdateBound(): UpdateBound {
+  return { sinceGate: 0, from: [] };
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
@@ -94,9 +106,7 @@ interface LandState {
   round: number;
   cycle: number;
   updates: number;
-  updatesSinceGate: number;
-  /** The heads each update since the last gate started from, so a stuck-behind gate names them. */
-  updatedFrom: string[];
+  bound: UpdateBound;
   merges: number;
   decisions: number;
   /** Heads a resolved approve-merge gate covers: the approved head plus heads this run's updates built on it. */
@@ -113,7 +123,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, updatesSinceGate: 0, updatedFrom: [], merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
+  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
@@ -129,16 +139,15 @@ function roundId(name: string, round: number, n?: number): string {
 }
 
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
-  if (state.updatesSinceGate >= MAX_UPDATE_CYCLES) {
+  if (state.bound.sinceGate >= MAX_UPDATE_CYCLES) {
     const why = stuckBehindReason(state, ci.headSha);
     const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
     if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
-    state.updatesSinceGate = 0;
-    state.updatedFrom = [];
+    resetBound(state.bound);
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  state.updatesSinceGate += 1;
-  state.updatedFrom.push(ci.headSha);
+  state.bound.sinceGate += 1;
+  state.bound.from.push(ci.headSha);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   return undefined;
@@ -146,8 +155,8 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
 
 /** The base kept moving while each updated head's CI ran; the owner sees every head the updates started from. */
 function stuckBehindReason(state: LandState, headSha: string): string {
-  const heads = [...state.updatedFrom, headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
-  return `still behind its base after ${state.updatesSinceGate} updates, heads ${heads}`;
+  const heads = [...state.bound.from, headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
+  return `still behind its base after ${state.bound.sinceGate} updates, heads ${heads}`;
 }
 
 async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
@@ -192,13 +201,15 @@ async function decideMerge(ctx: WorkflowContext, input: LandInput, ci: CiSnapsho
 }
 
 /** Only a human answer restarts the update count; an allow per head must not let a racing base loop unasked. */
+function resetBound(bound: UpdateBound): void {
+  bound.sinceGate = 0;
+  bound.from = [];
+}
+
 function trust(state: LandState, headSha: string, by: LandState["trustedBy"]): void {
   state.trusted = new Set([headSha]);
   state.trustedBy = by;
-  if (by === "human") {
-    state.updatesSinceGate = 0;
-    state.updatedFrom = [];
-  }
+  if (by === "human") resetBound(state.bound);
 }
 
 function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], headSha: string, detail: string): LandOutcome {

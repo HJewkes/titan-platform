@@ -47,6 +47,8 @@ interface Replay {
   /** Heads at which a seat reviewer said FIX_FIRST. */
   seatObjections: string[];
   runId: string;
+  /** Reads of each head so far, for a head scripted with `unknownReads`. */
+  reads: Map<string, number>;
 }
 
 function headOf(replay: Replay, sha: string): HeadScript {
@@ -58,7 +60,10 @@ function headOf(replay: Replay, sha: string): HeadScript {
 function readHead(replay: Replay, pr: PullRequest): void {
   const head = headOf(replay, pr.headSha);
   const state = replay.wentBehind.has(pr.headSha) ? "behind" : (head.state ?? "clean");
-  Object.assign(pr, { mergeableState: state, behind: state === "behind" });
+  const read = replay.reads.get(pr.headSha) ?? 0;
+  replay.reads.set(pr.headSha, read + 1);
+  const unsettled = state === "behind" && read < (head.unknownReads ?? 0);
+  Object.assign(pr, { mergeableState: unsettled ? "unknown" : state, behind: state === "behind" });
   const runs = [successRun("validate", 1), successRun("dag-check", 2)];
   replay.fake.setRuns(pr.headSha, unreviewedBehind(head) ? runs.map((run) => ({ ...run, status: "in_progress", conclusion: null })) : runs);
   if (head.seatFixFirst && !replay.seatObjections.includes(pr.headSha)) replay.seatObjections.push(pr.headSha);
@@ -173,17 +178,17 @@ function openReplay(replay: Replay): FactoryHost {
   return host;
 }
 
-function startReplay(fixture: LedgerFixture): { host: FactoryHost; replay: Replay } {
+function startReplay(fixture: LedgerFixture, kind = "correctness"): { host: FactoryHost; replay: Replay } {
   const fake = fakeGitHub({ repo: REPO });
   const trace: Trace = { reviewers: 0, unscripted: [], fixers: [] };
-  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], runId: "" };
+  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], runId: "", reads: new Map() };
   const host = openReplay(replay);
   fake.reviewBypass = fixture.reviewBypass ?? false;
   fake.addPr({ headSha: fakeSha(`f${fixture.id}-h0`), mergeSha: fakeSha(`f${fixture.id}-test-merge`) });
   fake.prFiles.set(1, [{ path: "src/widget.ts", status: "modified" }]);
   fake.onGetPr = (pr) => readHead(replay, pr);
   replay.runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
-  replay.store.register({ repo: REPO, pr: 1, runId: replay.runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "correctness" });
+  replay.store.register({ repo: REPO, pr: 1, runId: replay.runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind });
   return { host, replay };
 }
 
@@ -251,6 +256,8 @@ describe("a tree-equal update after a seat reviewer's FIX_FIRST", () => {
 describe("a base that moves on every read", () => {
   const BUSY: Omit<LedgerFixture, "heads"> = { id: 98, gate: "approve-merge", story: "main moves while each updated head's CI runs", today: { outcome: "merged", gates: [], reviewers: 1, fixers: 0 } };
   const behindCarry: HeadScript = { state: "behind", treeEqual: true };
+  /** `land` runs `land-rules` once per round, so the recorded steps tell how many rounds the run took. */
+  const rounds = (host: FactoryHost, replay: Replay) => Object.keys(host.runtime.status(replay.runId)!.stepResults).filter((id) => id.startsWith("land-rules")).length;
   const short = (replay: Replay) => replay.seen.map((sha) => sha.slice(0, 7)).join(" -> ");
 
   it("reviews the behind head first, then merges after bounded updates that each carry the MERGE", async () => {
@@ -276,5 +283,29 @@ describe("a base that moves on every read", () => {
     expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
     expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates, heads ${short(replay)}`);
+  });
+
+  it("does not spend a round on a behind head while GitHub's mergeable_state is unknown", async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"], unknownReads: 40 }, { treeEqual: true }];
+    const { host, replay } = startReplay({ ...BUSY, heads });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+
+    expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(rounds(host, replay)).toBe(1);
+  });
+
+  it("counts updates across rounds for a kind that never carries a MERGE, and stops at the bound", async () => {
+    const reviewedThenBehind: HeadScript = { reviews: ["MERGE"], goesBehind: true };
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 }, () => reviewedThenBehind)];
+    const { host, replay } = startReplay({ ...BUSY, heads }, "security");
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
+    const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
+
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(gate?.stepId).toBe("stuck-behind");
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates`);
   });
 });
