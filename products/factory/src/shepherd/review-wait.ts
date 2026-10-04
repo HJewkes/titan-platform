@@ -1,6 +1,11 @@
 /** The port throws this when the broker refused a start for a reason that clears with time, such as its machine guard; nobody was started. */
 export class ReviewerBrokerBusy extends Error {
-  override readonly name = "ReviewerBrokerBusy";
+  override readonly name: string = "ReviewerBrokerBusy";
+}
+
+/** The broker refused because the machine stop holds; a storm can outlast the busy wait, so the hold has its own, longer ceiling. */
+export class ReviewerMachineHold extends ReviewerBrokerBusy {
+  override readonly name = "ReviewerMachineHold";
 }
 
 /** The busy wait ran out with the broker still refusing; nobody was started, so the review never began. */
@@ -26,6 +31,8 @@ export const BUSY_FIRST_WAIT_MS = 60_000;
 export const BUSY_LONGEST_WAIT_MS = 8 * 60_000;
 /** One reviewer's own verdict budget: a broker still busy after it is saturated, not briefly full, so the owner hears of it. */
 export const DEFAULT_BUSY_WAIT_MS = 30 * 60_000;
+/** A machine stop lifts on its own once load settles, so its wait is spent apart from the busy budget, up to this ceiling. */
+export const DEFAULT_HOLD_WAIT_MS = 3 * 60 * 60_000;
 
 export interface BusyTiming {
   now: () => number;
@@ -35,18 +42,37 @@ export interface BusyTiming {
 
 const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
 
-/** Asks again after a busy refusal, doubling the wait, until `busyWaitMs` has passed; `note` names each wait as it starts. */
+type BusyKind = "busy" | "hold";
+
+const kindOf = (error: ReviewerBrokerBusy): BusyKind => (error instanceof ReviewerMachineHold ? "hold" : "busy");
+
+function stillRefused(error: ReviewerBrokerBusy, kind: BusyKind, budgetMs: number): ReviewerStillBusy {
+  const why = kind === "hold" ? "still held by the machine stop" : "still refused";
+  return new ReviewerStillBusy(`${error.message} (${why} after ${minutes(budgetMs)})`, { cause: error });
+}
+
+/**
+ * Asks again after a busy refusal, doubling the wait, until `busyWaitMs` of busy refusals has passed; time held by the machine
+ * stop is spent from `DEFAULT_HOLD_WAIT_MS` instead. Each stretch counts against the refusal that began it. `note` names each wait as it starts.
+ */
 export async function whileBrokerBusy<T>(timing: BusyTiming, signal: AbortSignal, note: (text: string) => void, ask: () => Promise<T>): Promise<T> {
-  const until = timing.now() + timing.busyWaitMs;
+  const budget: Record<BusyKind, number> = { busy: timing.busyWaitMs, hold: DEFAULT_HOLD_WAIT_MS };
+  const spent: Record<BusyKind, number> = { busy: 0, hold: 0 };
+  let mark = timing.now();
+  let waitingOn: BusyKind | undefined;
   for (let wait = BUSY_FIRST_WAIT_MS; ; wait = Math.min(wait * 2, BUSY_LONGEST_WAIT_MS)) {
     try {
       return await ask();
     } catch (error) {
       if (!(error instanceof ReviewerBrokerBusy)) throw error;
-      const left = until - timing.now();
-      if (left <= 0) throw new ReviewerStillBusy(`${error.message} (still refused after ${minutes(timing.busyWaitMs)})`, { cause: error });
+      const kind = kindOf(error);
+      spent[waitingOn ?? kind] += timing.now() - mark;
+      const left = budget[kind] - spent[kind];
+      if (left <= 0) throw stillRefused(error, kind, budget[kind]);
       const ms = Math.min(wait, left);
-      note(`${error.message}; asking again in ${minutes(ms)}`);
+      note(`${kind === "hold" ? "held by the machine stop: " : ""}${error.message}; asking again in ${minutes(ms)}`);
+      mark = timing.now();
+      waitingOn = kind;
       await timing.sleep(ms, signal);
     }
   }
