@@ -1,3 +1,4 @@
+import { CHECK_CONCLUSIONS, type CheckConclusion } from "./check-run-create.js";
 import type { MergeMethod } from "./port.js";
 
 /** A value that would change which GitHub resource a `gh api` path names; thrown before any call. */
@@ -81,4 +82,10 @@ export function checkMergeMethod(method: MergeMethod): MergeMethod {
 export function checkMarker(marker: string): string {
   if (marker.length === 0) throw new GitHubInputError("marker", marker, "expected a non-empty string");
   return marker;
+}
+
+/** A check run posted under an App token may only end in these; anything else is refused before a wire call. */
+export function checkConclusion(conclusion: string): CheckConclusion {
+  if (!(CHECK_CONCLUSIONS as readonly string[]).includes(conclusion)) throw new GitHubInputError("conclusion", conclusion, `expected one of ${CHECK_CONCLUSIONS.join(", ")}`);
+  return conclusion as CheckConclusion;
 }

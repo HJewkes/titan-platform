@@ -143,7 +143,7 @@ describe("shepherd view stalls", () => {
       expect(entries).toEqual([expect.objectContaining({ kind: "step", stepId: "sh-wake-implementer:0" })]);
     });
 
-    it.each(["sh-wake-implementer:0", "sh-wake-fix-first:0"])("reads a run at %s as fixing", (step) => {
+    it.each(["sh-wake-implementer:0", "sh-wake-fix-first:0", "sh-repair:0"])("reads a run at %s as fixing", (step) => {
       expect(watchRow({ registration, run: pausedAt(step) }).phase).toBe("fixing");
     });
 

@@ -1,0 +1,54 @@
+name: Codewatch metrics
+
+# Full-tree metric rows for audits to cite (M4 A3); audits read the artifact, never a local graph.db.
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Repository under HJewkes to measure
+        type: choice
+        options: [titan-platform, titan-design]
+        required: true
+      ref:
+        description: Branch, tag or sha of that repository
+        type: string
+        default: main
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Its own .git makes the target the id root, so rows carry paths relative to the measured repo.
+      - uses: actions/checkout@v4
+        with:
+          repository: HJewkes/${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          path: target
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @titan-design/code-graph... run build
+      - name: Resolve the target sha
+        id: target
+        run: echo "sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Write the metric rows
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: node scripts/codewatch-report.mjs full --tree target --out codewatch-metrics.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codewatch-metrics-${{ inputs.repo }}-${{ steps.target.outputs.sha }}
+          path: codewatch-metrics.json
+          if-no-files-found: error

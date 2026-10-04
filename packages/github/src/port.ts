@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
-import { checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
+import type { CreateCheckRunRequest } from "./check-run-create.js";
+import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -131,6 +132,8 @@ export interface GitHubWire {
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
+  createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
@@ -171,6 +174,8 @@ export interface GitHubPort {
   checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** The latest run for each check name on `sha`. */
   latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
+  createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
   /** The last `lines` lines of an Actions job's log. */
   jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
@@ -225,6 +230,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
     checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
+    createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
