@@ -58,18 +58,19 @@ export const SEAT_REVIEWER = /-review(-r[0-9]+)?$/;
 
 interface AtHead {
   message: ReviewerMessage;
-  verdict: "MERGE" | "FIX_FIRST";
+  verdict: "MERGE" | "FIX_FIRST" | "WAIT";
 }
 
-/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time the FIX_FIRST wins. */
+/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time a FIX_FIRST or WAIT beats a MERGE. */
 export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMessage[]): AtHead | undefined {
   let newest: AtHead | undefined;
   for (const message of messages) {
     const block = parseVerdictBlock(message.text);
-    if (!block.ok || !Number.isFinite(message.writtenAt)) continue;
+    const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;
+    if (!verdict || !("repo" in block) || !Number.isFinite(message.writtenAt)) continue;
     if (block.repo.toLowerCase() !== target.repo.toLowerCase() || block.pr !== target.pr || block.head !== target.head) continue;
-    const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && block.verdict === "FIX_FIRST");
-    if (later) newest = { message, verdict: block.verdict };
+    const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && verdict !== "MERGE");
+    if (later) newest = { message, verdict };
   }
   return newest;
 }
@@ -130,7 +131,7 @@ function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
   if (briefs.some((brief) => namesPr(target, brief))) return true;
   return read.messages.some((message) => {
     const block = parseVerdictBlock(message.text);
-    return block.ok && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
+    return "repo" in block && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
   });
 }
 
@@ -171,6 +172,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message);
+    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished` };
     failed ??= failedRead(name, target, read, warn);
   }
   return failed ?? { kind: "clear" };

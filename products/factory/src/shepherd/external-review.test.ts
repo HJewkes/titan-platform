@@ -52,6 +52,34 @@ describe("newestAtHead", () => {
   });
 });
 
+describe("a seat reviewer's WAIT", () => {
+  it("is the newest verdict at the head, never a MERGE", () => {
+    expect(newestAtHead(target, [said(SEAT, verdictAt("WAIT"), 2)])?.verdict).toBe("WAIT");
+  });
+
+  it("beats a MERGE written at the same time", () => {
+    expect(newestAtHead(target, [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 2)])?.verdict).toBe("WAIT");
+  });
+
+  it("never reads clear, and names the unfinished checks", async () => {
+    const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("WAIT"), 5)]), target);
+
+    expect(result).toMatchObject({ kind: "none", reason: expect.stringContaining("WAIT") });
+  });
+
+  it("turns Shepherd's MERGE into a blocking none", async () => {
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("WAIT"), 5)]), target, shepherdMerge);
+
+    expect(result.kind).toBe("none");
+  });
+
+  it("clears once the same reviewer later answers MERGE at the same head", async () => {
+    const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("WAIT"), 5), said(SEAT, verdictAt("MERGE"), 6)]), target);
+
+    expect(result).toEqual({ kind: "clear" });
+  });
+});
+
 describe("seatFixFirst", () => {
   it("returns a seat reviewer's FIX_FIRST at the head with its findings and its identity", async () => {
     const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5)]), target);

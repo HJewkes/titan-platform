@@ -63,8 +63,9 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   const block = parseVerdictBlock(final.text);
-  if (!block.ok) return { kind: "none" };
+  if (!("repo" in block)) return { kind: "none" };
   if (block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) return { kind: "none" };
+  if (!block.ok) return { kind: "none", reason: "wait" };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }

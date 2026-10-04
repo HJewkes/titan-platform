@@ -77,6 +77,14 @@ describe("acceptVerdict", () => {
     expect(JSON.stringify(result)).not.toContain("Looked at it");
   });
 
+  it("reads a WAIT block for this PR and head as no verdict, with the reason wait, never a MERGE", () => {
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT" }) })])).toEqual({ kind: "none", reason: "wait" });
+  });
+
+  it("reads a WAIT block for another head as plain none", () => {
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+  });
+
   it("carries a FIX_FIRST verdict with the reviewer's words, which the implementer has to read", () => {
     const text = block({ verdict: "FIX_FIRST" });
 
