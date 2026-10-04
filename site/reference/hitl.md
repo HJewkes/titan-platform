@@ -30,12 +30,15 @@ a restart. [`workflow`](/reference/workflow) builds its `assisted()` step on thi
 Verified against 0.2.0.
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import { openGate, resolveGate } from "@titan-design/hitl";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
 
-const store = new SqliteGateStore(openDatabase("~/.local/state/thing/gates.sqlite3"));
+const dbPath = path.join(os.homedir(), ".local/state/thing/gates.sqlite3");
+const store = new SqliteGateStore(openDatabase(dbPath));
 
 const gate = openGate(store, {
   id: "deploy-approval",

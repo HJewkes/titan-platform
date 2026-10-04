@@ -6,7 +6,7 @@ import { runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from
 import { systemCheckPorts } from "./service-ports.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-export type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down";
+type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -17,7 +17,7 @@ export interface CheckPorts extends ServicePorts {
   installedBuildSha: () => string;
 }
 
-export interface CheckResult {
+interface CheckResult {
   ok: boolean;
   cause: Cause | null;
   message: string;
@@ -29,7 +29,7 @@ export interface CheckResult {
 }
 
 /** A job that exited non-zero and has started at least this many times, and whose process is missing or younger than the window, is crash-looping. */
-export const CRASH_LOOP_MIN_RUNS = 3;
+const CRASH_LOOP_MIN_RUNS = 3;
 export const CRASH_LOOP_WINDOW_MS = 5 * 60_000;
 const UNKNOWN = "unknown";
 const FAILURE = 1;
@@ -75,7 +75,7 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
 }
 
 /** Never starts, stops or restarts the job: it reads launchctl, ps, /health and the installed build only. */
-export async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
+async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const job = await readJob(ports);
   if (!job.loaded) return verdict("not loaded", `${SERVICE_LABEL} is not loaded; run titan-factory service install`, job, null);
   const health = await settledHealth(ports, port);
@@ -115,7 +115,7 @@ function judgeRunning(job: Job, health: Record<string, unknown>, installed: stri
   return verdict(null, `ok: /health answers from pid ${job.pid} with github ok`, job, health);
 }
 
-export async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json: boolean): Promise<number> {
+async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json: boolean): Promise<number> {
   const result = await diagnoseService(ports, port);
   io.stdout(json ? `${JSON.stringify(result)}\n` : `${result.cause === null ? "" : `${result.cause}: `}${result.message}\n`);
   return result.ok ? 0 : FAILURE;

@@ -48,6 +48,8 @@ interface Ctx {
   conflict: number;
   inversion: Required<InversionOptions>;
   blocked: BlockedPattern[];
+  /** `type:bulletId` of every vote counted so far in this batch. */
+  voted: Set<string>;
 }
 
 /**
@@ -74,6 +76,7 @@ function makeContext(store: PlaybookStore, options: CurateOptions): Ctx {
     conflict: options.conflictThreshold ?? 0.5,
     inversion: { minHarmful: options.inversion?.minHarmful ?? 3, harmfulToHelpfulRatio: options.inversion?.harmfulToHelpfulRatio ?? 2 },
     blocked: store.blockedPatterns(),
+    voted: new Set(),
   };
 }
 
@@ -81,6 +84,10 @@ function dedupeDeltas(deltas: readonly ParsedDelta[], report: CurationReport): P
   const seen = new Set<string>();
   const kept: ParsedDelta[] = [];
   for (const delta of deltas) {
+    if (delta.type === "helpful" || delta.type === "harmful") {
+      kept.push(delta);
+      continue;
+    }
     const key = delta.type === "add" ? contentKey(delta.content) : JSON.stringify(delta);
     if (seen.has(key)) report.skipped.push({ delta, reason: "duplicate delta" });
     else {
@@ -115,7 +122,8 @@ function applyAdd(ctx: Ctx, delta: AddDelta): void {
   const live = ctx.store.list();
   const duplicate = findDuplicate(live, delta.content, ctx.nearDup);
   if (duplicate) {
-    reinforce(ctx, duplicate.id, "restated by a new add");
+    if (claimVote(ctx, "helpful", duplicate.id)) reinforce(ctx, duplicate.id, "restated by a new add");
+    else ctx.report.skipped.push({ delta, reason: "bullet already voted helpful in this batch" });
     return;
   }
   const bullet = ctx.store.add({ ...addFields(delta), sourceSessions: ctx.provenance });
@@ -128,8 +136,20 @@ function applyFeedback(ctx: Ctx, delta: Extract<ParsedDelta,{ type: "helpful" | 
     ctx.report.skipped.push({ delta, reason: "unknown bullet" });
     return;
   }
+  if (!claimVote(ctx, delta.type, delta.bulletId)) {
+    ctx.report.skipped.push({ delta, reason: `bullet already voted ${delta.type} in this batch` });
+    return;
+  }
   ctx.store.recordFeedback(delta.bulletId, delta.type, { sessionRef: ctx.provenance[0]?.sessionRef, reason: delta.reason });
   (delta.type === "helpful" ? ctx.report.reinforced : ctx.report.penalized).push(delta.bulletId);
+}
+
+/** Whatever the reason or source (explicit feedback or an add folding in), a bullet gets one vote of each kind per batch. */
+function claimVote(ctx: Ctx, type: "helpful" | "harmful", bulletId: string): boolean {
+  const key = `${type}:${bulletId}`;
+  if (ctx.voted.has(key)) return false;
+  ctx.voted.add(key);
+  return true;
 }
 
 function applyReplace(ctx: Ctx, delta: Extract<ParsedDelta,{ type: "replace" }>): void {

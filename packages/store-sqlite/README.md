@@ -11,9 +11,12 @@ initiative's `sources/research-store-synthesis.md`.
 ## Open and migrate
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { openDatabase, runMigrations, kitMigration } from "@titan-design/store-sqlite";
 
-const db = openDatabase("~/.local/state/thing/index.sqlite3"); // WAL + foreign keys on
+const dbPath = path.join(os.homedir(), ".local/state/thing/index.sqlite3");
+const db = openDatabase(dbPath); // WAL + foreign keys on
 runMigrations(db, [
   kitMigration(1, { edge: true, watermark: true, spanFts: "notes", cacheBlob: true }),
   { version: 2, up: (db) => db.exec("CREATE TABLE my_domain_table (...)") },

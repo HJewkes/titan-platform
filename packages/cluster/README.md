@@ -2,7 +2,9 @@
 
 Deterministic template mining for tool output and error blobs: a native TypeScript
 Drain (ICWS 2017) with the per-blob signature and frozen-mask recipe in front of it.
-Identical blob shapes get identical template ids regardless of order or restarts.
+Template ids are deterministic for a given input order and stable across restarts
+through snapshot and restore. Lines that Drain merges share the id of whichever line
+founded the cluster, so the same lines in a different order can get a different id.
 
 Tier 0 of the titan-platform DAG. No dependencies. Extracted from active-work's AW-28
 miner (TP-5).
@@ -27,14 +29,16 @@ const result = clusterer.cluster({ partition: "Bash", text: toolResultText });
 3. `DrainTree` clusters the masked tokens: fixed-depth prefix tree, token-position
    similarity, templates that only ever loosen. One tree per partition via
    `DrainTreeRegistry`, so a `tsc` line and a `vitest` line never merge.
-4. `templateId` is a sha256 of `(partition, maskedSignature)`.
+4. `templateId` is a sha256 of `(partition, maskedSignature)`, taken from the line that
+   founds a Drain cluster and bound to that cluster for good. Later lines Drain merges
+   into the cluster reuse the founder's id, even when their own masked signature differs.
 
 ## Restarts
 
 `clusterer.snapshot()` captures every tree with its learned wildcards and its
 cluster-to-template bindings; `Clusterer.fromSnapshot(snapshot)` restores them. Storing
 the snapshot and the occurrences is the caller's concern. A chunked sequence of runs
-converges on the same templates as one all-at-once run.
+converges on the same templates and ids as one all-at-once run over the same input order.
 
 ## Tuning
 

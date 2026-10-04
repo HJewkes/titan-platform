@@ -13,16 +13,21 @@ are all parameters.
 ## Run a daemon
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { mountStaticApp, startDaemon } from "@titan-design/daemon";
+
+const stateDir = path.join(os.homedir(), ".local/state/my-product");
+const watchRoot = path.join(os.homedir(), "my-product/data");
 
 const handle = await startDaemon({
   registry,                                   // CommandRegistry<Ctx>
   createContext: (surface) => ({ warnings: [], format: "json", surface }),
   version: "1.4.0",
-  stateDir: "~/.local/state/my-product",      // holds daemon.pid + daemon.meta.json
+  stateDir,                                   // holds daemon.pid + daemon.meta.json
   port: 7400,                                 // 0 binds an ephemeral port
   toolPrefix: "my__",                         // omit to skip the /mcp route
-  watchRoot: "~/my-product/data",             // omit to skip live reload
+  watchRoot,                                  // omit to skip live reload
   health: () => ({ index: indexer.status() }),
   mountRoutes: (app) => mountStaticApp(app, { root: "dist/ui", base: "/ui" }),
 });
