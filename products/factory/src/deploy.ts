@@ -9,7 +9,7 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
   /** Runs in the service checkout. */
   git: (args: readonly string[]) => Promise<CommandResult>;
-  /** Runs in the service checkout under the worktree setup env, so pnpm never switches versions mid-deploy. */
+  /** Runs in the service checkout under the worktree setup env, except that pnpm honors the checkout's packageManager pin. */
   pnpm: (args: readonly string[]) => Promise<CommandResult>;
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
