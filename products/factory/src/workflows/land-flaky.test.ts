@@ -30,8 +30,9 @@ function world(runs: (reruns: number, headSha: string) => CheckRun[], flakyCheck
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, runs(fake.effects.rerunFailedJobs, pr.headSha));
   const sleeps: number[] = [];
+  let clock = 0;
   const port = githubPort(fake.wire);
-  const routes = landPrRoutes({ port: hooks.port?.(port) ?? port, now: () => 0, sleep: async (ms) => { sleeps.push(ms); await hooks.onSleep?.(fake, ms); }, flakyChecks });
+  const routes = landPrRoutes({ port: hooks.port?.(port) ?? port, now: () => clock, sleep: async (ms) => { clock += ms; sleeps.push(ms); await hooks.onSleep?.(fake, ms); }, flakyChecks });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, sleeps, runId: host.runtime.start("land-pr", { repo: REPO, pr: "1" }) };
@@ -89,9 +90,17 @@ describe("flaky check rerun", () => {
   });
 
   it("a rerun GitHub refuses wakes without claiming a rerun", async () => {
-    const { host, runId } = world(() => [run("validate", 1, "failure"), dagCheck()], { [REPO.toLowerCase()]: LIST }, {
+    const { host, runId, sleeps } = world(() => [run("validate", 1, "failure"), dagCheck()], { [REPO.toLowerCase()]: LIST }, {
       port: (port) => ({ ...port, rerunFailed: async () => ({ done: false, skipped: "in-progress" }) }),
     });
+
+    await gateOpened(host, gateId(runId, "ci-failed"));
+
+    expect(sleeps).not.toContain(5_000);
+  });
+
+  it("an older failed run beside a newer one on the head ends in a gate, not a loop", async () => {
+    const { host, runId } = world(() => [run("validate", 1, "failure"), { ...run("validate", 9, "success"), startedAt: "2026-01-02T00:00:00Z" }, dagCheck()], { [REPO.toLowerCase()]: LIST });
 
     await gateOpened(host, gateId(runId, "ci-failed"));
   });

@@ -39,40 +39,49 @@ function isFlakyRed(input: FlakyTarget, red: CiSnapshot, flaky: FlakyState): boo
   return failing.every((check) => check.workflowRunId !== null && rule.checks.includes(check.name));
 }
 
-/** True when the caller should read CI again instead of reporting the red: the head was rerun, or moved on during the wait. False falls through to the red path. */
+/**
+ * True when the caller should read CI again instead of reporting the red: the head was rerun, or something else changed it during the wait.
+ * Every true spends this head's budget or follows a new head, so the caller's loop reaches its deadline or a gate.
+ * False falls through to the red path.
+ */
 export async function rerunIfFlaky(port: GitHubPort, input: FlakyTarget, red: CiSnapshot, timing: FlakyTiming, signal: AbortSignal, flaky: FlakyState): Promise<boolean> {
   if (!isFlakyRed(input, red, flaky)) return false;
   const failing = red.failing ?? [];
   await timing.sleep(flaky.rules[input.repo.toLowerCase()]!.waitSeconds * 1000, signal);
   const state = await failedRunsState(port, input, red.headSha, failing);
   if (state === "unknown") return false;
-  if (state === "moved") return true;
-  if (!(await rerunAll(port, input.repo, failing))) return false;
+  if (state === "changed") {
+    flaky.rerun.add(flakyKey(input, red.headSha));
+    return true;
+  }
+  const rerun = await rerunAll(port, input.repo, failing);
+  if (!rerun) return false;
   flaky.rerun.add(flakyKey(input, red.headSha));
   const clock = deadline({ ...timing, timeoutMs: 5 * 60_000 });
   while (!clock.expired() && !(await replaced(port, input, red.headSha, failing))) await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   return true;
 }
 
-/** The wait is long enough for a push or a manual rerun, so the failed runs are read again before anything is rerun. */
-async function failedRunsState(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<"failed" | "moved" | "unknown"> {
-  const read = await Promise.all([port.getPr(input.repo, input.pr), port.latestCheckRuns(input.repo, headSha)]).catch(() => undefined);
+/** The wait is long enough for a push or a manual rerun, so the failed runs are read again, from the same list `readCi` reads, before anything is rerun. */
+async function failedRunsState(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<"failed" | "changed" | "unknown"> {
+  const read = await Promise.all([port.getPr(input.repo, input.pr), port.checkRuns(input.repo, headSha)]).catch(() => undefined);
   if (read === undefined) return "unknown";
-  if (read[0].headSha !== headSha || read[0].state !== "open") return "moved";
+  if (read[0].headSha !== headSha || read[0].state !== "open") return "changed";
   const stillFailed = failing.every((check) => read[1].some((run) => run.url === check.url && run.status === "completed"));
-  return stillFailed ? "failed" : "moved";
+  return stillFailed ? "failed" : "changed";
 }
 
-/** False when GitHub refused any rerun (e.g. a run still in progress), so no rerun is claimed. */
+/** False when GitHub refused every rerun (e.g. a run still in progress); a partial refusal still counts, because a rerun is under way. */
 async function rerunAll(port: GitHubPort, repo: string, failing: FailingCheck[]): Promise<boolean> {
-  let all = true;
-  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) all = (await port.rerunFailed(repo, runId)).done && all;
-  return all;
+  let any = false;
+  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) any = (await port.rerunFailed(repo, runId)).done || any;
+  return any;
 }
 
 async function replaced(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<boolean> {
   const read = await Promise.all([port.getPr(input.repo, input.pr), port.latestCheckRuns(input.repo, headSha)]).catch(() => undefined);
-  if (read === undefined || read[0].headSha !== headSha || read[0].state !== "open") return true;
+  if (read === undefined) return false;
+  if (read[0].headSha !== headSha || read[0].state !== "open") return true;
   const latest = read[1];
   return failing.every((check) => latest.find((run) => run.name === check.name)?.url !== check.url);
 }
