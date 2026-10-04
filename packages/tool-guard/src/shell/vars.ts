@@ -74,12 +74,17 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   if (name === null) return;
   for (const [target, , kind] of assigned) if (kind === "element") vars.set(target, null);
   if (DECLARERS.has(name)) {
-    const readonly = args.some((a) => READONLY_FLAG_RE.test(a.value));
+    const readonly = args.some(mayBeReadonlyFlag);
     for (const arg of args) declareArg(name, parseAssignment(arg), readonly, vars);
     return;
   }
   if (name === "printf") printfVar(args, vars);
   for (const target of clobberedNames(name, args)) vars.set(target, null);
+}
+
+/** An `r` option, or a word known only at run time, which may expand to one. */
+function mayBeReadonlyFlag(arg: WordToken): boolean {
+  return READONLY_FLAG_RE.test(arg.value) || (arg.dynamic && parseAssignment(arg) === null);
 }
 
 /** `export` and `readonly` reject an element name; a readonly element may or may not be written, so it is unknown. */
