@@ -1,5 +1,22 @@
 # @titan-design/session-miner
 
+## 0.4.1
+
+### Patch Changes
+
+- c67ee7a: Open the session graph with `normalized: true`, so search and the Codex path keep their `normalized_*` tables after session-graph migration 9.
+- Updated dependencies [b62813c]
+- Updated dependencies [212d8d1]
+- Updated dependencies [ed058da]
+- Updated dependencies [c67ee7a]
+- Updated dependencies [144755d]
+- Updated dependencies [f390fc0]
+- Updated dependencies [30e1fdf]
+  - @titan-design/daemon@0.3.3
+  - @titan-design/session-analytics@0.7.0
+  - @titan-design/session-graph@0.13.0
+  - @titan-design/github@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

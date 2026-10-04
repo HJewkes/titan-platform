@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.4.0
+
+### Minor Changes
+
+- f390fc0: Export a non-throwing `isRepo` predicate for bare `owner/name` slugs. `checkRepo` now shares its grammar: it applies GitHub's owner rules and refuses a `.git` suffix.
+
 ## 0.3.2
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @titan-design/session-graph
 
+## 0.13.0
+
+### Minor Changes
+
+- c67ee7a: Migration 9 stops storing bulk classes. A graph no longer has an `artifact` table, and the `normalized_*` tables exist only when `openSessionGraph` is given `normalized: true` (they are dropped only while empty, so a graph that holds rows keeps them). This changes the default: callers that read or write the Codex path must pass `normalized: true`. `resetIndex` clears only the tables that exist, `markMissing` no longer reads `normalized_source` when it is absent, and `refreshCorpus` accepts `present` source keys that count as existing without being visited. Adds `session_state`, `ensureNormalizedSchema` and `derivedTables`.
+
+### Patch Changes
+
+- ed058da: `refreshCorpus` expands a leading `~/` (or a bare `~`) in a stored source key before checking whether the file still exists, so transcripts keyed under the home directory no longer flip to missing. A new `homeDir` option overrides the OS home directory.
+- 30e1fdf: Expand a leading `~/` in a legacy source key before `readIndexedText` reads its spans; the new optional `homeDir` option defaults to the real home directory.
+
 ## 0.12.1
 
 ### Patch Changes

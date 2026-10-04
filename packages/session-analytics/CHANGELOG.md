@@ -1,5 +1,19 @@
 # @titan-design/session-analytics
 
+## 0.7.0
+
+### Minor Changes
+
+- 212d8d1: Add `reviewFillReport` and `reviewFillSchema`: review verdicts per context band and reviewer model, with the changes-requested rate and the share of approvals a later changes-requested review contradicted.
+- 144755d: Add the session timeline read model. `buildSessionTimeline(observations)` and `SessionTimelineAccumulator` fold session-read's normalized observations into turns, minute buckets with gaps of 10 minutes or more marked, a token and cost series with compaction marks, and tool, file, error and subagent breakdowns. `countAtOrBefore` answers how much had happened by a scrubbed time. `ToolFamily` is re-exported from session-read. The package now depends on `@titan-design/session-read` and `@titan-design/agent-protocol`.
+
+### Patch Changes
+
+- Updated dependencies [ed058da]
+- Updated dependencies [c67ee7a]
+- Updated dependencies [30e1fdf]
+  - @titan-design/session-graph@0.13.0
+
 ## 0.6.0
 
 ### Minor Changes
