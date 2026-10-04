@@ -54,6 +54,10 @@ describe("one fixture per bash.merge spelling", () => {
     expect(spellings(bash("git push origin", "release/1.4"))).toEqual(["bash.merge.git-push-implicit"]);
   });
 
+  it("bash.merge.git-push-protected: a push after a double-quoted $' that bash keeps literal", () => {
+    expect(spellings(bash(`echo "$'" ; git push origin HEAD:main ; echo "'"`))).toEqual(["bash.merge.git-push-protected"]);
+  });
+
   it("bash.merge.git-push-protected: git push origin HEAD while on master", () => {
     expect(bash("git push -u origin HEAD", "master")).toEqual([expect.objectContaining({ subject: { branch: "master" } })]);
   });

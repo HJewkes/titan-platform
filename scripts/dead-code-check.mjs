@@ -2,10 +2,11 @@
 // Lists exports no other module imports (R12), against the shrink-only baseline in .codewatch/dead-exports.json.
 // Exits 1 on a new dead export, or 0 under --report-only; with BASE_REF set, exits 1 whenever the baseline gained
 // an entry over BASE_REF's copy, report-only or not. Exits 2 on an index failure, a lock timeout, a BASE_REF that
-// names no commit, an unknown flag, or a --db path that does not exist or holds no "head" snapshot; an
-// out-of-memory abort under the 1 GB heap cap kills the process with V8's own code (134), not 2.
+// names no commit, an unknown flag, a --db path that does not exist or holds no "head" snapshot, or an
+// out-of-memory abort at the 1 GB heap cap, which the check runs under in a child process.
 // --update drops fixed entries from the baseline and never adds one. --db <path> reads the latest "head"
-// snapshot of an existing code-graph database instead of indexing, and so takes no lock.
+// snapshot of an existing code-graph database instead of indexing; it still takes the dag-check lock, which
+// every writer of that database holds, so it never reads a snapshot still being written.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,14 +14,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
-import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCleanups } from "./dag-check-lock.mjs";
+import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPT = fileURLToPath(import.meta.url);
+const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 const BASELINE_PATH = ".codewatch/dead-exports.json";
 const BASELINE = path.join(ROOT, BASELINE_PATH);
 const TIERS = ["packages", "products", "apps"];
 const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
+const HEAP_CAP_MB = 1024;
+const WORKER_FLAG = "--locked-worker";
 const IMPORTER_EDGES = new Set(["imports", "references", "calls"]);
 // Tests, fixtures, configs, scripts and app entries are roots: nothing imports them by design.
 const ROOT_ROLES = new Set(["test", "fixture", "config", "script", "entry"]);
@@ -255,21 +259,6 @@ async function indexGraph(workDir) {
   }
 }
 
-/** Indexes under the dag-check lock so the two checks never hold a graph in memory at once. */
-async function lockedIndex() {
-  const cleanups = [];
-  cleanupOnSignal(cleanups);
-  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log: (m) => console.error(m) });
-  cleanups.push(() => release(DEFAULT_LOCK_DIR));
-  const workDir = mkdtempSync(path.join(tmpdir(), "dead-check-"));
-  cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
-  try {
-    return await indexGraph(workDir);
-  } finally {
-    runCleanups(cleanups);
-  }
-}
-
 function currentFindings({ nodes, edges }) {
   const files = new Map(nodes.filter((n) => n.kind === "file").map((n) => [n.id, n]));
   return findDeadExports({ nodes, edges, entries: entryFiles(readPackages(), files) });
@@ -282,15 +271,12 @@ function checkGrowth(baseline, baseRef) {
   return growth;
 }
 
-async function main() {
-  if (!existsSync(ENTRY)) {
-    console.error(`${ENTRY} not found; run pnpm build first`);
-    return 2;
-  }
-  const { db, reportOnly, update } = parseCliArgs(process.argv.slice(2));
+/** Runs in the worker: the supervisor holds the lock and owns workDir, so an OOM here leaves neither behind. */
+async function check(workDir, args) {
+  const { db, reportOnly, update } = parseCliArgs(args);
   const baseline = readBaseline();
   const growth = update ? [] : checkGrowth(baseline ?? [], process.env.BASE_REF);
-  const findings = currentFindings(db ? await graphFromDb(db) : await lockedIndex());
+  const findings = currentFindings(db ? await graphFromDb(db) : await indexGraph(workDir));
   if (update) {
     writeFileSync(BASELINE, `${JSON.stringify(updatedBaseline(findings, baseline), null, 2)}\n`);
     return 0;
@@ -300,7 +286,34 @@ async function main() {
   return exitCode({ growth, fresh: result.fresh, reportOnly });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+/** Holds the dag-check lock for the whole check, so dead:check and dag:check never hold a graph in memory at once. */
+async function supervise(args) {
+  if (!existsSync(ENTRY)) {
+    console.error(`${ENTRY} not found; run pnpm build first`);
+    return 2;
+  }
+  parseCliArgs(args);
+  const cleanups = [];
+  const log = (m) => console.error(m);
+  cleanupOnSignal(cleanups);
+  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log });
+  cleanups.push(() => release(DEFAULT_LOCK_DIR));
+  const workDir = mkdtempSync(path.join(tmpdir(), "dead-check-"));
+  cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
+  try {
+    const workerArgs = [WORKER_FLAG, workDir, ...args];
+    return await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log });
+  } finally {
+    runCleanups(cleanups);
+  }
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  return args[0] === WORKER_FLAG ? check(args[1], args.slice(2)) : supervise(args);
+}
+
+if (process.argv[1] === SCRIPT) {
   main().then(
     (code) => process.exit(code),
     (err) => {

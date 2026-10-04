@@ -1,5 +1,22 @@
 # @titan-design/code-graph
 
+## 0.12.0
+
+### Minor Changes
+
+- 4f04f9b: Add the graph report derivations ported from codewatch: `buildReportContext`, `topHotspots`, `hotspotScoreOf`, `topBusFactorRisks`, `busFactorOf`, `topTestCoverageRisks`, `topCentralFiles`, `keepNode`, `lookupMetric`, `computeReportDrift`, and the report row types. Coupling clusters stay in codewatch because they read `git log` at report time.
+- ae94ba0: Add the package architecture stats ported from codewatch's `graph arch`: `computeArch`, its steps `filteredFileIds`, `aggregateEdges`, `toSortedEdges` and `packagesReferencedByEdges`, `bucketFilesByPackage`, the constants `EXTERNAL_BUCKET` and `DEFAULT_MAX_PACKAGE_SIZE`, and their types (`ComputeArchInput`, `PackageRoot`, `ArchResult`, `ArchPackage`, `ArchSubNode`, `ArchEdge`).
+- a009537: Add the dashboard derivations ported from codewatch's `graph dashboard`: `collectNodeMetrics`, `collectSymbolUtil`, `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, `buildBlastRadius`, `referencedNodes`, `buildSymbolCouplingPayload`, `computeHealth`, the coupling classifier `classifyCoupling` with its `pairKey`, and their types (`NodeMetrics`, `SymbolUtil`, `HotExport`, `BlastRadiusEntry`, `SymbolCouplingPayload` and rows, `HealthComponent`, `SnapshotContext`, `CouplingClass`).
+
+### Patch Changes
+
+- 5958e6e: Document the `<anonymous>` segment in symbol ids. An unbound callback, object or class adds one `<anonymous>` segment, and consecutive anonymous scopes collapse to one, so `src/a.ts#App.<anonymous>.onHash` is the id of a function declared inside a callback in `App`. Ids do not change; the README previously said anonymous scopes add no segment. Regression tests pin the rule.
+- 92243d7: Resolve qualified member symbols (`Box.add`, `outer.helper`) in `computeDeepAst` and in index-time signatures for non-exported methods and nested functions, which previously reported "declaration not found in source" or stored no signature.
+- 817f812: Rewrap an overlong line in the README symbol-id section.
+- 2f09c61: `validateRules` now rejects a rule whose `severity` is not `"error"` or `"warning"`, whose metric `kind` is outside `NodeKind`, or whose `exclude` is not a string array. These used to load silently: `"Error"` counted as a warning so the check still passed, a misspelled `kind` matched no node, and a string `exclude` was dropped.
+- Updated dependencies [3a4d4ed]
+  - @titan-design/store-sqlite@0.3.2
+
 ## 0.11.0
 
 ### Minor Changes

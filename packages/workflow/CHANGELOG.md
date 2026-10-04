@@ -1,5 +1,18 @@
 # @titan-design/workflow
 
+## 0.8.1
+
+### Patch Changes
+
+- 26a39c5: Emit the documented `step_failed` event before every `StepFailedError` a run context throws: retries exhausted, non-retryable failures, invalid output, and authority deny or refuse. A failing `mapItems` item now emits it too.
+- Updated dependencies [32adb30]
+- Updated dependencies [775af4a]
+- Updated dependencies [117c3ae]
+- Updated dependencies [3a4d4ed]
+  - @titan-design/authority@0.3.0
+  - @titan-design/hitl@0.5.0
+  - @titan-design/store-sqlite@0.3.2
+
 ## 0.8.0
 
 ### Minor Changes

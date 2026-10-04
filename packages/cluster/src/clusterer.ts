@@ -42,7 +42,7 @@ function tokenize(signatureLine: string): string[] {
 
 /**
  * The storage-free clustering pipeline: signature extraction, masking, Drain,
- * deterministic template id. Persist the snapshot to survive restarts with
+ * founder-order template id. Persist the snapshot to survive restarts with
  * learned wildcards and id bindings intact; where occurrences go is the
  * caller's concern.
  */

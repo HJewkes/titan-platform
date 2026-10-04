@@ -179,6 +179,23 @@ describe("ANSI-C strings", () => {
   ])("decodes %s", (src, value) => {
     expect(tokenize(src)).toEqual([expect.objectContaining({ type: "word", value, dynamic: false })]);
   });
+
+  it("decodes $'...' after a double-quoted part of the same word", () => {
+    expect(tokenize(`"a"$'\\x62'`)).toEqual([expect.objectContaining({ type: "word", value: "ab" })]);
+  });
+
+  it("keeps $' literal inside double quotes", () => {
+    expect(tokenize(`echo "$'x'"`)).toEqual([
+      expect.objectContaining({ value: "echo" }),
+      expect.objectContaining({ type: "word", value: "$'x'", dynamic: false }),
+    ]);
+  });
+
+  it("does not let a double-quoted $' swallow the commands after it", () => {
+    const src = `echo "$'" ; git push origin HEAD:main ; echo "'"`;
+
+    expect(gitLines(src)).toEqual(["push origin HEAD:main"]);
+  });
 });
 
 describe("variable references", () => {

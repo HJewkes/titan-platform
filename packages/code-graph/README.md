@@ -232,6 +232,11 @@ The rules engine turns a snapshot into pass/fail against a `check.json`. Seven r
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
 fail a check.
 
+Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
+is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
+not an array of strings. Each of those mistakes used to load silently and disable the rule:
+`"Error"` counted as a warning, `"files"` matched no node, and a string `exclude` was dropped.
+
 `metric-outlier` takes its threshold from the snapshot instead of the rule:
 `{ "type": "metric-outlier", "id": "long-fn", "metric": "symbol_body_lines", "kind": "symbol", "percentile": 95 }`
 flags every symbol strictly above the 95th percentile of `symbol_body_lines` over all symbols

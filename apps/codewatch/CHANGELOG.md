@@ -1,5 +1,14 @@
 # codewatch
 
+## 0.0.13
+
+### Patch Changes
+
+- f5729ea: Rename the app from `apps/code-report` to `apps/codewatch` (workspace package `codewatch`) and move it to `@titan-design/react-ui` ^0.21. No behaviour change: the dataset format, `CODE_REPORT_*` environment variables and temp directory names stay as they were.
+  - @titan-design/code-read@0.1.10
+  - @titan-design/react-app@0.1.1
+  - @titan-design/rpc-client@0.2.0
+
 ## 0.0.12
 
 ### Patch Changes
