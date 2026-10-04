@@ -57,6 +57,13 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
   });
 
+  it("reads each repo's flaky checks and wait, and rejects a repo that is not owner/name", () => {
+    const flakyChecks = { "acme/web": { checks: ["validate"], waitSeconds: 60 } };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { flakyChecks } }))).shepherd?.flakyChecks).toEqual(flakyChecks);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
+  });
+
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
   });

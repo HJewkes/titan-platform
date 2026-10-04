@@ -135,6 +135,10 @@ function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
   return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster })) }) };
 }
 
+function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {
+  return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
 
@@ -152,7 +156,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster);
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
-  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, ...overrides, seats });
+  return factoryRoutesFor({ port: githubPort(ghCliWire()), store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;
