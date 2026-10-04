@@ -14,11 +14,16 @@ import {
   openCodeGraph,
   patternToRegex,
   planPrune,
+  publicApiFiles,
   resolveChurnWindows,
   resolveGitRef,
   runPrune,
+  topDeadModules,
   topHotspots,
+  topUnusedExports,
   windowSuffix,
+  type GraphEdge,
+  type GraphNode,
   type HistoryMetricsOptions,
   type LoadedHistory,
   type TopMetricRow,
@@ -136,6 +141,25 @@ describe("report derivations", () => {
       baselineCoupling: [],
     });
     expect(drift.newHotspots.map((h) => [h.nodeId, h.score])).toEqual([["a.ts", 6]]);
+  });
+
+  it("lists unreferenced modules and exports, splitting off the public API", () => {
+    const nodes: GraphNode[] = [
+      { id: "index.ts", kind: "file", name: "index.ts", role: "barrel" },
+      { id: "api.ts", kind: "file", name: "api.ts" },
+      { id: "orphan.ts", kind: "file", name: "orphan.ts" },
+    ];
+    const edges: GraphEdge[] = [{ srcId: "index.ts", dstId: "api.ts", kind: "re-exports" }];
+    const symbols: GraphNode[] = [
+      { id: "api.ts#run", kind: "symbol", name: "run", parentId: "api.ts", attrs: { exported: true } },
+    ];
+    const ctx = buildReportContext({ nodes, metrics: [], excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+    const dead = topDeadModules(nodes, edges, ctx, 5);
+    const unused = topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 5);
+
+    expect(dead.map((r) => r.nodeId)).toEqual(["orphan.ts"]);
+    expect(unused.map((r) => [r.name, r.publicApi])).toEqual([["run", true]]);
   });
 });
 
