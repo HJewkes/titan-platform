@@ -7,6 +7,7 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
+import { copyDestination } from "./copy-destination.js";
 
 /** Commands that touch a credential file's metadata, never its contents. `ssh-add -l` names no file, so needs no entry. */
 const METADATA = new Set(["ls", "stat", "test", "[", "[[", "chmod", "ssh", "git"]);
@@ -52,7 +53,7 @@ function each(names: string[], spelling: SpellingId): Record<string, SpellingId>
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (isKeychainRead(cmd)) return [classified("bash.secret.keychain", { pattern: "keychain" })];
   const walker = cmd.name !== null && WALKERS.has(cmd.name);
-  const target = cmd.name !== null && COPIERS.has(cmd.name) ? cmd.args.filter((a) => !a.value.startsWith("-")).at(-1) : undefined;
+  const target = cmd.name !== null && COPIERS.has(cmd.name) ? copyDestination(cmd) : null;
   return commandMentions(cmd, ctx, GUARDED_PATHS.secret, walker)
     .filter((m) => !(m.site === "arg" && cmd.name !== null && METADATA.has(cmd.name)))
     .filter((m) => !(m.via === "contains" && m.word === target))

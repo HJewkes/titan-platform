@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_FILES_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import type { ReviewComment } from "./review-comment.js";
 import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -52,6 +53,8 @@ export interface FakeGitHub {
   compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
+  /** PR number to its inline review comments, resolved or not. */
+  reviewComments: Map<number, ReviewComment[]>;
 }
 
 export class FakeHttpError extends Error {
@@ -101,6 +104,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prChangedFiles: new Map(),
     compares: new Map(),
     comments: new Map(),
+    reviewComments: new Map(),
     addPr(fields) {
       const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
       prs.set(pr.number, pr);
@@ -184,6 +188,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       fake.comments.set(number, [...list, comment]);
       return { id: comment.id };
     },
+    listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
   };
   return fake;
 }
