@@ -41,7 +41,7 @@ every command with an invocation, where state and logs live, and how it fails.
   Codex transcripts, search, cluster failures, keep a playbook, serve over MCP and HTTP.
 - **[Retrieval eval](/guides/retrieval-eval)** — `retrieval-eval`: mine query and label
   pairs from transcripts and score candidate retrievers.
-- **[Code report](/guides/code-report)** — `apps/code-report`: index a repo, browse the
+- **[Code report](/guides/codewatch)** — `apps/codewatch`: index a repo, browse the
   report live, or export one HTML file.
 - **[Matrix hub](/guides/hub)** — `deploy/hub`: the Tuwunel and Caddy compose stack the
   human queue runs on.

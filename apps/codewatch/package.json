@@ -1,5 +1,5 @@
 {
-  "name": "code-report",
+  "name": "codewatch",
   "version": "0.0.12",
   "private": true,
   "description": "codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read",
@@ -20,7 +20,7 @@
   "dependencies": {
     "@titan-design/code-read": "workspace:*",
     "@titan-design/react-app": "workspace:*",
-    "@titan-design/react-ui": "^0.20.0",
+    "@titan-design/react-ui": "^0.21.2",
     "@titan-design/rpc-client": "workspace:*",
     "@titan-design/rpc-protocol": "workspace:*",
     "react": "^19.3.0",

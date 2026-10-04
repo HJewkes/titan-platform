@@ -55,7 +55,7 @@ export function createMinerContext(config: MinerConfig, options: BaseContext["fo
 /** A read-only graph belongs to another owner, so its schema and price rows are theirs to maintain. */
 function openMinerGraph(config: MinerConfig): SessionGraph {
   if (config.readonly) return openSessionGraph(config.dbPath, { readonly: true });
-  const graph = openSessionGraph(config.dbPath, { schemaVersion: MINER_SCHEMA_VERSION });
+  const graph = openSessionGraph(config.dbPath, { schemaVersion: MINER_SCHEMA_VERSION, normalized: true });
   runMigrations(graph.db, MINER_MIGRATIONS);
   reconcilePrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION, source: "session-analytics" });
   return graph;

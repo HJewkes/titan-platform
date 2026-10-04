@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS normalized_span (
 );
 `;
 
+/** Re-creates the opt-in tables migration 9 drops from a graph that held none of their rows. */
+export function ensureNormalizedSchema(db: Db): void {
+  db.exec(NORMALIZED_DDL);
+}
+
 /** Only the old transcript session table proves Claude provenance, never a ref prefix. */
 export function backfillClaudeAliases(db: Db, sessionIds?: readonly string[]): void {
   const insert = db.prepare("INSERT OR IGNORE INTO conversation(ref,harness,namespace,native_id,legacy_session_id) VALUES (?,?,?,?,?)");

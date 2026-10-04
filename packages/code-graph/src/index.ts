@@ -116,6 +116,37 @@ export {
   snapshotSymbolConsumers,
   snapshotSymbolCoupling,
 } from "./analysis/snapshot.js";
+export type {
+  BusFactorChange,
+  BusFactorRow,
+  CentralRow,
+  CouplingDelta,
+  CouplingRow,
+  DeadModuleRow,
+  GraphReportResult,
+  GrowthRiskRow,
+  HotspotDelta,
+  HotspotRow,
+  NewHotspot,
+  ReportDrift,
+  TestCoverageRow,
+  UnusedExportRow,
+  UntestedRiskRow,
+} from "./analysis/graph-report-types.js";
+export type { ReportContext, ReportContextInput } from "./analysis/graph-report-sections.js";
+export {
+  buildReportContext,
+  busFactorOf,
+  hotspotScoreOf,
+  keepNode,
+  lookupMetric,
+  topBusFactorRisks,
+  topCentralFiles,
+  topHotspots,
+  topTestCoverageRisks,
+} from "./analysis/graph-report-sections.js";
+export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
+export { computeReportDrift } from "./analysis/graph-report-drift.js";
 
 /** Convenience readers over one snapshot; the store carries the full query surface. */
 export { listEdges, listMetrics, listNodes } from "./read.js";

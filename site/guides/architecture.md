@@ -64,7 +64,7 @@ graph TD
   subgraph P["Products"]
     sessionMiner["session-miner"]
     retrievalEval["retrieval-eval"]
-    codeReport["code-report"]
+    codewatch["codewatch"]
     factory["factory"]
   end
 
@@ -125,10 +125,10 @@ graph TD
   retrievalEval --> embed
   retrievalEval --> retrieval
   retrievalEval --> storeSqlite
-  codeReport --> codeRead
-  codeReport --> reactApp
-  codeReport --> rpcClient
-  codeReport --> rpcProtocol
+  codewatch --> codeRead
+  codewatch --> reactApp
+  codewatch --> rpcClient
+  codewatch --> rpcProtocol
   factory --> authority
   factory --> daemon
   factory --> github
@@ -147,7 +147,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 all, which is why any of them can be adopted on its own. The
 [package families](/guides/package-families) guide groups the same packages by job.
 
-Two units sit outside the graph. `code-report` also depends on `@titan-design/react-ui`, the
+Two units sit outside the graph. `codewatch` also depends on `@titan-design/react-ui`, the
 design system published from a separate repository. `deploy/hub` is a workspace member that
 depends on `matrix-bus`, but it holds compose files and owner-side scripts, so the
 `package-layers` rule does not list it.
@@ -189,7 +189,7 @@ those live in the separate `@titan-design/react-ui` design system.
 
 **Products.** Thin. A product owns its surface wiring — commander, MCP transports, its own
 command definitions — and gets everything else from the tiers. There are four in the
-`product` tier: `session-miner`, `retrieval-eval`, `factory`, and the `code-report` app.
+`product` tier: `session-miner`, `retrieval-eval`, `factory`, and the `codewatch` app.
 Each has a usage guide under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like

@@ -1,6 +1,7 @@
 import { contentHash, prefixHash } from "@titan-design/locator";
 import type { UsageMeasurement } from "@titan-design/agent-protocol";
 import { readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
+import { hasTable } from "@titan-design/store-sqlite";
 import os from "node:os";
 import { expandHome } from "./expand-home.js";
 import type { SessionGraph } from "./graph.js";
@@ -14,7 +15,7 @@ export async function readIndexedText(graph: SessionGraph, span: IndexedSpan, op
 }
 
 async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: string): Promise<string | null> {
-  const row = graph.db.prepare(`SELECT n.locators FROM normalized_span n JOIN search_span s USING(span_id)
+  const row = !hasTable(graph.db, "normalized_span") ? undefined : graph.db.prepare(`SELECT n.locators FROM normalized_span n JOIN search_span s USING(span_id)
     WHERE s.source_id = ? AND s.byte_offset = ? AND s.field = ?`).get(span.sourceId, span.byteOffset, span.field) as { locators: string } | undefined;
   if (row) {
     const source = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(span.sourceId) as { descriptor: string } | undefined;
@@ -29,7 +30,7 @@ async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: s
     const texts = await Promise.all((JSON.parse(row.locators) as SourceTextLocator[]).map(locator => readSessionSourceText(locator, { sources: [JSON.parse(source.descriptor) as SessionSourceDescriptor] })));
     return texts.some(text => text === null) ? null : texts.join("\n");
   }
-  const normalized = graph.db.prepare("SELECT 1 FROM normalized_source WHERE transcript_id = ?").get(span.sourceId);
+  const normalized = hasTable(graph.db, "normalized_source") && graph.db.prepare("SELECT 1 FROM normalized_source WHERE transcript_id = ?").get(span.sourceId);
   if (normalized) return null;
   const legacy = graph.transcripts.list().find(t => t.sourceId === span.sourceId);
   return legacy ? readSessionText({ path: expandHome(legacy.sourceKey, homeDir), byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field as SpanField }) : null;
@@ -41,6 +42,7 @@ export interface ConversationSummary {
   cwd: string | null; gitBranch: string | null; turnCount: number; commitCount: number | null; pushCount: number | null;
 }
 export function normalizedSessions(graph: SessionGraph, options: { ref?: string; limit?: number; since?: string } = {}): ConversationSummary[] {
+  if (!hasTable(graph.db, "normalized_event")) return [];
   const rows = graph.db.prepare(`SELECT c.ref,c.harness,c.native_id,c.namespace,MIN(e.ts) AS started,
     COUNT(DISTINCT CASE WHEN e.kind = 'native_turn' THEN e.turn_ref END) AS turns
     FROM conversation c JOIN (SELECT DISTINCT conversation_ref FROM normalized_source) s ON s.conversation_ref = c.ref
@@ -62,6 +64,7 @@ export function normalizedSessions(graph: SessionGraph, options: { ref?: string;
 export type NormalizedUsageSummary = SessionUsageSummary;
 /** Shared storage-free usage policy keeps graph and direct readers consistent. */
 export function normalizedUsage(graph: SessionGraph, ref: string): NormalizedUsageSummary[] {
+  if (!hasTable(graph.db, "normalized_event")) return [];
   // Snapshot epochs are local to a physical source; never add copies from different files.
   // Pick the source with the latest native timestamp (then fullest coverage, then stable ID).
   const preferred = graph.db.prepare(`SELECT transcript_id FROM normalized_event

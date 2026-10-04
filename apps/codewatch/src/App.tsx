@@ -24,7 +24,7 @@ export function App(): ReactNode {
           </ReportContext.Provider>
         ) : (
           <div className="p-6">
-            <Alert status="info" message="This index has no snapshots yet. Run `pnpm --filter code-report index`, then reload." />
+            <Alert status="info" message="This index has no snapshots yet. Run `pnpm --filter codewatch index`, then reload." />
           </div>
         )
       }
