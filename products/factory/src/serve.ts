@@ -14,7 +14,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
-import { sweepReviewCheckouts } from "./shepherd/review-checkout-sweep.js";
+import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
 export type { FactoryContext } from "./registry.js";
@@ -75,7 +75,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const services = options.routes.shepherd;
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
-  const checkoutSweep = services && startSweep(async () => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
+  const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
@@ -170,8 +170,10 @@ async function sweepReleases(host: FactoryHost, services: ShepherdServices, log:
   for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
 }
 
-function sweepCheckouts(log: Logger): void {
-  for (const path of sweepReviewCheckouts()) log.info({ path }, "removed a stale review checkout");
+export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {
+  const onError = (path: string, error: unknown): void =>
+    log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
+  for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */

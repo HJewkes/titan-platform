@@ -65,6 +65,14 @@ describe("reviewFillReport", () => {
     expect(row("<50k")?.verdictErrors).toBe(0);
   });
 
+  it("does not count an approve and changes requested with the same timestamp as an error", () => {
+    reviewerTurn("tu-a", 30_000, 0);
+    reviewerTurn("tu-b", 30_000, 0, "rev-2");
+    insertVerdict({ key: "chat:tu-a:0", verdict: "approve", ts: at(0) });
+    insertVerdict({ key: "chat:tu-b:0", verdict: "changes_requested", ts: at(0), sessionId: "rev-2" });
+    expect(row("<50k")).toMatchObject({ verdicts: 2, verdictErrors: 0 });
+  });
+
   it("ignores changes requested on a different PR", () => {
     reviewerTurn("tu-a", 30_000, 0);
     insertVerdict({ key: "chat:tu-a:0", verdict: "approve", ts: at(0) });

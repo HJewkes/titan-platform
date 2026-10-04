@@ -1,4 +1,4 @@
-// One process for development: the report daemon, and Vite's dev server proxying /rpc to it: `pnpm --filter code-report dev`.
+// One process for development: the report daemon, and Vite's dev server proxying /rpc to it: `pnpm --filter codewatch dev`.
 import { createServer } from "vite";
 import { closeOnSignal, startReportDaemon } from "./daemon.js";
 import { APP_DIR } from "./paths.js";

@@ -107,7 +107,7 @@ state lives, and how it fails.
 | `products/factory` | `titan-factory` lands pull requests with durable runs and human gates | [Factory](/guides/factory), [Shepherd](/guides/shepherd) |
 | `products/session-miner` | `titan-miner` indexes and searches agent transcripts | [Session miner](/guides/session-miner#run-it) |
 | `products/retrieval-eval` | `retrieval-eval` scores retrievers against mined labels | [Retrieval eval](/guides/retrieval-eval) |
-| `apps/code-report` | a browser report over a code-graph snapshot | [Code report](/guides/code-report) |
+| `apps/codewatch` | a browser report over a code-graph snapshot | [Code report](/guides/codewatch) |
 | `apps/console` | a read-only console over active-work, the agent-chat broker and the session graph (skeleton) | [README](https://github.com/HJewkes/titan-platform/tree/main/apps/console#readme) |
 | `deploy/hub` | the Matrix homeserver the human queue uses | [Matrix hub](/guides/hub) |
 
