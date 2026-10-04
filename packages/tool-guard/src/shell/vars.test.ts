@@ -72,6 +72,15 @@ describe("variables built up before the command they name", () => {
     ["an esac argument in a case body", "f() ( case a in a) echo esac;; b) :;; esac; declare Y+=push; git $Y origin HEAD:main ); Y=status; f"],
     ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
+    ["a declare element with an invalid option (TP-1491)", "Y=push; declare -Q 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare element with a glob option (TP-1491)", "Y=push; declare -[r] 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare scalar with an invalid option (TP-1491)", "Y=push; declare -Q Y=status; git $Y origin HEAD:main"],
+    ["a typeset scalar with an invalid +option (TP-1491)", "Y=push; typeset +Q Y=status; git $Y origin HEAD:main"],
+    ["a local scalar with an invalid option (TP-1491)", "Y=push; f() { local -Q Y=status; git $Y origin HEAD:main; }; f"],
+    ["an export with a declare-only option (TP-1491)", "Y=push; export -r Y=status; git $Y origin HEAD:main"],
+    ["an export with a glob option (TP-1491)", "Y=push; export -* Y=status; git $Y origin HEAD:main"],
+    ["a readonly with a declare-only option (TP-1491)", "Y=push; readonly -x Y=status; git $Y origin HEAD:main"],
+    ["a declare with a lone dash (TP-1491)", "Y=push; declare - Y=status; git $Y origin HEAD:main"],
     ["a run-time declare word (TP-1491)", "Y=status; F=$(cmd); declare \"$F\"; git $Y origin HEAD:main"],
     ["a substituted export word (TP-1491)", "Y=status; export $(cmd); git $Y origin HEAD:main"],
     ["a run-time typeset word (TP-1491)", "Y=status; F=$(cmd); typeset $F; git $Y origin HEAD:main"],
@@ -160,6 +169,17 @@ describe("variables built up before the command they name", () => {
     ["a declare with a run-time option", "Y=push; F=$(cmd); declare $F 'Y[0]=status'; git $Y origin HEAD:main"],
   ])("classifies a push after %s as a push to an unknown branch (TP-1491)", (_, command) => {
     expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it.each([
+    ["declare -aAfFgiIlnrtuxp", "declare -aAfFgiIlnrtuxp Z=1; git $Y"],
+    ["typeset +x", "typeset +x Z=1; git $Y"],
+    ["local -n in a function", "f() { local -n Z=W; git $Y; }; f"],
+    ["export -fnp", "export -fnp Z=1; git $Y"],
+    ["readonly -aAfp", "readonly -aAfp Z=1; git $Y"],
+    ["declare --", "declare -- Z=1; git $Y"],
+  ])("keeps a variable known after %s, whose options are all valid (TP-1491)", (_, command) => {
+    expect(gitArgs(`Y=status; ${command}`)).toEqual([["status"]]);
   });
 
   it("keeps a variable known after a literal declaration of another (TP-1491)", () => {

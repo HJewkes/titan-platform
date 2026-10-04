@@ -23,6 +23,15 @@ const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"])
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 /** An `r` in an option cluster: whether an element write then lands differs across bash versions. */
 const READONLY_FLAG_RE = /^-[A-Za-z]*r/;
+const DECLARE_LETTERS = new Set("aAfFgiIlnrtuxp");
+/** The option letters each builtin accepts; bash rejects any other and assigns nothing. */
+const OPTION_LETTERS: Record<string, Set<string>> = {
+  declare: DECLARE_LETTERS,
+  typeset: DECLARE_LETTERS,
+  local: DECLARE_LETTERS,
+  export: new Set("fnp"),
+  readonly: new Set("aAfp"),
+};
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null {
   if (vars.has(name)) return vars.get(name) ?? null;
@@ -76,14 +85,23 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   if (DECLARERS.has(name)) {
     const readonly = args.some((a) => READONLY_FLAG_RE.test(a.value));
     for (const arg of args) declareArg(name, parseAssignment(arg), readonly, vars);
-    if (args.some((a) => a.dynamic && parseAssignment(a) === null)) forgetAll(vars);
+    if (args.some((a) => unreadableDeclareWord(name, a))) forgetAll(vars);
     return;
   }
   if (name === "printf") printfVar(args, vars);
   for (const target of clobberedNames(name, args)) vars.set(target, null);
 }
 
-/** A declaration word known only at run time may be any assignment or `-r`, so no variable stays known, `HOME` included. */
+/** A word known only at run time may be any assignment; an option bash rejects may leave any assignment unmade. */
+function unreadableDeclareWord(name: string, arg: WordToken): boolean {
+  if (arg.dynamic) return parseAssignment(arg) === null;
+  const v = arg.value;
+  if (v === "--" || !(v.startsWith("-") || v.startsWith("+"))) return false;
+  const letters = [...v.slice(1)];
+  return letters.length === 0 || letters.some((c) => !OPTION_LETTERS[name]?.has(c));
+}
+
+/** Nulls every tracked variable, `HOME` included, after a declaration this walk cannot read. */
 function forgetAll(vars: Vars): void {
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
