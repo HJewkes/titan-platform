@@ -32,4 +32,15 @@ describe("shepherd stats verb", () => {
     expect(code).toBe(2);
     expect(err.join("")).toContain("YYYY-MM-DD");
   });
+
+  it("prints one line and exits 2 when the store is missing", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "absent.db");
+    const { err, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats"], io);
+
+    expect(code).toBe(2);
+    expect(err.join("").trimEnd().split("\n")).toHaveLength(1);
+    expect(err.join("")).toContain("cannot read the store");
+  });
 });

@@ -31,7 +31,12 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .action((opts: StatsOpts) => {
       const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
       if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));
-      const db = openDatabase(dbPath(), { readonly: true });
+      let db: ReturnType<typeof openDatabase>;
+      try {
+        db = openDatabase(dbPath(), { readonly: true });
+      } catch (error) {
+        return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
+      }
       try {
         const runs = new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
         const rows = shepherdStats(runs, { from: opts.from, to: opts.to });
