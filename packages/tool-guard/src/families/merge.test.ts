@@ -334,9 +334,19 @@ describe("a git command whose subcommand word is dynamic", () => {
     ["an unset variable", "git $Y origin HEAD:main"],
     ["a non-zero array index", "Y[1]=x; git $Y origin HEAD:main"],
     ["a quoted unknown variable", 'git "$Y" status'],
+    ["an unquoted -C value", "git -C $D origin HEAD:main"],
+    ["an unquoted --git-dir value", "git --git-dir=$D origin HEAD:main"],
+    ["an unquoted --work-tree value", "git --work-tree=$D origin HEAD:main"],
+    ["an unquoted --namespace value", "git --namespace=$D origin HEAD:main"],
+    ["an unquoted -c value", "git -c $V origin HEAD:main"],
+    ["a dynamic option flag", "git -$X origin HEAD:main"],
   ])("counts %s as a push to an unknown branch", (_name, command) => {
     const actions = bash(command).filter((a) => a.spelling === "bash.merge.git-push-protected");
     expect(actions.map((a) => a.subject)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it("still allows a quoted -C value, which cannot word-split", () => {
+    expect(bash('git -C "$D" status')).toEqual([]);
   });
 
   it("still allows a literal git status", () => {

@@ -11,7 +11,7 @@ export interface GitInvocation {
   /** `-c key=value` overrides. */
   config: string[];
   sub: string | null;
-  /** True when the subcommand word is a variable git could expand to anything, so `sub` stays null. */
+  /** True when the subcommand is, or an unquoted dynamic option word could split into, a word git could run as anything. */
   subDynamic: boolean;
   subArgs: WordToken[];
 }
@@ -22,6 +22,7 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
   let i = 0;
   for (; i < args.length && (args[i] as WordToken).value.startsWith("-"); i++) {
     const { flag, value, width } = option(args, i, GLOBAL_VALUE_OPTS);
+    inv.subDynamic ||= splits(args[i]) || splits(value);
     i += width - 1;
     if (flag === "-C") inv.dir = resolvePath(inv.dir, value, home);
     else if (flag === "--git-dir" || flag === "--work-tree") inv.otherPaths.push(resolvePath(inv.dir, value, home));
@@ -35,6 +36,9 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
   }
   return inv;
 }
+
+/** An unquoted dynamic word word-splits, so it can carry the subcommand itself. */
+const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && !word.quoted);
 
 function option(args: WordToken[], i: number, valueOpts: Set<string>) {
   const word = args[i] as WordToken;

@@ -90,4 +90,9 @@ describe("a git command whose subcommand word is dynamic", () => {
     const actions = bash("Y=status; read Y < list; git $Y origin HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
     expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
   });
+
+  it("gives the unknown destination for a push to a dynamic remote", () => {
+    const actions = bash("git push $R HEAD:main").filter((a) => a.spelling === "bash.egress.git-push-url");
+    expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
+  });
 });

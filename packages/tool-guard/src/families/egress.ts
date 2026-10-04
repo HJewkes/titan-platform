@@ -188,6 +188,7 @@ function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (git.subDynamic) return actionsFor("bash.egress.git-push-url", [UNKNOWN]);
   if (git.sub !== "push") return [];
   const [remote] = readOptions(git.subArgs, set("--repo", "-o", "--push-option", "--receive-pack", "--exec")).positionals;
+  if (remote?.dynamic) return actionsFor("bash.egress.git-push-url", [UNKNOWN]);
   if (!remote || !GIT_URL_RE.test(remote.value)) return [];
   const host = remoteHost(remote) ?? hostOf(remote);
   return actionsFor("bash.egress.git-push-url", [host]);
