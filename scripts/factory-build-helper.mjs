@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Compiles the owner-presence helper into products/factory/dist with /usr/bin/swiftc.
-// Skipped off macOS (CI runs Linux and nothing there needs the helper); a missing helper
+// Compiles the owner-presence helper into products/factory/native/build with /usr/bin/swiftc.
+// Outside dist, because tsup clean wipes dist on every build. Skipped off macOS (CI runs Linux and nothing there needs the helper); a missing helper
 // makes confirmOwner return undefined, so the owner class stays unreachable.
 import { mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -12,7 +12,7 @@ const SWIFTC = "/usr/bin/swiftc";
 
 export function buildHelper({ platform = process.platform, root = ROOT, run = execFileSync } = {}) {
   if (platform !== "darwin") return { status: "skipped" };
-  const out = join(root, "products", "factory", "dist", "owner-presence");
+  const out = join(root, "products", "factory", "native", "build", "owner-presence");
   mkdirSync(dirname(out), { recursive: true });
   run(SWIFTC, ["-O", join(root, "products", "factory", "native", "owner-presence.swift"), "-o", out], { stdio: "inherit" });
   return { status: "built", out };

@@ -185,8 +185,10 @@ const GIT_URL_RE = /^(?:[a-z][\w+.-]*:\/\/|[^@/:]+@[^/:]+:)/i;
 /** `git push <url>` to a literal URL off the allowlist; a named remote cannot be resolved here. */
 function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   const git = parseGit(cmd.args, cmd.dir, ctx.home);
+  if (git.subDynamic) return actionsFor("bash.egress.git-push-url", [UNKNOWN]);
   if (git.sub !== "push") return [];
   const [remote] = readOptions(git.subArgs, set("--repo", "-o", "--push-option", "--receive-pack", "--exec")).positionals;
+  if (remote?.dynamic) return actionsFor("bash.egress.git-push-url", [UNKNOWN]);
   if (!remote || !GIT_URL_RE.test(remote.value)) return [];
   const host = remoteHost(remote) ?? hostOf(remote);
   return actionsFor("bash.egress.git-push-url", [host]);

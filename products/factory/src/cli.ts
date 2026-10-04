@@ -4,7 +4,7 @@ import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
-import { parsePayload, resolveGate } from "./gate-resolve.js";
+import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
@@ -43,6 +43,8 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
+  /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
+  presence?: OwnerPresence;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
@@ -87,14 +89,14 @@ function registerResume(program: Command, { io, withHost }: Verbs): void {
     .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
 }
 
-function registerGate(program: Command, { io, withHost }: Verbs): void {
+function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
   program
     .command("gate")
     .description("human gates")
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .action((runId: string, stepId: string, opts: { json: string }) => withHost((host) => resolveGate(host, io, runId, stepId, opts.json)));
+    .action((runId: string, stepId: string, opts: { json: string }) => withHost((host) => resolveGate(host, io, runId, stepId, opts.json, deps.presence)));
 }
 
 function registerServe(program: Command, { deps, dbPath }: Verbs): void {
