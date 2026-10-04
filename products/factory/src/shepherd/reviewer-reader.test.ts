@@ -448,4 +448,47 @@ describe("a seat reviewer's transcript read once per roster change", () => {
     expect(second).toEqual(first);
     expect(reads()).toBe(1);
   });
+
+  it("reads a reviewer again after the roster dropped it, because its cache entry was pruned", async () => {
+    const retired = { ...seat, transcriptPath: writeTranscript(SESSION, reviewed()) };
+    const other = { ...seat, agentId: "agent-other", sessionId: "session-rv-2", transcriptPath: writeTranscript("session-rv-2", reviewed("session-rv-2")) };
+    let rows = [retired, other];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+
+    await seatFixFirst(async () => rows, reader, target);
+    rows = [other];
+    await seatFixFirst(async () => rows, reader, target);
+    const before = reads();
+    rows = [retired, other];
+    await seatFixFirst(async () => rows, reader, target);
+
+    expect(reads() - before).toBe(1);
+  });
+
+  it("reads a damaged transcript again once it grows whole, and then sees its verdict", async () => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "Review octo/demo#7."), assistant(SESSION, ["Reading."])]);
+    appendFileSync(transcript, JSON.stringify(assistant(SESSION, ["x"])).slice(0, 60), "utf8");
+    const rows = [{ ...seat, transcriptPath: transcript }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+    expect(await seatFixFirst(async () => rows, reader, target)).toMatchObject({ kind: "none" });
+
+    const verdict = assistant(SESSION, [BLOCK.replace("MERGE", "FIX_FIRST")], "2026-09-30T10:09:00Z");
+    writeFileSync(transcript, [user(SESSION, "Review octo/demo#7."), assistant(SESSION, ["Reading."]), verdict].map((record) => `${JSON.stringify(record)}\n`).join(""), "utf8");
+
+    expect(await seatFixFirst(async () => rows, reader, target)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+  });
+
+  it("retries after a read failure that is not damage, instead of caching the failure", async () => {
+    const rows = [{ ...seat, transcriptPath: writeTranscript(SESSION, reviewed()) }];
+    const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
+    vi.mocked(readSessionObservations).mockImplementationOnce(() => {
+      throw new Error("disk hiccup");
+    });
+
+    const request = { ...input, reviewerAgentId: seat.agentId };
+
+    await expect(reader.readSeat!(request)).rejects.toThrow("disk hiccup");
+    expect(await reader.readSeat!(request)).not.toEqual([]);
+    expect(reads()).toBe(2);
+  });
 });
