@@ -690,18 +690,18 @@ describe("sh-review", () => {
 
   it("asks the codewatch questions ahead of the bank and records the report on the step", async () => {
     const dispatch = fakeDispatch();
-    const codewatch = async () => ({ questions: ["src/a.ts:3 breaks a rule?"], evidence: { found: true, schema: "codewatch-pr-report@1", questions: 1 } });
+    const codewatch = async () => ({ questions: ["src/a.ts:3 breaks a rule?"], evidence: { found: true, schema: "codewatch-pr-report@1", questions: 1, dropped: 0 } });
 
     const { result } = await shReview(dispatch, { wiring: { codewatch, questions: async () => ["Does it fail open?"] } });
 
     const brief = dispatch.spawns[0]!.brief;
     expect(brief.indexOf("- src/a.ts:3 breaks a rule?")).toBeLessThan(brief.indexOf("- Does it fail open?"));
-    expect(result).toMatchObject({ kind: "dispatched", codewatch: { found: true, schema: "codewatch-pr-report@1", questions: 1 } });
+    expect(result).toMatchObject({ kind: "dispatched", codewatch: { found: true, schema: "codewatch-pr-report@1", questions: 1, dropped: 0 } });
   });
 
   it("still dispatches the reviewer when the codewatch report is missing", async () => {
     const dispatch = fakeDispatch();
-    const codewatch = async () => ({ questions: [], evidence: { found: false, schema: null, questions: 0 } });
+    const codewatch = async () => ({ questions: [], evidence: { found: false, schema: null, questions: 0, dropped: 0 } });
 
     const { result } = await shReview(dispatch, { wiring: { codewatch } });
 
