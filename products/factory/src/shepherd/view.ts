@@ -82,6 +82,8 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "ci-wait": "ci",
   "update-branch": "ci",
   rerun: "ci",
+  "sh-freeze-hold": "ci",
+  "sh-freeze-wait": "ci",
   "sh-wake-implementer": "fixing",
   "sh-wake-fix-first": "fixing",
   "sh-repair": "fixing",
@@ -174,6 +176,15 @@ function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | und
   return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
 }
 
+const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
+
+/** While a red head waits out a frozen main, the hold's own reason is the next action. */
+function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.currentStep === null || !stepIdMatches("sh-freeze-wait", run.currentStep)) return undefined;
+  const hold = FreezeHoldData.safeParse(steps.filter((result) => stepIdMatches("sh-freeze-hold", result.stepId)).at(-1)?.data);
+  return hold.success ? hold.data.result.reason : undefined;
+}
+
 export interface RowInput {
   registration: Registration;
   run: WorkflowRun;
@@ -249,7 +260,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
+    nextAction: freezeWait(run, steps) ?? nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held: heldView(registration),
     stalled: stalled === undefined ? null : { reason: stalled },
