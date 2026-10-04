@@ -21,6 +21,8 @@ const SLOT_ASSIGNMENT_RE = /^local@\d+=/;
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 /** Bash rejects a subscripted name here as no valid identifier, so the variable keeps its value. */
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
+/** An `r` in an option cluster: whether an element write then lands differs across bash versions. */
+const READONLY_FLAG_RE = /^-[A-Za-z]*r/;
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null {
   if (vars.has(name)) return vars.get(name) ?? null;
@@ -72,14 +74,19 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   if (name === null) return;
   for (const [target, , kind] of assigned) if (kind === "element") vars.set(target, null);
   if (DECLARERS.has(name)) {
-    for (const arg of args) {
-      const assignment = parseAssignment(arg);
-      if (assignment && !(assignment[2] === "element" && SCALAR_DECLARERS.has(name))) assign(vars, assignment);
-    }
+    const readonly = args.some((a) => READONLY_FLAG_RE.test(a.value));
+    for (const arg of args) declareArg(name, parseAssignment(arg), readonly, vars);
     return;
   }
   if (name === "printf") printfVar(args, vars);
   for (const target of clobberedNames(name, args)) vars.set(target, null);
+}
+
+/** `export` and `readonly` reject an element name; a readonly element may or may not be written, so it is unknown. */
+function declareArg(name: string, assignment: Assignment | null, readonly: boolean, vars: Vars): void {
+  if (!assignment) return;
+  if (assignment[2] !== "element") assign(vars, assignment);
+  else if (!SCALAR_DECLARERS.has(name)) vars.set(assignment[0], readonly ? null : assignment[1]);
 }
 
 interface TrackedCommand {
