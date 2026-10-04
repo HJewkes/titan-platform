@@ -323,12 +323,13 @@ Tier 0, private, `packages/tool-guard`. Classifies Claude Code tool calls into g
 
 Key exports:
 
-- `event`: `parseHookEvent`, `HookEvent`, `MalformedEvent`
+- `event`: `parseHookEvent`
 - `paths`: `GUARDED_PATHS`
 - `spellings`: `SPELLINGS`
 - `classify`: `classify`
+- `families/preference`: `checkPreferences`, `PREFERENCES`
 - `shell`: `ParseError`, `tokenize`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
-- +22 more in `packages/tool-guard/src/index.ts`
+- +27 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 
@@ -575,7 +576,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +303 more in the [reference page](/reference/code-graph)
+- +325 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 

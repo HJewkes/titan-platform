@@ -41,6 +41,7 @@
     "@eslint/js": "^9.39.0",
     "@titan-design/egress-scan": "workspace:*",
     "@types/node": "^25.3.2",
+    "ajv": "^8.20.0",
     "eslint": "^9.39.0",
     "globals": "^16.0.0",
     "mermaid": "^11.17.2",
