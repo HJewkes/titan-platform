@@ -28,10 +28,12 @@ want to parse one transcript, use [`session-read`](/reference/session-read) dire
 Verified against 0.2.0.
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { discoverTranscripts } from "@titan-design/session-read";
 import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
 
-const graph = openSessionGraph("~/.local/state/miner/index.sqlite3");
+const graph = openSessionGraph(path.join(os.homedir(), ".local/state/miner/index.sqlite3"));
 const summary = await refreshCorpus(graph, await discoverTranscripts());
 
 // {

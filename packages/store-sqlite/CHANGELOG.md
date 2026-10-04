@@ -1,5 +1,11 @@
 # @titan-design/store-sqlite
 
+## 0.3.2
+
+### Patch Changes
+
+- 3a4d4ed: Build README example paths from `os.homedir()`; Node never expands a literal `~`.
+
 ## 0.3.1
 
 ### Patch Changes
