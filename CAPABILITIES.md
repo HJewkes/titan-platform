@@ -207,13 +207,12 @@ Tier 0, `@titan-design/egress-scan@0.3.0`. Scan git diff text for home paths, pr
 
 Key exports:
 
-- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
 - `diff`: `parseCommit`, `parseDiff`
 - `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
 - `terms`: `parseTerms`, `TermFileError`
 - `scan`: `scan`
-- `report`: `formatReport`
-- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
+- +20 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
@@ -324,12 +323,13 @@ Tier 0, private, `packages/tool-guard`. Classifies Claude Code tool calls into g
 
 Key exports:
 
-- `event`: `parseHookEvent`, `HookEvent`, `MalformedEvent`
+- `event`: `parseHookEvent`
 - `paths`: `GUARDED_PATHS`
 - `spellings`: `SPELLINGS`
 - `classify`: `classify`
+- `families/preference`: `checkPreferences`, `PREFERENCES`
 - `shell`: `ParseError`, `tokenize`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
-- +22 more in `packages/tool-guard/src/index.ts`
+- +27 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 
