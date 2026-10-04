@@ -6,7 +6,7 @@ import { parseSnapshot, staticSource, type Snapshot } from "@titan-design/rpc-cl
 import { EXIT, type JsonEnvelope } from "@titan-design/rpc-protocol";
 import { CALLS, NO_FILTERS } from "../src/data/calls.js";
 
-/** Printed by `pnpm --filter code-report fixtures`; these move only when the fixtures are rebuilt. */
+/** Printed by `pnpm --filter codewatch fixtures`; these move only when the fixtures are rebuilt. */
 const PLATFORM = { snapshots: 17, newest: 17, calls: 64, gaps: 10, firstLoc: 14551, lastLoc: 60490 };
 const DESIGN = {
   snapshot: 1, calls: 87, findings: 60, pageRows: 25, ruleFacets: { "max-cyclomatic-per-function": 3, "max-file-loc": 57 },

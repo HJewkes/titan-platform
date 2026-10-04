@@ -1,4 +1,4 @@
-// Indexes titan-platform into the graph the report daemon serves: `pnpm --filter code-report index`.
+// Indexes titan-platform into the graph the report daemon serves: `pnpm --filter codewatch index`.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { indexPaths, openCodeGraph } from "@titan-design/code-graph";

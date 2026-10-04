@@ -1,4 +1,4 @@
-# code-report
+# codewatch
 
 codewatch's layered code report: the big picture first, then prioritised findings, then a
 drill-down into any directory, file, or symbol. It is the first consumer of
@@ -11,16 +11,16 @@ One build runs three ways with the same code:
 
 | Mode | How | Data |
 | --- | --- | --- |
-| Dev | `pnpm --filter code-report dev` | Vite on :5173 proxies `/rpc` to a report daemon on :7433 |
-| Served | `pnpm --filter code-report build && pnpm --filter code-report serve` | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
-| From disk | `pnpm --filter code-report build && pnpm --filter code-report export` | `dist/report.html` carries a `titan-snapshot@1`; open it with no server running |
+| Dev | `pnpm --filter codewatch dev` | Vite on :5173 proxies `/rpc` to a report daemon on :7433 |
+| Served | `pnpm --filter codewatch build && pnpm --filter codewatch serve` | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
+| From disk | `pnpm --filter codewatch build && pnpm --filter codewatch export` | `dist/report.html` carries a `titan-snapshot@1`; open it with no server running |
 
 ## First run
 
 ```sh
 pnpm build                          # the workspace packages the scripts import
-pnpm --filter code-report index     # index titan-platform into .codewatch/graph.db (a few minutes)
-pnpm --filter code-report dev
+pnpm --filter codewatch index       # index titan-platform into .codewatch/graph.db (a few minutes)
+pnpm --filter codewatch dev
 ```
 
 Findings are the check rules' violations, derived on read. By default those are
@@ -28,11 +28,11 @@ Findings are the check rules' violations, derived on read. By default those are
 `rules/strict.json` has tighter demo thresholds. Point any script at it:
 
 ```sh
-CODE_REPORT_RULES=apps/code-report/rules/strict.json pnpm --filter code-report dev
+CODE_REPORT_RULES=apps/codewatch/rules/strict.json pnpm --filter codewatch dev
 ```
 
 Other settings: `CODE_REPORT_PORT` (default 7433) and `CODE_REPORT_DB` (default
-`<repo>/.codewatch/graph.db`). `pnpm --filter code-report call <command> '<json args>'`
+`<repo>/.codewatch/graph.db`). `pnpm --filter codewatch call <command> '<json args>'`
 answers one command in process and prints its size and time.
 
 ## Routes
@@ -85,7 +85,7 @@ TD-31 to TD-35, and each one says so where it is defined:
 ## Fixtures
 
 `fixtures/` holds two committed `titan-snapshot@1` files, built from real indexes by
-`pnpm --filter code-report fixtures`. Neither carries a dataset, so each answers exactly the
+`pnpm --filter codewatch fixtures`. Neither carries a dataset, so each answers exactly the
 calls it recorded and nothing else; that keeps them small enough to commit and to load in a
 test. Pass `--with-dataset` for a self-answering export instead, which costs megabytes.
 
@@ -113,7 +113,7 @@ rebuilt on another day.
 
 Both fixtures use this repository's own `.codewatch/check.json`, which is why the
 titan-platform one has no findings at all: CI keeps those rules at zero. Set
-`CODE_REPORT_RULES=apps/code-report/rules/strict.json` to rebuild with the demo thresholds
+`CODE_REPORT_RULES=apps/codewatch/rules/strict.json` to rebuild with the demo thresholds
 instead. `TITAN_DESIGN_REPO` and `CODE_REPORT_SCRATCH` move the second repository and the
 scratch directory.
 
@@ -126,7 +126,7 @@ row, point, and call counts.
 ## Usage guide
 
 Every command with its output, the settings, where state lives and how each mode fails:
-[Running the code report](https://hjewkes.github.io/titan-platform/guides/code-report).
+[Running the code report](https://hjewkes.github.io/titan-platform/guides/codewatch).
 
 ## Tests
 
