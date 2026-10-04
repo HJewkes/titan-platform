@@ -80,7 +80,9 @@ unchanged row per node per snapshot. One physical table cannot serve both.
 
 `SpanFtsTables.search` always joins the FTS table through the span table. A contentless
 FTS5 table cannot delete a row without its original text, so purges strand FTS rows; the
-join hides them, `orphanRatio` tells you when to `clearIndex` and re-stream.
+join hides them. When `orphanRatio` climbs, rebuild: call `clearIndex`, then call `index`
+again for every surviving span. `index` puts back the FTS row of a span that has lost it,
+so the span ids stay the same and the orphans are gone.
 
 ## Refs
 

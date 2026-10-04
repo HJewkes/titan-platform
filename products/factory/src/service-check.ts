@@ -53,9 +53,11 @@ async function readJob(ports: CheckPorts): Promise<Job> {
   return { loaded: true, ...(pid === undefined ? {} : { pid }), ...(runs === undefined ? {} : { runs }), ...(lastExit === undefined ? {} : { lastExit }) };
 }
 
-async function isCrashLoop(ports: CheckPorts, job: Job): Promise<boolean> {
+/** `service restart` and `kickstart -k` record the killed run's non-zero exit and bump runs, so a young process that answers /health itself is a restart, not a loop. */
+async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean): Promise<boolean> {
   if (!job.lastExit || (job.runs ?? 0) < CRASH_LOOP_MIN_RUNS) return false;
   if (job.pid === undefined) return true;
+  if (answersFromJob) return false;
   const started = await ports.processStartedAt(job.pid);
   return started !== null && ports.now() - started.getTime() < CRASH_LOOP_WINDOW_MS;
 }
@@ -82,8 +84,9 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
   const stale = stalePid(ports, job, healthPid, port);
   if (stale) return verdict("stale pid", stale, job, health, { healthPid: healthPid ?? null });
-  if (await isCrashLoop(ports, job)) return crashLoop(job, health);
-  if (health?.ok !== true || healthPid !== job.pid) return verdict("stale pid", unansweredWhy(job, port), job, health, { healthPid: healthPid ?? null });
+  const answersFromJob = health?.ok === true && healthPid === job.pid;
+  if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, health);
+  if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port), job, health, { healthPid: healthPid ?? null });
   return judgeRunning(job, health, ports.installedBuildSha());
 }
 
