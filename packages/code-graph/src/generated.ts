@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { workingTreeSource, type IndexSource } from "./index-source.js";
 
 /**
  * Generated-code detection. Generated files (codegen output, e.g. an OpenAPI
@@ -38,9 +38,12 @@ export function isGeneratedFile(
 }
 
 /** Read `<rootDir>/.gitattributes` and compile its linguist-generated patterns. */
-export function loadGeneratedPatterns(rootDir: string): RegExp[] {
+export function loadGeneratedPatterns(
+  rootDir: string,
+  source: IndexSource = workingTreeSource(),
+): RegExp[] {
   try {
-    const content = readFileSync(path.join(rootDir, ".gitattributes"), "utf-8");
+    const content = source.readFile(path.join(rootDir, ".gitattributes"));
     return parseGeneratedPatterns(content);
   } catch {
     return [];

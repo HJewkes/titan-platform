@@ -2,10 +2,12 @@ import type { Extractor, ParsedFile } from "@titan-design/code-parser";
 import { TsMorphGraphExtractor } from "./ts-morph-extractor.js";
 import { PythonGraphExtractor } from "./python-extractor.js";
 import type { GraphFragment } from "../types.js";
+import type { IndexSource } from "../index-source.js";
 
 export interface LanguageExtractorOptions {
   repoRoot: string;
   tsConfigPath?: string;
+  source?: IndexSource;
 }
 
 /**
@@ -18,9 +20,10 @@ export class LanguageExtractor implements Extractor<GraphFragment> {
   private readonly delegates: Extractor<GraphFragment>[];
 
   constructor(options: LanguageExtractorOptions) {
+    const { repoRoot, tsConfigPath, source } = options;
     this.delegates = [
-      new TsMorphGraphExtractor({ repoRoot: options.repoRoot, tsConfigPath: options.tsConfigPath }),
-      new PythonGraphExtractor(options.repoRoot),
+      new TsMorphGraphExtractor({ repoRoot, tsConfigPath, source }),
+      new PythonGraphExtractor(repoRoot, source),
     ];
   }
 
