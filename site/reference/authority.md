@@ -68,7 +68,7 @@ the enforcing code should record.
 
 | Action | OT | OR | CO | WK | HD | AU |
 |---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV |
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV or MRG-AU-RC |
 | `release` | allow | deny | gate (OT) | deny | deny | allow |
 | `secret-read` | allow | deny | deny | deny | deny | allow |
 | `untrusted-ingest` | allow | allow | allow | allow | allow | allow |
@@ -106,6 +106,18 @@ MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
   a leading, trailing or doubled `/`, a `.` or `..` segment, a segment ending in a space
   or a dot, or any character outside printable ASCII) counts as protected, and an empty `changedPaths` fails;
 - the seat grants `merge-on-green-approve`.
+
+MRG-AU-RC allows the same automation merge for a head that carries the reviewer's MERGE
+across a tree-equal update-branch. It keeps every MRG-AU-RV condition except
+`verdict-merge-at-head`, and adds `verdict-merge-carried-tree-equal`: the verdict is `MERGE`,
+the optional `carry` fact names that verdict's head as `carry.fromHead` and `facts.head` as
+`carry.head`, both full 40-character lower-case shas, and `carry.headTree` equals
+`carry.mergeTree`. The caller fills `carry` from its tree-equality probe, never from reviewer
+text. It is a separate row so that deleting it revokes carrying and leaves MRG-AU-RV as it
+was. It also requires `pr-kind-not-security`: the optional `kind` fact, which the caller
+reads from the run's registration, must be `correctness`, `feature` or `refactor`. The row
+never carries `kind: security` and fails closed on an unknown or missing kind. MRG-AU-RV
+does not read `kind`.
 
 A request with no `facts` fails every condition, and a conditional row matches only when
 `tainted` is an own property set to exactly `false`; an inherited `false`, or any other value (`true`, missing, `null`, `0`, `""`) is
@@ -156,6 +168,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, and MRG-AU-RC in TP-778. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.
