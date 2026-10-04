@@ -213,8 +213,12 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   ];
   const commitHash = options.commitHash ?? detectGitHead(rootDir) ?? undefined;
   const snapshot = { ref, commitHash, aliasBase: bridge.baseSnapshotId };
-  const snapshotId = persist(store, snapshot, accumulator, aliases, metrics);
-  store.insertFingerprints(snapshotId, buildFingerprints(readFiles, idRoot, classified.structuralByFileId));
+  const fingerprints = buildFingerprints(readFiles, idRoot, classified.structuralByFileId);
+  const snapshotId = store.atomically(() => {
+    const id = persist(store, snapshot, accumulator, aliases, metrics);
+    store.insertFingerprints(id, fingerprints);
+    return id;
+  });
 
   return {
     snapshotId,
