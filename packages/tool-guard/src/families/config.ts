@@ -9,18 +9,14 @@ import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
+import { copyDestination } from "./copy-destination.js";
 
 /** Config reads are allowed by the table; only edits are CFG. */
 const READ_ONLY = new Set(["cat", "head", "tail", "less", "grep", "rg", "jq", "ls", "stat", "diff", "wc", "test", "[", "[["]);
 const REMOVERS = new Set(["rm", "unlink", "truncate", "chmod"]);
 const IN_PLACE = new Set(["sed", "gsed", "perl"]);
 /** Copiers whose sources are only read; `mv` also removes its sources, so every mention counts. */
-const COPIERS: Record<string, Set<string>> = {
-  cp: new Set(["-t", "-S"]),
-  install: new Set(["-t", "-m", "-o", "-g", "-S"]),
-  ln: new Set(["-t", "-S"]),
-  mv: new Set(["-t", "-S"]),
-};
+const COPIERS = new Set(["cp", "install", "ln", "mv"]);
 const CLAUDE_CLI: Record<string, Set<string>> = {
   config: new Set(["set", "add", "remove"]),
   mcp: new Set(["add", "add-json", "remove"]),
@@ -52,7 +48,7 @@ function writeSpelling(cmd: SimpleCommand, m: Mention): SpellingId | null {
   if (name === null) return "bash.config.mention";
   if (READ_ONLY.has(name)) return null;
   if (name === "tee") return "bash.config.tee";
-  if (Object.hasOwn(COPIERS, name)) return writesTo(cmd, m) ? "bash.config.cp-mv-ln" : null;
+  if (COPIERS.has(name)) return writesTo(cmd, m) ? "bash.config.cp-mv-ln" : null;
   return REMOVERS.has(name) ? "bash.config.remove" : "bash.config.mention";
 }
 
@@ -63,27 +59,12 @@ function inPlaceSpelling(cmd: SimpleCommand, name: string): SpellingId | null {
 }
 
 function writesTo(cmd: SimpleCommand, m: Mention): boolean {
-  return cmd.name === "mv" || m.word === null || m.word === destination(cmd);
-}
-
-/** The destination operand of `cp`, `install`, `ln` or `mv`: the `-t` directory, else the last operand. */
-function destination(cmd: SimpleCommand): WordToken | null {
-  const valueOpts = COPIERS[cmd.name ?? ""];
-  if (!valueOpts) return null;
-  const operands: WordToken[] = [];
-  for (let i = 0; i < cmd.args.length; i++) {
-    const word = cmd.args[i] as WordToken;
-    if (word.value === "-t") return cmd.args[i + 1] ?? null;
-    if (word.value.startsWith("--target-directory=")) return word;
-    if (valueOpts.has(word.value)) i++;
-    else if (!word.value.startsWith("-")) operands.push(word);
-  }
-  return operands.length >= 2 ? (operands.at(-1) ?? null) : null;
+  return cmd.name === "mv" || m.word === null || m.word === copyDestination(cmd);
 }
 
 /** `cp /tmp/settings.json ~/.claude/` writes `~/.claude/settings.json`: the destination joined with each source's name. */
 function copyIntoMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
-  const dest = destination(cmd);
+  const dest = copyDestination(cmd);
   if (!dest) return [];
   const into = dest.value.replace(/^--target-directory=/, "").replace(/\/+$/, "");
   const sources = cmd.args.filter((a) => a !== dest && !a.value.startsWith("-"));
