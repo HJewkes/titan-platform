@@ -5,6 +5,8 @@ import path from "node:path";
 import {
   daemonPaths,
   getProcessCommand,
+  getProcessStartTime,
+  parsePsStartTime,
   isProcessAlive,
   probeHealth,
   readPidFile,
@@ -71,6 +73,25 @@ describe("process probes", () => {
   it("names the command running at this pid", () => {
     expect(getProcessCommand(process.pid)).toContain("node");
     expect(getProcessCommand(-1)).toBeNull();
+  });
+
+  it("parses C-locale ps lstart output as local time", () => {
+    expect(parsePsStartTime("Sat Oct  3 09:19:13 2026\n")).toEqual(new Date(2026, 9, 3, 9, 19, 13));
+  });
+
+  it.each(["", "   \n", "not a date"])("reads unparsable ps output %j as unknown", (raw) => {
+    expect(parsePsStartTime(raw)).toBeNull();
+  });
+
+  it("reports this process start time within seconds of its real start", () => {
+    const started = getProcessStartTime(process.pid);
+    const expected = Date.now() - process.uptime() * 1000;
+    expect(started).not.toBeNull();
+    expect(Math.abs((started as Date).getTime() - expected)).toBeLessThan(5000);
+  });
+
+  it("reads a pid with no process as unknown", () => {
+    expect(getProcessStartTime(-1)).toBeNull();
   });
 
   it("returns null when nothing answers the health probe", async () => {

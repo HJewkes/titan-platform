@@ -139,6 +139,36 @@ export function getProcessCommand(pid: number): string | null {
   }
 }
 
+/**
+ * When the process at `pid` started, or `null` if the pid has no process or the lookup
+ * fails. `ps` reports whole seconds, which rounds a start time down and so never makes a
+ * genuine daemon look newer than its own pid file.
+ */
+export function getProcessStartTime(pid: number): Date | null {
+  if (!Number.isFinite(pid) || pid <= 0) return null;
+  try {
+    const raw = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 500, env: { ...process.env, LC_ALL: "C" } });
+    return parsePsStartTime(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Parse `ps -o lstart=` output (C locale, e.g. `Sat Oct  3 09:19:13 2026`, local time). */
+export function parsePsStartTime(raw: string): Date | null {
+  const text = raw.trim();
+  const started = new Date(text);
+  return text && !Number.isNaN(started.getTime()) ? started : null;
+}
+
+export async function pidFileModifiedAt(paths: DaemonPaths): Promise<Date | null> {
+  try {
+    return (await fs.stat(paths.pidFile)).mtime;
+  } catch {
+    return null;
+  }
+}
+
 export interface ProbeHealthOptions {
   host?: string;
   timeoutMs?: number;
