@@ -75,6 +75,15 @@ describe("costReport", () => {
     expect(find(report.byModel, "claude-mystery-9").costUsd).toBe(0);
   });
 
+  it("lists an unlisted model under unpricedModels instead of billing it at a shorter prefix's rate", () => {
+    insertRequest(fixture.graph.db, { sessionId: "worker", ts: "2026-09-20T13:00:00Z", model: "claude-opus-5-9", inputTokens: 1_000_000 });
+
+    const withUnlisted = costReport(fixture.openReadOnly(), SCENARIO_WINDOW);
+
+    expect(withUnlisted.unpricedModels).toContainEqual({ model: "claude-opus-5-9", requests: 1, tokens: 1_000_000 });
+    expect(find(withUnlisted.byModel, "claude-opus-5-9").costUsd).toBe(0);
+  });
+
   it("counts compactions in the window and the facet backlog", () => {
     expect(report.compactions).toEqual({ total: 2, manual: 1, auto: 1, midLoop: 1, droppedTokens: 100_000 });
     expect(report.coverage).toEqual({ transcriptsIndexed: 3, transcriptsDiscovered: null, facetBacklog: 1 });

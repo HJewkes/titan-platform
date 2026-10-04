@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
-import { LockTimeoutError, acquire, readHolder, release, tryAcquire } from "./dag-check-lock.mjs";
+import { LockTimeoutError, acquire, readHolder, release, runCappedWorker, tryAcquire, workerExitCode } from "./dag-check-lock.mjs";
 
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
@@ -92,5 +92,42 @@ describe("dag-check lock", () => {
 
     expect(code).toBe(143);
     expect(existsSync(lockDir)).toBe(false);
+  });
+});
+
+describe("the capped indexer child", () => {
+  function scriptFile(body) {
+    const root = mkdtempSync(join(tmpdir(), "dag-check-worker-"));
+    roots.push(root);
+    writeFileSync(join(root, "worker.mjs"), body);
+    return join(root, "worker.mjs");
+  }
+
+  async function run(body, heapCapMb = 64) {
+    const lines = [];
+    const code = await runCappedWorker({ script: scriptFile(body), args: [], name: "indexer", heapCapMb, cleanups: [], log: (m) => lines.push(m) });
+    return { code, lines };
+  }
+
+  it("passes the child's own exit code through", async () => {
+    expect(await run("process.exit(1);")).toEqual({ code: 1, lines: [] });
+  });
+
+  it("reports an out-of-memory abort at the heap cap as exit 2 with the cause named", async () => {
+    const { code, lines } = await run("const keep = []; for (;;) keep.push(new Array(1e5).fill({}));", 32);
+    expect(code).toBe(2);
+    expect(lines).toEqual(["indexer ran out of memory: V8 aborted it at the 32 MB heap cap"]);
+  }, 30000);
+
+  it("names a raw 134 exit from a shell wrapper as out of memory too", () => {
+    const lines = [];
+    expect(workerExitCode({ code: 134, signal: null, name: "indexer", heapCapMb: 1024, log: (m) => lines.push(m) })).toBe(2);
+    expect(lines[0]).toContain("ran out of memory");
+  });
+
+  it("reports any other signal as exit 2 naming the signal", () => {
+    const lines = [];
+    expect(workerExitCode({ code: null, signal: "SIGKILL", name: "indexer", heapCapMb: 1024, log: (m) => lines.push(m) })).toBe(2);
+    expect(lines).toEqual(["indexer died with SIGKILL"]);
   });
 });
