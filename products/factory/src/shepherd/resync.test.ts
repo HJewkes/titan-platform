@@ -11,11 +11,12 @@ import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "../serve.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
 import { SHEPHERD_WORKFLOW } from "./commands.js";
-import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
+import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ORPHANED, resyncShepherd } from "./resync.js";
@@ -188,6 +189,24 @@ describe("shepherd resync at serve start", () => {
     expect(server.host.runtime.status(runId)?.status).toBe("paused");
     expect(server.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
+
+  it("a resync that throws is logged, and the server still starts with every run untouched", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    merge(w.fake, 1);
+    const fresh = w.freshRoutes();
+    const routes = Object.assign([...fresh], { database: fresh.database, shepherd: { ...fresh.shepherd!, store: { ...fresh.shepherd!.store, get: () => { throw new Error("store unreadable"); } } } });
+    const errors: string[] = [];
+    const logger = { ...silentLogger, error: (_fields: unknown, message: string) => void errors.push(message) };
+
+    const server = await serve(w, { routes, logger });
+    const health = await fetch(`http://127.0.0.1:${server.port}/health`);
+
+    expect(health.ok).toBe(true);
+    expect(errors).toContain("shepherd resync at start failed");
+    expect(server.host.runtime.status(runId)?.status).toBe("paused");
+    expect(server.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
 });
 
 /** A shepherd-pr stand-in that merges the PR itself and then waits on the main-red gate, as a red main after its merge would. */
@@ -204,6 +223,53 @@ function mergedThenRed(): WorkflowDefinition {
     },
   });
 }
+
+/** Asks the owner first, then merges, records the landing, and waits on main-red: Shepherd's own merge end to end. */
+function approveThenMerge(): WorkflowDefinition {
+  return defineWorkflow({
+    name: SHEPHERD_WORKFLOW,
+    steps: [
+      { id: "approve-merge", kind: "assisted" },
+      { id: "merge", kind: "dispatch" },
+      { id: "sh-landed", kind: "dispatch" },
+      { id: "main-red", kind: "assisted" },
+    ],
+    run: async (ctx) => {
+      await ctx.assisted("approve-merge", "merge this head?");
+      await step(ctx, "merge:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
+      await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
+      await ctx.assisted("main-red", "main went red after this merge");
+    },
+  });
+}
+
+describe("endRunsGoneElsewhere while the run moves on", () => {
+  it("keeps a run whose own merge is recorded while its PR read is in flight", async () => {
+    const w = world({ workflows: [approveThenMerge()] });
+    const runId = startShepherd(w, 1);
+    await gateOpened(w.seed, gateId(runId, "approve-merge"));
+    const services = w.routes.shepherd!;
+    const getPr: typeof services.port.getPr = async (repo, pr) => {
+      w.seed.runtime.signal(runId, "approve-merge", {}, OWNER);
+      await gateOpened(w.seed, gateId(runId, "main-red"));
+      return services.port.getPr(repo, pr);
+    };
+
+    const ended = await endRunsGoneElsewhere(w.seed, { ...services, port: { ...services.port, getPr } });
+
+    expect(ended).toEqual([]);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.seed.runtime.status(runId)?.status).toBe("paused");
+    expect(w.seed.gates.get(gateId(runId, "main-red"))?.status).toBe("pending");
+  });
+
+  it("counts a recorded sh-landed step as Shepherd's own merge", () => {
+    const landed = { stepResults: { "sh-landed": {} }, activeSteps: {} } as unknown as WorkflowRun;
+    const reviewing = { stepResults: { "merge-policy:0": {} }, activeSteps: { "sh-await-verdict:0": {} } } as unknown as WorkflowRun;
+
+    expect([mergedByShepherd(landed), mergedByShepherd(reviewing)]).toEqual([true, false]);
+  });
+});
 
 describe("resyncShepherd", () => {
   it("leaves the post-merge gate of a run Shepherd merged itself, in the resync and in the periodic sweep", async () => {
