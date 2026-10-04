@@ -10,6 +10,7 @@ export interface TsCallContext {
   /** Qualified names this file has symbol nodes for; a caller must be one of them. */
   localSymbols: ReadonlySet<string>;
   repoRoot: string;
+  fileExists: (abs: string) => boolean;
 }
 
 type Call = CallExpression | NewExpression;
@@ -47,7 +48,7 @@ function resolveCallee(call: Call, ctx: TsCallContext): string | null {
 
 function declarationId(decl: Node, ctx: TsCallContext): string | null {
   const sf = decl.getSourceFile();
-  const abs = remapDistToSrc(sf.getFilePath());
+  const abs = remapDistToSrc(sf.getFilePath(), ctx.fileExists);
   if (sf.isDeclarationFile() && abs === sf.getFilePath()) return null;
   const fileId = inRepoFileId(ctx.repoRoot, abs);
   const name = fileId ? declarationQualifiedName(decl) : null;

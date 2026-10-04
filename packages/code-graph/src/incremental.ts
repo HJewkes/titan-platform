@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import * as fs from "node:fs/promises";
 import type { Node } from "web-tree-sitter";
 import { getLanguageFromPath, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
+import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { fileId, parseSymbolId } from "./extractors/ids.js";
 import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
 import { DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
@@ -60,12 +60,13 @@ function sourceLanguage(filePath: string): SourceLanguage | null {
 /** Read + hash every source file. Cheap I/O; the parse/extract it gates is not. */
 export async function readSourceFiles(
   filePaths: readonly string[],
+  source: IndexSource = workingTreeSource(),
 ): Promise<ReadFile[]> {
   const out: ReadFile[] = [];
   for (const filePath of filePaths) {
     const language = sourceLanguage(filePath);
     if (language === null) continue;
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = source.readFile(filePath);
     out.push({ filePath, language, content, hash: hashContent(content) });
   }
   return out;
