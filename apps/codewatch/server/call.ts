@@ -1,4 +1,4 @@
-// Answers one command in process and prints its size and time: `pnpm --filter code-report call hierarchy.get '{"depth":2}'`.
+// Answers one command in process and prints its size and time: `pnpm --filter codewatch call hierarchy.get '{"depth":2}'`.
 import { invokeCommand } from "@titan-design/registry";
 import { createContext, createReportRegistry } from "./registry.js";
 

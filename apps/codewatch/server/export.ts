@@ -1,4 +1,4 @@
-// Writes dist/report.html, the built page with a titan-snapshot@1 embedded, that opens from disk: `pnpm --filter code-report export`.
+// Writes dist/report.html, the built page with a titan-snapshot@1 embedded, that opens from disk: `pnpm --filter codewatch export`.
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createQueryResolver } from "@titan-design/code-read";
@@ -42,13 +42,13 @@ async function liveMismatches(registry: CommandRegistry<BaseContext>, snapshot: 
 async function main(): Promise<void> {
   const { registry, source } = await createReportRegistry();
   const newest = source.snapshots()[0];
-  if (!newest) throw new Error("The index has no snapshots; run `pnpm --filter code-report index` first");
+  if (!newest) throw new Error("The index has no snapshots; run `pnpm --filter codewatch index` first");
   const dataset = encodeDataset(source, [newest]);
   const resolve = createQueryResolver(datasetSource(dataset));
   const plan = firstPaintCalls(newest.id, resolve);
   const snapshot = await exportSnapshot(SNAPSHOT_FILE, { call: async (name, args) => resolve(name, args) }, { calls: plan, dataset });
   const page = await readFile(path.join(DIST_DIR, "index.html"), "utf8").catch(() => {
-    throw new Error("dist/index.html is missing; run `pnpm --filter code-report build` first");
+    throw new Error("dist/index.html is missing; run `pnpm --filter codewatch build` first");
   });
   await writeFile(REPORT_FILE, embedSnapshot(page, snapshot));
   const mismatched = await liveMismatches(registry, snapshot, plan);

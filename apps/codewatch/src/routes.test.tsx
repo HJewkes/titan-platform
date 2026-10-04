@@ -96,7 +96,7 @@ describe("states every screen shares", () => {
 
   it("tells the reader to index when there are no snapshots", async () => {
     renderReport("#/", fixtureSnapshot(fixtureDataset({ snapshots: [] })));
-    expect(await screen.findByText(/pnpm --filter code-report index/)).toBeTruthy();
+    expect(await screen.findByText(/pnpm --filter codewatch index/)).toBeTruthy();
   });
 
   it("marks a call the export cannot answer as unavailable, not as an error", async () => {
