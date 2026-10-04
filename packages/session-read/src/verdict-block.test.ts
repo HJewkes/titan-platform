@@ -50,6 +50,27 @@ describe("parseVerdictBlock", () => {
     expect(refused(block(word))).toBe("bad_verdict");
   });
 
+  it("returns a distinct wait result for a WAIT block, with the PR and head it names, and never ok", () => {
+    expect(parseVerdictBlock(block("WAIT"))).toEqual({ ok: false, reason: "wait", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0 });
+  });
+
+  it("refuses a WAIT block with a malformed head like any other verdict", () => {
+    expect(refused(block("WAIT", "octo/demo#12", SHA.slice(0, 7)))).toBe("bad_head");
+  });
+
+  it("refuses a WAIT block beside a second Verdict line", () => {
+    expect(refused(`${block("WAIT")}
+${block()}`)).toBe("multiple_blocks");
+  });
+
+  it.each(["wait", "WAIT (checks pending)", "WAITING"])("leaves %s as bad_verdict, never a MERGE", (word) => {
+    expect(refused(block(word))).toBe("bad_verdict");
+  });
+
+  it("leaves Verdict:WAIT without a space as bad_verdict", () => {
+    expect(refused(`Verdict:WAIT\nPR: octo/demo#12\nHead: ${SHA}`)).toBe("bad_verdict");
+  });
+
   it("refuses a short head", () => {
     expect(refused(block("MERGE", "octo/demo#12", SHA.slice(0, 39)))).toBe("bad_head");
     expect(refused(block("MERGE", "octo/demo#12", SHA.slice(0, 7)))).toBe("bad_head");

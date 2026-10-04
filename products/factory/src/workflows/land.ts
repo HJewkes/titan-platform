@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type MergeMethod, type PullRequest, type RepoSlug } from "@titan-design/github";
+import type { GitHubPort, MergeMethod, RepoSlug } from "@titan-design/github";
 import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -7,8 +7,11 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
+import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+
+export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 
 /** Update cycles allowed before the run asks a human whether to keep chasing the base. */
 export const MAX_UPDATE_CYCLES = 3;
@@ -27,8 +30,6 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "stuck-behind", kind: "assisted" },
 ];
 
-/** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
-const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
 const INPUT_VAR = "LAND_STEP_INPUT";
 const TEMPLATE = `{{${INPUT_VAR}}}`;
 
@@ -59,13 +60,6 @@ export interface LandOptions {
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
 }
 
-export interface FailingCheck {
-  name: string;
-  conclusion: string | null;
-  url: string;
-  workflowRunId: number | null;
-}
-
 export type LandOutcome =
   | { kind: "merged"; headSha: string; mergeSha: string }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
@@ -87,17 +81,6 @@ interface LandRules {
   strict: boolean;
 }
 
-type CiVerdict = "pending" | "green" | "red" | "behind" | "merged" | "closed" | "not-mergeable";
-
-export interface CiSnapshot {
-  verdict: CiVerdict;
-  headSha: string;
-  mergeableState: string;
-  mergeSha?: string | null;
-  failing?: FailingCheck[];
-  waitingOn?: string[];
-}
-
 interface UpdateResult {
   headSha: string;
   /** The new head is GitHub's merge of the expected head and the base, so it adds nothing a human has not seen. */
@@ -112,6 +95,8 @@ interface LandState {
   cycle: number;
   updates: number;
   updatesSinceGate: number;
+  /** The heads each update since the last gate started from, so a stuck-behind gate names them. */
+  updatedFrom: string[];
   merges: number;
   decisions: number;
   /** Heads a resolved approve-merge gate covers: the approved head plus heads this run's updates built on it. */
@@ -128,7 +113,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, updatesSinceGate: 0, merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
+  const state: LandState = { round, cycle: 0, updates: 0, updatesSinceGate: 0, updatedFrom: [], merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
@@ -145,15 +130,24 @@ function roundId(name: string, round: number, n?: number): string {
 
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
   if (state.updatesSinceGate >= MAX_UPDATE_CYCLES) {
-    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is still behind its base after ${MAX_UPDATE_CYCLES} updates. Retry or abandon?`, { schema: StuckBehindAnswer });
-    if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, `behind after ${state.updates} updates`);
+    const why = stuckBehindReason(state, ci.headSha);
+    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
+    if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
     state.updatesSinceGate = 0;
+    state.updatedFrom = [];
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   state.updatesSinceGate += 1;
+  state.updatedFrom.push(ci.headSha);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   return undefined;
+}
+
+/** The base kept moving while each updated head's CI ran; the owner sees every head the updates started from. */
+function stuckBehindReason(state: LandState, headSha: string): string {
+  const heads = [...state.updatedFrom, headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
+  return `still behind its base after ${state.updatesSinceGate} updates, heads ${heads}`;
 }
 
 async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
@@ -201,7 +195,10 @@ async function decideMerge(ctx: WorkflowContext, input: LandInput, ci: CiSnapsho
 function trust(state: LandState, headSha: string, by: LandState["trustedBy"]): void {
   state.trusted = new Set([headSha]);
   state.trustedBy = by;
-  if (by === "human") state.updatesSinceGate = 0;
+  if (by === "human") {
+    state.updatesSinceGate = 0;
+    state.updatedFrom = [];
+  }
 }
 
 function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], headSha: string, detail: string): LandOutcome {
@@ -260,13 +257,6 @@ interface Timing {
   timeoutMs: number;
 }
 
-interface CiInput {
-  repo: string;
-  pr: number;
-  contexts: string[];
-  strict: boolean;
-}
-
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
 async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState): Promise<CiSnapshot> {
   const clock = deadline(timing);
@@ -283,59 +273,6 @@ async function waitForCi(port: GitHubPort, input: CiInput, timing: Timing, signa
     if (clock.expired()) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
     await clock.sleep(timing.pollMs, signal);
   }
-}
-
-export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapshot> {
-  const pr = await port.getPr(input.repo, input.pr);
-  const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
-  if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
-  if (pr.state === "closed") return { ...base, verdict: "closed" };
-  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind" };
-  const runs = await port.checkRuns(input.repo, pr.headSha);
-  const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
-  const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
-  if (failing.length > 0) return { ...base, verdict: "red", failing };
-  if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
-  const verdict = await settledVerdict(port, input, pr);
-  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
-  return { ...base, verdict };
-}
-
-/** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */
-async function baseMovedSinceGreen(port: GitHubPort, input: CiInput, pr: PullRequest, runs: CheckRun[]): Promise<boolean> {
-  const tip = await port.getHeadSha(input.repo, pr.baseRef);
-  if (!tip) return true;
-  const committedAt = Date.parse((await port.getCommit(input.repo, tip)).committedAt ?? "");
-  const greenAt = greenStartedAt(runs, pr.headSha, input.contexts);
-  return Number.isNaN(committedAt) || greenAt === null || committedAt > greenAt;
-}
-
-/** The earliest start among the required runs that made the head green; a pull_request run tests the base as it stood then. */
-function greenStartedAt(runs: CheckRun[], headSha: string, contexts: string[]): number | null {
-  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && contexts.includes(run.name));
-  const starts = latestPerName(required).map((run) => Date.parse(run.startedAt ?? ""));
-  if (starts.length === 0 || starts.some(Number.isNaN)) return null;
-  return Math.min(...starts);
-}
-
-function failingCheck(run: CheckRun): FailingCheck {
-  return { name: run.name, conclusion: run.conclusion, url: run.url, workflowRunId: run.workflowRunId };
-}
-
-function findingName(finding: CheckFinding): string {
-  return finding.kind === "missing" ? finding.name : finding.run.name;
-}
-
-/** A blocked PR is green when its only block is an approval rule the caller can bypass, which GitHub reports as blocked all the same. */
-async function settledVerdict(port: GitHubPort, input: CiInput, pr: PullRequest): Promise<CiVerdict> {
-  const verdict = mergeVerdict(pr);
-  if (verdict === "pending" && pr.mergeableState === "blocked" && (await port.reviewRulesBypassable(input.repo, pr.baseRef))) return "green";
-  return verdict;
-}
-
-function mergeVerdict(pr: PullRequest): CiVerdict {
-  if (pr.draft || pr.mergeableState === "dirty") return "not-mergeable";
-  return MERGEABLE.has(pr.mergeableState) ? "green" : "pending";
 }
 
 interface UpdateInput {

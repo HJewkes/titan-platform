@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
+import { MAX_UPDATE_CYCLES, sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -59,10 +59,16 @@ function readHead(replay: Replay, pr: PullRequest): void {
   const head = headOf(replay, pr.headSha);
   const state = replay.wentBehind.has(pr.headSha) ? "behind" : (head.state ?? "clean");
   Object.assign(pr, { mergeableState: state, behind: state === "behind" });
-  replay.fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+  const runs = [successRun("validate", 1), successRun("dag-check", 2)];
+  replay.fake.setRuns(pr.headSha, unreviewedBehind(head) ? runs.map((run) => ({ ...run, status: "in_progress", conclusion: null })) : runs);
   if (head.seatFixFirst && !replay.seatObjections.includes(pr.headSha)) replay.seatObjections.push(pr.headSha);
   const registration = replay.store.byRun(replay.runId);
   if (head.hold && registration && !registration.held) replay.store.hold(replay.runId, "synthetic hold", `rv-${replay.fixture.id}`);
+}
+
+/** The recorded run updated this behind head before any review, which today means its own CI was still running there. */
+function unreviewedBehind(head: HeadScript): boolean {
+  return head.state === "behind" && head.reviews === undefined && !head.treeEqual;
 }
 
 function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | undefined {
@@ -241,3 +247,34 @@ describe("a tree-equal update after a seat reviewer's FIX_FIRST", () => {
   });
 });
 
+
+describe("a base that moves on every read", () => {
+  const BUSY: Omit<LedgerFixture, "heads"> = { id: 98, gate: "approve-merge", story: "main moves while each updated head's CI runs", today: { outcome: "merged", gates: [], reviewers: 1, fixers: 0 } };
+  const behindCarry: HeadScript = { state: "behind", treeEqual: true };
+  const short = (replay: Replay) => replay.seen.map((sha) => sha.slice(0, 7)).join(" -> ");
+
+  it("reviews the behind head first, then merges after bounded updates that each carry the MERGE", async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, behindCarry, behindCarry, { treeEqual: true }];
+
+    const { host, replay } = startReplay({ ...BUSY, heads });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+
+    expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 1 });
+    expect(host.pendingGates()).toEqual([]);
+  });
+
+  it(`stops at ${MAX_UPDATE_CYCLES} updates with a stuck-behind gate naming the count and every head`, async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, behindCarry, behindCarry, behindCarry];
+    const { host, replay } = startReplay({ ...BUSY, heads });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
+    const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
+
+    expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(gate?.stepId).toBe("stuck-behind");
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates, heads ${short(replay)}`);
+  });
+});

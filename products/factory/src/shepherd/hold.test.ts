@@ -94,6 +94,52 @@ describe("a hold that names a reviewer", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 
+  it("does not merge when a WAIT strictly follows the MERGE at the same head, and withdraws nothing", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    say(r, verdictAt(H1, "WAIT"));
+
+    await expect(mergeAt(r, H1)).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("merges when a MERGE follows the WAIT at the same head", async () => {
+    const r = rig();
+    say(r, verdictAt(H1, "WAIT"));
+    say(r, verdictAt(H1));
+
+    const merged = await mergeAt(r, H1);
+
+    expect(merged.done).toBe(true);
+  });
+
+  it("withdraws a recorded satisfaction when the reviewer then sends WAIT at that head, and merges again after a later MERGE", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, satisfier(r));
+    await held(REPO, r.pr, H1);
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+
+    say(r, verdictAt(H1, "WAIT"));
+
+    await expect(mergeAt(r, H1)).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+    say(r, verdictAt(H1));
+    await expect(mergeAt(r, H1)).resolves.toMatchObject({ done: true });
+  });
+
+  it("keeps a satisfaction at the reviewed head when the WAIT names another head", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, satisfier(r));
+    await held(REPO, r.pr, H1);
+
+    say(r, verdictAt(H2, "WAIT"));
+    await held(REPO, r.pr, H1);
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+  });
+
   it("refuses a same-name agent spawned in the implementer's lineage", async () => {
     const r = rig();
     const impostor = agent(REVIEWER, { agentId: "agent-impostor", sessionId: "session-impostor", spawnedBy: "impl-a" });
@@ -207,6 +253,28 @@ describe("a satisfied hold across an update of the reviewed head", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
     await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
     expect(r.fake.pr(r.pr).merged).toBe(false);
+  });
+
+  it("does not carry past a WAIT at an update nobody asked the hold about, and keeps the satisfaction at the reviewed head", async () => {
+    const { r, satisfy } = await updated("correctness", EQUAL);
+    say(r, verdictAt(H2, "WAIT"));
+    const H3 = fakeSha("head-3");
+    r.fake.pushHead(r.pr, H3);
+
+    await satisfy(REPO, r.pr, H3, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+    await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+  });
+
+  it("carries again once a MERGE follows the WAIT", async () => {
+    const { r, satisfy } = await updated("correctness", EQUAL);
+    say(r, verdictAt(H2, "WAIT"));
+    say(r, verdictAt(H2));
+
+    await satisfy(REPO, r.pr, H2, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H2);
   });
 
   it("reads every session under the reviewer's name for a FIX_FIRST", async () => {
