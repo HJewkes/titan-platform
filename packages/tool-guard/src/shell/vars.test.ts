@@ -67,6 +67,13 @@ describe("variables built up before the command they name", () => {
     ["an esac argument in a case body", "f() ( case a in a) echo esac;; b) :;; esac; declare Y+=push; git $Y origin HEAD:main ); Y=status; f"],
     ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
+    ["an element 0 assignment (TP-1491)", "Y=status; Y[0]=push; git $Y origin HEAD:main"],
+    ["a declared element 0 (TP-1491)", "Y=status; declare 'Y[0]=push'; git $Y origin HEAD:main"],
+    ["a typeset element 0 (TP-1491)", "Y=status; typeset 'Y[0]=push'; git $Y origin HEAD:main"],
+    ["an exported element 0 (TP-1491)", "Y=status; export 'Y[0]=push'; git $Y origin HEAD:main"],
+    ["a local element 0 in a function (TP-1491)", "Y=status; f() { local 'Y[0]=push'; git $Y origin HEAD:main; }; f"],
+    ["a local element 0 undone on return (TP-1491)", "Y=push; f() { local 'Y[0]=status'; }; f; git $Y origin HEAD:main"],
+    ["an element assignment before the command (TP-1491)", "Y[0]=x git push origin HEAD:main"],
   ])("%s still reads as a push to main", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
@@ -98,8 +105,24 @@ describe("variables built up before the command they name", () => {
     ["a read into a subscripted target", "Y=status; read 'Y[0]' <<< push; git $Y"],
     ["a printf -v into a subscripted target", "Y=status; printf -v 'Y[0]' push; git $Y"],
     ["a printf -v into an attached subscripted target", "Y=status; printf -v'Y[0]' push; git $Y"],
+    ["an element 1 assignment (TP-1491)", "Y=status; Y[1]=push; git $Y"],
+    ["an element assignment at a run-time index (TP-1491)", "Y=status; Y[i]=push; git $Y"],
+    ["an append to element 0 (TP-1491)", "Y=pu; Y[0]+=sh; git $Y"],
+    ["a declared element at a run-time index (TP-1491)", "Y=status; declare 'Y[i]=push'; git $Y"],
+    ["an element assignment before another command (TP-1491)", "Y=status; Y[0]=push true; git $Y"],
+    ["mapfile (TP-1491)", "Y=status; mapfile Y < list; git $Y"],
+    ["mapfile with options (TP-1491)", "Y=status; mapfile -t -d , Y < list; git $Y"],
+    ["readarray (TP-1491)", "Y=status; readarray Y < list; git $Y"],
   ])("leaves the variable unknown after %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  it("leaves MAPFILE unknown after a mapfile with no name (TP-1491)", () => {
+    expect(gitArgs("MAPFILE=status; mapfile < list; git $MAPFILE")).toEqual([["$MAPFILE"]]);
+  });
+
+  it("classifies a push whose subcommand is an unknown variable as no guarded action", () => {
+    expect(spellings("Y=status; mapfile Y < list; git $Y origin HEAD:main")).toEqual([]);
   });
 
   it.each([

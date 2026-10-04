@@ -4,10 +4,15 @@ import { printedText } from "./printed.js";
 /** Shell variables assigned earlier in the same command string; null means assigned but not knowable. */
 export type Vars = Map<string, string | null>;
 
-/** `NAME=value` or `NAME+=value`; `append` marks the second, whose result depends on the earlier value. */
-export type Assignment = [name: string, value: string | null, append?: true];
+/**
+ * `NAME=value`, `NAME+=value` or `NAME[i]=value`. An `append` depends on the earlier value; an `element`
+ * write keeps its value only as `NAME[0]=literal`, the element `$NAME` reads, and persists even before a command.
+ */
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element"];
 
-export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
+/** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
+export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
+const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
 const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
@@ -36,24 +41,34 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
-  if (!ASSIGNMENT_RE.test(w.value) && !(w.hidden && SLOT_ASSIGNMENT_RE.test(w.value))) return null;
-  const eq = w.value.indexOf("=");
-  const value = w.dynamic ? null : w.value.slice(eq + 1);
-  if (w.value[eq - 1] === "+") return [w.value.slice(0, eq - 1), value, true];
-  return [w.value.slice(0, eq), value];
+  if (w.hidden && SLOT_ASSIGNMENT_RE.test(w.value)) {
+    const eq = w.value.indexOf("=");
+    return [w.value.slice(0, eq), w.dynamic ? null : w.value.slice(eq + 1)];
+  }
+  const parts = ASSIGNMENT_PARTS_RE.exec(w.value);
+  if (!parts) return null;
+  const [whole, name = "", subscript, plus] = parts;
+  const value = w.dynamic ? null : w.value.slice(whole.length);
+  if (subscript !== undefined) return [name, subscript === "[0]" && !plus ? value : null, "element"];
+  return plus ? [name, value, "append"] : [name, value];
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, append]: Assignment): void {
-  if (!append) vars.set(name, value);
+export function assign(vars: Vars, [name, value, kind]: Assignment): void {
+  if (kind !== "append") vars.set(name, value);
   else {
     const prior = vars.get(name) ?? null;
     vars.set(name, prior !== null && value !== null ? prior + value : null);
   }
 }
 
-/** Applies the effect a builtin has on shell variables: declarations and `printf -v` set them, `read` and friends make them unknowable. */
-export function trackVars(name: string, args: WordToken[], vars: Vars): void {
+/**
+ * Applies the effect a command has on shell variables: declarations and `printf -v` set them, `read` and
+ * friends make them unknowable, and so does an element write before it, which bash may keep once it ends.
+ */
+export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars): void {
+  if (name === null) return;
+  for (const [target, , kind] of assigned) if (kind === "element") vars.set(target, null);
   if (DECLARERS.has(name)) {
     for (const arg of args) {
       const assignment = parseAssignment(arg);
@@ -65,11 +80,18 @@ export function trackVars(name: string, args: WordToken[], vars: Vars): void {
   for (const target of clobberedNames(name, args)) vars.set(target, null);
 }
 
+interface TrackedCommand {
+  name: string | null;
+  args: WordToken[];
+  assigned: Assignment[];
+}
+
 /** Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of reach. */
 function clobberedNames(name: string, args: WordToken[]): string[] {
   const values = args.map((a) => a.value);
   if (name === "read" || name === "unset") return values.flatMap((v) => TARGET_RE.exec(v)?.[1] ?? []);
   if (name === "for" && values[0] !== undefined && IDENTIFIER_RE.test(values[0])) return [values[0]];
+  if (name === "mapfile" || name === "readarray") return ["MAPFILE", ...values.filter((v) => IDENTIFIER_RE.test(v))];
   return [];
 }
 
