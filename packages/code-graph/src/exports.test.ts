@@ -19,10 +19,13 @@ import {
   resolveGitRef,
   runPrune,
   topDeadModules,
+  topGrowthRisks,
   topHotspots,
+  topUntestedRisks,
   topUnusedExports,
   windowSuffix,
   type GraphEdge,
+  type GraphMetric,
   type GraphNode,
   type HistoryMetricsOptions,
   type LoadedHistory,
@@ -160,6 +163,31 @@ describe("report derivations", () => {
 
     expect(dead.map((r) => r.nodeId)).toEqual(["orphan.ts"]);
     expect(unused.map((r) => [r.name, r.publicApi])).toEqual([["run", true]]);
+  });
+
+  it("lists growth and untested risks from file metrics", () => {
+    const nodes: GraphNode[] = [
+      { id: "loopy.ts", kind: "file", name: "loopy.ts" },
+      { id: "bare.ts", kind: "file", name: "bare.ts" },
+    ];
+    const metric = (nodeId: string, name: string, value: number): GraphMetric => ({
+      nodeId,
+      name,
+      value,
+      unit: "count",
+    });
+    const metrics = [
+      metric("loopy.ts", "loop_depth", 2),
+      metric("loopy.ts", "churn_30d", 10),
+      metric("loopy.ts", "cognitive_max", 5),
+      metric("loopy.ts", "coverage_pct", 0),
+    ];
+    const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+    expect(topGrowthRisks(ctx, 5).map((r) => [r.nodeId, r.smells])).toEqual([
+      ["loopy.ts", ["quadratic-shaped loop nesting"]],
+    ]);
+    expect(topUntestedRisks(ctx, 5).map((r) => [r.nodeId, r.score])).toEqual([["loopy.ts", 50]]);
   });
 });
 
