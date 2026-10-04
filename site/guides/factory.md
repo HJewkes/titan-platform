@@ -293,11 +293,19 @@ titan-factory service install --port 7411 --mcp
 
 - **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no `/health` answer (and it is not crash-looping).
-- **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago.
+- **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
 - **stale build**: the build sha in `/health` differs from the sha baked into the installed dist; an `unknown` sha on either side never counts.
 - **GitHub down**: the right pid answers but `github` is not `ok`.
 
 It never starts, stops or restarts the job.
+
+`service check` exits with:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | `/health` answers from the launchd pid with `github` `ok`, and the build is not stale |
+| `1` | One of the causes above holds, or the platform is not macOS |
+| `2` | Usage error, such as an invalid `--port` |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
 other platform these four verbs fail with one line.

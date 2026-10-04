@@ -193,8 +193,14 @@ with its transcript. `pr_ref` stays null until a later pass resolves it.
 `resetIndex` drops `pr` rows and forge review rows with everything else, so `commit_times`,
 `review_rounds_gh` and the forge reviews return only when a resolver answers again.
 
-Everything except `transcript` is derivable, which is what makes the schema safe to evolve by
-drop-and-rederive.
+Not everything can be rebuilt from transcripts. Original sources can be pruned, so schema
+migrations must preserve `fact` and `session` rows rather than assuming a replay is possible.
+`resetIndex` clears the tables in `DERIVED_TABLES`, including `fact` and `session`. That is a
+deliberate reset, not a migration step. It keeps the `transcript` watermark table (rewound, not
+deleted), `price` and `session_state`, which nothing derives from transcripts, and `conversation`
+and `conversation_alias`, which are derived from `session` rows or sources but are not in
+`DERIVED_TABLES`. `session_origin` and `session_external_event` are not derived from transcripts
+either: `resetIndex` clears them and the next pass refills them from their own sources.
 
 ## Injected context
 

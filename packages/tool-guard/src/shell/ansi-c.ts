@@ -34,7 +34,7 @@ const QUOTES = new Set(["'", '"', "?"]);
  * `echo -e` reads octal as `\0nnn` only; `printf %b` also takes `\nnn`; `$'...'` takes `\nnn` alone.
  * Outside `$'...'`, `\c` ends the output.
  */
-export type EscapeMode = "ansi-c" | "echo" | "printf-b";
+type EscapeMode = "ansi-c" | "echo" | "printf-b";
 
 /** Decodes the body of a `$'...'` string the way bash does, so `$'\x7e'` reads as `~`. */
 export function decodeAnsiC(body: string, mode: EscapeMode = "ansi-c"): string {
