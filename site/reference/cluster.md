@@ -12,14 +12,16 @@ An agent's tool output produces thousands of error blobs that are the same three
 wearing different paths, uuids, and durations. Counting raw strings tells you nothing.
 
 This is a native TypeScript **Drain** (ICWS 2017) with a per-blob signature and a frozen
-mask recipe in front of it. Identical blob shapes get identical template ids regardless of
-order or restarts.
+mask recipe in front of it. Template ids are deterministic for a given input order and
+stable across restarts through snapshot and restore. Lines that Drain merges share the id
+of whichever line founded the cluster, so the same lines in a different order can get a
+different id.
 
 ## When to reach for it
 
 You have high-volume semi-structured text — tool results, stack traces, log lines — and you
 want a stable handful of templates plus the parameters that varied. Determinism is the
-selling point: no model, no embeddings, same answer every run.
+selling point: no model, no embeddings, same answer every run over the same input order.
 
 ## Example
 
@@ -53,7 +55,9 @@ hasErrorSignal("Bash", "ok");                           // false
 3. **`DrainTree`** clusters the masked tokens: fixed-depth prefix tree, token-position
    similarity, templates that only ever loosen. `DrainTreeRegistry` keeps one tree per
    partition, so a `tsc` line and a `vitest` line never merge.
-4. **`templateId`** is a sha256 of `(partition, maskedSignature)`.
+4. **`templateId`** is a sha256 of `(partition, maskedSignature)`, taken from the line that
+   founds a Drain cluster and bound to that cluster for good. Later lines Drain merges into
+   the cluster reuse the founder's id, even when their own masked signature differs.
 
 ## Gotchas
 
@@ -65,7 +69,8 @@ blobs screened down to 1 that was worth clustering.
 **Snapshot across restarts.** `clusterer.snapshot()` captures every tree with its learned
 wildcards and cluster-to-template bindings; `Clusterer.fromSnapshot(snapshot)` restores
 them. Storing the snapshot and the occurrences is the caller's job. A chunked sequence of
-runs converges on the same templates as one all-at-once run.
+runs converges on the same templates and ids as one all-at-once run over the same input
+order.
 
 **Only the generic mask config exists today.** Per-tool configs (`Bash.ts`, `test.ts`, …)
 were meant to come from a DeepParse mask-bootstrap script, which is not built.
