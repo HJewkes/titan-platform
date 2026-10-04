@@ -26,6 +26,7 @@ const NO_ANCHOR = '@@no-anchor@@'
 const CLOSED = '@@closed@@'
 const PRESENT = '@@present@@'
 const GONE = '@@gone@@'
+const NO_WINDOW = '@@no-window@@'
 
 const plan = (over: Partial<LaunchPlan> = {}): LaunchPlan => ({
   agentId: 'ag000001',
@@ -45,7 +46,7 @@ const plan = (over: Partial<LaunchPlan> = {}): LaunchPlan => ({
  * list, so a fake that only answers the close script would describe an iTerm2
  * that never lets go of anything. Default is a session that obeys.
  */
-function fakeIterm(found = true, stillThere = false) {
+function fakeIterm(found = true, stillThere = false, placed = 'NEW-SESSION-UUID') {
   const scripts: string[] = []
   const notices: string[] = []
   const run = async (script: string): Promise<string> => {
@@ -53,8 +54,9 @@ function fakeIterm(found = true, stillThere = false) {
     if (script.includes('is running')) return 'true'
     if (script.includes(PRESENT)) return stillThere ? PRESENT : GONE
     if (!found && script.includes(NO_ANCHOR)) return NO_ANCHOR
+    if (!found && script.includes(NO_WINDOW)) return NO_WINDOW
     if (script.includes('to close')) return CLOSED
-    return 'NEW-SESSION-UUID'
+    return script.includes(NO_ANCHOR) ? placed : 'NEW-SESSION-UUID'
   }
   const options: SurfaceOptions = {
     platform: 'darwin',
@@ -336,6 +338,190 @@ describe('iterm surfaces', () => {
 
     await expect(launching).resolves.toMatchObject({ paneRef: 'NEW-SESSION-UUID' })
     expect(order).toEqual(['script started', 'other work ran'])
+  })
+})
+
+/**
+ * Placement used to depend on facts the host could not see: every pane went
+ * right of its anchor, nothing counted the tab, and a requester with no anchor
+ * always got a window of its own.
+ */
+describe('iterm placements', () => {
+  const HOME_WINDOW = 4127
+
+  /** The script that opens the surface: the one that hands iTerm a command at creation. */
+  const opening = (scripts: string[]): string => scripts.find(s => s.includes('set spawned to')) ?? ''
+
+  /** The split iTerm is told to make of the anchor itself, when no column is live. */
+  const anchorSplit = (script: string): string =>
+    script.split('\n').find(line => line.includes('tell anchorSession to set spawned to')) ?? ''
+
+  it.each([
+    ['right', 'split vertically'],
+    ['below', 'split horizontally'],
+  ] as const)('splits the anchor to the %s when asked', async (split, verb) => {
+    const { scripts, options } = fakeIterm()
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, split }).launch(plan())
+
+    expect(handle.surface).toBe('iterm-pane')
+    expect(anchorSplit(opening(scripts))).toContain(`${verb} with default profile`)
+  })
+
+  it('keeps splitting to the right for a caller that names no split', async () => {
+    const { scripts, options } = fakeIterm()
+    await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR }).launch(plan())
+
+    expect(anchorSplit(opening(scripts))).toContain('split vertically')
+  })
+
+  it.each(['right', 'below'] as const)('extends a live stack downwards under a %s split', async split => {
+    const { scripts, options } = fakeIterm()
+    await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, split, columnAfter: 'NEWEST-PANE' }).launch(plan())
+
+    const script = opening(scripts)
+    expect(script).toContain('is "NEWEST-PANE"')
+    expect(script).toContain('tell columnSession to set spawned to (split horizontally')
+  })
+
+  it('reports how many sessions the anchor tab held, counted in the same pass that finds it', async () => {
+    const { scripts, options } = fakeIterm(true, false, 'NEW-SESSION-UUID|3|')
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-pane', paneRef: 'NEW-SESSION-UUID', inTab: 3 })
+    expect(opening(scripts)).toContain('set inTab to (count of sessions of t)')
+    expect(opening(scripts)).toContain('return (unique ID of spawned) & "|" & inTab')
+    expect(scripts.filter(script => script.includes('count of sessions'))).toHaveLength(1)
+  })
+
+  it('reports the count for a tab opened by its anchor too', async () => {
+    const { options } = fakeIterm(true, false, 'NEW-SESSION-UUID|2|')
+    const handle = await surfaceFor('iterm-tab', { ...options, anchor: ANCHOR }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-tab', inTab: 2 })
+  })
+
+  it('leaves the count off when the answer carries none', async () => {
+    const { options } = fakeIterm()
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR }).launch(plan())
+
+    expect(handle.paneRef).toBe('NEW-SESSION-UUID')
+    expect('inTab' in handle).toBe(false)
+  })
+
+  it('tells iTerm to open a tab in the anchor window once the tab is at the cap', async () => {
+    const { scripts, options } = fakeIterm()
+    await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, split: 'below', maxInTab: 4 }).launch(plan())
+
+    const script = opening(scripts)
+    const overflow = script.slice(script.indexOf('if inTab >= 4 then'), script.indexOf('else'))
+    expect(overflow).toContain('tell anchorWindow to set spawned to (current session of (create tab with default profile')
+    expect(script.slice(script.indexOf('else'))).toContain('split horizontally')
+  })
+
+  it('lands a pane in a full tab as a tab, and says so', async () => {
+    const { notices, options } = fakeIterm(true, false, 'NEW-SESSION-UUID|4|overflow')
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, maxInTab: 4 }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-tab', paneRef: 'NEW-SESSION-UUID', ownsSurface: true, inTab: 4 })
+    expect(notices).toEqual(["the anchor's tab holds 4 sessions (cap 4); opening an iTerm tab instead of iterm-pane"])
+  })
+
+  it('stays a pane, with no notice, under the cap', async () => {
+    const { notices, options } = fakeIterm(true, false, 'NEW-SESSION-UUID|3|')
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, maxInTab: 4 }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-pane', inTab: 3 })
+    expect(notices).toEqual([])
+  })
+
+  it.each([0, -1, 2.5, Number.NaN])('writes no cap into the script for a cap of %s', async maxInTab => {
+    const { scripts, options } = fakeIterm()
+    await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, maxInTab }).launch(plan())
+
+    expect(opening(scripts)).not.toContain('if inTab >=')
+    expect(opening(scripts)).not.toContain('create tab')
+  })
+
+  it('opens a tab in a window named by id, with no anchor session', async () => {
+    const { scripts, notices, options } = fakeIterm()
+    const handle = await surfaceFor('iterm-tab', { ...options, tabWindow: HOME_WINDOW }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-tab', paneRef: 'NEW-SESSION-UUID', ownsSurface: true })
+    const script = opening(scripts)
+    expect(script).toContain(`if ((id of w) as text) is "${HOME_WINDOW}" then set homeWindow to w`)
+    expect(script).toContain('tell homeWindow to set spawned to (current session of (create tab with default profile')
+    expect(script).not.toContain('create window')
+    // Found by id, never by focus, and the human's tab and window are put back.
+    expect(placement(script)).not.toContain('current window')
+    expect(script.indexOf('select homeTab')).toBeGreaterThan(script.indexOf('set spawned to'))
+    expect(script.indexOf('select priorWindow')).toBeGreaterThan(script.indexOf('set spawned to'))
+    expect(notices).toEqual([])
+  })
+
+  it('falls back to a window with a notice when the named window is gone', async () => {
+    const { scripts, notices, options } = fakeIterm(false)
+    const handle = await surfaceFor('iterm-tab', { ...options, tabWindow: HOME_WINDOW }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-window', paneRef: 'NEW-SESSION-UUID', ownsSurface: true })
+    expect(lastScript(scripts)).toContain('create window with default profile')
+    expect(notices).toEqual([`window ${HOME_WINDOW} is gone; opening an iTerm window instead of iterm-tab`])
+  })
+
+  it('puts a pane with no anchor in the named window as a tab, rather than in a window of its own', async () => {
+    const { scripts, notices, options } = fakeIterm()
+    const handle = await surfaceFor('iterm-pane', { ...options, tabWindow: HOME_WINDOW }).launch(plan())
+
+    expect(handle.surface).toBe('iterm-tab')
+    expect(scripts.some(script => script.includes('create window'))).toBe(false)
+    expect(notices).toEqual([])
+  })
+
+  it('puts a pane whose anchor has closed in the named window, and names the anchor', async () => {
+    const scripts: string[] = []
+    const notices: string[] = []
+    const runAppleScript = async (script: string): Promise<string> => {
+      scripts.push(script)
+      if (script.includes('is running')) return 'true'
+      return script.includes(NO_ANCHOR) ? NO_ANCHOR : 'TAB-SESSION-UUID'
+    }
+    const handle = await surfaceFor('iterm-pane', {
+      platform: 'darwin',
+      runAppleScript,
+      onNotice: message => void notices.push(message),
+      anchor: ANCHOR,
+      tabWindow: HOME_WINDOW,
+    }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-tab', paneRef: 'TAB-SESSION-UUID' })
+    expect(notices).toEqual([
+      `anchor session ${UUID} is gone; opening an iTerm tab in window ${HOME_WINDOW} instead of iterm-pane`,
+    ])
+  })
+
+  it('names both when the anchor and the named window are gone', async () => {
+    const { notices, options } = fakeIterm(false)
+    const handle = await surfaceFor('iterm-pane', { ...options, anchor: ANCHOR, tabWindow: HOME_WINDOW }).launch(plan())
+
+    expect(handle.surface).toBe('iterm-window')
+    expect(notices).toEqual([
+      `anchor session ${UUID} and window ${HOME_WINDOW} are gone; opening an iTerm window instead of iterm-pane`,
+    ])
+  })
+
+  it('still opens a window for iterm-window, whatever placement options ride along', async () => {
+    const { scripts, notices, options } = fakeIterm()
+    const handle = await surfaceFor('iterm-window', {
+      ...options,
+      anchor: ANCHOR,
+      split: 'below',
+      maxInTab: 1,
+      tabWindow: HOME_WINDOW,
+    }).launch(plan())
+
+    expect(handle).toMatchObject({ surface: 'iterm-window', paneRef: 'NEW-SESSION-UUID', ownsSurface: true })
+    expect(opening(scripts)).toContain('create window with default profile')
+    expect(scripts.some(script => script.includes('create tab') || script.includes('split '))).toBe(false)
+    expect(notices).toEqual([])
   })
 })
 

@@ -40,6 +40,23 @@ export interface SurfaceOptions {
    */
   columnAfter?: string;
   /**
+   * Which side of the anchor a pane's stack starts on: `right` (the default)
+   * keeps the anchor's height, `below` keeps its width. A live `columnAfter`
+   * pane is split downwards either way.
+   */
+  split?: "right" | "below";
+  /**
+   * The most sessions a tab may hold. A pane asked for in a tab already this
+   * full opens as a tab in the anchor's window instead, with a notice.
+   */
+  maxInTab?: number;
+  /**
+   * An iTerm2 window id. A tab opens in this window with no anchor needed, and
+   * a pane whose anchor is absent or gone lands there as a tab before it falls
+   * back to a window of its own.
+   */
+  tabWindow?: number | string;
+  /**
    * Put the agent IN the anchor session rather than beside it.
    *
    * Only for a successor taking over a predecessor's own pane, which it has just

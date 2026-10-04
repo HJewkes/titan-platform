@@ -14,6 +14,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
+import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
 
 export type { FactoryContext } from "./registry.js";
@@ -22,6 +23,7 @@ export const FACTORY_PORT = 7410;
 /** Empty so registered commands keep their own names: `shepherd.register` becomes `shepherd__register`, not `factory__shepherd__register`. */
 export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
+const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -73,11 +75,14 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const services = options.routes.shepherd;
   const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
+  const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
+  await checkoutSweep?.tick();
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     await goneSweep?.stop();
     await releaseSweep?.stop();
+    await checkoutSweep?.stop();
     await daemon.close();
     unbindCarry();
     host.close();
@@ -163,6 +168,12 @@ async function endGone(host: FactoryHost, services: ShepherdServices, log: Logge
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
+}
+
+export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {
+  const onError = (path: string, error: unknown): void =>
+    log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
+  for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */

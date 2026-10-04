@@ -2,17 +2,15 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { isRepo } from "@titan-design/github";
 import { z } from "zod";
 
-/** A GitHub `owner/name` with no URL, `.git` suffix, all-dot name, extra path segment or whitespace. */
-export function isRepoKey(repo: string): boolean {
-  return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo) && !/\.git$/i.test(repo) && !/\/\.+$/.test(repo);
-}
+export { isRepo as isRepoKey } from "@titan-design/github";
 
 /** Every repo reference is canonicalised here, so denies and lookups compare one form. */
 const RemoteSchema = z
   .string()
-  .refine(isRepoKey, "must be a bare owner/name")
+  .refine(isRepo, "must be a bare owner/name")
   .transform((remote) => remote.toLowerCase());
 
 /** A path as written (slashes tidied, case kept, for spawn cwds) and its one comparison key. */
@@ -126,7 +124,7 @@ export function loadSeatBook(sources: SeatSources): SeatBook {
 
 /** A malformed key or a deny wins over any seat; a remote several seats list gets the grants they all share. */
 export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
-  if (!isRepoKey(repo)) return { kind: "denied", reason: `${JSON.stringify(repo)} is not an owner/name repo` };
+  if (!isRepo(repo)) return { kind: "denied", reason: `${JSON.stringify(repo)} is not an owner/name repo` };
   const remote = repo.toLowerCase();
   const name = remote.split("/")[1]!;
   if (book.denied.includes(remote) || book.denied.includes(name)) return { kind: "denied", reason: `${repo} is on a seat deny list or a charter hard stop` };
@@ -189,7 +187,7 @@ function resolveDeny(path: RepoPath, file: string, index: Map<string, string>): 
   const remote = index.get(path.key);
   if (remote !== undefined) return remote;
   const name = path.key.split("/").pop()!;
-  if (!isRepoKey(`owner/${name}`)) throw new SeatBookInvalid(`deny path ${JSON.stringify(path.written)} in ${file} matches no seat repo and ${JSON.stringify(name)} is not a repo name`);
+  if (!isRepo(`owner/${name}`)) throw new SeatBookInvalid(`deny path ${JSON.stringify(path.written)} in ${file} matches no seat repo and ${JSON.stringify(name)} is not a repo name`);
   return name;
 }
 

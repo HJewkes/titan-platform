@@ -3,6 +3,7 @@ import { createRetrievalEngine, ftsRetriever, graphRetriever, type FusedResult }
 import { normalizedSessions, readIndexedText, type SessionGraph } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { hasNormalized } from "../normalized-tables.js";
 
 const SearchArgs = z.object({
   query: z.string().min(1),
@@ -50,7 +51,7 @@ async function toHit(graph: SessionGraph, result: FusedResult): Promise<SearchHi
     | undefined;
   const span = result.payloads.fts as { sourceId: number; byteOffset: number; byteLength: number; field: string } | undefined;
   const transcript = span ? graph.transcripts.list().find((t) => t.sourceId === span.sourceId) : undefined;
-  const normalizedSource = span ? graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(span.sourceId) as { descriptor: string } | undefined : undefined;
+  const normalizedSource = span && hasNormalized(graph) ? graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(span.sourceId) as { descriptor: string } | undefined : undefined;
   const sourcePath = normalizedSource ? (JSON.parse(normalizedSource.descriptor) as { path: string }).path : transcript?.sourceKey;
   const locator = span && sourcePath ? { transcript: sourcePath, byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field } : null;
   const normalized = result.id.startsWith("conversation:") ? normalizedSessions(graph, { ref: result.id, limit: 1 })[0] : undefined;

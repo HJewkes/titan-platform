@@ -1,35 +1,27 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { CloseOutcome, LaunchHandle, LaunchPlan, Surface, SurfaceName } from "../types.js";
+import type { CloseOutcome, LaunchHandle, LaunchPlan, Surface } from "../types.js";
 import { paneCommand, relaunchCommand, type Launcher } from "./command.js";
+import {
+  CLOSED,
+  GONE,
+  NO_ANCHOR,
+  NO_WINDOW,
+  OVERFLOWED,
+  PRESENT,
+  beside,
+  closeSession,
+  inPlace,
+  newWindow,
+  sessionField,
+  sessionPresent,
+  tabIn,
+  type ItermSurfaceName,
+} from "./iterm-scripts.js";
 import { psProbe, watchLaunch, type LaunchMarker, type PaneReader } from "./launch-check.js";
 import { SurfaceRefused, type AppleScriptRunner, type SurfaceOptions } from "./options.js";
 
-/**
- * The iTerm2 surfaces, and two lessons that must survive:
- *
- * 1. Target the anchor session by the UUID inside `ITERM_SESSION_ID`, iterating
- *    windows/tabs/sessions to find it. NEVER `current window`: that follows user
- *    focus, so panes land in whichever window is frontmost when the script runs,
- *    which is rarely the one the human was looking at when they asked.
- * 2. Do not title anything here. iTerm's `set name` does not stick (the running
- *    job overwrites it); the launcher emits an OSC 0 escape instead.
- */
-
-export type ItermSurfaceName = Extract<SurfaceName, `iterm-${string}`>;
-
-/** Returned by the search scripts when the anchor session no longer exists. */
-const NO_ANCHOR = "@@no-anchor@@";
-
-/** Returned by the teardown script when it found the session and closed it. */
-const CLOSED = "@@closed@@";
-
-/** Returned by the existence probe. Two sentinels, so a throw can never read as "gone". */
-const PRESENT = "@@present@@";
-const GONE = "@@gone@@";
-
-/** Kill-line in zsh and bash, for a prompt that already holds stray keys. */
-const CTRL_U = 21;
+export type { ItermSurfaceName };
 
 const execFileAsync = promisify(execFile);
 
@@ -45,147 +37,11 @@ const osascript: AppleScriptRunner = async script =>
     })
   ).stdout.trim();
 
-const asString = (value: string): string => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-
 /** `ITERM_SESSION_ID` is `w0t1p2:UUID`; only the UUID identifies a session. */
 const anchorUuid = (anchor: string | undefined): string | undefined => {
   const uuid = anchor?.slice(anchor.lastIndexOf(":") + 1).trim();
   return uuid === undefined || uuid === "" ? undefined : uuid;
 };
-
-/**
- * One pass for both sessions we might target. `columnUuid` is empty when there is
- * no column yet, and no session's unique ID is ever the empty string, so the
- * lookup simply finds nothing, which is also the correct answer when the column
- * pane existed and has since been closed.
- */
-const findSessions = (uuid: string, columnUuid: string): string => `
-  set anchorSession to missing value
-  set anchorWindow to missing value
-  set columnSession to missing value
-  repeat with w in windows
-    repeat with t in tabs of w
-      repeat with s in sessions of t
-        if (unique ID of s) is ${asString(uuid)} then
-          set anchorSession to s
-          set anchorWindow to w
-        end if
-        if (unique ID of s) is ${asString(columnUuid)} then
-          set columnSession to s
-        end if
-      end repeat
-    end repeat
-  end repeat
-  if anchorSession is missing value then return ${asString(NO_ANCHOR)}`;
-
-/**
- * Where the human's keystrokes were going, read before a surface opens and put
- * back after it. Read only, never used to place anything.
- *
- * `create tab` makes its window key and `create window` activates iTerm2, so
- * without this the next keystroke lands in the agent's pane. `select` on a
- * window is `makeKeyAndOrderFront`, which does not activate iTerm2 when some
- * other app is in front.
- */
-const rememberFocus = `  set priorWindow to missing value
-  try
-    set priorWindow to current window
-  end try`;
-
-const restoreFocus = `  if priorWindow is not missing value then
-    try
-      select priorWindow
-    end try
-  end if`;
-
-/**
- * Agents stack in a column beside the anchor, rather than each one splitting the
- * anchor again, which halved the requester's pane on every spawn. The first agent
- * splits the anchor VERTICALLY; each later agent splits the previous AGENT pane
- * HORIZONTALLY, so the column subdivides and the anchor keeps its width.
- *
- * Falling back to the vertical split when the column session is gone is what
- * makes a closed agent pane self-healing: the next spawn starts a fresh column.
- * There is no depth parameter: the anchor is always the requester's own pane, so
- * an agent's own spawns land one column further right for free.
- *
- * The anchor window's tab and session are re-selected afterwards because a
- * split selects the anchor's tab and a new tab selects itself.
- */
-const beside = (surface: ItermSurfaceName, uuid: string, command: string, columnUuid: string = ""): string => {
-  const withCommand = `with default profile command ${asString(command)}`;
-  const open =
-    surface === "iterm-pane"
-      ? `  if columnSession is not missing value then
-    tell columnSession to set spawned to (split horizontally ${withCommand})
-  else
-    tell anchorSession to set spawned to (split vertically ${withCommand})
-  end if`
-      : `  tell anchorWindow to set spawned to (current session of (create tab ${withCommand}))`;
-  return `tell application "iTerm2"${findSessions(uuid, columnUuid)}
-${rememberFocus}
-  set anchorTab to current tab of anchorWindow
-  set anchorWindowSession to current session of anchorWindow
-${open}
-  select anchorTab
-  select anchorWindowSession
-${restoreFocus}
-  return unique ID of spawned
-end tell`;
-};
-
-/**
- * Run the command IN the anchor session, rather than opening anything.
- *
- * Only for a successor taking a predecessor's own pane: the predecessor has
- * already exited, so its shell is back at a prompt, and the successor lands
- * exactly where the session it continues was sitting.
- *
- * An existing shell cannot be given a command at creation, so this one is still
- * typed. It is one write, Ctrl-U and then the short relaunch path, so no gap is
- * left between clearing the line and filling it; see `relaunchCommand` for what
- * catches keys that still land in front of it or after it.
- */
-const inPlace = (uuid: string, command: string): string => `tell application "iTerm2"${findSessions(uuid, "")}
-  tell anchorSession to write text ((character id ${CTRL_U}) & ${asString(command)})
-  return unique ID of anchorSession
-end tell`;
-
-/** The fallback everything lands on: needs no anchor, so it cannot fail to find one. */
-const newWindow = (command: string): string => `tell application "iTerm2"
-${rememberFocus}
-  set spawned to (current session of (create window with default profile command ${asString(command)}))
-${restoreFocus}
-  return unique ID of spawned
-end tell`;
-
-/**
- * Close one session, found the same way everything else here finds one.
- *
- * A session is the unit for all three surfaces: closing the last session of a
- * tab closes the tab, and the last tab of a window closes the window. Finding
- * nothing is the ordinary case of a human who already closed it by hand.
- */
-const closeSession = (uuid: string): string => `tell application "iTerm2"${findSessions(uuid, "")}
-  tell anchorSession to close
-  return ${asString(CLOSED)}
-end tell`;
-
-/**
- * Does iTerm2 still list this session? Re-read rather than inferred:
- * `closeSession` returning `@@closed@@` only says the script found the session
- * and issued `close`, not that the close took.
- */
-const sessionPresent = (uuid: string): string => `tell application "iTerm2"
-  repeat with w in windows
-    repeat with t in tabs of w
-      repeat with s in sessions of t
-        if (unique ID of s) is ${asString(uuid)} then return ${asString(PRESENT)}
-      end repeat
-    end repeat
-  end repeat
-  return ${asString(GONE)}
-end tell`;
 
 /**
  * Whether iTerm2 still holds `uuid`, for callers outside a teardown.
@@ -235,18 +91,6 @@ async function requireIterm(options: SurfaceOptions, run: AppleScriptRunner): Pr
   if (!(await itermRunning(run))) throw new SurfaceRefused("iTerm2 is not running; use surface 'headless'");
 }
 
-/** One field of one session, or `@@gone@@` when iTerm2 no longer lists it. */
-const sessionField = (uuid: string, field: "tty" | "contents"): string => `tell application "iTerm2"
-  repeat with w in windows
-    repeat with t in tabs of w
-      repeat with s in sessions of t
-        if (unique ID of s) is ${asString(uuid)} then return ${field} of s
-      end repeat
-    end repeat
-  end repeat
-  return ${asString(GONE)}
-end tell`;
-
 const paneReader = (run: AppleScriptRunner, uuid: string): PaneReader => ({
   tty: async () => {
     const tty = await run(sessionField(uuid, "tty"));
@@ -292,27 +136,87 @@ async function reuse(launch: ItermLaunch, uuid: string): Promise<LaunchHandle | 
   return undefined;
 }
 
+/** A cap that is not a positive whole number is no cap, rather than a script that cannot compile. */
+const tabCap = (cap: number | undefined): number | undefined =>
+  cap !== undefined && Number.isInteger(cap) && cap > 0 ? cap : undefined;
+
+/** `uuid|inTab|overflow`; a bare uuid is still an answer, with nothing known about the tab. */
+const parsePlacement = (answer: string): { paneRef: string; inTab: number | undefined; overflowed: boolean } => {
+  const [paneRef = "", count = "", flag] = answer.split("|");
+  const inTab = Number.parseInt(count, 10);
+  return { paneRef, inTab: Number.isNaN(inTab) ? undefined : inTab, overflowed: flag === OVERFLOWED };
+};
+
+/** A rung of the ladder: the handle it opened, or the name of the target that is gone. */
+type Rung = () => Promise<LaunchHandle | string>;
+
+async function besideAnchor(launch: ItermLaunch, uuid: string, command: string): Promise<LaunchHandle | string> {
+  const { surface, options, run } = launch;
+  const cap = tabCap(options.maxInTab);
+  const { columnAfter: columnUuid, split } = options;
+  const answer = await run(beside({ surface, uuid, command, columnUuid, split, cap }));
+  if (answer === NO_ANCHOR) return `anchor session ${uuid}`;
+  const { paneRef, inTab, overflowed } = parsePlacement(answer);
+  if (overflowed)
+    options.onNotice?.(`the anchor's tab holds ${inTab} sessions (cap ${cap}); opening an iTerm tab instead of ${surface}`);
+  const at = overflowed ? "iterm-tab" : surface;
+  return watched({ surface: at, paneRef, ownsSurface: true, ...(inTab === undefined ? {} : { inTab }) }, launch);
+}
+
+async function tabInWindow(launch: ItermLaunch, windowId: string, command: string): Promise<LaunchHandle | string> {
+  const paneRef = await launch.run(tabIn(windowId, command));
+  if (paneRef === NO_WINDOW) return `window ${windowId}`;
+  return watched({ surface: "iterm-tab", paneRef, ownsSurface: true }, launch);
+}
+
+/** A tab with a named window goes there and nowhere else; a pane tries its anchor first. */
+const rungs = (launch: ItermLaunch, uuid: string | undefined, command: string): Rung[] => {
+  const { surface, options } = launch;
+  const windowId = options.tabWindow === undefined ? undefined : String(options.tabWindow);
+  const viaAnchor = uuid === undefined ? [] : [() => besideAnchor(launch, uuid, command)];
+  const viaWindow = windowId === undefined ? [] : [() => tabInWindow(launch, windowId, command)];
+  return surface === "iterm-tab" && viaWindow.length > 0 ? viaWindow : [...viaAnchor, ...viaWindow];
+};
+
+/** Walks the rungs, and says so once when the agent lands somewhere other than where it was asked. */
+async function place(launch: ItermLaunch, uuid: string | undefined, command: string): Promise<LaunchHandle | undefined> {
+  const { surface, options } = launch;
+  const gone: string[] = [];
+  let handle: LaunchHandle | undefined;
+  for (const rung of rungs(launch, uuid, command)) {
+    const result = await rung();
+    if (typeof result !== "string") {
+      handle = result;
+      break;
+    }
+    gone.push(result);
+  }
+  if (gone.length > 0) {
+    const where = handle === undefined ? "an iTerm window" : `an iTerm tab in window ${options.tabWindow}`;
+    options.onNotice?.(`${gone.join(" and ")} ${gone.length > 1 ? "are" : "is"} gone; opening ${where} instead of ${surface}`);
+  }
+  return handle;
+}
+
 /**
- * The ladder, in order: no anchor -> a window; anchor recorded but gone -> a
- * window plus a notice; no iTerm2 at all -> refuse, naming headless.
+ * The ladder, in order: the anchor or the named window -> there; neither given ->
+ * a window; given but gone -> a window plus a notice; no iTerm2 at all ->
+ * refuse, naming headless.
  */
 async function launchIterm(launch: ItermLaunch): Promise<LaunchHandle> {
   const { surface, plan, launcher, options, run } = launch;
   await requireIterm(options, run);
   const uuid = anchorUuid(options.anchor);
   const command = paneCommand(launcher, plan.agentId);
-  const opened = (at: ItermSurfaceName, paneRef: string): LaunchHandle =>
-    watched({ surface: at, paneRef, ownsSurface: true }, launch);
 
   if (options.reuseAnchor && uuid !== undefined) {
     const reused = await reuse(launch, uuid);
     if (reused !== undefined) return reused;
-  } else if (surface !== "iterm-window" && uuid !== undefined) {
-    const paneRef = await run(beside(surface, uuid, command, options.columnAfter));
-    if (paneRef !== NO_ANCHOR) return opened(surface, paneRef);
-    options.onNotice?.(`anchor session ${uuid} is gone; opening an iTerm window instead of ${surface}`);
+  } else if (surface !== "iterm-window") {
+    const placed = await place(launch, uuid, command);
+    if (placed !== undefined) return placed;
   }
-  return opened("iterm-window", await run(newWindow(command)));
+  return watched({ surface: "iterm-window", paneRef: await run(newWindow(command)), ownsSurface: true }, launch);
 }
 
 /**

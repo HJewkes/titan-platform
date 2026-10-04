@@ -55,9 +55,10 @@
         "product": [
           "products/session-miner",
           "products/retrieval-eval",
-          "apps/code-report",
+          "apps/codewatch",
           "products/factory",
-          "products/evals"
+          "products/evals",
+          "apps/console"
         ]
       },
       "layers": [
@@ -111,9 +112,10 @@
         [
           "products/session-miner",
           "products/retrieval-eval",
-          "apps/code-report",
+          "apps/codewatch",
           "products/factory",
-          "products/evals"
+          "products/evals",
+          "apps/console"
         ]
       ]
     },
@@ -180,17 +182,24 @@
       "to": "npm:@titan-design/react-ui"
     },
     {
-      "id": "code-report-browser-no-node",
+      "id": "codewatch-browser-no-node",
       "type": "forbid-import",
-      "$comment": "apps/code-report/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
-      "from": "apps/code-report/src/**",
+      "$comment": "apps/codewatch/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
+      "from": "apps/codewatch/src/**",
       "to": "node:**"
     },
     {
-      "id": "code-report-browser-no-code-graph",
+      "id": "console-browser-no-node",
+      "type": "forbid-import",
+      "$comment": "apps/console/src ships to the browser, including as a file opened from disk; only server/ may use Node builtins.",
+      "from": "apps/console/src/**",
+      "to": "node:**"
+    },
+    {
+      "id": "codewatch-browser-no-code-graph",
       "type": "forbid-import",
       "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; the browser reads code-read's ./query and the exported dataset instead.",
-      "from": "apps/code-report/src/**",
+      "from": "apps/codewatch/src/**",
       "to": "packages/code-graph/**"
     },
     {

@@ -87,8 +87,6 @@ const ASSET_UPSERTS = {
   files: `INSERT INTO file (file_ref, repo, path) VALUES (@fileRef, @repo, @path) ON CONFLICT (file_ref) DO NOTHING`,
   tasks: `INSERT INTO task (task_ref, task_id, status) VALUES (@taskRef, @taskId, @status)
         ON CONFLICT (task_ref) DO UPDATE SET status = COALESCE(excluded.status, status)`,
-  artifacts: `INSERT INTO artifact (artifact_ref, kind, title, url, path, created_at) VALUES (@artifactRef, @artifactKind, @title, @url, @path, @ts)
-        ON CONFLICT (artifact_ref) DO NOTHING`,
   prMerges: `INSERT INTO pr_merge_observation (number, repo_hint, merged_at) VALUES (@number, @repoHint, @ts)
         ON CONFLICT (number, repo_hint, merged_at) DO NOTHING`,
   prCreates: `INSERT INTO pr_create_observation (tool_use_id, title, number, repo, url) VALUES (@toolUseId, @title, @number, @repo, @url)
