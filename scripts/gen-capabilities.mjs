@@ -112,9 +112,14 @@ function byTier(entries) {
   return entries.map((e, i) => ({ e, i })).sort((a, b) => order.indexOf(String(a.e.tier)) - order.indexOf(String(b.e.tier)) || a.i - b.i).map(({ e }) => e);
 }
 
+// GFM splits a cell on every unescaped pipe, even inside backticks.
+export function tableRow(cells) {
+  return `| ${cells.map((c) => String(c).replaceAll("|", "\\|")).join(" | ")} |`;
+}
+
 function quickIndex(entries) {
   const lines = ["## Quick index", "", "| Unit | Tier | Use this when |", "| --- | --- | --- |"];
-  for (const e of byTier(entries)) lines.push(`| [\`${shortName(e)}\`](#${anchor(e)}) | ${e.tier} | ${e.useWhen.replaceAll("|", "\\|")} |`);
+  for (const e of byTier(entries)) lines.push(tableRow([`[\`${shortName(e)}\`](#${anchor(e)})`, e.tier, e.useWhen]));
   return [...lines, ""];
 }
 
@@ -170,7 +175,7 @@ function runtimeSection(data) {
     "| Path | Package | Credential it needs | Smoke check |",
     "| --- | --- | --- | --- |",
   ];
-  for (const p of data.runtimePaths) lines.push(`| ${p.path} | \`${p.package}\` | ${p.credential} | ${p.smoke} |`);
+  for (const p of data.runtimePaths) lines.push(tableRow([p.path, `\`${p.package}\``, p.credential, p.smoke]));
   return [...lines, ""];
 }
 
@@ -184,7 +189,7 @@ function gapsSection(data) {
     "| Task | Area | Gap |",
     "| --- | --- | --- |",
   ];
-  for (const g of data.knownGaps) lines.push(`| ${g.id} | \`${g.package}\` | ${g.title} |`);
+  for (const g of data.knownGaps) lines.push(tableRow([g.id, `\`${g.package}\``, g.title]));
   return [...lines, ""];
 }
 

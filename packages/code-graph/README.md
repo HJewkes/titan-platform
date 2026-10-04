@@ -230,7 +230,8 @@ the file is unreadable.
 The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
-fail a check.
+fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
+destination file has an excluded role.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
