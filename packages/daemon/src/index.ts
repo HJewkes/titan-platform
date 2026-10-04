@@ -14,6 +14,7 @@ export {
   DEFAULT_DAEMON_PORT,
   daemonPaths,
   getProcessCommand,
+  getProcessStartTime,
   isProcessAlive,
   probeHealth,
   readPidFile,

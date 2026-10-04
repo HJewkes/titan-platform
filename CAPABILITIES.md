@@ -429,8 +429,8 @@ Key exports:
 - `events`: `EventHub`
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
-- `lifecycle`: `daemonPaths`, `getProcessCommand`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`, `writePidFile`
-- +39 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
+- +40 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -591,7 +591,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +339 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +342 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 

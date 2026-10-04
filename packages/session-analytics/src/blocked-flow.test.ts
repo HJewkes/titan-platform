@@ -50,6 +50,20 @@ describe("mergeOutcomes", () => {
     expect(outcome).toMatchObject({ status: "open", minutes: 60 });
   });
 
+  it("never counts a WAIT verdict as a MERGE, even at the final head of a merged PR", () => {
+    const wait = verdict("acme/w", 9, "2026-09-10T09:00:00Z", HEAD_A, { verdict: "WAIT" });
+
+    expect(mergeOutcomes([wait], [pull("acme/w", 9, "2026-09-10T09:45:00Z")], AS_OF)).toEqual([]);
+  });
+
+  it("measures from the MERGE, not an earlier WAIT at the same head", () => {
+    const verdicts = [verdict("acme/w", 9, "2026-09-10T09:00:00Z", HEAD_A, { verdict: "WAIT" }), verdict("acme/w", 9, "2026-09-10T09:30:00Z")];
+
+    const [outcome] = mergeOutcomes(verdicts, [pull("acme/w", 9, "2026-09-10T09:45:00Z")], AS_OF);
+
+    expect(outcome).toMatchObject({ status: "merged", minutes: 15 });
+  });
+
   it.each([
     ["stale-head", pull("acme/w", 3, null, HEAD_B)],
     ["closed", pull("acme/w", 3, null, HEAD_A, "closed")],

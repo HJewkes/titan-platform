@@ -21,16 +21,21 @@ export function isExternalVerdictInput(raw: unknown): raw is ExternalVerdictInpu
   return typeof raw === "object" && raw !== null && typeof (raw as { external?: unknown }).external === "string";
 }
 
-/** The newest message of the reviewer's latest session whose verdict block names this PR at this head. */
+/** The newest message of the reviewer's latest session whose verdict block names this PR at this head; a WAIT there, or beside a MERGE of the same time, is no verdict. */
 export function acceptExternalVerdict(input: ExternalVerdictInput, row: ReviewerAgent, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const own = messages.filter((message) => message.agentId === row.agentId && message.sessionId === row.sessionId);
-  for (const message of [...own].sort((a, b) => b.writtenAt - a.writtenAt)) {
+  const atHead = own.flatMap((message) => {
     const block = parseVerdictBlock(message.text);
-    if (!block.ok || block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) continue;
-    const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
-    return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: message.text };
-  }
-  return { kind: "none" };
+    const named = "repo" in block && block.repo === input.repo && block.pr === input.pr && block.head === input.head;
+    return named ? [{ message, block }] : [];
+  });
+  const merges = (entry: { block: { ok: boolean } }) => (entry.block.ok ? 1 : 0);
+  const newest = atHead.sort((a, b) => b.message.writtenAt - a.message.writtenAt || merges(a) - merges(b))[0];
+  if (!newest) return { kind: "none" };
+  const { message, block } = newest;
+  if (!block.ok) return { kind: "none", reason: "wait" };
+  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: message.text };
 }
 
 /** A name can span sessions; the last row the roster lists with a session holds it. */
@@ -58,18 +63,19 @@ export const SEAT_REVIEWER = /-review(-r[0-9]+)?$/;
 
 interface AtHead {
   message: ReviewerMessage;
-  verdict: "MERGE" | "FIX_FIRST";
+  verdict: "MERGE" | "FIX_FIRST" | "WAIT";
 }
 
-/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time the FIX_FIRST wins. */
+/** The newest verdict block naming this PR at this head; GitHub repo names ignore case, and on a tie in time a FIX_FIRST or WAIT beats a MERGE. */
 export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMessage[]): AtHead | undefined {
   let newest: AtHead | undefined;
   for (const message of messages) {
     const block = parseVerdictBlock(message.text);
-    if (!block.ok || !Number.isFinite(message.writtenAt)) continue;
+    const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;
+    if (!verdict || !("repo" in block) || !Number.isFinite(message.writtenAt)) continue;
     if (block.repo.toLowerCase() !== target.repo.toLowerCase() || block.pr !== target.pr || block.head !== target.head) continue;
-    const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && block.verdict === "FIX_FIRST");
-    if (later) newest = { message, verdict: block.verdict };
+    const later = !newest || message.writtenAt > newest.message.writtenAt || (message.writtenAt === newest.message.writtenAt && verdict !== "MERGE");
+    if (later) newest = { message, verdict };
   }
   return newest;
 }
@@ -130,7 +136,7 @@ function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
   if (briefs.some((brief) => namesPr(target, brief))) return true;
   return read.messages.some((message) => {
     const block = parseVerdictBlock(message.text);
-    return block.ok && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
+    return "repo" in block && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
   });
 }
 
@@ -171,6 +177,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message);
+    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished` };
     failed ??= failedRead(name, target, read, warn);
   }
   return failed ?? { kind: "clear" };

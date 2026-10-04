@@ -8,7 +8,10 @@
 export type ReviewAnswer = "MERGE" | "FIX_FIRST" | "silent" | "held-MERGE";
 
 export interface HeadScript {
-  /** `mergeable_state` when CI is read at this head; `behind` sends land to update-branch before any review. */
+  /**
+   * `mergeable_state` when CI is read at this head. A `behind` head is reviewed once its own checks are green; one with no
+   * `reviews` replays a head the recorded run updated while its CI still ran, so land updates it before any review.
+   */
   state?: "clean" | "behind" | "blocked" | "dirty";
   /** The owner holds the PR for the fixture's reviewer when this head is first read. */
   hold?: boolean;

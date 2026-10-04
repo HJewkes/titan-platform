@@ -356,6 +356,26 @@ describe("readCi on a blocked head", () => {
   });
 });
 
+describe("readCi on a behind head in a strict repo", () => {
+  async function behindSnapshot(runs: CheckRun[], draft = false) {
+    const fake = fakeGitHub({ repo: "octo/demo" });
+    fake.addPr({ headSha: H1, mergeableState: "behind", behind: true, draft });
+    fake.setRuns(H1, runs);
+    return readCi(githubPort(fake.wire), { repo: "octo/demo", pr: 1, contexts: ["validate", "dag-check"], strict: true });
+  }
+
+  it("marks the head's own checks green, so it can be reviewed before an update", async () => {
+    expect(await behindSnapshot([successRun("validate", 1), successRun("dag-check", 2)])).toMatchObject({ verdict: "behind", checksGreen: true });
+  });
+
+  it("leaves the mark off while a required check is missing or red, or the PR is a draft", async () => {
+    const red = [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)];
+    const snapshots = [await behindSnapshot([successRun("validate", 1)]), await behindSnapshot(red), await behindSnapshot([successRun("validate", 1), successRun("dag-check", 2)], true)];
+
+    expect(snapshots.map((snapshot) => [snapshot.verdict, snapshot.checksGreen])).toEqual([["behind", undefined], ["behind", undefined], ["behind", undefined]]);
+  });
+});
+
 describe("readCi on a behind head in a non-strict repo", () => {
   async function behindVerdict(baseCommit: { committedAt?: string }, runs: CheckRun[]) {
     const fake = fakeGitHub({ repo: "octo/demo" });
