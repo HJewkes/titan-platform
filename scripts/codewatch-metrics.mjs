@@ -1,5 +1,9 @@
 // codewatch-metrics@1 (M4 A3): per-file and per-symbol metric rows for one whole tree, cited by audits.
 // It carries repo paths, symbols and metrics only, because CI uploads it as a public artifact.
+// The symbol counts are asymmetric: every top-level exported declaration (functions, classes, types, interfaces,
+// consts) gets a symbol node, but code-graph gives non-exported ones a node only for functions, methods and classes
+// (C-64). So public_symbols counts exported consts and types, while private_symbols misses private consts, types and
+// interfaces. A method is never an export itself, so methods of an exported class count as private.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,8 +13,14 @@ export const METRICS_SCHEMA_ID = "codewatch-metrics@1";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 // Row column to the metric the indexer stores, per node kind.
-const FILE_METRIC = { loc: "loc", cyclomatic_max: "cyclomatic_max", cognitive: "cognitive_max", nesting: "max_nesting_depth" };
-const SYMBOL_METRIC = { loc: "symbol_loc", cyclomatic_max: "symbol_cyclomatic", cognitive: "symbol_cognitive", nesting: "symbol_max_nesting" };
+const FILE_METRIC = { loc: "loc", cyclomatic_max: "cyclomatic_max", cognitive_max: "cognitive_max", nesting_max: "max_nesting_depth" };
+const SYMBOL_METRIC = { loc: "symbol_loc", cyclomatic_max: "symbol_cyclomatic", cognitive_max: "symbol_cognitive", nesting_max: "symbol_max_nesting" };
+// Shipped in every report so a reader of the artifact alone sees what the symbol counts cover.
+export const SYMBOL_COUNT_NOTES = {
+  public_symbols: "Top-level exported declarations of every kind: functions, classes, types, interfaces and consts.",
+  private_symbols:
+    "Non-exported functions, methods and classes only, including methods of exported classes; code-graph gives private consts, types and interfaces no symbol node (C-64).",
+};
 
 /** Indexes `tree` into a throwaway store and returns the rows; the store never outlives the call. */
 export async function collectTreeMetrics(tree) {
@@ -36,6 +46,7 @@ export function collectMetrics(store, snapshot) {
     schema: METRICS_SCHEMA_ID,
     commit: snapshot.commitHash ?? null,
     indexVersion: snapshot.indexVersion,
+    notes: SYMBOL_COUNT_NOTES,
     files: nodes.filter((n) => n.kind === "file").map((n) => fileRow(n, metrics, byFile.get(n.id) ?? [])).sort(byPath),
     symbols: symbols.map((n) => symbolRow(n, metrics, importers)).sort(byPath),
   };

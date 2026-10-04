@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { METRICS_SCHEMA_ID, collectMetrics, runCli } from "./codewatch-metrics.mjs";
+import { METRICS_SCHEMA_ID, SYMBOL_COUNT_NOTES, collectMetrics, runCli } from "./codewatch-metrics.mjs";
 
 const roots = [];
 afterEach(() => {
@@ -55,13 +55,21 @@ function fakeStore() {
 }
 
 describe("collectMetrics", () => {
+  it("states in the report that private_symbols leaves out private consts, types and interfaces", () => {
+    const report = collectMetrics(fakeStore(), SNAPSHOT);
+
+    expect(report.notes).toBe(SYMBOL_COUNT_NOTES);
+    expect(report.notes.public_symbols).toMatch(/consts/);
+    expect(report.notes.private_symbols).toMatch(/functions, methods and classes only.*methods of exported classes.*consts, types and interfaces/);
+  });
+
   it("writes one row per file with public and private symbol counts from the exported flag", () => {
     const report = collectMetrics(fakeStore(), SNAPSHOT);
 
     expect(report).toMatchObject({ schema: METRICS_SCHEMA_ID, commit: SNAPSHOT.commitHash, indexVersion: "0.18.0" });
     expect(report.files).toEqual([
-      { path: "p/a.ts", role: "source", loc: 40, cyclomatic_max: 5, cognitive: 7, nesting: 2, importers: 1, public_symbols: 2, private_symbols: 1 },
-      { path: "p/b.ts", role: "source", loc: null, cyclomatic_max: null, cognitive: null, nesting: null, importers: 0, public_symbols: 0, private_symbols: 0 },
+      { path: "p/a.ts", role: "source", loc: 40, cyclomatic_max: 5, cognitive_max: 7, nesting_max: 2, importers: 1, public_symbols: 2, private_symbols: 1 },
+      { path: "p/b.ts", role: "source", loc: null, cyclomatic_max: null, cognitive_max: null, nesting_max: null, importers: 0, public_symbols: 0, private_symbols: 0 },
     ]);
   });
 
@@ -69,9 +77,9 @@ describe("collectMetrics", () => {
     const report = collectMetrics(fakeStore(), SNAPSHOT);
 
     expect(report.symbols).toEqual([
-      { path: "p/a.ts", symbol: "Opts", exported: true, line: null, loc: null, cyclomatic_max: null, cognitive: null, nesting: null, importers: 0 },
-      { path: "p/a.ts", symbol: "helper", exported: false, line: 9, loc: null, cyclomatic_max: null, cognitive: null, nesting: null, importers: 0 },
-      { path: "p/a.ts", symbol: "run", exported: true, line: 3, loc: 6, cyclomatic_max: 5, cognitive: 7, nesting: 2, importers: 1 },
+      { path: "p/a.ts", symbol: "Opts", exported: true, line: null, loc: null, cyclomatic_max: null, cognitive_max: null, nesting_max: null, importers: 0 },
+      { path: "p/a.ts", symbol: "helper", exported: false, line: 9, loc: null, cyclomatic_max: null, cognitive_max: null, nesting_max: null, importers: 0 },
+      { path: "p/a.ts", symbol: "run", exported: true, line: 3, loc: 6, cyclomatic_max: 5, cognitive_max: 7, nesting_max: 2, importers: 1 },
     ]);
   });
 });
