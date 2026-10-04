@@ -226,6 +226,15 @@ describe("awaitVerdict", () => {
     expect(clock.now()).toBe(300);
   });
 
+  it("keeps the wait reason at the deadline, so the coordinator resumes the same reviewer", async () => {
+    const clock = clockAt(0);
+    const reader: ReviewerReader = { read: async () => [message({ text: block({ verdict: "WAIT" }) })] };
+
+    const result = await awaitVerdict(reader, input, { ...clock, pollMs: 100, timeoutMs: 250 }, signal);
+
+    expect(result).toEqual({ kind: "none", reason: "wait" });
+  });
+
   it("treats a failing read as nothing yet", async () => {
     const clock = clockAt(0);
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("io")) };

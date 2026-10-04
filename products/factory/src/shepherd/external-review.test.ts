@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it, vi } from "vitest";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
-import { DamagedTranscriptError, SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
+import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -49,6 +49,36 @@ describe("newestAtHead", () => {
 
   it("skips a message with no readable time", () => {
     expect(newestAtHead(target, [said(SEAT, verdictAt("FIX_FIRST"), Number.NaN)])).toBeUndefined();
+  });
+});
+
+describe("acceptExternalVerdict", () => {
+  it("accepts the MERGE of the reviewer at the head", () => {
+    expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, verdictAt("MERGE"), 2)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
+    const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 3)];
+
+    expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, messages)).toEqual({ kind: "none", reason: "wait" });
+  });
+
+  it("is no verdict when a WAIT and a MERGE carry the same time", () => {
+    const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 2)];
+
+    expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, messages).kind).toBe("none");
+  });
+
+  it("accepts a MERGE that follows a WAIT", () => {
+    const messages = [said(SEAT, verdictAt("WAIT"), 2), said(SEAT, verdictAt("MERGE"), 3)];
+
+    expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, messages)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("ignores a WAIT that names another head", () => {
+    const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT", OLD_HEAD), 3)];
+
+    expect(acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, messages)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 });
 

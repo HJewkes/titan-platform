@@ -21,16 +21,21 @@ export function isExternalVerdictInput(raw: unknown): raw is ExternalVerdictInpu
   return typeof raw === "object" && raw !== null && typeof (raw as { external?: unknown }).external === "string";
 }
 
-/** The newest message of the reviewer's latest session whose verdict block names this PR at this head. */
+/** The newest message of the reviewer's latest session whose verdict block names this PR at this head; a WAIT there, or beside a MERGE of the same time, is no verdict. */
 export function acceptExternalVerdict(input: ExternalVerdictInput, row: ReviewerAgent, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const own = messages.filter((message) => message.agentId === row.agentId && message.sessionId === row.sessionId);
-  for (const message of [...own].sort((a, b) => b.writtenAt - a.writtenAt)) {
+  const atHead = own.flatMap((message) => {
     const block = parseVerdictBlock(message.text);
-    if (!block.ok || block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) continue;
-    const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
-    return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: message.text };
-  }
-  return { kind: "none" };
+    const named = "repo" in block && block.repo === input.repo && block.pr === input.pr && block.head === input.head;
+    return named ? [{ message, block }] : [];
+  });
+  const merges = (entry: { block: { ok: boolean } }) => (entry.block.ok ? 1 : 0);
+  const newest = atHead.sort((a, b) => b.message.writtenAt - a.message.writtenAt || merges(a) - merges(b))[0];
+  if (!newest) return { kind: "none" };
+  const { message, block } = newest;
+  if (!block.ok) return { kind: "none", reason: "wait" };
+  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: message.text };
 }
 
 /** A name can span sessions; the last row the roster lists with a session holds it. */

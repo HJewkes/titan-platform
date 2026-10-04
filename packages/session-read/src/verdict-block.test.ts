@@ -63,6 +63,14 @@ describe("parseVerdictBlock", () => {
 ${block()}`)).toBe("multiple_blocks");
   });
 
+  it.each(["wait", "WAIT (checks pending)", "WAITING"])("leaves %s as bad_verdict, never a MERGE", (word) => {
+    expect(refused(block(word))).toBe("bad_verdict");
+  });
+
+  it("leaves Verdict:WAIT without a space as bad_verdict", () => {
+    expect(refused(`Verdict:WAIT\nPR: octo/demo#12\nHead: ${SHA}`)).toBe("bad_verdict");
+  });
+
   it("refuses a short head", () => {
     expect(refused(block("MERGE", "octo/demo#12", SHA.slice(0, 39)))).toBe("bad_head");
     expect(refused(block("MERGE", "octo/demo#12", SHA.slice(0, 7)))).toBe("bad_head");
