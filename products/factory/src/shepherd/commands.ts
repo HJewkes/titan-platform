@@ -19,7 +19,7 @@ import {
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
-import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
@@ -126,6 +126,12 @@ function sliceAfter(existing: Registration, args: RegisterArgs): string | undefi
   return args.slice ?? existing.slice ?? undefined;
 }
 
+/** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
+function refuseKindMove(existing: Registration, args: RegisterArgs): void {
+  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind);
+  if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
+}
+
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
   try {
@@ -147,6 +153,7 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 /** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
 function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
+  refuseKindMove(known, args);
   const previousRunId = known.runId;
   let runId: string;
   try {

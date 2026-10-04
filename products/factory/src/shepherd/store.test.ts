@@ -102,6 +102,9 @@ describe("shepherd registration store", () => {
     ["correctness", "unknown"],
     ["security", "feature"],
     ["correctness", "refactor"],
+    ["security", "correctness"],
+    ["security", "refactor"],
+    ["security", "unknown"],
   ] as const)("refuses a repeat that moves %s to %s, naming both kinds", (from, to) => {
     const store = openStore();
     store.register({ ...base, kind: from });
@@ -113,6 +116,7 @@ describe("shepherd registration store", () => {
   it.each([
     ["correctness", "correctness"],
     ["correctness", "security"],
+    ["security", "security"],
     ["unknown", "correctness"],
     ["feature", "security"],
     ["feature", "unknown"],
