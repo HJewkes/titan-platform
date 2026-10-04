@@ -4,7 +4,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { expandWord, lookup, trackVars } from "./vars.js";
+import { assign, expandWord, lookup, trackVars } from "./vars.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -163,7 +163,7 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (raw.name === null && raw.args.length === 0) {
-    for (const [name, value] of raw.assigned) w.scope.vars.set(name, value);
+    for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;
   }
   if (raw.name === "cd" || raw.name === "pushd") {
@@ -304,7 +304,7 @@ function literalWord(value: string): WordToken {
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [name, value] of cmd.assigned) if (value !== null) env[name] = value;
+  for (const [name, value, append] of cmd.assigned) if (value !== null && !append) env[name] = value;
   return env;
 }
 
