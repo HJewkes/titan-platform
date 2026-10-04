@@ -17,6 +17,11 @@ function spellings(command: string): string[] {
   return classify(event, context).map((a) => a.spelling);
 }
 
+const pushSubjects = (command: string) =>
+  classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, context)
+    .filter((a) => a.spelling === "bash.merge.git-push-protected")
+    .map((a) => a.subject);
+
 const gitArgs = (command: string) =>
   extractCommands(command).filter((c) => c.name === "git").map((c) => c.args.map((a) => a.value));
 
@@ -67,6 +72,11 @@ describe("variables built up before the command they name", () => {
     ["an esac argument in a case body", "f() ( case a in a) echo esac;; b) :;; esac; declare Y+=push; git $Y origin HEAD:main ); Y=status; f"],
     ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
+    ["a run-time declare word (TP-1491)", "Y=status; F=$(cmd); declare \"$F\"; git $Y origin HEAD:main"],
+    ["a substituted export word (TP-1491)", "Y=status; export $(cmd); git $Y origin HEAD:main"],
+    ["a run-time typeset word (TP-1491)", "Y=status; F=$(cmd); typeset $F; git $Y origin HEAD:main"],
+    ["a run-time local word (TP-1491)", "Y=status; F=$(cmd); f() { local \"$F\"; git $Y origin HEAD:main; }; f"],
+    ["a run-time readonly word (TP-1491)", "Y=status; F=$(cmd); readonly \"$F\"; git $Y origin HEAD:main"],
     ["an element 0 assignment (TP-1491)", "Y=status; Y[0]=push; git $Y origin HEAD:main"],
     ["a declared element 0 (TP-1491)", "Y=status; declare 'Y[0]=push'; git $Y origin HEAD:main"],
     ["a typeset element 0 (TP-1491)", "Y=status; typeset 'Y[0]=push'; git $Y origin HEAD:main"],
@@ -141,8 +151,24 @@ describe("variables built up before the command they name", () => {
     expect(gitArgs("MAPFILE=status; mapfile < list; git $MAPFILE")).toEqual([["$MAPFILE"]]);
   });
 
-  it("classifies a push whose subcommand is an unknown variable as no guarded action", () => {
-    expect(spellings("Y=status; mapfile Y < list; git $Y origin HEAD:main")).toEqual([]);
+  it("classifies a push whose subcommand is an unknown variable as a push to an unknown branch", () => {
+    expect(pushSubjects("Y=status; mapfile Y < list; git $Y origin HEAD:main")).toEqual([{ branch: "unknown" }]);
+  });
+
+  it.each([
+    ["a declare -r element 0", "Y=push; declare -r 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a declare with a run-time option", "Y=push; F=$(cmd); declare $F 'Y[0]=status'; git $Y origin HEAD:main"],
+  ])("classifies a push after %s as a push to an unknown branch (TP-1491)", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it("keeps a variable known after a literal declaration of another (TP-1491)", () => {
+    expect(gitArgs("Y=status; declare Z=1; git $Y")).toEqual([["status"]]);
+  });
+
+  it("forgets HOME after a run-time declaration word (TP-1491)", () => {
+    const cat = (command: string) => extractCommands(command, { cwd: REPO, home: "/home/you" }).at(-1)?.args[0]?.value;
+    expect([cat("declare Z=1; cat $HOME/x"), cat("declare \"$F\"; cat $HOME/x")]).toEqual(["/home/you/x", "$HOME/x"]);
   });
 
   it.each([
