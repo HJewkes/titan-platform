@@ -103,12 +103,48 @@ describe("titan-factory service check", () => {
     expect(out).toContain("last exit 1, 9 runs");
   });
 
-  it("reports a crash loop when the live process is younger than the window", async () => {
+  it("reports a crash loop when the live process is younger than the window and does not answer /health", async () => {
     const print = printed(["state = running", `pid = ${PID}`, "runs = 5", "last exit code = 78"]);
 
-    const { out } = await check({ print, health: healthy(), startedAgoMs: CRASH_LOOP_WINDOW_MS - 1_000 });
+    const { code, out } = await check({ print, health: null, startedAgoMs: CRASH_LOOP_WINDOW_MS - 1_000 });
 
+    expect(code).not.toBe(EXIT.OK);
     expect(out).toContain("crash loop: ");
+  });
+
+  it("reports a crash loop when a young process's /health answers ok but not from the launchd pid's own body", async () => {
+    const print = printed(["state = running", `pid = ${PID}`, "runs = 5", "last exit code = 78"]);
+
+    const { code, out } = await check({ print, health: healthy({ pid: undefined }), startedAgoMs: CRASH_LOOP_WINDOW_MS - 1_000 });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(out).toContain("crash loop: ");
+  });
+
+  it("reports ok for a young process just restarted when /health answers from the launchd pid", async () => {
+    const print = printed(["state = running", `pid = ${PID}`, "runs = 3", "last exit code = 15"]);
+
+    const { code, out } = await check({ print, health: healthy(), startedAgoMs: 10_000 });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
+  it("reports ok for a just-restarted process whose /health carries an unknown build sha", async () => {
+    const print = printed(["state = running", `pid = ${PID}`, "runs = 4", "last exit code = 15"]);
+
+    const { code } = await check({ print, health: healthy({ build: { sha: "unknown" } }), startedAgoMs: 10_000 });
+
+    expect(code).toBe(EXIT.OK);
+  });
+
+  it("reports stale pid, not ok, for a just-restarted job whose port is answered by a different pid", async () => {
+    const print = printed(["state = running", `pid = ${PID}`, "runs = 3", "last exit code = 15"]);
+
+    const { code, out } = await check({ print, health: healthy({ pid: 999 }), startedAgoMs: 10_000 });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(out).toContain("stale pid: port 7410 is answered by pid 999");
   });
 
   it("does not call an old failure a crash loop once the process has run past the window", async () => {
