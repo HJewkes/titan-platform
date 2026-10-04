@@ -207,13 +207,12 @@ Tier 0, `@titan-design/egress-scan@0.3.0`. Scan git diff text for home paths, pr
 
 Key exports:
 
-- `rules`: `matchesAwDataPath`, `matchesHomePath`, `matchRules`
+- `rules`: `matchesAwDataPath`, `locateRules`, `matchesHomePath`, `matchRules`
 - `diff`: `parseCommit`, `parseDiff`
 - `allow`: `AllowFileError`, `isAllowed`, `parseAllow`
 - `terms`: `parseTerms`, `TermFileError`
 - `scan`: `scan`
-- `report`: `formatReport`
-- +18 more in the [reference page](/reference/egress-scan)
+- +20 more in the [reference page](/reference/egress-scan)
 
 <a id="cap-embed"></a>
 
