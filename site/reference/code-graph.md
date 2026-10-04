@@ -77,7 +77,7 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
+own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
 nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
