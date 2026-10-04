@@ -32,6 +32,10 @@
         "link": "/reference/embed"
       },
       {
+        "text": "eslint-plugin",
+        "link": "/reference/eslint-plugin"
+      },
+      {
         "text": "evidence",
         "link": "/reference/evidence"
       },
