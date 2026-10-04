@@ -20,6 +20,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
     "dag:check": "node scripts/dag-check-self.mjs",
+    "dead:check": "node --max-old-space-size=1024 scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
@@ -32,7 +33,7 @@
     "version-packages": "changeset version && node scripts/gen-capabilities.mjs",
     "release": "pnpm -r run build && changeset publish",
     "smoke:codex": "node scripts/smoke-codex.mjs",
-    "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" build && node scripts/factory-link-bin.mjs",
+    "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
     "prepare": "pnpm --silent --filter @titan-design/egress-scan run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
   },
   "devDependencies": {
@@ -40,6 +41,7 @@
     "@eslint/js": "^9.39.0",
     "@titan-design/egress-scan": "workspace:*",
     "@types/node": "^25.3.2",
+    "ajv": "^8.20.0",
     "eslint": "^9.39.0",
     "globals": "^16.0.0",
     "mermaid": "^11.17.2",

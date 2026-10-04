@@ -7,3 +7,5 @@ export { SPELLINGS } from "./spellings.js";
 export type { FamilyName, SpellingId } from "./spellings.js";
 export { classify } from "./classify.js";
 export type { ClassifiedAction, ClassifyContext, Family, GuardedAction } from "./types.js";
+export { checkPreferences, PREFERENCES } from "./families/preference.js";
+export type { PreferenceContext, PreferenceHit, PreferenceId } from "./families/preference.js";

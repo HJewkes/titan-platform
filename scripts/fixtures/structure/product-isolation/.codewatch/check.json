@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "id": "package-layers",
+      "type": "layered-deps",
+      "$tiers": { "0": ["packages/a"], "product": ["products/x", "apps/y"] },
+      "layers": [["packages/a"], ["products/x", "apps/y"]]
+    },
+    { "id": "x-not-y", "type": "forbid-import", "from": "products/x/**", "to": "apps/y/**" }
+  ]
+}

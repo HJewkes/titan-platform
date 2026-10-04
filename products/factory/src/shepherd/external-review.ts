@@ -74,20 +74,80 @@ export function newestAtHead(target: ReviewTarget, messages: readonly ReviewerMe
   return newest;
 }
 
-/** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A failed read rejects. */
-async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<ReviewerMessage[]> {
-  const read = (row: ReviewerAgent) => {
+/** A stopped reviewer's transcript that ends in a partial record; `readable` and `brief` are what its complete records said. */
+export class DamagedTranscriptError extends Error {
+  readonly readable: readonly ReviewerMessage[];
+  readonly brief: string | null;
+
+  constructor(message: string, readable: readonly ReviewerMessage[], brief: string | null = null) {
+    super(message);
+    this.name = "DamagedTranscriptError";
+    this.readable = readable;
+    this.brief = brief;
+  }
+}
+
+/** One name's sessions, each read on its own: what every complete record said, and the reads that failed. */
+interface NameRead {
+  messages: readonly ReviewerMessage[];
+  failures: readonly unknown[];
+}
+
+/** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A damaged session still gives its complete records. */
+async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<NameRead> {
+  const read = async (row: ReviewerAgent) => {
     const input = { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     return reader.readSeat ? reader.readSeat(input) : reader.read(input);
   };
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
-  return (await Promise.all(rows.map(read))).flat().filter(owned);
+  const messages: ReviewerMessage[] = [];
+  const failures: unknown[] = [];
+  for (const outcome of await Promise.allSettled(rows.map(read))) {
+    if (outcome.status === "fulfilled") messages.push(...outcome.value);
+    else failures.push(outcome.reason);
+    if (outcome.status === "rejected" && outcome.reason instanceof DamagedTranscriptError) messages.push(...outcome.reason.readable);
+  }
+  return { messages: messages.filter(owned), failures };
 }
 
 /** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
 
 const why = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** True when `text` names this PR as `<owner>/<repo>#<n>` or `<repo>#<n>`, the repo in any letter case. */
+export function namesPr(target: ReviewTarget, text: string): boolean {
+  const [owner = "", repo = ""] = target.repo.split("/");
+  const pattern = new RegExp(`(?:^|[^\\w./-])(?:${escaped(owner)}/)?${escaped(repo)}#${target.pr}(?!\\d)`, "i");
+  return pattern.test(text);
+}
+
+/** A brief naming this PR, or a verdict block naming it at any head, marks the reviewer as the PR's own. */
+function reviewsThisPr(target: ReviewTarget, read: NameRead): boolean {
+  const briefs = read.failures.flatMap((failure) => (failure instanceof DamagedTranscriptError && failure.brief !== null ? [failure.brief] : []));
+  if (briefs.some((brief) => namesPr(target, brief))) return true;
+  return read.messages.some((message) => {
+    const block = parseVerdictBlock(message.text);
+    return block.ok && block.repo.toLowerCase() === target.repo.toLowerCase() && block.pr === target.pr;
+  });
+}
+
+/**
+ * A damaged transcript blocks only the PR its brief or a verdict block ties it to; one tied to no PR, or only to
+ * other PRs, warns instead of blocking every PR on the machine. Any other failure blocks.
+ */
+function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (line: string) => void): SeatCheck | undefined {
+  const hard = read.failures.find((failure) => !(failure instanceof DamagedTranscriptError));
+  const failure = hard ?? read.failures[0];
+  if (failure === undefined) return undefined;
+  if (hard === undefined && !reviewsThisPr(target, read)) {
+    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${why(failure)}`);
+    return undefined;
+  }
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(failure)}` };
+}
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
   const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
@@ -98,7 +158,7 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage):
  * Fails closed: an unreadable roster, or a seat reviewer's transcript that cannot be read or parsed, blocks the head. A
  * reviewer with no finished transcript yet reads as no verdict. Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget): Promise<SeatCheck> {
+export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
   let listed: readonly ReviewerAgent[];
   try {
     listed = await roster();
@@ -108,19 +168,18 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
   for (const name of new Set(rows.map((row) => row.name))) {
-    const read = await readReviewer(reader, target, rows.filter((row) => row.name === name)).then(
-      (messages) => newestAtHead(target, messages),
-      (error: unknown) => void (failed ??= { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(error)}` }),
-    );
-    if (read?.verdict === "FIX_FIRST") return sentBack(name, target, read.message);
+    const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
+    const newest = newestAtHead(target, read.messages);
+    if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message);
+    failed ??= failedRead(name, target, read, warn);
   }
   return failed ?? { kind: "clear" };
 }
 
 /** A MERGE stands only while the seat check is clear at the same head. */
-export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult): Promise<AwaitVerdictResult> {
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
-  const check = await seatFixFirst(roster, reader, target);
+  const check = await seatFixFirst(roster, reader, target, warn);
   return check.kind === "clear" ? result : check;
 }
 
