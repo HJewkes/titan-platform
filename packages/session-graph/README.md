@@ -9,10 +9,12 @@ Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`,
 `cluster`, `locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
 
 ```ts
+import os from "node:os";
+import path from "node:path";
 import { discoverTranscripts } from "@titan-design/session-read";
 import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
 
-const graph = openSessionGraph("~/.local/state/miner/index.sqlite3");
+const graph = openSessionGraph(path.join(os.homedir(), ".local/state/miner/index.sqlite3"));
 const summary = await refreshCorpus(graph, await discoverTranscripts());
 // summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing,
 // summary.facetsBackfilled, summary.facetBacklog
