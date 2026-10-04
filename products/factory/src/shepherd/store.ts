@@ -225,13 +225,17 @@ export class ShepherdStore implements HoldLookup {
     return rows.map(fromRow);
   }
 
-  /** A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy. */
+  /**
+   * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
+   * An omitted kind keeps the stored one, so a repeat without `--kind` cannot drop a run out of the fix-proof gate.
+   */
   update(runId: string, meta: RegistrationUpdate): Registration {
-    const kind = KindSchema.parse(meta.kind ?? "unknown");
+    const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);
     const write = this.db.transaction(() => {
       const stored = this.byRun(runId);
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = stricterPolicy(meta.policy, stored.policy);
+      const kind = explicitKind ?? stored.kind;
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);

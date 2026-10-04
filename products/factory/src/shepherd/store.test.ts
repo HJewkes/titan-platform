@@ -89,6 +89,24 @@ describe("shepherd registration store", () => {
     expect(updated.policy).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" });
   });
 
+  it("a repeat registration without a kind keeps the stored kind", () => {
+    const store = openStore();
+    store.register({ ...base, kind: "correctness" });
+
+    store.update("run-1", { ...base, kind: undefined });
+
+    expect(store.byRun("run-1")?.kind).toBe("correctness");
+  });
+
+  it("a repeat registration with an explicit kind replaces the stored kind", () => {
+    const store = openStore();
+    store.register({ ...base, kind: "correctness" });
+
+    store.update("run-1", { ...base, kind: "feature" });
+
+    expect(store.byRun("run-1")?.kind).toBe("feature");
+  });
+
   it("refuses an update to a run with no registration", () => {
     expect(() => openStore().update("run-9", base)).toThrow(/has no registration/);
   });
