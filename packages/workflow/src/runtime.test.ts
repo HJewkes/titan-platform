@@ -4,6 +4,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { RunContext, type ContextDeps } from "./context.js";
+import { mapItems } from "./fan-out.js";
 import { mustacheRenderer } from "./prompt.js";
 import { inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
@@ -150,7 +151,21 @@ describe("WorkflowRuntime", () => {
     expect(run.error).toMatch(/step only \(iteration 0\) failed: boom 2/);
     expect(calls).toBe(2);
     expect(events.filter((e) => e.type === "step_retry")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "only", error: "boom 2" }]);
     expect(events.at(-1)).toMatchObject({ type: "workflow_failed" });
+  });
+
+  it("emits step_failed for a failing mapItems item while the run goes on", async () => {
+    const db = makeDb();
+    const runner: StepRunner = { run: async (input) => (input.prompt === "bad" ? { ok: false, error: "item broke", retryable: false } : { ok: true, output: "fine" }) };
+    const events: WorkflowEvent[] = [];
+    const rt = runtime(db, runner, events);
+    rt.register("fan", async (ctx) => {
+      await mapItems(ctx, "items", ["good", "bad"], (item, stepId, c) => c.dispatch(stepId, item), { key: (item) => item });
+    });
+    const run = await rt.wait(rt.start("fan"));
+    expect(run.status).toBe("completed");
+    expect(events.filter((e) => e.type === "step_failed")).toEqual([{ type: "step_failed", runId: run.id, stepId: "items/bad", error: "item broke" }]);
   });
 
   it("seeds merge data into params and record each call of a step id under its own key", async () => {

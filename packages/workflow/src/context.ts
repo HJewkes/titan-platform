@@ -5,8 +5,9 @@ import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResult
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape } from "./gate-ids.js";
 import type { ContextDeps, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
-import { isRecoverable } from "./recovery.js";
+import { isRecoverable, runLegacyStep } from "./recovery.js";
 import { messageOf } from "./runtime-values.js";
+import { reportingStepFailure } from "./step-failure.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
@@ -84,7 +85,7 @@ export class RunContext implements WorkflowContext {
   }
 
   dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
-    const pending = this.dispatchStep(stepId, template, options) as Promise<StepResult<T>>;
+    const pending = reportingStepFailure(this.deps.emit, this.runId, () => this.dispatchStep(stepId, template, options)) as Promise<StepResult<T>>;
     this.inFlight.add(pending);
     void pending.then(() => this.inFlight.delete(pending), () => this.inFlight.delete(pending));
     return pending;
@@ -206,7 +207,11 @@ export class RunContext implements WorkflowContext {
     }
   }
 
-  async authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
+  authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
+    return reportingStepFailure(this.deps.emit, this.runId, () => this.authorizeStep(stepId, request, options));
+  }
+
+  private async authorizeStep(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions): Promise<AuthorizeResult> {
     this.throwIfCancelled();
     const { index: iteration, key, cached } = this.recall("authorize", stepId);
     if (cached) return authorizeResultOf(stepId, iteration, this.bump(stepId, cached).data as AuthorityOutcome);
@@ -294,12 +299,7 @@ export class RunContext implements WorkflowContext {
   private async start(step: ActiveStep, input: StepRunInput): Promise<DurableStepOutcome> {
     if (step.kind === "legacy") {
       if (isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "legacy step has no legacy runner");
-      const outcome = await this.deps.runner.run(input);
-      if (outcome.ok) {
-        if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
-        return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
-      }
-      return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
+      return runLegacyStep(this.deps.runner, step, input);
     }
     if (!isRecoverable(this.deps.runner)) return this.requireRecovery(step, "unknown", "recoverable step has no recoverable runner");
     const ack = await this.deps.runner.dispatch({ ...input, executionId: step.executionId, requestKey: step.requestKey, attempt: step.attempt });

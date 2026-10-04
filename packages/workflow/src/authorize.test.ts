@@ -223,6 +223,7 @@ describe("ctx.authorize", () => {
     expect(h.gates.listPending()).toEqual([]);
     expect(h.gates.get(`${runId}/${STEP}`)).toBeUndefined();
     expect(gateOpenedCount(h.events)).toBe(0);
+    expect(h.events).toContainEqual({ type: "step_failed", runId, stepId: STEP, error: expect.stringContaining("authority denied") });
   });
 
   it("opens a gate bound to the rule and its resolvers, and proceeds on an owner's approval", async () => {
