@@ -32,4 +32,24 @@ describe("octal in echo and printf %b", () => {
   it("leaves \\nnn without a leading 0 undecoded in echo", () => {
     expect(printed("echo", "-e", "'\\147'")).toBe("\\147");
   });
+
+  it.each([
+    ["printf %b", "printf '%b' '\\147it push origin HEAD:main' | bash"],
+  ])("reads \\nnn as octal too: %s", (_how, src) => {
+    expect(gitArgs(src).at(-1)).toEqual(["push", "origin", "HEAD:main"]);
+  });
+
+  it("stops all printf output at a %b \\c, format remainder included", () => {
+    expect(printed("printf", "'%bx'", "'git push origin HEAD:main\\c'")).toBe("git push origin HEAD:main");
+    expect(gitArgs("printf '%bx' 'git push origin HEAD:main\\c' | bash").at(-1)).toEqual(["push", "origin", "HEAD:main"]);
+  });
+
+  it("drops later arguments after a \\c in a middle argument", () => {
+    expect(printed("printf", "'%b %b'", "'git\\c'", "push")).toBe("git");
+    expect(printed("printf", "'%s%b%s'", "'git '", "'push\\c'", "' --force'")).toBe("git push");
+  });
+
+  it("keeps quote escapes literal in echo -e", () => {
+    expect(printed("echo", "-e", "'\\\"x\\?'")).toBe('\\"x\\?');
+  });
 });
