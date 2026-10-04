@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
+import { registerShepherdStats } from "./cli-stats.js";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
 import { factoryStateDir, resolveDbPath } from "./config.js";
 import { deployService, type DeployPorts } from "./deploy.js";
@@ -155,6 +156,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+  registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
@@ -204,10 +206,7 @@ function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>,
   return EXIT.OK;
 }
 
-interface PlistFlags {
-  port?: number;
-  node?: string;
-}
+interface PlistFlags { port?: number; node?: string }
 
 const collectDir = (value: string, previous: string[]): string[] => [...previous, value];
 
