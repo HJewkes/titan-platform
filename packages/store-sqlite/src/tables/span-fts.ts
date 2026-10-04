@@ -108,6 +108,7 @@ export class SpanFtsTables {
   private readonly insertSpan;
   private readonly findSpan;
   private readonly insertFts;
+  private readonly hasFtsRow;
   private readonly searchStmt;
   /** One prepared statement per scope shape, since the predicate list varies. */
   private readonly scopedSearchStmts = new Map<string, ReturnType<Db["prepare"]>>();
@@ -131,6 +132,7 @@ export class SpanFtsTables {
       `SELECT span_id FROM ${span} WHERE owner_ref = ? AND field = ? AND source_id = ? AND byte_offset = ?`,
     );
     this.insertFts = db.prepare(`INSERT INTO ${fts} (rowid, text) VALUES (?, ?)`);
+    this.hasFtsRow = db.prepare(`SELECT 1 FROM ${fts} WHERE rowid = ?`);
     this.searchStmt = db.prepare(
       `SELECT s.span_id, s.owner_ref, s.field, s.source_id, s.byte_offset, s.byte_length, f.rank
        FROM ${fts} f JOIN ${span} s ON s.span_id = f.rowid
@@ -142,11 +144,17 @@ export class SpanFtsTables {
     this.countFts = db.prepare(`SELECT count(*) AS n FROM ${fts}`);
   }
 
-  /** Index `text` for a span, storing only the locator. Re-indexing the same span is a no-op. Returns the span id. */
+  /**
+   * Index `text` for a span, storing only the locator. Returns the span id.
+   *
+   * Re-indexing a span that still has its FTS row is a no-op; re-indexing one
+   * whose row `clearIndex` removed puts the row back, which is what makes
+   * clear-then-re-stream a rebuild. Only the conflict path pays the rowid probe.
+   */
   index(span: SpanInput, text: string): number {
     const inserted = this.insertSpan.run(span.ownerRef, span.field, span.sourceId, span.byteOffset, span.byteLength);
     const spanId = (this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset) as { span_id: number }).span_id;
-    if (inserted.changes === 1) this.insertFts.run(spanId, text);
+    if (inserted.changes === 1 || this.hasFtsRow.get(spanId) === undefined) this.insertFts.run(spanId, text);
     return spanId;
   }
 
@@ -202,12 +210,12 @@ export class SpanFtsTables {
     return statement;
   }
 
-  /** Drop an owner's spans. Their FTS rows become orphans until `rebuild`; the join hides them. */
+  /** Drop an owner's spans. Their FTS rows become orphans, hidden by the join, until `clearIndex` and a re-stream. */
   purgeOwner(ownerRef: string): number {
     return this.deleteSpansStmt.run(ownerRef).changes;
   }
 
-  /** Fraction of FTS rows with no span behind them; a high value means it is time to rebuild. */
+  /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
   orphanRatio(): number {
     const fts = (this.countFts.get() as { n: number }).n;
     if (fts === 0) return 0;
@@ -215,7 +223,10 @@ export class SpanFtsTables {
     return Math.max(0, fts - spans) / fts;
   }
 
-  /** Empty the FTS index. The caller re-streams text through `index` for every surviving span. */
+  /**
+   * Empty the FTS index, keeping every span row. Re-streaming each surviving
+   * span's text through `index` then rebuilds it with the same span ids.
+   */
   clearIndex(): void {
     this.deleteAllFts.run();
   }
