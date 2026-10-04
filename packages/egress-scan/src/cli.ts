@@ -145,18 +145,30 @@ function dispatch(command: string | undefined, args: readonly string[], file: st
   }
 }
 
+/** parseArgs messages quote the offending argument, so they are replaced rather than passed on. */
+function parseOptions(argv: readonly string[]) {
+  try {
+    return parseArgs({
+      args: [...argv],
+      allowPositionals: true,
+      tokens: true,
+      options: { help: { type: "boolean", short: "h" }, file: { type: "string" } },
+    });
+  } catch {
+    throw new ConfigError("unknown option or missing option value (not shown)");
+  }
+}
+
 /** Help counts only before the command; after it, a help flag is a usage error, never a skipped scan. */
 function parseCommandLine(argv: readonly string[]): { positionals: string[]; help: boolean; file?: string } {
-  const { positionals, tokens, values } = parseArgs({
-    args: [...argv],
-    allowPositionals: true,
-    tokens: true,
-    options: { help: { type: "boolean", short: "h" }, file: { type: "string" } },
-  });
+  const { positionals, tokens, values } = parseOptions(argv);
   const command = tokens.find((token) => token.kind === "positional");
   const helps = tokens.filter((token) => token.kind === "option" && token.name === "help");
   if (helps.some((token) => command !== undefined && token.index > command.index)) {
     throw new ConfigError("a help flag after the command is not allowed");
+  }
+  if (tokens.filter((token) => token.kind === "option" && token.name === "file").length > 1) {
+    throw new ConfigError("--file may be given only once");
   }
   return { positionals, help: helps.length > 0, file: values.file };
 }

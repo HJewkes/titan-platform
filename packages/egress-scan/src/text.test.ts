@@ -39,21 +39,45 @@ function runText(argv: string[], stdin: string, env: Record<string, string> = {}
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
+const SECRET_MARKERS = ["zqplanted", PLANTED_TERM];
+
+function expectNoMatchedText(result: { out: string; err: string }, extra: string[] = []): void {
+  for (const marker of [...SECRET_MARKERS, ...extra]) {
+    expect(result.out).not.toContain(marker);
+    expect(result.err).not.toContain(marker);
+  }
+}
+
 describe("text", () => {
   it("exits 0 on a clean body", () => {
     const result = runText([], "Add a retry to the sync job\n\nNo leaks here.\n");
 
     expect(result.code).toBe(0);
     expect(result.out).toContain("egress-scan: 0 findings");
+    expectNoMatchedText(result);
   });
 
-  it("reports a home path as line:col and rule id without the matched text", () => {
+  it("exits 0 on empty input", () => {
+    const result = runText([], "");
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("egress-scan: 0 findings");
+  });
+
+  it("reports a home path in LF text as line:col and rule id only", () => {
     const result = runText([], `title\nsee ${plantedHomePath()} for details\n`);
 
     expect(result.code).toBe(1);
     expect(result.out).toContain("2:5 home-path");
-    expect(result.out).not.toContain("zqplanted");
-    expect(result.err).not.toContain("zqplanted");
+    expectNoMatchedText(result);
+  });
+
+  it("reports a hit on the last line when there is no final newline", () => {
+    const result = runText([], `title\nsee ${plantedHomePath()}`);
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("2:5 home-path");
+    expectNoMatchedText(result);
   });
 
   it("reports a private term with its list line, never the term", () => {
@@ -61,23 +85,32 @@ describe("text", () => {
 
     expect(result.code).toBe(1);
     expect(result.out).toContain("2:12 private-term #1");
-    expect(result.out).not.toContain(PLANTED_TERM);
+    expectNoMatchedText(result);
   });
 
   it("counts CRLF as one line break", () => {
     const result = runText([], `first\r\nsecond\r\nsee ${plantedHomePath()}\r\n`);
 
+    expect(result.code).toBe(1);
     expect(result.out).toContain("3:5 home-path");
+    expectNoMatchedText(result);
   });
 
-  it("reads --file instead of stdin", () => {
+  it("gives the same findings from --file as from stdin", () => {
+    const body = `a\r\nsee ${plantedHomePath()}\nuse ${PLANTED_TERM}`;
     const file = path.join(scratch(), "body.md");
-    fs.writeFileSync(file, `${plantedHomePath()}\n`);
+    fs.writeFileSync(file, body);
+    const env = { TITAN_EGRESS_TERMS: termFile() };
 
-    const result = runText(["--file", file], "clean stdin");
+    const viaFile = runText(["--file", file], "clean stdin", env);
+    const viaStdin = runText([], body, env);
 
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("1:1 home-path");
+    expect(viaFile.code).toBe(1);
+    expect(viaFile.out).toContain("2:5 home-path");
+    expect(viaFile.out).toContain("3:5 private-term #1");
+    expect(viaFile.out).toBe(viaStdin.out);
+    expectNoMatchedText(viaFile);
+    expectNoMatchedText(viaStdin);
   });
 
   it("exits 2 on an unreadable file without naming it", () => {
@@ -86,17 +119,36 @@ describe("text", () => {
     const result = runText(["--file", missing], "");
 
     expect(result.code).toBe(2);
-    expect(result.err).not.toContain("zq-missing-file");
+    expectNoMatchedText(result, ["zq-missing-file"]);
   });
 
-  it("exits 2 on input over the size limit", () => {
-    const result = runText([], "a".repeat(11), {}, 10);
+  it("exits 2 on input over the size limit without echoing it", () => {
+    const result = runText([], `${plantedHomePath()} `.repeat(3), {}, 10);
 
     expect(result.code).toBe(2);
     expect(result.err).toContain("over the scan limit");
+    expectNoMatchedText(result);
   });
 
-  it("exits 2 on a stray argument", () => {
-    expect(runText(["body"], "").code).toBe(2);
+  it("exits 2 on a stray argument without echoing it", () => {
+    const result = runText(["zq-stray-arg"], "");
+
+    expect(result.code).toBe(2);
+    expectNoMatchedText(result, ["zq-stray-arg"]);
+  });
+
+  it("exits 2 on an unknown option without echoing it", () => {
+    const result = runText(["--zq-arg-secret"], "");
+
+    expect(result.code).toBe(2);
+    expectNoMatchedText(result, ["zq-arg-secret"]);
+  });
+
+  it("exits 2 when --file is given twice rather than scanning only the last", () => {
+    const result = runText(["--file", "zq-first", "--file", "zq-second"], "");
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("only once");
+    expectNoMatchedText(result, ["zq-first", "zq-second"]);
   });
 });
