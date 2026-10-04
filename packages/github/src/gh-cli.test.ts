@@ -291,27 +291,44 @@ describe("gh api adapter, REST only", () => {
   });
 });
 
-const thread = (isResolved: boolean, comments: { id: number; login: string | null; path: string; line: number | null; body: string }[]) => ({
-  isResolved,
-  comments: { nodes: comments.map((c) => ({ databaseId: c.id, body: c.body, path: c.path, line: c.line, author: c.login === null ? null : { login: c.login } })) },
+type ThreadComment = { id: number; login: string | null; path: string; line: number | null; body: string };
+const commentNodes = (comments: ThreadComment[], endCursor: string | null = null) => ({
+  pageInfo: { hasNextPage: endCursor !== null, endCursor },
+  nodes: comments.map((c) => ({ databaseId: c.id, body: c.body, path: c.path, line: c.line, authorAssociation: c.login === null ? "NONE" : "MEMBER", author: c.login === null ? null : { login: c.login } })),
 });
+const thread = (id: string, isResolved: boolean, comments: ThreadComment[], commentsCursor: string | null = null) => ({ id, isResolved, comments: commentNodes(comments, commentsCursor) });
 const threadsPage = (nodes: unknown[], endCursor: string | null) => ({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: endCursor !== null, endCursor }, nodes } } } } });
 
 describe("gh api adapter, review comments", () => {
-  it("reads every page of review threads and stamps each comment with its thread's resolved state", async () => {
+  it("reads every page of review threads and stamps each comment with its author's association and its thread's resolved state", async () => {
     const gh = scriptedGhSequence([
-      included(200, {}, threadsPage([thread(true, [{ id: 1, login: "alice", path: "a.ts", line: 3, body: "done" }])], "c1")),
-      included(200, {}, threadsPage([thread(false, [{ id: 2, login: null, path: "b.ts", line: null, body: "outdated" }])], null)),
+      included(200, {}, threadsPage([thread("T1", true, [{ id: 1, login: "alice", path: "a.ts", line: 3, body: "done" }])], "c1")),
+      included(200, {}, threadsPage([thread("T2", false, [{ id: 2, login: null, path: "b.ts", line: null, body: "outdated" }])], null)),
     ]);
 
     const comments = await githubPort(ghCliWire(gh.exec)).listReviewComments(REPO, 7);
 
     expect(comments).toEqual([
-      { id: 1, author: "alice", path: "a.ts", line: 3, body: "done", resolved: true },
-      { id: 2, author: "", path: "b.ts", line: null, body: "outdated", resolved: false },
+      { id: 1, author: "alice", authorAssociation: "MEMBER", path: "a.ts", line: 3, body: "done", resolved: true },
+      { id: 2, author: "", authorAssociation: "NONE", path: "b.ts", line: null, body: "outdated", resolved: false },
     ]);
     expect(gh.calls.map((call) => call.args.slice(0, 5).join(" "))).toEqual(["api -i -X POST graphql", "api -i -X POST graphql"]);
     expect(JSON.parse(gh.calls[1]!.input!).variables).toEqual({ owner: "octo", name: "demo", number: 7, cursor: "c1" });
+  });
+
+  it("reads a thread past its first page of comments by the thread's node id", async () => {
+    const gh = scriptedGhSequence([
+      included(200, {}, threadsPage([thread("T1", false, [{ id: 1, login: "alice", path: "a.ts", line: 1, body: "first" }], "k1")], null)),
+      included(200, {}, { data: { node: { comments: commentNodes([{ id: 2, login: "bob", path: "a.ts", line: 1, body: "second" }]) } } }),
+    ]);
+
+    const comments = await githubPort(ghCliWire(gh.exec)).listReviewComments(REPO, 7);
+
+    expect(comments.map((comment) => [comment.id, comment.resolved])).toEqual([
+      [1, false],
+      [2, false],
+    ]);
+    expect(JSON.parse(gh.calls[1]!.input!).variables).toEqual({ id: "T1", cursor: "k1" });
   });
 
   it("throws with GitHub's message when the query answers errors and no data", async () => {

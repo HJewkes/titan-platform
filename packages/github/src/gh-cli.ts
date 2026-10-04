@@ -217,25 +217,54 @@ async function listIssueComments(api: Rest, repo: string, number: number): Promi
   return comments.map((comment) => ({ id: comment.id, body: comment.body, author: comment.user?.login ?? "" }));
 }
 
+const COMMENT_FIELDS = "pageInfo { hasNextPage endCursor } nodes { databaseId body path line authorAssociation author { login } }";
+
 const REVIEW_THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100, after: $cursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { isResolved comments(first: 100) { nodes { databaseId body path line author { login } } } }
+        nodes { id isResolved comments(first: 100) { ${COMMENT_FIELDS} } }
       }
     }
   }
 }`;
 
-interface GhReviewThreads {
-  data?: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GhReviewThread[] } } | null } | null };
-  errors?: { message: string }[];
+const THREAD_COMMENTS_QUERY = `query($id: ID!, $cursor: String) {
+  node(id: $id) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { ${COMMENT_FIELDS} } } }
+}`;
+
+interface GhPage<T> {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: T[];
+}
+
+interface GhReviewComment {
+  databaseId: number;
+  body: string;
+  path: string;
+  line: number | null;
+  authorAssociation: string;
+  author: { login: string } | null;
 }
 
 interface GhReviewThread {
+  id: string;
   isResolved: boolean;
-  comments: { nodes: { databaseId: number; body: string; path: string; line: number | null; author: { login: string } | null }[] };
+  comments: GhPage<GhReviewComment>;
+}
+
+interface GhGraphql<T> {
+  data?: T;
+  errors?: { message: string }[];
+}
+
+/** GraphQL answers 200 with `errors` and no data on a failed query, so a missing value is the failure. */
+async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
+  const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
+  const value = answer.data === undefined ? undefined : pick(answer.data);
+  if (value === null || value === undefined) throw new Error(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`);
+  return value;
 }
 
 /** Only GraphQL review threads carry the resolved state; REST review comments do not. */
@@ -243,17 +272,22 @@ async function listReviewComments(api: Rest, repo: string, number: number): Prom
   const [owner, name] = repo.split("/");
   const comments: ReviewComment[] = [];
   for (let cursor: string | null = null, more = true; more; ) {
-    const page: GhReviewThreads = await api.send<GhReviewThreads>("POST", "graphql", {}, JSON.stringify({ query: REVIEW_THREADS_QUERY, variables: { owner, name, number, cursor } }));
-    const threads = page.data?.repository?.pullRequest?.reviewThreads;
-    if (!threads) throw new Error(`review threads of ${repo}#${number} unreadable: ${page.errors?.map((error) => error.message).join("; ") ?? "no pull request"}`);
-    comments.push(...threads.nodes.flatMap(threadComments));
+    const threads: GhPage<GhReviewThread> = await graphql(api, `review threads of ${repo}#${number}`, REVIEW_THREADS_QUERY, { owner, name, number, cursor }, (data: { repository?: { pullRequest?: { reviewThreads: GhPage<GhReviewThread> } | null } | null }) => data.repository?.pullRequest?.reviewThreads);
+    for (const thread of threads.nodes) comments.push(...(await threadComments(api, thread)));
     ({ hasNextPage: more, endCursor: cursor } = threads.pageInfo);
   }
   return comments;
 }
 
-function threadComments(thread: GhReviewThread): ReviewComment[] {
-  return thread.comments.nodes.map((comment) => ({ id: comment.databaseId, author: comment.author?.login ?? "", path: comment.path, line: comment.line, body: comment.body, resolved: thread.isResolved }));
+/** A thread past its first 100 comments is read on by its node id. */
+async function threadComments(api: Rest, thread: GhReviewThread): Promise<ReviewComment[]> {
+  const nodes = [...thread.comments.nodes];
+  for (let page = thread.comments.pageInfo; page.hasNextPage; ) {
+    const next: GhPage<GhReviewComment> = await graphql(api, `review thread ${thread.id}`, THREAD_COMMENTS_QUERY, { id: thread.id, cursor: page.endCursor }, (data: { node?: { comments?: GhPage<GhReviewComment> } | null }) => data.node?.comments);
+    nodes.push(...next.nodes);
+    page = next.pageInfo;
+  }
+  return nodes.map((comment) => ({ id: comment.databaseId, author: comment.author?.login ?? "", authorAssociation: comment.authorAssociation, path: comment.path, line: comment.line, body: comment.body, resolved: thread.isResolved }));
 }
 
 interface GhComparePage {

@@ -81,8 +81,8 @@ const marker = "<!-- shepherd:evidence -->";
 await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: true }
 await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); // { id, done: false, skipped: "exists" }
 
-fake.reviewComments.set(pr.number, [{ id: 1, author: "alice", path: "src/a.ts", line: 12, body: "nit", resolved: false }]);
-await port.listReviewComments("o/r", pr.number); // every inline comment, with its thread's resolved state
+fake.reviewComments.set(pr.number, [{ id: 1, author: "alice", authorAssociation: "MEMBER", path: "src/a.ts", line: 12, body: "nit", resolved: false }]);
+await port.listReviewComments("o/r", pr.number); // every inline comment, with its author's association and its thread's resolved state
 ```
 
 ## What it deliberately does not do

@@ -103,7 +103,7 @@ describe("check-then-act port over the fake", () => {
 describe("review comments over the fake", () => {
   it("lists the PR's review comments, resolved ones included, as copies", async () => {
     const fake = fakeGitHub();
-    const comment = { id: 1, author: "alice", path: "a.ts", line: 3, body: "nit", resolved: true };
+    const comment = { id: 1, author: "alice", authorAssociation: "MEMBER", path: "a.ts", line: 3, body: "nit", resolved: true };
     fake.reviewComments.set(7, [comment]);
     const port = githubPort(fake.wire);
 
