@@ -12,7 +12,7 @@ import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, describeWake } from "./wake-brief.js";
+import { FIX_FIRST_STEP, REPAIR_STEP, describeWake } from "./wake-brief.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -22,6 +22,7 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: WAKE_STEP, kind: "dispatch" },
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
   { id: FIX_FIRST_STEP, kind: "dispatch" },
+  { id: REPAIR_STEP, kind: "dispatch" },
 ];
 
 /** The agent-chat profile a successor starts under; the profile is its tool grant. */
@@ -319,6 +320,7 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
   awaitNewHeadRoute(deps, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
+  codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
 ];
 
 const Woke = z.discriminatedUnion("kind", [

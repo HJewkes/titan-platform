@@ -1,6 +1,7 @@
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
+import { spellXargsOptions } from "./xargs-long.js";
 
 interface WrapperSpec {
   /** Options that take a separate value. */
@@ -35,7 +36,10 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   nice: { values: ["-n"] },
   sudo: { values: ["-u", "-g", "-p", "-C", "-D", "-h", "-r", "-t", "-U"] },
   timeout: { values: ["-s", "-k", "--signal", "--kill-after"], positionals: 1 },
-  xargs: { values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args"] },
+  // `--eof`, `--max-lines` and `--replace` take their value only after `=`, so they stay out.
+  xargs: {
+    values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
+  },
   stdbuf: { values: ["-i", "-o", "-e"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,
@@ -112,6 +116,9 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
+      const spelled = spellXargs(words, i, assigned);
+      if (!Array.isArray(spelled)) return spelled;
+      words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
@@ -130,6 +137,23 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
   if (!first) return { name: null, path: null, args: [], assigned };
   if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };
   return { name: commandName(first.value), path: first.value, args: words.slice(i + 1), assigned };
+}
+
+/** `words` with the options of an xargs at `i` spelled out; an ambiguous long option is read both ways instead. */
+function spellXargs(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): WordToken[] | Unwrapped {
+  if (commandName((words[i] as WordToken).value) !== "xargs") return words;
+  const spelled = spellXargsOptions(words, i + 1, (v) => takesValue(v, WRAPPERS.xargs?.values));
+  if (typeof spelled !== "number") return spelled;
+  return { ...command(words, i, assigned), script: ambiguousReadings(words, i, spelled) };
+}
+
+/**
+ * xargs refuses an ambiguous prefix, but which word is the command depends on whether it takes a value,
+ * so both readings run as script text and either one can block.
+ */
+function ambiguousReadings(words: WordToken[], i: number, at: number): string {
+  const kept = words.slice(i, at);
+  return [words.slice(at + 1), words.slice(at + 2)].map((rest) => scriptText("", [...kept, ...rest])).join("\n");
 }
 
 function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNullable<Unwrapped["xargs"]> {
@@ -191,7 +215,7 @@ function xargsDelimiters(options: WordToken[]): string[] | null {
     if (v === "--null") out.push("\0");
     else if (v === "--delimiter") out.push(delimiterOf(options[++j]) ?? "");
     else if (v.startsWith("--delimiter=")) out.push(delimiterOf(options[j], v.slice("--delimiter=".length)) ?? "");
-    else if (/^-[A-Za-z]/.test(v)) j = clusterDelimiters(options, j, out);
+    else if (/^-[A-Za-z0]/.test(v)) j = clusterDelimiters(options, j, out);
   }
   return out.includes("") ? null : out;
 }
