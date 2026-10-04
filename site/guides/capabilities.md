@@ -78,6 +78,7 @@ around a path, and run its smoke check in the environment the job will really us
 | Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: "claude-print"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
 | Style tool runners: ESLint, ruff, and the Python audit tools | `style-checker` | No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw. | `ruff --version` and `npx eslint --version` in the target repo. |
 | Embedding backends: `local`, `ollama`, hash fallback | `embed` | No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither. | `createEmbedder({ backend: "ollama" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over. |
+| agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`) | `agent-dispatch` | No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd. | `AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' \| agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: "exited"`, a non-empty `sessionId` and `transcriptExists: true`. Resume is not yet smoke-tested: compare `sessionId` before and after. |
 
 ## Known gaps
 
@@ -590,7 +591,7 @@ Key exports:
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
 - `extractors/ts-morph-extractor`: `TsMorphGraphExtractor`
-- +339 more in the [reference page](/reference/code-graph)
+- +342 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 

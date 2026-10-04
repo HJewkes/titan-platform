@@ -4,7 +4,7 @@ import { collectDeclaredSpans, type LineSpan } from "../declared-names.js";
 import { fileId, symbolId } from "./ids.js";
 import { paramAttrs, type ParamShape } from "./call-sites.js";
 import { collectParamShapes } from "./callable-params.js";
-import { declarationText, lookupDeclaration, type SymbolText } from "./symbol-signature.js";
+import { createDeclarationLookup, declarationText, type SymbolText } from "./symbol-signature.js";
 import type { GraphNode } from "../types.js";
 
 /**
@@ -75,9 +75,10 @@ export function buildSymbolNodes(
     exported.add(name);
     out.push(makeSymbolNode(fId, name, true, spans.get(name), declarationText(own), shapes.get(name)));
   }
+  const lookup = createDeclarationLookup(sourceFile);
   for (const [name, span] of spans) {
     if (exported.has(name)) continue;
-    const decl = lookupDeclaration(sourceFile, name);
+    const decl = lookup(name);
     out.push(makeSymbolNode(fId, name, false, span, decl ? declarationText(decl) : {}, shapes.get(name)));
   }
   return out;

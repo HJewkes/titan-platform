@@ -77,7 +77,7 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
+own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
 nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
@@ -282,6 +282,48 @@ classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
 `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
 node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
 caps symbol coupling at 40 pairs and 15 consumer groups.
+
+### Unused exports and dead modules
+
+The unused-export and unreferenced-file sections of codewatch's `graph report` are pure
+functions over nodes, edges, and a `ReportContext`, so they run in a browser too:
+
+```ts
+import {
+  buildReportContext,
+  publicApiFiles,
+  topDeadModules,
+  topUnusedExports,
+} from "@titan-design/code-graph";
+
+const nodes = [
+  { id: "index.ts", kind: "file", name: "index.ts", role: "barrel" },
+  { id: "api.ts", kind: "file", name: "api.ts" },
+  { id: "orphan.ts", kind: "file", name: "orphan.ts" },
+];
+const edges = [{ srcId: "index.ts", dstId: "api.ts", kind: "re-exports" }];
+const symbols = [
+  { id: "api.ts#run", kind: "symbol", name: "run", parentId: "api.ts", attrs: { exported: true } },
+];
+const ctx = buildReportContext({ nodes, metrics: [], excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+topDeadModules(nodes, edges, ctx, 10);
+// [ { nodeId: 'orphan.ts', loc: 0, role: 'source' } ]
+
+topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
+// [ { nodeId: 'api.ts#run', name: 'run', fileId: 'api.ts', cognitive: 0, publicApi: true } ]
+```
+
+- `topUnusedExports` lists exported symbols whose `utilization` is 0 or absent. Exports in
+  files a barrel re-exports one hop away carry `publicApi: true`, since an npm consumer may
+  still use them, and rank after internal ones; ties break on `symbol_cognitive`.
+- `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
+  ranked by `loc`. The walk starts at files with the role `entry`, `barrel`, `test`,
+  `script`, `config` or `fixture`, and at any `main.{ts,tsx,js,jsx}`. A computed
+  `import(variable)` or a registry string escapes it, so a live file can show up here.
+
+Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
+re-exports transitively from package-manifest entries.
 
 ## Partition quality
 
