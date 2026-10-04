@@ -34,14 +34,5 @@ export type { MemoryGateStoreOptions } from "./memory-store.js";
 export { MemoryGateStore } from "./memory-store.js";
 export { defaultResolverRefusal, ruleResolverRefusal, snapshotResolver } from "./resolver-policy.js";
 export type { GateBriefSnapshot } from "./gate-brief.js";
-export {
-  MAX_EVIDENCE_REF,
-  MAX_OPTIONS,
-  MAX_OPTION_LABEL,
-  MAX_QUESTIONS,
-  MAX_QUESTION_TEXT,
-  MAX_SUMMARY,
-  MIN_OPTIONS,
-  snapshotBrief,
-} from "./gate-brief.js";
+export { snapshotBrief } from "./gate-brief.js";
 export { checkAgainstJsonSchema } from "./json-schema.js";

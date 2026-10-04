@@ -8,14 +8,14 @@
  */
 import { GateBriefInvalid, type GateQuestion, type GateQuestionOption } from "./types.js";
 
-export const MAX_SUMMARY = 280;
-export const MAX_EVIDENCE_REF = 500;
-export const MAX_QUESTIONS = 4;
-export const MIN_OPTIONS = 2;
-export const MAX_OPTIONS = 4;
+const MAX_SUMMARY = 280;
+const MAX_EVIDENCE_REF = 500;
+const MAX_QUESTIONS = 4;
+const MIN_OPTIONS = 2;
+const MAX_OPTIONS = 4;
 /** Slack's button text limit, so every option fits on a button. */
-export const MAX_OPTION_LABEL = 75;
-export const MAX_QUESTION_TEXT = 500;
+const MAX_OPTION_LABEL = 75;
+const MAX_QUESTION_TEXT = 500;
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const ID_RULE = 'id must be 1-40 letters, digits, "-" or "_"';
