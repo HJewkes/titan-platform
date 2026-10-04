@@ -261,9 +261,10 @@ async function rosterWhileBrokerDown(deps: ShepherdDeps, agents: ImplementerAgen
   }
 }
 
-async function headMoved(port: GitHubPort, input: WakeInput): Promise<boolean> {
+/** `undefined` when the PR could not be read: neither moved nor not, so the caller decides on a later poll. */
+async function headMoved(port: GitHubPort, input: WakeInput): Promise<boolean | undefined> {
   const pr = await port.getPr(input.repo, input.pr).catch(() => undefined);
-  return pr !== undefined && pr.headSha !== input.headSha;
+  return pr === undefined ? undefined : pr.headSha !== input.headSha;
 }
 
 async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
@@ -271,7 +272,7 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
   return pr !== undefined && (pr.headSha !== input.headSha || pr.state !== "open");
 }
 
-/** A live agent that already pushed a new head took the wake itself, and is asked nothing. */
+/** A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the ask a poll. */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
   let asked: Asked | undefined;
   for (;;) {
@@ -280,7 +281,12 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     const newest = newestAgent(task, roster);
     if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
     const live = newest.presence !== "exited";
-    if (live && (await headMoved(deps.port, task.input))) return wokenBy(liveChoice(task, newest));
+    const moved = live ? await headMoved(deps.port, task.input) : false;
+    if (moved) return wokenBy(liveChoice(task, newest));
+    if (moved === undefined) {
+      await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+      continue;
+    }
     const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
