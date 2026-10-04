@@ -9,6 +9,8 @@ export type Assignment = [name: string, value: string | null, append?: true];
 
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
+const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
 /** A hidden slot's name is no shell identifier, so no command the user writes can assign or read it. */
 const SLOT_ASSIGNMENT_RE = /^local@\d+=/;
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
@@ -66,7 +68,7 @@ export function trackVars(name: string, args: WordToken[], vars: Vars): void {
 /** Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of reach. */
 function clobberedNames(name: string, args: WordToken[]): string[] {
   const values = args.map((a) => a.value);
-  if (name === "read" || name === "unset") return values.filter((v) => IDENTIFIER_RE.test(v));
+  if (name === "read" || name === "unset") return values.flatMap((v) => TARGET_RE.exec(v)?.[1] ?? []);
   if (name === "for" && values[0] !== undefined && IDENTIFIER_RE.test(values[0])) return [values[0]];
   return [];
 }
@@ -77,6 +79,8 @@ function printfVar(args: WordToken[], vars: Vars): void {
   if (first === undefined || !first.startsWith("-v")) return;
   const attached = first.slice(2);
   const target = attached || args[1]?.value;
-  if (target === undefined || !IDENTIFIER_RE.test(target)) return;
-  vars.set(target, printedText("printf", args.slice(attached ? 1 : 2)));
+  const base = target === undefined ? undefined : TARGET_RE.exec(target);
+  if (!base) return;
+  const subscripted = base[0] !== base[1];
+  vars.set(base[1] as string, subscripted ? null : printedText("printf", args.slice(attached ? 1 : 2)));
 }

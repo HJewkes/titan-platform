@@ -63,6 +63,7 @@ describe("variables built up before the command they name", () => {
     ["a local whose hidden slot read targets", "Y=push; f() { local Y=x; read local@0; }; f; git $Y origin HEAD:main"],
     ["a local whose hidden slot unset targets", "Y=push; f() { local Y=x; unset local@0; }; f; git $Y origin HEAD:main"],
     ["a local whose hidden slot for targets", "Y=push; f() { local Y=x; for local@0 in a; do :; done; }; f; git $Y origin HEAD:main"],
+    ["an esac pattern in a parenthesised case pattern", "f() ( case a in (a|esac) declare Y+=push;; esac; git $Y origin HEAD:main ); Y=status; f"],
     ["an esac argument in a case body", "f() ( case a in a) echo esac;; b) :;; esac; declare Y+=push; git $Y origin HEAD:main ); Y=status; f"],
     ["a declare append after a case pattern", "Y=status; f() ( case a in a) declare Y+=push; git $Y origin HEAD:main;; esac ); f"],
     ["an append to an array's element 0", "Y=(pu); Y+=sh; git $Y origin HEAD:main"],
@@ -91,6 +92,14 @@ describe("variables built up before the command they name", () => {
     ["through declare to an array", "declare -a Y=(pu); declare Y+=(sh); git $Y"],
   ])("keeps element 0 when appending %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["pu"]]);
+  });
+
+  it.each([
+    ["a read into a subscripted target", "Y=status; read 'Y[0]' <<< push; git $Y"],
+    ["a printf -v into a subscripted target", "Y=status; printf -v 'Y[0]' push; git $Y"],
+    ["a printf -v into an attached subscripted target", "Y=status; printf -v'Y[0]' push; git $Y"],
+  ])("leaves the variable unknown after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y"]]);
   });
 
   it.each([
