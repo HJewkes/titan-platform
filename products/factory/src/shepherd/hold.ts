@@ -7,6 +7,7 @@ import { acceptExternalVerdict, externalReviewer, latestSession } from "./extern
 import type { FreezeGuard } from "./freeze.js";
 import { provablyIndependent, type ReviewerAgent, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
+import { namesPr } from "./verdict-target.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
 
@@ -66,7 +67,7 @@ async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[],
     for (const message of messages) {
       const block = parseVerdictBlock(message.text);
       const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;
-      if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !verdict || !("repo" in block) || block.repo !== repo || block.pr !== pr) continue;
+      if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !verdict || !("repo" in block) || !namesPr(block, { repo, pr })) continue;
       if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && verdict !== "MERGE")) newest = { at: message.writtenAt, verdict };
     }
   }
