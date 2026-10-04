@@ -50,8 +50,8 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
 
 interface HeldRecheck {
   ended: EndedRun[];
-  /** Held runs whose PR could not be read; adoption must leave them unclaimed this tick. */
-  unreadable: Set<string>;
+  /** Held runs whose PR could not be read, with the read's error; adoption must leave them unclaimed this tick. */
+  unreadable: Map<string, string>;
 }
 
 /**
@@ -61,9 +61,9 @@ interface HeldRecheck {
  */
 export async function recheckHeld(host: FactoryHost, services: ShepherdServices, held: Set<string>): Promise<HeldRecheck> {
   for (const runId of held) if (!LIVE.has(host.runtime.status(runId)?.status ?? "")) held.delete(runId);
-  const unreadable = new Set<string>();
+  const unreadable = new Map<string, string>();
   if (held.size === 0) return { ended: [], unreadable };
-  const ended = await endRunsGoneElsewhere(host, services, { scope: "live", only: held, onUnreadable: (runId) => unreadable.add(runId) });
+  const ended = await endRunsGoneElsewhere(host, services, { scope: "live", only: held, onUnreadable: (runId, cause) => unreadable.set(runId, cause) });
   for (const { runId } of ended) held.delete(runId);
   return { ended, unreadable };
 }
