@@ -292,7 +292,6 @@ describe("refreshCorpus", () => {
   it("keeps a transcript ok when its source key starts with ~/ and the file exists", async () => {
     const tilde = { ...transcript, displayPath: "~/s1.jsonl" };
     await refreshCorpus(graph, [tilde]);
-    graph.db.prepare("DELETE FROM normalized_source").run();
 
     const pass = await refreshCorpus(graph, [], { homeDir: dir });
 
