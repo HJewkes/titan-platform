@@ -34,15 +34,16 @@ describe("curate", () => {
     expect(report.skipped).toEqual([{ delta: expect.objectContaining({ type: "add", content: "use  PNPM" }), reason: "duplicate delta" }]);
   });
 
-  it("folds an exact or near-duplicate add into helpful feedback on the existing bullet", () => {
+  it("folds an exact or near-duplicate add into one helpful vote on the existing bullet", () => {
     const existing = store.add({ content: "Always run the full test suite before opening a pull request" });
     const report = curate(store, [
       { type: "add", content: "always run the full test suite before opening a pull request" },
       { type: "add", content: "Always run the full test suite before opening a pull request please" },
     ], { provenance: PROVENANCE });
     expect(report.added).toEqual([]);
-    expect(report.reinforced).toEqual([existing.id, existing.id]);
-    expect(store.feedbackFor(existing.id).map((e) => e.sessionRef)).toEqual(["session:s1", "session:s1"]);
+    expect(report.reinforced).toEqual([existing.id]);
+    expect(report.skipped).toHaveLength(1);
+    expect(store.feedbackFor(existing.id).map((e) => e.sessionRef)).toEqual(["session:s1"]);
   });
 
   it("refuses to re-learn a blocked pattern", () => {
@@ -124,5 +125,41 @@ describe("curate", () => {
     expect(report.reinforced).toEqual([bullet.id]);
     expect(report.skipped).toHaveLength(4);
     expect(report.maturityChanges).toEqual([{ bulletId: bullet.id, from: "candidate", to: "proven" }]);
+  });
+
+  describe("one vote per bullet per batch", () => {
+    const feedbackCount = (id: string, type: string) => store.feedbackFor(id).filter((f) => f.type === type).length;
+
+    it("counts two helpful deltas with different reasons once", () => {
+      const bullet = store.add({ content: "Pin dependency versions" });
+      const report = curate(store, [
+        { type: "helpful", bulletId: bullet.id, reason: "a" },
+        { type: "helpful", bulletId: bullet.id, reason: "b" },
+      ], { now: () => T0 });
+      expect(feedbackCount(bullet.id, "helpful")).toBe(1);
+      expect(report.reinforced).toEqual([bullet.id]);
+      expect(report.skipped).toHaveLength(1);
+      expect(report.skipped[0]!.reason).toMatch(/already voted helpful/);
+    });
+
+    it.each(["add first", "helpful first"])("counts a folding add plus an explicit helpful once (%s)", (order) => {
+      const bullet = store.add({ content: "Pin dependency versions" });
+      const add = { type: "add" as const, content: "Pin dependency versions" };
+      const helpful = { type: "helpful" as const, bulletId: bullet.id };
+      const report = curate(store, order === "add first" ? [add, helpful] : [helpful, add], { now: () => T0 });
+      expect(feedbackCount(bullet.id, "helpful")).toBe(1);
+      expect(report.skipped).toHaveLength(1);
+    });
+
+    it("still applies one helpful and one harmful on the same bullet", () => {
+      const bullet = store.add({ content: "Pin dependency versions" });
+      const report = curate(store, [
+        { type: "helpful", bulletId: bullet.id },
+        { type: "harmful", bulletId: bullet.id },
+      ], { now: () => T0 });
+      expect(feedbackCount(bullet.id, "helpful")).toBe(1);
+      expect(feedbackCount(bullet.id, "harmful")).toBe(1);
+      expect(report.skipped).toEqual([]);
+    });
   });
 });

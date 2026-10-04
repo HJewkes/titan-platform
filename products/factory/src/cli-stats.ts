@@ -14,7 +14,7 @@ interface StatsOpts {
   json?: boolean;
 }
 
-export function formatStats(rows: readonly StatsRow[]): string {
+function formatStats(rows: readonly StatsRow[]): string {
   if (rows.length === 0) return "no merges in range\n";
   const lines = rows.map((r) => `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  outside Shepherd ${r.outsideMerges}`);
   return `${lines.join("\n")}\n`;

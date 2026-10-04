@@ -170,8 +170,12 @@ export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: strin
   if (sha === redSha) return false;
   const runs = await actionsRuns(port, repo, sha);
   if (runs.length === 0) return false;
-  const redSet = (await actionsRuns(port, repo, redSha)).filter((run) => run.status === "completed" && !isPassing(run)).map((run) => run.name);
-  return headCheckFindings({ headSha: sha, contexts: [...new Set(redSet)], runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
+  return headCheckFindings({ headSha: sha, contexts: await failingAt(port, repo, redSha), runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
+}
+
+/** The names of the Actions checks that completed red at `sha`. */
+export async function failingAt(port: GitHubPort, repo: RepoSlug, sha: string): Promise<string[]> {
+  return [...new Set((await actionsRuns(port, repo, sha)).filter((run) => run.status === "completed" && !isPassing(run)).map((run) => run.name))];
 }
 
 async function actionsRuns(port: GitHubPort, repo: RepoSlug, sha: string): Promise<CheckRun[]> {
@@ -209,7 +213,7 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
 }
 
 /** The fixer half catches an honest PR on the fix task; `implementer` is caller-supplied, so this is no security boundary. */
-function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
+export function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
   if (freeze.fixTask === null || freeze.fixer === null || registration === undefined) return false;
   return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;
 }
