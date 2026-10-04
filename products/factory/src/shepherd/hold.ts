@@ -47,6 +47,7 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     const messages = await deps.reader.read(read).catch(() => []);
     const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
+    if (verdict.kind === "none" && verdict.reason === "wait" && registration.holdSatisfied?.head === sha) return store.unsatisfyHold(registration.runId);
     if (verdict.kind !== "verdict") {
       const sessions = roster.filter((agent) => agent.name === reviewer && agent.sessionId !== "");
       return carrySatisfaction(deps, registration, { repo, baseRef, head: sha }, await newestOwn(deps.reader, sessions, repo, pr));

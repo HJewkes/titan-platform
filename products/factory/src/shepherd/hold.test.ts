@@ -113,6 +113,33 @@ describe("a hold that names a reviewer", () => {
     expect(merged.done).toBe(true);
   });
 
+  it("withdraws a recorded satisfaction when the reviewer then sends WAIT at that head, and merges again after a later MERGE", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, satisfier(r));
+    await held(REPO, r.pr, H1);
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+
+    say(r, verdictAt(H1, "WAIT"));
+
+    await expect(mergeAt(r, H1)).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+    say(r, verdictAt(H1));
+    await expect(mergeAt(r, H1)).resolves.toMatchObject({ done: true });
+  });
+
+  it("keeps a satisfaction at the reviewed head when the WAIT names another head", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, satisfier(r));
+    await held(REPO, r.pr, H1);
+
+    say(r, verdictAt(H2, "WAIT"));
+    await held(REPO, r.pr, H1);
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+  });
+
   it("refuses a same-name agent spawned in the implementer's lineage", async () => {
     const r = rig();
     const impostor = agent(REVIEWER, { agentId: "agent-impostor", sessionId: "session-impostor", spawnedBy: "impl-a" });
