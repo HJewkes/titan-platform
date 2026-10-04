@@ -78,8 +78,9 @@ export class WorkflowRuntime {
     return run.id;
   }
 
-  async hydrate(): Promise<string[]> {
-    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]);
+  /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
+  async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
+    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]).filter((run) => !options.exclude?.has(run.id));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }

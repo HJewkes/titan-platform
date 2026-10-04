@@ -204,6 +204,22 @@ describe("WorkflowRuntime", () => {
     expect(run.stepResults["ship:0"]).toBeDefined();
   });
 
+  it("hydrate leaves an excluded run unclaimed and still hydrates the rest", async () => {
+    const db = makeDb();
+    const first = runtime(db, inlineRunner(() => "ok"));
+    const gated: WorkflowFn = async (ctx) => void (await ctx.assisted("approve", "ok?"));
+    first.register("gated", gated);
+    const kept = first.start("gated");
+    const skipped = first.start("gated");
+    await vi.waitFor(() => expect([kept, skipped].map((id) => first.status(id)?.status)).toEqual(["paused", "paused"]));
+    first.shutdown();
+
+    const second = runtime(db, inlineRunner(() => "ok"));
+    second.register("gated", gated);
+    expect(await second.hydrate({ exclude: new Set([skipped]) })).toEqual([kept]);
+    expect(await second.hydrate()).toEqual([skipped]);
+  });
+
   it("replays a paused run after a restart without re-running finished steps", async () => {
     const db = makeDb();
     const first = runtime(db, inlineRunner(() => "drafted"));
