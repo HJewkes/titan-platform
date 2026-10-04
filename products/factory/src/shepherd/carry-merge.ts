@@ -5,13 +5,18 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import { seatFixFirst } from "./external-review.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
-import { mergeVerdict } from "./review.js";
+import { mergeVerdict, type ReviewWiring } from "./review.js";
 import { carryStep, type CarryResult } from "./tree-carry.js";
 
 export const CARRY_SCOPE_STEP = "sh-carry-scope";
-export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [{ id: CARRY_SCOPE_STEP, kind: "dispatch" }];
+export const CARRY_SEAT_STEP = "sh-carry-seat";
+export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
+  { id: CARRY_SCOPE_STEP, kind: "dispatch" },
+  { id: CARRY_SEAT_STEP, kind: "dispatch" },
+];
 
 /** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
 export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
@@ -29,6 +34,24 @@ export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now
     kind: registeredKind(deps.store, input.runId) ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
+}
+
+const SeatResult = z.looseObject({ clear: z.boolean() });
+
+/**
+ * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
+ * at that head would have. An unreadable roster or transcript refuses too. With no dispatch wired there is no roster to read.
+ */
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now">, wiring: ReviewWiring | undefined): StepRoute {
+  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: CarryTarget & { heads: string[] }) => {
+    const dispatch = wiring?.dispatch;
+    if (!dispatch) return { clear: true };
+    for (const head of input.heads) {
+      const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
+      if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
+    }
+    return { clear: true };
+  });
 }
 
 const Evidence = z.looseObject({
@@ -74,6 +97,9 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   const fromHead = source.merge.verdict.head;
   const result = await carryStep(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha });
   if (!treeEqual(result)) return undefined;
+  const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
+  const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, heads }, SeatResult);
+  if (!seats.clear) return undefined;
   const { merge } = source;
   return mergeVerdict(ctx, {
     ...target,

@@ -47,20 +47,26 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     const messages = await deps.reader.read(read).catch(() => []);
     const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
-    if (verdict.kind !== "verdict") return carrySatisfaction(deps, registration, { repo, baseRef, head: sha }, newestOwn(row, repo, pr, messages));
+    if (verdict.kind !== "verdict") {
+      const sessions = roster.filter((agent) => agent.name === reviewer && agent.sessionId !== "");
+      return carrySatisfaction(deps, registration, { repo, baseRef, head: sha }, await newestOwn(deps.reader, sessions, repo, pr));
+    }
     if (verdict.verdict === "FIX_FIRST") return store.unsatisfyHold(registration.runId);
     if (registration.holdSatisfied?.head === sha) return;
     store.satisfyHold(registration.runId, reviewer, sha, { ...verdict.reviewer, locator: { ...verdict.locator } });
   };
 }
 
-/** The reviewer's newest verdict block on this PR at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time the FIX_FIRST wins. */
-function newestOwn(row: ReviewerAgent, repo: RepoSlug, pr: number, messages: readonly ReviewerMessage[]): "MERGE" | "FIX_FIRST" | undefined {
+/** The newest verdict block on this PR in any session under the reviewer's name, at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time the FIX_FIRST wins. */
+async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[], repo: RepoSlug, pr: number): Promise<"MERGE" | "FIX_FIRST" | undefined> {
   let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" } | undefined;
-  for (const message of messages) {
-    const block = parseVerdictBlock(message.text);
-    if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !block.ok || block.repo !== repo || block.pr !== pr) continue;
-    if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && block.verdict === "FIX_FIRST")) newest = { at: message.writtenAt, verdict: block.verdict };
+  for (const row of rows) {
+    const messages = await reader.read({ repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }).catch((): readonly ReviewerMessage[] => []);
+    for (const message of messages) {
+      const block = parseVerdictBlock(message.text);
+      if (message.agentId !== row.agentId || message.sessionId !== row.sessionId || !block.ok || block.repo !== repo || block.pr !== pr) continue;
+      if (!newest || message.writtenAt > newest.at || (message.writtenAt === newest.at && block.verdict === "FIX_FIRST")) newest = { at: message.writtenAt, verdict: block.verdict };
+    }
   }
   return newest?.verdict;
 }

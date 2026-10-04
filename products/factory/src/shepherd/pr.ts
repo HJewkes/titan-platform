@@ -7,7 +7,7 @@ import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
-import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute } from "./carry-merge.js";
+import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -365,6 +365,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
     carryScopeRoute(deps),
+    carrySeatRoute(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now),

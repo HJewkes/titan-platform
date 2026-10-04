@@ -1,7 +1,9 @@
 import { fakeSha } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { carriedSource, carriedVerdict } from "./carry-merge.js";
+import { carriedSource, carriedVerdict, carrySeatRoute } from "./carry-merge.js";
+import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
+import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -23,11 +25,12 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult): Rig {
+function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }): Rig {
   const asked: Rig["asked"] = [];
   const answer = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
     if (stepId.startsWith("sh-carry:")) return probe;
+    if (stepId.startsWith("sh-carry-seat:")) return seats;
     return { head: input.head, merge: {}, record: {} };
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
@@ -53,6 +56,26 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(evidence).toMatchObject({ head: NEW_HEAD, verdict: { value: "MERGE", head: REVIEWED }, resolver: AGENT, dispatchedReviewer: AGENT });
     expect(evidence.carry).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL });
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry:"))!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD });
+  });
+
+  it("records the seat check as a step over the reviewed head, every head the run saw, and the new head", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+    const middle = fakeSha("middle");
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [middle, mergeAt(middle, REVIEWED)]));
+
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.indexOf(`sh-carry-seat:${NEW_HEAD}`)).toBeGreaterThan(ids.indexOf(`sh-carry:${NEW_HEAD}`));
+    expect(ids.indexOf(`sh-carry-seat:${NEW_HEAD}`)).toBeLessThan(ids.findIndex((id) => id.startsWith("sh-merge-evidence")));
+    expect(r.asked.find((step) => step.stepId.startsWith("sh-carry-seat"))!.input.heads).toEqual([REVIEWED, middle, NEW_HEAD]);
+  });
+
+  it("does not carry when a seat reviewer said FIX_FIRST at one of those heads, and takes no evidence", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL, { clear: false });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-evidence"))).toBe(false);
   });
 
   it("carries a carried MERGE on from the head it was first reviewed at", async () => {
@@ -122,5 +145,38 @@ describe("carrying a MERGE to a tree-equal head", () => {
 
   it("has no source when the only review is at the head itself", () => {
     expect(carriedSource(reviews([NEW_HEAD, mergeAt(NEW_HEAD)]), NEW_HEAD)).toBeUndefined();
+  });
+});
+
+describe("the seat check of a carry", () => {
+  const seat = (name: string): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: null, predecessor: null });
+  const verdict = (head: string, value: "MERGE" | "FIX_FIRST", from: ReviewerAgent): ReviewerMessage => ({
+    agentId: from.agentId,
+    sessionId: from.sessionId,
+    writtenAt: 1,
+    text: `Verdict: ${value}\nPR: ${REPO}#1\nHead: ${head}\n`,
+    locator: { sourceId: "synthetic" } as unknown as ReviewerMessage["locator"],
+  });
+
+  async function checked(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], withDispatch = true) {
+    const reviewer = seat("tc-x-review");
+    const wiring = { reader: { read: async () => messages(reviewer) }, ...(withDispatch && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
+    const route = carrySeatRoute({ now: () => 0 }, wiring);
+    const prompt = JSON.stringify({ ...TARGET, heads: [REVIEWED, NEW_HEAD] });
+    const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+    if (!outcome.ok) throw new Error(outcome.error);
+    return (JSON.parse(outcome.output) as { result: { clear: boolean } }).result.clear;
+  }
+
+  it("refuses when a seat reviewer said FIX_FIRST at the carried head", async () => {
+    await expect(checked((reviewer) => [verdict(NEW_HEAD, "FIX_FIRST", reviewer)])).resolves.toBe(false);
+  });
+
+  it("refuses when a seat reviewer said FIX_FIRST at a head between", async () => {
+    await expect(checked((reviewer) => [verdict(REVIEWED, "FIX_FIRST", reviewer)])).resolves.toBe(false);
+  });
+
+  it("clears when no seat reviewer objected", async () => {
+    await expect(checked((reviewer) => [verdict(NEW_HEAD, "MERGE", reviewer)])).resolves.toBe(true);
   });
 });

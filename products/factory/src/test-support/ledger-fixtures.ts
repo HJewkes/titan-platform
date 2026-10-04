@@ -18,6 +18,8 @@ export interface HeadScript {
   goesBehind?: boolean;
   /** This head is the newest reviewed head merged cleanly onto main: the tree probe answers equal and no review is asked. */
   treeEqual?: boolean;
+  /** A seat reviewer (a `*-review` agent) said FIX_FIRST at this head, whether or not a review was asked there. */
+  seatFixFirst?: boolean;
 }
 
 /** Main CI at the merge commit: red freezes and fixes, `cancelled-superseded` is read on the newer main push. */
