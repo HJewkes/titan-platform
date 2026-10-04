@@ -2,6 +2,7 @@ import { userInfo } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import type { GateResolver } from "@titan-design/hitl";
 import type { FactoryHost } from "./host.js";
+import { confirmOwner } from "./owner-presence.js";
 
 /** The CLI's own exit codes, repeated here because cli.ts imports this module. */
 const EXIT = { OK: 0, USAGE: 2 } as const;
@@ -12,8 +13,14 @@ interface ResolveIo {
   env: NodeJS.ProcessEnv;
 }
 
-/** `titan-factory gate resolve`: answers the gate the run waits on at `stepId`; a resolver refusal throws to the CLI, which exits 1. */
-export function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string): number {
+/** Asks the owner to prove presence with `reason` shown; returns a proof id, or undefined when presence is not confirmed. */
+export type OwnerPresence = (reason: string) => Promise<string | undefined>;
+
+/**
+ * `titan-factory gate resolve`: answers the gate the run waits on at `stepId`; a resolver refusal throws to the CLI, which exits 1.
+ * `presence` is injected only in code: no proof, runner or helper path is ever read from argv or the environment.
+ */
+export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, presence: OwnerPresence = confirmOwner): Promise<number> {
   const payload = parsePayload(json);
   if (!payload) {
     io.stderr("error: --json must be a JSON object\n");
@@ -24,9 +31,19 @@ export function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, ste
     io.stdout(`already resolved ${repeated} with this answer\n`);
     return EXIT.OK;
   }
-  host.runtime.signal(runId, stepId, payload, cliResolver(io.env));
+  const resolver = await cliResolver(io.env, pendingGateId(host, runId, stepId), payload, presence);
+  if (typeof resolver === "string") {
+    io.stderr(`error: ${resolver}\n`);
+    return EXIT.USAGE;
+  }
+  host.runtime.signal(runId, stepId, payload, resolver);
   io.stdout(`resolved ${runId}/${stepId}\n`);
   return EXIT.OK;
+}
+
+function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
+  const base = `${runId}/${stepId}`;
+  return host.pendingGates().find(({ gate }) => gate.id === base || gate.id.startsWith(`${base}:`))?.gate.id;
 }
 
 /** The gate a repeat of this resolve already answered: none for the step is pending, and its latest gate holds this payload. */
@@ -42,9 +59,36 @@ function repeatedResolution(host: FactoryHost, runId: string, stepId: string, pa
   return latest?.status === "resolved" && isDeepStrictEqual(latest.payload, payload) ? latest.id : undefined;
 }
 
-/** Owner unless agent-chat spawned this shell; CLAUDECODE is ignored because the owner's `!` commands set it too. A refusal exits FAILURE through `parse`. */
-function cliResolver(env: NodeJS.ProcessEnv): GateResolver {
-  return { class: env.AGENT_CHAT_AGENT_ID ? "coordinator" : "owner-terminal", id: userInfo().username, channel: "factory-cli" };
+/**
+ * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is owner-terminal only with a presence proof, because the owner's
+ * `!` commands inherit that marker; without one it is the coordinator named by AGENT_CHAT_NAME. Any other shell stays
+ * owner-terminal without a dialog until owner question Q1 is answered. CLAUDECODE is ignored: `!` commands set it too.
+ * Returns an error message when the gate's fields cannot be shown safely in the dialog.
+ */
+async function cliResolver(env: NodeJS.ProcessEnv, gateId: string | undefined, payload: Record<string, unknown>, presence: OwnerPresence): Promise<GateResolver | string> {
+  const owner: GateResolver = { class: "owner-terminal", id: userInfo().username, channel: "factory-cli" };
+  if (!env.AGENT_CHAT_AGENT_ID) return owner;
+  const coordinator: GateResolver = { class: "coordinator", id: env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID, channel: "factory-cli" };
+  if (gateId === undefined) return coordinator;
+  const reason = presenceReason(gateId, payload);
+  if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
+  const proof = await presence(reason);
+  return proof === undefined ? coordinator : { ...owner, confirmEvent: proof };
+}
+
+const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
+const DECISION = /^[a-z][a-z0-9-]{0,31}$/;
+const HEAD_SHA = /^[0-9a-f]{40}$/;
+const MAX_REASON = 256;
+
+/** The dialog text, built only from fields that pass a strict shape, so nothing in it can break a line or hide text. */
+export function presenceReason(gateId: string, payload: Record<string, unknown>): string | undefined {
+  const decision = payload.decision ?? (typeof payload.approve === "boolean" ? (payload.approve ? "approve" : "decline") : "answer");
+  const head = payload.headSha;
+  if (!GATE_ID.test(gateId) || typeof decision !== "string" || !DECISION.test(decision)) return undefined;
+  if (head !== undefined && (typeof head !== "string" || !HEAD_SHA.test(head))) return undefined;
+  const reason = `resolve gate ${gateId}: ${decision}${head === undefined ? "" : ` at ${head}`}`;
+  return reason.length <= MAX_REASON ? reason : undefined;
 }
 
 export function parsePayload(json: string): Record<string, unknown> | undefined {
