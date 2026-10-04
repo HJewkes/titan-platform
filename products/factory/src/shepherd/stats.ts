@@ -1,9 +1,9 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 
 /** A merge that waited longer than this between the reviewer's MERGE and the merge itself is slow. */
-export const SLOW_WAIT_MS = 60 * 60_000;
+const SLOW_WAIT_MS = 60 * 60_000;
 
-export interface StatsRange {
+interface StatsRange {
   /** Inclusive `YYYY-MM-DD`, UTC. */
   from?: string;
   /** Inclusive `YYYY-MM-DD`, UTC. */
