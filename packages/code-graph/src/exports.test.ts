@@ -1,8 +1,10 @@
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  buildReportContext,
   compilePatterns,
   computeDeepAst,
+  computeReportDrift,
   computePartitionQuality,
   computeRecencyWindows,
   DEFAULT_CHURN_WINDOWS,
@@ -15,6 +17,7 @@ import {
   resolveChurnWindows,
   resolveGitRef,
   runPrune,
+  topHotspots,
   windowSuffix,
   type HistoryMetricsOptions,
   type LoadedHistory,
@@ -105,6 +108,34 @@ describe("partition quality", () => {
     });
     expect(result.pairCoupling.map((p) => `${p.from}->${p.to}`)).toEqual(["a->b"]);
     expect(invertBuckets(fileByPackage).get("a/x.ts")).toBe("a");
+  });
+});
+
+describe("report derivations", () => {
+  it("ranks hotspots and diffs them against a baseline", () => {
+    const ctx = buildReportContext({
+      nodes: [{ id: "a.ts", kind: "file", name: "a.ts" }],
+      metrics: [
+        { nodeId: "a.ts", name: "churn_30d", value: 2 },
+        { nodeId: "a.ts", name: "cognitive_max", value: 3 },
+      ],
+      excluders: [],
+      excludedRoles: new Set(),
+      windowDays: 30,
+    });
+    const hotspots = topHotspots(ctx, 5);
+    const drift = computeReportDrift({
+      baselineSnapshot: { id: 1, ref: "base", commitHash: null, takenAt: "", indexVersion: "0.0.0", attrs: {} },
+      currentHotspots: hotspots,
+      baselineHotspots: [],
+      currentHotspotScore: () => 0,
+      currentSilos: [],
+      baselineSilos: [],
+      currentBusFactor: () => undefined,
+      currentCoupling: [],
+      baselineCoupling: [],
+    });
+    expect(drift.newHotspots.map((h) => [h.nodeId, h.score])).toEqual([["a.ts", 6]]);
   });
 });
 
