@@ -35,7 +35,7 @@
       "items": { "$ref": "#/$defs/export" }
     },
     "questions": {
-      "description": "Reviewer questions in a fixed order, each naming path:line.",
+      "description": "Reviewer questions in a fixed order, each naming path:line, chosen from every delta and export row before the top-N table cut.",
       "type": "array",
       "maxItems": 3,
       "items": { "type": "string", "maxLength": 200 }
