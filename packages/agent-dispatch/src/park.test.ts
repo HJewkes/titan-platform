@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { BrokerUnavailableError, DispatchError } from "./dispatch.js";
 import { parkAgent } from "./park.js";
+import { installExecutable } from "./test-support.js";
 
 let dir: string;
 
@@ -20,11 +21,10 @@ afterEach(() => {
 /** A fake `agent-chat` that records its argv NUL-separated, then runs `script`. */
 function fakeAgentChat(script: string): string {
   const path = join(dir, "agent-chat");
-  writeFileSync(
+  installExecutable(
     path,
     `#!/bin/sh\n: >"${dir}/argv"\nfor a in "$@"; do printf '%s\\0' "$a" >>"${dir}/argv"; done\n${script}`,
   );
-  chmodSync(path, 0o755);
   return path;
 }
 
