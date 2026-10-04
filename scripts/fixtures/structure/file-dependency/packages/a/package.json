@@ -1,0 +1,6 @@
+{
+  "name": "@titan-design/a",
+  "dependencies": {
+    "@titan-design/locator": "file:../locator"
+  }
+}
