@@ -65,12 +65,19 @@ interface LexState {
   word: WordToken | null;
   heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
+  /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
+  subscriptEnd: number;
 }
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
 const VARIABLE_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]/y;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
+const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!", "time"]);
+/** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
+const SUBSCRIPT_ACTIVE = "\\'\"`$";
 
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
 export function tokenize(src: string): Token[] {
@@ -80,7 +87,7 @@ export function tokenize(src: string): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1 };
 }
 
 function lex(s: LexState): void {
@@ -107,6 +114,8 @@ const READERS: Record<string, (s: LexState) => void> = {
 
 function step(s: LexState): void {
   const c = s.src[s.i] as string;
+  if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
+  if (c === "[") markSubscript(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (reader) return reader(s);
   if (c === "#" && !s.word) return skipComment(s);
@@ -115,6 +124,53 @@ function step(s: LexState): void {
   if (op) return readOperator(s, op);
   if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
+}
+
+/**
+ * Bash reads `NAME[...]` through the matching `]` as one word, blanks included, when it stands where an
+ * assignment may: `Y[ 0 ]=x git push` assigns element 0 and runs git. Anything else lexes as before.
+ */
+function markSubscript(s: LexState): void {
+  const w = s.word;
+  if (!w || w.quoted || w.dynamic || s.redirect || !IDENTIFIER_RE.test(w.value)) return;
+  if (!atAssignmentPosition(s.tokens)) return;
+  const close = matchingBracket(s.src, s.i);
+  const after = close === -1 ? "" : s.src.slice(close + 1, close + 3);
+  if (after.startsWith("=") || after === "+=") s.subscriptEnd = close;
+}
+
+/** True when only assignments, redirections or reserved words stand between the last operator and here. */
+function atAssignmentPosition(tokens: Token[]): boolean {
+  for (let k = tokens.length - 1; k >= 0; k--) {
+    const t = tokens[k] as Token;
+    if (t.type === "op") return t.value !== ";;";
+    if (t.type === "subs") return false;
+    if (t.type === "word" && !ASSIGNMENT_WORD_RE.test(t.value) && (t.quoted || !COMMAND_STARTS.has(t.value))) return false;
+  }
+  return true;
+}
+
+/** Index of the `]` matching the `[` at `open`, skipping quoted text; -1 when it never closes. */
+function matchingBracket(src: string, open: number): number {
+  let depth = 0;
+  for (let j = open; j < src.length; j++) {
+    const c = src[j];
+    if (c === "\\") j++;
+    else if (c === "'") j = src.indexOf("'", j + 1);
+    else if (c === '"') j = closingDoubleQuote(src, j);
+    else if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) return j;
+    if (j === -1) return -1;
+  }
+  return -1;
+}
+
+function closingDoubleQuote(src: string, open: number): number {
+  for (let j = open + 1; j < src.length; j++) {
+    if (src[j] === "\\") j++;
+    else if (src[j] === '"') return j;
+  }
+  return -1;
 }
 
 function readBlank(s: LexState): void {
