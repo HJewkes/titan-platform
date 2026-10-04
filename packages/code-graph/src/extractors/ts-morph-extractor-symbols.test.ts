@@ -109,6 +109,23 @@ describe("TsMorphGraphExtractor", () => {
         "pub(x: number): number",
       );
     });
+
+    it("stores a signature on a non-exported method node (TP-1443)", () => {
+      const [fragment] = fixture.extract("/repo/src/model-b.ts");
+      expect(symById(fragment!, "src/model-b.ts#Priv.run")?.attrs?.signature).toBe("run(v: number): 0 | 42");
+    });
+
+    it("signs an overloaded method by its implementation (TP-1443)", () => {
+      const [fragment] = fixture.extract("/repo/src/members.ts");
+      expect(symById(fragment!, "src/members.ts#Box.add")?.attrs?.signature).toBe(
+        "add(v: number | string): number | string",
+      );
+    });
+
+    it("signs a getter/setter pair by the getter's type (TP-1443)", () => {
+      const [fragment] = fixture.extract("/repo/src/members.ts");
+      expect(symById(fragment!, "src/members.ts#Box.v")?.attrs?.signature).toBe("v: number");
+    });
   });
 
   describe("dynamic imports (C-65)", () => {

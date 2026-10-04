@@ -70,6 +70,15 @@ const FILES: Record<string, string> = {
     `export const scale = (v: number): number => v * 2;\n` +
     `export class Box {}\n` +
     `export type Id = string | number;\n`,
+  // Non-exported class members (TP-1443): an overload set and a getter/setter pair.
+  "/repo/src/members.ts":
+    `class Box {\n` +
+    `  add(n: number): number;\n` +
+    `  add(s: string): string;\n` +
+    `  add(v: number | string): number | string { return v; }\n` +
+    `  set v(next: number) {}\n` +
+    `  get v(): number { return 1; }\n` +
+    `}\n`,
   // Reference-count fixtures (C-51): weight = how often the imported binding is
   // actually used, not how many import statements name it.
   "/repo/src/heavy.ts":
