@@ -1,0 +1,10 @@
+{
+  "rules": [
+    {
+      "id": "package-layers",
+      "type": "layered-deps",
+      "$tiers": { "0": ["packages/a"], "1": ["packages/b"], "2": [], "ui": [], "product": [] },
+      "layers": [["packages/a"]]
+    }
+  ]
+}
