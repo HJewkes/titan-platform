@@ -58,6 +58,21 @@ const message = fromHitlGate(gate, { threadId: "harness", authorId: "runner" });
 const answer = toHitlAnswer(message);   // undefined while the gate is still open
 ```
 
+## Agent roster and graph (`@titan-design/chat-protocol/agents`)
+
+Pure folds over the agent-chat broker's read API, with no fetch of their own.
+`foldRoster` joins `/api/sessions` presence to the lifecycle rows in
+`/api/history`. Presence knows only working, available and blocked, so every
+other state (spawning, detached, exited, failed, retired) comes from history,
+and each row's `stateSource` says which. `foldAgentGraph` returns the spawn tree
+as nodes plus `spawned` and `message` edges with counts, keyed by stable node
+ids so a respawned name does not merge with its predecessor. `layoutSpawnTree`,
+`treePath`, `sparkRoutes` and the glow helpers are the agent-chat dashboard's
+graph fold, moved here so both front ends share one implementation.
+
+The broker keeps a capped history (1,000 rows at most), so spawn rows age out on
+a busy day. Both folds report the window they saw in `history`.
+
 ## What it deliberately does not do
 
 - **Transport.** No fetch, no WebSocket, no SSE, no streaming chunk protocol.

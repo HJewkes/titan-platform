@@ -56,6 +56,9 @@ const FILES: Record<string, string> = {
     `const arrow = (a: number) => a + 1;\n` +
     `const CONST = 42;\n` +
     `class Priv { run(v: number) { return v && CONST; } }\n`,
+  // A function declared in an unbound callback inside a named function (TP-306).
+  "/repo/src/anonymous-scope.ts":
+    `function App() { listen(() => { function onHash() {} }); function onHash() {} }\n`,
   // Signature + docstring fixtures (C-79): a documented annotated function, an
   // exported arrow const, a class, and a type alias — the surface `graph context`
   // fills its G1/G2 slots from.

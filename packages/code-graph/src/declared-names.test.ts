@@ -100,6 +100,16 @@ describe("scope-qualified declared names (TP-182)", () => {
     expect(await names(src)).toEqual(["<anonymous>.run", "default.run", "run"]);
   });
 
+  it("keeps a function declared in a callback inside a named scope under one <anonymous> segment (TP-306)", async () => {
+    const src = "function App() { listen(() => { function onHash() {} }); function onHash() {} }";
+    expect(await names(src)).toEqual(["App", "App.<anonymous>.onHash", "App.onHash"]);
+  });
+
+  it("collapses nested anonymous scopes into one segment (TP-306)", async () => {
+    const src = "function App() { a(() => { b(() => { function deep() {} }); }); }";
+    expect(await names(src)).toEqual(["App", "App.<anonymous>.deep"]);
+  });
+
   it("does not depend on declaration order", async () => {
     const a = "class A { run() {} }\nclass B { run() {} }\nfunction f() { function g() {} }\n";
     const b = "function f() { function g() {} }\nclass B { run() {} }\nclass A { run() {} }\n";

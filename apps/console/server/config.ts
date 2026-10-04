@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -14,6 +15,10 @@ export interface ConsoleConfig {
   /** Loopback ports of the two upstream daemons; the console never starts either. */
   activeWorkPort: number;
   agentChatPort: number;
+  /** agent-chat's `ui.token`; the broker's `/api/*` reads need it in a header. */
+  agentChatTokenPath: string;
+  /** Which seat owns the agents named `<prefix>-...`. */
+  seatPrefixes: SeatPrefix[];
   sessionGraphPath: string;
 }
 
@@ -24,6 +29,8 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env, home: string
     stateDir: expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home),
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
+    agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
+    seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? path.join(activeWorkRoot(env, home), ".miner", "graph.sqlite3"), home),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
@@ -39,6 +46,16 @@ function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): numbe
   // A typo that silently bound another port would be worse than a refusal.
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`${name} must be a port number, got "${raw}"`);
   return port;
+}
+
+/** `TITAN_CONSOLE_SEATS` is `seat=prefix` pairs separated by commas, e.g. `titan-coord=tpc`. */
+function seatPrefixesFrom(raw: string | undefined): SeatPrefix[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  return raw.split(",").map((pair) => {
+    const [seat, prefix, extra] = pair.split("=").map((part) => part.trim());
+    if (!seat || !prefix || extra !== undefined) throw new Error(`TITAN_CONSOLE_SEATS entries must be seat=prefix, got "${pair}"`);
+    return { seat, prefix };
+  });
 }
 
 /** active-work's data directory: `ACTIVE_ROOT`, else the env-paths location its own CLI resolves. */

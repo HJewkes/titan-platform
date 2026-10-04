@@ -5,7 +5,7 @@ import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "./definition.js";
-import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
+import { startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
@@ -136,5 +136,28 @@ describe("titan-factory serve", () => {
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
     expect(health.build).toEqual({ sha: "unknown", behindMain: "unknown" });
+  });
+});
+
+describe("sweepCheckouts", () => {
+  it("logs a warning naming the path and message when a checkout cannot be removed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "factory-sweep-"));
+    dirs.push(root);
+    const path = join(root, "review-7-0123456789ab");
+    const warnings: Array<{ obj: unknown; msg: unknown }> = [];
+    const log = { ...silentLogger, warn: (obj: unknown, msg?: unknown) => warnings.push({ obj, msg }) };
+
+    await sweepCheckouts(log, {
+      root,
+      now: () => T0,
+      list: async () => ["review-7-0123456789ab"],
+      stat: async () => ({ isDirectory: true, mtimeMs: 0 }),
+      remove: async () => {
+        throw new Error("EBUSY");
+      },
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.obj).toEqual({ path, err: "EBUSY" });
   });
 });

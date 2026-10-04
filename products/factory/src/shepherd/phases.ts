@@ -47,6 +47,8 @@ export interface ShepherdDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   agentChatBin: string;
+  /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
+  agentChatConfigDir?: string;
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** Absent means `sh-cleanup` deletes the head ref only, and leaves the task and the agents alone. */
