@@ -84,7 +84,7 @@ export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
-export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
 
 export interface AwaitVerdictInput {
   repo: string;
@@ -94,6 +94,8 @@ export interface AwaitVerdictInput {
   reviewerSessionId: string;
   /** Epoch milliseconds. */
   dispatchedAt: number;
+  /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
+  startedAt?: number;
 }
 
 /** One assistant message, attributed by the reader to the agent and session it came from. */
@@ -289,7 +291,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   }
   const started = await startedReviewer(dispatch, intent, timing, signal);
   if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, ...busyWaits(waits) };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits) };
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
@@ -339,7 +341,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
 const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string() }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("dispatched"), at: z.number(), ...Identity.shape }),
+  z.looseObject({ kind: z.literal("dispatched"), at: z.number(), startedAt: z.number().optional(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 const Awaited = z.discriminatedUnion("kind", [
@@ -367,7 +369,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent, ...(fixFirsts > 0 && { fixFirsts }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
-  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at };
+  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
   return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
 };
 

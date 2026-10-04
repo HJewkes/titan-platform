@@ -86,6 +86,26 @@ describe("awaitVerdict after a restart", () => {
     expect(clock.elapsed()).toBe(MINUTE);
   });
 
+  it("keeps the exit grace for a reviewer that exits mid-wait, long after its start", async () => {
+    const clock = restartedAt(20);
+    const exitAt = clock.start + 2 * MINUTE;
+
+    const result = await awaitVerdict(countingReader(), input, clock.timing, signal, rosterOf(() => (clock.timing.now() < exitAt ? "live" : "exited")));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.elapsed()).toBe(3 * MINUTE);
+  });
+
+  it("counts from the reviewer's session start, not the intent, when a busy broker held the start up", async () => {
+    const clock = restartedAt(40);
+    const startedAt = clock.start - 25 * MINUTE;
+
+    const result = await awaitVerdict(countingReader(), { ...input, startedAt }, clock.timing, signal, rosterOf(() => "live"));
+
+    expect(result).toEqual({ kind: "none" });
+    expect(clock.elapsed()).toBe(5 * MINUTE);
+  });
+
   it("gives a reviewer detached at restart the full detach grace from first sight, since a broker restart detaches everyone", async () => {
     const clock = restartedAt(15);
 

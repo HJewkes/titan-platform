@@ -26,9 +26,10 @@ export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
     if (typeof value !== "string" || value === "") throw new Error(`sh-await-verdict: ${name} must be a non-empty string`);
     return value;
   };
-  const { pr, dispatchedAt } = input;
+  const { pr, dispatchedAt, startedAt } = input;
   if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
   if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
+  if (startedAt !== undefined && (typeof startedAt !== "number" || !Number.isFinite(startedAt))) throw new Error("sh-await-verdict: startedAt must be epoch milliseconds");
   const head = text(input.head, "head");
   if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
   return {
@@ -38,6 +39,7 @@ export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
     reviewerAgentId: text(input.reviewerAgentId, "reviewerAgentId"),
     reviewerSessionId: text(input.reviewerSessionId, "reviewerSessionId"),
     dispatchedAt,
+    ...(startedAt !== undefined && { startedAt }),
   };
 }
 
@@ -70,12 +72,15 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
 type Roster = () => Promise<readonly { agentId: string; presence: string }[]>;
 
-/** Time spent since dispatch; a dispatch stamped ahead of this clock counts as just now, so skew never extends a wait. */
-const sinceDispatch = (timing: AwaitVerdictTiming, input: AwaitVerdictInput): number => Math.max(0, timing.now() - input.dispatchedAt);
+/**
+ * Time spent since the reviewer's session was up, or since the intent for a run recorded before that was stamped. The intent
+ * comes before a busy broker's wait, so a live reviewer's clock starts at its session. A stamp ahead of this clock counts as just now.
+ */
+const sinceStart = (timing: AwaitVerdictTiming, input: AwaitVerdictInput): number => Math.max(0, timing.now() - (input.startedAt ?? input.dispatchedAt));
 
 /**
  * True once the dispatched reviewer has been gone for its grace; an unreadable roster says nothing. A reviewer already exited
- * or deregistered at the first read after a (re)start, a grace or more after dispatch, is gone at once. A detached one is not:
+ * or deregistered at the first read after a (re)start, a grace or more after its start, is gone at once. A detached one is not:
  * a broker restart detaches everyone, so its grace runs from first sight.
  */
 function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
@@ -89,7 +94,7 @@ function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: Await
     const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
     if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
     const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
-    if (atStart && presence !== "detached" && sinceDispatch(timing, input) >= grace) return true;
+    if (atStart && presence !== "detached" && sinceStart(timing, input) >= grace) return true;
     if (gone?.presence !== presence) gone = { presence, since: timing.now() };
     return timing.now() - gone.since >= grace;
   };
@@ -97,7 +102,7 @@ function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: Await
 
 /**
  * Polls until an acceptable block appears; a failed read counts as nothing yet. The deadline, or a reviewer the roster shows
- * gone for its grace, ends the wait with `none`. The deadline counts from dispatch, so a restarted step gets only what is left.
+ * gone for its grace, ends the wait with `none`. The deadline counts from the reviewer's start, so a restarted step gets only what is left.
  */
 export async function awaitVerdict(
   reader: ReviewerReader,
@@ -106,7 +111,7 @@ export async function awaitVerdict(
   signal: AbortSignal,
   roster?: Roster,
 ): Promise<AwaitVerdictResult> {
-  const clock = deadline({ ...timing, timeoutMs: Math.max(0, timing.timeoutMs - sinceDispatch(timing, input)) });
+  const clock = deadline({ ...timing, timeoutMs: Math.max(0, timing.timeoutMs - sinceStart(timing, input)) });
   const silent = roster ? silenceWatch(timing, roster) : async () => false;
   const poll = async () => acceptVerdict(input, await reader.read(input).catch(() => []));
   for (;;) {
