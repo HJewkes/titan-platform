@@ -84,6 +84,11 @@ percentile sits at or near zero: `floor` flags a node only if its value also exc
 absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
 zero-valued node is never flagged. Severity defaults to `error`.
 
+`validateRules` and `loadCheckRules` throw on a `severity` other than `error` or `warning`, a
+`kind` outside the node kinds, and an `exclude` that is not a string array. Before this
+release a misspelled `"Error"` counted as a warning and a `"files"` kind matched nothing, so
+the rule never failed a check.
+
 `snapshot` and `baseline` take a numeric id or a ref name, and a ref resolves to its newest
 snapshot. `runChecks(store, { snapshotId, rules, baselineSnapshotId })` is the same engine on
 ids.
