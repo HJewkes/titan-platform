@@ -66,4 +66,22 @@ describe("endRunsGoneElsewhere", () => {
     expect(ended).toEqual([]);
     expect(runs.map((runId) => host.runtime.status(runId)?.status)).toEqual(["paused", "paused"]);
   });
+
+  it("ends a run whose PR answers 404 and reports a 5xx as unreadable with its cause", async () => {
+    const { host, runs, services } = await gatedRuns();
+    const failing = (error: Error) => ({ ...services, port: { ...services.port, getPr: async (_repo: string, pr: number) => (pr === 1 ? Promise.reject(error) : services.port.getPr(REPO, pr)) } });
+    const unreadable: [string, string][] = [];
+
+    const kept = await endRunsGoneElsewhere(host, failing(Object.assign(new Error(`bad gateway ${"x".repeat(300)}`), { status: 502 })), { onUnreadable: (runId, cause) => unreadable.push([runId, cause]) });
+    expect(kept).toEqual([]);
+    expect(unreadable).toHaveLength(1);
+    expect(unreadable[0]![0]).toBe(runs[0]);
+    expect(unreadable[0]![1].startsWith("bad gateway")).toBe(true);
+    expect(unreadable[0]![1].length).toBeLessThanOrEqual(200);
+
+    const ended = await endRunsGoneElsewhere(host, failing(Object.assign(new Error("Not Found"), { status: 404 })));
+    expect(ended).toHaveLength(1);
+    expect(ended[0]!.runId).toBe(runs[0]);
+    expect(ended[0]!.reason).toContain("404");
+  });
 });
