@@ -20,10 +20,23 @@ function withSpread(words: WordToken[]): WordToken[][] {
  * as a direct call would. `runsOf` gives the argument lists a run takes from the input.
  */
 export function xargsCommands(raw: Unwrapped, stdin: string | null, runsOf: (cmd: Unwrapped) => WordToken[][]): Unwrapped[] {
+  return resolvedRuns(raw, stdin, runsOf).flatMap(withDynamicName);
+}
+
+function resolvedRuns(raw: Unwrapped, stdin: string | null, runsOf: (cmd: Unwrapped) => WordToken[][]): Unwrapped[] {
   const xargs = raw.xargs;
   if (!xargs || stdin === null || !runsWrapper(raw, xargs.words)) return runsOf(raw).map((args) => ({ ...raw, args }));
   return runsOf({ ...raw, args: xargs.words }).flatMap(withSpread).flatMap((words) => {
     const run = unwrap(words);
     return run ? [{ ...run, assigned: [...raw.assigned, ...run.assigned], xargs, ...(raw.negated ? { negated: true as const } : {}) }] : [];
   });
+}
+
+/**
+ * A dynamic command word (`xargs "$G" push origin HEAD:main`) may name git, so the run is also read as
+ * git with that word as its subcommand, which fails closed as `git "$X"` does.
+ */
+function withDynamicName(run: Unwrapped): Unwrapped[] {
+  if (!run.xargs || run.name !== null || !run.args[0]?.dynamic) return [run];
+  return [run, { ...run, name: "git", path: "git" }];
 }
