@@ -17,13 +17,11 @@ export interface PromptTemplate {
 
 export const DESCRIPTION_PROMPT: PromptTemplate = {
   featureTypes: [
-    "documentation.voice",
-    "documentation.whyVsWhat",
-    "documentation.redundancy",
-    "patterns.pureFunctions",
-    "patterns.explicitVsImplicit",
-    "errorHandling.errorBoundary",
-    "structure.fileOrganization",
+    "documentation.comment-placement",
+    "documentation.inline-comment",
+    "documentation.jsdoc-tag",
+    "error-handling.catch-specificity",
+    "structure.export-style",
   ],
   system:
     "You are a code style analyst. Given statistical observations about a developer's coding patterns, write a concise, actionable style rule description. Output ONLY the description text (1-3 sentences). Do not include markdown formatting or headers.",
@@ -60,9 +58,8 @@ export const DESCRIPTION_PROMPT: PromptTemplate = {
 
 export const REVIEW_VOICE_PROMPT: PromptTemplate = {
   featureTypes: [
-    "reviewVoice.tone",
-    "reviewVoice.themes",
-    "reviewVoice.values",
+    "reviewVoice.topicFrequency",
+    "reviewVoice.keyword",
   ],
   system:
     "You are analyzing a developer's code review comments to understand their review voice and priorities. Given topic frequencies and example comments, synthesize a brief description of what this developer cares about in code reviews. Output ONLY the synthesis text (2-4 sentences). Do not include markdown formatting or headers.",
