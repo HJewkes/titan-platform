@@ -2,6 +2,7 @@ import type { ReadEvent } from "../event.js";
 import { commandMentions, pathMentions } from "../mentions.js";
 import type { Mention } from "../mentions.js";
 import { GUARDED_PATHS } from "../paths.js";
+import { caseFoldedArgs } from "../shell/case-attrs.js";
 import type { SimpleCommand, Wrapping } from "../shell/commands.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
@@ -50,8 +51,15 @@ function each(names: string[], spelling: SpellingId): Record<string, SpellingId>
   return Object.fromEntries(names.map((n) => [n, spelling]));
 }
 
+/** An argument a case attribute may have changed is read as written and in each case bash may have mapped it to. */
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   if (isKeychainRead(cmd)) return [classified("bash.secret.keychain", { pattern: "keychain" })];
+  const actions = caseFoldedArgs(cmd.args).flatMap((args) => mentionActions({ ...cmd, args }, ctx));
+  const keys = actions.map((a) => JSON.stringify(a));
+  return actions.filter((_, i) => keys.indexOf(keys[i] as string) === i);
+}
+
+function mentionActions(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
   const walker = cmd.name !== null && WALKERS.has(cmd.name);
   const target = cmd.name !== null && COPIERS.has(cmd.name) ? copyDestination(cmd) : null;
   return commandMentions(cmd, ctx, GUARDED_PATHS.secret, walker)
