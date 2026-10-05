@@ -35,8 +35,8 @@ export { topGrowthRisks } from "./growth-risks.js";
 export { topUntestedRisks } from "./untested-risks.js";
 export type { ComputeDriftInput } from "./graph-report-drift.js";
 export { computeReportDrift } from "./graph-report-drift.js";
-export type { HealthComponent } from "./dashboard-health.js";
-export { computeHealth } from "./dashboard-health.js";
+export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./dashboard-health.js";
+export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./dashboard-health.js";
 export type { BlastRadiusEntry, HotExport, NodeMetrics, SymbolUtil } from "./dashboard-node-metrics.js";
 export {
   buildBlastRadius,

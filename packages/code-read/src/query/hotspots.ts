@@ -51,7 +51,7 @@ function metricRows(model: ReadModel): ReportContextInput["metrics"][number][] {
 const inputs = new WeakMap<ReadModel, Pick<ReportContextInput, "nodes" | "metrics">>();
 
 /** The model in the derivations' row shapes; converted once per model. */
-function inputsFor(model: ReadModel): Pick<ReportContextInput, "nodes" | "metrics"> {
+export function inputsFor(model: ReadModel): Pick<ReportContextInput, "nodes" | "metrics"> {
   let found = inputs.get(model);
   if (!found) inputs.set(model, (found = { nodes: model.nodes.map(toGraphNode), metrics: metricRows(model) }));
   return found;
@@ -77,11 +77,14 @@ function windowDays(window: string): ReportContextInput["windowDays"] {
 
 const byScoreThenId = (a: Scored, b: Scored): number => b.score - a.score || (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0);
 
+export function reportContext(model: ReadModel, window: string): ReportContext {
+  return buildReportContext({ ...inputsFor(model), excluders: [], excludedRoles: NO_ROLES, windowDays: windowDays(window) });
+}
+
 /** Every node with a non-zero score at the grain, highest first, ties by id. */
-function scoredRows(model: ReadModel, args: ListArgs): Scored[] {
-  const rows = inputsFor(model);
-  const ctx = buildReportContext({ ...rows, excluders: [], excludedRoles: NO_ROLES, windowDays: windowDays(args.window) });
-  const scored: Scored[] = args.grain === "file" ? topHotspots(ctx, Infinity) : symbolRows(rows, ctx);
+export function scoredRows(model: ReadModel, args: Pick<ListArgs, "grain" | "window">): Scored[] {
+  const ctx = reportContext(model, args.window);
+  const scored: Scored[] = args.grain === "file" ? topHotspots(ctx, Infinity) : symbolRows(inputsFor(model), ctx);
   return scored.sort(byScoreThenId);
 }
 
