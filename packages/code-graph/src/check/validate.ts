@@ -224,6 +224,7 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
     id: r.id as string,
     from: r.from,
     to: r.to,
+    except: parseStringList(r, "except"),
     severity: parseSeverity(r),
   };
 }
@@ -252,11 +253,16 @@ function parseSeverity(r: Record<string, unknown>): Severity | undefined {
 }
 
 function parseExclude(r: Record<string, unknown>): string[] | undefined {
-  if (r.exclude === undefined) return undefined;
-  if (!Array.isArray(r.exclude) || !r.exclude.every((e) => typeof e === "string")) {
-    throw new Error(`${r.id}: exclude must be an array of strings`);
+  return parseStringList(r, "exclude");
+}
+
+function parseStringList(r: Record<string, unknown>, key: string): string[] | undefined {
+  const value = r[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((e) => typeof e === "string")) {
+    throw new Error(`${r.id}: ${key} must be an array of strings`);
   }
-  return r.exclude;
+  return value;
 }
 
 const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([
