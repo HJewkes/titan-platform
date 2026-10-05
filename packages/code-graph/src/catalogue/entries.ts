@@ -60,6 +60,11 @@ const SOURCE: readonly MetricDescriptor[] = [
     absent: "exclude", source: "source-metrics", description: "Deepest block nesting inside any function in the file.",
   },
   {
+    name: "jsx_depth_max", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Deepest JSX element tree in the file: the max of symbol_jsx_depth over its functions and module-scope JSX. Written only when > 0.",
+  },
+  {
     name: "symbol_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
     description: "Cognitive complexity of the function a symbol names; the max when several functions share the name.",
@@ -78,6 +83,11 @@ const SOURCE: readonly MetricDescriptor[] = [
     name: "symbol_max_nesting", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
     description: "Deepest block nesting inside the function a symbol names; the max when several share the name.",
+  },
+  {
+    name: "symbol_jsx_depth", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Most JSX elements on one ancestor chain in the function, fragments not counted. Walks into {…} and inline callbacks, stops at a nested named function; attribute JSX sits one below its owner. Written only when > 0.",
   },
   {
     name: "symbol_comment_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
