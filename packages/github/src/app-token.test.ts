@@ -277,11 +277,11 @@ describe("token shape scrub", () => {
     expect(redact(`next=${SHAPED.replace("_", "%5f")}`, [])).toBe("next=[redacted]");
   });
 
-  it("keeps the first word of stderr when stdout ends in a whole token with no newline", () => {
+  it("cuts the first word of stderr with a whole token ending stdout, since the token may go on there", () => {
     const [out, err] = redactStreams(`minted ${SHAPED}`, "gh: Not Found (HTTP 404)", []);
 
     expect(out).toBe("minted [redacted]");
-    expect(err).toBe("gh: Not Found (HTTP 404)");
+    expect(err).toBe("[redacted]: Not Found (HTTP 404)");
   });
 
   it("cuts a token split by a newline at the end of stdout from both halves", () => {
@@ -451,6 +451,49 @@ describe("token shape scrub", () => {
 
         redact(text, []);
         expect(performance.now() - started).toBeLessThan(2000);
+      }
+    });
+  });
+
+  describe("TP-1509 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+
+    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 128 KB in linear time", (unit) => {
+      const text = unit.repeat((1 << 17) / unit.length);
+      const started = performance.now();
+
+      expect(redact(text, [])).toBe(text);
+      expect(performance.now() - started).toBeLessThan(100);
+    });
+
+    it("scans a megabyte of JWT-shaped runs, with and without dots, in linear time", () => {
+      for (const unit of ["-eyJaaaaaaaaaaaa", "-eyJaaaaaaaaaaaa.", "eyJaaaaaaaaaaaa.e30.", "x.aaaaaaaaaaaa"]) {
+        const text = unit.repeat((1 << 20) / unit.length);
+        const started = performance.now();
+
+        redactStreams(text, text, []);
+        expect(performance.now() - started).toBeLessThan(2000);
+      }
+    });
+
+    it("redacts a JWT behind a run of JWT-shaped words from its first header", () => {
+      expect(redact(`x ${"-eyJaaaaaaaaaaaa".repeat(4)}.e30.c2lnbmF0dXJlLXg y`, [])).toBe("x -[redacted] y");
+      expect(redact(`${JWT}.${JWT}`, [])).not.toMatch(/eyJ|c2ln/);
+    });
+
+    it.each([
+      [`https://${hex}`, ":x-oauth-basic@h", ["https://[redacted]", ":x-oauth-basic@h"]],
+      [`https://u:${hex}`, "@h", ["https://u:[redacted]", "@h"]],
+      [`https://u:${hex}\n`, "@github.com/o/r", ["https://u:[redacted]", "@github.com/o/r"]],
+    ])("redacts URL userinfo that only stderr completes: %j | %j", (stdout, stderr, expected) => {
+      expect(redactStreams(stdout, stderr, [])).toEqual(expected);
+    });
+
+    it("redacts the tail of a token split anywhere after its prefix", () => {
+      for (let cut = 4; cut < SHAPED.length; cut++) {
+        const [out, err] = redactStreams(`partial ${SHAPED.slice(0, cut)}`, `${SHAPED.slice(cut)} tail`, []);
+
+        expect([out, err]).toEqual(["partial [redacted]", "[redacted] tail"]);
       }
     });
   });
