@@ -2,10 +2,9 @@ import { userInfo } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import type { GateResolver } from "@titan-design/hitl";
 import type { FactoryHost } from "./host.js";
+import { stepIdMatches } from "./definition.js";
+import { EXIT } from "./exit-codes.js";
 import { confirmOwner } from "./owner-presence.js";
-
-/** The CLI's own exit codes, repeated here because cli.ts imports this module. */
-const EXIT = { OK: 0, USAGE: 2 } as const;
 
 interface ResolveIo {
   stdout: (text: string) => void;
@@ -43,13 +42,13 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
 
 function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
   const base = `${runId}/${stepId}`;
-  return host.pendingGates().find(({ gate }) => gate.id === base || gate.id.startsWith(`${base}:`))?.gate.id;
+  return host.pendingGates().find(({ gate }) => stepIdMatches(base, gate.id))?.gate.id;
 }
 
 /** The gate a repeat of this resolve already answered: none for the step is pending, and its latest gate holds this payload. */
 function repeatedResolution(host: FactoryHost, runId: string, stepId: string, payload: Record<string, unknown>): string | undefined {
   const base = `${runId}/${stepId}`;
-  if (host.pendingGates().some(({ gate }) => gate.id === base || gate.id.startsWith(`${base}:`))) return undefined;
+  if (host.pendingGates().some(({ gate }) => stepIdMatches(base, gate.id))) return undefined;
   let latest = host.gates.get(base);
   for (let n = 1; ; n += 1) {
     const next = host.gates.get(`${base}:${n}`);

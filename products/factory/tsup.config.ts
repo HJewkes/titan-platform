@@ -5,7 +5,11 @@ function git(...args: string[]): string {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
 
-/** Bakes the checkout's HEAD into the bundle; `unknown` when git is unavailable, so a build never fails on it. */
+/**
+ * Bakes the checkout's HEAD into the bundle; `unknown` when git is unavailable, so a build never fails on it.
+ * The literals mirror DIRTY_SUFFIX and UNKNOWN_BUILD_SHA in src/build-info.ts, which reads package.json
+ * through import.meta.url at load and so is not safe to import from the bundled config.
+ */
 function buildSha(): string {
   try {
     const dirty = git("status", "--porcelain", "--untracked-files=no") !== "";

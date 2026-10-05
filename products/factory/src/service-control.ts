@@ -1,4 +1,5 @@
 import { dirname, join, resolve } from "node:path";
+import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
 import { plistPath, renderPlist, SERVICE_LABEL, type PlistOptions } from "./service.js";
 
@@ -51,7 +52,6 @@ export interface InstallOptions {
 const POLL_MS = 250;
 const HEALTH_POLLS = 120;
 const GITHUB_SETTLE_POLLS = 48;
-const GITHUB_CHECKING = "checking";
 const UNLOAD_POLLS = 40;
 const LOG_TAIL_LINES = 20;
 const FAILURE = 1;
@@ -99,7 +99,7 @@ type Probe = { state: "up" } | { state: "waiting" | "broken"; why: string };
 
 function githubProbe(health: Record<string, unknown>, port: number): Probe {
   if (health.github === "ok") return { state: "up" };
-  if (health.github === GITHUB_CHECKING) return { state: "waiting", why: `titan-factory serve on port ${port} did not finish its GitHub check` };
+  if (health.github === PROBE_PENDING) return { state: "waiting", why: `titan-factory serve on port ${port} did not finish its GitHub check` };
   return { state: "broken", why: `titan-factory serve answers on port ${port} but its GitHub check failed: ${String(health.github)}` };
 }
 
@@ -192,7 +192,7 @@ export async function serviceStatus(ports: ServicePorts, io: ServiceIo, port: nu
 export async function settledHealth(ports: ServicePorts, port: number): Promise<Record<string, unknown> | null> {
   for (let poll = 0; poll < GITHUB_SETTLE_POLLS; poll++) {
     const health = await ports.health(port);
-    if (health?.github !== GITHUB_CHECKING) return health;
+    if (health?.github !== PROBE_PENDING) return health;
     await ports.sleep(POLL_MS);
   }
   return ports.health(port);
@@ -213,7 +213,7 @@ function buildSummary(build: unknown): string | undefined {
   const { sha, behindMain } = build as Record<string, unknown>;
   if (typeof sha !== "string") return undefined;
   const behind = typeof behindMain === "number" ? `${behindMain} behind main` : `behind main: ${String(behindMain)}`;
-  return `build ${sha.slice(0, 12)}${sha.endsWith("-dirty") ? "-dirty" : ""}, ${behind}`;
+  return `build ${sha.slice(0, 12)}${sha.endsWith(DIRTY_SUFFIX) ? DIRTY_SUFFIX : ""}, ${behind}`;
 }
 
 export type RestartDrain = Omit<DrainOptions, "port">;
