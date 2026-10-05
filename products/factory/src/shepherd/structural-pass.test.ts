@@ -11,7 +11,8 @@ import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
 import { holdReviewerMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
-import { FIX_FIRST_STEP, WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { FIX_FIRST_STEP } from "./wake-brief.js";
+import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
 
 const REPO = "octo/demo";
 const HEADS = [fakeSha("structural-1"), fakeSha("structural-2"), fakeSha("structural-3")] as const;
