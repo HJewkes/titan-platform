@@ -31,6 +31,22 @@ describe("isExcluded", () => {
     });
   });
 
+  it("excludes a row when one of two mentioned initiatives is human-only", () => {
+    const verdict = isExcluded(subject({ mentionedInitiatives: ["widgets", "garden-diary"] }), POLICY);
+
+    expect(verdict).toEqual({ excluded: true, reason: "human-only-initiative" });
+  });
+
+  it("changes nothing when no mentioned initiative is human-only", () => {
+    const verdict = isExcluded(subject({ mentionedInitiatives: ["widgets", "gadgets"] }), POLICY);
+
+    expect(verdict).toEqual({ excluded: false, initiative: "widgets", unclaimed: false });
+  });
+
+  it("changes nothing when the mention list is absent", () => {
+    expect(isExcluded(subject({ mentionedInitiatives: undefined }), POLICY)).toEqual(isExcluded(subject(), POLICY));
+  });
+
   it("excludes a row whose cwd sits under a human-only project directory", () => {
     const verdict = isExcluded(subject({ initiative: null, cwd: "/home/example/projects/garden/beds" }), POLICY);
 

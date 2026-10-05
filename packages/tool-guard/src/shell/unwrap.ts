@@ -89,6 +89,8 @@ export interface Unwrapped {
     delimiters: string[] | null;
     /** The `-L`/`-n` batching: how many lines or arguments one run takes; `size` is null when it cannot be read statically. */
     batch: XargsBatch | null;
+    /** Every word after xargs's own options: any wrapper it runs, then the command and its arguments. */
+    words: WordToken[];
   };
   /** Set when `!` negates the command's status. */
   negated?: true;
@@ -127,7 +129,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
-      if (commandName(w.value) === "xargs") xargs = xargsOptions(words.slice(start, i), xargs);
+      if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
     } else break;
   }
   return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}) };
@@ -157,7 +159,7 @@ function ambiguousReadings(words: WordToken[], i: number, at: number): string {
   return [words.slice(at + 1), words.slice(at + 2)].map((rest) => scriptText("", [...kept, ...rest])).join("\n");
 }
 
-function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): NonNullable<Unwrapped["xargs"]> {
+function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): Omit<NonNullable<Unwrapped["xargs"]>, "words"> {
   const found = xargsDelimiters(options);
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
