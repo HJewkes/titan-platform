@@ -71,7 +71,28 @@ function skipQuoted(src: string, j: number): number {
   if (c === "'") return src.indexOf("'", j + 1);
   if (c === '"') return closingQuote(src, j + 1, '"');
   if (c === "$" && src[j + 1] === "'") return closingQuote(src, j + 2, "'");
+  if (c === "`") return closingQuote(src, j + 1, "`");
+  if (c === "$" && src[j + 1] === "(") return closingSubstitution(src, j + 2, "(", ")");
+  if (c === "$" && src[j + 1] === "{") return closingSubstitution(src, j + 2, "{", "}");
   return j;
+}
+
+/**
+ * Index of the `close` ending a `$( )` or `${ }` body that starts at `from`, nesting and quotes included; -1 when
+ * it never closes. A `#` may open a comment that hides the closer, so the scan cannot be sure and gives up.
+ */
+function closingSubstitution(src: string, from: number, open: string, close: string): number {
+  let depth = 1;
+  for (let k = from; k < src.length; k++) {
+    const end = skipQuoted(src, k);
+    if (end === -1) return -1;
+    const c = end === k ? src[k] : "";
+    if (c === "#" && open === "(") return -1;
+    if (c === open) depth++;
+    if (c === close && --depth === 0) return k;
+    k = end;
+  }
+  return -1;
 }
 
 /** Index of the next unescaped `quote` from `from`; -1 when there is none. */
