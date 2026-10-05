@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
-import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_FILES_CAP } from "./port.js";
+import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrList, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
@@ -51,6 +51,8 @@ export interface FakeGitHub {
   prFiles: Map<number, PrFile[]>;
   /** PR number to the PR's own `changed_files` count; unset means the length of `prFiles`. */
   prChangedFiles: Map<number, number>;
+  /** PR number to its commit shas, oldest first; unset means the PR's head alone. `listPrCommits` returns at most 250, like GitHub. */
+  prCommits: Map<number, string[]>;
   /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
   compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
   /** PR number to its issue comments, in posting order. */
@@ -105,6 +107,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     actor: "shepherd-bot",
     prFiles: new Map(),
     prChangedFiles: new Map(),
+    prCommits: new Map(),
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
@@ -178,6 +181,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       const files = all.slice(0, PR_FILES_CAP).map((file) => ({ ...file }));
       return record("listPrFiles", { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length });
     },
+    listPrCommits: async (_repo, number) => record("listPrCommits", (fake.prCommits.get(number) ?? [mustPr(prs, number).headSha]).slice(0, PR_COMMITS_CAP)),
     compareFiles: async (_repo, base, head) => {
       const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
       const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;

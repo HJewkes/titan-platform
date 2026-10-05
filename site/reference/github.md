@@ -130,6 +130,9 @@ await port.listReviewComments("o/r", pr.number); // every inline comment, with i
   the PR's `changed_files` and throws `FileListTruncatedError` (`expected`, `received`) when the
   list is short. Treat that as "cannot decide", not as an empty list; a protected-path check
   fed a partial list would fail open.
+- GitHub silently caps `pulls/{n}/commits` at the first 250 commits (`PR_COMMITS_CAP`).
+  `listPrCommits` returns the shas oldest first and does not detect the cap; a caller checks
+  that the last sha is the PR's head and treats any other list as short.
 - GitHub silently caps compare at 300 files and 250 commits. `compareFiles` sets `truncated`
   when `files` reaches 300 or fewer commits came back than `total_commits`. When `truncated`
   is true, `files` may be missing paths: read `listPrFiles` instead, or treat the result as

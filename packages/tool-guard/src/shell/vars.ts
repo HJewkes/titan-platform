@@ -1,10 +1,14 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
+import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
+import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
+import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
  * Hidden `readonly@NAME` keys, which no identifier can spell, hold `""` when NAME is surely readonly and
  * null when it may be; `readonly@*` means any variable may be. Scopes copy them along with the values.
+ * Hidden `case@NAME` and `cased@NAME` keys track case attributes; see case-attrs.ts.
  */
 export type Vars = Map<string, string | null>;
 
@@ -12,15 +16,13 @@ export type Vars = Map<string, string | null>;
  * `NAME=value`, `NAME+=value` or `NAME[i]=value`. An `append` depends on the earlier value; an `element`
  * write keeps its value only as `NAME[0]=literal`, the element `$NAME` reads, and persists even before a command.
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
+ * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden"];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
-const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
-const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
 /** A name a declaration lists, with or without a subscript or a value. */
 const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
 const ANY_READONLY = "readonly@*";
@@ -44,25 +46,29 @@ const OPTION_LETTERS: Record<string, Set<string>> = {
   readonly: new Set("a"),
 };
 
-export function lookup(vars: Vars, home: string | null, name: string): string | null {
-  if (vars.has(name)) return vars.get(name) ?? null;
-  return name === "HOME" ? home : null;
+export function lookup(vars: Vars, home: string | null, name: string): string | null | CaseUnsure {
+  return caseChecked(vars, name, vars.has(name) ? (vars.get(name) ?? null) : name === "HOME" ? home : null);
 }
 
-/** Replaces plain variable references with their literal values; any unknown reference leaves the word as it was. */
-export function expandWord(w: WordToken, resolve: (name: string) => string | null): WordToken {
+/**
+ * Replaces plain variable references with their literal values; any unknown reference leaves the word as it was.
+ * A reference a case attribute may have changed expands as written and marks the word.
+ */
+export function expandWord(w: WordToken, resolve: (name: string) => string | null | CaseUnsure): WordToken {
   if (!w.dynamic || w.computed || w.refs.length === 0) return w;
+  const found = w.refs.map((ref) => resolve(ref.name));
+  const unsure = found.some(isCaseUnsureLookup);
+  const literals = found.map((f) => (isCaseUnsureLookup(f) ? f.asWritten : f));
   let value = "";
   let last = 0;
-  for (const ref of w.refs) {
-    const literal = resolve(ref.name);
-    if (literal === null) return w;
-    value += w.value.slice(last, ref.start) + literal;
+  for (const [i, ref] of w.refs.entries()) {
+    value += w.value.slice(last, ref.start) + literals[i];
     last = ref.end;
   }
-  const expanded = { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
-  if (sureWords.has(w)) sureWords.add(expanded);
-  return expanded;
+  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  const result = unsure ? markWord(expanded) : expanded;
+  if (sureWords.has(w)) sureWords.add(result);
+  return result;
 }
 
 /** The words of each command that surely runs once, as the builtin it names, in the current shell. */
@@ -105,7 +111,7 @@ export function noteSureCommands(tokens: Token[]): Token[] {
     else if (token.type === "op") i = structureOp(tokens, i, s);
   }
   endCommand(s, null);
-  return tokens;
+  return noteCompounds(tokens);
 }
 
 function structureWord(tokens: Token[], i: number, s: Structure): number {
@@ -183,6 +189,11 @@ function runsDeclarer(words: WordToken[]): boolean {
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
+  const parsed = splitAssignment(w);
+  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+}
+
+function splitAssignment(w: WordToken): Assignment | null {
   if (w.hidden) {
     const eq = w.value.indexOf("=");
     return [w.value.slice(0, eq), w.dynamic ? null : w.value.slice(eq + 1), "hidden"];
@@ -196,13 +207,15 @@ export function parseAssignment(w: WordToken): Assignment | null {
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, kind]: Assignment): void {
+export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
+  const priorCased = isCased(vars, name);
   if (kind === "hidden") restore(vars, name, value);
   else if (kind !== "append") write(vars, name, value);
   else {
     const prior = vars.get(name) ?? null;
     write(vars, name, prior !== null && value !== null ? prior + value : null);
   }
+  markCased(vars, name, cased || (kind === "append" && priorCased));
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -218,17 +231,19 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
+  clearCased(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
 function restore(vars: Vars, name: string, value: string | null): void {
+  clearCased(vars, name);
   vars.set(name, value);
   if (vars.has(readonlyKey(name))) vars.set(readonlyKey(name), null);
 }
 
 /**
- * Applies the effect a command has on shell variables: declarations and `printf -v` set them, `read` and
+ * Applies the effect a command has on shell variables: declarations, `printf -v` and `let` set them, `read` and
  * friends make them unknowable, and so does an element write before it, which bash may keep once it ends.
  */
 export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars): void {
@@ -236,7 +251,18 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  for (const target of clobberedNames(name, args)) write(vars, target, null);
+  writeEach(vars, commandWrites(name, args));
+}
+
+/** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
+export function trackCompound(op: Token, vars: Vars): void {
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name))));
+}
+
+/** A null list means the command may write any variable. */
+function writeEach(vars: Vars, writes: Assignment[] | null): void {
+  if (!writes) return forgetAll(vars);
+  for (const [target, value] of writes) write(vars, target, value);
 }
 
 /**
@@ -252,6 +278,8 @@ function trackDeclaration(name: string, args: WordToken[], vars: Vars): void {
   const sure = name !== "local" && args.every((a) => sureWords.has(a));
   if (readonly) for (const arg of args) markReadonly(name, arg, sure, vars);
   if (args.some((a) => unreadableDeclareWord(name, a))) forgetAll(vars);
+  const letters = [..."lu"].filter((c) => options.some((a) => a.value.includes(c))).join("");
+  if (letters) for (const arg of args) markCase(vars, DECLARED_RE.exec(arg.value)?.[1], letters);
   if (args.some((a) => a.dynamic && parseAssignment(a) === null)) vars.set(ANY_READONLY, null);
 }
 
@@ -279,11 +307,12 @@ type ReadonlyMode = "scalar" | "array" | null;
  */
 function declareArg(name: string, assignment: Assignment | null, mode: ReadonlyMode, vars: Vars): void {
   if (!assignment) return;
-  const [target, value, kind] = assignment;
+  const [target, value, kind, cased] = assignment;
   if (kind === "element") {
     if (!SCALAR_DECLARERS.has(name)) write(vars, target, mode ? null : value);
   } else if (mode === "array") write(vars, target, null);
-  else assign(vars, assignment);
+  else return assign(vars, assignment);
+  markCased(vars, target, cased);
 }
 
 /**
@@ -304,15 +333,6 @@ interface TrackedCommand {
   assigned: Assignment[];
 }
 
-/** Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of reach. */
-function clobberedNames(name: string, args: WordToken[]): string[] {
-  const values = args.map((a) => a.value);
-  if (name === "read" || name === "unset") return values.flatMap((v) => TARGET_RE.exec(v)?.[1] ?? []);
-  if (name === "for" && values[0] !== undefined && IDENTIFIER_RE.test(values[0])) return [values[0]];
-  if (name === "mapfile" || name === "readarray") return ["MAPFILE", ...values.filter((v) => IDENTIFIER_RE.test(v))];
-  return [];
-}
-
 /** `printf -v NAME` or `printf -vNAME` stores the text it would print; only a first word is an option, so `printf -- -vX` sets nothing. */
 function printfVar(args: WordToken[], vars: Vars): void {
   const first = args[0]?.value;
@@ -323,4 +343,5 @@ function printfVar(args: WordToken[], vars: Vars): void {
   if (!base) return;
   const subscripted = base[0] !== base[1];
   write(vars, base[1] as string, subscripted ? null : printedText("printf", args.slice(attached ? 1 : 2)));
+  markCased(vars, base[1] as string, args.some(isCaseUnsure));
 }

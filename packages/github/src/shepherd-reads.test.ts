@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GhExec, GhResult } from "./exec.js";
 import { fakeGitHub, fakeSha } from "./fake.js";
 import { ghCliWire } from "./gh-cli.js";
-import { COMPARE_FILE_CAP, FileListTruncatedError, PR_FILES_CAP, githubPort } from "./port.js";
+import { COMPARE_FILE_CAP, FileListTruncatedError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort } from "./port.js";
 import { rateBudget } from "./budget.js";
 
 const REPO = "octo/demo";
@@ -81,6 +81,32 @@ describe("listPrFiles", () => {
 
     const lines = gh.calls.map((call) => call.args.join(" "));
     expect(lines.every((line) => line.startsWith("api -i") && !line.includes("graphql") && !line.includes("pr view"))).toBe(true);
+  });
+});
+
+describe("listPrCommits", () => {
+  const shas = (count: number, offset = 0) => Array.from({ length: count }, (_, i) => fakeSha(`c${offset + i}`));
+
+  it("returns the PR's commit shas oldest first across pages", async () => {
+    const gh = scripted({
+      "page=2": [included({}, shas(20, 100).map((sha) => ({ sha })))],
+      "pulls/7/commits": [included(nextLink("repositories/1/pulls/7/commits?per_page=100&page=2"), shas(100).map((sha) => ({ sha })))],
+    });
+
+    const commits = await wireOver(gh.exec).listPrCommits(REPO, 7);
+
+    expect(commits).toEqual([...shas(100), ...shas(20, 100)]);
+  });
+
+  it("answers the head alone for an unset PR and stops at 250 like GitHub", async () => {
+    const fake = fakeGitHub();
+    const head = fakeSha("head");
+    fake.addPr({ headSha: head });
+    fake.addPr({ headSha: fakeSha("other") });
+    fake.prCommits.set(2, shas(300));
+
+    expect(await githubPort(fake.wire).listPrCommits("o/r", 1)).toEqual([head]);
+    expect(await githubPort(fake.wire).listPrCommits("o/r", 2)).toEqual(shas(PR_COMMITS_CAP));
   });
 });
 

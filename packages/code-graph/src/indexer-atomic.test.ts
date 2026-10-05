@@ -80,3 +80,52 @@ describe("indexPaths visibility to a second connection", () => {
     expect(readHead(reader).snapshotId).toBe(first.snapshotId);
   });
 });
+
+/** Make the writer's edge insert throw, after the snapshot row and its nodes are already written. */
+function failEdgeInsert(writer: CodeGraphStore): void {
+  writer.insertEdges = () => {
+    throw new Error("edge insert failed");
+  };
+}
+
+describe("indexPaths when a write throws part-way", () => {
+  let root: string;
+  let store: CodeGraphStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-throw-"));
+    await fs.mkdir(path.join(root, "src"));
+    await fs.writeFile(path.join(root, "src/a.ts"), "export const A = 1;\n");
+    await fs.writeFile(path.join(root, "src/b.ts"), 'import { A } from "./a.js";\nexport const B = A;\n');
+    store = openCodeGraph(path.join(root, "graph.sqlite3"));
+  });
+
+  afterEach(async () => {
+    store.close();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("leaves no snapshot behind when the first index throws", async () => {
+    failEdgeInsert(store);
+
+    await expect(indexPaths(store, { paths: [root], computeChurn: false })).rejects.toThrow("edge insert failed");
+
+    expect(store.listSnapshots()).toHaveLength(0);
+    expect(store.getLatestSnapshotByRef("wd")).toBeNull();
+  });
+
+  it("keeps the previous complete head when a later index throws", async () => {
+    const first = await indexPaths(store, { paths: [root], computeChurn: false });
+    const before = readHead(store);
+    const snapshotsBefore = store.listSnapshots().length;
+    failEdgeInsert(store);
+
+    await expect(
+      indexPaths(store, { paths: [root], computeChurn: false, incremental: false }),
+    ).rejects.toThrow("edge insert failed");
+
+    expect(store.listSnapshots()).toHaveLength(snapshotsBefore);
+    expect(store.getLatestSnapshotByRef("wd")?.id).toBe(first.snapshotId);
+    expect(readHead(store)).toEqual(before);
+  });
+});

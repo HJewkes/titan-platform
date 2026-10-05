@@ -152,3 +152,40 @@ describe("parseAwaitVerdictInput startedAt", () => {
     expect(() => parseAwaitVerdictInput({ ...input, startedAt })).toThrow("sh-await-verdict: startedAt must be epoch milliseconds");
   });
 });
+
+describe("parseAwaitVerdictInput", () => {
+  it("returns the input without fields it does not know", () => {
+    expect(parseAwaitVerdictInput({ ...input, extra: true })).toStrictEqual(input);
+  });
+
+  it.each([
+    ["undefined", undefined, "sh-await-verdict: pr must be a positive integer"],
+    ["null", null, "sh-await-verdict: pr must be a positive integer"],
+    ["a string", "octo/demo#7", "sh-await-verdict: pr must be a positive integer"],
+  ])("rejects a raw input that is %s on its first field", (_name, raw, message) => {
+    expect(() => parseAwaitVerdictInput(raw)).toThrow(message);
+  });
+
+  it.each([
+    ["pr", { pr: undefined }, "sh-await-verdict: pr must be a positive integer"],
+    ["pr", { pr: "7" }, "sh-await-verdict: pr must be a positive integer"],
+    ["pr", { pr: 0 }, "sh-await-verdict: pr must be a positive integer"],
+    ["pr", { pr: 1.5 }, "sh-await-verdict: pr must be a positive integer"],
+    ["dispatchedAt", { dispatchedAt: undefined }, "sh-await-verdict: dispatchedAt must be epoch milliseconds"],
+    ["dispatchedAt", { dispatchedAt: Number.NaN }, "sh-await-verdict: dispatchedAt must be epoch milliseconds"],
+    ["head", { head: undefined }, "sh-await-verdict: head must be a non-empty string"],
+    ["head", { head: "" }, "sh-await-verdict: head must be a non-empty string"],
+    ["head", { head: "C".repeat(40) }, "sh-await-verdict: head must be 40 lowercase hex characters"],
+    ["repo", { repo: undefined }, "sh-await-verdict: repo must be a non-empty string"],
+    ["repo", { repo: 7 }, "sh-await-verdict: repo must be a non-empty string"],
+    ["reviewerAgentId", { reviewerAgentId: "" }, "sh-await-verdict: reviewerAgentId must be a non-empty string"],
+    ["reviewerSessionId", { reviewerSessionId: null }, "sh-await-verdict: reviewerSessionId must be a non-empty string"],
+  ])("rejects a bad %s with its message", (_field, override, message) => {
+    expect(() => parseAwaitVerdictInput({ ...input, ...override })).toThrow(message);
+  });
+
+  it("reports the field the old checks reached first when several are bad", () => {
+    expect(() => parseAwaitVerdictInput({ ...input, repo: "", head: "x", dispatchedAt: "now" })).toThrow("sh-await-verdict: dispatchedAt must be epoch milliseconds");
+    expect(() => parseAwaitVerdictInput({ ...input, repo: "", head: "x" })).toThrow("sh-await-verdict: head must be 40 lowercase hex characters");
+  });
+});

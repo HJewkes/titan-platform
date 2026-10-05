@@ -9,10 +9,11 @@ export interface SourceWatermark {
 /** One source's watermarks, keyed by the source's own cursor name (a transcript path, an events table). */
 export type SourceWatermarks = ReadonlyMap<string, SourceWatermark>;
 
-/** A row the source found, before exclusion. `cwd` feeds the exclusion check and is never stored. */
+/** A row the source found, before exclusion. `cwd` and `mentionedInitiatives` feed the exclusion check and are never stored. */
 export interface SourceCandidate {
   row: LedgerRowWire;
   cwd: string | null;
+  mentionedInitiatives?: readonly string[];
 }
 
 export interface SourceRead {

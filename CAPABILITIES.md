@@ -588,10 +588,10 @@ Key exports:
 - `prune`: `planPrune`, `runPrune`
 - `indexer`: `indexPaths`
 - `index-source`: `workingTreeSource`
+- `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- `extractors/python-extractor`: `PythonGraphExtractor`
-- +346 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +358 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -718,7 +718,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +183 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +184 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

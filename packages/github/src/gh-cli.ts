@@ -56,6 +56,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     merge: async (repo, number, sha, method) => ({ sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, { sha, merge_method: method })).sha }),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
+    listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),

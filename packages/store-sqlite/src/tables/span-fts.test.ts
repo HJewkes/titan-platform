@@ -69,6 +69,16 @@ describe("SpanFtsTables", () => {
     expect(fts.search("alpha")).toEqual([]);
     expect(fts.search("beta").map((h) => h.ownerRef)).toEqual(["session:b"]);
   });
+
+  it("leaves no span row behind when the FTS insert fails", () => {
+    const { db, fts } = setup();
+    fts.index(span("session:a", 0), "alpha");
+    const unbindable = { not: "text" } as unknown as string;
+
+    expect(() => fts.index(span("session:b", 1), unbindable)).toThrow();
+
+    expect(db.prepare("SELECT count(*) FROM search_span").pluck().get()).toBe(1);
+  });
 });
 
 describe("SpanFtsTables scope", () => {

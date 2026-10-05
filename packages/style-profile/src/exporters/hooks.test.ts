@@ -25,33 +25,32 @@ const sampleProfile: Profile = {
   severityThresholds: { error: 0.85, warn: 0.60, info: 0.40 },
 };
 
+const COMMAND =
+  "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] || codewatch check --fix \"$f\"";
+
 describe("generateHooksConfig", () => {
-  it("returns a settings object with hooks array", () => {
-    const config = generateHooksConfig(sampleProfile);
-    expect(config.hooks).toBeDefined();
-    expect(Array.isArray(config.hooks)).toBe(true);
+  it("emits the event-keyed Claude Code hooks shape", () => {
+    expect(generateHooksConfig(sampleProfile)).toEqual({
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: "Write|Edit",
+            hooks: [{ type: "command", command: COMMAND }],
+          },
+        ],
+      },
+    });
   });
 
-  it("includes a PostToolUse hook for file_write", () => {
-    const config = generateHooksConfig(sampleProfile);
-    const writeHook = config.hooks.find(
-      (h) => h.event === "PostToolUse" && h.matcher === "Write",
-    );
-    expect(writeHook).toBeDefined();
+  it("reads the edited file path from the hook's stdin JSON, not an env variable", () => {
+    const [entry] = generateHooksConfig(sampleProfile).hooks.PostToolUse;
+    const command = entry?.hooks[0]?.command ?? "";
+    expect(command).toContain(".tool_input.file_path");
+    expect(command).not.toContain("$TOOL_INPUT");
   });
 
-  it("hook command runs codewatch diff on the written file", () => {
-    const config = generateHooksConfig(sampleProfile);
-    const writeHook = config.hooks.find((h) => h.event === "PostToolUse")!;
-    expect(writeHook.command).toContain("codewatch");
-    expect(writeHook.command).toContain("diff");
-  });
-
-  it("includes a PostToolUse hook for Edit tool", () => {
-    const config = generateHooksConfig(sampleProfile);
-    const editHook = config.hooks.find(
-      (h) => h.event === "PostToolUse" && h.matcher === "Edit",
-    );
-    expect(editHook).toBeDefined();
+  it("calls codewatch check, which takes file paths and --fix", () => {
+    const [entry] = generateHooksConfig(sampleProfile).hooks.PostToolUse;
+    expect(entry?.hooks[0]?.command).toMatch(/codewatch check --fix "\$f"/);
   });
 });
