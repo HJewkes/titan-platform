@@ -65,6 +65,17 @@ describe("rankFindings statuses", () => {
     expect(byKey(persisting, KEY)).toMatchObject({ status: "persisting", score: 1.28 });
   });
 
+  it.each([
+    [50, 55, "worsened"],
+    [90, 99, "worsened"],
+    [200, 220, "worsened"],
+    [50, 54, "persisting"],
+  ])("reads cognitive %i to %i as %s, an exact +10% included", (before, after, status) => {
+    const report = rankFindings(oneSymbol({ cognitive_max: after }), oneSymbol({ cognitive_max: before }), { repo: "tp" });
+
+    expect(byKey(report, KEY).status).toBe(status);
+  });
+
   it("lists a cleared or deleted symbol as resolved with score 0 after every live row", () => {
     const previous = artifact({
       files: [fileRow("src/a.ts")],

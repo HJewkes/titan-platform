@@ -21,7 +21,8 @@ const SYMBOL_RULES = [
 ];
 const FILE_RULE = { id: "file-near-loc-budget", metric: "loc", threshold: THRESHOLDS.file_loc, est: 2 };
 const STATUS_WEIGHT = { new: 1.5, worsened: 1.3, persisting: 1, rebaseline: 1 };
-const WORSENED_RATIO = 1.1;
+// Up at least 11/10 of before, compared by cross-multiplying so an exact +10% (50 to 55) never misses on float error.
+const WORSENED = { up: 11, of: 10 };
 const REACH_CAP = 20;
 const TOP_SIZE = 10;
 const METRIC_COLUMNS = ["loc", "cyclomatic_max", "cognitive_max", "nesting_max"];
@@ -84,7 +85,7 @@ function hitStatus(rule, entity, was, rebaseline) {
   if (rebaseline) return "rebaseline";
   const before = was?.row[rule.metric];
   if (!isHit(before, rule.threshold)) return "new";
-  return entity.row[rule.metric] >= before * WORSENED_RATIO ? "worsened" : "persisting";
+  return entity.row[rule.metric] * WORSENED.of >= before * WORSENED.up ? "worsened" : "persisting";
 }
 
 function score(value, rule, status, importers) {
@@ -94,8 +95,8 @@ function score(value, rule, status, importers) {
 
 // Status-independent, so live and resolved rows of one entity share a key; ties keep rule order.
 function keyRule(rules, row) {
-  const ratio = (rule) => row[rule.metric] / rule.threshold;
-  return rules.reduce((best, rule) => (ratio(rule) > ratio(best) ? rule : best));
+  const breaksFurther = (a, b) => row[a.metric] * b.threshold > row[b.metric] * a.threshold;
+  return rules.reduce((best, rule) => (breaksFurther(rule, best) ? rule : best));
 }
 
 // One row per entity, scored and given the status of its highest-scoring hit.
