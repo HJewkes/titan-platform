@@ -158,6 +158,48 @@ describe("answer lines naming several items", () => {
   });
 });
 
+describe("sub-item ids", () => {
+  const list = "[vc-65.1] **Recommend the strict rule.**\n[vc-651] **Recommend blue.**\n";
+  const join = (answers: string) => joinMorning("2026-10-04", list, answers, "a.md");
+
+  it("keeps the sub-item dot in a parsed item id", () => {
+    expect(parseMorningList(list).map((item) => item.ids)).toEqual([["vc65.1"], ["vc651"]]);
+  });
+
+  it("joins a sub-item answer to the sub-item and not to item 651", () => {
+    const { rows, counts } = join("vc-65.1: yes\n");
+
+    expect(rows.map((r) => r.key)).toEqual(["morning:2026-10-04/vc65.1"]);
+    expect(counts).toEqual({ unparseable: 0, unmatched: 0, ambiguous: 0, duplicate: 0 });
+  });
+
+  it("joins an answer to item 651 and not to sub-item 65.1", () => {
+    const { rows } = join("vc651: no\n");
+
+    expect(rows.map((r) => r.key)).toEqual(["morning:2026-10-04/vc651"]);
+  });
+
+  it("joins both when one answer file names each", () => {
+    const { rows } = join("vc-651: no\nvc 65.1 yes\n");
+
+    expect(rows.map((r) => [r.key, r.answer])).toEqual([
+      ["morning:2026-10-04/vc651", "no"],
+      ["morning:2026-10-04/vc65.1", "yes"],
+    ]);
+  });
+
+  it("reports a sub-item with no item in the list as unmatched", () => {
+    const { rows, counts } = join("vc-65.2: yes\n");
+
+    expect(rows).toEqual([]);
+    expect(counts.unmatched).toBe(1);
+  });
+
+  it("still reads a numbered item's trailing dot as no sub-item", () => {
+    expect(parseMorningList("30. **Recommend the default.**\n").map((item) => item.ids)).toEqual([["30"]]);
+  });
+});
+
 describe("morning source", () => {
   function source(onCounts?: (date: string, counts: MorningDayCounts) => void) {
     return morningSource({ dir: DIR, fs: { readdir: (d) => readdir(d), readFile: (f) => readFile(f) }, onCounts });

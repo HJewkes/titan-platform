@@ -50,6 +50,8 @@ export { NOTE_SOURCE, noteKey, noteSource } from "./notes.js";
 export type { NoteSourceOptions } from "./notes.js";
 export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
 export type { UnlockCheck } from "./unlock.js";
+export { ASK_RULES, lintAsk, lintMorningList, lintOwnerQuestions } from "./ask-lint.js";
+export type { AskFinding, AskItemFindings, AskOption, AskQuestion, AskRule } from "./ask-lint.js";
 export {
   CategoryPolicySchema,
   DECIDER_MODES,
