@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import * as path from "node:path";
 import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
-import type { FileSystemHost, RuntimeDirEntry } from "ts-morph";
+import { Project, type FileSystemHost, type RuntimeDirEntry } from "ts-morph";
 import { detectGitToplevel } from "./history/git.js";
 import { listTreeBlobs, readBlobs, resolveCommit } from "./history/git-tree.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
@@ -9,9 +9,32 @@ import { workingTreeSource, type IndexSource } from "./index-source.js";
 // Everything the indexer, ts-morph or generated.ts may read in the repo; batched into one cat-file.
 const READ_BY_INDEX = /\.(?:[cm]?[jt]sx?|json|pyi?)$|(?:^|\/)\.gitattributes$/;
 
-function notFound(abs: string): Error {
-  return Object.assign(new Error(`ENOENT: ${abs} is not in the git tree`), { code: "ENOENT" });
+let emptyHost: FileSystemHost | undefined;
+
+/**
+ * ts-morph only treats its own `errors.FileNotFoundError` / `DirectoryNotFoundError`
+ * as "absent", and does not export them; an empty in-memory host throws them for any path.
+ */
+function missing(abs: string, kind: "file" | "dir"): never {
+  emptyHost ??= new Project({ useInMemoryFileSystem: true }).getFileSystem();
+  if (kind === "file") emptyHost.readFileSync(abs);
+  else emptyHost.readDirSync(abs);
+  throw new Error(`${abs} was expected to be missing`);
 }
+
+/** Whether `rel` sits in a dir the walk never ingests (dist, build, node_modules, …). */
+function inBuildOutput(rel: string, includeSelf: boolean): boolean {
+  const segments = rel.split(path.sep);
+  return (includeSelf ? segments : segments.slice(0, -1)).some(isExcludedDir);
+}
+
+/**
+ * Where an answer about a path comes from. Tracked files come from the commit.
+ * Out-of-repo paths and untracked build output (gitignored dist/, node_modules)
+ * come from disk, which is what a checkout of the commit would see there too.
+ * Any other in-repo path is absent at the commit, whatever the working tree holds.
+ */
+type Origin = "tree" | "disk" | "missing";
 
 /**
  * A commit's files keyed by repo-relative path, content read once on first use.
@@ -25,7 +48,7 @@ class CommitTree {
 
   constructor(
     private readonly roots: readonly string[],
-    private readonly commit: string,
+    commit: string,
   ) {
     for (const blob of listTreeBlobs(this.root, commit)) this.addFile(blob.path.split("/").join(path.sep), blob.oid);
   }
@@ -34,62 +57,43 @@ class CommitTree {
     return this.roots[0]!;
   }
 
-  /** The repo-relative path the tree answers for, or null for node_modules and out-of-repo paths. */
+  /** The repo-relative path, or null for out-of-repo paths. */
   relative(abs: string): string | null {
     for (const root of this.roots) {
       const rel = path.relative(root, path.resolve(abs));
-      if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
-      return rel.split(path.sep).includes("node_modules") ? null : rel;
+      if (!rel.startsWith("..") && !path.isAbsolute(rel)) return rel;
     }
     return null;
   }
 
-  owns(abs: string): boolean {
-    return this.relative(abs) !== null;
+  fileOrigin(abs: string): Origin {
+    const rel = this.relative(abs);
+    if (rel === null) return "disk";
+    if (this.oids.has(rel)) return "tree";
+    return inBuildOutput(rel, false) ? "disk" : "missing";
   }
 
   *files(): Generator<string> {
     for (const rel of this.oids.keys()) yield path.join(this.root, rel);
   }
 
-  hasFile(abs: string): boolean {
-    return this.oids.has(this.relative(abs) ?? "");
-  }
-
-  hasDir(abs: string): boolean {
-    const rel = this.relative(abs);
-    return rel !== null && this.dirs.has(rel);
+  /** Children of a tracked dir, or undefined when the commit has no such dir. */
+  children(rel: string): Map<string, boolean> | undefined {
+    return this.dirs.get(rel);
   }
 
   /** In-tree paths are never symlinks, so the canonical path is the canonical root plus the relative path. */
-  realpath(abs: string): string {
-    return path.join(this.root, this.relative(abs) ?? "");
+  realpath(rel: string): string {
+    return path.join(this.root, rel);
   }
 
   read(abs: string): string {
     const oid = this.oids.get(this.relative(abs) ?? "");
-    if (oid === undefined) throw notFound(abs);
-    this.contents ??= this.readAll();
-    const content = this.contents.get(oid);
-    if (content === undefined) throw new Error(`${abs} is not a file the index reads from ${this.commit}`);
-    return content;
-  }
-
-  readDir(abs: string): RuntimeDirEntry[] {
-    const rel = this.relative(abs);
-    const children = rel === null ? undefined : this.dirs.get(rel);
-    if (!children) throw notFound(abs);
-    return [...children].map(([name, isDirectory]) => ({
-      name: path.join(path.resolve(abs), name),
-      isFile: !isDirectory,
-      isDirectory,
-      isSymlink: false,
-    }));
-  }
-
-  private readAll(): Map<string, string> {
-    const wanted = [...this.oids].filter(([rel]) => READ_BY_INDEX.test(rel)).map(([, oid]) => oid);
-    return readBlobs(this.root, wanted);
+    if (oid === undefined) return missing(abs, "file");
+    this.contents ??= readBlobs(this.root, [...this.oids].filter(([rel]) => READ_BY_INDEX.test(rel)).map(([, o]) => o));
+    // A blob outside READ_BY_INDEX is rare enough to read on its own.
+    if (!this.contents.has(oid)) this.contents.set(oid, readBlobs(this.root, [oid]).get(oid)!);
+    return this.contents.get(oid)!;
   }
 
   private addFile(rel: string, oid: string): void {
@@ -130,21 +134,64 @@ function readOnly(): never {
   throw new Error("a git tree source is read-only");
 }
 
-/** The tree in the repo, the real host for node_modules and out-of-repo paths. */
+/** Build-output entries on disk under an in-repo dir: all of them inside build output, else only build-output dirs. */
+function diskBuildEntries(real: FileSystemHost, abs: string, rel: string): RuntimeDirEntry[] {
+  if (!real.directoryExistsSync(abs)) return [];
+  const entries = real.readDirSync(abs);
+  if (inBuildOutput(rel, true)) return entries;
+  return entries.filter((e) => e.isDirectory && isExcludedDir(path.basename(e.name)));
+}
+
+/** A dir's entries: the commit's, plus untracked build output on disk; directoryExists agrees with it. */
+function readInRepoDir(tree: CommitTree, real: FileSystemHost, abs: string, rel: string): RuntimeDirEntry[] {
+  const tracked = tree.children(rel);
+  const fromDisk = diskBuildEntries(real, abs, rel);
+  if (!tracked && fromDisk.length === 0) return missing(abs, "dir");
+  const entries = new Map<string, RuntimeDirEntry>();
+  for (const [name, isDirectory] of tracked ?? []) {
+    entries.set(name, { name: path.join(path.resolve(abs), name), isFile: !isDirectory, isDirectory, isSymlink: false });
+  }
+  for (const entry of fromDisk) if (!entries.has(path.basename(entry.name))) entries.set(path.basename(entry.name), entry);
+  return [...entries.values()];
+}
+
+function directoryExistsIn(tree: CommitTree, real: FileSystemHost, abs: string): boolean {
+  const rel = tree.relative(abs);
+  if (rel === null) return real.directoryExistsSync(abs);
+  if (tree.children(rel)) return true;
+  return path.basename(rel) !== "" && inBuildOutput(rel, true) && real.directoryExistsSync(abs);
+}
+
+/** Symlinks live on disk (node_modules, build output); the commit's own paths resolve to the canonical root. */
+function realpathIn(tree: CommitTree, real: FileSystemHost, abs: string): string {
+  const rel = tree.relative(abs);
+  return rel === null || inBuildOutput(rel, true) ? real.realpathSync(abs) : tree.realpath(rel);
+}
+
+/** Every answer routes through {@link CommitTree.fileOrigin}, so existence, reads and listings agree. */
 function overlayHost(tree: CommitTree, real: FileSystemHost): FileSystemHost {
-  const fileExistsSync = (p: string) => (tree.owns(p) ? tree.hasFile(p) : real.fileExistsSync(p));
-  const directoryExistsSync = (p: string) => (tree.owns(p) ? tree.hasDir(p) : real.directoryExistsSync(p));
-  const readFileSync = (p: string, encoding?: string) => (tree.owns(p) ? tree.read(p) : real.readFileSync(p, encoding));
+  const fileExistsSync = (p: string) => {
+    const origin = tree.fileOrigin(p);
+    return origin === "tree" || (origin === "disk" && real.fileExistsSync(p));
+  };
+  const readFileSync = (p: string, encoding?: string) => {
+    const origin = tree.fileOrigin(p);
+    return origin === "disk" ? real.readFileSync(p, encoding) : tree.read(p);
+  };
+  const directoryExistsSync = (p: string) => directoryExistsIn(tree, real, p);
   return {
     isCaseSensitive: () => real.isCaseSensitive(),
-    readDirSync: (p) => (tree.owns(p) ? tree.readDir(p) : real.readDirSync(p)),
+    readDirSync: (p) => {
+      const rel = tree.relative(p);
+      return rel === null ? real.readDirSync(p) : readInRepoDir(tree, real, p, rel);
+    },
     readFileSync,
     readFile: async (p, encoding) => readFileSync(p, encoding),
     fileExistsSync,
     fileExists: async (p) => fileExistsSync(p),
     directoryExistsSync,
     directoryExists: async (p) => directoryExistsSync(p),
-    realpathSync: (p) => (tree.owns(p) ? tree.realpath(p) : real.realpathSync(p)),
+    realpathSync: (p) => realpathIn(tree, real, p),
     getCurrentDirectory: () => real.getCurrentDirectory(),
     glob: () => Promise.reject(new Error("glob is not supported on a git tree source")),
     globSync: () => readOnly(),
@@ -177,8 +224,8 @@ function rootSpellings(repoRoot: string, canonicalRoot: string): string[] {
 /**
  * Index `rev`'s tree from git objects, without a checkout and without writing to
  * the repo. Files keep their `<repo root>/<tree path>` absolute paths, so ids
- * match a working-tree index of the same commit. Imports into node_modules
- * resolve against today's install on disk.
+ * match a working-tree index of the same commit. Imports into node_modules, and
+ * untracked build output such as a gitignored dist/, resolve against today's disk.
  */
 export function gitTreeSource(repoRoot: string, rev: string): IndexSource {
   const canonicalRoot = canonicalToplevel(repoRoot);
@@ -188,8 +235,11 @@ export function gitTreeSource(repoRoot: string, rev: string): IndexSource {
   let fileSystem: FileSystemHost | undefined;
   return {
     listFiles: async (rootDirs, languages) => listTreeFiles(tree, rootDirs, languages),
-    readFile: (abs) => (tree.owns(abs) ? tree.read(abs) : readFileSync(abs, "utf-8")),
-    fileExists: (abs) => (tree.owns(abs) ? tree.hasFile(abs) : existsSync(abs)),
+    readFile: (abs) => (tree.fileOrigin(abs) === "disk" ? readFileSync(abs, "utf-8") : tree.read(abs)),
+    fileExists: (abs) => {
+      const origin = tree.fileOrigin(abs);
+      return origin === "tree" || (origin === "disk" && existsSync(abs));
+    },
     get fileSystem() {
       fileSystem ??= overlayHost(tree, disk.fileSystem);
       return fileSystem;
