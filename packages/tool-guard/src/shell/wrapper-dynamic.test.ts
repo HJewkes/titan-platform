@@ -255,3 +255,61 @@ describe("a reading's budget survives its reparse", () => {
     expect(depth).toBeLessThanOrEqual(2);
   });
 });
+
+describe("one expansion pass across every kind of chain breaker", () => {
+  const PUSH_TAIL = "git push origin HEAD:main";
+  const forms: [string, string][] = [
+    ["a double dash", "sudo $A -- "],
+    ["an assignment", "sudo $A env X=1 "],
+    ["a runner", "sudo $A pnpm exec "],
+  ];
+  const timed = (command: string, limit = 1000) => {
+    const started = performance.now();
+    const found = spellings(command);
+    expect(performance.now() - started).toBeLessThan(limit);
+    return found;
+  };
+  const words = (command: string) => tokenize(command).filter((t): t is WordToken => t.type === "word");
+
+  /** Readings and reparse depth across every level: each line of a script is parsed and unwrapped again, as classify does. */
+  function reparses(command: string, limit = 5000): { readings: number; depth: number } {
+    const walk = (line: string, depth: number): { readings: number; depth: number } => {
+      const script = unwrap(words(line))?.script;
+      if (script === undefined) return { readings: 1, depth };
+      const out = { readings: 0, depth };
+      for (const next of script.split("\n")) {
+        if (out.readings > limit) break;
+        const inner = walk(next, depth + 1);
+        out.readings += inner.readings;
+        out.depth = Math.max(out.depth, inner.depth);
+      }
+      return out;
+    };
+    return walk(command, 0);
+  }
+
+  describe.each(forms)("%s", (_how, stage) => {
+    it("reads nine stages as a push without a nesting error", () => {
+      expect(timed(`${stage.repeat(9)}${PUSH_TAIL}`)).toContain(PUSH);
+    });
+
+    it("does not throw on nine stages ending in a harmless command", () => {
+      expect(timed(`${stage.repeat(9)}ls`)).not.toContain(PUSH);
+    });
+
+    it("reads twenty stages as a push in time", () => {
+      expect(timed(`${stage.repeat(20)}${PUSH_TAIL}`)).toContain(PUSH);
+    });
+
+    it.each([[9], [20]])("keeps the readings and the reparse depth bounded: %i stages", (n) => {
+      const { readings, depth } = reparses(`${stage.repeat(n)}${PUSH_TAIL}`);
+      expect(readings).toBeLessThanOrEqual(4 * n + 1);
+      expect(depth).toBeLessThanOrEqual(2);
+    });
+  });
+
+  it.each([[20], [50]])("reads %i stages of a mixed chain as a push in time", (n) => {
+    const stage = "sudo $A -u timeout 5 timeout $c1 $c2 $c3 $c4 5 nice $b -n ";
+    expect(timed(`${stage.repeat(n)}${PUSH_TAIL}`)).toContain(PUSH);
+  });
+});

@@ -3,7 +3,7 @@ import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
-import { dynamicOptionReadings } from "./wrapper-dynamic.js";
+import { dynamicOptionReadings, isDynamicOption } from "./wrapper-dynamic.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
 
 interface WrapperSpec {
@@ -121,8 +121,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     if (KEYWORDS.has(w.value) && !w.quoted) {
       negated ||= w.value === "!";
       i++;
-    }
-    else if (assignment) {
+    } else if (assignment) {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
@@ -133,7 +132,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ??
-        (xargs ? null : dynamicOptionReadings(words, i, start, spec, wrapperSpec)) ?? joinedScript(words, start, spec);
+        (xargs ? null : dynamicOptionReadings(words, i, start, spec, { skip: skipWrapper, next: nextStage })) ?? joinedScript(words, start, spec);
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
@@ -265,15 +264,28 @@ function wrapperSpec(value: string): WrapperSpec | undefined {
   return Object.hasOwn(WRAPPERS, name) ? WRAPPERS[name] : undefined;
 }
 
-function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
-  while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
-    const v = (words[i] as WordToken).value;
-    if (spec.stop?.includes(v)) return -1;
-    i += takesNextWord(v, spec) ? 2 : 1;
-    if (v === "--") break;
+/** Index of the command after `spec`'s options; with `found`, a dynamic word in an option position is noted there. */
+function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec, found?: number[]): number {
+  while (i < words.length) {
+    const w = words[i] as WordToken;
+    if (found && isDynamicOption(w)) found.push(i++);
+    else if (!w.value.startsWith("-")) break;
+    else if (spec.stop?.includes(w.value)) return -1;
+    else i += takesNextWord(w.value, spec) ? 2 : 1;
+    if (w.value === "--") break;
   }
   if (spec.named && isCompoundStart(words[i + 1])) return i + 1;
   return i + (spec.positionals ?? 0);
+}
+
+/** The wrapper or runner `unwrap` steps into at `i`, after the assignments and keywords it steps over. */
+function nextStage(words: WordToken[], i: number): { start: number; spec: WrapperSpec } | null {
+  const at = words.findIndex((w, j) => j >= i && !(parseAssignment(w) || (KEYWORDS.has(w.value) && !w.quoted)));
+  const w = words[at];
+  if (!w || w.dynamic || commandName(w.value) === "xargs") return null;
+  const spec = wrapperSpec(w.value);
+  const end = spec ? at + 1 : runnerEnd(words, at);
+  return spec || end > at ? { start: end, spec: spec ?? PACKAGE_OPTS } : null;
 }
 
 function isCompoundStart(word: WordToken | undefined): boolean {
