@@ -95,6 +95,7 @@ export class EdgeTable {
   private readonly currentStmt;
   private readonly fromStmt;
   private readonly toStmt;
+  private readonly supersedeTxn;
 
   constructor(db: Db, { name = "edge" }: EdgeTableOptions = {}) {
     const t = quoteIdent(name);
@@ -111,6 +112,10 @@ export class EdgeTable {
     );
     this.fromStmt = db.prepare(`SELECT * FROM ${t} WHERE source_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
     this.toStmt = db.prepare(`SELECT * FROM ${t} WHERE target_ref = ? AND t_expired IS NULL ORDER BY edge_id`);
+    this.supersedeTxn = db.transaction((edge: EdgeInput, at: string) => {
+      this.expire(edge.sourceRef, edge.relation, edge.targetRef, at);
+      this.assert(edge);
+    });
   }
 
   /** Assert an edge. A live identical edge is left alone (idempotent re-ingest). Returns true when inserted. */
@@ -133,10 +138,9 @@ export class EdgeTable {
     return this.expireStmt.run(at, sourceRef, relation, targetRef).changes === 1;
   }
 
-  /** Replace the live edge with a corrected one in a single step. */
+  /** Replace the live edge with a corrected one in a single step; a failed insert rolls the expire back. */
   supersede(edge: EdgeInput, at: string = nowIso()): void {
-    this.expire(edge.sourceRef, edge.relation, edge.targetRef, at);
-    this.assert(edge);
+    this.supersedeTxn(edge, at);
   }
 
   current(sourceRef: string, relation: string, targetRef: string): EdgeRow | undefined {
