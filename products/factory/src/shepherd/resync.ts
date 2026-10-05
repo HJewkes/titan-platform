@@ -2,8 +2,9 @@ import type { FactoryHost } from "../host.js";
 import type { ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
-import { supersedeMovedGates, type SupersededGate } from "./head-moved.js";
+import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
+import { REREVIEW } from "./stale-gates.js";
 
 export const ORPHANED = "orphaned: the run already ended";
 
@@ -22,6 +23,7 @@ export interface ResyncReport {
   cancelErrors: CancelError[];
   /** Pending gates whose run already completed, failed or was cancelled. */
   orphanGates: string[];
+  /** Gates cancelled because their head moved or their MRG-AU gate failed only on merge-tree-clean; each run starts a new cycle. */
   superseded: SupersededGate[];
   /** Why superseding moved gates failed; the rest of the report still stands. */
   supersedeError?: string;
@@ -36,10 +38,35 @@ function orphanGates(host: FactoryHost): string[] {
   });
 }
 
+const SOLE_MERGE_TREE = /^MRG-AU-[A-Z]+ unmet: merge-tree-clean$/;
+
+/**
+ * True when some MRG-AU allow row failed on merge-tree-clean alone, so a fresh read may let it hold. A row with a second
+ * unmet condition does not count; a carry row always lists its carry condition on a head nobody carried to.
+ */
+export function failedOnlyOnMergeTree(reason: string): boolean {
+  return reason.split("; ").some((part) => SOLE_MERGE_TREE.test(part));
+}
+
+/** Cancels each pending MRG-AU approve-merge gate still at the PR head whose only unmet condition was merge-tree-clean. */
+async function supersedeMergeTreeOnlyGates(host: FactoryHost, services: ShepherdServices, dryRun: boolean): Promise<SupersededGate[]> {
+  const superseded: SupersededGate[] = [];
+  for (const pending of host.pendingGates()) {
+    const run = approveMergeRun(host, pending);
+    const gate = run && authorityGate(run, pending.gate.prompt);
+    if (!gate || !failedOnlyOnMergeTree(gate.reason)) continue;
+    if ((await openHead(services, pending.runId)) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
+    if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}merge-tree-clean was the only unmet condition at head ${gate.head}`);
+    superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition: "merge-tree-only" });
+  }
+  return superseded;
+}
+
 /**
  * Brings Shepherd's runs and gates in line with GitHub after time away: ends live runs whose PR left Shepherd, cancels
- * the gates of runs that already ended, then supersedes gates whose open PR moved head. A PR that cannot be read
- * leaves its run alone. `dryRun` computes the same report and writes nothing.
+ * the gates of runs that already ended, then supersedes gates whose open PR moved head and MRG-AU gates whose only unmet
+ * condition was merge-tree-clean. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
+ * resolved: the run's new cycle asks again. `dryRun` computes the same report and writes nothing.
  */
 export async function resyncShepherd(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<ResyncReport> {
   const held: string[] = [];
@@ -54,6 +81,7 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [] };
   try {
     report.superseded = await supersedeMovedGates(host, services, { dryRun });
+    report.superseded.push(...(await supersedeMergeTreeOnlyGates(host, services, dryRun)));
   } catch (err) {
     report.supersedeError = failureOf(err);
   }
