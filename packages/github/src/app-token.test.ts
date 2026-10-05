@@ -489,6 +489,18 @@ describe("token shape scrub", () => {
       expect(redactStreams(stdout, stderr, [])).toEqual(expected);
     });
 
+    it.each(
+      [SHAPED, "ghp_" + "Z9y8X7w6".repeat(5), "github_pat_" + "11ABCDEFG0".repeat(8) + "xy"].flatMap((token) =>
+        [`token: ${hex} (HTTP 401)`, `\ntoken ${hex} (HTTP 401)`, `bearer ${hex} (HTTP 401)`, `GH_TOKEN=${hex} (HTTP 401)`, `https://${hex}@h`].map((stderr) => [token, stderr]),
+      ),
+    )("keeps the stderr token redacted behind its keyword or scheme when stdout ends in %s: %j", (token, stderr) => {
+      const [out, err] = redactStreams(`minted ${token}`, stderr, []);
+
+      expect(out).toBe("minted [redacted]");
+      expect(err).not.toContain(hex);
+      expect(err).toContain("[redacted]");
+    });
+
     it("redacts the tail of a token split anywhere after its prefix", () => {
       for (let cut = 4; cut < SHAPED.length; cut++) {
         const [out, err] = redactStreams(`partial ${SHAPED.slice(0, cut)}`, `${SHAPED.slice(cut)} tail`, []);
