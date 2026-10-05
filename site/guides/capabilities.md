@@ -443,11 +443,11 @@ Tier 1, `@titan-design/github@0.4.0`. GitHub REST port over the gh CLI: validate
 Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
+- `force-pushes`: `ForcePushesTruncated`
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `app-token`: `appInstallationToken`
-- +57 more in the [reference page](/reference/github)
+- +61 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 

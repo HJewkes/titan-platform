@@ -203,7 +203,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
-  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } } }],
+  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
 ];
 
 function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
@@ -218,11 +218,11 @@ function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
   return { exec, argv };
 }
 
-/** Review-thread resolution exists only in GraphQL, so `listReviewComments` is the one method that posts to it. */
-const GRAPHQL_METHODS = ["listReviewComments"];
+/** Review-thread resolution and a force-push's replaced head exist only in GraphQL, so these are the methods that post to it. */
+const GRAPHQL_METHODS = ["listReviewComments", "listForcePushes"];
 
 describe("gh api adapter, REST only", () => {
-  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments", async () => {
+  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments and listForcePushes", async () => {
     const gh = routedGh();
     const port = githubPort(ghCliWire(gh.exec, { appToken: async () => "app-token" }));
     const calls: Record<keyof typeof port, () => Promise<unknown>> = {
@@ -252,6 +252,7 @@ describe("gh api adapter, REST only", () => {
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),
+      listForcePushes: () => port.listForcePushes(REPO, 7),
     };
     const graphqlCalls: string[] = [];
 
