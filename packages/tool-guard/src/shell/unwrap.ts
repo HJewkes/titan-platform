@@ -133,7 +133,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ??
-        (xargs ? null : dynamicOptionReadings(words, i, start, spec)) ?? joinedScript(words, start, spec);
+        (xargs ? null : dynamicOptionReadings(words, i, start, spec, wrapperSpec)) ?? joinedScript(words, start, spec);
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;

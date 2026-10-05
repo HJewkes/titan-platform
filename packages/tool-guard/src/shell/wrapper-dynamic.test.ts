@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
+import { tokenize } from "./lexer.js";
+import type { WordToken } from "./lexer.js";
+import { unwrap } from "./unwrap.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
@@ -151,5 +154,44 @@ describe("the one-pass reading over the cap", () => {
     ["timeout with a dynamic duration", "timeout $A $B $C $D $E git push origin HEAD:main"],
   ])("lets a dynamic word take the next option or stand as the positional: %s", (_how, command) => {
     expect(spellings(command)).toContain(PUSH);
+  });
+});
+
+describe("one budget for dynamic option words across a nested wrapper chain", () => {
+  const vars = (name: string, n: number) => Array.from({ length: n }, (_, i) => `$${name}${i}`).join(" ");
+  const chain = (counts: number[], tail: string) =>
+    [["sudo", counts[0]], ["nice", counts[1]], ["timeout", counts[2]], ["env", counts[3]]]
+      .filter(([, n]) => n !== undefined)
+      .map(([w, n], i) => `${w} ${vars(String.fromCharCode(97 + i), n as number)}${w === "timeout" ? " 5" : ""}`)
+      .join(" ") + ` ${tail}`;
+  const timed = (command: string) => {
+    const started = performance.now();
+    const found = spellings(command);
+    expect(performance.now() - started).toBeLessThan(1000);
+    return found;
+  };
+
+  it("reads four dynamic words in each of three wrappers without a nesting error", () => {
+    expect(timed("sudo $a0 $a1 $a2 $a3 nice $b0 $b1 $b2 $b3 timeout $c0 $c1 $c2 $c3 5 git push origin HEAD:main")).toContain(PUSH);
+  });
+
+  it("reads twenty dynamic words in each of three wrappers in time", () => {
+    expect(timed(chain([20, 20, 20], "git push origin HEAD:main"))).toContain(PUSH);
+  });
+
+  it("does not flag the same chain ending in a harmless command", () => {
+    expect(timed(chain([20, 20, 20], "ls"))).not.toContain(PUSH);
+  });
+
+  it("reads four wrappers of eight dynamic words in time", () => {
+    expect(timed(chain([8, 8, 8, 8], "git push origin HEAD:main"))).toContain(PUSH);
+  });
+
+  it.each([[[4, 4, 4]], [[20, 20, 20]], [[8, 8, 8, 8]]])("keeps the readings linear in the dynamic words: %j", (counts) => {
+    const words = tokenize(chain(counts, "git push origin HEAD:main")).filter((t): t is WordToken => t.type === "word");
+    const total = counts.reduce((a, b) => a + b, 0);
+    const readings = (unwrap(words)?.script ?? "").split("\n").length;
+    expect(readings).toBeGreaterThan(0);
+    expect(readings).toBeLessThanOrEqual(4 * total + 1);
   });
 });

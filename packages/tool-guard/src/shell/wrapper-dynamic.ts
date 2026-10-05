@@ -6,6 +6,7 @@ interface OptionSpec {
   stop?: string[];
   optional?: string[];
   digits?: boolean;
+  positionals?: number;
 }
 
 /** An expansion no assignment can bind, as a variable name could be; it stays dynamic when the reading is parsed again. */
@@ -14,11 +15,15 @@ const PLACEHOLDER = '"$(:)"';
 /** More dynamic option words than this are read in one pass: each one triples the readings of the exact pass. */
 const MAX_DYNAMIC = 4;
 
+const XARGS_RE = /(^|\/)xargs$/;
+
+type SpecOf = (value: string) => OptionSpec | undefined;
+
 /**
- * Where the dynamic words sit among a wrapper's options. A word such as `-$O`
+ * Where the dynamic words sit among a wrapper's options, and the index just past those options. A word such as `-$O`
  * counts too: its dash is known but the option letters are not.
  */
-function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): number[] {
+function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): { at: number[]; end: number } {
   const at: number[] = [];
   let i = start;
   for (; i < words.length; ) {
@@ -27,7 +32,24 @@ function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): nu
     else if (!w.value.startsWith("-") || w.value === "--" || spec.stop?.includes(w.value)) break;
     else i += takesNextWord(w.value, spec) ? 2 : 1;
   }
-  return at;
+  return { at, end: i };
+}
+
+/**
+ * The dynamic option words of the wrapper at `at` and of every wrapper it runs in turn: one budget for the chain, since
+ * a reading is parsed again and the inner wrapper would otherwise expand its own words once more for each of them.
+ */
+function chainDynamics(words: WordToken[], start: number, spec: OptionSpec, specOf: SpecOf): number[] {
+  const found: number[] = [];
+  for (let next: OptionSpec | undefined = spec, i = start; next; ) {
+    const own = dynamicOptions(words, i, next);
+    found.push(...own.at);
+    i = own.end + (next.positionals ?? 0);
+    const w = words[i];
+    next = w && !w.dynamic && !XARGS_RE.test(w.value) ? specOf(w.value) : undefined;
+    i++;
+  }
+  return found;
 }
 
 function leadingDashes(value: string): number {
@@ -66,13 +88,14 @@ function quoteWord(w: WordToken): string {
  * Past `MAX_DYNAMIC` option words the readings drop them all, with and without the word after, rather than none.
  * Null when the wrapper's options hold no dynamic word.
  */
-export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec): string | null {
-  const found = dynamicOptions(words, start, spec);
-  const d = found[0];
+export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec, specOf: SpecOf): string | null {
+  const own = dynamicOptions(words, start, spec).at;
+  const d = own[0];
   if (d === undefined) return null;
-  const xargs = /(^|\/)xargs$/.test((words[at] as WordToken).value);
+  const xargs = XARGS_RE.test((words[at] as WordToken).value);
   const dashed = (words[d] as WordToken).value.startsWith("-");
   if (xargs && !dashed) return null;
+  const found = chainDynamics(words, start, spec, specOf);
   if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found);
   const before = words.slice(at, d).map(quoteWord);
   const after = words.slice(d + 1).map(quoteWord);
