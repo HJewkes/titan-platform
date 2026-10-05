@@ -1,6 +1,7 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
+import { jsxDepthOf } from "./analysis/jsx-metrics.js";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { qualify, walkScopes } from "./scope-path.js";
@@ -66,6 +67,7 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "cognitive_max",
   "cognitive_sum",
   "max_nesting_depth",
+  "jsx_depth_max",
   "class_count",
   "lcom4_max",
   ...EXCEPTION_METRIC_NAMES,
@@ -147,6 +149,8 @@ function metricsForFile(
       unit: "count",
     });
   }
+  const jsxDepthMax = Math.max(jsxDepthIn(file, file.tree.rootNode), ...stats.map((s) => s.jsxDepth));
+  if (jsxDepthMax > 0) out.push({ nodeId, name: "jsx_depth_max", value: jsxDepthMax, unit: "count" });
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
   out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
@@ -170,6 +174,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       cyclomatic: cyclomaticOf(fn.body, file.language),
       cognitive: cognitiveComplexityOf(fn.body, file.language),
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
+      jsxDepth: jsxDepthIn(file, fn.body),
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
       ...functionShapeStats(fn.node, fn.body, lines),
     });
@@ -204,6 +209,12 @@ function functionAt(
     return { name: node.parent.childForFieldName("name")?.text ?? null, body, node };
   }
   return null;
+}
+
+/** JSX depth under `root`, stopping at each nested function `analyzeFunctions` scores on its own. Python has no JSX. */
+function jsxDepthIn(file: ParsedFile, root: Node): number {
+  if (file.language === "python") return 0;
+  return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_TYPES) !== null);
 }
 
 function nestingDepthOf(node: Node, language: string, depth: number): number {
