@@ -176,4 +176,19 @@ describe("fingerprint-based incremental indexing", () => {
       expect(SOURCE_METRIC_NAMES.has(name)).toBe(true);
     }
   });
+
+  it("carries a TSX component's JSX depth metrics forward unchanged on reuse (C-97)", async () => {
+    await fs.writeFile(src("view.tsx"), "export function View() {\n  return <div><span><b /></span></div>;\n}\n");
+    const first = await index();
+    const second = await index();
+
+    expect(second.reparsed).toBe(0);
+    const jsxRows = snapshot(second.snapshotId).metrics.filter((row) => row.includes("jsx_depth"));
+    expect(jsxRows).toEqual([
+      JSON.stringify({ nodeId: "src/view.tsx", name: "jsx_depth_max", value: 3, unit: "count" }),
+      JSON.stringify({ nodeId: "src/view.tsx#View", name: "symbol_jsx_depth", value: 3, unit: "count" }),
+    ]);
+    expect(snapshot(second.snapshotId)).toEqual(snapshot(first.snapshotId));
+    expect(SOURCE_METRIC_NAMES.has("jsx_depth_max") && SOURCE_METRIC_NAMES.has("symbol_jsx_depth")).toBe(true);
+  });
 });
