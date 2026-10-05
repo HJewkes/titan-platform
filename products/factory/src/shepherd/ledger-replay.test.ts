@@ -8,6 +8,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { MAX_UPDATE_CYCLES, sleep } from "../workflows/land.js";
+import { UPDATE_GAP_MS, spaceUpdates } from "../test-support/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -49,6 +50,16 @@ interface Replay {
   runId: string;
   /** Reads of each head so far, for a head scripted with `unknownReads`. */
   reads: Map<string, number>;
+  /** How far the fake clock moves on each update-branch, standing in for main's pace. */
+  updateGapMs: number;
+  /** The ruleset requires up-to-date heads, so GitHub reports a behind head's mergeable_state as `behind`. */
+  strict: boolean;
+}
+
+interface ReplayOptions {
+  kind?: string;
+  updateGapMs?: number;
+  strict?: boolean;
 }
 
 function headOf(replay: Replay, sha: string): HeadScript {
@@ -63,15 +74,16 @@ function readHead(replay: Replay, pr: PullRequest): void {
   const read = replay.reads.get(pr.headSha) ?? 0;
   replay.reads.set(pr.headSha, read + 1);
   const unsettled = state === "behind" && read < (head.unknownReads ?? 0);
-  Object.assign(pr, { mergeableState: unsettled ? "unknown" : state, behind: state === "behind" });
+  const shown = state === "behind" && !replay.strict ? "clean" : state;
+  Object.assign(pr, { mergeableState: unsettled ? "unknown" : shown, behind: state === "behind" });
   const runs = [successRun("validate", 1), successRun("dag-check", 2)];
-  replay.fake.setRuns(pr.headSha, unreviewedBehind(head) ? runs.map((run) => ({ ...run, status: "in_progress", conclusion: null })) : runs);
+  replay.fake.setRuns(pr.headSha, unreviewedBehind(head) ? runs.map((run) => ({ ...run, conclusion: "failure" })) : runs);
   if (head.seatFixFirst && !replay.seatObjections.includes(pr.headSha)) replay.seatObjections.push(pr.headSha);
   const registration = replay.store.byRun(replay.runId);
   if (head.hold && registration && !registration.held) replay.store.hold(replay.runId, "synthetic hold", `rv-${replay.fixture.id}`);
 }
 
-/** The recorded run updated this behind head before any review, which today means its own CI was still running there. */
+/** The recorded run updated this behind head before any review; Shepherd now waits for a behind head's checks to settle, so only a red one is updated unreviewed. */
 function unreviewedBehind(head: HeadScript): boolean {
   return head.state === "behind" && head.reviews === undefined && !head.treeEqual;
 }
@@ -169,6 +181,7 @@ function fixerWiring(fixers: string[]): Omit<MainRedWiring, "freezes"> {
 function openReplay(replay: Replay): FactoryHost {
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal): Promise<void> => ((clock += ms), sleep(1, signal));
+  spaceUpdates(replay.fake, (ms) => void (clock += ms), replay.updateGapMs);
   const port = mainCi(replay.fake, replay.fixture.main ?? "green");
   const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => true, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay) });
@@ -178,10 +191,12 @@ function openReplay(replay: Replay): FactoryHost {
   return host;
 }
 
-function startReplay(fixture: LedgerFixture, kind = "correctness"): { host: FactoryHost; replay: Replay } {
+function startReplay(fixture: LedgerFixture, options: ReplayOptions = {}): { host: FactoryHost; replay: Replay } {
+  const { kind = "correctness", updateGapMs = UPDATE_GAP_MS, strict = true } = options;
   const fake = fakeGitHub({ repo: REPO });
+  fake.rules.strict = strict;
   const trace: Trace = { reviewers: 0, unscripted: [], fixers: [] };
-  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], runId: "", reads: new Map() };
+  const replay: Replay = { fixture, fake, store: undefined as unknown as ShepherdStore, trace, seen: [], wentBehind: new Set(), reviewsAt: new Map(), heldMerges: [], seatObjections: [], runId: "", reads: new Map(), updateGapMs, strict };
   const host = openReplay(replay);
   fake.reviewBypass = fixture.reviewBypass ?? false;
   fake.addPr({ headSha: fakeSha(`f${fixture.id}-h0`), mergeSha: fakeSha(`f${fixture.id}-test-merge`) });
@@ -282,7 +297,7 @@ describe("a base that moves on every read", () => {
     expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
     expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates, heads ${short(replay)}`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates over 120 min (budget 120 min), heads ${short(replay)}`);
   });
 
   it("does not spend a round on a behind head while GitHub's mergeable_state is unknown", async () => {
@@ -299,7 +314,7 @@ describe("a base that moves on every read", () => {
   it("counts updates across rounds for a kind that never carries a MERGE, and stops at the bound", async () => {
     const reviewedThenBehind: HeadScript = { reviews: ["MERGE"], goesBehind: true };
     const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 }, () => reviewedThenBehind)];
-    const { host, replay } = startReplay({ ...BUSY, heads }, "security");
+    const { host, replay } = startReplay({ ...BUSY, heads }, { kind: "security" });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
@@ -307,5 +322,56 @@ describe("a base that moves on every read", () => {
     expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
     expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates`);
+  });
+
+  it("keeps updating past the minimum while main outpaces CI inside the time budget, and merges once the base holds", async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, behindCarry, behindCarry, behindCarry, { treeEqual: true }];
+    const { host, replay } = startReplay({ ...BUSY, heads }, { updateGapMs: 30 * 60_000 });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+
+    expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + 1, merge: 1 });
+    expect(host.pendingGates()).toEqual([]);
+  });
+
+  it("opens stuck-behind once the time budget is spent, naming the elapsed time, the budget and every head", async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 8 }, () => behindCarry)];
+    const { host, replay } = startReplay({ ...BUSY, heads }, { updateGapMs: 30 * 60_000 });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
+    const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
+
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 5, merge: 0 });
+    expect(gate?.stepId).toBe("stuck-behind");
+    expect(gate?.gate.prompt).toContain(`still behind its base after 5 updates over 120 min (budget 120 min), heads ${short(replay)}`);
+  });
+});
+
+describe("a base that moves on every read in a repo that does not require up-to-date heads", () => {
+  const LOOSE: Omit<LedgerFixture, "heads"> = { id: 97, gate: "approve-merge", story: "non-strict ruleset, main moves while CI runs", today: { outcome: "merged", gates: [], reviewers: 1, fixers: 0 } };
+
+  it("reviews the green behind head, refreshes it once before the merge, and merges with no stuck-behind gate", async () => {
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
+    const { host, replay } = startReplay({ ...LOOSE, heads }, { strict: false });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+
+    expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(host.pendingGates()).toEqual([]);
+  });
+  it("refreshes every round's allowed head before its merge and never opens stuck-behind, however many rounds and minutes pass", async () => {
+    const sentBack: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, { state: "behind", reviews: ["FIX_FIRST"] }];
+    const heads: HeadScript[] = [...sentBack, ...sentBack, ...sentBack, { state: "behind", reviews: ["MERGE"] }, { state: "behind", treeEqual: true }];
+    const { host, replay } = startReplay({ ...LOOSE, heads }, { strict: false });
+
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+    const mergedHead = replay.fake.pr(1).headSha;
+
+    expect(replay.trace).toEqual({ reviewers: 7, unscripted: [], fixers: [] });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 4, merge: 1 });
+    expect(replay.seen.indexOf(mergedHead)).toBe(7);
+    expect(host.pendingGates()).toEqual([]);
   });
 });

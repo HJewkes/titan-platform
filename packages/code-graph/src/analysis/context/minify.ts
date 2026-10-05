@@ -25,12 +25,14 @@ interface Cut {
   from: number;
   to: number;
   pad: boolean;
+  jsx: boolean;
 }
 
 /** A removed source range: a node, or a docstring with its trailing `;`. */
 interface Span {
   start: Point;
   end: Point;
+  jsx?: true;
 }
 
 interface ImportBlock {
@@ -113,7 +115,10 @@ function unchanged(text: string): MinifiedSource {
 function removedSpans(root: Node, language: MinifyLanguage): Span[] {
   const comments = descendantsOfType(root, "comment");
   if (language !== "python") {
-    return [...comments, ...descendantsOfType(root, "hash_bang_line"), ...jsxCommentExpressions(root)].map(spanOf);
+    return [
+      ...[...comments, ...descendantsOfType(root, "hash_bang_line")].map(spanOf),
+      ...jsxCommentExpressions(root).map((n) => ({ ...spanOf(n), jsx: true as const })),
+    ];
   }
   return [...comments.map(spanOf), ...pythonDocstrings(root).map(docstringSpan)];
 }
@@ -168,12 +173,12 @@ function moduleDocstring(root: Node): Node | null {
 
 function cutsByRow(spans: readonly Span[]): Map<number, Cut[]> {
   const cuts = new Map<number, Cut[]>();
-  for (const { start, end } of spans) {
+  for (const { start, end, jsx } of spans) {
     for (let row = start.row; row <= end.row; row++) {
       const from = row === start.row ? start.column : 0;
       const to = row === end.row ? end.column : Number.MAX_SAFE_INTEGER;
       const list = cuts.get(row) ?? [];
-      list.push({ from, to, pad: row !== start.row });
+      list.push({ from, to, pad: row !== start.row, jsx: jsx === true });
       cuts.set(row, list);
     }
   }
@@ -196,15 +201,21 @@ function keepRow(row: string, cuts: readonly Cut[] | undefined, verbatim: boolea
   if (!cuts) return verbatim ? row : row.trimEnd();
   let kept = "";
   let cutSinceKept = false;
+  let onlyJsxCut = true;
   for (let col = 0; col < row.length; col++) {
     const hits = cuts.filter((c) => col >= c.from && col < c.to);
     const char = row[col] ?? "";
     if (hits.length === 0) {
-      if (cutSinceKept && wouldFuse(kept.at(-1) ?? " ", char)) kept += " ";
+      const before = kept.at(-1) ?? " ";
+      if (cutSinceKept && wouldFuse(before, char) && !(onlyJsxCut && isTagEdge(before, char))) kept += " ";
       kept += char;
       cutSinceKept = false;
+      onlyJsxCut = true;
     } else if (hits.every((c) => c.pad)) kept += " ";
-    else cutSinceKept = true;
+    else {
+      cutSinceKept = true;
+      onlyJsxCut &&= hits.some((c) => c.jsx);
+    }
   }
   const trimmed = kept.trimEnd();
   if (trimmed === "") return null;
@@ -214,6 +225,11 @@ function keepRow(row: string, cuts: readonly Cut[] | undefined, verbatim: boolea
 /** `typeof/**\/x` or `a +/**\/+b`: closing the gap would join two tokens into one, so one space stands in. */
 function wouldFuse(before: string, after: string): boolean {
   return /\S/.test(before) && /\S/.test(after) && !DELIMITERS.has(before) && !DELIMITERS.has(after);
+}
+
+/** A JSX child comment beside a tag edge: a space there would render as text, and no tokens can fuse across `>` or `<`. */
+function isTagEdge(before: string, after: string): boolean {
+  return before === ">" || after === "<";
 }
 
 function leadingImportBlock(root: Node, language: MinifyLanguage): ImportBlock | null {

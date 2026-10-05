@@ -8,7 +8,7 @@ import { defineWorkflow } from "../definition.js";
 import { GATE_EVERYTHING_RULE, gateEverything, type GatePolicy } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { crashAt } from "../test-support/crash.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, spaceUpdates } from "../test-support/land.js";
 import { LAND_STEPS, MAX_UPDATE_CYCLES, land, landRoutes, type LandOptions, type LandOutcome } from "./land.js";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -38,6 +38,7 @@ function roundsWorld(body: Body, options: RoundsOptions = {}) {
   const red = (sha: string) => options.redOnH1 === true && sha === H1;
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, red(pr.headSha) ? "failure" : "success"), successRun("dag-check", 2)]);
   let clock = 0;
+  spaceUpdates(fake, (ms) => void (clock += ms));
   const routes = landRoutes({ port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms) });
   const outcomes: LandOutcome[] = [];
   const workflow = defineWorkflow({ name: "land-rounds", steps: LAND_STEPS, run: (ctx) => body(ctx, fake, outcomes) });
@@ -242,7 +243,7 @@ describe("land merge policy", () => {
     await world.host.runtime.wait(runId);
 
     const heads = [H1, ...updatedHeads(fake)].map((sha) => sha.slice(0, 7)).join(" -> ");
-    const why = `still behind its base after ${MAX_UPDATE_CYCLES} updates, heads ${heads}`;
+    const why = `still behind its base after ${MAX_UPDATE_CYCLES} updates over 120 min (budget 120 min), heads ${heads}`;
     expect(fake.effects.updateBranch).toBe(MAX_UPDATE_CYCLES);
     expect(fake.effects.merge).toBe(0);
     expect(prompt).toContain(why);
