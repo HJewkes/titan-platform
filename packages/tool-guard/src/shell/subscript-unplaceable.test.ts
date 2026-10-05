@@ -33,6 +33,16 @@ describe("a spaced subscript assignment followed by an unplaceable form", () => 
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
+  it.each([
+    ["a here-string before the command word", "Y[ 0 ]=x <<<x git push origin HEAD:main"],
+    ["a $(( )) in a later assignment", "Y[ 0 ]=x A=$((1)) git push origin HEAD:main"],
+    ["a $(( )) inside the subscript", "Y[ $((0)) ]=x git push origin HEAD:main"],
+    ["a $(( )) in a later subscript", "Y[ 0 ]=x B[ $((1)) ]=y git push origin HEAD:main"],
+    ["(( in the assigned value", 'Y[ 0 ]="a (( b" git push origin HEAD:main'],
+  ])("still reads the push to main with %s", (_form, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
   it("keeps literal test brackets unflagged", () => {
     expect(spellings("test [ 0 ] && echo ok # ((")).not.toContain("bash.merge.git-push-protected");
   });

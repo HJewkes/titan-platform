@@ -8,8 +8,8 @@ const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while"
 /**
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
  * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
- * `[`, or up to the word that ends the assignments, quoted or not, refuses the join. One further on, such as a
- * trailing comment, cannot move the `[`, so it leaves the join alone.
+ * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
+ * the join alone.
  */
 const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
 
@@ -21,24 +21,10 @@ const UNSURE = -2;
  * Returns the index of that `]` for the `[` at `open`, or -1 when the word lexes as usual.
  */
 export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[]): number {
-  if (!atAssignmentPosition(tokens)) return -1;
+  if (UNPLACEABLE_RE.test(src.slice(0, open)) || !atAssignmentPosition(tokens)) return -1;
   const close = matchingBracket(src, open);
-  if (UNPLACEABLE_RE.test(src.slice(0, close === -1 ? src.length : commandWordEnd(src, close)))) return -1;
   const after = close === -1 ? "" : src.slice(close + 1, close + 3);
   return after.startsWith("=") || after === "+=" ? close : -1;
-}
-
-/** End of the first word past the assignment words that follow the `]` at `close`: the command word, or the text's end. */
-function commandWordEnd(src: string, close: number): number {
-  const words = /\s*(\S*)/y;
-  let at = close + 1;
-  while (at < src.length && !/\s/.test(src[at] as string)) at++;
-  for (;;) {
-    words.lastIndex = at;
-    const m = words.exec(src);
-    at = words.lastIndex;
-    if (!m?.[1] || !ASSIGNMENT_WORD_RE.test(m[1])) return at;
-  }
 }
 
 /**
