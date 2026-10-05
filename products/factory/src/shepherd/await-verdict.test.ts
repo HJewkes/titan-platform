@@ -2,6 +2,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { Presence } from "./presence.js";
 
 const MINUTE = 60_000;
 const HEAD = "c".repeat(40);
@@ -33,7 +34,7 @@ function restartedAt(minutesIn: number) {
   return { timing, start: time, elapsed: () => time - DISPATCHED_AT - minutesIn * MINUTE };
 }
 
-const rosterOf = (presenceAt: () => string | "absent") => async () => {
+const rosterOf = (presenceAt: () => Presence | "absent") => async () => {
   const presence = presenceAt();
   return presence === "absent" ? [] : [{ agentId: "reviewer-1", presence }];
 };
@@ -66,7 +67,7 @@ describe("awaitVerdict after a restart", () => {
   it.each([
     ["exited", "exited"],
     ["deregistered", "absent"],
-  ])("ends on the first read when the reviewer is already %s, past the exit grace since dispatch", async (_name, presence) => {
+  ] as const)("ends on the first read when the reviewer is already %s, past the exit grace since dispatch", async (_name, presence) => {
     const clock = restartedAt(2);
     const reader = countingReader();
 
