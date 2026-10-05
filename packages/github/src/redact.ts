@@ -43,6 +43,21 @@ export function redact(text: string, secrets: readonly string[]): string {
  * from the stream it covers. An exact secret that crosses the seam takes the same path, since neither stream holds it whole. The text between spans is still redacted, so nothing either stream matches alone shows.
  */
 export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
+  const [cutFirst, cutSecond] = cutSecretsAcrossSeam(first, second, secrets);
+  return redactTrimmed(cutFirst, cutSecond, secrets);
+}
+
+/** An exact secret crossing the raw seam is cut first, since trimming the streams would drop whitespace the secret contains. */
+function cutSecretsAcrossSeam(first: string, second: string, secrets: readonly string[]): [string, string] {
+  const seam = first.length;
+  const exact = secretSpans(first + second, secrets);
+  if (!exact.some((span) => span.start < seam && span.end > seam)) return [first, second];
+  const spans = merged(exact);
+  const piece = (text: string): string => text;
+  return [render(first, clip(spans, 0, seam), piece), render(second, clip(spans, seam, seam + second.length), piece)];
+}
+
+function redactTrimmed(first: string, second: string, secrets: readonly string[]): [string, string] {
   const head = first.trimEnd();
   const rest = second.trimStart();
   const seam = head.length;

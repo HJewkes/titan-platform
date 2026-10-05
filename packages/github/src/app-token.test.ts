@@ -305,6 +305,26 @@ describe("token shape scrub", () => {
     }
   });
 
+  it("cuts a secret that contains whitespace wherever it is split, including at the whitespace", () => {
+    const pem = "-----BEGIN KEY-----\nQUJDREVGRw\nSElKS0xNTg\n-----END KEY-----\n";
+    for (const secret of ["sec ret", "sec\nret", " secret", "secret ", "a b c d", pem]) {
+      for (let at = 1; at < secret.length; at++) {
+        // A newline added at a whitespace seam is a different byte sequence from the secret, so only the bare split is the secret.
+        const atWhitespace = /\s/.test(secret.slice(at - 1, at + 1));
+        for (const newline of atWhitespace ? [""] : ["", "\n"]) {
+          const [out, err] = redactStreams(`my ${secret.slice(0, at)}${newline}`, `${secret.slice(at)} ###`, [secret]);
+          const shown = [out, err].map((text) => text.replaceAll("[redacted]", ""));
+
+          for (let i = 0; i + 2 <= secret.length; i++) {
+            const fragment = secret.slice(i, i + 2);
+            if (fragment.trim().length < 2) continue;
+            for (const text of shown) expect(text).not.toContain(fragment);
+          }
+        }
+      }
+    }
+  });
+
   it("throws a REST error whose message carries neither half of a split token", async () => {
     for (const stdout of [`partial ${SHAPED.slice(0, 15)}`, `partial ${SHAPED.slice(0, 15)}\n`]) {
       const result = { code: 1, stdout, stderr: `${SHAPED.slice(15)} (HTTP 403)` };
@@ -488,6 +508,15 @@ describe("token shape scrub", () => {
         redactStreams(text, text, []);
         expect(performance.now() - started).toBeLessThan(2000);
       }
+    });
+
+    it("scans a megabyte of text for a hundred exact secrets in linear time", () => {
+      const secrets = Array.from({ length: 100 }, (_, i) => `secret-${i}-aaaaaaaaaaaa`);
+      const text = "secret-aaaaaaaa ".repeat((1 << 20) / 16);
+      const started = performance.now();
+
+      expect(redactStreams(text, text, secrets)).toEqual([text, text]);
+      expect(performance.now() - started).toBeLessThan(2000);
     });
 
     it("redacts a JWT behind a run of JWT-shaped words from its first header", () => {
