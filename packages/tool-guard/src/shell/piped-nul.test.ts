@@ -100,6 +100,21 @@ describe("NUL that cuts a wrapper's own name", () => {
   });
 });
 
+describe("NUL inside a wrapper's option word", () => {
+  it.each([
+    ["env -u", "printf 'env -u\\0x FOO git push origin HEAD:main\\n' | zsh"],
+    ["nice -n", "printf 'nice -n\\0x 5 git push origin HEAD:main\\n' | zsh"],
+    ["stdbuf -o", "printf 'stdbuf -o\\0x 0 git push origin HEAD:main\\n' | zsh"],
+    ["timeout -s", "printf 'timeout -s\\0x 9 5 git push origin HEAD:main\\n' | zsh"],
+    ["xargs -I", "printf 'echo o | xargs -I\\0x {} git push origin HEAD:main\\n' | zsh"],
+    ["env -S", "printf 'env -S\\0x \"git push origin HEAD:main\"\\n' | zsh"],
+    ["sudo -u", "printf 'sudo -u\\0x root git push origin HEAD:main\\n' | zsh"],
+    ["flock -c", "printf 'flock -c\\0x /tmp/l git push origin HEAD:main\\n' | zsh"],
+  ])("reads the cut option for %s", (_name, src) => {
+    expect(gitArgs(src)).toContainEqual(pushed);
+  });
+});
+
 describe("pipedShellTexts", () => {
   it("returns text without NUL unchanged for every shell", () => {
     expect(pipedShellTexts("zsh", "git status\n")).toEqual(["git status\n"]);

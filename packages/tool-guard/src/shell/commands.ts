@@ -6,7 +6,7 @@ import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
-import { execView, pipedShellTexts } from "./piped-nul.js";
+import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -160,8 +160,10 @@ function scope(op: string, w: Walk): void {
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
-  const runs = caseNamed(rawWords.map(expand));
-  for (const cmd of runs) run(cmd, redirects, w, next);
+  const words = rawWords.map(expand);
+  const runs = caseNamed(words);
+  const cut = cutReading(words);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
   return runs[0] ?? null;
 }
 
@@ -174,9 +176,8 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const view = execView(raw);
-  const stdin = view.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  for (const cmd of xargsCommands(view, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
+  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
+  for (const cmd of xargsCommands(raw, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
