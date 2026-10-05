@@ -15,9 +15,9 @@ const WRITTEN_BEFORE_RE = /(?:\+\+|--)\s*$/;
  * variable. Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of
  * reach. Even a literal `let Y=1` stays unknown: the walk cannot tell that the `let` surely runs, in this shell.
  */
-export function commandWrites(name: string, args: WordToken[], vars: Vars): Assignment[] | null {
+export function commandWrites(name: string, args: WordToken[], vars: Vars, assigned: Assignment[]): Assignment[] | null {
   const own = builtinWrites(name, args, vars);
-  const expansions = args.flatMap((a) => expansionBodies(a.value));
+  const expansions = [...args.flatMap((a) => expansionBodies(a.value)), ...assigned.flatMap((a) => assignedBodies.get(a) ?? [])];
   const inner = expansions.length > 0 ? arithmeticWrites(expansions, vars) : [];
   return own && inner && [...own, ...inner];
 }
@@ -90,17 +90,27 @@ function compoundText(t: Token, expand: (w: WordToken) => WordToken): string {
   return t.type === "op" ? t.value : "";
 }
 
+/** The `$(( ))` bodies of each assignment word, which the assignment's own value no longer shows. */
+const assignedBodies = new WeakMap<Assignment, string[]>();
+
+/** Notes the `$(( ))` bodies of the word an assignment was read from. Returns the assignment unchanged. */
+export function noteBodies(w: WordToken, assignment: Assignment | null): Assignment | null {
+  const bodies = expansionBodies(w.value);
+  if (assignment && bodies.length > 0) assignedBodies.set(assignment, bodies);
+  return assignment;
+}
+
 /** The text inside each `$(( ))` of a word, which writes in the current shell wherever the word sits. */
 function expansionBodies(value: string): string[] {
   const bodies: string[] = [];
   for (let at = value.indexOf("$(("); at >= 0; at = value.indexOf("$((", at + 3)) {
     let depth = 0;
-    let end = at + 2;
+    let end = at + 2; // the second `(`, so depth reaches zero on the first `)` of the closing `))`
     for (; end < value.length; end++) {
       if (value[end] === "(") depth++;
       if (value[end] === ")" && --depth === 0) break;
     }
-    bodies.push(value.slice(at + 3, end - 1));
+    bodies.push(value.slice(at + 3, end));
   }
   return bodies;
 }

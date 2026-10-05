@@ -2,7 +2,7 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
-import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
+import { commandWrites, compoundWrites, IDENTIFIER_RE, noteBodies, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
@@ -190,7 +190,7 @@ function runsDeclarer(words: WordToken[]): boolean {
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
   const parsed = splitAssignment(w);
-  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+  return noteBodies(w, parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed);
 }
 
 function splitAssignment(w: WordToken): Assignment | null {
@@ -251,7 +251,7 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  writeEach(vars, commandWrites(name, args, vars));
+  writeEach(vars, commandWrites(name, args, vars, assigned));
 }
 
 /** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
