@@ -13,6 +13,10 @@
     "./history": {
       "types": "./dist/history/index.d.ts",
       "import": "./dist/history/index.js"
+    },
+    "./analysis": {
+      "types": "./dist/analysis/browser.d.ts",
+      "import": "./dist/analysis/browser.js"
     }
   },
   "files": [

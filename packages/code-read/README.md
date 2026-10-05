@@ -16,11 +16,12 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 | `@titan-design/code-read/query` | browser or Node | the contract (`CONTRACT`, `CODE_READ_API_VERSION`, zod schemas), `ReadModel` and `buildReadModel`, the `ReadSource` seam, `QUERIES`, `createQueryResolver` |
 | `@titan-design/code-read` | Node | everything in `./query`, plus `loadReadModel`, `createLiveSource` (SQLite plus an LRU of models), and `registerCodeReadCommands` |
 
-`./query` imports only its own files, `zod`, and `rpc-protocol`. Three rules in
+`./query` imports only its own files, `zod`, `rpc-protocol`, and code-graph's browser-safe
+`./analysis` subpath, never code-graph's root. Three rules in
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.2)
+## Commands (contract 0.1.3)
 
 | Command | Args | Result |
 | --- | --- | --- |
@@ -32,6 +33,7 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `findings.list` | `snapshot?`, `baseline?`, `scope?`, filters `rule`, `severity`, `tool`, `provenance`, `kind`, `status` (arrays, empty means all), `sort` (`severity` default, `excess`, `value`, `path`, `rule`), `order` (`desc` default), `offset`, `limit` (0 to 500, default 20), `facets` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`Finding`), `total`, `facets?` |
 | `finding.get` | `snapshot?`, `id`, `baseline?`, `context_lines` (0 to 20, default 5) | `finding`, `rule` (with `text`), `measured`, `why`, `excerpt` (or null with `excerptMissing`), `related` (at most 10) |
 | `node.neighbors` | `snapshot?`, `id` (a stored node), `direction` (`both` default), `edge_kinds`, `metrics` (default `loc`, `utilization`), `offset`, `limit` (1 to 100, default 20) | `snapshotId`, `node`, `inbound`, `outbound` (each `node`, `kind`, `weight`, `specifier?`, `values`), `total` per side |
+| `hotspots.list` | `snapshot?`, `baseline?`, `grain` (`file` default, `symbol`), `window` (`30d` default, any `<n>d`, or `lifetime`), `cutoff?`, `offset`, `limit` (0 to 500, default 20) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`node`, `churn`, `complexity`, `recency`, `score`, `utilization?`, `baselineScore?`, `mark?`), `total` |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -131,6 +133,23 @@ and its findings vanish from every snapshot, old ones included, and their ids ne
 back. A finding's `status` also depends on the baseline you pass: the same row is
 `carryover` against one snapshot and `new` against another. Do not persist a derived id
 as if it were durable until the findings store lands.
+
+## Hotspots
+
+`hotspots.list` computes nothing of its own. It runs code-graph's report derivations from
+the browser-safe `@titan-design/code-graph/analysis` subpath, so the daemon and a static
+dataset rank alike.
+
+- **File grain** is `topHotspots`: `round(churn_<window> × complexity × recency_<window>)`,
+  where complexity is `cognitive_max`, else `cyclomatic_max`. A file with no churn or no
+  complexity has no row, and generated files are left out.
+- **Symbol grain** is `buildBlastRadius`: `utilization × complexity × file churn`, with the
+  symbol's own `symbol_cognitive`, else its file's. It applies no recency, so `recency` is 1.
+  Symbols of generated files are left out.
+- **Marks** come from `computeReportDrift` over every row: `new` when the node had no row at
+  the baseline, `worsened` when its score rose. `baselineScore` is null for a new row.
+- **Cutoff** is the caller's policy, such as the dashboard's 3000. It filters before paging,
+  and `total` counts the rows it keeps. Marks do not depend on it.
 
 ## Serving the commands
 

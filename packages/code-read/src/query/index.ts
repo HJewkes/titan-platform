@@ -10,6 +10,7 @@ export type {
 export { AGENT_COMMANDS, CODE_READ_API_VERSION, COMMAND_NAMES, CONTRACT, serializeContract } from "./contract.js";
 export { HIERARCHY_ROW_CAP } from "./contract-nodes.js";
 export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
+export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
 export {
   Capabilities,
   MetricDescriptor,
@@ -46,6 +47,7 @@ export { getHierarchy } from "./hierarchy.js";
 export { getNode } from "./node-get.js";
 export { resolveNode } from "./resolve.js";
 export { listFindings } from "./findings-list.js";
+export { listHotspots } from "./hotspots.js";
 export { RELATED_CAP, getFinding } from "./finding-get.js";
 export { getNeighbors } from "./neighbors.js";
 export { excessOf } from "./finding-rows.js";
