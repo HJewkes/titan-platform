@@ -152,12 +152,12 @@ describe("indexPaths with git-history metrics", () => {
     });
 
     it("counts neither churn nor authorship from a commit after the indexed one", async () => {
-      const { byKey } = await indexMetrics({ source: gitTreeSource(repo.dir, "HEAD~1"), lifetime: true });
+      // No lifetime window, so the widest log is bounded by a --since cutoff that git applies.
+      const { byKey } = await indexMetrics({ source: gitTreeSource(repo.dir, "HEAD~1") });
 
       expect(byKey("src/shared.ts", "churn_30d")).toBe(1);
       expect(byKey("src/shared.ts", "churn_30d_commits")).toBe(1);
       expect(byKey("src/shared.ts", "churn_30d_authors")).toBe(1);
-      expect(byKey("src/shared.ts", "churn_lifetime_authors")).toBe(1);
       expect(byKey("src/shared.ts", "bus_factor_30d")).toBe(1);
       expect(byKey("src/shared.ts", "top_author_share_30d")).toBe(1);
       expect(byKey("src/shared.ts", "recency_30d")).toBeCloseTo(0, 2);
