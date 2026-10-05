@@ -189,7 +189,8 @@ describe("gitTreeSource where today's disk links over a tracked dir", () => {
   });
 });
 
-// A link chain of CHAIN_LINKS ending at a tracked file; link `n` takes n hops, so 30 resolves and 45 loops.
+// Link chains of CHAIN_LINKS ending at a tracked file; link `n` takes n hops, so 30 resolves and 45 loops.
+// chain/ is committed; loose/ is made on disk after the commit, so only it resolves through the memo.
 const CHAIN_LINKS = 45;
 // The barrel splits t.ts's inbound weight three ways, so its utilization sums thirds in file order.
 const ORDERED: Record<string, string> = {
@@ -223,17 +224,23 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
     repoGit(["init", "-q", "-b", "main"]);
     repoGit(["add", "-A"]);
     repoGit(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "only"]);
+    await fs.mkdir(at("loose"));
+    await fs.symlink("../chain/target.ts", at("loose/1"));
+    for (let n = 2; n <= CHAIN_LINKS; n++) await fs.symlink(String(n - 1), at(`loose/${n}`));
   }, 60_000);
 
   afterAll(async () => {
     await fs.rm(repo, { recursive: true, force: true });
   });
 
-  it("resolves a 30-link chain after a 45-link chain that shares its tail was cut short", () => {
+  it.each([
+    ["tracked", "chain"],
+    ["untracked", "loose"],
+  ])("resolves a 30-link %s chain after a 45-link one that shares its tail was cut short", (_kind, chain) => {
     const host = gitTreeSource(repo, "HEAD").fileSystem;
 
-    expect(host.fileExistsSync(at(`chain/${CHAIN_LINKS}`))).toBe(false);
-    expect(host.fileExistsSync(at("chain/30"))).toBe(true);
+    expect(host.fileExistsSync(at(`${chain}/${CHAIN_LINKS}`))).toBe(false);
+    expect(host.fileExistsSync(at(`${chain}/30`))).toBe(true);
   });
 
   it("resolves '..' in a tracked link target against the dir reached, as a checkout does", () => {
