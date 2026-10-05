@@ -6,6 +6,7 @@ import { z } from "zod";
 import { resolveDbPath } from "../config.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import { errorClass } from "./error-class.js";
 import { isRepoKey } from "./seats.js";
 
 export const CARRY_STEP = "sh-carry";
@@ -41,7 +42,13 @@ const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be 
 export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
-class CarryRefusal extends Error {}
+/** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
+class CarryRefusal extends Error {
+  constructor(readonly command: string, readonly code: number) {
+    super(`git ${command} exited ${code}`);
+    this.name = "CarryRefusal";
+  }
+}
 
 /** Never prompts and never reads a user credential helper; GitHub auth comes from `gh`. */
 const GIT_ENV: Readonly<Record<string, string>> = {
@@ -82,13 +89,13 @@ const firstLine = (text: string): string => text.trim().split("\n")[0] ?? "";
 
 async function must(git: Git, dir: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
   const result = await git(dir, args, signal);
-  if (result.code !== 0) throw new CarryRefusal(`git ${args[0]} exited ${result.code}: ${firstLine(result.stderr)}`);
+  if (result.code !== 0) throw new CarryRefusal(args[0] ?? "", result.code);
   return result.stdout.trim();
 }
 
 async function isAncestor(git: Git, dir: string, ancestor: string, descendant: string, signal?: AbortSignal): Promise<boolean> {
   const result = await git(dir, ["merge-base", "--is-ancestor", ancestor, descendant], signal);
-  if (result.code > 1) throw new CarryRefusal(`git merge-base exited ${result.code}: ${firstLine(result.stderr)}`);
+  if (result.code > 1) throw new CarryRefusal("merge-base", result.code);
   return result.code === 0;
 }
 
@@ -118,7 +125,7 @@ async function compareTrees(git: Git, dir: string, input: CarryInput, base: stri
   if (!(await isAncestor(git, dir, base, remoteBase(input.baseRef), signal))) return { equal: false, base, reason: `second parent ${base} is not on ${input.baseRef}` };
   const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", base, input.fromHead], signal);
   if (merged.code === 1) return { equal: false, base, reason: `${input.fromHead} conflicts with ${base}` };
-  if (merged.code !== 0) throw new CarryRefusal(`git merge-tree exited ${merged.code}: ${firstLine(merged.stderr)}`);
+  if (merged.code !== 0) throw new CarryRefusal("merge-tree", merged.code);
   const mergeTree = firstLine(merged.stdout);
   const headTree = await must(git, dir, ["rev-parse", `${input.head}^{tree}`], signal);
   if (mergeTree === headTree) return { equal: true, base, headTree, mergeTree };
@@ -143,7 +150,8 @@ function serialized<T>(dir: string, task: () => Promise<T>): Promise<T> {
   return next;
 }
 
-const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+/** A fixed-vocabulary reason: the reason is a stored step output that can reach a public PR, so no error text goes into it. */
+const reasonOf = (error: unknown): string => (error instanceof CarryRefusal ? `git ${error.command} exited ${error.code}` : `carry probe failed: ${errorClass(error)}`);
 
 /** Does `head` carry the review of `fromHead`? Every failure, from bad input to a refused fetch, answers not equal with a reason. */
 export async function carry(raw: unknown, options: CarryOptions = {}): Promise<CarryResult> {

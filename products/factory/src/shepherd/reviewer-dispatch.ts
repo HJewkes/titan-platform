@@ -5,6 +5,7 @@ import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-des
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { toPresence } from "./presence.js";
 import { ReviewerMachineHold } from "./review-wait.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -51,10 +52,15 @@ export function resolveCheckout(repo: string, configured: string | undefined, ho
   return { dir };
 }
 
+/** Named so a step reason, which carries only an error's class, still says the checkout was the problem; the message holds a local path. */
+class ReviewCheckoutUnusable extends Error {
+  override readonly name = "ReviewCheckoutUnusable";
+}
+
 /** Throws unless the repo has an absolute checkout path that is a directory, so a reviewer never starts in the factory's own cwd. */
 function checkoutDir(repo: string, cwdFor: AgentChatReviewerDispatchOptions["cwdFor"]): string {
   const resolved = resolveCheckout(repo, cwdFor(repo));
-  if ("problem" in resolved) throw new Error(resolved.problem);
+  if ("problem" in resolved) throw new ReviewCheckoutUnusable(resolved.problem);
   return resolved.dir;
 }
 
@@ -108,7 +114,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     name: row.name,
     agentId: row.agentId,
     sessionId: row.sessionId,
-    presence: row.presence,
+    presence: toPresence(row.presence),
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
     transcriptPath,
     transcriptExists: row.transcriptExists === true,

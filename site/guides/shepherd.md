@@ -46,13 +46,14 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
-A repeat without `--kind` keeps the stored kind, so it cannot drop a `correctness` or
-`security` run out of the fix-proof gate. An explicit `--kind` replaces the stored kind,
-unless it would move a `correctness` run to a kind that skips the fix-proof gate (`feature`,
-`refactor` or `unknown`), or a `security` run to any other kind: a security run keeps its
-fix-proof gate and its fresh reviewer, which `correctness`, `feature` and `refactor` would
-loosen. That repeat is refused with exit 65 and a reason naming both kinds. Moving
-`correctness` to `security`, or a kind that skips the gate to one that needs it, still applies.
+A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
+these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
+a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
+does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
+replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
+`unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
+reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
+`unknown` to any kind, still applies.
 
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it
@@ -82,7 +83,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | --- | --- |
 | `awaiting-pr` | polling every 30 seconds for a pull request on the registered branch, with no timeout |
 | `ci` | reading branch rules, waiting for required checks, updating a branch that is behind, or rerunning a cancelled run |
-| `fixing` | waiting for a new head after a human chose to await a fix |
+| `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
 | `merging` | merging the approved head; a held pull request, or one waiting for the [merge train](#merge-train), waits here |
@@ -213,10 +214,19 @@ every head it sees. After the first, every review is a re-review: its brief requ
 section that starts `Defect class:`, which names the defect class that recurs across the
 rounds and the one boundary where a single fix covers every instance. From the second
 `FIX_FIRST` on, the fixer gets a structural brief instead of another patch round. The brief
-carries the reviewer's defect-class section and the whole findings verbatim, so every
-blocking item reaches the fixer. A re-reviewer that leaves the section out still gives a
-valid verdict. The fixer is then asked to name the class itself before fixing. The brief is
-built from the verdict alone, and nothing can trim it before the wake.
+carries the reviewer's defect-class section and the findings as the verdict step stored
+them. A re-reviewer that leaves the section out still gives a valid verdict. The fixer is
+then asked to name the class itself before fixing.
+
+The verdict step keeps at most `MAX_FIX_FIRST_TEXT_CHARS` (16,000) characters of a
+`FIX_FIRST` message (`products/factory/src/shepherd/await-verdict.ts`). The cap covers every
+path a `FIX_FIRST` arrives by: the reviewer Shepherd dispatched, the reviewer a
+`hold --reviewer` names, and a seat reviewer. A seat reviewer's message counts its
+`Seat reviewer <name> said FIX_FIRST at this head.` prefix toward the cap. A longer message
+keeps its start, since the findings come first, and ends in a `[truncated]` marker. A
+blocking item past the cap does not reach the fixer. Every review wake also appends the pull
+request's unresolved review comments from owners, members and collaborators, at most 1,000
+characters each and 6,000 in all.
 
 A woken implementer must start a turn within 5 minutes: a new event in its transcript, or a
 new head. A live implementer is messaged through `agent-chat debug send`, which delivers the
@@ -250,8 +260,25 @@ owner/repo feat/example awaiting-pr - waiting for a PR on the registered branch
 ```
 
 Each line is the target, the phase, the short head, the next action, and any blockers in
-brackets: `held: <reason>` or `stalled: <reason>`. Only a failed or parked run reads as
-stalled; there are no per-phase time limits yet. With nothing registered the verbs print
+brackets: `held: <reason>` or `stalled: <reason>`. A row reads as stalled for one of three
+causes, checked in this order (`products/factory/src/shepherd/view.ts`):
+
+1. The run is `failed` or `recovery_required`. The reason is the run's error, or its status
+   when it recorded none.
+2. `MAX_NOT_STARTED_REVIEWS` (3) review dispatches in a row started no reviewer, because the
+   broker kept refusing. The reason reads `3 review dispatches in a row started no reviewer`.
+3. The run has sat in one phase past its `PHASE_STALL_LIMIT_MS` limit. The reason reads, for
+   example, `75 min in ci, over the 60 min limit`.
+
+| Phase | Stall limit |
+| --- | --- |
+| `ci` | 60 minutes |
+| `fixing` | 240 minutes |
+| `review` | 120 minutes |
+| `merging` | 15 minutes |
+
+The clock starts when the run entered the phase. The other phases wait on a person or an
+agent by design and have no limit. With nothing registered the verbs print
 `no shepherded PRs`. `timeline` prints the same row and then every step, CI read and gate
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
@@ -419,7 +446,7 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 
 | Gate | Opens when | Payload |
 | --- | --- | --- |
-| `approve-merge` | one of the [three reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
+| `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | the branch is still behind after three updates | `{"decision":"retry"\|"abandon"}` |
 | `sh-sent-back` | a review sent the head back and no agent took the wake | `{"decision":"await-new-head"\|"abandon"}` |
@@ -468,20 +495,22 @@ produced the locator keeps that key order, so a re-serialized copy may not match
 ## What is not built yet
 
 The land core, the hold, the policy resolution, the gates, the post-merge main CI read and
-the freeze all run today, and so does the review phase when it is configured. These parts are not built:
+the freeze all run today, and so does the review phase when it is configured.
 
-- **The review phase is opt-in.** With `shepherd.review` set (see the
-  [config file](/guides/factory#the-config-file)), `reviewPhase` in
-  `products/factory/src/shepherd/review.ts` dispatches a reviewer through agent-chat in the
-  checkout the seat book binds to the repo, and reads its verdict from that agent's
-  transcript. A verdict then reaches the `MRG-AU-RV` decision, and the `sh-merge-evidence`
-  step posts the evidence comment. With no `review` key, no checkout for the repo, or a
-  refused dispatch, the phase records `none` with the reason, and the
-  [route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
+The review phase is opt-in. With `shepherd.review` set (see the
+[config file](/guides/factory#the-config-file)), `reviewPhase` in
+`products/factory/src/shepherd/review.ts` dispatches a reviewer through agent-chat in the
+checkout the seat book binds to the repo, and reads its verdict from that agent's
+transcript. A verdict then reaches the `MRG-AU-RV` decision, and the `sh-merge-evidence`
+step posts the evidence comment. With no `review` key, no checkout for the repo, or a
+refused dispatch, the phase records `none` with the reason, and the
+[route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
+
+These limits remain:
+
 - **The freeze exemption is not a security boundary.** `register` accepts any
   `--implementer` string, and the fixer's name is printed in the gate prompt. The exemption
   stops honest mistakes, not a determined caller.
-- **Stall limits.** A run that waits a long time in one phase is not flagged.
 
 ## How it fails
 
@@ -495,4 +524,6 @@ the freeze all run today, and so does the review phase when it is configured. Th
 | `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge` or `timeline` on an unknown pull request |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference |
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
-| a row with `[stalled: …]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |
+| a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |
+| a row with `[stalled: 3 review dispatches in a row started no reviewer]` | the run is live, but the agent-chat broker keeps refusing to start a reviewer; check the broker, and `timeline` shows each refused `sh-review` |
+| a row with `[stalled: <n> min in <phase>, over the <limit> min limit]` | the run is live but slow; `timeline` shows the step it waits on, for example a CI run that never finishes or an implementer that pushes no new head |

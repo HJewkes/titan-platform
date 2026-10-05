@@ -27,7 +27,9 @@ import {
 } from "./exec.js";
 
 /** The CLI did not answer in time, so a retire may already have happened. */
-export class DispatchTimeoutError extends DispatchError {}
+export class DispatchTimeoutError extends DispatchError {
+  override readonly name: string = "DispatchTimeoutError";
+}
 
 /** One `agent ls --json` row, as agent-chat's `lsJsonRow` writes it. */
 export interface AgentRow {

@@ -159,13 +159,29 @@ describe("seatFixFirst", () => {
   it("blocks the head with the failure named when the roster cannot be read", async () => {
     const roster = async () => Promise.reject(new Error("broker down"));
 
-    expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: broker down" });
+    expect(await seatFixFirst(roster, readerOf([]), target)).toEqual({ kind: "none", reason: "seat check: the roster could not be read: Error" });
   });
 
   it("blocks the head with the reviewer named when a seat reviewer's transcript cannot be read", async () => {
     const reader: ReviewerReader = { read: async () => Promise.reject(new Error("EACCES: permission denied")) };
 
-    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: EACCES: permission denied` });
+    expect(await seatFixFirst(rosterOf(SEAT), reader, target)).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
+  });
+
+  it("keeps neither a URL nor a token from a failed roster or transcript read in the reason", async () => {
+    const leaky = new Error("https://db.example.invalid/x tok_FAKE0000SECRET");
+    const roster = async () => Promise.reject(Object.assign(leaky, { status: 503 }));
+    const reader: ReviewerReader = { read: async () => Promise.reject(new Error(leaky.message)) };
+
+    const unreadRoster = await seatFixFirst(roster, readerOf([]), target);
+    const unreadTranscript = await seatFixFirst(rosterOf(SEAT), reader, target);
+
+    expect(unreadRoster).toEqual({ kind: "none", reason: "seat check: the roster could not be read: HTTP 503" });
+    expect(unreadTranscript).toEqual({ kind: "none", reason: `seat check: the transcript of ${SEAT.name} could not be read: Error` });
+    for (const text of [JSON.stringify(unreadRoster), JSON.stringify(unreadTranscript)]) {
+      expect(text).not.toContain("db.example.invalid");
+      expect(text).not.toContain("tok_FAKE0000SECRET");
+    }
   });
 
   it("prefers another seat reviewer's FIX_FIRST over a transcript that cannot be read", async () => {
@@ -196,7 +212,7 @@ describe("seatFixFirst", () => {
 
       expect(await unlessSeatFixFirst(rosterOf(damaged), damagedReader(reviewing(4)), target, shepherdMerge, warn)).toEqual({
         kind: "none",
-        reason: `seat check: the transcript of ${damaged.name} could not be read: the exited session ends in a partial record`,
+        reason: `seat check: the transcript of ${damaged.name} could not be read: DamagedTranscriptError`,
       });
       expect(warn).not.toHaveBeenCalled();
     });
@@ -268,7 +284,7 @@ describe("seatFixFirst", () => {
   });
 
   it("does not block on a running seat reviewer whose transcript has nothing to read yet", async () => {
-    const running = { ...agent("seat-e-2-review"), presence: "live" };
+    const running = { ...agent("seat-e-2-review"), presence: "live" as const };
 
     expect(await seatFixFirst(rosterOf(running), readerOf([]), target)).toEqual({ kind: "clear" });
   });
