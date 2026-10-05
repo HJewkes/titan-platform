@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
+import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -32,12 +33,13 @@ export interface CiInput {
   strict: boolean;
 }
 
-export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapshot> {
-  const pr = await port.getPr(input.repo, input.pr);
+/** `reads` answers the PR and its check runs; every other read, and every write, goes to the port. */
+export async function readCi(port: GitHubPort, input: CiInput, reads: PrReads = portReads(port)): Promise<CiSnapshot> {
+  const pr = await reads.getPr(input.repo, input.pr);
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
-  const runs = await port.checkRuns(input.repo, pr.headSha);
+  const runs = await reads.checkRuns(input.repo, pr.headSha, input.contexts);
   const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind", ...(findings.length === 0 && !pr.draft && { checksGreen: true }) };
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
