@@ -44,6 +44,9 @@ describe("a command word a case attribute may have changed (TP-1531)", () => {
     ["-l through a copy", "declare -l G; G=GIT; H=$G; $H push origin HEAD:main"],
     ["-l on a wrapper", "declare -l S; S=SUDO; $S git push origin HEAD:main"],
     ["-l on a wrapper and the command", "declare -l S G; S=SUDO; G=GIT; $S $G push origin HEAD:main"],
+    ["-l under find -exec", "declare -l G; G=GIT; find . -exec $G push origin HEAD:main \\;"],
+    ["-l on a wrapper under find -exec", "declare -l S; S=SUDO; find . -exec $S git push origin HEAD:main \\;"],
+    ["-l after a wrapper under find -exec", "declare -l G; G=GIT; find . -exec sudo $G push origin HEAD:main \\;"],
   ])("reads the name folded with %s", (_, command) => {
     expect(verdicts(command)).toEqual([PROTECTED_MAIN]);
   });

@@ -2,7 +2,7 @@ import { ParseError, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { findExecs, unwrap, type Unwrapped, type XargsBatch } from "./unwrap.js";
+import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
@@ -187,10 +187,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
-  for (const words of findExecs(cmd.args)) {
-    const exec = unwrap(words);
-    if (exec) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
-  }
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
 }
 
 /** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
