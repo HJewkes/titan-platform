@@ -139,7 +139,7 @@ describe("review wake brief: the PR's review comments", () => {
     const pr = fake.addPr({ headSha: H1 });
     const port = { ...githubPort(fake.wire), latestCheckRuns: async () => [successRun("validate", 1, undefined, "failure")], jobLogTail: async () => Promise.reject(new Error(LEAKY_MESSAGE)) };
 
-    const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1 }, pr);
+    const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
 
     expect(wake.payload).toContain("(log unavailable: Error)");
     expectNoLeak(wake);
