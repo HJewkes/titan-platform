@@ -3,16 +3,17 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { LocatorSchema, MergeEvidenceSchema } from "./review-schemas.js";
+import type { Presence } from "./presence.js";
+import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
-import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -55,8 +56,7 @@ export interface ReviewerAgent {
   agentId: string;
   /** Empty until the agent's session has started. */
   sessionId: string;
-  /** `live`, `detached` or `exited`. */
-  presence: string;
+  presence: Presence;
   spawnedBy: string | null;
   /** The agent this one took over from, null for none; absent means the port holds no lineage, and such an agent is never resumed. */
   predecessor?: string | null;
@@ -226,15 +226,9 @@ const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentI
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
-async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
-  const clock = deadline(timing);
-  for (;;) {
-    const found = (await dispatch.roster().catch(() => [])).filter(holds(intent));
-    if (found.length > 1) return undefined;
-    if (found[0] && found[0].sessionId !== "") return found[0];
-    if (clock.expired()) return undefined;
-    await clock.sleep(timing.pollMs, signal);
-  }
+function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined): NoReview {
+  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
+  return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
 export interface ReviewWiring {
@@ -293,8 +287,8 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     const refused = await startReviewer(dispatch, intent, target, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
-  const started = await startedReviewer(dispatch, intent, timing, signal);
-  if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
+  const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
+  if (!started) return notStartedInTime(intent, rosterError);
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
@@ -333,12 +327,10 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
 }
 
-const MergeEvidenceResult = z.looseObject({ head: z.string(), merge: z.looseObject({}), record: z.looseObject({}) });
-
 /** A MERGE verdict at one head, carrying the facts and record collected there once; a replay reuses the step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId };
-  const evidence = (await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceResult)) as unknown as MergeEvidence;
+  const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
   return { kind: "MERGE", headSha: input.head, evidence };
 }
 
@@ -349,7 +341,7 @@ const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("none") }),
 ]);
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: z.looseObject({}), reviewer: Identity, text: z.string().optional() }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 
@@ -386,6 +378,6 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const awaited = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
-  const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
+  const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
 }

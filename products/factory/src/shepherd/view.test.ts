@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { stepPhase, timelineEntries, watchRow } from "./view.js";
+import { TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -157,5 +157,78 @@ describe("shepherd view stalls", () => {
       expect(() => stepPhase("sh-brand-new:abc1234")).not.toThrow();
       expect(stepPhase("sh-brand-new:abc1234")).toBe("ci");
     });
+  });
+});
+
+describe("shepherd timeline verdict and wake entries", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const reviewer = { agentId: "rev-1", sessionId: "s-1" };
+  const locator = { source: { path: "sessions/rev.jsonl" }, evidence: { line: { byteOffset: 100, byteLength: 20 } }, selector: { kind: "subrecord-text", path: [] } };
+
+  function withResults(results: readonly { stepId: string; iteration?: number; at: string; result: unknown }[]): WorkflowRun {
+    const run = pausedAt("sh-await-verdict");
+    for (const { stepId, iteration = 0, at, result } of results) {
+      run.stepResults[`${stepId}#${iteration}`] = { stepId, iteration, agentId: null, signal: null, completedAt: at, data: { result } };
+    }
+    return run;
+  }
+
+  it("gives one verdict entry per sh-await-verdict result, in time order with each head", () => {
+    const run = withResults([
+      { stepId: `sh-await-verdict:${H2}`, at: "2026-01-01T00:03:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H2, locator, reviewer } },
+      { stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "FIX_FIRST", head: H1, locator, reviewer, text: "fix" } },
+      { stepId: `sh-await-verdict:${H1}`, iteration: 1, at: "2026-01-01T00:02:00.000Z", result: { kind: "verdict", verdict: "FIX_FIRST", head: H1, locator, reviewer, text: "fix" } },
+    ]);
+
+    const entries = timelineEntries(run, []);
+
+    expect(entries.map((entry) => entry.kind === "verdict" && [entry.verdict, entry.headSha])).toEqual([
+      ["FIX_FIRST", H1],
+      ["FIX_FIRST", H1],
+      ["MERGE", H2],
+    ]);
+    expect(entries[2]).toEqual({ kind: "verdict", stepId: `sh-await-verdict:${H2}`, verdict: "MERGE", headSha: H2, locator: { path: "sessions/rev.jsonl", start: 100, end: 120 }, reviewer: "rev-1" });
+  });
+
+  it("maps a wait that ended without a verdict to verdict none with no head", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "none", reason: "wait" } }]);
+
+    expect(timelineEntries(run, [])).toEqual([{ kind: "verdict", stepId: `sh-await-verdict:${H1}`, verdict: "none", headSha: null, locator: null, reviewer: null }]);
+  });
+
+  it("leaves the locator null when the verdict's locator lacks a transcript span", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator: {}, reviewer } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "verdict", locator: null, reviewer: "rev-1" })]);
+  });
+
+  it("keeps an unparseable sh-await-verdict result as a plain step entry", () => {
+    const run = withResults([{ stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MAYBE" } }]);
+
+    expect(timelineEntries(run, [])).toEqual([expect.objectContaining({ kind: "step", stepId: `sh-await-verdict:${H1}` })]);
+  });
+
+  it("gives a wake entry for an implementer wake and for a FIX_FIRST wake record", () => {
+    const run = withResults([
+      { stepId: "sh-wake-fix-first", at: "2026-01-01T00:01:00.000Z", result: { repo: "acme/widgets", pr: 1, headSha: H1, fixFirst: 1 } },
+      { stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "woken", agent: "impl-1", mode: "resume", sessionId: "s-9" } },
+      { stepId: "sh-wake-implementer:1", at: "2026-01-01T00:03:00.000Z", result: { kind: "unhandled", reason: "seat grants no fixer" } },
+    ]);
+
+    expect(timelineEntries(run, [])).toEqual([
+      { kind: "wake", stepId: "sh-wake-fix-first", request: "review", outcome: null, agent: null, mode: null, sessionId: null },
+      { kind: "wake", stepId: "sh-wake-implementer:0", request: null, outcome: "woken", agent: "impl-1", mode: "resume", sessionId: "s-9" },
+      { kind: "wake", stepId: "sh-wake-implementer:1", request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null },
+    ]);
+  });
+
+  it("emits entries that the timeline schema accepts", () => {
+    const run = withResults([
+      { stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer } },
+      { stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "woken", agent: "impl-1", mode: "live", sessionId: "s-9" } },
+    ]);
+
+    for (const entry of timelineEntries(run, [])) expect(TimelineEntrySchema.parse(entry)).toEqual(entry);
   });
 });

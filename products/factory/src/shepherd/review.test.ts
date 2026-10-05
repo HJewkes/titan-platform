@@ -42,6 +42,7 @@ import {
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import type { Presence } from "./presence.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -244,7 +245,7 @@ describe("awaitVerdict", () => {
 
   const timing = (clock: ReturnType<typeof clockAt>) => ({ ...clock, pollMs: 100, timeoutMs: 10_000, exitGraceMs: 300, detachGraceMs: 1_000 });
   /** The reviewer's roster row, whose presence `presenceAt` gives by the clock; `down` means the broker cannot be reached. */
-  const rosterBy = (clock: ReturnType<typeof clockAt>, presenceAt: (now: number) => string | "absent" | "down") => async () => {
+  const rosterBy = (clock: ReturnType<typeof clockAt>, presenceAt: (now: number) => Presence | "absent" | "down") => async () => {
     const presence = presenceAt(clock.now());
     if (presence === "down") throw new ReviewerBrokerDown("broker restarting");
     return presence === "absent" ? [] : [agent("rv", { agentId: "reviewer-1", sessionId: "session-1", presence })];
@@ -624,6 +625,27 @@ describe("sh-review", () => {
     expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7", at: START });
     expect(dispatch.spawns).toHaveLength(1);
     expect(steps.clock.sleeps).toBe(2);
+  });
+
+  it("names the last roster error when the started reviewer is never seen because every later roster read failed", async () => {
+    const dispatch = fakeDispatch();
+    const roster = dispatch.roster;
+    let reads = 0;
+    dispatch.roster = async () => (reads++ === 0 ? roster() : Promise.reject(new Error(`roster read ${reads} failed`)));
+    const steps = reviewSteps(dispatch);
+
+    const { result } = await steps.review(spawnIntent);
+
+    expect(dispatch.spawns).toHaveLength(1);
+    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: roster read ${reads} failed` });
+  });
+
+  it("says only that the reviewer did not start in time when every roster read succeeded", async () => {
+    const dispatch = fakeDispatch([], { onSpawn: () => undefined });
+
+    const { result } = await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(result).toEqual({ kind: "none", reason: "reviewer rv-octo-demo-7 did not start one session in time" });
   });
 
   it("sh-review answers none and starts nobody when it is given an intent and no dispatch is wired", async () => {

@@ -268,7 +268,7 @@ describe("seatFixFirst", () => {
   });
 
   it("does not block on a running seat reviewer whose transcript has nothing to read yet", async () => {
-    const running = { ...agent("seat-e-2-review"), presence: "live" };
+    const running = { ...agent("seat-e-2-review"), presence: "live" as const };
 
     expect(await seatFixFirst(rosterOf(running), readerOf([]), target)).toEqual({ kind: "clear" });
   });

@@ -3,6 +3,10 @@ import { createRequire } from "node:module";
 declare const __FACTORY_BUILD_SHA__: string | undefined;
 
 export const UNKNOWN_BUILD_SHA = "unknown";
+/** tsup.config.ts appends this to the baked sha when the checkout had uncommitted changes. */
+export const DIRTY_SUFFIX = "-dirty";
+/** What a /health probe field reads before its first gh call lands. */
+export const PROBE_PENDING = "checking";
 
 /** The git sha tsup baked in; `unknown` when the define is absent (vitest, unbuilt source) or empty. */
 export function buildSha(): string {

@@ -1,6 +1,7 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { Presence } from "./presence.js";
 import { namesTarget } from "./verdict-target.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
@@ -72,7 +73,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
 }
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
-type Roster = () => Promise<readonly { agentId: string; presence: string }[]>;
+type Roster = () => Promise<readonly { agentId: string; presence: Presence }[]>;
 
 /**
  * Time spent since the reviewer's session was up, or since the intent for a run recorded before that was stamped. The intent
@@ -86,14 +87,14 @@ const sinceStart = (timing: AwaitVerdictTiming, input: AwaitVerdictInput): numbe
  * a broker restart detaches everyone, so its grace runs from first sight.
  */
 function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
-  let gone: { presence: string; since: number } | undefined;
+  let gone: { presence: Presence; since: number } | undefined;
   let firstRead = true;
   return async (input) => {
     const rows = await roster().catch(() => undefined);
     if (!rows) return false;
     const atStart = firstRead;
     firstRead = false;
-    const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
+    const presence: Presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
     if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
     const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
     if (atStart && presence !== "detached" && sinceStart(timing, input) >= grace) return true;
