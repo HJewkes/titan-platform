@@ -2,6 +2,7 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
+import { commandWrites, compoundWrites, noteCompounds } from "./writers.js";
 
 /**
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
@@ -113,7 +114,7 @@ export function noteSureCommands(tokens: Token[]): Token[] {
     else if (token.type === "op") i = structureOp(tokens, i, s);
   }
   endCommand(s, null);
-  return tokens;
+  return noteCompounds(tokens);
 }
 
 function structureWord(tokens: Token[], i: number, s: Structure): number {
@@ -245,7 +246,7 @@ function restore(vars: Vars, name: string, value: string | null): void {
 }
 
 /**
- * Applies the effect a command has on shell variables: declarations and `printf -v` set them, `read` and
+ * Applies the effect a command has on shell variables: declarations, `printf -v` and `let` set them, `read` and
  * friends make them unknowable, and so does an element write before it, which bash may keep once it ends.
  */
 export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars): void {
@@ -253,7 +254,18 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  for (const target of clobberedNames(name, args)) write(vars, target, null);
+  writeEach(vars, commandWrites(name, args));
+}
+
+/** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
+export function trackCompound(op: Token, vars: Vars): void {
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name))));
+}
+
+/** A null list means the command may write any variable. */
+function writeEach(vars: Vars, writes: Assignment[] | null): void {
+  if (!writes) return forgetAll(vars);
+  for (const [target, value] of writes) write(vars, target, value);
 }
 
 /**
@@ -322,15 +334,6 @@ interface TrackedCommand {
   name: string | null;
   args: WordToken[];
   assigned: Assignment[];
-}
-
-/** Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of reach. */
-function clobberedNames(name: string, args: WordToken[]): string[] {
-  const values = args.map((a) => a.value);
-  if (name === "read" || name === "unset") return values.flatMap((v) => TARGET_RE.exec(v)?.[1] ?? []);
-  if (name === "for" && values[0] !== undefined && IDENTIFIER_RE.test(values[0])) return [values[0]];
-  if (name === "mapfile" || name === "readarray") return ["MAPFILE", ...values.filter((v) => IDENTIFIER_RE.test(v))];
-  return [];
 }
 
 /** `printf -v NAME` or `printf -vNAME` stores the text it would print; only a first word is an option, so `printf -- -vX` sets nothing. */

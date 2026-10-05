@@ -411,3 +411,71 @@ describe("a value a case attribute may have changed, read as written and marked 
     expect(spellings(command)).not.toContain("bash.merge.git-push-protected");
   });
 });
+
+describe("select, getopts, let and (( )), which write without an assignment (TP-1515)", () => {
+  it.each([
+    ["select", "Y=status; select Y in push; do git $Y origin HEAD:main; done"],
+    ["getopts NAME", "Y=status; getopts ab Y; git $Y origin HEAD:main"],
+    ["getopts OPTARG", "OPTARG=status; getopts a: Y; git $OPTARG origin HEAD:main"],
+    ["getopts OPTIND", "OPTIND=status; getopts a Y; git $OPTIND origin HEAD:main"],
+    ["a let with a run-time expression", "Y=status; let \"$E\"; git $Y origin HEAD:main"],
+    ["a let that expands a name itself", "Y=status; let '$N=1'; git $Y origin HEAD:main"],
+    ["a (( )) with a run-time expression", "Y=status; (( $E )); git $Y origin HEAD:main"],
+  ])("leaves the variable unknown after %s, so the push stays protected", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it.each([
+    ["a let of a sum", "Y=status; let Y=1+2; git $Y"],
+    ["a let with spaces", "Y=status; let 'Y = 1'; git $Y"],
+    ["a let +=", "Y=status; let Y+=1; git $Y"],
+    ["a let ++", "Y=status; let Y++; git $Y"],
+    ["a let of an octal literal", "Y=status; let Y=010; git $Y"],
+    ["a let second expression", "Y=status; let Z=1 Y--; git $Y"],
+    ["a (( )) assignment", "Y=status; (( Y=1 )); git $Y"],
+    ["a spaced (( )) assignment", "Y=status; (( Y = 1 )); git $Y"],
+    ["a (( )) ++", "Y=status; ((Y++)); git $Y"],
+    ["a (( )) pre-decrement", "Y=status; (( --Y )); git $Y"],
+    ["a (( )) *=", "Y=status; (( Y *= 2 )); git $Y"],
+    ["a (( )) >>=", "Y=status; (( Y>>=1 )); git $Y"],
+    ["a (( )) element write", "Y=status; (( Y[1]=2 )); git $Y"],
+    ["a (( )) after a comma", "Y=status; (( Z=1, Y=2 )); git $Y"],
+    ["a (( )) in parentheses", "Y=status; (( (Y=2) + 1 )); git $Y"],
+    ["a (( )) whose known reference names it", "N=Y; Y=status; (( $N=1 )); git $Y"],
+    ["an arithmetic for", "Y=status; for ((Y=0; Y<1; Y++)); do :; done; git $Y"],
+  ])("leaves the variable unknown after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  it.each([
+    ["a let of a literal integer", "Y=status; let Y=1; git $Y", "1"],
+    ["a let of zero", "Y=status; let Y=0; git $Y", "0"],
+    ["a let of a quoted literal integer", "Y=status; let 'Y=42'; git $Y", "42"],
+    ["a later let of a literal integer", "Y=status; let Y++ Y=3; git $Y", "3"],
+  ])("reads the exact integer after %s", (_, command, value) => {
+    expect(gitArgs(command)).toEqual([[value]]);
+  });
+
+  it.each([
+    ["select", "readonly Y=push; select Y in status; do git $Y origin HEAD:main; done"],
+    ["getopts", "readonly Y=push; getopts ab Y; git $Y origin HEAD:main"],
+    ["getopts OPTARG", "readonly OPTARG=push; getopts a: Y; git $OPTARG origin HEAD:main"],
+    ["let", "readonly Y=push; let Y=1; git $Y origin HEAD:main"],
+    ["(( ))", "readonly Y=push; (( Y=1 )); git $Y origin HEAD:main"],
+  ])("keeps a surely readonly variable's old value after %s", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "main" }]);
+  });
+
+  it.each([
+    ["select", "Y=status; select Z in push; do git $Y; done"],
+    ["getopts", "Y=status; getopts ab Z; git $Y"],
+    ["let", "Y=status; let Z=1 Z++; git $Y"],
+    ["a let comparison", "Y=status; let 'Y == 1'; git $Y"],
+    ["(( ))", "Y=status; (( Z=Y+1 )); git $Y"],
+    ["a (( )) comparison", "Y=status; (( Y <= 1 || Y != 2 )); git $Y"],
+    ["a nested subshell", "Y=status; ( (Z=1); true ); git $Y"],
+    ["a hex literal", "Y=status; (( Z = 0xY1 )); git $Y"],
+  ])("keeps a variable %s does not write", (_, command) => {
+    expect(gitArgs(command)).toEqual([["status"]]);
+  });
+});
