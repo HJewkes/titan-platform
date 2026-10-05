@@ -34,12 +34,18 @@ export function isDynamicOption(w: WordToken): boolean {
  * them: one budget for the chain, since a reading is parsed again and would otherwise expand the next stage once more.
  */
 function chainDynamics(words: WordToken[], start: number, spec: OptionSpec, walk: Walk): number[] {
+  return walkChain(words, start, spec, walk).found;
+}
+
+/** The chain's dynamic option words, and the index where its last stage ends: its command. */
+function walkChain(words: WordToken[], start: number, spec: OptionSpec, walk: Walk): { found: number[]; command: number } {
   const found: number[] = [];
+  let command = start;
   for (let stage = { start, spec } as { start: number; spec: OptionSpec } | null; stage; ) {
-    const end = walk.skip(words, stage.start, stage.spec, found);
-    stage = end < 0 ? null : walk.next(words, end);
+    command = walk.skip(words, stage.start, stage.spec, found);
+    stage = command < 0 ? null : walk.next(words, command);
   }
-  return found;
+  return { found, command };
 }
 
 function leadingDashes(value: string): number {
@@ -73,6 +79,12 @@ function quoteWord(w: WordToken): string {
 /** Word lists one command may expand to before it falls back to the one-pass reading. */
 const MAX_READINGS = 256;
 
+/** What `expand` spends and keeps: lists left to make, and every dynamic word seen in an option position. */
+interface Budget {
+  left: number;
+  seen: Set<WordToken>;
+}
+
 function literalWord(value: string): WordToken {
   return { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
 }
@@ -81,12 +93,16 @@ function literalWord(value: string): WordToken {
  * Every way the first dynamic option word of the wrapper chain could expand, resolved to word lists with no dynamic
  * option word left: the word gone, the word and the next word gone (an option and its value), or the word a literal
  * positional; for `xargs`, an `-I`. Every level is expanded here, over word lists, so a reading that is parsed again
- * meets no dynamic option word and starts no expansion of its own. Null once the lists pass `budget`.
+ * meets no dynamic option word and starts no expansion of its own. Null once the lists pass `budget`. A list whose command is
+ * a word seen in an option position is dropped by the caller: it is that word shifted into command place by a dropped
+ * value, a command that could not run, and a dynamic command word fails closed on its own.
  */
-function expand(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, xargs: boolean, budget: { left: number }): WordToken[][] | null {
-  const d = chainDynamics(words, start, spec, walk)[0];
+function expand(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, xargs: boolean, budget: Budget): WordToken[][] | null {
+  const found = chainDynamics(words, start, spec, walk);
+  const d = found[0];
   if (d === undefined) return [words];
   if (--budget.left < 0) return null;
+  for (const i of found) budget.seen.add(words[i] as WordToken);
   const head = words.slice(0, d);
   const variants = [[...head, ...words.slice(d + 1)], [...head, ...words.slice(d + 2)]];
   if (!(words[d] as WordToken).value.startsWith("-")) variants.push([...head, literalWord("0"), ...words.slice(d + 1)]);
@@ -117,9 +133,11 @@ export function dynamicOptionReadings(words: WordToken[], at: number, start: num
   if (xargs && !(words[d] as WordToken).value.startsWith("-")) return null;
   const found = chainDynamics(words, start, spec, walk);
   if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found);
-  const lists = expand(words.slice(at), start - at, spec, walk, xargs, { left: MAX_READINGS });
-  if (lists === null) return wholeChain(words.slice(at), start - at, spec, walk);
-  return [...new Set(lists.map((list) => list.map(quoteWord).join(" ")))].join("\n");
+  const budget = { left: MAX_READINGS, seen: new Set<WordToken>() };
+  const lists = expand(words.slice(at), start - at, spec, walk, xargs, budget);
+  const kept = (lists ?? []).filter((list) => !budget.seen.has(list[walkChain(list, start - at, spec, walk).command] as WordToken));
+  if (lists === null || kept.length === 0) return wholeChain(words.slice(at), start - at, spec, walk);
+  return [...new Set(kept.map((list) => list.map(quoteWord).join(" ")))].join("\n");
 }
 
 /** What follows a dynamic option word when it is dropped: nothing, the next word, or the next word if it is an option. */
