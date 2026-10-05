@@ -115,3 +115,24 @@ describe("review comments over the fake", () => {
     await expect(port.listReviewComments(REPO, 0)).rejects.toThrow();
   });
 });
+
+describe("conditional open-PR list over the fake", () => {
+  it("answers 304 while the rows are unchanged, counts it, and ignores mergeable state as GitHub's list does", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, mergeableState: "clean" });
+    const port = githubPort(fake.wire);
+
+    const first = await port.revalidateOpenPrs(REPO, null);
+    const etag = first.notModified ? null : first.etag;
+    fake.pr(pr.number).mergeableState = "blocked";
+    const unchanged = await port.revalidateOpenPrs(REPO, etag);
+    fake.pushHead(pr.number, H2);
+    const moved = await port.revalidateOpenPrs(REPO, etag);
+
+    expect(first).toMatchObject({ notModified: false, prs: [{ headSha: H1, mergeableState: "unknown", behind: false }] });
+    expect(unchanged).toEqual({ notModified: true });
+    expect(moved).toMatchObject({ notModified: false, prs: [{ headSha: H2 }] });
+    expect(fake.calls.filter((call) => call === "revalidateOpenPrs")).toHaveLength(3);
+    expect(fake.notModified).toBe(1);
+  });
+});
