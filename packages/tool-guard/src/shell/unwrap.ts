@@ -31,8 +31,6 @@ const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "whi
 const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "select", "[[", "(("]);
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
-const XARGS_OPTIONAL = ["e", "i", "l"];
-
 const WRAPPERS: Record<string, WrapperSpec> = {
   env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
   command: { stop: ["-v", "-V"] },
@@ -45,8 +43,7 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   timeout: { values: [...SHORT_VALUES.timeout, "--signal", "--kill-after"], positionals: 1 },
   // `--eof`, `--max-lines` and `--replace` take their value only after `=`, so they stay out.
   xargs: {
-    optional: XARGS_OPTIONAL,
-    digits: true,
+    optional: ["e", "i", "l"], digits: true,
     values: [...SHORT_VALUES.xargs, "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
   },
   stdbuf: { values: [...SHORT_VALUES.stdbuf, "--input", "--output", "--error"] },
@@ -203,7 +200,7 @@ function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch 
     const rest = v.slice(k + 1);
     if (c === "l") return { unit: "lines", size: rest ? batchSize(word, rest) : 1 };
     if (c === "L" || c === "n") return { unit: c === "L" ? "lines" : "args", size: rest ? batchSize(word, rest) : batchSize(next) };
-    if (XARGS_OPTIONAL.includes(c) || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
+    if (WRAPPERS.xargs?.optional?.includes(c) || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
   }
   return null;
 }
@@ -269,13 +266,9 @@ function clusterReplace(v: string, next: string | undefined): string | null {
 }
 
 /** Whether option word `v` takes the next word as its value: `-I`, or a cluster whose first value option is its last, `-tI`, `-0n`; an optional-value option ends the scan. */
-function takesValue(v: string, spec: WrapperSpec = {}): boolean {
-  const values = spec.values ?? [];
-  if (values.includes(v)) return true;
-  if (!(spec.digits ? /^-[A-Za-z0-9]{2,}$/ : /^-[A-Za-z]{2,}$/).test(v)) return false;
-  const chars = [...v.slice(1)];
-  const end = chars.findIndex((c) => values.includes(`-${c}`) || spec.optional?.includes(c));
-  return end === chars.length - 1 && values.includes(`-${chars[end]}`);
+function takesValue(v: string, { values = [], optional = [], digits }: WrapperSpec = {}): boolean {
+  if (!(digits ? /^-[A-Za-z0-9]{2,}$/ : /^-[A-Za-z]{2,}$/).test(v)) return values.includes(v);
+  return values.includes(`-${v.at(-1)}`) && ![...v.slice(1, -1)].some((c) => values.includes(`-${c}`) || optional.includes(c));
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {
