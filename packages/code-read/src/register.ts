@@ -88,6 +88,15 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       look_limit: { long: "--look-limit", description: "Look-first rows (default 8, max 50)" },
     },
   },
+  "changes.get": {
+    positional: ["baseline"],
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+      cutoff: { long: "--cutoff", description: "Hotspot score a file is over the cutoff at (default 3000)" },
+      limit: { long: "--limit", description: "Rows per list (default 20, max 500; 0 for counts only)" },
+    },
+  },
   "node.neighbors": {
     positional: ["id"],
     options: {

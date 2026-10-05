@@ -251,12 +251,12 @@ export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars):
   for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  writeEach(vars, commandWrites(name, args));
+  writeEach(vars, commandWrites(name, args, vars));
 }
 
 /** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
 export function trackCompound(op: Token, vars: Vars): void {
-  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name))));
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars));
 }
 
 /** A null list means the command may write any variable. */
