@@ -147,7 +147,8 @@ async function classify(
 
   const safety = await inspectForRelease(found.gitRoot, found.worktree, found.branch, base);
   if (!safety.dirty && !safety.unmerged) return { ...withAgent, status: "reclaimable", detail: idleDetail(owner) };
-  const detail = [safety.dirty && "uncommitted changes", safety.unmerged && "commits that exist nowhere else"]
+  const unsaved = safety.checked.find((check) => check.name === "dirty" && !check.ok)?.detail;
+  const detail = [unsaved, safety.unmerged && "commits that exist nowhere else"]
     .filter(Boolean)
     .join(" and ");
   return { ...withAgent, status: "holds-work", detail };
@@ -183,6 +184,6 @@ export async function reclaimWorktree(
 ): Promise<{ ok: boolean; reason?: string }> {
   if (entry.status !== "reclaimable" && options.force !== true)
     return { ok: false, reason: `${entry.branch} is ${entry.status}: ${entry.detail}` };
-  await removeWorktree(entry.gitRoot, entry.worktree, entry.branch);
-  return { ok: true };
+  const refused = await removeWorktree(entry.gitRoot, entry.worktree, entry.branch, options);
+  return refused === undefined ? { ok: true } : { ok: false, reason: refused };
 }
