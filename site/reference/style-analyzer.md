@@ -49,7 +49,7 @@ formats lives in `style-profile`.
 | `computeConfidence(consistency, stability, weights?)` | `min(1, consistency * weight)`, weights high 1.0, medium 0.85, low 0.7 |
 | `mapSeverity(confidence, thresholds?)` | `error`, `warn`, `info` or `off`, using style-profile's thresholds |
 | `lookupStability(type)`, `Stability`, `StabilityWeights`, `Severity`, `SeverityThresholds` | stability table lookup (exact type, then category, then `medium`) |
-| `Enricher`, `EnricherConfig`, `EnrichmentResult`, `EnrichmentEntry`, `EnrichmentError` | LLM descriptions for the ten features in `AI_ENRICHED_FEATURES` |
+| `Enricher`, `EnricherConfig`, `EnrichmentResult`, `EnrichmentEntry`, `EnrichmentError` | LLM descriptions for the seven emitted feature types in `AI_ENRICHED_FEATURES` |
 | `LlmProvider`, `LlmMessage`, `LlmResponse` | the injected "complete this prompt" interface |
 | `AI_ENRICHED_FEATURES`, `needsAiEnrichment(type)` | which feature types the enricher describes |
 | `IngestConfig`, `CodeCorpus`, `CodeFile`, `ReviewComment`, `PullRequest`, `PullRequestFile`, `IngestMetadata` | corpus types from codewatch's ingestion (types only) |
