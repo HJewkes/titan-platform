@@ -6,6 +6,7 @@ import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -159,8 +160,10 @@ function scope(op: string, w: Walk): void {
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
-  const runs = caseNamed(rawWords.map(expand));
-  for (const cmd of runs) run(cmd, redirects, w, next);
+  const words = rawWords.map(expand);
+  const runs = caseNamed(words);
+  const cut = cutReading(words);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
   return runs[0] ?? null;
 }
 
@@ -316,9 +319,8 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { texts: [text].flat(), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  // bash and sh drop NUL from a piped script; zsh's NUL handling is not modelled (TP-1464).
-  return hasC || positional || stdin === null ? null : { texts: [stdin.replaceAll("\0", "")], wrap: "piped-shell" };
+  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
+  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
