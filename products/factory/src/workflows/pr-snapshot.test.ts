@@ -57,6 +57,23 @@ function setChecks(fakes: Map<string, FakeGitHub>, runs: WaitingRun[], at: numbe
   }
 }
 
+const ciInput = (run: { repo: string; pr: number }) => ({ repo: run.repo, pr: run.pr, contexts: CONTEXTS, strict: true });
+const HEAD = fakeSha("settled");
+const CI = ciInput({ repo: "o/r", pr: 1 });
+const allCompleted = (runs: readonly CheckRun[]): boolean => runs.every((run) => run.status === "completed");
+
+/** One PR whose snapshot has already read it green, so a later read would be served from the settled window. */
+async function settledGreen() {
+  const fake = fakeGitHub();
+  fake.addPr({ headSha: HEAD });
+  fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
+  let clock = 0;
+  const port = githubPort(fake.wire);
+  const snapshot = prSnapshot(port, { now: () => clock });
+  expect((await readCi(port, CI, snapshot)).verdict).toBe("green");
+  return { fake, port, snapshot, advance: (ms: number) => void (clock += ms) };
+}
+
 const restCalls = (fakes: Map<string, FakeGitHub>): number => [...fakes.values()].reduce((sum, fake) => sum + fake.calls.length, 0);
 
 describe("PR snapshot", () => {
@@ -65,17 +82,57 @@ describe("PR snapshot", () => {
     let clock = 0;
     const port = githubPort(multiRepoWire(fakes));
     const snapshot = prSnapshot(port, { now: () => clock });
-    let verdicts: CiSnapshot[] = [];
+    const verdicts = new Map<WaitingRun, CiSnapshot>();
 
+    // Like ci-wait, a run polls until its verdict is no longer pending; its green is confirmed through the port once.
     for (clock = 0; clock < HOUR; clock += POLL_MS) {
       setChecks(fakes, runs, clock);
-      verdicts = await Promise.all(runs.map((run) => readCi(port, { repo: run.repo, pr: run.pr, contexts: CONTEXTS, strict: true }, snapshot)));
+      const waiting = runs.filter((run) => verdicts.get(run)?.verdict !== "green");
+      const read = await Promise.all(waiting.map((run) => readCi(port, ciInput(run), snapshot)));
+      waiting.forEach((run, i) => verdicts.set(run, read[i]!));
     }
 
     const notModified = [...fakes.values()].reduce((sum, fake) => sum + fake.notModified, 0);
     expect(restCalls(fakes)).toBeLessThan(600);
     expect(notModified).toBeGreaterThan(0);
-    expect(verdicts.map((verdict) => verdict.verdict)).toEqual(runs.map(() => "green"));
+    expect(runs.map((run) => verdicts.get(run)?.verdict)).toEqual(runs.map(() => "green"));
+  });
+
+  it("never answers green from a settled snapshot when a failed run was added on the same head", async () => {
+    const { fake, port, snapshot, advance } = await settledGreen();
+    fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2), successRun("validate", 3, "2026-01-01T00:05:00Z", "failure")]);
+    advance(MINUTE);
+
+    const ci = await readCi(port, CI, snapshot);
+
+    expect(ci.verdict).toBe("red");
+  });
+
+  it("never answers green from a settled snapshot when the head fell behind under strict rules", async () => {
+    const { fake, port, snapshot, advance } = await settledGreen();
+    fake.pr(1).behind = true;
+    advance(MINUTE);
+
+    const ci = await readCi(port, CI, snapshot);
+
+    expect(ci.verdict).toBe("behind");
+  });
+
+  it("keeps a head pending while a non-required Actions run is still going, and reads it again within the pending interval", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: HEAD });
+    let clock = 0;
+    const port = githubPort(fake.wire);
+    const snapshot = prSnapshot(port, { now: () => clock });
+    fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2), pendingRun("lint", 3)]);
+
+    const first = await readCi(port, CI, snapshot);
+    fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2), successRun("lint", 3)]);
+    clock += 3 * MINUTE;
+    const later = await readCi(port, CI, snapshot);
+
+    expect(first).toMatchObject({ verdict: "pending", waitingOn: ["lint"] });
+    expect(later.verdict).toBe("green");
   });
 
   it("revalidates an unchanged list with a 304 and reads no PR again; a pushed head is read at the next tick", async () => {
@@ -104,14 +161,14 @@ describe("PR snapshot", () => {
     const snapshot = prSnapshot(githubPort(fake.wire), { now: () => clock, pendingMs: 3 * MINUTE });
     fake.setRuns(sha, [pendingRun("validate", 1)]);
 
-    await snapshot.checkRuns("o/r", sha, ["validate"]);
+    await snapshot.checkRuns("o/r", sha, allCompleted);
     clock += MINUTE;
-    await snapshot.checkRuns("o/r", sha, ["validate"]);
+    await snapshot.checkRuns("o/r", sha, allCompleted);
     fake.setRuns(sha, [successRun("validate", 1)]);
     clock += 2 * MINUTE;
-    const settled = await snapshot.checkRuns("o/r", sha, ["validate"]);
+    const settled = await snapshot.checkRuns("o/r", sha, allCompleted);
     clock += 10 * MINUTE;
-    await snapshot.checkRuns("o/r", sha, ["validate"]);
+    await snapshot.checkRuns("o/r", sha, allCompleted);
 
     expect(settled.map((run) => run.status)).toEqual(["completed"]);
     expect(fake.calls).toEqual(["listCheckRuns", "listCheckRuns"]);

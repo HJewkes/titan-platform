@@ -1,15 +1,15 @@
-import { latestPerName, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import type { CheckRun, GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 
 /** The reads `ci-wait` and `sh-observe` make, so either can come from the port or from the snapshot. */
 export interface PrReads {
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
-  /** Every run on `sha`; `required` names the checks whose completion settles the head. */
-  checkRuns(repo: RepoSlug, sha: string, required: readonly string[]): Promise<CheckRun[]>;
+  /** Every run on `sha`; `settled` says the runs that decide the head are all complete, so they need no re-read while pending. */
+  checkRuns(repo: RepoSlug, sha: string, settled: (runs: readonly CheckRun[]) => boolean): Promise<CheckRun[]>;
 }
 
 /**
- * One poller per repo for every waiting run in it. Never the source of a write's decision: every write re-reads its PR,
- * so a stale snapshot can delay a merge but cannot cause a wrong one.
+ * One poller per repo for every waiting run in it. It may answer pending, red or behind on its own; a green that a
+ * merge will act on is confirmed through the port first (`readCi`), and every write re-reads its PR.
  */
 export interface PrSnapshot extends PrReads {
   /** Drops what the snapshot holds for `repo`; call it after a write there, so the next read sees the write. */
@@ -71,7 +71,7 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
   };
   return {
     getPr: async (repo, number) => snapshotPr(port, timing, repo, await listed(port, timing, repo, stateOf(repo)), number),
-    checkRuns: async (repo, sha, required) => snapshotRuns(port, timing, repo, stateOf(repo), sha, required),
+    checkRuns: async (repo, sha, settled) => snapshotRuns(port, timing, repo, stateOf(repo), sha, settled),
     invalidate: (repo) => void repos.delete(repo.toLowerCase()),
   };
 }
@@ -114,11 +114,11 @@ function detailStale(cached: Detail, row: PullRequest, state: RepoState, timing:
 }
 
 /** A head's runs are read when it is new, while a required check is still pending, and once per settled window. */
-async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState, sha: string, required: readonly string[]): Promise<CheckRun[]> {
+async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState, sha: string, isSettled: (runs: readonly CheckRun[]) => boolean): Promise<CheckRun[]> {
   const cached = state.checks.get(sha);
   if (cached && timing.now() - cached.at < (cached.settled ? timing.settledMs : timing.pendingMs)) return [...cached.runs];
   const runs = await port.checkRuns(repo, sha);
-  const settled = requiredCompleted(runs, required);
+  const settled = isSettled(runs);
   state.checks.set(sha, { runs, at: timing.now(), settled, version: nextVersion(cached, runs, settled) });
   return [...runs];
 }
@@ -128,11 +128,6 @@ function nextVersion(cached: Checks | undefined, runs: CheckRun[], settled: bool
   if (!cached) return 0;
   const resettled = settled && (!cached.settled || JSON.stringify(cached.runs) !== JSON.stringify(runs));
   return cached.version + (resettled ? 1 : 0);
-}
-
-function requiredCompleted(runs: readonly CheckRun[], required: readonly string[]): boolean {
-  const latest = latestPerName(runs);
-  return required.every((name) => latest.some((run) => run.name === name && run.status === "completed"));
 }
 
 /** The port itself, for a caller with no snapshot wired. */
