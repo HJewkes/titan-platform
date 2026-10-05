@@ -718,7 +718,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +183 more in the [reference page](/reference/session-read)
+- +184 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

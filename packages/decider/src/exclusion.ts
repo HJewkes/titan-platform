@@ -13,6 +13,8 @@ export interface ExclusionPolicy {
 export interface ExclusionSubject {
   initiative: string | null;
   cwd?: string | null;
+  /** Every initiative the row mentions; any human-only entry excludes it. Never stored. */
+  mentionedInitiatives?: readonly string[];
   header: string | null;
   question: string;
   options: readonly { label: string; description?: string }[];
@@ -69,6 +71,9 @@ function mentionsPersonalData(subject: ExclusionSubject, patterns: ExclusionPoli
 export function isExcluded(subject: ExclusionSubject, policy: ExclusionPolicy): ExclusionVerdict {
   const humanOnly = new Set(policy.humanOnlyInitiatives);
   if (subject.initiative !== null && humanOnly.has(subject.initiative)) {
+    return { excluded: true, reason: "human-only-initiative" };
+  }
+  if (subject.mentionedInitiatives?.some((name) => humanOnly.has(name))) {
     return { excluded: true, reason: "human-only-initiative" };
   }
   const fromCwd = initiativeForCwd(subject.cwd, policy);
