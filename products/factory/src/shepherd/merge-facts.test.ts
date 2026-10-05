@@ -474,6 +474,13 @@ describe("a fact that cannot be read", () => {
     expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
   });
 
+  it("names a plain Error when a thrown error's identifier-shaped name looks like a GitHub token", () => {
+    const named = Object.assign(new Error("boom"), { name: "ghp_FAKE0000NOTAREALTOKEN0000" });
+    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+
+    expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
+  });
+
   it("gates with the fixed class Error, never failing the step or storing the message, when a thrown error's name getter throws", async () => {
     const hostile = new Error("boom");
     Object.defineProperty(hostile, "name", { get: () => { throw new Error("getter-secret-message"); } });
