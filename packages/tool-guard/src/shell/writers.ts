@@ -114,12 +114,13 @@ function arithmeticWrites(expressions: string[], vars: Vars): Assignment[] | nul
   const seen = new Set<string>();
   const pending = [...expressions];
   for (let text = pending.pop(); text !== undefined; text = pending.pop()) {
+    if (/[$`]/.test(text)) return null;
     for (const name of writtenNames(text)) written.add(name);
     for (const name of text.matchAll(NAME_RE)) {
       if (seen.has(name[0]) || !vars.has(name[0])) continue;
       seen.add(name[0]);
       const value = vars.get(name[0]) ?? null;
-      if (value === null || /[$`]/.test(value)) return null;
+      if (value === null) return null;
       pending.push(value);
     }
   }

@@ -25,6 +25,8 @@ describe("arithmetic writes made through a value or $(( )) (TP-1538)", () => {
     ["a let that reads an unknown value", "Y=status; read X; let X; git $Y origin HEAD:main"],
     ["an expansion that writes", "Y=status; : $(( Y=1 )); git $Y origin HEAD:main"],
     ["an expansion inside a longer word", "Y=status; echo a$(( Y++ ))b; git $Y origin HEAD:main"],
+    ["an expansion that names a value by $", "Y=status; Z=Y=1; : $(( $Z )); git $Y origin HEAD:main"],
+    ["an expansion with a $ reference inside a longer word", "Y=status; Z=Y=1; echo a$(( $Z ))b; git $Y origin HEAD:main"],
     ["an expansion that reads a value holding a write", "Y=status; X=Y=1; : $(( X )); git $Y origin HEAD:main"],
   ])("leaves the variable unknown after %s, so the push stays protected", (_, command) => {
     expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
