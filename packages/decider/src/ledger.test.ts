@@ -30,7 +30,16 @@ describe("LedgerRowSchema reading a v1 precedent row", () => {
       route: null,
       prediction: null,
       unclaimed: false,
+      covers: null,
     });
+  });
+
+  it("demotes a recommended pick that accepted plural defaults to bulk", () => {
+    const row = LedgerRowSchema.parse(
+      v1Row({ recommended: "Keep the defaults (recommended)", answer: "Keep the defaults", pick_type: "recommended" }),
+    );
+
+    expect(row.outcome).toBe("bulk");
   });
 
   it("keeps a rejected v1 row out of scoring", () => {
@@ -72,6 +81,13 @@ describe("LedgerRowSchema reading a v2 row", () => {
 
     expect(row).toMatchObject({ v: 2, outcome: "accept", answered_by: "decider", route: "decider" });
     expect(row.locator).toEqual({ path: "/var/example/events.db", msgId: "msg-42" });
+    expect(row.covers).toBeNull();
+  });
+
+  it("keeps a stored bulk row and its count on re-read", () => {
+    const row = LedgerRowSchema.parse({ ...v2, outcome: "bulk", covers: 3 });
+
+    expect(LedgerRowSchema.parse(row)).toMatchObject({ outcome: "bulk", covers: 3 });
   });
 
   it("rejects an outcome outside the vocabulary", () => {

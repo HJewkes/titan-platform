@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { OUTCOMES, PICK_TYPES, classifyOutcome, stripRecommended } from "./outcome.js";
+import { bulkSignal } from "./bulk.js";
+import { OUTCOMES, PICK_TYPES, classifyOutcome, stripRecommended, type Outcome } from "./outcome.js";
 
 export const LEDGER_SOURCES = ["transcript", "note", "queue", "decided", "endorse", "morning"] as const;
 export const ANSWERED_BY = ["owner-terminal", "owner-remote", "decider", "overrule"] as const;
@@ -52,6 +53,7 @@ const LedgerRowInputSchema = z.object({
   pick_type: z.enum(PICK_TYPES).optional(),
   free_text: z.string().nullable().default(null),
   outcome: z.enum(OUTCOMES).nullable().optional(),
+  covers: z.number().int().nonnegative().nullable().default(null),
   answered_by: z.enum(ANSWERED_BY).default("owner-terminal"),
   route: z.enum(ROUTES).nullable().default(null),
   prediction: PredictionSchema.nullable().default(null),
@@ -60,21 +62,29 @@ const LedgerRowInputSchema = z.object({
 
 type LedgerRowInput = z.output<typeof LedgerRowInputSchema>;
 
+function deriveOutcome(row: Omit<LedgerRowInput, "class" | "category" | "outcome">): Outcome | null {
+  return classifyOutcome({
+    answer: row.answer,
+    options: row.options.map((o) => o.label),
+    recommended: row.recommended,
+    pickType: row.pick_type,
+  });
+}
+
+/** Only an agreeing outcome is demoted; a redirect on a batched question is still engagement. */
+function demoteBulk(outcome: Outcome | null, row: Pick<LedgerRowInput, "recommended" | "answer" | "covers">) {
+  if (outcome !== "accept" && outcome !== "amend") return { outcome, covers: row.covers };
+  const signal = bulkSignal(row);
+  return signal === null ? { outcome, covers: row.covers } : { outcome: "bulk" as const, covers: signal.covers ?? row.covers };
+}
+
 function upgrade({ class: v1Class, category, outcome, ...row }: LedgerRowInput) {
-  const derived =
-    outcome !== undefined
-      ? outcome
-      : classifyOutcome({
-          answer: row.answer,
-          options: row.options.map((o) => o.label),
-          recommended: row.recommended,
-          pickType: row.pick_type,
-        });
+  const derived = outcome !== undefined ? outcome : deriveOutcome(row);
   return {
     ...row,
+    ...demoteBulk(derived, row),
     category: category ?? v1Class ?? "other",
     recommended: row.recommended === null ? null : stripRecommended(row.recommended),
-    outcome: derived,
   };
 }
 

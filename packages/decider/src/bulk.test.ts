@@ -1,0 +1,157 @@
+import { describe, expect, it } from "vitest";
+import { bulkSignal } from "./bulk.js";
+import { LedgerRowSchema, type LedgerRowWire } from "./ledger.js";
+
+function row(fields: Partial<LedgerRowWire>): LedgerRowWire {
+  return {
+    key: "morning:2026-10-04:ex-1",
+    v: 2,
+    source: "morning",
+    asked_at: null,
+    initiative: "widgets",
+    header: null,
+    question: "Plan questions for the widget rollout",
+    options: [],
+    recommended: null,
+    answer: null,
+    ...fields,
+  };
+}
+
+describe("bulkSignal on the worked examples", () => {
+  it("reads 'ok <plan> defaults' over six questions as plural defaults covering six", () => {
+    const signal = bulkSignal({
+      recommended: "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)",
+      answer: "ok",
+      covers: null,
+    });
+
+    expect(signal).toEqual({ covers: 6, reason: "plural-defaults" });
+  });
+
+  it("reads 'accept all recommended answers' as plural defaults", () => {
+    const signal = bulkSignal({
+      recommended: null,
+      answer: "19 plan questions: accept all recommended answers (ZD-3 s7, ZD-1 D1-D4)",
+      covers: null,
+    });
+
+    expect(signal?.reason).toBe("plural-defaults");
+  });
+
+  it("reads 'accept the 9 defaults' as plural defaults covering nine", () => {
+    const signal = bulkSignal({
+      recommended: "accept the 9 defaults of the ZZ-695 decider plan",
+      answer: "All nine section 9 defaults accepted",
+      covers: null,
+    });
+
+    expect(signal).toEqual({ covers: 9, reason: "plural-defaults" });
+  });
+});
+
+describe("bulkSignal signals", () => {
+  it("trusts a source that says one answer covered several items", () => {
+    expect(bulkSignal({ recommended: "Retry once", answer: "Retry once", covers: 3 })).toEqual({
+      covers: 3,
+      reason: "multi-item",
+    });
+  });
+
+  it.each([
+    ["Q1 to Q7 as proposed", 7],
+    ["yes to Q1-Q5", 5],
+    ["go with D2 to D7", 6],
+    ["questions 1-10 are fine", 10],
+    ["take the fourteen plans", 14],
+  ])("reads the range or count in %j", (answer, covers) => {
+    const signal = bulkSignal({ recommended: null, answer, covers: null });
+
+    expect(signal?.covers).toBe(covers);
+  });
+
+  it("reads 'all as written' as plural defaults", () => {
+    expect(bulkSignal({ recommended: null, answer: "all as written", covers: null })?.reason).toBe("plural-defaults");
+  });
+
+  it("finds nothing in one value applied everywhere", () => {
+    const signal = bulkSignal({
+      recommended: "Raise the ceiling to 100% across the board",
+      answer: "Raise the ceiling to 100% across the board",
+      covers: null,
+    });
+
+    expect(signal).toBeNull();
+  });
+
+  it("finds nothing in a label with the singular 'default'", () => {
+    expect(bulkSignal({ recommended: "`default` EffortLossSource", answer: "ok, keep the default", covers: 1 })).toBeNull();
+  });
+});
+
+describe("LedgerRowSchema applying the bulk rule", () => {
+  it("demotes a derived accept to bulk with the count it read", () => {
+    const parsed = LedgerRowSchema.parse(
+      row({ recommended: "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)", answer: "ok", outcome: "accept" }),
+    );
+
+    expect(parsed).toMatchObject({ outcome: "bulk", covers: 6 });
+  });
+
+  it("demotes an explicit accept from a source that counted several ids", () => {
+    const parsed = LedgerRowSchema.parse(row({ recommended: "Retry once", answer: "ok", outcome: "accept", covers: 4 }));
+
+    expect(parsed).toMatchObject({ outcome: "bulk", covers: 4 });
+  });
+
+  it("demotes an amend to bulk", () => {
+    const parsed = LedgerRowSchema.parse(
+      row({ recommended: "Accept the defaults", answer: "Accept the defaults, and ship today", options: [{ label: "Accept the defaults" }] }),
+    );
+
+    expect(parsed.outcome).toBe("bulk");
+  });
+
+  it("gives the same row on re-read", () => {
+    const first = LedgerRowSchema.parse(row({ recommended: "accept the 9 defaults", answer: "accept the 9 defaults" }));
+    const second = LedgerRowSchema.parse(first);
+
+    expect(second).toEqual(first);
+    expect(second).toMatchObject({ outcome: "bulk", covers: 9 });
+  });
+
+  it("keeps one value applied everywhere as accept", () => {
+    const label = "Raise the ceiling to 100% across the board";
+    const parsed = LedgerRowSchema.parse(row({ recommended: label, answer: label, options: [{ label }, { label: "Keep it" }] }));
+
+    expect(parsed).toMatchObject({ outcome: "accept", covers: null });
+  });
+
+  it("keeps a singular 'default' label as accept", () => {
+    const options = [{ label: "`default` EffortLossSource (Recommended)" }, { label: "`strict` EffortLossSource" }];
+    const parsed = LedgerRowSchema.parse(row({ options, recommended: options[0]?.label ?? null, answer: "`default` EffortLossSource" }));
+
+    expect(parsed.outcome).toBe("accept");
+  });
+
+  it("keeps a multi-select of listed labels as other", () => {
+    const options = [{ label: "Keep the defaults (Recommended)" }, { label: "Tighten retries" }, { label: "Add alerts" }];
+    const parsed = LedgerRowSchema.parse(row({ options, recommended: options[0]?.label ?? null, answer: "Tighten retries, Add alerts" }));
+
+    expect(parsed).toMatchObject({ outcome: "other", covers: null });
+  });
+
+  it("keeps a 'NOT accepted' carve-out as redirect", () => {
+    const parsed = LedgerRowSchema.parse(
+      row({ recommended: "Accept the 5 defaults", answer: "NOT accepted: ZZ-276 C5 needs its own review" }),
+    );
+
+    expect(parsed).toMatchObject({ outcome: "redirect", covers: null });
+  });
+
+  it.each(["other", "redirect", "none", null] as const)("never changes an explicit %s outcome", (outcome) => {
+    const parsed = LedgerRowSchema.parse(row({ recommended: "accept the 9 defaults", answer: "ok", outcome, covers: 9 }));
+
+    expect(parsed.outcome).toBe(outcome);
+  });
+});
