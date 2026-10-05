@@ -195,3 +195,63 @@ describe("one budget for dynamic option words across a nested wrapper chain", ()
     expect(readings).toBeLessThanOrEqual(4 * total + 1);
   });
 });
+
+describe("a reading's budget survives its reparse", () => {
+  const stages = (n: number) => "sudo $A1 -u timeout 5 ".repeat(n);
+  const PUSH_TAIL = "git push origin HEAD:main";
+  const HIDDEN = "sudo $A -u timeout 5 timeout $c1 $c2 $c3 $c4 5 sudo $E -u timeout 5";
+  const timed = (command: string) => {
+    const started = performance.now();
+    const found = spellings(command);
+    expect(performance.now() - started).toBeLessThan(1000);
+    return found;
+  };
+  const words = (command: string) => tokenize(command).filter((t): t is WordToken => t.type === "word");
+
+  /** Readings and reparse depth across every level: each line of a script is parsed and unwrapped again, as classify does. */
+  function reparses(command: string, limit = 5000): { readings: number; depth: number } {
+    const walk = (line: string, depth: number): { readings: number; depth: number } => {
+      const script = unwrap(words(line))?.script;
+      if (script === undefined) return { readings: 1, depth };
+      const out = { readings: 0, depth };
+      for (const next of script.split("\n")) {
+        if (out.readings > limit) break;
+        const inner = walk(next, depth + 1);
+        out.readings += inner.readings;
+        out.depth = Math.max(out.depth, inner.depth);
+      }
+      return out;
+    };
+    return walk(command, 0);
+  }
+
+  it("reads nine stages as a push without a nesting error", () => {
+    expect(timed(`${stages(9)}${PUSH_TAIL}`)).toContain(PUSH);
+  });
+
+  it.each([[12], [20]])("reads %i stages as a push in time", (n) => {
+    expect(timed(`${stages(n)}${PUSH_TAIL}`)).toContain(PUSH);
+  });
+
+  it("does not flag nine stages ending in a harmless command", () => {
+    expect(timed(`${stages(9)}ls`)).not.toContain(PUSH);
+  });
+
+  it("reads a chain that hides wrappers behind dynamic words as a push", () => {
+    expect(timed(`${HIDDEN} ${PUSH_TAIL}`)).toContain(PUSH);
+  });
+
+  it("reads a hidden chain that repeats its stages as a push", () => {
+    expect(timed(`${HIDDEN} ${"sudo $E -u timeout 5 ".repeat(9)}${PUSH_TAIL}`)).toContain(PUSH);
+  });
+
+  it("does not throw on the hidden chain ending in a harmless command", () => {
+    expect(timed(`${HIDDEN} ls`)).not.toContain(PUSH);
+  });
+
+  it.each([[9], [20]])("keeps the readings and the reparse depth bounded: %i stages", (n) => {
+    const { readings, depth } = reparses(`${stages(n)}${PUSH_TAIL}`);
+    expect(readings).toBeLessThanOrEqual(4 * n + 1);
+    expect(depth).toBeLessThanOrEqual(2);
+  });
+});

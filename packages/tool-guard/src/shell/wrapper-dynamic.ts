@@ -80,29 +80,51 @@ function quoteWord(w: WordToken): string {
   return parts.join("");
 }
 
+/** Word lists one command may expand to before it falls back to the one-pass reading. */
+const MAX_READINGS = 256;
+
+function literalWord(value: string): WordToken {
+  return { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
+}
+
 /**
- * Shell text that reads a dynamic word in a wrapper's option position every way it could expand: to nothing or to
- * an option without a value (the word is gone), to an option that takes the next word (both are gone), or to
- * a positional (a literal stands in). An `xargs` option word may also be `-I`, which makes the next word its replace
- * string; a bare dynamic `xargs` word is its dynamic command, which the xargs reading already fails closed on.
- * Past `MAX_DYNAMIC` option words the readings drop them all, with and without the word after, rather than none.
+ * Every way the first dynamic option word of the wrapper chain could expand, resolved to word lists with no dynamic
+ * option word left: the word gone, the word and the next word gone (an option and its value), or the word a literal
+ * positional; for `xargs`, an `-I`. Every level is expanded here, over word lists, so a reading that is parsed again
+ * meets no dynamic option word and starts no expansion of its own. Null once the lists pass `budget`.
+ */
+function expand(words: WordToken[], start: number, spec: OptionSpec, specOf: SpecOf, xargs: boolean, budget: { left: number }): WordToken[][] | null {
+  const d = chainDynamics(words, start, spec, specOf)[0];
+  if (d === undefined) return [words];
+  if (--budget.left < 0) return null;
+  const head = words.slice(0, d);
+  const variants = [[...head, ...words.slice(d + 1)], [...head, ...words.slice(d + 2)]];
+  if (!(words[d] as WordToken).value.startsWith("-")) variants.push([...head, literalWord("0"), ...words.slice(d + 1)]);
+  if (xargs) variants.push([...head, literalWord("-I"), ...words.slice(d + 1)]);
+  const lists: WordToken[][] = [];
+  for (const variant of variants) {
+    const inner = expand(variant, start, spec, specOf, xargs, budget);
+    if (inner === null) return null;
+    lists.push(...inner);
+  }
+  return lists;
+}
+
+/**
+ * Shell text that reads a dynamic word in a wrapper's option position every way it could expand (see `expand`).
+ * A bare dynamic `xargs` word is its dynamic command, which the xargs reading already fails closed on. Past
+ * `MAX_DYNAMIC` option words, or `MAX_READINGS` readings, the readings drop the words all at once instead.
  * Null when the wrapper's options hold no dynamic word.
  */
 export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec, specOf: SpecOf): string | null {
-  const own = dynamicOptions(words, start, spec).at;
-  const d = own[0];
+  const d = dynamicOptions(words, start, spec).at[0];
   if (d === undefined) return null;
   const xargs = XARGS_RE.test((words[at] as WordToken).value);
-  const dashed = (words[d] as WordToken).value.startsWith("-");
-  if (xargs && !dashed) return null;
+  if (xargs && !(words[d] as WordToken).value.startsWith("-")) return null;
   const found = chainDynamics(words, start, spec, specOf);
-  if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found);
-  const before = words.slice(at, d).map(quoteWord);
-  const after = words.slice(d + 1).map(quoteWord);
-  const readings = [after, after.slice(1)];
-  if (!dashed) readings.push(["0", ...after]);
-  if (xargs) readings.push(["-I", ...after]);
-  return readings.map((rest) => [...before, ...rest].join(" ")).join("\n");
+  const lists = found.length > MAX_DYNAMIC ? null : expand(words.slice(at), start - at, spec, specOf, xargs, { left: MAX_READINGS });
+  if (lists === null) return bulkReadings(words, at, found);
+  return [...new Set(lists.map((list) => list.map(quoteWord).join(" ")))].join("\n");
 }
 
 /**
