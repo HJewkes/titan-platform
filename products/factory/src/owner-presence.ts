@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 /** Runs the helper; rejects on a non-zero exit or when the helper cannot start. */
 export type HelperRunner = (file: string, args: readonly string[]) => Promise<string>
 
-/** What lstat reports about one path component; undefined when it does not exist or cannot be read. */
+/** What lstat reports about one path component; undefined when it does not exist. Any other lstat error propagates. */
 export type StatPort = (path: string) => { readonly uid: number; readonly mode: number } | undefined
 
 const DIALOG_TIMEOUT_MS = 120_000
@@ -34,11 +34,19 @@ export const ROOT_HELPER_PATH = "/usr/local/libexec/titan-factory/owner-presence
 /** Fixed in code: once the root install exists it is the only candidate, even when it then fails the path check. */
 export const helperSearchOrder = (): readonly string[] => [ROOT_HELPER_PATH, defaultHelperPath()]
 
+const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"])
+
+const errorCode = (error: unknown): string => {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === "string" ? code : "UNKNOWN"
+}
+
 const defaultStat: StatPort = (path) => {
   try {
     return lstatSync(path, { throwIfNoEntry: false })
-  } catch {
-    return undefined
+  } catch (error) {
+    if (ABSENT_CODES.has(errorCode(error))) return undefined
+    throw error
   }
 }
 
@@ -111,7 +119,13 @@ export async function confirmOwner(
   reason: string,
   { run = defaultRunner, helperPaths = helperSearchOrder(), stat = defaultStat, getuid = () => process.getuid?.(), report = (line) => void process.stderr.write(line) }: ConfirmOptions = {},
 ): Promise<string | undefined> {
-  const helper = pickHelper(helperPaths, stat, getuid())
+  let helper: ReturnType<typeof pickHelper>
+  try {
+    helper = pickHelper(helperPaths, stat, getuid())
+  } catch (error) {
+    report(`owner presence refused: lstat of the helper path failed with ${errorCode(error)}\n`)
+    return undefined
+  }
   if ("refusal" in helper) {
     report(`owner presence refused: ${helper.refusal}\n`)
     return undefined

@@ -6,7 +6,7 @@ import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
-import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome } from "./land.js";
+import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
@@ -130,15 +130,8 @@ interface RerunInput {
   failing: FailingCheck[];
 }
 
-interface SettleTiming {
-  now: () => number;
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  pollMs: number;
-  timeoutMs: number;
-}
-
 /** One rerun per distinct Actions run, then a bounded wait so the next ci-wait does not read the failed checks again. */
-async function rerunFailed(port: GitHubPort, input: RerunInput, timing: SettleTiming, signal: AbortSignal): Promise<object> {
+async function rerunFailed(port: GitHubPort, input: RerunInput, timing: Timing, signal: AbortSignal): Promise<object> {
   const runIds = [...new Set(input.failing.flatMap((check) => (check.workflowRunId === null ? [] : [check.workflowRunId])))];
   const reruns: (WriteResult & { runId: number })[] = [];
   for (const runId of runIds) reruns.push({ runId, ...(await port.rerunFailed(input.repo, runId)) });
@@ -146,7 +139,7 @@ async function rerunFailed(port: GitHubPort, input: RerunInput, timing: SettleTi
 }
 
 /** Expiry is not an error: the next ci-wait reads CI afresh, and a still-red head goes to the human gate. */
-async function waitSuperseded(port: GitHubPort, input: RerunInput, timing: SettleTiming, signal: AbortSignal): Promise<boolean> {
+async function waitSuperseded(port: GitHubPort, input: RerunInput, timing: Timing, signal: AbortSignal): Promise<boolean> {
   const clock = deadline(timing);
   for (;;) {
     if (await superseded(port, input).catch(() => false)) return true;

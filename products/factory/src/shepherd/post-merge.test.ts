@@ -8,9 +8,10 @@ import { sleep } from "../workflows/land.js";
 import type { CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
-import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type MainCiInput } from "./post-merge.js";
+import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type Classified, type MainCiInput } from "./post-merge.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -142,6 +143,26 @@ describe("readMainCi", () => {
 
     expect((await read(fake)).verdict).toBe("green");
     expect(GITHUB_ACTIONS_APP_ID).toBe(15368);
+  });
+});
+
+type MisroutedTable = Omit<typeof MAIN_CI_ROUTES, "cancelled"> & { readonly cancelled: "read-newer-run" };
+
+describe("a classified main CI read", () => {
+  it("carries a newer sha exactly when the table routes it to read-newer-run", () => {
+    const superseded: Classified = { read: "cancelled-superseded", newer: MERGE };
+    const cancelled: Classified = { read: "cancelled" };
+    // @ts-expect-error a read routed to read-newer-run must carry the newer sha
+    const missing: Classified = { read: "cancelled-superseded" };
+
+    expect([superseded.read, cancelled.read, missing.read]).toEqual(["cancelled-superseded", "cancelled", "cancelled-superseded"]);
+  });
+
+  it("does not type a cancelled read with no newer sha once the table routes cancelled to read-newer-run", () => {
+    // @ts-expect-error the edited table sends cancelled to read-newer-run, which needs a newer sha
+    const cancelled: Classified<MisroutedTable> = { read: "cancelled" };
+
+    expect(cancelled.read).toBe("cancelled");
   });
 });
 

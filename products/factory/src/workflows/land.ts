@@ -263,7 +263,7 @@ async function readRules(port: GitHubPort, input: { repo: string; pr: number }):
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 
-interface Timing {
+export interface Timing {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;
