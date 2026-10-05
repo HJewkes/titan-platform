@@ -105,6 +105,27 @@ export {
 } from "./analysis/context/signature-tree.js";
 export type { SignatureTreeOptions } from "./analysis/context/signature-tree.js";
 export type {
+  Consumers,
+  ContextBuildInput,
+  ContextDossier,
+  FileDossier,
+  FileOwnership,
+  Provenance,
+  SymbolDossier,
+  SymbolLine,
+} from "./analysis/context/dossier.js";
+export { buildContextDossier, SCHEMA_VERSION as CONTEXT_SCHEMA_VERSION } from "./analysis/context/dossier.js";
+export { renderContextMarkdown } from "./analysis/context/format.js";
+export type {
+  BundleBuildInput,
+  BundleEdge,
+  BundleEdges,
+  ContextBundle,
+  Coverage,
+  SourceChunk,
+} from "./analysis/context/bundle.js";
+export { BUNDLE_SCHEMA_VERSION, buildContextBundle, renderBundleText } from "./analysis/context/bundle.js";
+export type {
   ReferenceEdgeLite,
   SymbolConsumers,
   SymbolCouplingOptions,

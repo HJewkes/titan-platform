@@ -18,14 +18,14 @@ export const MORNING_SOURCE = "morning";
 const ANSWERS_SUFFIX = "-owner-answers.md";
 const BRACKET_ITEM = /^\[([^\]]+)\]\s+(.*)$/;
 const NUMBERED_ITEM = /^(\d+)\.\s+(.*)$/;
-const ANSWER_LINE = /^([A-Za-z]{1,3}-?\s?)?(\d+(?:\s*[/,]\s*\d+)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
+const ANSWER_LINE = /^([A-Za-z]{1,3}-?\s?)?(\d+(?:\.\d+)?(?:\s*[/,]\s*\d+(?:\.\d+)?)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
 const RECOMMENDATION = /\brecommend(?:ed)?\b[^.]*/i;
 const AFFIRMATIVE = /^(?:yes|accept(?:ed)?|keep|go|approve[d]?|ok|agreed)\b(?![^,.;:]*\bnot\b)/i;
 const HEDGE = /\b(?:but|however|instead|hold|wait|except|unless)\b/i;
 const MORE_ITEMS = /^(?:(?:and|&|\+|,|\/)\s*[a-z]{0,3}\s?\d|\d+\s*:)/i;
 
 export interface MorningItem {
-  /** The ids the list gives the item, normalized: `hs-25` is `hs25`, `A5` is `a5`, `30.` is `30`. */
+  /** The ids the list gives the item, normalized: `hs-25` is `hs25`, `A5` is `a5`, `30.` is `30`, `vc-65.1` is `vc65.1`. */
   ids: string[];
   question: string;
   recommended: string | null;
@@ -100,8 +100,12 @@ export function initiativesOfTaskIds(lookup: (taskId: string) => readonly string
 
 const nodeFs: MorningFileSystem = { readdir: (dir) => readdir(dir), readFile: (file) => readFile(file) };
 
+/** A dot between digits marks a sub-item and survives, so `vc-65.1` never becomes `vc651`. */
 function normalizeId(id: string): string {
-  return id.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return id
+    .toLowerCase()
+    .replace(/[^a-z0-9.]/g, "")
+    .replace(/(?<!\d)\.|\.(?!\d)/g, "");
 }
 
 function sentenceCase(text: string): string {

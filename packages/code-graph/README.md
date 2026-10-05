@@ -429,6 +429,24 @@ are pure functions over rows the caller has already read, so they run in a brows
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
 
+### Context dossier and bundle
+
+Ported with TP-1454 from codewatch's `graph context`, unchanged apart from import paths. All
+three are deterministic projections of rows the caller has already read; no LLM is involved.
+
+- `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
+  churn, centrality, ownership, consumers split into source and test files, coupling
+  partners, and blast radius. A file target lists its symbols, exports first, each with an
+  `importance` that splits the file's centrality by utilization share. The record carries
+  `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
+- `renderContextMarkdown(dossier)` renders the same facts as markdown.
+- `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
+  from `repoRoot`, so this one touches the filesystem), its `references` and `imports` edges as
+  explicit callers, dependencies, and coupling partners, and its `coverage_pct`. Pass
+  `relevanceByFile` (from `computeRelevance`) and `targetFileId` to order edges by relevance
+  to the target instead of by weight. `renderBundleText(bundle)` concatenates it for an
+  embedder or an LLM.
+
 ### Unused exports and dead modules
 
 Ported with TP-1467 from codewatch's `graph report`, unchanged apart from import paths. Both
