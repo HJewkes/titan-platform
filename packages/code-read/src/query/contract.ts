@@ -1,10 +1,11 @@
 import { toJSONSchema, z, type ZodType } from "zod";
 import { Capabilities, MetricDescriptor, RuleSummary, SnapshotInfo } from "./schemas.js";
 import { FINDING_GET, FINDINGS_LIST, NODE_NEIGHBORS } from "./contract-findings.js";
+import { HOTSPOTS_LIST } from "./contract-hotspots.js";
 import { HIERARCHY_GET, NODE_GET, NODE_RESOLVE } from "./contract-nodes.js";
 
 /** The read API's semver. Bump it whenever `CONTRACT` changes; `contract.lock.json` records the last one. */
-export const CODE_READ_API_VERSION = "0.1.2";
+export const CODE_READ_API_VERSION = "0.1.3";
 
 export interface CommandContract<Args extends ZodType = ZodType, Result extends ZodType = ZodType> {
   description: string;
@@ -50,6 +51,7 @@ export const CONTRACT = {
   "findings.list": FINDINGS_LIST,
   "finding.get": FINDING_GET,
   "node.neighbors": NODE_NEIGHBORS,
+  "hotspots.list": HOTSPOTS_LIST,
 } as const satisfies Record<string, CommandContract>;
 
 export type CommandName = keyof typeof CONTRACT;
