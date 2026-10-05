@@ -86,13 +86,17 @@ function addSample(tally: Tally, row: LedgerRow, prediction: Prediction): void {
   if (row.outcome === "accept" || row.outcome === "amend") tally.baselineAgreed += 1;
 }
 
-/** True when the category clears every graduation threshold in its policy row. */
+/**
+ * True when the category clears every graduation threshold in its policy row and has not drawn
+ * enough recent overrules to be demoted, so a score never recommends auto for what it just demoted.
+ */
 export function recommendsAuto(
-  score: Pick<CategoryScore, "samples" | "agreement" | "missedRedirects">,
+  score: Pick<CategoryScore, "samples" | "agreement" | "missedRedirects" | "overrules">,
   policy: CategoryPolicy,
 ): boolean {
   return (
     policy.mode !== "off" &&
+    score.overrules < DEMOTE_OVERRULES &&
     score.samples >= policy.minSamples &&
     score.agreement !== null &&
     score.agreement >= policy.minAgreement &&
@@ -130,7 +134,7 @@ function toScore(category: string, tally: Tally, policy: CategoryPolicy): Catego
     missedRedirects: tally.missedRedirects,
     baseline: ratio(tally.baselineAgreed),
     overrules: tally.overrules,
-    recommendAuto: recommendsAuto({ samples: tally.samples, agreement, missedRedirects: tally.missedRedirects }, policy),
+    recommendAuto: recommendsAuto({ ...tally, agreement }, policy),
     demote: policy.mode === "auto" && tally.overrules >= DEMOTE_OVERRULES,
   };
 }
