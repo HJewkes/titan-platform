@@ -117,22 +117,24 @@ function unquote(token: string): string {
     : token;
 }
 
+const NEVER_MATCHES = /(?!)/;
+
 /**
  * Convert a gitignore-style `.gitattributes` path pattern to a regex matched
  * against a repo-relative posix id: a slash-free pattern matches at any depth
  * (`*.gen.ts`), a leading or inner slash anchors to the root, a non-final `**`
  * segment matches zero or more directories, a final `**` segment matches
- * everything inside, `*`/`?` stay within a segment, and a trailing `/` matches
- * a directory prefix. The result is anchored at both ends.
+ * everything inside, and `*`/`?` stay within a segment. A trailing `/` matches
+ * only a directory, never a path inside it (gitattributes(5)), so it matches
+ * no file id. The result is anchored at both ends.
  */
 export function gitattributesPatternToRegex(pattern: string): RegExp {
   let p = pattern;
-  const isDir = p.endsWith("/");
-  if (isDir) p = p.slice(0, -1);
+  if (p.endsWith("/")) return NEVER_MATCHES;
   const anchored = p.includes("/");
   if (p.startsWith("/")) p = p.slice(1);
   const prefix = anchored ? "^" : "^(?:.*/)?";
-  return new RegExp(prefix + globBody(p) + (isDir ? "(?:/.*)?$" : "$"));
+  return new RegExp(prefix + globBody(p) + "$");
 }
 
 function globBody(p: string): string {

@@ -57,6 +57,13 @@ describe("parseGeneratedPatterns", () => {
     expect(isGeneratedFile("pkg/dist/x.js", patterns)).toBe(false);
   });
 
+  it("marks no file for a trailing-slash pattern, as git does", () => {
+    const patterns = parseGeneratedPatterns("vendor/ linguist-generated");
+    expect(isGeneratedFile("vendor", patterns)).toBe(false);
+    expect(isGeneratedFile("vendor/x.js", patterns)).toBe(false);
+    expect(isGeneratedFile("a/vendor/x.js", patterns)).toBe(false);
+  });
+
   it("lets a leading **/ match a root-level file", () => {
     const patterns = parseGeneratedPatterns("**/x.ts linguist-generated");
     expect(isGeneratedFile("x.ts", patterns)).toBe(true);
