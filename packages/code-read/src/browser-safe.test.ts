@@ -12,7 +12,9 @@ const sources = readdirSync(queryDir)
   .map((file) => ({ file, text: readFileSync(path.join(queryDir, file), "utf8") }));
 
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
-const ALLOWED_PACKAGES = new Set(["zod", "@titan-design/rpc-protocol"]);
+const ALLOWED_PACKAGES = new Set(["zod", "@titan-design/rpc-protocol", "@titan-design/code-graph/analysis"]);
+// Inputs the bundle may hold: the "./analysis" entry and the chunks it shares, never the root or another subpath.
+const CODE_GRAPH_INPUT = /code-graph\/dist\/(?:analysis\/browser|chunk-[\w-]+)\.js$/;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 
 async function bundleForBrowser() {
@@ -32,7 +34,7 @@ describe("./query in a browser", () => {
     expect(sources.map((s) => s.file)).toContain("index.ts");
   });
 
-  it.each(sources)("$file imports only siblings, zod, and rpc-protocol", ({ text }) => {
+  it.each(sources)("$file imports only siblings, zod, rpc-protocol, and code-graph/analysis", ({ text }) => {
     const specifiers = [...text.matchAll(IMPORT_SPECIFIER)].map((m) => m[1]!);
 
     expect(specifiers.filter((s) => !s.startsWith("./") && !ALLOWED_PACKAGES.has(s))).toEqual([]);
@@ -53,7 +55,8 @@ describe("./query in a browser", () => {
     const { metafile } = await bundleForBrowser();
     const inputs = Object.keys(metafile.inputs);
 
-    expect(inputs.filter((i) => /node:|better-sqlite3|store-sqlite|code-graph|ts-morph|tree-sitter|registry/.test(i))).toEqual([]);
+    expect(inputs.filter((i) => /node:|better-sqlite3|store-sqlite|ts-morph|tree-sitter|registry/.test(i))).toEqual([]);
+    expect(inputs.filter((i) => i.includes("code-graph") && !CODE_GRAPH_INPUT.test(i))).toEqual([]);
     expect(inputs.some((i) => i.includes("rpc-protocol"))).toBe(true);
   });
 });
