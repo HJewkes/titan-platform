@@ -75,6 +75,31 @@ describe("NUL kept where a zsh builtin or assignment takes the word whole", () =
   });
 });
 
+describe("NUL that cuts a wrapper's own name", () => {
+  it.each([
+    ["env", "env\\0x"],
+    ["/usr/bin/env", "/usr/bin/env\\0x"],
+    ["command", "command\\0x"],
+    ["builtin", "builtin\\0x"],
+    ["exec", "exec\\0x"],
+    ["nohup", "nohup\\0x"],
+    ["time", "time\\0x"],
+    ["nice", "nice\\0x"],
+    ["sudo", "sudo\\0x"],
+    ["doas", "doas\\0x"],
+    ["timeout", "timeout\\0x 5"],
+    ["xargs", "xargs\\0x"],
+    ["stdbuf", "stdbuf\\0x -o0"],
+    ["setsid", "setsid\\0x"],
+    ["flock", "flock\\0x /tmp/l"],
+    ["watch", "watch\\0x"],
+    ["npx", "npx\\0x"],
+    ["pnpm", "pnpm\\0x exec"],
+  ])("unwraps %s again after the cut", (_name, wrapper) => {
+    expect(gitArgs(`printf '${wrapper} git push origin HEAD:main\\n' | zsh`)).toContainEqual(pushed);
+  });
+});
+
 describe("pipedShellTexts", () => {
   it("returns text without NUL unchanged for every shell", () => {
     expect(pipedShellTexts("zsh", "git status\n")).toEqual(["git status\n"]);

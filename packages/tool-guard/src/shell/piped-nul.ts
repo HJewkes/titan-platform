@@ -32,18 +32,28 @@ function cutWord(word: WordToken): WordToken {
 
 const cutText = (text: string | null): string | null => (text === null ? null : (text.split("\0")[0] as string));
 
-/** A dynamic command word that a NUL cuts short names a fixed program once the cut is made: `git\0$(x)` runs `git`. */
-function namedAfterCut(cmd: Unwrapped): Unwrapped | null {
-  if (cmd.name !== null || cmd.xargs || !cmd.args[0]?.value.includes("\0")) return null;
-  const named = unwrap(cmd.args.map(cutWord));
-  return named && { ...named, assigned: [...cmd.assigned, ...named.assigned] };
+const bareWord = (value: string): WordToken => ({ type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] });
+
+const cutAssigned = (assigned: Unwrapped["assigned"]): Unwrapped["assigned"] =>
+  assigned.map(([name, value, ...rest]) => [name, cutText(value), ...rest] as Unwrapped["assigned"][number]);
+
+/**
+ * A command word that a NUL cuts short names a different program once cut: `env\0x git push` runs `env`,
+ * which then runs git, and `git\0$(x)` runs `git`. The cut words are unwrapped again like any command.
+ */
+function renamedAfterCut(cmd: Unwrapped): Unwrapped | null {
+  const word = cmd.name === null ? cmd.args[0] : cmd.path === null ? undefined : bareWord(cmd.path);
+  if (!word?.value.includes("\0")) return null;
+  const rest = cmd.name === null ? cmd.args.slice(1) : cmd.args;
+  const named = unwrap([cutWord(word), ...rest.map(cutWord)]);
+  return named && { ...named, assigned: [...cutAssigned(cmd.assigned), ...named.assigned] };
 }
 
 /** What an external program is handed: its name, arguments and environment end at the first NUL, as in exec. */
 export function execView(cmd: Unwrapped): Unwrapped {
-  const named = namedAfterCut(cmd);
-  if (named) return execView(named);
   if (cmd.name !== null && BUILTINS.has(cmd.name)) return cmd;
-  const assigned = cmd.assigned.map(([name, value, ...rest]) => [name, cutText(value), ...rest] as Unwrapped["assigned"][number]);
-  return { ...cmd, name: cutText(cmd.name), path: cutText(cmd.path), args: cmd.args.map(cutWord), assigned };
+  const renamed = renamedAfterCut(cmd);
+  if (renamed) return renamed;
+  const cut = { ...cmd, name: cutText(cmd.name), path: cutText(cmd.path), args: cmd.args.map(cutWord), assigned: cutAssigned(cmd.assigned) };
+  return cmd.xargs ? { ...cut, xargs: { ...cmd.xargs, words: cmd.xargs.words.map(cutWord) } } : cut;
 }

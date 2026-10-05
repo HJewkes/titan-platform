@@ -174,19 +174,19 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     w.scope.dir = changeDir(w.scope.dir, raw.args.find((a) => a.value === "-" || !a.value.startsWith("-")), w.home);
     return;
   }
-  const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  for (const cmd of xargsCommands(raw, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
+  const view = execView(raw);
+  const stdin = view.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
+  for (const cmd of xargsCommands(view, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   trackVars(cmd, w.scope.vars);
-  const ran = execView(cmd);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
-  const { name, path, args } = ran;
+  const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
-  w.out.push({ name, path, args, env: literalEnv(ran), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(ran, redirects, stdin);
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
+  const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
