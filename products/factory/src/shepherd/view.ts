@@ -6,6 +6,15 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
+import type { WakeInput, WakeStepResult } from "./wake.js";
+
+const KINDS = ["ci-red", "review", "conflict", "fix-proof"] as const;
+const MODES = ["resume", "successor", "live"] as const;
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/** Resolves to the list only when it names exactly the members of wake.ts's union, so a kind or mode added there fails the build here. */
+type Tied<List extends readonly string[], Union extends string> = [Same<List[number], Union>] extends [true] ? List : never;
+const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
+const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
@@ -46,11 +55,11 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     kind: z.literal("wake"),
     stepId: z.string(),
     /** Null where the step's record does not say: an implementer wake records its outcome, not its request. */
-    request: z.enum(["ci-red", "review", "conflict"]).nullable(),
+    request: z.enum(WAKE_KINDS).nullable(),
     /** Null for the FIX_FIRST counter, which is recorded before the wake it counts. */
     outcome: z.enum(["woken", "unhandled"]).nullable(),
     agent: z.string().nullable(),
-    mode: z.enum(["resume", "successor", "live"]).nullable(),
+    mode: z.enum(WAKE_MODES).nullable(),
     sessionId: z.string().nullable(),
   }),
   z.object({
@@ -299,7 +308,7 @@ const VerdictRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("none") }),
 ]);
 const WakeRecord = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(["resume", "successor", "live"]).optional(), sessionId: z.string().optional() }),
+  z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(WAKE_MODES).optional(), sessionId: z.string().optional() }),
   z.looseObject({ kind: z.literal("unhandled") }),
 ]);
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
