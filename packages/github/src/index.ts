@@ -2,6 +2,8 @@ export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, 
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { ReviewComment } from "./review-comment.js";
+export type { ForcePush, ForcePushPage } from "./force-pushes.js";
+export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
 export type { ChecksVerdict } from "./checks.js";
 export { evaluateChecks, isPassing, latestPerName } from "./checks.js";
 export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, MergeReadiness, MergeReadinessInput } from "./readiness.js";

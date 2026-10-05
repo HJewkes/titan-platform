@@ -1,11 +1,10 @@
-import { FakeHttpError, fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, type CarrySeatWiring } from "./carry-merge.js";
-import type { ReviewerAgent, ReviewerMessage } from "./review.js";
+import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
+import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
-import type { ForcePush } from "./force-pushes.js";
 import type { CarryResult } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -169,12 +168,13 @@ describe("the seat check of a carry", () => {
 
   async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
     const reviewer = seat("tc-x-review");
-    const forcePushes = async () => (run.pushesFail ? Promise.reject(run.pushesFail) : (run.pushes ?? []));
-    const wiring = { reader: { read: async () => messages(reviewer) }, forcePushes, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as CarrySeatWiring;
+    const wiring = { reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     if (run.commits) github.prCommits.set(TARGET.pr, run.commits);
     if (run.listFails) github.wire.listPrCommits = async () => Promise.reject(run.listFails);
+    if (run.pushes) github.forcePushes.set(TARGET.pr, run.pushes);
+    if (run.pushesFail) github.wire.listForcePushes = async () => Promise.reject(run.pushesFail);
     const route = carrySeatRoute({ now: () => 0, port: githubPort(github.wire) }, wiring);
     const prompt = JSON.stringify({ ...TARGET, fromHead: REVIEWED, head: NEW_HEAD, heads: [REVIEWED, NEW_HEAD] });
     const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
@@ -278,5 +278,21 @@ describe("the seat check of a carry", () => {
 
   it("clears with no dispatch wired, without reading the commit list", async () => {
     await expect(checked(() => [], { withDispatch: false, listFails: new Error("unread") })).resolves.toBe(true);
+  });
+});
+
+describe("the heads force-pushed away since the reviewed head", () => {
+  const [H0, H1, H2, H3] = ["h0", "h1", "h2", "h3"].map((tag) => fakeSha(tag)) as [string, string, string, string];
+
+  it("counts the push that removed the reviewed head and every later one", () => {
+    expect(pushedAwaySince([{ before: H0, after: H1 }, { before: H1, after: H2 }, { before: H2, after: H3 }], H1)).toEqual([H1, H2]);
+  });
+
+  it("skips the push that brought the reviewed head", () => {
+    expect(pushedAwaySince([{ before: H0, after: H1 }, { before: H2, after: H3 }], H1)).toEqual([H2]);
+  });
+
+  it("counts every push when the reviewed head is in none of them", () => {
+    expect(pushedAwaySince([{ before: H0, after: H3 }, { before: null, after: H2 }], H1)).toEqual([H0, null]);
   });
 });
