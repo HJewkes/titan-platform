@@ -1,6 +1,7 @@
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { hasMinerTables } from "../miner-tables.js";
 import { countNormalizedSessions, hasNormalized } from "../normalized-tables.js";
 
 export interface MinerStatus {
@@ -10,6 +11,7 @@ export interface MinerStatus {
   sessions: number;
   facts: number;
   edges: number;
+  /** 0 on a foreign graph, which has no miner tables to hold templates. */
   templates: number;
   /** Stranded FTS rows as a share of the index; above ~0.2 it is time for `refresh --full`. */
   ftsOrphanRatio: number;
@@ -37,7 +39,7 @@ export const status = defineCommand<Record<string, never>, MinerStatus, MinerCon
       sessions: count("session") + countNormalizedSessions(graph),
       facts: count("fact") + (hasNormalized(graph) ? count("normalized_event") : 0),
       edges: count("edge"),
-      templates: count("template"),
+      templates: hasMinerTables(graph, ["template"]) ? count("template") : 0,
       ftsOrphanRatio: graph.spans.orphanRatio(),
       lastIndexedAt,
     };
