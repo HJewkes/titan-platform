@@ -2,7 +2,7 @@ import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
-import { SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
+import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
 
 interface WrapperSpec {
   /** Options that take a separate value. */
@@ -28,32 +28,32 @@ const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "se
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
 const WRAPPERS: Record<string, WrapperSpec> = {
-  env: { values: ["-u", "--unset", "-C", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true },
+  env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true },
   command: { stop: ["-v", "-V"] },
   builtin: {},
   exec: { values: ["-a"] },
   nohup: {},
-  time: {},
-  nice: { values: ["-n", "--adjustment"] },
-  sudo: { values: ["-u", "-g", "-p", "-C", "-D", "-h", "-r", "-t", "-U", ...SUDO_LONG_VALUES] },
-  timeout: { values: ["-s", "-k", "--signal", "--kill-after"], positionals: 1 },
+  time: { values: [...SHORT_VALUES.time, "--format", "--output"] },
+  nice: { values: [...SHORT_VALUES.nice, "--adjustment"] },
+  sudo: { values: [...SHORT_VALUES.sudo, ...SUDO_LONG_VALUES] },
+  timeout: { values: [...SHORT_VALUES.timeout, "--signal", "--kill-after"], positionals: 1 },
   // `--eof`, `--max-lines` and `--replace` take their value only after `=`, so they stay out.
   xargs: {
-    values: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
+    values: [...SHORT_VALUES.xargs, "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
   },
-  stdbuf: { values: ["-i", "-o", "-e", "--input", "--output", "--error"] },
+  stdbuf: { values: [...SHORT_VALUES.stdbuf, "--input", "--output", "--error"] },
   npx: PACKAGE_OPTS,
   bunx: PACKAGE_OPTS,
   coproc: { named: true },
   setsid: {},
-  doas: { values: ["-a", "-u"], stop: ["-C", "-L"] },
+  doas: { values: SHORT_VALUES.doas, stop: ["-C", "-L"] },
   flock: {
-    values: ["-w", "--wait", "--timeout", "-E", "--conflict-exit-code"],
+    values: [...SHORT_VALUES.flock, "--wait", "--timeout", "--conflict-exit-code"],
     positionals: 1,
     script: ["-c", "--command"],
   },
   watch: {
-    values: ["-n", "--interval", "-q", "--equexit", "-s", "--shotsdir"],
+    values: [...SHORT_VALUES.watch, "--interval", "--equexit", "--shotsdir"],
     joined: true, direct: ["-x", "--exec"] },
 };
 
