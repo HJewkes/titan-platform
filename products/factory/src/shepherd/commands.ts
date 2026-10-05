@@ -18,6 +18,7 @@ import {
 } from "./policy.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
@@ -94,22 +95,30 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
   }
 }
 
-const FINISHED_RUNS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
+/** The registration of another PR that holds `branch` under a run that has finished, if any. */
+function finishedBranchHolder(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
+  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
+  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return undefined;
+  return FINISHED_RUN_STATUSES.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed") ? byBranch : undefined;
+}
 
 /**
  * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
- * PR's run is live; a finished run gives the branch up, as the changesets branch is reused by every release.
+ * PR's run is live; a finished run gives the branch up (see `releaseFinishedBranch`). Reads only.
  */
 function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
   const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
   if (byPr) return byPr;
   const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
   if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
-  if (FINISHED_RUNS.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed")) {
-    store.releaseBranch(byBranch.runId);
-    return undefined;
-  }
+  if (finishedBranchHolder(ctx, store, repo, pr, branch)) return undefined;
   throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
+}
+
+/** The changesets branch is reused by every release, so a finished run's hold on it is dropped once a lookup finds nothing. */
+function releaseFinishedBranch(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): void {
+  const holder = finishedBranchHolder(ctx, store, repo, pr, branch);
+  if (holder) store.releaseBranch(holder.runId);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -160,7 +169,10 @@ function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Regist
     runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
   } catch (error) {
     const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
-    if (!winner) throw error;
+    if (!winner) {
+      if (!store.byRun(previousRunId)) releaseFinishedBranch(ctx, store, args.repo, args.pr, known.branch ?? undefined);
+      throw error;
+    }
     return refresh(store, winner, args, policy);
   }
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
@@ -176,7 +188,10 @@ function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: Regist
     return { runId, created: true, registration: registration! };
   } catch (error) {
     const winner = findRegistration(ctx, store, args.repo, args.pr, branch);
-    if (!winner) throw error;
+    if (!winner) {
+      releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
+      throw error;
+    }
     return reuseOrRestart(ctx, store, winner, args, policy);
   }
 }
@@ -186,10 +201,12 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   const policy = policyFor(services, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
   if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
+  releaseFinishedBranch(ctx, services.store.get(), args.repo, args.pr, args.branch);
   const branch = await headBranch(services, args);
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
+  releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
   return startRegistered(ctx, store, args, branch, policy);
 }
 
