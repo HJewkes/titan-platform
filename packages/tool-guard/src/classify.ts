@@ -33,7 +33,7 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
   for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
     out.push(...classifySimple(cmd, line));
     if (followScripts) out.push(...scriptActions(cmd, line));
-    line = FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
+    line = [cmd, ...dynamicReadings(cmd)].reduce((l, c) => FAMILIES.reduce((acc, f) => f.after?.(c, acc) ?? acc, l), line);
   }
   return unique(out);
 }
@@ -51,6 +51,13 @@ function dynamicActions(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAct
     ...namedReadings(cmd, named).flatMap((reading) => named.flatMap((f) => (f.bash && handles(f, reading) ? f.bash(reading, ctx) : []))),
     ...(wrapped ? classifySimple(wrapped, ctx) : []),
   ];
+}
+
+/** The commands a dynamic word could run, so a branch switch behind it moves the head as it does when typed. */
+function dynamicReadings(cmd: SimpleCommand): SimpleCommand[] {
+  if (!hasDynamicName(cmd)) return [];
+  const wrapped = wrappedReading(cmd);
+  return [...namedReadings(cmd, FAMILIES.filter((f) => f.names)), ...(wrapped ? [wrapped] : [])];
 }
 
 function handles(family: Family, cmd: SimpleCommand): boolean {

