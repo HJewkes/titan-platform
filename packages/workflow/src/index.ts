@@ -38,6 +38,7 @@ export {
   StepOutputInvalidError,
   WorkflowCancelledError,
   WorkflowNonDeterminismError,
+  WorkflowNotOwnedError,
   WorkflowRecoveryRequiredError,
   WorkflowSchemaDriftError,
   workflowStepRequestKey,

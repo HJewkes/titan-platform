@@ -269,6 +269,36 @@ describe("sh-unfreeze", () => {
     expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toMatchObject({ unfrozen: false });
     expect(r.freezes.isFrozen(REPO)).toBe(true);
   });
+
+  it("reports the repo is not frozen when no freeze is held", async () => {
+    const r = rig();
+
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toEqual({ unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" });
+  });
+
+  it("stays frozen when the comparison of main cannot be read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, compareFiles: async () => Promise.reject(new Error("compare unavailable")) } };
+
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+
+    expect(result).toMatchObject({ unfrozen: false, frozen: true });
+    expect(result.detail).toContain("main could not be read");
+    expect(r.freezes.isFrozen(REPO)).toBe(true);
+  });
+
+  it("stays frozen when the check runs of main cannot be read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, latestCheckRuns: async () => Promise.reject(new Error("check runs unavailable")) } };
+
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+
+    expect(result).toMatchObject({ unfrozen: false, frozen: true });
+    expect(result.detail).toContain("main could not be read");
+    expect(r.freezes.isFrozen(REPO)).toBe(true);
+  });
 });
 
 describe("the freeze guard's re-read of main", () => {

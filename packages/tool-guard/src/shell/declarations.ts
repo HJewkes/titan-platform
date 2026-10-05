@@ -5,7 +5,7 @@ const LOCAL_MAKERS = new Set(["local", "declare", "typeset"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 const BARE_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)(\+?)=$/;
 const APPEND_RE = /^[A-Za-z_][A-Za-z0-9_]*\+=/;
-const DECLARED_NAME = /^([A-Za-z_][A-Za-z0-9_]*)(?:\+?=|$)/;
+const DECLARED_NAME = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?(?:\+?=|$)/s;
 const PATTERN_OPS = new Set(["(", ")", "|"]);
 const SEPARATOR: OpToken = { type: "op", value: ";" };
 
