@@ -119,6 +119,11 @@ open a daemon; `daemon` does.
   matches the snapshot; otherwise `excerptMissing: "changed-since-snapshot"`.
 - `node.neighbors` takes a stored node. A directory id is DATAERR; use `hierarchy.get` for
   directories until `deps.matrix` lands.
+- `hotspots.list` takes `window` as metric names spell it (`30d`, `lifetime`), not a bare
+  number. A window the snapshot never measured has no churn, so it returns no rows rather
+  than an error. A file younger than the window is discounted by its age, so a freshly
+  indexed repository can score every file 0 at file grain. The symbol grain applies no
+  recency.
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 

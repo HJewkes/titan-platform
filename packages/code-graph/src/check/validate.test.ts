@@ -179,6 +179,13 @@ describe("validateRules", () => {
     }
   });
 
+  it("keeps a forbid-import except list and rejects one that is not strings", () => {
+    const rule = { id: "r", type: "forbid-import", from: "a/**", to: "b/**" };
+
+    expect(validateRules({ rules: [{ ...rule, except: ["b/ok.ts"] }] })[0]).toMatchObject({ except: ["b/ok.ts"] });
+    expect(() => validateRules({ rules: [{ ...rule, except: "b/ok.ts" }] })).toThrow("r: except must be an array of strings");
+  });
+
   it("rejects a metric rule kind outside NodeKind", () => {
     const rules = [
       { id: "r", type: "metric-max", metric: "loc", max: 1 },

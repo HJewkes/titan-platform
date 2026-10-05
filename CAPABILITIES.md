@@ -609,7 +609,7 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Finding`, `FindingStatus`, `SourceExcerpt`
-- +70 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
+- +75 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
 
 <a id="cap-decider"></a>
 
