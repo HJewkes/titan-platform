@@ -5,13 +5,13 @@ import { join } from "node:path";
 import type {
   GraphEdge,
   GraphNode,
-} from "@titan-design/code-graph";
-import type { ContextDossier } from "../commands/graph-context-build.js";
+} from "../../types.js";
+import type { ContextDossier } from "./dossier.js";
 import {
   buildContextBundle,
   renderBundleText,
   type BundleBuildInput,
-} from "../commands/graph-context-bundle.js";
+} from "./bundle.js";
 
 const A_SRC = ["const zero = 0;", "function foo() {", "  return 1;", "}", "export { foo };"].join("\n");
 

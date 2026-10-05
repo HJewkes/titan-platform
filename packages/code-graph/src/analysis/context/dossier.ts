@@ -1,17 +1,17 @@
-import {
-  computeSymbolConsumers,
-  computeSymbolCoupling,
-  parseSymbolId,
-  type GraphNode,
-  type ReferenceEdgeLite,
-} from "@titan-design/code-graph";
+import { parseSymbolId } from "../../extractors/ids.js";
+import type { GraphNode } from "../../types.js";
 import {
   buildBlastRadius,
   collectSymbolUtil,
   type BlastRadiusEntry,
   type NodeMetrics,
   type SymbolUtil,
-} from "./dashboard-node-metrics.js";
+} from "../dashboard-node-metrics.js";
+import {
+  computeSymbolConsumers,
+  computeSymbolCoupling,
+  type ReferenceEdgeLite,
+} from "../symbol-coupling.js";
 
 /**
  * C-74 — deterministic per-file / per-symbol **context dossier** (Class A). A
@@ -90,7 +90,7 @@ export interface SymbolLine {
 
 export interface SymbolDossier {
   exported: boolean;
-  /** G1 slot — the type signature string, once persisted at index time. Null today. */
+  /** G1 slot — the one-line type signature indexed from `attrs.signature` (C-79); null when unannotated or unresolvable. */
   signature: string | null;
   /** G2 slot — leading docstring / intent. Null today. */
   purpose: string | null;

@@ -3,7 +3,7 @@ import type {
   ContextDossier,
   FileDossier,
   SymbolDossier,
-} from "./graph-context-build.js";
+} from "./dossier.js";
 
 /**
  * Human/agent-readable markdown projection of a {@link ContextDossier} (C-74).

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { GraphNode } from "@titan-design/code-graph";
+import type { GraphNode } from "../../types.js";
 import {
   buildContextDossier,
   type ContextBuildInput,
-} from "../commands/graph-context-build.js";
-import { renderContextMarkdown } from "../commands/graph-context-format.js";
-import type { NodeMetrics } from "../commands/dashboard-node-metrics.js";
+} from "./dossier.js";
+import { renderContextMarkdown } from "./format.js";
+import type { NodeMetrics } from "../dashboard-node-metrics.js";
 
 function node(id: string, kind: GraphNode["kind"], extra: Partial<GraphNode> = {}): GraphNode {
   return { id, kind, name: extra.name ?? id.split(/[/#]/).pop()!, ...extra };

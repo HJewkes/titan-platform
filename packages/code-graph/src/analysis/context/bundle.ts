@@ -1,12 +1,9 @@
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
-import {
-  parseSymbolId,
-  type GraphEdge,
-  type GraphNode,
-} from "@titan-design/code-graph";
-import type { ContextDossier } from "./graph-context-build.js";
-import { renderContextMarkdown } from "./graph-context-format.js";
+import { parseSymbolId } from "../../extractors/ids.js";
+import type { GraphEdge, GraphNode } from "../../types.js";
+import type { ContextDossier } from "./dossier.js";
+import { renderContextMarkdown } from "./format.js";
 
 /**
  * C-80 — the **context bundle**: one deterministic pull of the complete paired
