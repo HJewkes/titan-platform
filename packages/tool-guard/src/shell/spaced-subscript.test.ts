@@ -37,6 +37,14 @@ describe("a subscript assignment with blanks inside the brackets", () => {
     ["time after !", "! time Y[ ;git push origin HEAD:main; ]=x"],
     ["a ( in a case pattern", "case Y[ in (Y[ ) git push origin HEAD:main; ( ]=x) ;; esac"],
     ["a ( in a case pattern closed by ]=x", "case Y[ in (Y[ ) git push origin HEAD:main; ]=x) ;; esac"],
+    ["a case pattern after |", "case Y[ in x|Y[ ) git push origin HEAD:main; ]=x ;; esac"],
+    ["a case pattern after a spaced |", "case Y[ in x | Y[ ) git push origin HEAD:main; ]=x ;; esac"],
+    ["a case pattern after a newline", "case Y[ in\nY[ ) git push origin HEAD:main; ]=x ;; esac"],
+    ["a case pattern after ;; and a newline", "case a in z) :;;\nY[ ) git push origin HEAD:main; ]=x ;; esac"],
+    ["[[ ]] with &&", "[[ 1 && Y[ == [[ ]]; git push origin HEAD:main; echo ]=x"],
+    ["[[ ]] with ||", "[[ 1 || Y[ == [[ ]]; git push origin HEAD:main; echo ]=x"],
+    ["(( )) with ||", "(( 1 || Y[ 1 )); git push origin HEAD:main; (( ]=1 ))"],
+    ["a here-doc body", "cat <<E\nY[ \nE\ngit push origin HEAD:main; ]=x"],
   ])("does not hide a push behind brackets with %s", (_how, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
@@ -45,6 +53,8 @@ describe("a subscript assignment with blanks inside the brackets", () => {
     ["a reserved word that starts the command", "if true; then Y[ 0 ]=x git push origin HEAD:main; fi"],
     ["another assignment", "A=1 Y[ 0 ]=x git push origin HEAD:main"],
     ["time at the start of the command", "time Y[ 0 ]=x git push origin HEAD:main"],
+    ["!", "! Y[ 0 ]=x git push origin HEAD:main"],
+    ["{", "{ Y[ 0 ]=x git push origin HEAD:main; }"],
   ])("still runs the push after a spaced subscript following %s", (_how, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
