@@ -1,5 +1,5 @@
 import type { WordToken } from "./lexer.js";
-import { dynamicReadings } from "./dynamic-name.js";
+import { withDynamicName } from "./dynamic-name.js";
 import { unwrap } from "./unwrap.js";
 import type { Unwrapped } from "./unwrap.js";
 
@@ -22,7 +22,7 @@ function withSpread(words: WordToken[]): WordToken[][] {
  */
 export function xargsCommands(raw: Unwrapped, stdin: string | null, runsOf: (cmd: Unwrapped) => WordToken[][]): Unwrapped[] {
   const unknownInput = raw.xargs !== undefined && stdin === null;
-  return resolvedRuns(raw, stdin, runsOf).flatMap((run) => dynamicReadings(run, unknownInput));
+  return resolvedRuns(raw, stdin, runsOf).flatMap((run) => withDynamicName(run, unknownInput));
 }
 
 function resolvedRuns(raw: Unwrapped, stdin: string | null, runsOf: (cmd: Unwrapped) => WordToken[][]): Unwrapped[] {

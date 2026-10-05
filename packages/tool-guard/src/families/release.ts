@@ -1,5 +1,4 @@
 import type { SimpleCommand } from "../shell/commands.js";
-import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, Family } from "../types.js";
@@ -66,21 +65,13 @@ const RULES: Record<string, Rule> = {
 };
 
 /** Tool name and positional words, with `pnpm <bin> ...` read as `<bin> ...`. */
-function invocation(cmd: Pick<SimpleCommand, "name" | "args">): { tool: string; words: string[] } | null {
+function invocation(cmd: SimpleCommand): { tool: string; words: string[] } | null {
   const tool = cmd.name;
   if (tool === null || !Object.hasOwn(RULES, tool)) return null;
   const words = readOptions(cmd.args, VALUES[tool] ?? set()).positionals.map((w) => w.value);
   const [bin, ...rest] = words;
   if (BIN_RUNNERS.has(tool) && bin !== undefined && RELEASE_BINS.has(bin)) return { tool: bin, words: rest };
   return { tool, words };
-}
-
-/** The release tools whose guarded verbs `args` would be if a dynamic command word named them. */
-export function releaseNamesFor(args: WordToken[]): string[] {
-  return Object.keys(RULES).filter((name) => {
-    const call = invocation({ name, args });
-    return call !== null && (RULES[call.tool] as Rule)(call.words) !== null;
-  });
 }
 
 function versionPackages(cmd: SimpleCommand): ClassifiedAction[] {

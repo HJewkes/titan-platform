@@ -4,6 +4,7 @@ import { egress } from "./families/egress.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
+import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { scriptTarget } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
@@ -38,7 +39,18 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
 }
 
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  return FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
+  const direct = FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
+  return hasDynamicName(cmd) ? [...direct, ...dynamicActions(cmd, ctx)] : direct;
+}
+
+/** Only families that list command names read a dynamic word as one; the others already see it as an unnamed command. */
+function dynamicActions(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+  const named = FAMILIES.filter((f) => f.names);
+  const wrapped = wrappedReading(cmd);
+  return [
+    ...namedReadings(cmd, named).flatMap((reading) => named.flatMap((f) => (f.bash && handles(f, reading) ? f.bash(reading, ctx) : []))),
+    ...(wrapped ? classifySimple(wrapped, ctx) : []),
+  ];
 }
 
 function handles(family: Family, cmd: SimpleCommand): boolean {

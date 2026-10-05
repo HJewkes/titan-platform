@@ -31,19 +31,12 @@ export interface PrMerge {
 }
 
 /** `gh pr merge [<target>]`, or null when the command is not a merge; `--disable-auto` only cancels one. */
-export function ghPrMerge(cmd: Pick<SimpleCommand, "name" | "args">): PrMerge | null {
+export function ghPrMerge(cmd: SimpleCommand): PrMerge | null {
   if (cmd.name !== "gh") return null;
   const options = readOptions(cmd.args, GH_PR_MERGE_VALUES);
   const [group, verb, target] = options.positionals;
   if (group?.value !== "pr" || verb?.value !== "merge" || hasFlag(options, "--disable-auto")) return null;
   return { target: target ?? null };
-}
-
-/** The guarded commands whose merge verbs `args` would be if a dynamic command word named them: `push` and `merge` for git, `pr merge` for gh. */
-export function mergeNamesFor(args: WordToken[]): string[] {
-  const sub = parseGit(args, null).sub;
-  const git = sub === "push" || sub === "merge" ? ["git"] : [];
-  return ghPrMerge({ name: "gh", args }) ? [...git, "gh"] : git;
 }
 
 function prSubject(target: WordToken | null): Record<string, string> {

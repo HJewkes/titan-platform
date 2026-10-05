@@ -15,10 +15,13 @@ describe("xargs running a dynamic command word", () => {
     ["a quoted variable", "xargs \"$G\" push origin HEAD:main"],
     ["an unquoted variable", "xargs $G push origin HEAD:main"],
     ["a variable after a wrapper", "xargs env \"$G\" push origin HEAD:main"],
-    ["a variable fed by stdin", "echo x | xargs \"$G\" push origin HEAD:main"],
     ["a command substitution", "xargs $(echo git) push origin HEAD:main"],
   ])("fails closed as a protected push: %s", (_how, command) => {
     expect(verdicts(command)).toContainEqual(UNKNOWN_PUSH);
+  });
+
+  it("reads a push fed by readable stdin exactly", () => {
+    expect(verdicts("echo x | xargs \"$G\" push origin HEAD:main")).toContainEqual(["bash.merge.git-push-protected", { branch: "main" }]);
   });
 
   it.each([
