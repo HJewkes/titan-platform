@@ -79,6 +79,8 @@ export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/te
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
 export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME } from "./analysis/coverage.js";
+export type { MinifiedSource, MinifyLanguage } from "./analysis/context/minify.js";
+export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./analysis/context/minify.js";
 /**
  * The history adapter: it turns `./history`'s primitives into `GraphMetric` rows, so it
  * lives at the root rather than behind the `./history` seam, which speaks no graph types.
