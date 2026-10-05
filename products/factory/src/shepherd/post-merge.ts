@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { failureOf } from "./error-class.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -158,7 +159,7 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
       else if (read.verdict !== "pending") return { ...base, ...(sha !== input.mergeSha && { readSha: sha }), verdict: read.verdict, detail: read.detail };
       last = read.detail;
     } catch (error) {
-      last = error instanceof Error ? error.message : String(error);
+      last = failureOf(error);
     }
     if (clock.expired()) return { ...base, verdict: "none", detail: `no verdict after ${timing.timeoutMs} ms: ${last}` };
     await clock.sleep(timing.pollMs, signal);

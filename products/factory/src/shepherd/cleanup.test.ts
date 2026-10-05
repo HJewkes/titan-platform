@@ -5,6 +5,7 @@ import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
@@ -273,7 +274,7 @@ describe("sh-cleanup retire", () => {
     const result = await w.run();
 
     expect(result).toMatchObject({ ref: "unread", task: "done", retired: [IMPLEMENTER] });
-    expect(result.caveats).toEqual(["head ref of #1: github is down"]);
+    expect(result.caveats).toEqual(["head ref of #1: Error"]);
     expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
   });
 
@@ -287,7 +288,19 @@ describe("sh-cleanup retire", () => {
     expect(gaps.every((gap) => gap >= SH_CLEANUP_RETRY_MS)).toBe(true);
     expect(w.clock.now).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS);
     expect(result.retired).toEqual([]);
-    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: worktree has unpushed commits`]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
+  });
+
+  it("keeps a URL and a token in a GitHub or retire error out of the caveats", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const port = githubPort(fake.wire);
+    vi.spyOn(port, "getPr").mockRejectedValue(new Error(LEAKY_MESSAGE));
+    const w = world({ fake, port, agents: [{ name: IMPLEMENTER, exitAt: 0, refusals: Array.from({ length: 20 }, () => LEAKY_MESSAGE) }] });
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual(["head ref of #1: Error", `retire ${IMPLEMENTER}: Error`]);
+    expectNoLeak(result);
   });
 
   it("does not retire an agent resumed inside the roster cache window", async () => {
@@ -322,7 +335,7 @@ describe("sh-cleanup retire", () => {
 
     expect(w.agents.retires).toEqual([]);
     expect(result.retired).toEqual([]);
-    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: roster unreadable before retire: broker unreachable`]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: roster unreadable before retire: Error`]);
   });
 
   it("leaves the task and the agents alone when no ports are wired", async () => {

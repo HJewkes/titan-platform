@@ -1,7 +1,8 @@
 import { dataFence } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, type ReviewComment } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type ReviewComment } from "@titan-design/github";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
@@ -131,6 +132,17 @@ describe("review wake brief: the PR's review comments", () => {
     };
 
     expect((await wake()).payload).toBe(`${dataFence("review findings", FINDINGS)}\n\nThe PR's review comments could not be read, so none are included.`);
+  });
+
+  it("names only the error class when a failing job's log cannot be read", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const port = { ...githubPort(fake.wire), latestCheckRuns: async () => [successRun("validate", 1, undefined, "failure")], jobLogTail: async () => Promise.reject(new Error(LEAKY_MESSAGE)) };
+
+    const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1 }, pr);
+
+    expect(wake.payload).toContain("(log unavailable: Error)");
+    expectNoLeak(wake);
   });
 
   it("has no unreadable line when the read succeeds with no comments", async () => {
