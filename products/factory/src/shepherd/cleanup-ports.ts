@@ -2,6 +2,7 @@ import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
 import type { FixTaskFields, FixTasks } from "./main-red.js";
+import { toPresence } from "./presence.js";
 import { createRosterReader, mutating, type RosterReader } from "./roster.js";
 
 export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
@@ -20,7 +21,7 @@ export function agentChatCleanupAgents(
   roster: RosterReader = createRosterReader(async () => calls.listAgents(agentChatBin, timeoutMs)),
 ): CleanupAgents {
   return {
-    roster: async () => (await roster.rows()).map(({ name, presence, status }) => ({ name, presence, status })),
+    roster: async () => (await roster.rows()).map(({ name, presence, status }) => ({ name, presence: toPresence(presence), status })),
     invalidate: () => roster.invalidate(),
     retire: (name) => mutating(roster, async () => void calls.retire(agentChatBin, name, timeoutMs)),
   };
