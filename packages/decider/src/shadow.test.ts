@@ -139,7 +139,7 @@ describe("graduation", () => {
   it("never recommends auto for a category held off", () => {
     const off = categoryPolicy(setCategoryMode(shadowPolicy, "tech_design", "off"), "tech_design");
 
-    expect(recommendsAuto({ samples: 50, agreement: 1, missedRedirects: 0 }, off)).toBe(false);
+    expect(recommendsAuto({ samples: 50, agreement: 1, missedRedirects: 0, overrules: 0 }, off)).toBe(false);
   });
 });
 
@@ -158,6 +158,24 @@ describe("demotion", () => {
 
     expect(scores).toMatchObject([{ overrules: 1, demote: false }]);
     expect(categoryPolicy(applyDemotions(autoPolicy, scores), "tech_design").mode).toBe("auto");
+  });
+
+  it("does not recommend auto for a category it demotes, before or after the demotion applies", () => {
+    const set = sampleSet(20, 0);
+    const rows = [...set.rows, overrule(0), overrule(1)];
+    const before = score(set.predictions, rows, { policy: autoPolicy, now });
+    const demoted = applyDemotions(autoPolicy, before);
+
+    expect(before).toMatchObject([{ samples: 20, agreement: 1, overrules: 2, demote: true, recommendAuto: false }]);
+    expect(score(set.predictions, rows, { policy: demoted, now })).toMatchObject([
+      { samples: 20, overrules: 2, demote: false, recommendAuto: false },
+    ]);
+  });
+
+  it("recommends auto again once fewer than 2 overrules sit in the window", () => {
+    const auto = categoryPolicy(autoPolicy, "tech_design");
+
+    expect(recommendsAuto({ samples: 20, agreement: 1, missedRedirects: 0, overrules: 1 }, auto)).toBe(true);
   });
 
   it("leaves a shadow category as it is", () => {
