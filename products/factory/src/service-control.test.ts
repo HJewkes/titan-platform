@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { BusyRun } from "./restart-drain.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "./test-support/leak.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
@@ -141,17 +142,16 @@ describe("titan-factory service install", () => {
     expect(code).toBe(EXIT.OK);
   });
 
-  it("exits non-zero with the tail of the error log when /health never answers", async () => {
-    const log = Array.from({ length: 30 }, (_, line) => `line ${line + 1}`).join("\n");
-    const machine = fakeMachine({ serves: false, files: { [ERR_LOG]: `${log}\n` } });
+  it("exits non-zero pointing at the error log, without quoting its error text, when /health never answers", async () => {
+    const machine = fakeMachine({ serves: false, files: { [ERR_LOG]: `line 1\n${LEAKY_MESSAGE}\n` } });
 
     const { code, out, err } = await service(["install", "--mcp"], machine);
 
     expect(code).toBe(EXIT.FAILURE);
     expect(out).toBe("");
     expect(err).toContain("did not answer /health on port 7410");
-    expect(err).toContain(`--- tail of ${ERR_LOG}\nline 11\n`);
-    expect(err).toMatch(/line 30\n$/);
+    expect(err).toContain(`tail -n 20 ${ERR_LOG}`);
+    expectNoLeak(err);
     expect(machine.calls.some((call) => call.startsWith("claude"))).toBe(false);
   });
 
@@ -456,13 +456,13 @@ describe("titan-factory service restart", () => {
     expect(out).toContain("restarted");
   });
 
-  it("fails with the error log tail when the restarted job never answers", async () => {
+  it("fails pointing at the error log when the restarted job never answers", async () => {
     const machine = fakeMachine({ loaded: true, serves: false, files: { [ERR_LOG]: "EADDRINUSE\n" } });
 
     const { code, err } = await service(["restart"], machine);
 
     expect(code).toBe(EXIT.FAILURE);
-    expect(err).toContain("EADDRINUSE");
+    expect(err).toContain(`tail -n 20 ${ERR_LOG}`);
   });
 
   it("waits for a busy review to finish before it kickstarts", async () => {

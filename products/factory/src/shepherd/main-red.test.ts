@@ -6,6 +6,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { bindAll } from "../workflows.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
 import { FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
 import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
@@ -139,6 +140,28 @@ describe("sh-file-fix-task", () => {
     expect(result).toMatchObject({ task: null, thawed: true });
     expect(r.added).toEqual([]);
     expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixTask: null });
+  });
+
+  it("names only the error class when active-work never takes the fix task", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const refusing: FixTasks = { ...r.wiring.tasks!, findByTag: async () => Promise.reject(new Error(LEAKY_MESSAGE)) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, tasks: refusing }, red, signal);
+
+    expect(result).toMatchObject({ task: null, detail: "active-work did not take the fix task: Error" });
+    expectNoLeak(result);
+  });
+
+  it("files the notes with only the error class when a failing job's log cannot be read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, jobLogTail: async () => Promise.reject(new Error(LEAKY_MESSAGE)) } };
+
+    await fileFixTask(deps, r.wiring, red, signal);
+
+    expect(r.added[0]!.fields.notes).toContain("(log unavailable: Error)");
+    expectNoLeak(r.added);
   });
 
   it("records nothing on a later episode when the episode thaws while the add is in flight", async () => {
@@ -286,6 +309,17 @@ describe("sh-unfreeze", () => {
     expect(result).toMatchObject({ unfrozen: false, frozen: true });
     expect(result.detail).toContain("main could not be read");
     expect(r.freezes.isFrozen(REPO)).toBe(true);
+  });
+
+  it("names only the error class when main cannot be read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, compareFiles: async () => Promise.reject(new Error(LEAKY_MESSAGE)) } };
+
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+
+    expect(result.detail).toBe("main could not be read: Error");
+    expectNoLeak(result);
   });
 
   it("stays frozen when the check runs of main cannot be read", async () => {

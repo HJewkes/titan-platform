@@ -20,6 +20,7 @@ import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsew
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ORPHANED, resyncShepherd } from "./resync.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
 
@@ -244,7 +245,7 @@ function approveThenMerge(): WorkflowDefinition {
 }
 
 describe("resyncShepherd when superseding moved gates throws", () => {
-  it("still reports the runs it ended and the error", async () => {
+  it("still reports the runs it ended and the error class, never its text", async () => {
     const w = world();
     const runId = await gatedRun(w, 1);
     merge(w.fake, 1);
@@ -254,19 +255,20 @@ describe("resyncShepherd when superseding moved gates throws", () => {
     const services = routes.shepherd!;
     const broken: FactoryHost = Object.assign(Object.create(host) as FactoryHost, {
       pendingGates: () => {
-        throw new Error("gate store down");
+        throw new Error(LEAKY_MESSAGE);
       },
     });
 
     const report = await resyncShepherd(broken, services);
 
     expect(report.ended.map((ended) => ended.runId)).toEqual([runId]);
-    expect(report.supersedeError).toBe("gate store down");
+    expect(report.supersedeError).toBe("Error");
+    expectNoLeak(report);
   });
 });
 
 describe("resyncShepherd when a cancel fails for a reason other than a lease", () => {
-  it("keeps the run held for the recheck before adoption and reports the cause", async () => {
+  it("keeps the run held for the recheck before adoption and reports the cause as an error class, never its text", async () => {
     const w = world();
     const runId = await gatedRun(w, 1);
     merge(w.fake, 1);
@@ -274,14 +276,15 @@ describe("resyncShepherd when a cancel fails for a reason other than a lease", (
     const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
     cleanups.push(() => host.close());
     vi.spyOn(host.runtime, "cancel").mockImplementation(() => {
-      throw new Error("database unavailable");
+      throw new Error(LEAKY_MESSAGE);
     });
 
     const report = await resyncShepherd(host, routes.shepherd!);
 
     expect(report.ended).toEqual([]);
     expect(report.held).toEqual([runId]);
-    expect(report.cancelErrors).toEqual([{ runId, cause: "database unavailable" }]);
+    expect(report.cancelErrors).toEqual([{ runId, cause: "Error" }]);
+    expectNoLeak(report);
   });
 });
 
