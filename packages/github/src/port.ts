@@ -1,6 +1,7 @@
 import { latestPerName } from "./checks.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
+import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
@@ -361,27 +362,6 @@ async function listPrFiles(wire: GitHubWire, repo: RepoSlug, number: number): Pr
   const { files, changedFiles } = await wire.listPrFiles(repo, number);
   if (files.length < changedFiles) throw new FileListTruncatedError(changedFiles, files.length);
   return files;
-}
-
-/** Resolved once per port; a failed lookup is not remembered. */
-function memoizedLogin(wire: GitHubWire): () => Promise<string> {
-  let cached: Promise<string> | undefined;
-  return () => {
-    cached ??= wire.getAuthenticatedLogin().catch((error: unknown) => {
-      cached = undefined;
-      throw error;
-    });
-    return cached;
-  };
-}
-
-const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n/).some((line) => line.trimEnd() === marker);
-
-async function upsertComment(wire: GitHubWire, login: () => Promise<string>, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
-  const [self, comments] = await Promise.all([login(), wire.listIssueComments(repo, number)]);
-  const existing = comments.find((comment) => comment.author === self && holdsMarker(comment.body, marker));
-  if (existing) return { id: existing.id, done: false, skipped: "exists" };
-  return { id: (await wire.createComment(repo, number, body)).id, done: true };
 }
 
 function closedSkip(pr: PullRequest): SkipReason | undefined {
