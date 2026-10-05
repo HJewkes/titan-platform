@@ -1,4 +1,4 @@
-import type { WordToken } from "./lexer.js";
+import type { OpToken, Token, WordToken } from "./lexer.js";
 import { printedText } from "./printed.js";
 
 /**
@@ -60,7 +60,103 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     value += w.value.slice(last, ref.start) + literal;
     last = ref.end;
   }
-  return { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  const expanded = { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  if (unsureWords.has(w)) unsureWords.add(expanded);
+  return expanded;
+}
+
+/** The words of each command bash may skip, run more than once, or run apart from the current shell. */
+const unsureWords = new WeakSet<WordToken>();
+const COMPOUND_OPENERS = new Set(["if", "while", "until", "for", "select", "case"]);
+const COMPOUND_CLOSERS = new Set(["fi", "done", "esac", "}"]);
+const LEADING_KEYWORDS = new Set(["then", "do", "else", "elif", "!"]);
+/** A command these lead may not run. */
+const CONDITIONAL_OPS = new Set(["&&", "||", "|", "|&"]);
+/** A command these follow runs in a subshell. */
+const APART_OPS = new Set(["|", "|&", "&"]);
+
+/** An open group or compound command; `unsure` when bash may skip or repeat what it holds. */
+interface Construct {
+  unsure: boolean;
+  start: number;
+}
+
+interface Structure {
+  open: Construct[];
+  prev: string | null;
+  words: WordToken[];
+  start: boolean;
+  /** A function header was read, so the next group is a body that runs only when called. */
+  header: boolean;
+}
+
+/**
+ * Notes which commands run surely and once in the current shell. The walk is linear, so without this a
+ * readonly in an untaken branch, a loop, an uncalled function, a pipeline or a background job would be
+ * treated as certain. Returns the tokens unchanged.
+ */
+export function noteUnsureCommands(tokens: Token[]): Token[] {
+  const s: Structure = { open: [], prev: null, words: [], start: true, header: false };
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i] as Token;
+    if (token.type === "word") structureWord(tokens, i, s);
+    else if (token.type === "op") i = structureOp(tokens, i, s);
+  }
+  endCommand(s, null);
+  return tokens;
+}
+
+function structureWord(tokens: Token[], i: number, s: Structure): void {
+  const w = tokens[i] as WordToken;
+  const keyword = s.start && !w.quoted ? w.value : "";
+  if (keyword === "{") openConstruct(s, i, s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
+  else if (COMPOUND_OPENERS.has(keyword)) {
+    openConstruct(s, i, true);
+    s.start = keyword === "if" || keyword === "while" || keyword === "until";
+  } else if (COMPOUND_CLOSERS.has(keyword)) closeConstruct(tokens, i, s);
+  else if (!LEADING_KEYWORDS.has(keyword)) {
+    s.header ||= keyword === "function";
+    s.words.push(w);
+    s.start = false;
+  }
+}
+
+/** A `( )` pair after a name is a function header; any other `(` opens a subshell group. */
+function structureOp(tokens: Token[], i: number, s: Structure): number {
+  const op = (tokens[i] as OpToken).value;
+  const next = tokens[i + 1];
+  endCommand(s, op);
+  if (op === "(" && next?.type === "op" && next.value === ")") {
+    [s.header, s.start] = [true, true];
+    return i + 1;
+  }
+  if (op === "(") openConstruct(s, i, s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
+  if (op === ")") closeConstruct(tokens, i, s);
+  s.prev = op;
+  s.start = true;
+  return i;
+}
+
+function openConstruct(s: Structure, i: number, unsure: boolean): void {
+  s.open.push({ unsure, start: i });
+  s.header = false;
+}
+
+/** A construct piped or sent to the background runs in a subshell, so everything in it is unsure. */
+function closeConstruct(tokens: Token[], i: number, s: Structure): void {
+  const construct = s.open.pop();
+  s.start = false;
+  const next = tokens.slice(i + 1).find((t) => t.type !== "redirect");
+  if (!construct || next?.type !== "op" || !APART_OPS.has(next.value)) return;
+  for (const t of tokens.slice(construct.start, i)) if (t.type === "word") unsureWords.add(t);
+}
+
+function endCommand(s: Structure, op: string | null): void {
+  const apart = op !== null && APART_OPS.has(op);
+  if (apart || CONDITIONAL_OPS.has(s.prev ?? "") || s.open.some((c) => c.unsure)) {
+    for (const w of s.words) unsureWords.add(w);
+  }
+  s.words = [];
 }
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
@@ -131,7 +227,8 @@ function trackDeclaration(name: string, args: WordToken[], vars: Vars): void {
   const readonly = name === "readonly" || (name !== "export" && options.some((a) => READONLY_FLAG_RE.test(a.value)));
   const mode: ReadonlyMode = !readonly ? null : options.some((a) => a.value.includes("a")) ? "array" : "scalar";
   for (const arg of args) declareArg(name, parseAssignment(arg), mode, vars);
-  if (readonly) for (const arg of args) markReadonly(name, arg, vars);
+  const sure = name !== "local" && !args.some((a) => unsureWords.has(a));
+  if (readonly) for (const arg of args) markReadonly(name, arg, sure, vars);
   if (args.some((a) => unreadableDeclareWord(name, a))) forgetAll(vars);
   if (args.some((a) => a.dynamic && parseAssignment(a) === null)) vars.set(ANY_READONLY, null);
 }
@@ -167,10 +264,16 @@ function declareArg(name: string, assignment: Assignment | null, mode: ReadonlyM
   else assign(vars, assignment);
 }
 
-/** Marks the variable a declaration word names, plain or with a subscript `readonly` rejects. */
-function markReadonly(name: string, arg: WordToken, vars: Vars): void {
+/**
+ * Marks the variable a declaration word names, plain or with a subscript `readonly` rejects. Only a declaration
+ * that surely runs once in this shell makes it surely readonly. A `local` is in a function body, which runs only
+ * when called, or else at the top level, where bash rejects it; either way it only may be readonly.
+ */
+function markReadonly(name: string, arg: WordToken, sure: boolean, vars: Vars): void {
   const [, variable, subscript] = DECLARED_RE.exec(arg.value) ?? [];
-  if (variable && !(subscript !== undefined && SCALAR_DECLARERS.has(name))) vars.set(readonlyKey(variable), "");
+  if (!variable || (subscript !== undefined && SCALAR_DECLARERS.has(name))) return;
+  const key = readonlyKey(variable);
+  if (sure || vars.get(key) !== "") vars.set(key, sure ? "" : null);
 }
 
 interface TrackedCommand {

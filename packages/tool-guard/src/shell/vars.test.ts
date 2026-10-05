@@ -281,6 +281,33 @@ describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
+  it.each([
+    ["after a false &&", "Y=status; false && readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a true ||", "Y=status; true || readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["in an untaken if", "Y=status; if false; then readonly Y; fi; Y=push; git $Y origin HEAD:main"],
+    ["with a value in an untaken if", "Y=status; if false; then readonly Y=status; fi; Y=push; git $Y origin HEAD:main"],
+    ["in an unmatched case arm", "Y=status; case a in b) readonly Y;; esac; Y=push; git $Y origin HEAD:main"],
+    ["in a while false body", "Y=status; while false; do readonly Y; done; Y=push; git $Y origin HEAD:main"],
+    ["in an uncalled function", "Y=status; f() { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["as a top-level local -r", "Y=status; local -r Y; Y=push; git $Y origin HEAD:main"],
+    ["piped to cat", "Y=status; readonly Y | cat; Y=push; git $Y origin HEAD:main"],
+    ["in the background", "Y=status; readonly Y & Y=push; git $Y origin HEAD:main"],
+    ["in a group after a false &&", "Y=status; false && { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["in a piped group", "Y=status; { readonly Y; } | cat; Y=push; git $Y origin HEAD:main"],
+    ["in an uncalled function keyword body", "Y=status; function f { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+  ])("still reads a later write after a readonly bash may never run %s", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["after a plain command", "false; readonly Y=push; Y=status; git $Y"],
+    ["in a plain group", "{ readonly Y=push; }; Y=status; git $Y"],
+    ["after a closed if", "if true; then :; fi; readonly Y=push; Y=status; git $Y"],
+    ["before an &&", "readonly Y=push && Y=status; git $Y"],
+  ])("keeps the old value after a readonly that surely runs %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["push"]]);
+  });
+
   it("restores a function local's outer value even while it is readonly", () => {
     expect(gitArgs("Y=push; f() { local -r Y=status; }; f; git $Y")).toEqual([["push"]]);
   });
