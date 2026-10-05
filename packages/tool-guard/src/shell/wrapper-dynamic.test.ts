@@ -105,3 +105,25 @@ describe("a dynamic word's literal text in the readings", () => {
     expect(spellings("sudo $O $P'$(' git status")).not.toContain(PUSH);
   });
 });
+
+describe("a computed expansion inside a word after the wrapper's options", () => {
+  const words = [
+    ["a substitution", "$(git branch --show-current):main"],
+    ["a backtick substitution", "`git branch --show-current`:main"],
+    ["a parameter expansion with an operator", "${R:-x}:main"],
+    ["an arithmetic expansion", "$((1)):main"],
+    ["a quoted substitution", "\"$(git rev-parse HEAD)\":refs/heads/main"],
+  ];
+  const wrappers = [
+    ["sudo $O", "sudo $O"],
+    ["timeout $T 5", "timeout $T 5"],
+    ["over the cap", "sudo $A $B $C $D $E"],
+  ];
+
+  it.each(wrappers.flatMap(([w, prefix]) => words.map(([how, word]) => [`${how} after ${w}`, `${prefix} git push origin ${word}`])))(
+    "still reads the push: %s",
+    (_how, command) => {
+      expect(spellings(command)).toContain(PUSH);
+    },
+  );
+});

@@ -38,9 +38,15 @@ function literal(text: string): string {
   return `'${text.replaceAll("'", "'\\''")}'`;
 }
 
-/** The word as shell text: every literal span single-quoted, so its text stays text; each expansion becomes a placeholder. */
+/**
+ * The word as shell text. A word made of literals and plain variables keeps its literal spans, single-quoted so their
+ * text stays text. The lexer records no position for a computed expansion (`$(..)`, backticks, `${v:-x}`, `$((..))`),
+ * and adds nothing to `value` for a substitution, so such a word is its whole `value` as a literal plus an empty
+ * substitution: it lexes back to the same `value` and stays computed, which is all the classifier reads of it.
+ */
 function quoteWord(w: WordToken): string {
   if (!w.dynamic) return literal(w.value);
+  if (w.computed) return `${literal(w.value)}"$(:)"`;
   const parts: string[] = [];
   let at = 0;
   for (const ref of w.refs) {
@@ -49,7 +55,7 @@ function quoteWord(w: WordToken): string {
     at = ref.end;
   }
   if (at < w.value.length) parts.push(literal(w.value.slice(at)));
-  return (parts.includes(PLACEHOLDER) ? parts : [...parts, PLACEHOLDER]).join("");
+  return parts.join("");
 }
 
 /**
