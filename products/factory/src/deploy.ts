@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
+import { redactCredentials } from "./redact.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
@@ -10,7 +11,7 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
   /** Runs in the service checkout. */
   git: (args: readonly string[]) => Promise<CommandResult>;
-  /** Runs in the service checkout under the worktree setup env, except that pnpm honors the checkout's packageManager pin. */
+  /** Runs in the service checkout under the worktree setup env, except that pnpm honors the checkout's packageManager pin and only install ignores scripts. */
   pnpm: (args: readonly string[]) => Promise<CommandResult>;
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
@@ -64,6 +65,7 @@ const UNKNOWN = "unknown";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
 const OUTPUT_TAIL_LINES = 20;
+const OUTPUT_TAIL_CHARS = 2_000;
 const FAILURE = 1;
 const SHA_POLLS = 10;
 const SHA_POLL_MS = 1_000;
@@ -73,8 +75,14 @@ const LOCKFILE = "pnpm-lock.yaml";
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
 const lockPath = (stateDir: string): string => join(stateDir, "deploy.lock");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
-const detail = (result: CommandResult): string =>
-  (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`).split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
+/** Redacted before the cut, so a cut can never leave a token without the prefix that marks it. */
+function tail(name: string, text: string): string[] {
+  const kept = redactCredentials(text.trim()).split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
+  return kept === "" ? [] : [`${name}:\n${kept.length <= OUTPUT_TAIL_CHARS ? kept : `…${kept.slice(-OUTPUT_TAIL_CHARS)}`}`];
+}
+
+/** Both streams, since pnpm prints a failing script's output on stdout and leaves stderr empty. */
+const detail = (result: CommandResult): string => [`exit ${result.code}`, ...tail("stderr", result.stderr), ...tail("stdout", result.stdout)].join("\n");
 
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
