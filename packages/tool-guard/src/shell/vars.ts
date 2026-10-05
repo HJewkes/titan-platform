@@ -5,6 +5,7 @@ import { printedText } from "./printed.js";
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
  * Hidden `readonly@NAME` keys, which no identifier can spell, hold `""` when NAME is surely readonly and
  * null when it may be; `readonly@*` means any variable may be. Scopes copy them along with the values.
+ * Hidden `case@NAME` keys hold the case attributes (`l`, `u`) NAME may carry, null when they may be any.
  */
 export type Vars = Map<string, string | null>;
 
@@ -29,6 +30,8 @@ const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"])
 const SCALAR_DECLARERS = new Set(["export", "readonly"]);
 /** An `r` in an option word, even one bash must still expand, may make every name the declaration lists readonly. */
 const READONLY_FLAG_RE = /^-.*r/s;
+/** What `-l` or `-u` may change: the letters it maps, and any non-ASCII character a locale may map onto ASCII. */
+const CASE_CHANGES: Record<string, RegExp> = { l: /[A-Z]|\P{ASCII}/u, u: /[a-z]|\P{ASCII}/u };
 /** Bash reads options only up to `--` or the first word that is none. */
 const OPTION_WORD_RE = /^[-+]./s;
 const DECLARE_LETTERS = new Set("airtx");
@@ -213,12 +216,23 @@ export function childVars(vars: Vars): Vars {
 }
 
 const readonlyKey = (name: string) => `readonly@${name}`;
+const caseKey = (name: string) => `case@${name}`;
 
 /** Bash rejects a write to a readonly variable, so it keeps its value; one that may be readonly becomes unknown. */
 function write(vars: Vars, name: string, value: string | null): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
-  vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
+  vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : cased(vars, name, value));
+}
+
+/**
+ * Bash 5 maps a write to a `-l` or `-u` variable to that case and bash 3.2 has no such attribute, so a value
+ * is known only when the case it may carry leaves it as written, whether or not the declaration surely ran.
+ */
+function cased(vars: Vars, name: string, value: string | null): string | null {
+  if (value === null || !vars.has(caseKey(name))) return value;
+  const letters = vars.get(caseKey(name)) ?? "lu";
+  return [...letters].some((c) => CASE_CHANGES[c]?.test(value)) ? null : value;
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
@@ -252,6 +266,8 @@ function trackDeclaration(name: string, args: WordToken[], vars: Vars): void {
   const sure = name !== "local" && args.every((a) => sureWords.has(a));
   if (readonly) for (const arg of args) markReadonly(name, arg, sure, vars);
   if (args.some((a) => unreadableDeclareWord(name, a))) forgetAll(vars);
+  const letters = [..."lu"].filter((c) => options.some((a) => a.value.includes(c))).join("");
+  if (letters) for (const arg of args) markCase(arg, letters, vars);
   if (args.some((a) => a.dynamic && parseAssignment(a) === null)) vars.set(ANY_READONLY, null);
 }
 
@@ -296,6 +312,14 @@ function markReadonly(name: string, arg: WordToken, sure: boolean, vars: Vars): 
   if (!variable || (subscript !== undefined && SCALAR_DECLARERS.has(name))) return;
   const key = readonlyKey(variable);
   if (sure || vars.get(key) !== "") vars.set(key, sure ? "" : null);
+}
+
+/** Adds the case attributes to each name listed; `+l` may remove one, which keeping it treats with the same care. */
+function markCase(arg: WordToken, letters: string, vars: Vars): void {
+  const variable = DECLARED_RE.exec(arg.value)?.[1];
+  if (!variable) return;
+  const prior = vars.has(caseKey(variable)) ? (vars.get(caseKey(variable)) ?? null) : "";
+  vars.set(caseKey(variable), prior === null ? null : prior + letters);
 }
 
 interface TrackedCommand {

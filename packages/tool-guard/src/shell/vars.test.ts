@@ -327,3 +327,34 @@ describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
     expect(gitArgs("Y=push; f() { local -r Y=status; }; f; git $Y")).toEqual([["push"]]);
   });
 });
+
+describe("writes to a variable with a case attribute (TP-1497)", () => {
+  it.each([
+    ["declare -l", "declare -l Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["declare -l with a value", "declare -l Y=PUSH; git $Y origin HEAD:main"],
+    ["declare -u", "declare -u Y; Y=Push; git $Y origin HEAD:main"],
+    ["typeset -l", "typeset -l Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["local -l", "f() { local -l Y; Y=PUSH; git $Y origin HEAD:main; }; f"],
+    ["declare -lx", "declare -lx Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["declare -l -x", "declare -x -l Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["a later declare", "declare -l Y; declare Y=PUSH; git $Y origin HEAD:main"],
+    ["an append", "declare -l Y; Y=pu; Y+=SH; git $Y origin HEAD:main"],
+    ["printf -v", "declare -l Y; printf -v Y PUSH; git $Y origin HEAD:main"],
+    ["a non-ASCII letter a locale may map to ASCII", "declare -l Y; Y=puſh; git $Y origin HEAD:main"],
+    ["declare -l after a false &&", "false && declare -l Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["declare -l in an uncalled function", "f() { declare -l Y; }; Y=PUSH; git $Y origin HEAD:main"],
+    ["declare +l, which bash 3.2 rejects", "declare -l Y; declare +l Y; Y=PUSH; git $Y origin HEAD:main"],
+    ["a subshell", "declare -l Y; ( Y=PUSH; git $Y origin HEAD:main )"],
+  ])("leaves a mixed-case write unknown after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y", "origin", "HEAD:main"]]);
+  });
+
+  it.each([
+    ["declare -l", "declare -l Y; Y=push; git $Y"],
+    ["declare -u", "declare -u Y; Y=PUSH; git $Y"],
+    ["a plain declare", "declare Y; Y=PUSH; git $Y"],
+    ["declare -l of another name", "declare -l Z; Y=PUSH; git $Y"],
+  ])("tracks a write the case leaves as written after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([[command.includes("Y=push") ? "push" : "PUSH"]]);
+  });
+});
