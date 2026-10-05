@@ -6,6 +6,7 @@ import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { pipedShellTexts } from "./piped-nul.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -317,8 +318,7 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: [text].flat(), wrap: hasC ? "sh-c" : "heredoc-shell" };
-  // bash and sh drop NUL from a piped script; zsh's NUL handling is not modelled (TP-1464).
-  return hasC || positional || stdin === null ? null : { texts: [stdin.replaceAll("\0", "")], wrap: "piped-shell" };
+  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
