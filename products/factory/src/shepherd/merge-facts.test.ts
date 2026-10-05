@@ -486,6 +486,23 @@ describe("a fact that cannot be read", () => {
     for (const text of [evidence.record.decision.reason, evidenceComment(evidence.record)]) expect(text).not.toContain("getter-secret-message");
   });
 
+  describe("when the thrown value is a Proxy whose type check cannot complete", () => {
+    const hostileProxies: Array<[string, () => unknown]> = [
+      ["a getPrototypeOf trap throws", () => new Proxy(new Error("x"), { getPrototypeOf() { throw new Error("proto-secret"); } })],
+      ["it is revoked", () => { const { proxy, revoke } = Proxy.revocable(new Error("x"), {}); revoke(); return proxy; }],
+    ];
+
+    it.each(hostileProxies)("gates with the fixed class Error, never failing the step or storing text, when %s", async (_case, thrown) => {
+      const failing = { get: () => { throw thrown(); } } as unknown as ShepherdStoreRef;
+
+      const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+
+      expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: Error"]);
+      expect(evidence.record.decision.outcome).toBe("gate");
+      for (const text of [evidence.record.decision.reason, evidenceComment(evidence.record)]) expect(text).not.toContain("proto-secret");
+    });
+  });
+
   it("puts no non-identifier string in unreadFacts when a thrown error's name getter answers differently on each read", () => {
     const answers = ["TypeError", "https://leak/secret"];
     let reads = 0;

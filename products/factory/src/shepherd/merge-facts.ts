@@ -195,16 +195,12 @@ export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead
 
 /** Only the error's class name, so a reason that reaches a public PR comment carries nothing from the error's text. */
 function errorClass(error: unknown): string {
-  if (!(error instanceof Error)) return "non-Error";
-  const name = readName(error);
-  return ERROR_CLASS_NAME.test(name) ? name : "Error";
-}
-
-/** Read once: a getter can throw, or answer differently on a second read than the one that was tested. */
-function readName(error: Error): string {
   try {
-    return String(error.name);
+    if (!(error instanceof Error)) return "non-Error";
+    const name = String(error.name);
+    return ERROR_CLASS_NAME.test(name) ? name : "Error";
   } catch {
+    // A hostile Proxy or getter can throw from the type check or the name read; none of it is echoed.
     return "Error";
   }
 }
