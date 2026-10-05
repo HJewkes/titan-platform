@@ -15,14 +15,7 @@ const WRITTEN_BEFORE_RE = /(?:\+\+|--)\s*$/;
  * variable. Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of
  * reach. Even a literal `let Y=1` stays unknown: the walk cannot tell that the `let` surely runs, in this shell.
  */
-export function commandWrites(name: string, args: WordToken[], vars: Vars, assigned: Assignment[]): Assignment[] | null {
-  const own = builtinWrites(name, args, vars);
-  const expansions = [...args.flatMap((a) => expansionBodies(a.value)), ...assigned.flatMap((a) => assignedBodies.get(a) ?? [])];
-  const inner = expansions.length > 0 ? arithmeticWrites(expansions, vars) : [];
-  return own && inner && [...own, ...inner];
-}
-
-function builtinWrites(name: string, args: WordToken[], vars: Vars): Assignment[] | null {
+export function commandWrites(name: string, args: WordToken[], vars: Vars): Assignment[] | null {
   const values = args.map((a) => a.value);
   const unknown = (names: string[]): Assignment[] => names.map((n) => [n, null]);
   if (name === "let") return args.some(runTimeExpression) ? null : arithmeticWrites(values, vars);
@@ -52,6 +45,7 @@ const compounds = new WeakMap<Token, Token[]>();
  * there leaves the value unknown rather than exact. Returns the tokens unchanged.
  */
 export function noteCompounds(tokens: Token[]): Token[] {
+  noteExpansions(tokens);
   tokens.forEach((token, i) => {
     const end = isOp(tokens[i + 1], "(") ? compoundEnd(tokens, i + 2) : -1;
     if (isOp(token, "(") && end > 0) compounds.set(token, tokens.slice(i + 2, end - 1));
@@ -74,8 +68,45 @@ function compoundEnd(tokens: Token[], start: number): number {
 
 const isOp = (token: Token | undefined, value: string) => token?.type === "op" && token.value === value;
 
-/** What the `(( ))` the token opens writes, each value unknown; an empty list when it opens none. */
+/** The arithmetic text of the command each operator ends, keyed by that operator. */
+const expansions = new WeakMap<Token, string[]>();
+
+/**
+ * One pass over every word of each command, whatever it is: the command word, an argument, a declaration, a bare or
+ * prefix assignment, a redirect target. Bash evaluates each `$(( ))` and `$[ ]` in this shell, and a `-i` value too.
+ */
+function noteExpansions(tokens: Token[]): void {
+  let words: string[] = [];
+  for (const t of tokens) {
+    if (t.type === "word") words.push(t.value);
+    else if (t.type === "redirect" && t.target) words.push(t.target.value);
+    if (t.type !== "op") continue;
+    const texts = [...words.flatMap(expansionBodies), ...integerValues(words)];
+    if (texts.length > 0) expansions.set(t, texts);
+    words = [];
+  }
+}
+
+const DECLARATION_RE = /^(?:declare|typeset|local)$/;
+const INTEGER_OPTION_RE = /^-[a-zA-Z]*i/;
+const VALUE_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=(.*)$/s;
+
+/** A declaration with `-i` evaluates each value it assigns as an expression. */
+function integerValues(words: string[]): string[] {
+  const at = words.findIndex((w) => DECLARATION_RE.test(w));
+  if (at < 0 || !words.slice(at + 1).some((w) => INTEGER_OPTION_RE.test(w))) return [];
+  return words.slice(at + 1).flatMap((w) => VALUE_RE.exec(w)?.[1] ?? []);
+}
+
+/** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */
 export function compoundWrites(op: Token, expand: (w: WordToken) => WordToken, vars: Vars): Assignment[] | null {
+  const texts = expansions.get(op);
+  const inner = texts ? arithmeticWrites(texts, vars) : [];
+  const own = spanWrites(op, expand, vars);
+  return own && inner && [...own, ...inner];
+}
+
+function spanWrites(op: Token, expand: (w: WordToken) => WordToken, vars: Vars): Assignment[] | null {
   const span = compounds.get(op);
   if (!span) return [];
   const words = span.flatMap((t) => (t.type === "word" ? [expand(t)] : t.type === "redirect" && t.target ? [expand(t.target)] : []));
@@ -90,29 +121,27 @@ function compoundText(t: Token, expand: (w: WordToken) => WordToken): string {
   return t.type === "op" ? t.value : "";
 }
 
-/** The `$(( ))` bodies of each assignment word, which the assignment's own value no longer shows. */
-const assignedBodies = new WeakMap<Assignment, string[]>();
-
-/** Notes the `$(( ))` bodies of the word an assignment was read from. Returns the assignment unchanged. */
-export function noteBodies(w: WordToken, assignment: Assignment | null): Assignment | null {
-  const bodies = expansionBodies(w.value);
-  if (assignment && bodies.length > 0) assignedBodies.set(assignment, bodies);
-  return assignment;
-}
-
-/** The text inside each `$(( ))` of a word, which writes in the current shell wherever the word sits. */
+/** The text inside each `$(( ))` and `$[ ]` of a word, which write in the current shell wherever the word sits. */
 function expansionBodies(value: string): string[] {
   const bodies: string[] = [];
-  for (let at = value.indexOf("$(("); at >= 0; at = value.indexOf("$((", at + 3)) {
-    let depth = 0;
-    let end = at + 2; // the second `(`, so depth reaches zero on the first `)` of the closing `))`
-    for (; end < value.length; end++) {
-      if (value[end] === "(") depth++;
-      if (value[end] === ")" && --depth === 0) break;
+  for (const [open, close] of [["$((", "("], ["$[", "["]] as const) {
+    for (let at = value.indexOf(open); at >= 0; at = value.indexOf(open, at + open.length)) {
+      const end = closing(value, at + open.length - 1, close);
+      bodies.push(value.slice(at + open.length, end));
     }
-    bodies.push(value.slice(at + 3, end));
   }
   return bodies;
+}
+
+/** The index of the bracket that closes the one at `from`, or the end of the text; `$((` closes on its first `)`. */
+function closing(value: string, from: number, open: string): number {
+  const close = open === "(" ? ")" : "]";
+  let depth = 0;
+  for (let i = from; i < value.length; i++) {
+    if (value[i] === open) depth++;
+    if (value[i] === close && --depth === 0) return i;
+  }
+  return value.length;
 }
 
 /**

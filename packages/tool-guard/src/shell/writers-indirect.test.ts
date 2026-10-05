@@ -31,6 +31,17 @@ describe("arithmetic writes made through a value or $(( )) (TP-1538)", () => {
     ["an unspaced sum that reads a value holding a write", "Y=status; X=Y=1; : $((1+X)); git $Y origin HEAD:main"],
     ["a prefix assignment that reads a value holding a write", "Y=status; X=Y=1; A=$(( X )) true; git $Y origin HEAD:main"],
     ["a prefix assignment that writes", "Y=status; A=$((Y=1)) true; git $Y origin HEAD:main"],
+    ["a bare assignment that writes", "Y=status; A=$((Y=1)); git $Y origin HEAD:main"],
+    ["a bare assignment followed by &&", "Y=status; A=$((Y=1)) && git $Y origin HEAD:main"],
+    ["an export argument that writes", "Y=status; export A=$((Y=1)); git $Y origin HEAD:main"],
+    ["a local argument that writes", "Y=status; f() { local A=$((Y=1)); }; f; git $Y origin HEAD:main"],
+    ["a declare argument that writes", "Y=status; declare A=$((Y=1)); git $Y origin HEAD:main"],
+    ["a readonly argument that writes", "Y=status; readonly A=$((Y=1)); git $Y origin HEAD:main"],
+    ["a declare -i value holding a write", "Y=status; X=Y=1; declare -i A=X; git $Y origin HEAD:main"],
+    ["a local -i value holding a write", "Y=status; X=Y=1; f() { local -i A=X; }; f; git $Y origin HEAD:main"],
+    ["a redirect target that writes", "Y=status; echo > f$((Y=1)); git $Y origin HEAD:main"],
+    ["the old bracket form", "Y=status; echo $[Y=1]; git $Y origin HEAD:main"],
+    ["the old bracket form with a value holding a write", "Y=status; X=Y=1; echo $[X]; git $Y origin HEAD:main"],
     ["an expansion that names a value by $", "Y=status; Z=Y=1; : $(( $Z )); git $Y origin HEAD:main"],
     ["an expansion with a $ reference inside a longer word", "Y=status; Z=Y=1; echo a$(( $Z ))b; git $Y origin HEAD:main"],
     ["an expansion that reads a value holding a write", "Y=status; X=Y=1; : $(( X )); git $Y origin HEAD:main"],
@@ -41,6 +52,8 @@ describe("arithmetic writes made through a value or $(( )) (TP-1538)", () => {
   it.each([
     ["a (( )) that reads a value with no write", "Y=push; Z=3; (( Z )); git $Y origin HEAD:main"],
     ["a let that reads a value with no write", "Y=push; Z=3; let Z; git $Y origin HEAD:main"],
+    ["a declare -i of a plain number", "Y=push; declare -i A=3; git $Y origin HEAD:main"],
+    ["a bare assignment that only reads", "Y=push; Z=3; A=$((Z+1)); git $Y origin HEAD:main"],
     ["an expansion that only reads", "Y=push; Z=3; : $(( Z + 1 )); git $Y origin HEAD:main"],
   ])("keeps the exact reading after %s", (_, command) => {
     expect(pushSubjects(command)).toEqual([{ branch: "main" }]);
