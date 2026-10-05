@@ -3,6 +3,9 @@ import type { CodeGraphStore } from "../store.js";
 import { buildRuleContext, type RuleStore } from "./context.js";
 import { runRule } from "./rules.js";
 import type { CheckResult, CheckRule, CheckViolation } from "./types.js";
+import { rebasedViolationKey, violationKey } from "./violation-key.js";
+
+export { rebasedViolationKey, violationKey } from "./violation-key.js";
 
 export interface RunChecksOptions {
   snapshotId: number;
@@ -54,17 +57,6 @@ function collectBaselineKeys(
     for (const v of runRule(rule, ctx)) keys.add(rebasedViolationKey(v, chain.resolve));
   }
   return keys;
-}
-
-/** Identity of a violation across snapshots: severity, value and message may change, the key does not. */
-export function violationKey(v: CheckViolation): string {
-  return v.destinationId ? `${v.ruleId}|${v.nodeId}|${v.destinationId}` : `${v.ruleId}|${v.nodeId}`;
-}
-
-/** {@link violationKey} with both node ids carried into another snapshot's id space; unmoved ids key as before. */
-export function rebasedViolationKey(v: CheckViolation, resolve: (id: string) => string): string {
-  const destinationId = v.destinationId ? resolve(v.destinationId) : v.destinationId;
-  return violationKey({ ...v, nodeId: resolve(v.nodeId), destinationId });
 }
 
 interface Counts {

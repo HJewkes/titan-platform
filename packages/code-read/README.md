@@ -21,7 +21,7 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.4)
+## Commands (contract 0.1.5)
 
 | Command | Args | Result |
 | --- | --- | --- |
@@ -35,6 +35,7 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `node.neighbors` | `snapshot?`, `id` (a stored node), `direction` (`both` default), `edge_kinds`, `metrics` (default `loc`, `utilization`), `offset`, `limit` (1 to 100, default 20) | `snapshotId`, `node`, `inbound`, `outbound` (each `node`, `kind`, `weight`, `specifier?`, `values`), `total` per side |
 | `hotspots.list` | `snapshot?`, `baseline?`, `grain` (`file` default, `symbol`), `window` (`30d` default, any `<n>d`, or `lifetime`), `cutoff?`, `offset`, `limit` (0 to 500, default 20) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`node`, `churn`, `complexity`, `recency`, `score`, `utilization?`, `baselineScore?`, `mark?`), `total` |
 | `overview.get` | `snapshot?`, `baseline?`, `window` (`30d` default), `cutoff` (default 3000), `weights` (per signal, defaults from code-graph's `DEFAULT_HEALTH_WEIGHTS`), `exclude_rules`, `combined` (default false), `reading_limit` (default 6), `look_limit` (default 8; both 0 to 50) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `kpis`, `signals` (`key`, `label`, `penalty`, `cap`, `measured`, `detail`), `combined?`, `readingOrder` (`node`, `centrality`), `lookFirst` (`node`, `score`, `churn`, `complexity`, `recency`, `reasons`) |
+| `changes.get` | `baseline` (required), `snapshot?`, `window` (`30d` default), `cutoff` (default 3000), `limit` (rows per list, 0 to 500, default 20) | `snapshotId`, `baselineSnapshotId`, `comparable`, `files` (`crossedCutoff`, `added`), `findings` (`new`, `worsened`, `improved`, `resolved`), `coupling` (`measured`, `added`), `regressions` (`node`, `before`, `after`, `delta`, `findings`), `counts` |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -164,6 +165,21 @@ defect score. It also reuses code-graph's derivations from `./analysis`:
 - **Reading order** is `topCentralFiles`: PageRank over files and structural edges.
 - **Look first** is the file-grain hotspots, highest first. Each row names its reasons:
   `over-cutoff`, `findings`, or else `churn-complexity`.
+
+## Changes
+
+`changes.get` answers "what moved since the baseline". It recomputes nothing code-graph
+already derives:
+
+- **Files** come from `computeReportDrift` over every file-grain hotspot. `crossedCutoff`
+  holds files below `cutoff` at the baseline and at or above it now; `added` holds files the
+  baseline does not hold, generated files left out.
+- **Findings** are bucketed by `bucketViolations`, the store-free core of `diffCheckResults`:
+  new, worsened or improved by value, and resolved. Ids match as they are; following
+  renames is TP-187.
+- **Coupling** is unmeasured (`measured: false`) until co-change pairs are stored.
+- **Regressions** are files whose score rose that carry an open finding now.
+- Across index versions `comparable` is false and every list is empty.
 
 ## Serving the commands
 
