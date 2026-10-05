@@ -4,7 +4,7 @@ import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, OpenPrList, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 
@@ -37,6 +37,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     },
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
+    revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
@@ -125,6 +126,11 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {
   const prs = await api.pages(`repos/${repo}/pulls`, { ...fields, per_page: "100" }, (page: GhPull[]) => page);
   return prs.map((pr) => toPullRequest(pr, false));
+}
+
+async function revalidateOpenPulls(api: Rest, repo: string, etag: string | null): Promise<OpenPrList> {
+  const read = await api.revalidatePages(`repos/${repo}/pulls`, { state: "open", per_page: "100" }, etag, (page: GhPull[]) => page);
+  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr, false)), etag: read.etag };
 }
 
 /** `behind` comes from the compare API, which is exact, not from the lazily computed `mergeable_state`. */
