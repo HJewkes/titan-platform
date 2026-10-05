@@ -1,6 +1,7 @@
 export type { GateHandle, OpenGateOptions, WaitOptions } from "./gate.js";
 export { DEFAULT_POLL_MS, cancelGate, openGate, resolveGate, waitForGate } from "./gate.js";
 export type {
+  GateAnswerAllowance,
   GateAuthorization,
   GateAuthorize,
   GateBrief,

@@ -1,8 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
 import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass, type ResolverClass } from "@titan-design/authority";
 import {
   GateAuthorizeInvalid,
   GateResolverRefused,
   GateRuleInvalid,
+  type GateAnswerAllowance,
   type GateAuthorization,
   type GateRecord,
   type GateResolver,
@@ -16,6 +18,37 @@ import {
 export function defaultResolverRefusal(resolver: GateResolver): string | undefined {
   if ((RESOLVER_CLASSES as readonly string[]).includes(resolver.class)) return undefined;
   return `actor class ${resolver.class} may not resolve a gate`;
+}
+
+/** Reads each allowance once into a frozen deep copy, so a caller cannot widen the list after the store is built. */
+export function snapshotAllowances(raw: readonly GateAnswerAllowance[] | undefined): readonly GateAnswerAllowance[] {
+  return Object.freeze(
+    (raw ?? []).map(({ resolverClass, stepId, payload }) =>
+      Object.freeze({ resolverClass, stepId, payload: Object.freeze(structuredClone(payload)) }),
+    ),
+  );
+}
+
+/**
+ * Like `defaultResolverRefusal`, but a listed (class, step, payload) triple is admitted. Anything not
+ * listed gets the default refusal unchanged.
+ */
+export function resolverRefusal(
+  gateId: string,
+  resolver: GateResolver,
+  payload: unknown,
+  allowances: readonly GateAnswerAllowance[],
+): string | undefined {
+  const refusal = defaultResolverRefusal(resolver);
+  if (refusal === undefined) return undefined;
+  const allowed = allowances.some((a) => a.resolverClass === resolver.class && stepOf(gateId) === a.stepId && isDeepStrictEqual(payload, a.payload));
+  if (!allowed) return refusal;
+  return resolver.id.trim() === "" ? `actor class ${resolver.class} must name itself to resolve this gate` : undefined;
+}
+
+/** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
+function stepOf(gateId: string): string {
+  return gateId.slice(gateId.lastIndexOf("/") + 1).replace(/:\d+$/, "");
 }
 
 /** A rule-bound gate admits only its rule's resolver classes. Runs after the default refusal, so it only narrows. */

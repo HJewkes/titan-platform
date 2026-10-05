@@ -148,3 +148,68 @@ describe("presenceReason", () => {
     expect(presenceReason(gateId, payload)).toBeUndefined();
   });
 });
+
+describe("gate resolve by a coordinator", () => {
+  const gated = (step: string) =>
+    defineWorkflow({
+      name: "gated",
+      steps: [{ id: step, kind: "assisted" }],
+      run: async (ctx) => {
+        await ctx.assisted(step, "Go?", { schema: z.object({ decision: z.string() }).strict() });
+      },
+    });
+
+  async function pausedAt(step: string): Promise<{ host: FactoryHost; runId: string }> {
+    const dir = mkdtempSync(join(tmpdir(), "factory-gate-coord-"));
+    dirs.push(dir);
+    const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [gated(step)], routes: [], gatePollMs: 10 });
+    hosts.push(host);
+    const runId = host.runtime.start("gated");
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
+    return { host, runId };
+  }
+
+  async function resolveAs(host: FactoryHost, runId: string, step: string, json: string, env: NodeJS.ProcessEnv = AGENT_SHELL) {
+    let err = "";
+    const io = { stdout: () => {}, stderr: (t: string) => void (err += t), env };
+    const code = await resolveGate(host, io, runId, step, json, presenceStub(undefined).presence).catch((error: Error) => ((err += error.message), 1));
+    return { code, err };
+  }
+
+  it("retries stuck-behind and records the coordinator's agent name", async () => {
+    const { host, runId } = await pausedAt("stuck-behind");
+
+    const { code } = await resolveAs(host, runId, "stuck-behind", '{"decision":"retry"}');
+
+    expect(code).toBe(0);
+    expect(host.gates.get(`${runId}/stuck-behind`)).toMatchObject({ status: "resolved", resolvedBy: { class: "coordinator", id: "tc-synthetic" } });
+  });
+
+  it("is refused abandoning stuck-behind", async () => {
+    const { host, runId } = await pausedAt("stuck-behind");
+
+    const { code, err } = await resolveAs(host, runId, "stuck-behind", '{"decision":"abandon"}');
+
+    expect(code).toBe(1);
+    expect(err).toContain("actor class coordinator may not resolve a gate");
+    expect(host.gates.get(`${runId}/stuck-behind`)?.status).toBe("pending");
+  });
+
+  it.each(["approve-merge", "ci-failed", "main-red"])("is refused retrying %s", async (step) => {
+    const { host, runId } = await pausedAt(step);
+
+    const { code, err } = await resolveAs(host, runId, step, '{"decision":"retry"}');
+
+    expect(code).toBe(1);
+    expect(err).toContain("actor class coordinator may not resolve a gate");
+  });
+
+  it("is refused when the agent name is blank", async () => {
+    const { host, runId } = await pausedAt("stuck-behind");
+
+    const { code } = await resolveAs(host, runId, "stuck-behind", '{"decision":"retry"}', { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "  " });
+
+    expect(code).toBe(1);
+    expect(host.gates.get(`${runId}/stuck-behind`)?.status).toBe("pending");
+  });
+});
