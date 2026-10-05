@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseCatFileBatch, parseLsTree } from "./git-tree.js";
 
 describe("parseLsTree", () => {
-  it("keeps regular files and drops symlinks, submodules and trees", () => {
+  it("keeps regular files and symlinks and drops submodules", () => {
     const text = [
       "100644 blob aaa\tsrc/a.ts",
       "100755 blob bbb\tbin/run file.ts",
@@ -12,8 +12,9 @@ describe("parseLsTree", () => {
     ].join("\0");
 
     expect(parseLsTree(text)).toEqual([
-      { path: "src/a.ts", oid: "aaa" },
-      { path: "bin/run file.ts", oid: "bbb" },
+      { path: "src/a.ts", oid: "aaa", link: false },
+      { path: "bin/run file.ts", oid: "bbb", link: false },
+      { path: "link.ts", oid: "ccc", link: true },
     ]);
   });
 });

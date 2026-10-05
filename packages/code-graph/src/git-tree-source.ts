@@ -56,20 +56,23 @@ function canonicalize(abs: string, hops = 0): string {
   }
 }
 
-/** Whether `rel` sits in a dir the walk never ingests (dist, build, node_modules, …). */
-function inBuildOutput(rel: string, includeSelf: boolean): boolean {
+/** Index of the first segment of `rel` naming a dir the walk never ingests (dist, build, node_modules, …), or -1. */
+function firstExcluded(rel: string, includeSelf: boolean): number {
   const segments = rel.split(path.sep);
-  return (includeSelf ? segments : segments.slice(0, -1)).some(isExcludedDir);
+  return (includeSelf ? segments : segments.slice(0, -1)).findIndex(isExcludedDir);
 }
+
+type EntryKind = "file" | "dir" | "link";
 
 /**
  * Where a path's answer comes from. The path is resolved one component at a
  * time, as a checkout of the commit would resolve it: a component the commit
- * tracks is the commit's plain file or dir, whatever today's disk has there;
- * any other component is looked up on disk, following symlinks, so a workspace
+ * tracks is the commit's file, dir or symlink, whatever today's disk has there,
+ * and a tracked symlink is followed through the target its blob records; any
+ * other component is looked up on disk, following symlinks, so a workspace
  * link under node_modules lands in the tracked package it points at. Tracked
- * paths come from the commit; untracked build output (a gitignored dist/) and
- * out-of-repo paths come from disk; any other in-repo path is absent.
+ * paths come from the commit; untracked build output beneath a tracked dir (a
+ * gitignored dist/) and out-of-repo paths come from disk; any other in-repo path is absent.
  */
 interface Location {
   origin: "tree" | "disk" | "missing";
@@ -78,10 +81,11 @@ interface Location {
   rel: string | null;
 }
 
-/** A commit's files keyed by repo-relative path, content read once on first use. */
+/** A commit's files and symlinks keyed by repo-relative path, content read once on first use. */
 class CommitTree {
   private readonly oids = new Map<string, string>();
-  private readonly dirs = new Map<string, Map<string, boolean>>();
+  private readonly links = new Map<string, string>();
+  private readonly dirs = new Map<string, Map<string, EntryKind>>();
   private readonly canonical = new Map<string, string>();
   private contents: Map<string, string> | undefined;
 
@@ -89,7 +93,11 @@ class CommitTree {
     readonly root: string,
     commit: string,
   ) {
-    for (const blob of listTreeBlobs(root, commit)) this.addFile(blob.path.split("/").join(path.sep), blob.oid);
+    for (const blob of listTreeBlobs(root, commit)) {
+      const rel = blob.path.split("/").join(path.sep);
+      (blob.link ? this.links : this.oids).set(rel, blob.oid);
+      this.addEntry(rel, blob.link ? "link" : "file");
+    }
   }
 
   /** The one place an answer's origin is decided; every file, dir and realpath answer goes through it. */
@@ -99,28 +107,45 @@ class CommitTree {
     if (rel === null) return { origin: "disk", canonical, rel: null };
     const tracked = kind === "file" ? this.oids.has(rel) : this.dirs.has(rel);
     if (tracked) return { origin: "tree", canonical, rel };
-    return { origin: inBuildOutput(rel, kind === "dir") ? "disk" : "missing", canonical, rel };
+    return { origin: this.ownsBuildOutput(rel, kind === "dir") ? "disk" : "missing", canonical, rel };
+  }
+
+  /**
+   * Untracked build output a checkout would see on disk: under an excluded dir
+   * whose parent the commit tracks, so `untracked/dist` is as absent as `untracked`.
+   * A tracked symlink only lands here when its chain loops, and is then absent.
+   */
+  private ownsBuildOutput(rel: string, includeSelf: boolean): boolean {
+    const at = firstExcluded(rel, includeSelf);
+    if (at < 0 || this.links.has(rel)) return false;
+    return this.dirs.has(rel.split(path.sep).slice(0, at).join(path.sep));
   }
 
   *files(): Generator<string> {
     for (const rel of this.oids.keys()) yield path.join(this.root, rel);
   }
 
-  /** Children of a tracked dir (name to is-directory), or undefined when the commit has no such dir. */
-  children(rel: string): Map<string, boolean> | undefined {
+  /** Children of a tracked dir by name, or undefined when the commit has no such dir. */
+  children(rel: string): Map<string, EntryKind> | undefined {
     return this.dirs.get(rel);
   }
 
   read(rel: string): string {
-    const oid = this.oids.get(rel)!;
-    this.contents ??= readBlobs(this.root, [...this.oids].filter(([r]) => READ_BY_INDEX.test(r)).map(([, o]) => o));
+    return this.blob(this.oids.get(rel)!);
+  }
+
+  /** Every link target joins the first batch: a checkout resolves links before it reads anything. */
+  private blob(oid: string): string {
+    this.contents ??= readBlobs(this.root, [
+      ...[...this.oids].filter(([r]) => READ_BY_INDEX.test(r)).map(([, o]) => o),
+      ...this.links.values(),
+    ]);
     // A blob outside READ_BY_INDEX is rare enough to read on its own.
     if (!this.contents.has(oid)) this.contents.set(oid, readBlobs(this.root, [oid]).get(oid)!);
     return this.contents.get(oid)!;
   }
 
-  private tracks(abs: string): boolean {
-    const rel = relativeInside(this.root, abs);
+  private tracks(rel: string | null): boolean {
     return rel !== null && (this.oids.has(rel) || this.dirs.has(rel));
   }
 
@@ -135,25 +160,28 @@ class CommitTree {
     return resolved;
   }
 
+  /** Disk is never consulted for a component the commit tracks, a symlink included. */
   private step(dir: string, name: string, hops: number): string {
     const next = path.join(dir, name);
-    if (this.tracks(next)) return next;
-    const target = hops < MAX_LINK_HOPS ? linkTarget(next) : null;
+    const rel = relativeInside(this.root, next);
+    if (this.tracks(rel)) return next;
+    if (hops >= MAX_LINK_HOPS) return next;
+    const linkOid = rel === null ? undefined : this.links.get(rel);
+    const target = linkOid === undefined ? linkTarget(next) : path.resolve(dir, this.blob(linkOid));
     return target === null ? next : this.resolve(target, hops + 1);
   }
 
-  private addFile(rel: string, oid: string): void {
-    this.oids.set(rel, oid);
+  private addEntry(rel: string, kind: EntryKind): void {
     let child = rel;
-    let isDirectory = false;
+    let childKind = kind;
     for (let dir = path.dirname(rel); child !== "."; child = dir, dir = path.dirname(dir)) {
       const key = dir === "." ? "" : dir;
       const known = this.dirs.has(key);
-      const children = this.dirs.get(key) ?? new Map<string, boolean>();
-      children.set(path.basename(child), isDirectory);
+      const children = this.dirs.get(key) ?? new Map<string, EntryKind>();
+      children.set(path.basename(child), childKind);
       this.dirs.set(key, children);
       if (known) return;
-      isDirectory = true;
+      childKind = "dir";
     }
   }
 }
@@ -195,15 +223,26 @@ function diskBuildDirs(real: FileSystemHost, canonical: string): RuntimeDirEntry
   return real.readDirSync(canonical).filter((e) => e.isDirectory && isExcludedDir(path.basename(e.name)));
 }
 
+interface Exists {
+  file(abs: string): boolean;
+  dir(abs: string): boolean;
+}
+
+/** A tracked entry as the real host reports it: a symlink is typed by what it resolves to. */
+function treeEntry(at: string, kind: EntryKind, exists: Exists): RuntimeDirEntry {
+  if (kind !== "link") return { name: at, isFile: kind === "file", isDirectory: kind === "dir", isSymlink: false };
+  return { name: at, isFile: exists.file(at), isDirectory: exists.dir(at), isSymlink: true };
+}
+
 /** Entries are named under the path as asked, as the real host names them. */
-function readDirAt(tree: CommitTree, real: FileSystemHost, abs: string): RuntimeDirEntry[] {
+function readDirAt(tree: CommitTree, real: FileSystemHost, abs: string, exists: Exists): RuntimeDirEntry[] {
   const at = tree.locate(abs, "dir");
   const asAsked = (entry: RuntimeDirEntry) => ({ ...entry, name: path.join(path.resolve(abs), path.basename(entry.name)) });
   if (at.origin === "missing") return missing(abs, "dir");
   if (at.origin === "disk") return real.readDirSync(at.canonical).map(asAsked);
   const entries = new Map<string, RuntimeDirEntry>();
-  for (const [name, isDirectory] of tree.children(at.rel!)!) {
-    entries.set(name, asAsked({ name, isFile: !isDirectory, isDirectory, isSymlink: false }));
+  for (const [name, kind] of tree.children(at.rel!)!) {
+    entries.set(name, treeEntry(path.join(path.resolve(abs), name), kind, exists));
   }
   for (const entry of diskBuildDirs(real, at.canonical)) {
     const name = path.basename(entry.name);
@@ -229,7 +268,7 @@ function treeAnswers(tree: CommitTree, real: FileSystemHost): TreeAnswers {
       return at.origin === "disk" ? real.readFileSync(at.canonical, "utf-8") : missing(abs, "file");
     },
     directoryExists,
-    readDir: (abs) => readDirAt(tree, real, abs),
+    readDir: (abs) => readDirAt(tree, real, abs, { file: fileExists, dir: directoryExists }),
     // Like the real host, realpath of an absent path throws.
     realpath: (abs) =>
       fileExists(abs) || directoryExists(abs) ? tree.locate(abs, "file").canonical : missing(abs, "file"),

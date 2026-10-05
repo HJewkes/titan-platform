@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { discoveryEnv, runGit, runGitLarge } from "./git.js";
 
-/** A regular file in a commit's tree: its repo-relative path and blob id. */
+/** A regular file or symlink in a commit's tree: its repo-relative path and blob id. */
 export interface TreeBlob {
   path: string;
   oid: string;
+  /** A symlink (mode 120000): the blob holds the link's target. */
+  link: boolean;
 }
 
 export interface ResolvedCommit {
@@ -15,8 +17,8 @@ export interface ResolvedCommit {
 
 const TREE_LIST_BUFFER = 256 * 1024 * 1024;
 const BLOB_READ_BUFFER = 1024 * 1024 * 1024;
-// Symlinks (120000) and submodules (160000) are not files a working-tree walk ingests.
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+const SYMLINK_MODE = "120000";
 
 /** Resolve `rev` to a commit sha and its committer epoch; throws naming `rev` when it is not a commit. */
 export function resolveCommit(repoRoot: string, rev: string): ResolvedCommit {
@@ -27,21 +29,23 @@ export function resolveCommit(repoRoot: string, rev: string): ResolvedCommit {
   return { commit, commitEpoch: epoch };
 }
 
-/** Every regular file in `commit`'s tree, via `git ls-tree -r -z`. */
+/** Every regular file and symlink in `commit`'s tree, via `git ls-tree -r -z`. */
 export function listTreeBlobs(repoRoot: string, commit: string): TreeBlob[] {
   const out = runGitLarge(repoRoot, ["ls-tree", "-r", "-z", "--full-tree", commit], TREE_LIST_BUFFER);
   if (out === null) throw new Error(`git ls-tree failed for ${commit} in ${repoRoot}`);
   return parseLsTree(out);
 }
 
-/** Parse NUL-terminated `<mode> <type> <oid>\t<path>` records, keeping regular files only. */
+/** Parse NUL-terminated `<mode> <type> <oid>\t<path>` records, keeping regular files and symlinks; submodules are dropped. */
 export function parseLsTree(text: string): TreeBlob[] {
   const blobs: TreeBlob[] = [];
   for (const record of text.split("\0")) {
     const tab = record.indexOf("\t");
     if (tab < 0) continue;
     const [mode, type, oid] = record.slice(0, tab).split(" ");
-    if (type === "blob" && oid && REGULAR_FILE_MODES.has(mode!)) blobs.push({ path: record.slice(tab + 1), oid });
+    if (type !== "blob" || !oid) continue;
+    const link = mode === SYMLINK_MODE;
+    if (link || REGULAR_FILE_MODES.has(mode!)) blobs.push({ path: record.slice(tab + 1), oid, link });
   }
   return blobs;
 }
