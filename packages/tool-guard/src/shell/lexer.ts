@@ -1,4 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
+import { arithmeticEnd } from "./arith-scan.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -70,6 +71,8 @@ interface LexState {
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
+  /** Index of the `))` closing an arithmetic command; before it `<<` is a shift, not a heredoc. */
+  arithEnd: number;
 }
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
@@ -88,7 +91,7 @@ export function tokenize(src: string): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1 };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1 };
 }
 
 function lex(s: LexState): void {
@@ -117,6 +120,8 @@ function step(s: LexState): void {
   const c = s.src[s.i] as string;
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
+  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = arithmeticEnd(s.src, s.i);
+  if (s.i < s.arithEnd && s.src.startsWith("<<", s.i)) return appendShift(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
@@ -132,6 +137,11 @@ function markSubscript(s: LexState): void {
   const w = s.word;
   if (!w || w.quoted || w.dynamic || s.redirect || !IDENTIFIER_RE.test(w.value)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
+}
+
+function appendShift(s: LexState): void {
+  ensureWord(s).value += "<<";
+  s.i += 2;
 }
 
 function readBlank(s: LexState): void {
