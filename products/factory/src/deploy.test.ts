@@ -38,7 +38,8 @@ interface MachineInit {
   head?: string;
   files?: Record<string, string>;
   installFails?: boolean;
-  buildFails?: boolean;
+  /** `true` fails the build with a type error on stderr; a result fails it with that output. */
+  buildFails?: boolean | CommandResult;
   /** Builds of these shas crash on start, so /health never answers for them. */
   crashes?: string[];
   /** Pids `isAlive` reports as running. */
@@ -107,7 +108,7 @@ function fakeMachine(init: MachineInit = {}) {
     if (args[0] === "install") return init.installFails ? failed(1, "ERR_PNPM_OUTDATED_LOCKFILE") : ok();
     if (init.buildFails) {
       trees.delete(FACTORY_DIST);
-      return failed(2, "src/serve.ts(1,1): error TS2304");
+      return init.buildFails === true ? failed(2, "src/serve.ts(1,1): error TS2304") : init.buildFails;
     }
     for (const dist of [FACTORY_DIST, WORKFLOW_DIST]) trees.set(dist, `build:${state.head}`);
     return ok();
@@ -321,6 +322,34 @@ describe("titan-factory service deploy", () => {
     expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, from: BASE, why: expect.stringContaining(why) });
     expect(failing.record()?.why).not.toContain("did not answer");
     expect(failing.calls.some((call) => call.startsWith("git reset"))).toBe(false);
+  });
+
+  it("records the exit code and the stdout tail when a build fails with nothing on stderr", async () => {
+    const stdout = "packages/github build$ tsup\npackages/github build: /bin/sh: tsup: command not found\n ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL\n";
+    const failing = fakeMachine({ buildFails: { code: 1, stdout, stderr: "" } });
+
+    const result = await deploy(failing);
+
+    const why = failing.record()?.why ?? "";
+    expect(why).toContain("build failed: exit 1\nstdout:\n");
+    expect(why).toContain("tsup: command not found");
+    expect(why).not.toContain("stderr:");
+    expect(result.err).toContain("tsup: command not found");
+  });
+
+  it("keeps the last lines of long output, capped in length, with credential shapes redacted", async () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const lines = Array.from({ length: 50 }, (_, line) => `line ${line} ${"x".repeat(200)}`);
+    const failing = fakeMachine({ buildFails: { code: 1, stdout: [...lines, `fetch failed with ${token}`].join("\n"), stderr: "killed by SIGTERM" } });
+
+    await deploy(failing);
+
+    const why = failing.record()?.why ?? "";
+    expect(why).toContain("stderr:\nkilled by SIGTERM");
+    expect(why).toContain("fetch failed with [redacted]");
+    expect(why).not.toContain(token);
+    expect(why).not.toContain("line 0 ");
+    expect(why.length).toBeLessThan(2_200);
   });
 
   it("restores the old build when the new one never answers /health, and confirms the old sha answers", async () => {
