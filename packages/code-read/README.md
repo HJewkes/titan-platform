@@ -21,14 +21,14 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.5)
+## Commands (contract 0.1.6)
 
 | Command | Args | Result |
 | --- | --- | --- |
 | `api.describe` | none | `api`, `dataset`, `commands`, `newest`, `indexVersions`, `capabilities`, `metrics` (catalogue descriptors with provenance), `rules` |
 | `snapshot.list` | `ref?`, `limit` (1 to 500, default 50) | `snapshots`, newest first |
 | `hierarchy.get` | `snapshot?`, `root?`, `depth` (1 to 8, default 2), `metrics` (default `["loc"]`), `baseline?`, `include_symbols`, `exclude_roles` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `nodes` (flat, shallowest first, with `parentId`, `depth`, `childCount`, `values`, `missing?`, `deltas?`), `truncated` |
-| `node.get` | `snapshot?`, `id`, `baseline?`, `metrics` (default: every one that applies) | `node`, `ancestors` (repo first), `childCounts`, `metrics` (value, `direction`, `rollup`, `percentile`, `siblingMedian`, `siblingRank`, `siblingCount`, `baseline?`, `delta?`, `missing?`) |
+| `node.get` | `snapshot?`, `id`, `baseline?`, `metrics` (default: every one that applies), `lenses` (any of `exports`, `score`, `centrality`, `coupling`, `tests`; default none), `window` (`30d` default, for `score`) | `node`, `ancestors` (repo first), `childCounts`, `metrics` (value, `direction`, `rollup`, `percentile`, `siblingMedian`, `siblingRank`, `siblingCount`, `baseline?`, `delta?`, `missing?`), `lenses?` (one key per lens asked for) |
 | `node.resolve` | exactly one of `query` or `path`, plus `line?` with `path`, `limit` (1 to 50, default 10) | `candidates`: `node`, `score`, `match` |
 | `findings.list` | `snapshot?`, `baseline?`, `scope?`, filters `rule`, `severity`, `tool`, `provenance`, `kind`, `status` (arrays, empty means all), `sort` (`severity` default, `excess`, `value`, `path`, `rule`), `order` (`desc` default), `offset`, `limit` (0 to 500, default 20), `facets` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`Finding`), `total`, `facets?` |
 | `finding.get` | `snapshot?`, `id`, `baseline?`, `context_lines` (0 to 20, default 5) | `finding`, `rule` (with `text`), `measured`, `why`, `excerpt` (or null with `excerptMissing`), `related` (at most 10) |
@@ -165,6 +165,24 @@ defect score. It also reuses code-graph's derivations from `./analysis`:
 - **Reading order** is `topCentralFiles`: PageRank over files and structural edges.
 - **Look first** is the file-grain hotspots, highest first. Each row names its reasons:
   `over-cutoff`, `findings`, or else `churn-complexity`.
+
+## Node lenses
+
+`node.get` takes optional `lenses`. With none, the result has no `lenses` field and is the
+same as before. Each lens reuses a code-graph derivation from `./analysis`, and answers
+`null` on a node kind it does not describe: `score` describes files and symbols, the rest
+describe files only.
+
+- **exports** is `buildHotExports`: the file's top 8 exported and top 8 internal symbols,
+  each with utilization, its own cognitive complexity, and how many files reference it
+  (`computeSymbolConsumers`).
+- **score** is the node's row in `hotspots.list` at its grain for `window`: the score, its
+  factors, and its rank among non-zero scores. A node scoring 0 has no factors and no rank.
+- **centrality** is `topCentralFiles` with no limit, the ranking behind `overview.get`'s
+  reading order, so every file in it has a rank. Generated code is left out and gets null.
+- **coupling** is `measured: false` until co-change pairs are stored.
+- **tests** lists tests linked by path convention (`linkTestsToSources` with no co-edit
+  pairs) beside the index's `linked_test_count`, which also counts co-edit links.
 
 ## Changes
 
