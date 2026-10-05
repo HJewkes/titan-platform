@@ -33,7 +33,7 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
   for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
     out.push(...classifySimple(cmd, line));
     if (followScripts) out.push(...scriptActions(cmd, line));
-    line = [cmd, ...dynamicReadings(cmd)].reduce((l, c) => FAMILIES.reduce((acc, f) => f.after?.(c, acc) ?? acc, l), line);
+    line = afterDynamic(cmd, afterAll(cmd, line));
   }
   return unique(out);
 }
@@ -51,6 +51,18 @@ function dynamicActions(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAct
     ...namedReadings(cmd, named).flatMap((reading) => named.flatMap((f) => (f.bash && handles(f, reading) ? f.bash(reading, ctx) : []))),
     ...(wrapped ? classifySimple(wrapped, ctx) : []),
   ];
+}
+
+function afterAll(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
+  return FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
+}
+
+/** A switch read from a dynamic word may never have happened, so it only makes the head unknown and never trusts a new branch. */
+function afterDynamic(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
+  return dynamicReadings(cmd).reduce((l, reading) => {
+    const next = afterAll(reading, l);
+    return next === l ? l : { ...next, readHead: () => "unknown" };
+  }, line);
 }
 
 /** The commands a dynamic word could run, so a branch switch behind it moves the head as it does when typed. */

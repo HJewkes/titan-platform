@@ -102,6 +102,17 @@ describe("a dynamic command word behind a branch switch", () => {
   });
 });
 
+describe("a branch switch typed through a variable may never happen", () => {
+  it.each([
+    ["checkout -b then git push", "\"$X\" checkout -b feat/z && git push", "bash.merge.git-push-implicit"],
+    ["checkout -b then a dynamic push", "\"$A\" checkout -b feat/z && \"$B\" push", "bash.merge.git-push-implicit"],
+    ["switch -c then git push", "\"$X\" switch -c feat/z && git push", "bash.merge.git-push-implicit"],
+    ["checkout -b then git merge", "\"$X\" checkout -b feat/z && git merge x", "bash.merge.git-merge-protected"],
+  ])("does not trust the new branch: %s", (_how, command, spelling) => {
+    expect(spellings(command)).toContain(spelling);
+  });
+});
+
 describe("an unquoted dynamic command word that may split", () => {
   it.each([
     ["a bare push", "$G push"],
@@ -121,6 +132,8 @@ describe("a dynamic command word that merely carries a number or a URL", () => {
     ["a dev server port flag", "\"$NPM\" run dev -- --port 5173"],
     ["a start port", "\"$PM\" start 3000"],
     ["a web URL", "\"$X\" open https://x.example"],
+    ["a python module server", "\"$PY\" -m http.server 8000"],
+    ["a bind address", "\"$X\" serve 0.0.0.0 8080"],
   ])("gives no verdict: %s", (_how, command) => {
     expect(verdicts(command)).toEqual([]);
   });

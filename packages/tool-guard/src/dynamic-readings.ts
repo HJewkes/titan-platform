@@ -32,6 +32,8 @@ function splitGit(cmd: SimpleCommand): SimpleCommand[] {
 const PORT_RE = /^\d+(?:-\d+)?$/;
 const HOST_RE = /\.|^localhost$/i;
 const REMOTE_RE = /@|::|^(?:scp|sftp|rsync|ssh):\/\//i;
+/** A bind address and a python module name (`-m http.server 8000`) have a dot and a port after them but name no remote host. */
+const isHost = (word: string, before: string | undefined) => HOST_RE.test(word) && word !== "0.0.0.0" && before !== "-m";
 const PORT_TAKERS = new Set(["nc", "ncat", "netcat", "telnet"]);
 const REMOTE_TAKERS = new Set(["sftp", "scp", "rsync"]);
 
@@ -42,7 +44,7 @@ const REMOTE_TAKERS = new Set(["sftp", "scp", "rsync"]);
  */
 function namesItsHost(reading: SimpleCommand): boolean {
   const words = reading.args.filter((a) => !a.dynamic).map((a) => a.value);
-  if (PORT_TAKERS.has(reading.name ?? "")) return words.some((w, i) => HOST_RE.test(w) && PORT_RE.test(words[i + 1] ?? ""));
+  if (PORT_TAKERS.has(reading.name ?? "")) return words.some((w, i) => isHost(w, words[i - 1]) && PORT_RE.test(words[i + 1] ?? ""));
   return !REMOTE_TAKERS.has(reading.name ?? "") || words.some((w) => REMOTE_RE.test(w));
 }
 
