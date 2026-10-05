@@ -221,6 +221,10 @@ describe("subscripts with blanks inside the brackets", () => {
     ["an argument shaped like an assignment", "echo Y[ 0 ]=x", ["echo", "Y[", "0", "]=x"]],
     ["an unclosed bracket", "Y[ 0", ["Y[", "0"]],
     ["a bracket with no = after it", "Y[ 0 ] x", ["Y[", "0", "]", "x"]],
+    ["a reserved word after an assignment", "A=1 then Y[ 0 ]=x", ["A=1", "then", "Y[", "0", "]=x"]],
+    ["a word after a redirect", ">/dev/null Y[ 0 ]=x", ["<redirect>", "Y[", "0", "]=x"]],
+    ["a quoted assignment before it", 'A="1" Y[ 0 ]=x', ["A=1", "Y[", "0", "]=x"]],
+    ["brackets whose $'..' string holds quotes", `Y[ $'\\'"' ]; echo "]=x"`, ["Y[", "'\"", "]", "<op>", "echo", "]=x"]],
     ["a case pattern after ;;", "case a in b) :;; Y[ 0 ]=x) :;; esac", ["case", "a", "in", "b", "<op>", ":", "<op>", "Y[", "0", "]=x", "<op>", ":", "<op>", "esac"]],
   ])("splits %s as before", (_how, src, expected) => {
     expect(words(src)).toEqual(expected);

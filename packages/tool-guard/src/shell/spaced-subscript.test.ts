@@ -24,4 +24,22 @@ describe("a subscript assignment with blanks inside the brackets", () => {
   ])("still reads %s as a push to main", (_how, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
+
+  it.each([
+    ["then after an assignment", "A=1 then Y[ ;git push origin HEAD:main; ]=x"],
+    ["if after an assignment", "A=1 if Y[ ;git push origin HEAD:main; ]=x"],
+    ["time after an assignment", "A=1 time Y[ ;git push origin HEAD:main; ]=x"],
+    ["{ after an assignment", "A=1 { Y[ ;git push origin HEAD:main; ]=x"],
+    ["a redirect before the word", ">/dev/null Y[ ;git push origin HEAD:main; ]=x"],
+    ["a $'..' string holding quotes", `Y[ $'\\'"' ]; git push origin HEAD:main; echo "]=x"`],
+  ])("does not hide a push behind brackets with %s", (_how, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a reserved word that starts the command", "if true; then Y[ 0 ]=x git push origin HEAD:main; fi"],
+    ["another assignment", "A=1 Y[ 0 ]=x git push origin HEAD:main"],
+  ])("still runs the push after a spaced subscript following %s", (_how, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
 });
