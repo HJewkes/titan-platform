@@ -212,4 +212,26 @@ describe("gate resolve by a coordinator", () => {
     expect(code).toBe(1);
     expect(host.gates.get(`${runId}/stuck-behind`)?.status).toBe("pending");
   });
+
+  it("never asks for owner presence on a matching stuck-behind retry from an agent shell", async () => {
+    const { host, runId } = await pausedAt("stuck-behind");
+    const { presence, reasons } = presenceStub(PROOF);
+    const io = { stdout: () => {}, stderr: () => {}, env: AGENT_SHELL };
+
+    const code = await resolveGate(host, io, runId, "stuck-behind", '{"decision":"retry"}', presence);
+
+    expect(code).toBe(0);
+    expect(reasons).toEqual([]);
+    expect(host.gates.get(`${runId}/stuck-behind`)?.resolvedBy).toMatchObject({ class: "coordinator", id: "tc-synthetic" });
+  });
+
+  it("still asks for owner presence on a stuck-behind abandon from an agent shell", async () => {
+    const { host, runId } = await pausedAt("stuck-behind");
+    const { presence, reasons } = presenceStub(undefined);
+    const io = { stdout: () => {}, stderr: () => {}, env: AGENT_SHELL };
+
+    await resolveGate(host, io, runId, "stuck-behind", '{"decision":"abandon"}', presence).catch(() => 1);
+
+    expect(reasons).toEqual([`resolve gate ${runId}/stuck-behind: abandon`]);
+  });
 });

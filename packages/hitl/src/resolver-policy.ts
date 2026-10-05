@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass, type ResolverClass } from "@titan-design/authority";
 import {
   GateAuthorizeInvalid,
@@ -41,9 +40,25 @@ export function resolverRefusal(
 ): string | undefined {
   const refusal = defaultResolverRefusal(resolver);
   if (refusal === undefined) return undefined;
-  const allowed = allowances.some((a) => a.resolverClass === resolver.class && stepOf(gateId) === a.stepId && isDeepStrictEqual(payload, a.payload));
-  if (!allowed) return refusal;
+  if (!matchesAllowance(allowances, gateId, resolver, payload)) return refusal;
   return resolver.id.trim() === "" ? `actor class ${resolver.class} must name itself to resolve this gate` : undefined;
+}
+
+/** True when an allowance names this resolver's class, the gate's step and exactly this payload. The store and its callers share this test. */
+export function matchesAllowance(allowances: readonly GateAnswerAllowance[], gateId: string, resolver: GateResolver, payload: unknown): boolean {
+  return allowances.some((a) => a.resolverClass === resolver.class && stepOf(gateId) === a.stepId && jsonEqual(payload, a.payload));
+}
+
+/** Deep equality over plain JSON data (objects, arrays, primitives); anything else, such as a class instance, is unequal. */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const proto = Object.getPrototypeOf(a) as unknown;
+  if (proto !== Object.getPrototypeOf(b) || (proto !== Object.prototype && proto !== Array.prototype && proto !== null)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => Object.hasOwn(b, key) && jsonEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */

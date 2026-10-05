@@ -73,6 +73,11 @@ describe.each([
     refusedBy(resolveAs({ class: actorClass, id: "x-fixture", channel: "test-cli" }, "run-1/stuck-behind", { decision: "retry" }).run);
   });
 
+  it("a payload with a nested value or a non-plain object is not equal to the allowed one", () => {
+    refusedBy(resolveAs(coordinator(), "run-1/stuck-behind", { decision: { value: "retry" } }).run);
+    refusedBy(resolveAs(coordinator(), "run-1/stuck-behind", Object.assign(Object.create({ inherited: 1 }), { decision: "retry" })).run);
+  });
+
   it("a coordinator with a blank name is refused", () => {
     refusedBy(resolveAs(coordinator("  "), "run-1/stuck-behind", { decision: "retry" }).run);
   });
