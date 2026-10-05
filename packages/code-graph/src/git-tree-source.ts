@@ -32,10 +32,15 @@ function linkTarget(abs: string): string | null {
   }
 }
 
+/** `abs` relative to `root`, or null when it lies outside it; a name such as `..foo` is inside. */
+function relativeInside(root: string, abs: string): string | null {
+  const rel = path.relative(root, abs);
+  return rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel) ? null : rel;
+}
+
 /**
- * Where `abs` really points: its longest existing prefix resolved through
- * realpath, the missing rest appended. A dangling link (a package dir deleted
- * since the commit, say) is followed through its target so it still lands in the repo.
+ * `abs` with its longest existing prefix resolved through realpath and the
+ * missing rest appended, following dangling links. Only for paths outside the repo.
  */
 function canonicalize(abs: string, hops = 0): string {
   const rest: string[] = [];
@@ -58,11 +63,13 @@ function inBuildOutput(rel: string, includeSelf: boolean): boolean {
 }
 
 /**
- * Where a path's answer comes from, decided by where it really points, not by
- * how it is spelled: a workspace link under node_modules into a tracked package
- * lands in the repo and answers from the commit. Tracked paths come from the
- * commit; untracked build output (a gitignored dist/) and out-of-repo paths come
- * from disk, as a checkout would see them; any other in-repo path is absent.
+ * Where a path's answer comes from. The path is resolved one component at a
+ * time, as a checkout of the commit would resolve it: a component the commit
+ * tracks is the commit's plain file or dir, whatever today's disk has there;
+ * any other component is looked up on disk, following symlinks, so a workspace
+ * link under node_modules lands in the tracked package it points at. Tracked
+ * paths come from the commit; untracked build output (a gitignored dist/) and
+ * out-of-repo paths come from disk; any other in-repo path is absent.
  */
 interface Location {
   origin: "tree" | "disk" | "missing";
@@ -87,11 +94,9 @@ class CommitTree {
 
   /** The one place an answer's origin is decided; every file, dir and realpath answer goes through it. */
   locate(abs: string, kind: "file" | "dir"): Location {
-    const canonical = this.canonicalOf(abs);
-    const rel = path.relative(this.root, canonical);
-    if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
-      return { origin: "disk", canonical, rel: null };
-    }
+    const canonical = this.resolve(path.resolve(abs), 0);
+    const rel = relativeInside(this.root, canonical);
+    if (rel === null) return { origin: "disk", canonical, rel: null };
     const tracked = kind === "file" ? this.oids.has(rel) : this.dirs.has(rel);
     if (tracked) return { origin: "tree", canonical, rel };
     return { origin: inBuildOutput(rel, kind === "dir") ? "disk" : "missing", canonical, rel };
@@ -114,13 +119,27 @@ class CommitTree {
     return this.contents.get(oid)!;
   }
 
-  private canonicalOf(abs: string): string {
-    let canonical = this.canonical.get(abs);
-    if (canonical === undefined) {
-      canonical = canonicalize(abs);
-      this.canonical.set(abs, canonical);
+  private tracks(abs: string): boolean {
+    const rel = relativeInside(this.root, abs);
+    return rel !== null && (this.oids.has(rel) || this.dirs.has(rel));
+  }
+
+  /** Memoized per path, so each dir's components are resolved once. */
+  private resolve(abs: string, hops: number): string {
+    let resolved = this.canonical.get(abs);
+    if (resolved === undefined) {
+      const parent = path.dirname(abs);
+      resolved = parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
+      this.canonical.set(abs, resolved);
     }
-    return canonical;
+    return resolved;
+  }
+
+  private step(dir: string, name: string, hops: number): string {
+    const next = path.join(dir, name);
+    if (this.tracks(next)) return next;
+    const target = hops < MAX_LINK_HOPS ? linkTarget(next) : null;
+    return target === null ? next : this.resolve(target, hops + 1);
   }
 
   private addFile(rel: string, oid: string): void {
@@ -142,8 +161,8 @@ class CommitTree {
 /** The tree's files under `rootDir` that `walkSourceFiles` would ingest from a checkout. */
 function* ingestedUnder(tree: CommitTree, rootDir: string, languages: readonly string[]): Generator<string> {
   for (const abs of tree.files()) {
-    const rel = path.relative(rootDir, abs);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    const rel = relativeInside(rootDir, abs);
+    if (rel === null) continue;
     if (path.dirname(rel).split(path.sep).some(isExcludedDir)) continue;
     if (shouldIncludeFile(rel, [...languages])) yield abs;
   }
@@ -194,22 +213,26 @@ function readDirAt(tree: CommitTree, real: FileSystemHost, abs: string): Runtime
 }
 
 function treeAnswers(tree: CommitTree, real: FileSystemHost): TreeAnswers {
+  const fileExists = (abs: string) => {
+    const at = tree.locate(abs, "file");
+    return at.origin === "tree" || (at.origin === "disk" && real.fileExistsSync(at.canonical));
+  };
+  const directoryExists = (abs: string) => {
+    const at = tree.locate(abs, "dir");
+    return at.origin === "tree" || (at.origin === "disk" && real.directoryExistsSync(at.canonical));
+  };
   return {
-    fileExists: (abs) => {
-      const at = tree.locate(abs, "file");
-      return at.origin === "tree" || (at.origin === "disk" && real.fileExistsSync(at.canonical));
-    },
+    fileExists,
     readFile: (abs) => {
       const at = tree.locate(abs, "file");
       if (at.origin === "tree") return tree.read(at.rel!);
       return at.origin === "disk" ? real.readFileSync(at.canonical, "utf-8") : missing(abs, "file");
     },
-    directoryExists: (abs) => {
-      const at = tree.locate(abs, "dir");
-      return at.origin === "tree" || (at.origin === "disk" && real.directoryExistsSync(at.canonical));
-    },
+    directoryExists,
     readDir: (abs) => readDirAt(tree, real, abs),
-    realpath: (abs) => tree.locate(abs, "file").canonical,
+    // Like the real host, realpath of an absent path throws.
+    realpath: (abs) =>
+      fileExists(abs) || directoryExists(abs) ? tree.locate(abs, "file").canonical : missing(abs, "file"),
   };
 }
 
@@ -274,12 +297,32 @@ export function gitTreeSource(repoRoot: string, rev: string): IndexSource {
 }
 
 /**
- * Roots for indexing a revision: ids are rooted at the realpath'd repo root, and
- * each indexed dir is canonicalized even when the working tree no longer has it.
+ * An indexed dir in repo coordinates: the nearest ancestor that realpaths to the
+ * repo root is rebased onto it and the rest kept as spelled, so a dir the commit
+ * tracks is never resolved through today's symlinks or found missing on disk.
  */
+function rebaseOntoRoot(abs: string, repoRoot: string): string {
+  const rest: string[] = [];
+  for (let at = path.resolve(abs); path.dirname(at) !== at; at = path.dirname(at)) {
+    if (realpathOrNull(at) === repoRoot) return path.join(repoRoot, ...rest.reverse());
+    rest.push(path.basename(at));
+  }
+  return canonicalize(abs);
+}
+
+function realpathOrNull(abs: string): string | null {
+  try {
+    return realpathSync(abs);
+  } catch {
+    return null;
+  }
+}
+
+/** Roots for indexing a revision: ids are rooted at the realpath'd repo root, and so is each indexed dir. */
 export function rootsAtRevision(
   paths: readonly string[],
   revision: NonNullable<IndexSource["revision"]>,
 ): { rootDirs: string[]; idRoot: string } {
-  return { rootDirs: paths.map((p) => canonicalize(p)), idRoot: realpathSync(revision.repoRoot) };
+  const idRoot = realpathSync(revision.repoRoot);
+  return { rootDirs: paths.map((p) => rebaseOntoRoot(p, idRoot)), idRoot };
 }
