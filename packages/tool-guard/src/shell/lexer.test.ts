@@ -209,6 +209,8 @@ describe("subscripts with blanks inside the brackets", () => {
     ["an assignment after a reserved word", "if true; then Y[ 0 ]=x git; fi", ["if", "true", "<op>", "then", "Y[ 0 ]=x", "git", "<op>", "fi"]],
     ["an operator inside the brackets", "Y[ 0;1 ]=x git", ["Y[ 0;1 ]=x", "git"]],
     ["a quoted bracket inside the brackets", "Y[ ']' ]=x git", ["Y[ ] ]=x", "git"]],
+    ["an escaped bracket inside the brackets", "Y[ \\] ]=x git", ["Y[ ] ]=x", "git"]],
+    ["a nested subscript", "Y[ a[ 1 ] ]=x git", ["Y[ a[ 1 ] ]=x", "git"]],
   ])("keeps %s as one word", (_how, src, expected) => {
     expect(words(src)).toEqual(expected);
   });
