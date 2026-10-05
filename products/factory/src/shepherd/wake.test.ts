@@ -7,6 +7,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
@@ -328,13 +329,14 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
     expect(asks(scene.agents)).toHaveLength(2);
   });
 
-  it("returns unhandled with the reason when the fallback ask is refused", async () => {
+  it("returns unhandled with the error class, never its text, when the fallback ask is refused", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
-    scene.agents.fail.message = [undefined as never, new DispatchError('Not delivered: no active session named "impl-a"')];
+    scene.agents.fail.message = [undefined as never, new DispatchError(LEAKY_MESSAGE)];
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toMatchObject({ kind: "unhandled", reason: expect.stringContaining("the message fallback failed: Not delivered") });
+    expect(result).toMatchObject({ kind: "unhandled", reason: expect.stringContaining("the message fallback failed: DispatchError") });
+    expectNoLeak(result);
   });
 
   it("counts a pushed head as the turn, without any fallback", async () => {
@@ -388,14 +390,14 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
   });
 
-  it("returns unhandled with the refusal text, and the step itself succeeds", async () => {
+  it("returns unhandled with the refusal class, and the step itself succeeds", async () => {
     const scene = wakeStep();
     scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn: the name impl-a-s1 is held")];
 
     const { outcome, result } = await scene.run("review", fixFirst("fix it"));
 
     expect(outcome.ok).toBe(true);
-    expect(result).toEqual({ kind: "unhandled", reason: "the wake was refused: agent-chat refused the spawn: the name impl-a-s1 is held" });
+    expect(result).toEqual({ kind: "unhandled", reason: "the wake was refused: DispatchError" });
   });
 
   it("returns unhandled when the seat grants no fixer, and reads no roster", async () => {

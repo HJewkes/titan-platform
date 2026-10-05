@@ -122,14 +122,15 @@ async function awaitHealthy(ports: ServicePorts, io: ServiceIo, port: number, lo
   }
   if (last.state === "up") return true;
   if (last.state === "broken") fail(io, last.why);
-  else fail(io, `${last.why} within ${(HEALTH_POLLS * POLL_MS) / 1000} s\n${errorLogTail(ports, logDir)}`);
+  else fail(io, `${last.why} within ${(HEALTH_POLLS * POLL_MS) / 1000} s\n${errorLogPointer(ports, logDir)}`);
   return false;
 }
 
-function errorLogTail(ports: ServicePorts, logDir: string): string {
+/** Points at the log without quoting it: a post-merge chore that runs `service deploy` stores this output, and the log holds error text. */
+function errorLogPointer(ports: ServicePorts, logDir: string): string {
   const file = join(logDir, "serve.err.log");
   const text = ports.readFile(file)?.trimEnd() ?? "";
-  return text === "" ? `${file} is empty or missing` : `--- tail of ${file}\n${text.split("\n").slice(-LOG_TAIL_LINES).join("\n")}`;
+  return text === "" ? `${file} is empty or missing` : `see the last ${LOG_TAIL_LINES} lines of ${file}: tail -n ${LOG_TAIL_LINES} ${file}`;
 }
 
 export async function installService(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<number> {
