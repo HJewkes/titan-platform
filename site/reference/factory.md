@@ -3,8 +3,9 @@
 **Product.** Private, never published. Depends on [`workflow`](/reference/workflow),
 [`hitl`](/reference/hitl), [`store-sqlite`](/reference/store-sqlite),
 [`github`](/reference/github), [`authority`](/reference/authority),
-[`registry`](/reference/registry), [`daemon`](/reference/daemon) and
-[`session-read`](/reference/session-read).
+[`registry`](/reference/registry), [`daemon`](/reference/daemon),
+[`session-read`](/reference/session-read), [`agent-dispatch`](/reference/agent-dispatch),
+[`rpc-client`](/reference/rpc-client) and [`worktree`](/reference/worktree).
 
 To run it, read [Running the factory](/guides/factory) and [Shepherd](/guides/shepherd).
 This page covers what it is and why.
@@ -30,8 +31,9 @@ have happened.
 
 A software workflow whose transitions, retries and approvals should be owned by code, such as
 landing a pull request or a documentation change. For dispatching an agent, use relay or
-agent-chat. The factory requests one kind of dispatch itself, the Shepherd reviewer, through
-agent-chat via `@titan-design/agent-dispatch`. For the durable-step engine alone, use
+agent-chat. The factory requests three kinds of dispatch itself, the Shepherd reviewer, the main-red
+fixer and the successor implementer, through agent-chat via `@titan-design/agent-dispatch`.
+It also starts one process that is not an agent, the detached deployer. For the durable-step engine alone, use
 [`workflow`](/reference/workflow).
 
 ## Example
@@ -64,8 +66,10 @@ the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true, a `PATH`
 
 ## What it deliberately does not do
 
-It does not create relay items, and it starts no agent except the Shepherd reviewer. That
-reviewer is requested through agent-chat, only when `shepherd.review` is configured. `land-pr`
+It does not create relay items, and it requests no agent except the Shepherd reviewer,
+the main-red fixer and the successor implementer, and starts no process except the detached
+deployer. The agents are requested through agent-chat; the reviewer only when `shepherd.review`
+is configured and the fixer only when `shepherd.fixer` is. `land-pr`
 holds no allow rule: its gate policy sends every merge to a human. `shepherd-pr` can allow a
 merge under authority's MRG-AU-RV row when the reviewer's verdict supports it. With no
 `shepherd.review` key, or no checkout for the repo, the review phase answers `none` and the
@@ -87,5 +91,5 @@ owner decides every merge. See
 
 ## Where it came from
 
-New in TP-410, the first slice of the factory pilots. The step router is a product-side
-adapter until `workflow` exports `routedRunner` (TP-416).
+New in TP-410, the first slice of the factory pilots. The factory re-exports `routedRunner`
+from `workflow` (TP-416).
