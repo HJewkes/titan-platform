@@ -7,6 +7,13 @@ export {
   type ChurnEntry,
   type LoadChurnOptions,
 } from "./log.js";
+export {
+  listTreeBlobs,
+  readBlobs,
+  resolveCommit,
+  type ResolvedCommit,
+  type TreeBlob,
+} from "./git-tree.js";
 export { loadFileFirstSeen, type FirstSeenOptions } from "./first-seen.js";
 export { aggregateChurn, aggregateChurnWindows, type PathChurn } from "./churn.js";
 export {
