@@ -1,4 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
+import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
   override name = "ParseError";
@@ -67,12 +68,17 @@ interface LexState {
   word: WordToken | null;
   heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
+  /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
+  subscriptEnd: number;
 }
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
 const VARIABLE_RE = /[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]/y;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
+const SUBSCRIPT_ACTIVE = "\\'\"`$";
 
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
 export function tokenize(src: string): Token[] {
@@ -82,7 +88,7 @@ export function tokenize(src: string): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1 };
 }
 
 function lex(s: LexState): void {
@@ -109,6 +115,8 @@ const READERS: Record<string, (s: LexState) => void> = {
 
 function step(s: LexState): void {
   const c = s.src[s.i] as string;
+  if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
+  if (c === "[") markSubscript(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
@@ -118,6 +126,12 @@ function step(s: LexState): void {
   if (op) return readOperator(s, op);
   if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
+}
+
+function markSubscript(s: LexState): void {
+  const w = s.word;
+  if (!w || w.quoted || w.dynamic || s.redirect || !IDENTIFIER_RE.test(w.value)) return;
+  s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
 }
 
 function readBlank(s: LexState): void {
