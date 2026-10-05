@@ -95,6 +95,13 @@ export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pa
 export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
 export type { RelevanceOptions } from "./analysis/relevance.js";
 export { computeRelevance } from "./analysis/relevance.js";
+export {
+  DEFAULT_MAX_LINE_CHARS,
+  ELISION_MARKER,
+  TRUNCATION_SUFFIX,
+  renderSignatureTree,
+} from "./analysis/context/signature-tree.js";
+export type { SignatureTreeOptions } from "./analysis/context/signature-tree.js";
 export type {
   ReferenceEdgeLite,
   SymbolConsumers,
