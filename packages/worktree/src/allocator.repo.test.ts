@@ -588,6 +588,55 @@ describe("worktree release", () => {
 });
 
 /**
+ * The dirt check used to read `git status --porcelain` alone, so a hidden
+ * untracked file or an unreadable status read as clean, and removal then fell
+ * back to `--force` over git's own refusal.
+ */
+describe("worktree release over dirt git status does not show", () => {
+  it("refuses an untracked file that status.showUntrackedFiles=no hides", async () => {
+    const repo = makeRepo();
+    const ctx = ctxFor(repo);
+    const alloc = await worktreeStrategy.allocate(ctx);
+    git(["config", "status.showUntrackedFiles", "no"], alloc.cwd);
+    fs.writeFileSync(path.join(alloc.cwd, "notes.txt"), "draft\n");
+
+    const outcome = await worktreeStrategy.release(ctx, alloc);
+
+    expect(refusalOf(outcome)).toMatch(/uncommitted or untracked changes/);
+    expect(fs.readFileSync(path.join(alloc.cwd, "notes.txt"), "utf8")).toBe("draft\n");
+  });
+
+  it("refuses a tree whose gitdir is broken, and keeps its files and branch", async () => {
+    const repo = makeRepo();
+    const ctx = ctxFor(repo);
+    const alloc = await worktreeStrategy.allocate(ctx);
+    fs.writeFileSync(path.join(alloc.cwd, ".git"), `gitdir: ${path.join(repo, "missing-gitdir")}\n`);
+    fs.writeFileSync(path.join(alloc.cwd, "notes.txt"), "draft\n");
+
+    const outcome = await worktreeStrategy.release(ctx, alloc);
+
+    expect(refusalOf(outcome)).toMatch(/could not read git status/);
+    expect(fs.existsSync(path.join(alloc.cwd, "notes.txt"))).toBe(true);
+    expect(git(["branch", "--list", "agent-chat/alice"], repo)).toContain("agent-chat/alice");
+  });
+
+  it("refuses an ignored file no build regenerates", async () => {
+    const repo = makeRepo();
+    commitIn(repo, ".gitignore");
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".env\n");
+    git(["commit", "-q", "-am", "ignore .env"], repo);
+    const ctx = ctxFor(repo);
+    const alloc = await worktreeStrategy.allocate(ctx);
+    fs.writeFileSync(path.join(alloc.cwd, ".env"), "TOKEN=synthetic\n");
+
+    const outcome = await worktreeStrategy.release(ctx, alloc);
+
+    expect(refusalOf(outcome)).toMatch(/ignored files .* \(\.env\)/);
+    expect(fs.existsSync(path.join(alloc.cwd, ".env"))).toBe(true);
+  });
+});
+
+/**
  * A squash or rebase merge leaves the agent's own commits off main, and
  * GitHub deletes the remote branch, so the commit count alone called landed work
  * unmerged and retire refused.
@@ -655,7 +704,7 @@ describe("worktree release after the work landed", () => {
 
     const outcome = await worktreeStrategy.release(ctx, alloc);
     expect(outcome.released).toBe(false);
-    expect(refusalOf(outcome)).toBe("uncommitted changes in the worktree");
+    expect(refusalOf(outcome)).toBe(`uncommitted or untracked changes in ${alloc.cwd}`);
   });
 
   it("names the unpushed commit count when a never-merged branch refuses", async () => {
