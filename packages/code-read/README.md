@@ -21,7 +21,7 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.3)
+## Commands (contract 0.1.4)
 
 | Command | Args | Result |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `finding.get` | `snapshot?`, `id`, `baseline?`, `context_lines` (0 to 20, default 5) | `finding`, `rule` (with `text`), `measured`, `why`, `excerpt` (or null with `excerptMissing`), `related` (at most 10) |
 | `node.neighbors` | `snapshot?`, `id` (a stored node), `direction` (`both` default), `edge_kinds`, `metrics` (default `loc`, `utilization`), `offset`, `limit` (1 to 100, default 20) | `snapshotId`, `node`, `inbound`, `outbound` (each `node`, `kind`, `weight`, `specifier?`, `values`), `total` per side |
 | `hotspots.list` | `snapshot?`, `baseline?`, `grain` (`file` default, `symbol`), `window` (`30d` default, any `<n>d`, or `lifetime`), `cutoff?`, `offset`, `limit` (0 to 500, default 20) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`node`, `churn`, `complexity`, `recency`, `score`, `utilization?`, `baselineScore?`, `mark?`), `total` |
+| `overview.get` | `snapshot?`, `baseline?`, `window` (`30d` default), `cutoff` (default 3000), `weights` (per signal, defaults from code-graph's `DEFAULT_HEALTH_WEIGHTS`), `exclude_rules`, `combined` (default false), `reading_limit` (default 6), `look_limit` (default 8; both 0 to 50) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `kpis`, `signals` (`key`, `label`, `penalty`, `cap`, `measured`, `detail`), `combined?`, `readingOrder` (`node`, `centrality`), `lookFirst` (`node`, `score`, `churn`, `complexity`, `recency`, `reasons`) |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -150,6 +151,19 @@ dataset rank alike.
   the baseline, `worsened` when its score rose. `baselineScore` is null for a new row.
 - **Cutoff** is the caller's policy, such as the dashboard's 3000. It filters before paging,
   and `total` counts the rows it keeps. Marks do not depend on it.
+
+## Overview
+
+`overview.get` answers "where do I look first" with named attention signals, not a risk or
+defect score. It also reuses code-graph's derivations from `./analysis`:
+
+- **Signals** are `computeHealth`'s components, weighted and capped by the caller's
+  `weights`: files over `cutoff`, open findings (new and carried over weigh apart), max
+  complexity over budget, and hidden coupling, which is unmeasured until co-change pairs
+  are stored. `combined` (100 minus the penalties) is optional and secondary.
+- **Reading order** is `topCentralFiles`: PageRank over files and structural edges.
+- **Look first** is the file-grain hotspots, highest first. Each row names its reasons:
+  `over-cutoff`, `findings`, or else `churn-complexity`.
 
 ## Serving the commands
 
