@@ -448,12 +448,27 @@ describe("select, getopts, let and (( )), which write without an assignment (TP-
   });
 
   it.each([
-    ["a let of a literal integer", "Y=status; let Y=1; git $Y", "1"],
-    ["a let of zero", "Y=status; let Y=0; git $Y", "0"],
-    ["a let of a quoted literal integer", "Y=status; let 'Y=42'; git $Y", "42"],
-    ["a later let of a literal integer", "Y=status; let Y++ Y=3; git $Y", "3"],
-  ])("reads the exact integer after %s", (_, command, value) => {
-    expect(gitArgs(command)).toEqual([[value]]);
+    ["a let of a literal integer", "Y=status; let Y=1; git $Y"],
+    ["a let of zero", "Y=status; let Y=0; git $Y"],
+    ["a let of a quoted literal integer", "Y=status; let 'Y=42'; git $Y"],
+    ["a later let of a literal integer", "Y=status; let Y++ Y=3; git $Y"],
+  ])("leaves the variable unknown even after %s, since the let may not run here", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  it.each([
+    ["piped", "let Y=1 | true"],
+    ["after a false &&", "false && let Y=1"],
+    ["in an untaken if", "if false; then let Y=1; fi"],
+    ["in a while false body", "while false; do let Y=1; done"],
+    ["in an uncalled function", "f(){ let Y=1; }"],
+    ["in the background", "let Y=1 &"],
+    ["under env", "env let Y=1"],
+    ["under nice", "nice let Y=1"],
+    ["under xargs", "xargs let Y=1"],
+    ["after a function named let", "let(){ :;}; let Y=1"],
+  ])("still reads a push after a let bash may never run here, %s", (_, command) => {
+    expect(spellings(`Y=push; ${command}; git $Y origin HEAD:main`)).toContain("bash.merge.git-push-protected");
   });
 
   it.each([

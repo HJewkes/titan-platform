@@ -2,7 +2,7 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
-import { commandWrites, compoundWrites, noteCompounds } from "./writers.js";
+import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
@@ -23,9 +23,6 @@ export type Assignment = [name: string, value: string | null, kind?: "append" | 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
-const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
-const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
 /** A name a declaration lists, with or without a subscript or a value. */
 const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
 const ANY_READONLY = "readonly@*";

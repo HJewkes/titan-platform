@@ -1,35 +1,29 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment } from "./vars.js";
 
-const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
+export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
+export const TARGET_RE = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?$/s;
 /** A name not inside a number such as `0x1F` or `16#ff`, nor after a `$`. */
 const NAME_RE = /(?<![\w$#])[A-Za-z_]\w*/g;
 /** An assignment operator, but no comparison such as `==`, `<=` or `!=`, or an increment after the name. */
 const WRITTEN_AFTER_RE = /^\s*(?:\[.*\])?\s*(?:(?:<<|>>|[-+*/%&^|])?=(?!=)|\+\+|--)/s;
 const WRITTEN_BEFORE_RE = /(?:\+\+|--)\s*$/;
-/** Longer integers wrap in bash, so they are not exact. */
-const EXACT_INTEGER_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(0|[1-9][0-9]{0,17})$/;
 
 /**
- * What a command writes without a plain assignment, every value unknown but where `let` assigns a literal
- * integer. Null means the command may write any variable. Only a shell identifier is written: bash rejects
- * any other target, so a hidden slot stays out of reach.
+ * What a command writes without a plain assignment, every value unknown. Null means the command may write any
+ * variable. Only a shell identifier is written: bash rejects any other target, so a hidden slot stays out of
+ * reach. Even a literal `let Y=1` stays unknown: the walk cannot tell that the `let` surely runs, in this shell.
  */
 export function commandWrites(name: string, args: WordToken[]): Assignment[] | null {
   const values = args.map((a) => a.value);
   const unknown = (names: string[]): Assignment[] => names.map((n) => [n, null]);
-  if (name === "let") return args.some(runTimeExpression) ? null : args.flatMap(letWrites);
+  if (name === "let") return args.some(runTimeExpression) ? null : unknown(args.flatMap((a) => writtenNames(a.value)));
   if (name === "read" || name === "unset") return unknown(values.flatMap((v) => TARGET_RE.exec(v)?.[1] ?? []));
   if ((name === "for" || name === "select") && values[0] !== undefined && IDENTIFIER_RE.test(values[0])) return unknown([values[0]]);
   if (name === "getopts") return unknown(["OPTARG", "OPTIND", ...values.slice(1, 2).filter((v) => IDENTIFIER_RE.test(v))]);
   if (name === "mapfile" || name === "readarray") return unknown(["MAPFILE", ...values.filter((v) => IDENTIFIER_RE.test(v))]);
   return [];
-}
-
-function letWrites(arg: WordToken): Assignment[] {
-  const exact = EXACT_INTEGER_RE.exec(arg.value);
-  return exact ? [[exact[1] as string, exact[2] as string]] : writtenNames(arg.value).map((n) => [n, null]);
 }
 
 /** Bash expands `$` and backquotes in the expression itself, so text it expands may name any variable. */
