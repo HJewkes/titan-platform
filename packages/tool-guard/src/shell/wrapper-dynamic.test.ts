@@ -127,3 +127,29 @@ describe("a computed expansion inside a word after the wrapper's options", () =>
     },
   );
 });
+
+describe("a reading's stand-in for a dynamic word", () => {
+  it.each([
+    ["a plain assignment", "__dynamic=x; timeout $A $B $C 5 git push origin HEAD:main"],
+    ["an export", "export __dynamic=x; timeout $A $B $C 5 git push origin HEAD:main"],
+    ["a declare", "declare __dynamic=x; timeout $A $B $C 5 git push origin HEAD:main"],
+    ["a readonly", "readonly __dynamic=x; timeout $A $B $C 5 git push origin HEAD:main"],
+    ["a plain assignment before sudo", "__dynamic=x; sudo $A $B $C git push origin HEAD:main"],
+  ])("cannot be steered by a variable of the same name: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+});
+
+describe("the one-pass reading over the cap", () => {
+  it.each([
+    ["sudo -u", "sudo $A $B $C $D $E -u git push origin HEAD:main"],
+    ["sudo -g", "sudo $A $B $C $D $E -g git push origin HEAD:main"],
+    ["sudo -p", "sudo $A $B $C $D $E -p git push origin HEAD:main"],
+    ["timeout -k", "timeout $A $B $C $D $E -k 5 git push origin HEAD:main"],
+    ["timeout -s", "timeout $A $B $C $D $E -s git push origin HEAD:main"],
+    ["nice -n", "nice $A $B $C $D $E -n git push origin HEAD:main"],
+    ["timeout with a dynamic duration", "timeout $A $B $C $D $E git push origin HEAD:main"],
+  ])("lets a dynamic word take the next option or stand as the positional: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+});

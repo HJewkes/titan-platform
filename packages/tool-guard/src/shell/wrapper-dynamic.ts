@@ -8,17 +8,17 @@ interface OptionSpec {
   digits?: boolean;
 }
 
-/** An unset variable of no meaning: it stays dynamic when the reading is parsed again. */
-const PLACEHOLDER = '"$__dynamic"';
+/** An expansion no assignment can bind, as a variable name could be; it stays dynamic when the reading is parsed again. */
+const PLACEHOLDER = '"$(:)"';
 
 /** More dynamic option words than this are read in one pass: each one triples the readings of the exact pass. */
 const MAX_DYNAMIC = 4;
 
 /**
- * Where the dynamic words sit among a wrapper's options, and the index of the word after them. A word such as `-$O`
+ * Where the dynamic words sit among a wrapper's options. A word such as `-$O`
  * counts too: its dash is known but the option letters are not.
  */
-function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): { at: number[]; end: number } {
+function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): number[] {
   const at: number[] = [];
   let i = start;
   for (; i < words.length; ) {
@@ -27,7 +27,7 @@ function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): { 
     else if (!w.value.startsWith("-") || w.value === "--" || spec.stop?.includes(w.value)) break;
     else i += takesNextWord(w.value, spec) ? 2 : 1;
   }
-  return { at, end: i };
+  return at;
 }
 
 function leadingDashes(value: string): number {
@@ -46,7 +46,7 @@ function literal(text: string): string {
  */
 function quoteWord(w: WordToken): string {
   if (!w.dynamic) return literal(w.value);
-  if (w.computed) return `${literal(w.value)}"$(:)"`;
+  if (w.computed) return `${literal(w.value)}${PLACEHOLDER}`;
   const parts: string[] = [];
   let at = 0;
   for (const ref of w.refs) {
@@ -67,13 +67,13 @@ function quoteWord(w: WordToken): string {
  * Null when the wrapper's options hold no dynamic word.
  */
 export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec): string | null {
-  const { at: found, end } = dynamicOptions(words, start, spec);
+  const found = dynamicOptions(words, start, spec);
   const d = found[0];
   if (d === undefined) return null;
   const xargs = /(^|\/)xargs$/.test((words[at] as WordToken).value);
   const dashed = (words[d] as WordToken).value.startsWith("-");
   if (xargs && !dashed) return null;
-  if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found, end);
+  if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found);
   const before = words.slice(at, d).map(quoteWord);
   const after = words.slice(d + 1).map(quoteWord);
   const readings = [after, after.slice(1)];
@@ -82,8 +82,19 @@ export function dynamicOptionReadings(words: WordToken[], at: number, start: num
   return readings.map((rest) => [...before, ...rest].join(" ")).join("\n");
 }
 
-function bulkReadings(words: WordToken[], at: number, found: number[], end: number): string {
-  const kept = words.map((w, i) => (found.includes(i) ? null : quoteWord(w))).slice(at);
-  const text = (skip: number) => kept.filter((w, i) => w !== null && i + at !== skip).join(" ");
-  return [text(-1), text(end)].join("\n");
+/**
+ * One reading per way a dynamic word could land, so the count grows by one per word, not threefold: all gone, all gone
+ * with the static word after one of them (its option), and one of them a literal positional with the rest gone, with
+ * or without that static word.
+ */
+function bulkReadings(words: WordToken[], at: number, found: number[]): string {
+  const text = (keep: (i: number) => string | null) =>
+    words.slice(at).map((w, j) => keep(j + at) ?? (found.includes(j + at) ? null : quoteWord(w))).filter((w) => w !== null).join(" ");
+  const readings = [text(() => null)];
+  for (const k of found) {
+    readings.push(text((i) => (i === k + 1 && !found.includes(i) ? "" : null)));
+    readings.push(text((i) => (i === k ? "0" : null)));
+    readings.push(text((i) => (i === k ? "0" : i === k + 1 && !found.includes(i) ? "" : null)));
+  }
+  return readings.join("\n");
 }
