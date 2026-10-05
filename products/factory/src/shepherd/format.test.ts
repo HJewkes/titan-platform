@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SHEPHERD_COMMAND_MAP } from "./commands.js";
 import { formatShepherd } from "./format.js";
 import type { WatchRow } from "./view.js";
 
@@ -35,4 +36,66 @@ describe("the shepherd text view of a hold", () => {
   it("shows an unsatisfied hold by its reason alone", () => {
     expect(formatShepherd("shepherd.status", [row({ reason: "owner review" })])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: owner review]\n`);
   });
+});
+
+describe("the shepherd text view of each verb", () => {
+  const registered = (extra: object) => ({
+    runId: "run-1",
+    created: true,
+    registration: { repo: "acme/widgets", pr: 1, branch: "feat/x", policy: { merge: "owner" } },
+    ...extra,
+  });
+
+  it.each([
+    ["a new run", registered({}), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner\n"],
+    ["a repeat registration", registered({ created: false }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): already registered, metadata updated; policy owner\n"],
+    ["a restart after a failed run", registered({ previousRunId: "run-0" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after failed run run-0; policy owner\n"],
+    [
+      "a branch with no PR yet",
+      registered({ registration: { repo: "acme/widgets", pr: null, branch: "feat/x", policy: { merge: "auto" } } }),
+      "run run-1 shepherd-pr acme/widgets (feat/x): started; policy auto\n",
+    ],
+  ])("prints register for %s", (_name, data, expected) => {
+    expect(formatShepherd("shepherd.register", data)).toBe(expected);
+  });
+
+  it("prints an empty list and a row per run for list", () => {
+    expect(formatShepherd("shepherd.list", [])).toBe("no shepherded PRs\n");
+    expect(formatShepherd("shepherd.list", [row(null), { ...row(null), pr: null }])).toBe(`acme/widgets#1 merging aaaaaaa merging\nacme/widgets feat/x merging aaaaaaa merging\n`);
+  });
+
+  it("prints each timeline entry kind under the row", () => {
+    const entries = [
+      { kind: "step", stepId: "ci", status: "completed", completedAt: "2026-01-01T00:00:00.000Z" },
+      { kind: "ci", stepId: "ci", headSha: HEAD, conclusion: "success" },
+      { kind: "gate", gateId: "run-1/merge", status: "resolved", resolvedBy: "owner" },
+      { kind: "signal", stepId: "wake" },
+    ];
+    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(
+      "acme/widgets#1 merging - merging\n  step ci completed 2026-01-01T00:00:00.000Z\n  ci ci aaaaaaa success\n  gate run-1/merge resolved by owner\n  signal wake\n",
+    );
+  });
+
+  it("prints hold and release by the run's hold state", () => {
+    expect(formatShepherd("shepherd.hold", { runId: "run-1", held: { reason: "owner review" } })).toBe("run run-1: held (owner review)\n");
+    expect(formatShepherd("shepherd.release", { runId: "run-1", held: null })).toBe("run run-1: released\n");
+  });
+
+  it("prints merge with and without a hold", () => {
+    const evaluation = { runId: "run-1", phase: "merging", decision: { outcome: "gate", reason: "owner merges" }, held: null, waiting: "waiting on the owner" };
+    expect(formatShepherd("shepherd.merge", evaluation)).toBe("run run-1 merging: policy says gate (owner merges); waiting on the owner\n");
+    expect(formatShepherd("shepherd.merge", { ...evaluation, held: { reason: "freeze" } })).toBe("run run-1 merging: policy says gate (owner merges); held: freeze; waiting on the owner\n");
+  });
+
+  it.each([
+    [true, "run 12345678 would end: merged outside Shepherd\nwould cancel 1 orphaned gate(s); would supersede 0 moved-head gate(s)\n"],
+    [false, "run 12345678 ended: merged outside Shepherd\ncancelled 1 orphaned gate(s); superseded 0 moved-head gate(s)\n"],
+  ])("prints resync with dryRun %s", (dryRun, expected) => {
+    const report = { dryRun, ended: [{ runId: "1234567890", reason: "merged outside Shepherd" }], orphanGates: ["run-0/merge"], superseded: [] };
+    expect(formatShepherd("shepherd.resync", report)).toBe(expected);
+  });
+});
+
+it("keys every shepherd command by its own name, so each verb finds its formatter", () => {
+  for (const [key, command] of Object.entries(SHEPHERD_COMMAND_MAP)) expect(command.name).toBe(key);
 });

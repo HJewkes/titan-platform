@@ -20,6 +20,7 @@ import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsew
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ORPHANED, resyncShepherd } from "./resync.js";
+import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
@@ -27,7 +28,6 @@ const SEED_LEASE_MS = 3_000;
 const AFTER_LEASE = T0 + 60_000;
 const HEAD = fakeSha("resync-head");
 const AWAIT_VERDICT = "sh-await-verdict";
-const TERMINAL: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
 
 const dirs: string[] = [];
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -129,7 +129,7 @@ async function serve(w: World, overrides: Partial<FactoryServerOptions> = {}): P
 async function settled(host: FactoryHost, runId: string): Promise<WorkflowRun> {
   for (;;) {
     const run = host.runtime.status(runId)!;
-    if (TERMINAL.has(run.status)) return run;
+    if (FINISHED_RUN_STATUSES.has(run.status)) return run;
     await sleep(5, new AbortController().signal);
   }
 }

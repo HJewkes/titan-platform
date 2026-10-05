@@ -127,7 +127,7 @@ and again every 30 seconds for runs whose owner died and whose lease lapsed. It 
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the GitHub probe, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
 
