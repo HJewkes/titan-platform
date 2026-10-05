@@ -68,8 +68,8 @@ and appends one log line; otherwise it prints nothing. It never answers `ask` or
 | a call that classifies as a guarded action | deny, one `deny` log line |
 | a call that classifies as nothing | silent, no log line |
 | stdin that is not JSON, or a known tool with the wrong input shape | silent, one `error shape` line |
-| a Bash command that cannot be parsed | deny if its raw text names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line |
-| a Bash command over 8 KiB | not classified; deny if its raw text names something guarded, as for a parse error; otherwise silent with an `error oversize` line |
+| a Bash command that cannot be parsed | deny if its text, as typed or with quotes and backslashes removed and whitespace collapsed, names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line. A name spelled through a variable or glob is not seen |
+| a Bash command over 8 KiB | not classified; always denies, asking for shorter commands or a script file |
 | an authority table that cannot load | deny every classified call; unclassified calls are silent |
 | `TITAN_TOOL_GUARD_BYPASS=1` in the hook's launch environment | evaluated as `owner-terminal`; a guarded call is logged as `bypass` |
 

@@ -133,10 +133,54 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
   });
 
-  it("passes a large command that names nothing guarded, and logs it as oversize", async () => {
+  it("denies a large command that names nothing guarded, and says to split it or use a script", async () => {
     const result = await handle(bash(`${"x ".repeat(20_000)}; echo done`), {}, port());
 
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toMatch(/split it into shorter commands, or write the steps to a script file/);
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  });
+
+  it.each([
+    "gh pr mer''ge 3",
+    'gh pr "merge" 3',
+    "gh  pr  merge 3",
+    "cat ~/.np''mrc",
+    "cat ~/.np*rc",
+    "F=mrc; cat ~/.np$F",
+    "pnpm pub''lish",
+  ])("denies %s padded just past the size cap", async (spelling) => {
+    const padded = `${"x ".repeat(Math.ceil(MAX_COMMAND_BYTES / 2))}; ${spelling}`;
+
+    const result = await handle(bash(padded), {}, port());
+
+    expect(Buffer.byteLength(padded)).toBeLessThan(MAX_COMMAND_BYTES + 200);
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  it("passes an oversize command under the bypass and logs it", async () => {
+    const result = await handle(bash(`${"x ".repeat(20_000)}; echo done`), { [BYPASS_VAR]: "1" }, port());
+
     expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
+  });
+
+  it.each([
+    "gh pr mer''ge 3; echo 'x",
+    'gh pr "merge" 3; echo \'x',
+    "gh  pr  merge 3; echo 'x",
+    "cat ~/.np''mrc; echo 'x",
+    "gh pr mer\\ge 3; echo 'x",
+  ])("sees through quoting when %s cannot be parsed", async (command) => {
+    const result = await handle(bash(command), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
+  });
+
+  it("passes an unparseable quoted command that names nothing guarded, with an error line", async () => {
+    const result = await handle(bash("echo 'he''llo' \"wor  ld\"; echo 'x"), {}, port());
+
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
   });
 
   it("still classifies a command just under the size cap", async () => {
@@ -207,6 +251,18 @@ describe("namesGuarded", () => {
     expect(namesGuarded("find / -name id_ed25519")).toBe(true);
     expect(namesGuarded("pnpm publish")).toBe(true);
     expect(namesGuarded("echo hello")).toBe(false);
+  });
+
+  it("sees through quotes, backslashes and whitespace runs", () => {
+    expect(namesGuarded("pnpm pub''lish")).toBe(true);
+    expect(namesGuarded('gh pr "merge" 3')).toBe(true);
+    expect(namesGuarded("gh \t pr   merge 3")).toBe(true);
+    expect(namesGuarded("cat ~/.np\\mrc")).toBe(true);
+  });
+
+  it("does not expand variables or globs (owner decision D6 residual)", () => {
+    expect(namesGuarded("F=mrc; cat ~/.np$F")).toBe(false);
+    expect(namesGuarded("cat ~/.np*rc")).toBe(false);
   });
 });
 

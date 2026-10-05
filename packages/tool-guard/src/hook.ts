@@ -35,12 +35,13 @@ const PASS: HookResult = { stdout: "", log: [] };
 const UNPARSED_REASON =
   "authority-guard could not parse this command and it names a guarded action or path; split it into simpler commands.";
 const OVERSIZE_REASON =
-  "authority-guard does not classify a command this long and it names a guarded action or path; split it into shorter commands.";
+  "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
  * Classifying costs about 50 ms per KiB of arguments, so padding a command past Claude Code's 5 s
- * hook timeout would let it run. Over this size the raw text alone decides, as for a parse error.
+ * hook timeout would let it run. Every command over this size denies, whatever it names, because
+ * quoting and variables hide a guarded name from any check of the raw text.
  */
 export const MAX_COMMAND_BYTES = 8 * 1024;
 
@@ -70,7 +71,7 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
   const actor = observeActor(env, event.sessionId);
-  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return failed(event, actor, "oversize", port);
+  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, port);
   const result = classifyEvent(event, port.context);
   if (!result.ok) return failed(event, actor, result.cls, port);
   if (result.actions.length === 0) return PASS;
@@ -93,15 +94,21 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   }
 }
 
-/** A command or path that was not classified denies only when its raw text names something guarded. */
+/** A command or path that could not be classified denies only when its text names something guarded (D6). */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
-  const error = formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId });
   const raw = event.kind === "bash" ? event.command : event.path;
-  if (actor.bypass || !namesGuarded(raw)) return logged(error);
-  const action = cls === "oversize" ? "oversize" : "unparsed";
-  const unclassified: Logged = { ruleId: null, action, spelling: `${event.kind}.${action}`, subject: {} };
-  const reason = cls === "oversize" ? OVERSIZE_REASON : UNPARSED_REASON;
-  return { stdout: denyAnswer(reason), log: [decisionLine(event, actor, unclassified, "deny", port)] };
+  if (actor.bypass || !namesGuarded(raw)) return logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
+  return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
+}
+
+function oversized(event: Event, actor: ActorObservation, port: HookPort): HookResult {
+  if (actor.bypass) return logged(formatErrorLine({ ts: port.now(), cls: "oversize", tool: event.toolName, session: event.sessionId }));
+  return unclassified(event, actor, "oversize", OVERSIZE_REASON, port);
+}
+
+function unclassified(event: Event, actor: ActorObservation, action: string, reason: string, port: HookPort): HookResult {
+  const fields: Logged = { ruleId: null, action, spelling: `${event.kind}.${action}`, subject: {} };
+  return { stdout: denyAnswer(reason), log: [decisionLine(event, actor, fields, "deny", port)] };
 }
 
 async function decided(event: Event, actor: ActorObservation, actions: ClassifiedAction[], port: HookPort): Promise<HookResult> {
@@ -161,8 +168,16 @@ function literalStem(pattern: string): string {
   return bare.slice(0, bare.search(/[*?[]|$/)).replace(/\/$/, "");
 }
 
-/** Case-folded, because a case-insensitive filesystem opens `~/.NPMRC` as `~/.npmrc`. */
+/**
+ * Whether the text, as typed or with shell quoting removed and whitespace runs collapsed, holds a
+ * guarded name: `gh pr mer''ge` and `gh  pr  merge` both count. Case-folded, because a
+ * case-insensitive filesystem opens `~/.NPMRC` as `~/.npmrc`. Variables and globs are not expanded.
+ */
 export function namesGuarded(raw: string): boolean {
-  const text = raw.toLowerCase();
-  return GUARDED_NEEDLES.some((needle) => needle !== "" && text.includes(needle));
+  const texts = [raw, unquoted(raw)].map((t) => t.toLowerCase());
+  return GUARDED_NEEDLES.some((needle) => needle !== "" && texts.some((t) => t.includes(needle)));
+}
+
+function unquoted(raw: string): string {
+  return raw.replace(/\\(.)/gs, "$1").replace(/['"]/g, "").replace(/\s+/g, " ");
 }

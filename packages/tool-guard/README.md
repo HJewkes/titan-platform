@@ -31,13 +31,16 @@ guarded file stays readable by that user. The OS account is the real boundary.
 
 - Commands built at run time (`$(...)`, `read`, `printf -v`, `eval "$x"`) are not followed.
   A script run by path is read one level deep.
-- A Bash command the tokenizer cannot parse passes, unless its raw text names a guarded
+- A Bash command the tokenizer cannot parse passes, unless its text names a guarded
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
-  `gist` (owner decision D6). Then it denies and asks for simpler commands.
+  `gist` (owner decision D6). Then it denies and asks for simpler commands. The text is checked
+  as typed and with quotes and backslashes removed and whitespace runs collapsed, so
+  `gh pr mer''ge` counts. A name spelled through a variable or a glob (`F=mrc; cat ~/.np$F`,
+  `cat ~/.np*rc`) in an unparseable command is not seen and passes: D6's residual.
 - Claude Code treats a hook that times out (5 s) or crashes as a non-blocking error, so the
   call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
   (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
-  timeout: it denies when its raw text names something guarded, as above, and passes otherwise.
+  timeout. It denies whatever it names, and the reason asks for shorter commands or a script file.
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 
