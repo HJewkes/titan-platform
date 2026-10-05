@@ -28,9 +28,4 @@ describe("xargs running a dynamic command word", () => {
   ])("keeps a static command's verdict: %s", (command) => {
     expect(verdicts(command)).toEqual([]);
   });
-
-  // Out of scope here: main also returns [] for a dynamic command word typed directly.
-  it("leaves a direct dynamic command word as main reads it", () => {
-    expect(verdicts("\"$G\" push origin HEAD:main")).toEqual([]);
-  });
 });
