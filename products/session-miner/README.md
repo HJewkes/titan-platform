@@ -40,6 +40,15 @@ miner opens it read-only: it runs no migrations, writes no price rows, and refus
 commands. Opening refuses a graph that lacks any session-graph migration this runtime
 declares.
 
+A foreign graph holds session-graph's tables but none of the miner's own, so only the
+commands that read session-graph tables work on it:
+
+- Work: `status` (reports `templates: 0`), `session list`, `session show`, `search`,
+  and the `insights` questions.
+- Refused with exit 65 and a message naming the foreign graph: `drain ingest`,
+  `drain templates`, and every `playbook` command (`add`, `recall`, `reflect`, `status`).
+  Drain templates and the playbook live only in the miner's own index.
+
 ```
 titan-miner --graph "<active-work root>/.miner/graph.sqlite3" insights spend-by-action
 ```

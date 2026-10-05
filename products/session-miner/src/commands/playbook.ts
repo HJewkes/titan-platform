@@ -1,7 +1,8 @@
-import { curate, recall, reflectSession, scorePlaybook, type PlaybookDelta, type ScoredBullet } from "@titan-design/memory";
+import { curate, recall, reflectSession, scorePlaybook, type PlaybookDelta, type PlaybookStore, type ScoredBullet } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { DIARY_TABLES, PLAYBOOK_TABLES, requireMinerTables } from "../miner-tables.js";
 import { buildDiary, renderDiary, type SessionDiary } from "../playbook/diary.js";
 
 export interface BulletView {
@@ -40,7 +41,7 @@ export const playbookAdd = defineCommand<z.infer<typeof AddArgs>, { report: Retu
   },
   async run(args, ctx) {
     const delta: PlaybookDelta = { type: "add", content: args.content, category: args.category, tags: args.tags, isNegative: args.negative };
-    const report = curate(ctx.playbook(), [delta], { provenance: provenanceFor(ctx, args.session) });
+    const report = curate(playbookFor(ctx, "playbook.add"), [delta], { provenance: provenanceFor(ctx, args.session) });
     return { report };
   },
 });
@@ -57,7 +58,7 @@ export const playbookRecall = defineCommand<z.infer<typeof RecallArgs>, { bullet
   result: z.custom<{ bullets: BulletView[]; antiPatterns: BulletView[]; deprecatedWarnings: BulletView[] }>(),
   cli: { positional: ["query"], options: { limit: { long: "--limit", short: "-n", description: "max bullets" } } },
   async run(args, ctx) {
-    const result = await recall(ctx.playbook(), args.query, { limit: args.limit });
+    const result = await recall(playbookFor(ctx, "playbook.recall"), args.query, { limit: args.limit });
     for (const d of result.degraded) ctx.warnings.push(`${d.retriever} degraded: ${d.message}`);
     return {
       bullets: result.bullets.map(toView),
@@ -93,12 +94,13 @@ export const playbookReflect = defineCommand<z.infer<typeof ReflectArgs>, Reflec
   result: z.custom<ReflectResponse>(),
   cli: { positional: ["session"], options: { dryRun: { long: "--dry-run", description: "render only (default)" } } },
   async run(args, ctx) {
+    requireMinerTables(ctx, "playbook.reflect", DIARY_TABLES);
     const diary = buildDiary(ctx.graph(), args.session);
     if (!diary) throw Object.assign(new Error(`no session ${args.session}`), { code: EXIT.NOINPUT });
     const rendered = renderDiary(diary);
     if (args.dryRun || !ctx.reflector) return { diary: rendered, outcome: diary.outcome, applied: false, added: [], reinforced: [] };
     const result = await reflectSession(
-      { store: ctx.playbook() },
+      { store: playbookFor(ctx, "playbook.reflect") },
       { sessionRef: diary.sessionRef, diary: rendered, byteOffset: diary.byteOffset },
       ctx.reflector,
     );
@@ -113,7 +115,7 @@ export const playbookStatus = defineCommand<Record<string, never>, { total: numb
   args: z.object({}),
   result: z.custom<{ total: number; byMaturity: Record<string, number>; blocked: number; top: BulletView[] }>(),
   async run(_args, ctx) {
-    const store = ctx.playbook();
+    const store = playbookFor(ctx, "playbook.status");
     const scored = scorePlaybook(store, new Date());
     const byMaturity: Record<string, number> = {};
     for (const b of scored) byMaturity[b.maturity] = (byMaturity[b.maturity] ?? 0) + 1;
@@ -124,8 +126,14 @@ export const playbookStatus = defineCommand<Record<string, never>, { total: numb
 
 function provenanceFor(ctx: MinerContext, sessionId: string | undefined): { sessionRef: string; byteOffset?: number } | undefined {
   if (sessionId === undefined) return undefined;
+  requireMinerTables(ctx, "playbook.add --session", DIARY_TABLES);
   const diary = buildDiary(ctx.graph(), sessionId);
   return diary ? { sessionRef: diary.sessionRef, byteOffset: diary.byteOffset } : { sessionRef: `session:${sessionId}` };
+}
+
+function playbookFor(ctx: MinerContext, command: string): PlaybookStore {
+  requireMinerTables(ctx, command, PLAYBOOK_TABLES);
+  return ctx.playbook();
 }
 
 function toView(bullet: ScoredBullet): BulletView {
