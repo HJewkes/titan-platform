@@ -86,8 +86,8 @@ function skippedSpan(j: number, end: number): number {
 
 /**
  * Index of the `close` ending a `$( )` or `${ }` body that starts at `from`, nesting and quotes included; UNSURE when
- * it never closes. A `#` may open a comment that hides the closer, and a `[` may open a nested spaced subscript
- * whose `)` is no closer, so the scan cannot be sure and returns UNSURE.
+ * it never closes. A `#` in `$( )` may open a comment that hides the closer, and a `[` may open a nested spaced
+ * subscript whose `)` or `}` is no closer, so the scan cannot be sure and returns UNSURE.
  */
 function closingSubstitution(src: string, from: number, open: string, close: string): number {
   let depth = 1;
@@ -95,7 +95,7 @@ function closingSubstitution(src: string, from: number, open: string, close: str
     const end = skipQuoted(src, k);
     if (end === -1) return UNSURE;
     const c = end === k ? src[k] : "";
-    if ((c === "#" || c === "[") && open === "(") return UNSURE;
+    if (c === "[" || (c === "#" && open === "(")) return UNSURE;
     if (c === open) depth++;
     if (c === close && --depth === 0) return k;
     k = end;
