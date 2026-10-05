@@ -17,18 +17,21 @@ export interface FunctionStats extends FunctionShapeStats {
   cyclomatic: number;
   cognitive: number;
   nestingDepth: number;
+  /** Deepest chain of rendered JSX elements in the body; 0 when it renders none. */
+  jsxDepth: number;
   /** Lines spanned by the whole function node, signature included. */
   loc: number;
 }
 
-type NumericStat = "cyclomatic" | "cognitive" | "nestingDepth" | "loc" | keyof FunctionShapeStats;
+type NumericStat = "cyclomatic" | "cognitive" | "nestingDepth" | "jsxDepth" | "loc" | keyof FunctionShapeStats;
 
-/** Per-symbol metric name and the unit and function stat it reports. */
-const SYMBOL_METRICS: readonly { name: string; stat: NumericStat; unit: string }[] = [
+/** Per-symbol metric name, the unit and function stat it reports, and whether a zero is left unwritten. */
+const SYMBOL_METRICS: readonly { name: string; stat: NumericStat; unit: string; omitZero?: boolean }[] = [
   { name: "symbol_cognitive", stat: "cognitive", unit: "count" },
   { name: "symbol_cyclomatic", stat: "cyclomatic", unit: "count" },
   { name: "symbol_loc", stat: "loc", unit: "lines" },
   { name: "symbol_max_nesting", stat: "nestingDepth", unit: "count" },
+  { name: "symbol_jsx_depth", stat: "jsxDepth", unit: "count", omitZero: true },
   { name: "symbol_comment_lines", stat: "commentLines", unit: "lines" },
   { name: "symbol_docstring_lines", stat: "docstringLines", unit: "lines" },
   { name: "symbol_body_lines", stat: "bodyLines", unit: "lines" },
@@ -42,7 +45,7 @@ export const SYMBOL_METRIC_NAMES: readonly string[] = SYMBOL_METRICS.map((m) => 
 /**
  * Per-symbol metrics (C-58, C-64, TP-317): for each named function whose qualified
  * name has a `symbol` node on this file, emit every SYMBOL_METRICS entry on that
- * node (`<fileId>#<qualifiedName>`). Model B (C-64) gives non-exported helpers a
+ * node (`<fileId>#<qualifiedName>`), skipping an `omitZero` entry whose value is 0. Model B (C-64) gives non-exported helpers a
  * node too, so internal functions get their own values here, not just exports. A
  * qualified name shared by several functions (a getter/setter pair) takes the max
  * of each stat independently; a declared name with no function (a bare class) emits nothing.
@@ -67,6 +70,7 @@ export function symbolMetrics(
   for (const [name, values] of byName) {
     const nodeId = symbolId(fileId, name);
     for (const m of SYMBOL_METRICS) {
+      if (m.omitZero && values[m.stat] === 0) continue;
       out.push({ nodeId, name: m.name, value: values[m.stat], unit: m.unit });
     }
   }
