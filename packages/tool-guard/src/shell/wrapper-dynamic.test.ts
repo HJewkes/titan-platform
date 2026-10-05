@@ -313,3 +313,87 @@ describe("one expansion pass across every kind of chain breaker", () => {
     expect(timed(`${stage.repeat(n)}${PUSH_TAIL}`)).toContain(PUSH);
   });
 });
+
+describe("round 7: a push main catches, a bounded budget, a fixed cost", () => {
+  const PUSH_TAIL = "git push origin HEAD:main";
+  const words = (command: string) => tokenize(command).filter((t): t is WordToken => t.type === "word");
+  const timed = (command: string, limit = 1000) => {
+    const started = performance.now();
+    const found = spellings(command);
+    expect(performance.now() - started).toBeLessThan(limit);
+    return found;
+  };
+
+  /** Readings and reparse depth across every level: each line of a script is parsed and unwrapped again, as classify does. */
+  function reparses(command: string, limit = 5000): { readings: number; depth: number } {
+    const walk = (line: string, depth: number): { readings: number; depth: number } => {
+      const script = unwrap(words(line))?.script;
+      if (script === undefined) return { readings: 1, depth };
+      const out = { readings: 0, depth };
+      for (const next of script.split("\n")) {
+        if (out.readings > limit) break;
+        const inner = walk(next, depth + 1);
+        out.readings += inner.readings;
+        out.depth = Math.max(out.depth, inner.depth);
+      }
+      return out;
+    };
+    return walk(command, 0);
+  }
+
+  const dynamicWords = (command: string) => words(command).filter((w) => w.dynamic).length;
+  /** Readings per dynamic word the bound allows, plus the one reading of the command as written. */
+  const K = 4;
+
+  const stagesA = (n: number) => "sudo $a1 $a2 $a3 $a4 $a5 -u timeout 5 ".repeat(n);
+  const cost: [string, string][] = [
+    ["three wrappers of four, x20", "sudo $a1 $a2 $a3 $a4 nice $b1 $b2 $b3 $b4 timeout $c1 $c2 $c3 $c4 5 ".repeat(20)],
+    ["three wrappers of four, x50", "sudo $a1 $a2 $a3 $a4 nice $b1 $b2 $b3 $b4 timeout $c1 $c2 $c3 $c4 5 ".repeat(50)],
+    ["the mixed chain, x20", "sudo $A -u timeout 5 timeout $c1 $c2 $c3 $c4 5 nice $b -n ".repeat(20)],
+    ["the mixed chain, x50", "sudo $A -u timeout 5 timeout $c1 $c2 $c3 $c4 5 nice $b -n ".repeat(50)],
+    ["five dynamic words and an assignment, x50", "sudo $a1 $a2 $a3 $a4 $a5 env X=1 ".repeat(50)],
+    ["a double dash after the 4th, x50", "sudo $a1 $a2 $a3 $a4 -- ".repeat(50)],
+    ["an assignment after the 4th, x50", "sudo $a1 $a2 $a3 $a4 env X=1 ".repeat(50)],
+    ["a double dash after the 5th, x50", "sudo $a1 $a2 $a3 $a4 $a5 -- ".repeat(50)],
+    ["an assignment after the 5th, x50", "sudo $a1 $a2 $a3 $a4 $a5 env X=1 ".repeat(50)],
+  ];
+
+  it.each([
+    ["sudo $G", "sudo $G"],
+    ["sudo -u $U $G", "sudo -u $U $G"],
+    ["env $G", "env $G"],
+    ["nice $X", "nice $X"],
+    ["nice -n $N $X", "nice -n $N $X"],
+    ["sudo $A $A", "sudo $A $A"],
+    ["sudo $A $G", "sudo $A $G"],
+    ["sudo -g $X $Y", "sudo -g $X $Y"],
+    ["sudo $a..$e", "sudo $a $b $c $d $e"],
+  ])("keeps the dynamic word that is the command as written: %s", (_how, prefix) => {
+    expect(spellings(`${prefix} push origin HEAD:main`)).toContain(PUSH);
+  });
+
+  it("does not flag the same forms ending in a harmless command", () => {
+    expect(spellings("sudo -u $U $G status")).not.toContain(PUSH);
+    expect(spellings("nice -n $N $X status")).not.toContain(PUSH);
+  });
+
+  it.each([[9], [20]])("reads %i stages of five dynamic words and a value as a push, without a nesting error", (n) => {
+    const command = `${stagesA(n)}${PUSH_TAIL}`;
+    expect(timed(command)).toContain(PUSH);
+    expect(reparses(command).depth).toBeLessThanOrEqual(2);
+  });
+
+  it.each(cost)("reads in time: %s", (_how, stage) => {
+    expect(timed(`${stage}${PUSH_TAIL}`)).toContain(PUSH);
+  });
+
+  it.each<[string, string]>([...cost, ["five dynamic words and a value, x9", stagesA(9)], ["five dynamic words and a value, x20", stagesA(20)]])(
+    "keeps the readings across every reparse within four per dynamic word: %s",
+    (_how, stage) => {
+      const command = `${stage}${PUSH_TAIL}`;
+      const { readings, depth } = reparses(command);
+      expect(readings).toBeLessThanOrEqual(K * dynamicWords(command) + 1);
+      expect(depth).toBeLessThanOrEqual(2);
+    },
+  );
+});

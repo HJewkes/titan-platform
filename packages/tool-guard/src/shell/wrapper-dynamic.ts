@@ -1,4 +1,5 @@
 import type { WordToken } from "./lexer.js";
+import { parseAssignment } from "./vars.js";
 
 interface OptionSpec {
   values?: string[];
@@ -19,7 +20,7 @@ const XARGS_RE = /(^|\/)xargs$/;
 /** The one step of the wrapper walk that `unwrap` shares: past a stage's options, `--` and positionals, to its command. */
 interface Walk {
   /** Index just past the stage at `start`, collecting the dynamic option words into `found`; -1 for an option that stops. */
-  skip: (words: WordToken[], start: number, spec: OptionSpec, found: number[]) => number;
+  skip: (words: WordToken[], start: number, spec: OptionSpec, found?: number[]) => number;
   /** The wrapper or runner that `unwrap` would step into at `i`, past assignments and keywords; null when none. */
   next: (words: WordToken[], i: number) => { start: number; spec: OptionSpec } | null;
 }
@@ -79,10 +80,21 @@ function quoteWord(w: WordToken): string {
 /** Word lists one command may expand to before it falls back to the one-pass reading. */
 const MAX_READINGS = 256;
 
-/** What `expand` spends and keeps: lists left to make, and every dynamic word seen in an option position. */
+/** More dynamic option words than this along one chain are not read: the whole command fails closed, once. */
+const MAX_CHAIN_DYNAMIC = 64;
+
+/** A word list and where its words came from, to tell a word shifted into command place from one written there. */
+interface Reading {
+  words: WordToken[];
+  /** Index of each word in the chain as written; -1 for a word the expansion made up. */
+  origin: number[];
+  /** Lowest index, as written, of a static word the expansion dropped. */
+  dropped: number;
+}
+
+/** What `expand` spends: expansion steps left. */
 interface Budget {
   left: number;
-  seen: Set<WordToken>;
 }
 
 function literalWord(value: string): WordToken {
@@ -93,21 +105,24 @@ function literalWord(value: string): WordToken {
  * Every way the first dynamic option word of the wrapper chain could expand, resolved to word lists with no dynamic
  * option word left: the word gone, the word and the next word gone (an option and its value), or the word a literal
  * positional; for `xargs`, an `-I`. Every level is expanded here, over word lists, so a reading that is parsed again
- * meets no dynamic option word and starts no expansion of its own. Null once the lists pass `budget`. A list whose command is
- * a word seen in an option position is dropped by the caller: it is that word shifted into command place by a dropped
- * value, a command that could not run, and a dynamic command word fails closed on its own.
+ * meets no dynamic option word and starts no expansion of its own. Null once the lists pass `budget`.
  */
-function expand(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, xargs: boolean, budget: Budget): WordToken[][] | null {
-  const found = chainDynamics(words, start, spec, walk);
+function expand(r: Reading, start: number, spec: OptionSpec, walk: Walk, xargs: boolean, budget: Budget): Reading[] | null {
+  const found = chainDynamics(r.words, start, spec, walk);
   const d = found[0];
-  if (d === undefined) return [words];
+  if (d === undefined) return [r];
   if (--budget.left < 0) return null;
-  for (const i of found) budget.seen.add(words[i] as WordToken);
-  const head = words.slice(0, d);
-  const variants = [[...head, ...words.slice(d + 1)], [...head, ...words.slice(d + 2)]];
-  if (!(words[d] as WordToken).value.startsWith("-")) variants.push([...head, literalWord("0"), ...words.slice(d + 1)]);
-  if (xargs) variants.push([...head, literalWord("-I"), ...words.slice(d + 1)]);
-  const lists: WordToken[][] = [];
+  const word = r.words[d] as WordToken;
+  const next = r.words[d + 1];
+  const cut = (gone: number, insert: WordToken[]): Reading => ({
+    words: [...r.words.slice(0, d), ...insert, ...r.words.slice(d + gone)],
+    origin: [...r.origin.slice(0, d), ...insert.map(() => -1), ...r.origin.slice(d + gone)],
+    dropped: gone === 2 && next && !next.dynamic && (r.origin[d + 1] as number) >= 0 ? Math.min(r.dropped, r.origin[d + 1] as number) : r.dropped,
+  });
+  const variants = [cut(1, []), cut(2, [])];
+  if (!word.value.startsWith("-")) variants.push(cut(1, [literalWord("0")]));
+  if (xargs) variants.push(cut(1, [literalWord("-I")]));
+  const lists: Reading[] = [];
   for (const variant of variants) {
     const inner = expand(variant, start, spec, walk, xargs, budget);
     if (inner === null) return null;
@@ -117,11 +132,46 @@ function expand(words: WordToken[], start: number, spec: OptionSpec, walk: Walk,
 }
 
 /**
- * Shell text that reads a dynamic word in a wrapper's option position every way it could expand (see `expand`).
- * A bare dynamic `xargs` word is its dynamic command, which the xargs reading already fails closed on. Past
- * `MAX_DYNAMIC` option words as written the readings drop them all at once; past `MAX_READINGS` word lists the
- * chain is read three whole ways instead (`wholeChain`), since each reading is a full line and costs as much to
- * classify as the command itself.
+ * A dynamic word that is the command only because the expansion dropped a static word before it: a command that could
+ * not run. The word that is the command as written is read apart, by `commandReading`.
+ */
+function shiftedCommand(r: Reading, start: number, spec: OptionSpec, walk: Walk): boolean {
+  const c = walkChain(r.words, start, spec, walk).command;
+  return r.words[c]?.dynamic === true && (r.origin[c] as number) > r.dropped;
+}
+
+function exactReadings(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, xargs: boolean): WordToken[][] {
+  const root: Reading = { words, origin: words.map((_, i) => i), dropped: Infinity };
+  const lists = expand(root, start, spec, walk, xargs, { left: MAX_READINGS });
+  const kept = (lists ?? []).filter((r) => !shiftedCommand(r, start, spec, walk));
+  return lists === null || kept.length === 0 ? wholeChain(words, start, spec, walk) : kept.map((r) => r.words);
+}
+
+/**
+ * The chain as the walk without a dynamic-option reading takes it: the first dynamic word that ends up in command place
+ * is the command, and what follows its arguments, less the other dynamic option words, which a command word with a
+ * dynamic argument would fail closed on whatever the command is. Null when no word does, or when the walk is cut short.
+ */
+function commandReading(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, found: number[]): string | null {
+  for (let stage = { start, spec } as { start: number; spec: OptionSpec } | null; stage; ) {
+    let c = walk.skip(words, stage.start, stage.spec);
+    if (c < 0) return null;
+    while (words[c] && parseAssignment(words[c] as WordToken)) c++;
+    if (words[c]?.dynamic) return words.slice(c).filter((_, j) => j === 0 || !found.includes(c + j)).map(quoteWord).join(" ");
+    stage = walk.next(words, c);
+  }
+  return null;
+}
+
+/** A dynamic command word with a dynamic argument, which is how a dynamic command word fails closed: one verdict. */
+const FAIL_CLOSED = `${PLACEHOLDER} ${PLACEHOLDER}`;
+
+/**
+ * Shell text that reads a dynamic word in a wrapper's option position every way it could expand (see `expand`), and the
+ * word as the command when it stands there as written. A bare dynamic `xargs` word is its dynamic command, which the
+ * xargs reading already fails closed on. Past `MAX_DYNAMIC` option words as written the readings drop them all at once;
+ * past `MAX_READINGS` word lists the chain is read three whole ways instead (`wholeChain`), since each reading is a
+ * full line and costs as much to classify as the command itself; past `MAX_CHAIN_DYNAMIC` it is not read at all.
  * Null when the wrapper's options hold no dynamic word.
  */
 export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec, walk: Walk): string | null {
@@ -131,13 +181,13 @@ export function dynamicOptionReadings(words: WordToken[], at: number, start: num
   if (d === undefined) return null;
   const xargs = XARGS_RE.test((words[at] as WordToken).value);
   if (xargs && !(words[d] as WordToken).value.startsWith("-")) return null;
-  const found = chainDynamics(words, start, spec, walk);
-  if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found);
-  const budget = { left: MAX_READINGS, seen: new Set<WordToken>() };
-  const lists = expand(words.slice(at), start - at, spec, walk, xargs, budget);
-  const kept = (lists ?? []).filter((list) => !budget.seen.has(list[walkChain(list, start - at, spec, walk).command] as WordToken));
-  if (lists === null || kept.length === 0) return wholeChain(words.slice(at), start - at, spec, walk);
-  return [...new Set(kept.map((list) => list.map(quoteWord).join(" ")))].join("\n");
+  const chain = words.slice(at);
+  const from = start - at;
+  const found = chainDynamics(chain, from, spec, walk);
+  if (found.length > MAX_CHAIN_DYNAMIC) return FAIL_CLOSED;
+  const lists = found.length > MAX_DYNAMIC ? bulkReadings(chain, from, spec, walk, found) : exactReadings(chain, from, spec, walk, xargs);
+  const lines = lists.map((list) => list.map(quoteWord).join(" "));
+  return [...new Set([...lines, commandReading(chain, from, spec, walk, found) ?? ""].filter((line) => line !== ""))].join("\n");
 }
 
 /** What follows a dynamic option word when it is dropped: nothing, the next word, or the next word if it is an option. */
@@ -148,32 +198,45 @@ const FOLLOWERS: ((next: WordToken) => boolean)[] = [() => false, () => true, (n
  * only when it is an option. Each way is repeated until the stages it exposes have none left, so a reading is parsed
  * again with no expansion to start, and the readings stay three however many stages there are.
  */
-function wholeChain(words: WordToken[], start: number, spec: OptionSpec, walk: Walk): string {
-  const lines = FOLLOWERS.map((follows) => {
+function wholeChain(words: WordToken[], start: number, spec: OptionSpec, walk: Walk): WordToken[][] {
+  return FOLLOWERS.map((follows) => {
     let kept = words;
     for (let found = chainDynamics(kept, start, spec, walk); found.length > 0; found = chainDynamics(kept, start, spec, walk)) {
       const gone = new Set(found);
       for (const i of found) if (kept[i + 1] && follows(kept[i + 1] as WordToken)) gone.add(i + 1);
       kept = kept.filter((_, i) => !gone.has(i));
     }
-    return kept.map(quoteWord).join(" ");
+    return kept;
   });
-  return [...new Set(lines)].join("\n");
+}
+
+/** `words` with every dynamic option word the chain still holds gone, one stage after another, so no reparse expands. */
+function settled(words: WordToken[], start: number, spec: OptionSpec, walk: Walk): WordToken[] {
+  let kept = words;
+  for (let found = chainDynamics(kept, start, spec, walk); found.length > 0; found = chainDynamics(kept, start, spec, walk)) {
+    const gone = new Set(found);
+    kept = kept.filter((_, i) => !gone.has(i));
+  }
+  return kept;
 }
 
 /**
  * One reading per way a dynamic word could land, so the count grows by one per word, not threefold: all gone, all gone
  * with the static word after one of them (its option), and one of them a literal positional with the rest gone, with
- * or without that static word.
+ * or without that static word. Each is settled, so the stages it exposes are read here and not in a reparse. The three
+ * whole-chain readings come with them, since a stage past the first has options of its own to drop with their values.
  */
-function bulkReadings(words: WordToken[], at: number, found: number[]): string {
-  const text = (keep: (i: number) => string | null) =>
-    words.slice(at).map((w, j) => keep(j + at) ?? (found.includes(j + at) ? null : quoteWord(w))).filter((w) => w !== null).join(" ");
-  const readings = [text(() => null)];
-  for (const k of found) {
-    readings.push(text((i) => (i === k + 1 && !found.includes(i) ? "" : null)));
-    readings.push(text((i) => (i === k ? "0" : null)));
-    readings.push(text((i) => (i === k ? "0" : i === k + 1 && !found.includes(i) ? "" : null)));
-  }
-  return readings.join("\n");
+function bulkReadings(words: WordToken[], start: number, spec: OptionSpec, walk: Walk, found: number[]): WordToken[][] {
+  const dynamic = new Set(found);
+  const reading = (literalAt: number | null, dropAfter: number | null) =>
+    settled(
+      words.flatMap((w, i) => {
+        if (dynamic.has(i)) return i === literalAt ? [literalWord("0")] : [];
+        return i === (dropAfter ?? -2) + 1 ? [] : [w];
+      }),
+      start, spec, walk,
+    );
+  const readings = [reading(null, null)];
+  for (const k of found) readings.push(reading(null, k), reading(k, null), reading(k, k));
+  return [...readings, ...wholeChain(words, start, spec, walk)];
 }
