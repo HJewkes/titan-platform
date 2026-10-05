@@ -211,3 +211,17 @@ records reliably; fork-copy accounting therefore remains unsupported until nativ
 fixtures establish that mapping. Do not treat a child transcript's totals as proof
 of newly executed work. Repeated deltas for one response use the latest observed
 native values, allowing a provider to revise a response's usage as it completes.
+
+### Recovering a session that ended with no wrap
+
+`recoverSession(source, { root })` reads one transcript after a reboot, crash or closed
+window and returns facts only: no model call, no network, no write. It folds the whole source
+with `SessionSummaryAccumulator` for the start and end times and reads tool calls for the
+`chat_register` name, files written under `root` (relative to it), `active-work` and git/gh
+calls as `commandHeads` heads with counts, and `chat_send` / `agent_spawn` targets with the
+first line of their text or brief. A bounded `readRecentSessionTurns` text window gives the
+last `RECOVERY_OWNER_MESSAGES` owner messages (tool results and injected blocks excluded) and
+the last assistant message, each capped at `RECOVERY_MESSAGE_CHARS`. Lists stop at
+`RECOVERY_LIST_CAP` and report `dropped`; `messageWindowTruncated` says older messages were
+outside the window. Argument text never reaches the result, so tokens and URL queries stay out
+of a session record.
