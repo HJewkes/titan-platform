@@ -21,8 +21,9 @@ function emptyExcluded(): Record<ExclusionReason, number> {
 
 /** Applies exclusion; a returned reason means the row must never be written. */
 function admit(candidate: SourceCandidate, policy: ExclusionPolicy): LedgerRowWire | ExclusionReason {
-  const { row, cwd } = candidate;
-  const verdict = isExcluded({ ...row, options: row.options.map(asOption), cwd }, policy);
+  const { row, cwd, mentionedInitiatives } = candidate;
+  const options = row.options.map(asOption);
+  const verdict = isExcluded({ ...row, options, cwd, mentionedInitiatives }, policy);
   if (verdict.excluded) return verdict.reason;
   return { ...row, initiative: verdict.initiative, unclaimed: verdict.unclaimed };
 }

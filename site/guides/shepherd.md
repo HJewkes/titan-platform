@@ -46,9 +46,14 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
-A repeat without `--kind` keeps the stored kind, so it cannot drop a `correctness` or
-`security` run out of the fix-proof gate. An explicit `--kind` replaces the stored kind,
-including with a looser one; unlike the policy, kind does not only narrow.
+A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
+these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
+a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
+does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
+replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
+`unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
+reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
+`unknown` to any kind, still applies.
 
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it

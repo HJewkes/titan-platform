@@ -20,7 +20,8 @@ export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
 const AUTHORITY_ACTOR = { class: "automation", id: "titan-factory" } as const;
 const AUTHORITY_VERSION = Number.parseInt(DEFAULT_TABLE.version, 10);
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
-const ERROR_MAX_CHARS = 200;
+/** A name is set by whoever threw, so only an identifier-shaped one is echoed. */
+const ERROR_CLASS_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
 
@@ -188,8 +189,19 @@ export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead
     const kind = store.get().byRun(runId)?.kind;
     return kind === undefined ? {} : { kind };
   } catch (error) {
-    const message = (error instanceof Error ? error.message : String(error)).slice(0, ERROR_MAX_CHARS);
-    return { unread: `the registered kind is unreadable: ${message}` };
+    return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
+  }
+}
+
+/** Only the error's class name, so a reason that reaches a public PR comment carries nothing from the error's text. */
+function errorClass(error: unknown): string {
+  try {
+    if (!(error instanceof Error)) return "non-Error";
+    const name = String(error.name);
+    return ERROR_CLASS_NAME.test(name) ? name : "Error";
+  } catch {
+    // A hostile Proxy or getter can throw from the type check or the name read; none of it is echoed.
+    return "Error";
   }
 }
 

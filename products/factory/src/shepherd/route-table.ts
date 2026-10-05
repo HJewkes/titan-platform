@@ -106,4 +106,4 @@ export type MainCiRead = (typeof MAIN_CI_READS)[number];
 export type MainCiRoute = "done" | "main-red" | "read-newer-run";
 
 /** A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does. */
-export const MAIN_CI_ROUTES: Readonly<Record<MainCiRead, MainCiRoute>> = { green: "done", red: "main-red", cancelled: "main-red", "cancelled-superseded": "read-newer-run" };
+export const MAIN_CI_ROUTES = { green: "done", red: "main-red", cancelled: "main-red", "cancelled-superseded": "read-newer-run" } as const satisfies Readonly<Record<MainCiRead, MainCiRoute>>;
