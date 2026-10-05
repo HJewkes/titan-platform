@@ -66,6 +66,10 @@ export { SessionUsageAccumulator } from "./session-usage.js";
 export type { SessionUsageSummary } from "./session-usage.js";
 export { SessionSummaryAccumulator, summarizeSession } from "./session-summary.js";
 export type { SessionSummary, SessionToolSummary } from "./session-summary.js";
+export { RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES,
+  RecoveryFacts, recoverSession } from "./session-recovery.js";
+export type { CappedList, RecoveredCommand, RecoveredMessage, RecoveredMessageTarget, RecoverSessionOptions,
+  SessionRecovery } from "./session-recovery.js";
 export { CLAUDE_TRANSCRIPT_FORMAT, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, findClaudeSessionSource, assertClaudeSessionSource } from "./claude-source.js";
 export type { FindClaudeSessionSourceInput, SessionSourceLookup } from "./claude-source.js";
 export { CLAUDE_DECODER_ID, CLAUDE_CHECKPOINT_VERSION, ClaudeTranscriptDecoder } from "./claude-decoder.js";
