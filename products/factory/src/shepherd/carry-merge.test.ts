@@ -5,6 +5,7 @@ import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute } fr
 import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
+import type { ForcePush } from "./force-pushes.js";
 import type { CarryResult } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -161,12 +162,15 @@ describe("the seat check of a carry", () => {
   interface SeatRun {
     commits?: string[];
     listFails?: Error;
+    pushes?: ForcePush[];
+    pushesFail?: Error;
     withDispatch?: boolean;
   }
 
   async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
     const reviewer = seat("tc-x-review");
-    const wiring = { reader: { read: async () => messages(reviewer) }, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
+    const forcePushes = async () => (run.pushesFail ? Promise.reject(run.pushesFail) : (run.pushes ?? []));
+    const wiring = { reader: { read: async () => messages(reviewer) }, forcePushes, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     if (run.commits) github.prCommits.set(TARGET.pr, run.commits);
@@ -218,6 +222,33 @@ describe("the seat check of a carry", () => {
     const outcome = await seatOutcome(() => [], { listFails: new FakeHttpError(502, "upstream said something private") });
 
     expect(outcome).toEqual({ clear: false, reason: "seat check: the PR's commit list could not be read (HTTP 502)" });
+  });
+
+  it("refuses a carry from H1 to H3 when a seat reviewer said FIX_FIRST at H2 and H2 was then force-pushed away", async () => {
+    const pushedAway = fakeSha("pushed-away");
+    const pushes = [{ before: pushedAway, after: NEW_HEAD }];
+
+    const outcome = await seatOutcome((reviewer) => [verdict(REVIEWED, "MERGE", reviewer), verdict(pushedAway, "FIX_FIRST", reviewer)], { commits: [REVIEWED, NEW_HEAD], pushes });
+
+    expect(outcome).toEqual({ clear: false, reason: `a seat reviewer said FIX_FIRST at ${pushedAway}` });
+  });
+
+  it("ignores a FIX_FIRST at a head force-pushed away before the reviewed head arrived", async () => {
+    const older = fakeSha("older");
+
+    await expect(checked((reviewer) => [verdict(older, "FIX_FIRST", reviewer)], { commits: [REVIEWED, NEW_HEAD], pushes: [{ before: older, after: REVIEWED }] })).resolves.toBe(true);
+  });
+
+  it("refuses with a fixed reason when a head force-pushed away is gone from GitHub", async () => {
+    const outcome = await seatOutcome(() => [], { commits: [REVIEWED, NEW_HEAD], pushes: [{ before: null, after: NEW_HEAD }] });
+
+    expect(outcome).toEqual({ clear: false, reason: `seat check: a head force-pushed away since ${REVIEWED} is gone from GitHub` });
+  });
+
+  it("refuses with the HTTP status, never the error text, when the force-pushes cannot be read", async () => {
+    const outcome = await seatOutcome(() => [], { commits: [REVIEWED, NEW_HEAD], pushesFail: new FakeHttpError(403, "upstream said something private") });
+
+    expect(outcome).toEqual({ clear: false, reason: "seat check: the PR's force-pushes could not be read (HTTP 403)" });
   });
 
   it("refuses when the commit list does not end at the carried head", async () => {

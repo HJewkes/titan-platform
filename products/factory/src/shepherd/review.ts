@@ -9,6 +9,7 @@ import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./cod
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import type { ReadForcePushes } from "./force-pushes.js";
 import { LocatorSchema, MergeEvidenceSchema } from "./review-schemas.js";
 import type { Presence } from "./presence.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
@@ -250,6 +251,8 @@ export interface ReviewWiring {
   isFrozen?: IsFrozen;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
   carry?: Omit<CarryOptions, "signal">;
+  /** How the carry seat check reads the PR's force-pushes; absent means `gh` under the login the GitHub port uses. */
+  forcePushes?: ReadForcePushes;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };

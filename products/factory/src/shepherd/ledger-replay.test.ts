@@ -155,7 +155,7 @@ function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
   const refuse = async (): Promise<never> => Promise.reject(new Error("the replay starts no reviewer"));
   const said = (head: string, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: index, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
   const carry = { stateDir: mkdtempSync(join(tmpdir(), "ledger-replay-")), git: scriptedGit(replay) };
-  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)] }, carry };
+  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)] }, carry, forcePushes: async () => [] };
 }
 
 function fixerWiring(fixers: string[]): Omit<MainRedWiring, "freezes"> {
