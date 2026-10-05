@@ -231,7 +231,8 @@ The rules engine turns a snapshot into pass/fail against a `check.json`. Seven r
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
-destination file has an excluded role.
+destination file has an excluded role. `forbid-import` takes `except`: destination patterns
+that `to` matches but the rule allows, such as one sanctioned entry file.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -405,6 +406,14 @@ snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ fil
 The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 `computeSymbolCoupling` take node and edge arrays instead of a store.
 
+### The `./analysis` subpath
+
+`@titan-design/code-graph/analysis` re-exports the report, dashboard, and package-architecture
+derivations below without the root's ts-morph, tree-sitter, and SQLite, so a browser bundle
+can import it. `analysis/graph-report-browser-safe.test.ts` keeps its whole import closure
+free of packages and Node builtins, and fails if the barrel re-exports a module it does not
+check. Symbol coupling is not on it: `symbol-coupling.ts` still reaches `node:path`.
+
 ### Dashboard derivations
 
 Ported with TP-918 from codewatch's `graph dashboard`, unchanged apart from import paths. All
@@ -419,6 +428,26 @@ are pure functions over rows the caller has already read, so they run in a brows
 - `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
+  Each component has a stable `key` and its `cap`. An optional second argument weighs
+  them the caller's way; `DEFAULT_HEALTH_WEIGHTS` is the dashboard's.
+
+### Context dossier and bundle
+
+Ported with TP-1454 from codewatch's `graph context`, unchanged apart from import paths. All
+three are deterministic projections of rows the caller has already read; no LLM is involved.
+
+- `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
+  churn, centrality, ownership, consumers split into source and test files, coupling
+  partners, and blast radius. A file target lists its symbols, exports first, each with an
+  `importance` that splits the file's centrality by utilization share. The record carries
+  `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
+- `renderContextMarkdown(dossier)` renders the same facts as markdown.
+- `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
+  from `repoRoot`, so this one touches the filesystem), its `references` and `imports` edges as
+  explicit callers, dependencies, and coupling partners, and its `coverage_pct`. Pass
+  `relevanceByFile` (from `computeRelevance`) and `targetFileId` to order edges by relevance
+  to the target instead of by weight. `renderBundleText(bundle)` concatenates it for an
+  embedder or an LLM.
 
 ### Unused exports and dead modules
 

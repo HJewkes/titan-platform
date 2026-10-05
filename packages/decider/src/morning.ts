@@ -4,7 +4,7 @@ import path from "node:path";
 import { classifyQuestion } from "./classify.js";
 import type { LedgerRowWire } from "./ledger.js";
 import { classifyOutcome } from "./outcome.js";
-import type { LedgerSource, SourceRead, SourceWatermark, SourceWatermarks } from "./source.js";
+import type { LedgerSource, SourceCandidate, SourceRead, SourceWatermark, SourceWatermarks } from "./source.js";
 
 /**
  * The Morning owner-answers source. A day's `<date>.md` lists numbered items, each opening with a
@@ -18,14 +18,14 @@ export const MORNING_SOURCE = "morning";
 const ANSWERS_SUFFIX = "-owner-answers.md";
 const BRACKET_ITEM = /^\[([^\]]+)\]\s+(.*)$/;
 const NUMBERED_ITEM = /^(\d+)\.\s+(.*)$/;
-const ANSWER_LINE = /^([A-Za-z]{1,3}-?\s?)?(\d+(?:\s*[/,]\s*\d+)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
+const ANSWER_LINE = /^([A-Za-z]{1,3}-?\s?)?(\d+(?:\.\d+)?(?:\s*[/,]\s*\d+(?:\.\d+)?)*)(?:\s*:\s*|\s+|(?=[,&+/]\s*[A-Za-z]{0,3}\s?\d))(.+)$/;
 const RECOMMENDATION = /\brecommend(?:ed)?\b[^.]*/i;
 const AFFIRMATIVE = /^(?:yes|accept(?:ed)?|keep|go|approve[d]?|ok|agreed)\b(?![^,.;:]*\bnot\b)/i;
 const HEDGE = /\b(?:but|however|instead|hold|wait|except|unless)\b/i;
 const MORE_ITEMS = /^(?:(?:and|&|\+|,|\/)\s*[a-z]{0,3}\s?\d|\d+\s*:)/i;
 
 export interface MorningItem {
-  /** The ids the list gives the item, normalized: `hs-25` is `hs25`, `A5` is `a5`, `30.` is `30`. */
+  /** The ids the list gives the item, normalized: `hs-25` is `hs25`, `A5` is `a5`, `30.` is `30`, `vc-65.1` is `vc65.1`. */
   ids: string[];
   question: string;
   recommended: string | null;
@@ -58,6 +58,8 @@ export interface MorningCounts {
 
 export interface MorningJoin {
   rows: LedgerRowWire[];
+  /** The item each row answers, aligned by index with `rows`. */
+  items: MorningItem[];
   counts: MorningCounts;
 }
 
@@ -66,18 +68,44 @@ export interface MorningFileSystem {
   readFile(file: string): Promise<Buffer>;
 }
 
+export type MorningDayCounts = MorningCounts & {
+  /** Rows that did not get exactly one initiative. */
+  unresolved: number;
+};
+
+/** Every initiative the item names; empty when it names none. */
+export type MorningInitiativeResolver = (item: MorningItem) => readonly string[] | Promise<readonly string[]>;
+
 export interface MorningSourceOptions {
   /** The directory holding `<date>.md` and `<date>-owner-answers.md` pairs. */
   dir: string;
   fs?: MorningFileSystem;
+  /** Absent: every row stays unclaimed. A throw leaves the day unread and reported in errors. */
+  resolveInitiatives?: MorningInitiativeResolver;
   /** Receives each answers file's counts as it is read. */
-  onCounts?: (date: string, counts: MorningCounts) => void;
+  onCounts?: (date: string, counts: MorningDayCounts) => void;
+}
+
+const TASK_ID = /\b[A-Z]{1,4}-\d+\b/g;
+
+/** Task ids in text, in order, deduplicated. */
+export function taskIdsIn(text: string): string[] {
+  return [...new Set(text.match(TASK_ID) ?? [])];
+}
+
+/** A resolver from an id lookup: the union of lookup(id) over the task ids in the item's question. */
+export function initiativesOfTaskIds(lookup: (taskId: string) => readonly string[]): MorningInitiativeResolver {
+  return (item) => [...new Set(taskIdsIn(item.question).flatMap((id) => lookup(id)))];
 }
 
 const nodeFs: MorningFileSystem = { readdir: (dir) => readdir(dir), readFile: (file) => readFile(file) };
 
+/** A dot between digits marks a sub-item and survives, so `vc-65.1` never becomes `vc651`. */
 function normalizeId(id: string): string {
-  return id.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return id
+    .toLowerCase()
+    .replace(/[^a-z0-9.]/g, "")
+    .replace(/(?<!\d)\.|\.(?!\d)/g, "");
 }
 
 function sentenceCase(text: string): string {
@@ -170,6 +198,7 @@ export function joinMorning(date: string, listText: string, answersText: string,
   const items = parseMorningList(listText);
   const { answers, unparseable } = parseOwnerAnswers(answersText);
   const rows: LedgerRowWire[] = [];
+  const joined: MorningItem[] = [];
   const counts: MorningCounts = { unparseable, unmatched: 0, ambiguous: 0, duplicate: 0 };
   const answered = new Set<MorningItem>();
   for (const answer of answers) {
@@ -185,14 +214,26 @@ export function joinMorning(date: string, listText: string, answersText: string,
       else {
         answered.add(found.item);
         rows.push(rowFor(found.item, id, answer, date, answersPath));
+        joined.push(found.item);
       }
     }
   }
-  return { rows, counts };
+  return { rows, items: joined, counts };
 }
 
 function watermarkOf(bytes: Buffer): SourceWatermark {
   return { offset: bytes.length, prefixHash: createHash("sha256").update(bytes).digest("hex") };
+}
+
+async function resolveRows(options: MorningSourceOptions, join: MorningJoin): Promise<SourceCandidate[]> {
+  const resolve = options.resolveInitiatives;
+  const candidates: SourceCandidate[] = [];
+  for (const [index, row] of join.rows.entries()) {
+    const mentioned = resolve && join.items[index] ? await resolve(join.items[index]) : [];
+    const only = mentioned.length === 1 ? (mentioned[0] ?? null) : null;
+    candidates.push({ row: { ...row, initiative: only }, cwd: null, mentionedInitiatives: mentioned });
+  }
+  return candidates;
 }
 
 async function readDay(options: MorningSourceOptions, filename: string, since: SourceWatermarks, out: SourceRead): Promise<void> {
@@ -204,10 +245,12 @@ async function readDay(options: MorningSourceOptions, filename: string, since: S
   const seen = since.get(filename);
   if (seen && seen.offset === watermark.offset && seen.prefixHash === watermark.prefixHash) return;
   const list = await fs.readFile(path.join(options.dir, `${date}.md`));
-  const { rows, counts } = joinMorning(date, list.toString("utf8"), answers.toString("utf8"), answersPath);
+  const join = joinMorning(date, list.toString("utf8"), answers.toString("utf8"), answersPath);
+  const candidates = await resolveRows(options, join);
   out.watermarks.set(filename, watermark);
-  for (const row of rows) out.candidates.push({ row, cwd: null });
-  options.onCounts?.(date, counts);
+  out.candidates.push(...candidates);
+  const unresolved = candidates.filter((c) => c.row.initiative === null).length;
+  options.onCounts?.(date, { ...join.counts, unresolved });
 }
 
 /** One cursor per answers file; a day whose list is missing is reported and retried, never joined blind. */

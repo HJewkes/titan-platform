@@ -65,6 +65,29 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       context_lines: { long: "--context-lines", description: "Lines of context either side of the flagged range (default 5, max 20)" },
     },
   },
+  "hotspots.list": {
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      baseline: { long: "--baseline", description: "Snapshot id or ref to mark rows new or worsened against" },
+      grain: { long: "--grain", description: "file (default) or symbol" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+      cutoff: { long: "--cutoff", description: "Only rows scoring at least this" },
+      offset: { long: "--offset", description: "Rows to skip (default 0)" },
+      limit: { long: "--limit", description: "Rows to return (default 20, max 500; 0 for the total only)" },
+    },
+  },
+  "overview.get": {
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      baseline: { long: "--baseline", description: "Snapshot id or ref to count findings new, carried over, or resolved against" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+      cutoff: { long: "--cutoff", description: "Hotspot score a file is over the cutoff at (default 3000)" },
+      exclude_rules: { long: "--exclude-rule", description: "Leave this rule out of the findings signal; repeatable" },
+      combined: { long: "--combined", description: "Also return 100 minus every signal's penalty" },
+      reading_limit: { long: "--reading-limit", description: "Files in the reading order (default 6, max 50)" },
+      look_limit: { long: "--look-limit", description: "Look-first rows (default 8, max 50)" },
+    },
+  },
   "node.neighbors": {
     positional: ["id"],
     options: {

@@ -1,5 +1,8 @@
 import { latestPerName } from "./checks.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
+import { memoizedLogin, upsertComment } from "./upsert-comment.js";
+import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
@@ -107,13 +110,6 @@ export interface IssueComment {
   author: string;
 }
 
-export interface OpenPrRequest {
-  head: string;
-  base: string;
-  title: string;
-  body: string;
-}
-
 /**
  * One GitHub call per method, unconditional, as GitHub itself behaves. `gh-cli.ts` and the test
  * fake implement it; `githubPort` puts the check-then-act rules on top of either.
@@ -130,6 +126,8 @@ export interface GitHubWire {
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
+  /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -152,6 +150,8 @@ export interface GitHubWire {
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -170,6 +170,8 @@ export interface GitHubPort {
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
   listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
+  /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
@@ -203,6 +205,8 @@ export interface GitHubPort {
   upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
   /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
 
 /** A write whose precondition no longer holds, such as a blob that changed under an edit. */
@@ -234,6 +238,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
+    revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
@@ -252,6 +257,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
+    listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };
 }
 
@@ -356,27 +362,6 @@ async function listPrFiles(wire: GitHubWire, repo: RepoSlug, number: number): Pr
   const { files, changedFiles } = await wire.listPrFiles(repo, number);
   if (files.length < changedFiles) throw new FileListTruncatedError(changedFiles, files.length);
   return files;
-}
-
-/** Resolved once per port; a failed lookup is not remembered. */
-function memoizedLogin(wire: GitHubWire): () => Promise<string> {
-  let cached: Promise<string> | undefined;
-  return () => {
-    cached ??= wire.getAuthenticatedLogin().catch((error: unknown) => {
-      cached = undefined;
-      throw error;
-    });
-    return cached;
-  };
-}
-
-const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n/).some((line) => line.trimEnd() === marker);
-
-async function upsertComment(wire: GitHubWire, login: () => Promise<string>, repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>> {
-  const [self, comments] = await Promise.all([login(), wire.listIssueComments(repo, number)]);
-  const existing = comments.find((comment) => comment.author === self && holdsMarker(comment.body, marker));
-  if (existing) return { id: existing.id, done: false, skipped: "exists" };
-  return { id: (await wire.createComment(repo, number, body)).id, done: true };
 }
 
 function closedSkip(pr: PullRequest): SkipReason | undefined {

@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
+import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, OpenPrRequest, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -22,6 +24,8 @@ export interface FakeGitHub {
   effects: FakeEffects;
   /** Every wire call in order, as `method` names; lets a test prove what was never called. */
   calls: string[];
+  /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
+  notModified: number;
   rules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
@@ -57,6 +61,8 @@ export interface FakeGitHub {
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
   reviewComments: Map<number, ReviewComment[]>;
+  /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
+  forcePushes: Map<number, ForcePush[]>;
 }
 
 export class FakeHttpError extends Error {
@@ -94,6 +100,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const fake: FakeGitHub = {
     effects,
     calls: [],
+    notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
     reviewBypass: false,
     createdCheckRuns: [],
@@ -108,6 +115,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
+    forcePushes: new Map(),
     addPr(fields) {
       const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
       prs.set(pr.number, pr);
@@ -147,6 +155,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
+    revalidateOpenPrs: async (_repo, etag) => record("revalidateOpenPrs", revalidateOpenPrs(fake, prs, etag)),
     createPr: async (_repo, request) => record("createPr", createPr(fake, request)),
     getPr: async (_repo, number) => {
       const pr = mustPr(prs, number);
@@ -193,6 +202,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return { id: comment.id };
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
+    listForcePushes: async (_repo, number) => {
+      const all = fake.forcePushes.get(number) ?? [];
+      return record("listForcePushes", { pushes: all.slice(0, FORCE_PUSHES_CAP).map((push) => ({ ...push })), more: all.length > FORCE_PUSHES_CAP });
+    },
   };
   return fake;
 }
@@ -204,6 +217,17 @@ function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: 
   fake.createdCheckRuns.push({ id, repo, request: { ...request } });
   runs.set(request.headSha, [...(runs.get(request.headSha) ?? []), run]);
   return { id };
+}
+
+/** Like GitHub's list: rows carry no mergeable state or `behind`, so the ETag changes only with what a row shows. */
+function revalidateOpenPrs(fake: FakeGitHub, prs: Map<number, PullRequest>, etag: string | null): OpenPrList {
+  const rows = [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr, mergeableState: "unknown", behind: false }));
+  const current = `W/"${createHash("sha1").update(JSON.stringify(rows)).digest("hex")}"`;
+  if (etag === current) {
+    fake.notModified += 1;
+    return { notModified: true };
+  }
+  return { notModified: false, prs: rows, etag: current };
 }
 
 function mustPr(prs: Map<number, PullRequest>, number: number): PullRequest {

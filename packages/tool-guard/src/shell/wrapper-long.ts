@@ -40,6 +40,35 @@ const LONG_OPTIONS: Record<string, string[]> = {
     "beep", "color", "no-color", "differences", "equexit", "chgexit", "exec", "precise", "no-rerun", "no-title",
     "no-wrap", "errexit", "interval", "shotsdir", "help", "version",
   ],
+  // GNU time(1)
+  time: ["append", "format", "help", "output", "portability", "quiet", "verbose", "version"],
+};
+
+/**
+ * Every short option each wrapper takes a separate value with, across the implementations named.
+ * A missing one makes its value read as the command, which hides the command that really runs.
+ */
+export const SHORT_VALUES = {
+  // sudo(8)
+  sudo: ["-a", "-c", "-C", "-D", "-g", "-h", "-p", "-R", "-r", "-T", "-t", "-U", "-u"],
+  // GNU coreutils env(1) -a -C -u (-S is a script option); BSD env(1) -P; FreeBSD env(1) -L -U
+  env: ["-a", "-C", "-u", "-P", "-L", "-U"],
+  // GNU coreutils timeout(1)
+  timeout: ["-s", "-k"],
+  // GNU coreutils and BSD nice(1)
+  nice: ["-n"],
+  // GNU coreutils stdbuf(1)
+  stdbuf: ["-i", "-o", "-e"],
+  // util-linux flock(1) (-c is a script option)
+  flock: ["-w", "-E"],
+  // procps-ng watch(1)
+  watch: ["-n", "-q", "-s"],
+  // OpenBSD doas(1) (-C only checks a config)
+  doas: ["-a", "-u"],
+  // findutils xargs(1) -I -L -n -P -d -E -s -a; BSD xargs(1) -J -R -S
+  xargs: ["-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a", "-J", "-R", "-S"],
+  // GNU time(1); FreeBSD time(1) -o
+  time: ["-f", "-o"],
 };
 
 /** The sudo long options that take a separate value. */

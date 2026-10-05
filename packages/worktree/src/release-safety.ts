@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
+import { unsavedWork } from "./unsaved-work.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,8 +73,8 @@ async function ghPrState(gitRoot: string, branch: string): Promise<string | null
   }
 }
 
-function dirtyCheck(dirty: boolean): ReleaseCheck {
-  return { name: "dirty", ok: !dirty, detail: dirty ? "uncommitted changes in the worktree" : "worktree clean" };
+function dirtyCheck(unsaved: string | undefined): ReleaseCheck {
+  return { name: "dirty", ok: unsaved === undefined, detail: unsaved ?? "worktree clean" };
 }
 
 function pushedCheck(ahead: number | null, compareTo: string): ReleaseCheck {
@@ -98,6 +99,10 @@ async function commitsAhead(gitRoot: string, branch: string, baseRef: string): P
 /**
  * Is it safe to destroy this worktree and its branch?
  *
+ * The tree's files go through the same check as park, so a status git cannot
+ * read, a hidden untracked file, or an ignored file no build regenerates all
+ * count as dirty. A tree already gone from disk has no files left to lose.
+ *
  * With no remote the comparison falls back to the commit the branch forked
  * from, since treating "no remote" as safe would silently delete every commit
  * the agent made. Over-refusal is the failure mode we accept: `force` is one
@@ -114,9 +119,9 @@ export async function inspectForRelease(
   branch: string,
   baseRef: string
 ): Promise<WorktreeReleaseSafety> {
-  const status = existsSync(worktreePath) ? await gitOrNull(["status", "--porcelain"], worktreePath) : null;
-  const dirty = (status ?? "").length > 0;
-  const checked = [dirtyCheck(dirty)];
+  const unsaved = existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
+  const dirty = unsaved !== undefined;
+  const checked = [dirtyCheck(unsaved)];
 
   if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null)
     return { dirty, unmerged: false, landed: false, ahead: 0, checked };

@@ -52,7 +52,7 @@ features.get("formatting.quoteStyle"); // { convention: "double", confidence: 1,
   - A feature below `reviewThreshold` (default 0.6) joins `reviewQueue`, lowest first.
   - `computeConfidence`, `mapSeverity` and `lookupStability` are exported on their own.
 - `new Enricher({ provider, enabled?, totalTokenBudget? }).enrich(features)` sends one
-  prompt per AI-enriched feature (`AI_ENRICHED_FEATURES`, `needsAiEnrichment`).
+  prompt per AI-enriched feature (`AI_ENRICHED_FEATURES`, seven emitted feature types; `needsAiEnrichment`).
   - Prompts run sequentially and stop once the token budget is used up (default 20,000).
   - A failed call becomes an entry in `errors` instead of a throw.
   - `enabled: false` returns `skipped: true` without calling the provider.

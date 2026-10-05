@@ -14,6 +14,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 
 const MERGE = fakeSha("merge");
 const OTHER_APP = 999;
@@ -83,6 +84,18 @@ describe("readMainCi", () => {
     };
 
     expect((await read(fake)).verdict).toBe("none");
+  });
+
+  it("names only the error class in the detail when the read fails until the deadline", async () => {
+    const fake = fakeGitHub();
+    fake.wire.listCheckRuns = async () => {
+      throw new Error(LEAKY_MESSAGE);
+    };
+
+    const result = await read(fake);
+
+    expect(result.detail).toMatch(/: Error$/);
+    expectNoLeak(result);
   });
 
   describe("a run cancelled by concurrency", () => {
