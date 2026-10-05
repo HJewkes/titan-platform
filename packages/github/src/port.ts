@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
@@ -148,6 +149,8 @@ export interface GitHubWire {
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -201,6 +204,8 @@ export interface GitHubPort {
   upsertComment(repo: RepoSlug, number: number, marker: string, body: string): Promise<WriteResult<{ id: number }>>;
   /** Every inline review comment on the PR, resolved ones included; filter on `resolved`. */
   listReviewComments(repo: RepoSlug, number: number): Promise<ReviewComment[]>;
+  /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
+  listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
 }
 
 /** A write whose precondition no longer holds, such as a blob that changed under an edit. */
@@ -251,6 +256,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
+    listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };
 }
 
