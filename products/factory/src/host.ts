@@ -113,14 +113,14 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
 
 async function resume(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], pollMs: number, now: () => number): Promise<ResumeReport> {
   const resumedIds = await runtime.hydrate();
-  await Promise.all(resumedIds.map((id) => untilSettled(runtime, pendingGates, id, pollMs)));
+  await Promise.all(resumedIds.map((id) => untilSettledOrGated(runtime, pendingGates, id, pollMs)));
   const resumed = resumedIds.map((id) => runtime.status(id)).filter((run): run is WorkflowRun => run !== undefined);
   const report: ResumeReport = { resumed, held: heldRuns(runtime, new Set(resumedIds), now()), gates: pendingGates() };
   runtime.shutdown();
   return report;
 }
 
-async function untilSettled(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<void> {
+export async function untilSettledOrGated(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<void> {
   for (;;) {
     const run = runtime.status(runId);
     if (!run || SETTLED.has(run.status)) return;

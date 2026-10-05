@@ -7,7 +7,7 @@ import { deployService } from "./deploy.js";
 import { systemDeployPorts } from "./deploy-ports.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
-import { renderPlist, serviceLogDir, servicePath, stableNodePath, type PlistOptions } from "./service.js";
+import { renderPlist, servicePath, stableNodePath, type PlistOptions } from "./service.js";
 import { registerServiceCheck } from "./service-check.js";
 import { installService, restartService, runServiceVerb, serviceStatus, uninstallService, type RestartDrain, type ServicePorts } from "./service-control.js";
 import { systemServicePorts } from "./service-ports.js";
@@ -27,7 +27,7 @@ function plistOptions(io: CliIo, opts: PlistFlags, ports: ServicePorts): { plist
   const nodePath = opts.node ?? stableNodePath(process.execPath);
   const { path, missing } = servicePath(ports.which, nodePath);
   for (const binary of missing) io.stderr(`warning: ${binary} is not on PATH, so the service will not find it\n`);
-  return { plist: { binPath, nodePath, logDir: serviceLogDir(io.env), port: opts.port, path }, missing };
+  return { plist: { binPath, nodePath, logDir: factoryStateDir(io.env), port: opts.port, path }, missing };
 }
 
 export function registerService(program: Command, verbs: Verbs): void {
@@ -45,7 +45,7 @@ export function registerService(program: Command, verbs: Verbs): void {
 function registerServiceControl(service: Command, { io, deps, setExit }: Verbs): void {
   const run = async (verb: string, fn: (ports: ServicePorts) => Promise<number>): Promise<void> =>
     setExit(await runServiceVerb(verb, deps.service ?? systemServicePorts(), io, fn));
-  const logDir = serviceLogDir(io.env);
+  const logDir = factoryStateDir(io.env);
   service
     .command("install")
     .description("write the LaunchAgent plist, load it (replacing a loaded one) and wait for /health")
@@ -103,7 +103,7 @@ function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): 
     .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha);
   withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
     const ports = deps.deploy ?? systemDeployPorts(ownCheckout());
-    const options = { checkout: ownCheckout(), stateDir: factoryStateDir(io.env), logDir: serviceLogDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
+    const options = { checkout: ownCheckout(), stateDir: factoryStateDir(io.env), logDir: factoryStateDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
     setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options)));
   });
 }
