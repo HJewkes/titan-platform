@@ -4,7 +4,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, expandWord, lookup, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import type { Vars } from "./vars.js";
 
@@ -142,7 +142,7 @@ function nestedLists(token: Token): Token[][] {
 }
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
-  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
+  const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
   return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
 }
 
