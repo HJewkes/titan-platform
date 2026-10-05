@@ -65,6 +65,17 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       context_lines: { long: "--context-lines", description: "Lines of context either side of the flagged range (default 5, max 20)" },
     },
   },
+  "hotspots.list": {
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      baseline: { long: "--baseline", description: "Snapshot id or ref to mark rows new or worsened against" },
+      grain: { long: "--grain", description: "file (default) or symbol" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+      cutoff: { long: "--cutoff", description: "Only rows scoring at least this" },
+      offset: { long: "--offset", description: "Rows to skip (default 0)" },
+      limit: { long: "--limit", description: "Rows to return (default 20, max 500; 0 for the total only)" },
+    },
+  },
   "node.neighbors": {
     positional: ["id"],
     options: {
