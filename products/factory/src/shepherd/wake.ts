@@ -83,7 +83,7 @@ const WakeInputSchema = z.object({
   fixFirst: z.number().int().positive().optional(),
 });
 
-type WakeInput = z.infer<typeof WakeInputSchema>;
+export type WakeInput = z.infer<typeof WakeInputSchema>;
 type Mode = "resume" | "successor" | "live";
 type Fallback = "resume" | "message";
 /** The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. */
