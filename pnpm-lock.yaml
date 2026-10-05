@@ -641,6 +641,10 @@ importers:
         version: 4.5.4
 
   packages/tool-guard:
+    dependencies:
+      '@titan-design/authority':
+        specifier: workspace:^
+        version: link:../authority
     devDependencies:
       zod:
         specifier: ^4.4.3

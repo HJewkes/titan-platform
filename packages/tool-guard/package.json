@@ -6,6 +6,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "titan-tool-guard": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -39,6 +42,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "@titan-design/authority": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
