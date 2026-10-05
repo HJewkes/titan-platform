@@ -6,6 +6,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { buildSha, FACTORY_REPO } from "../build-info.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { failureOf } from "./error-class.js";
 
 export const REDEPLOY_STEP = "sh-redeploy";
 export const REDEPLOY_LOG = "redeploy.log";
@@ -43,7 +44,7 @@ export function redeploy(deployer: Deployer | undefined, input: RedeployInput): 
   try {
     started = deployer.spawn(input.mergeSha);
   } catch (error) {
-    return { spawned: false, detail: `the deployer did not start: ${error instanceof Error ? error.message : String(error)}` };
+    return { spawned: false, detail: `the deployer did not start: ${failureOf(error)}` };
   }
   const { pid, log } = started;
   if (pid === undefined) return { spawned: false, log, detail: `the deployer did not start; see ${log}` };

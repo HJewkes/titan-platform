@@ -1,6 +1,7 @@
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { failureOf } from "./error-class.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
 
 /** How often `titan-factory serve` checks the PRs of runs waiting on a gate. */
@@ -9,8 +10,6 @@ export const GONE_SWEEP_MS = 5 * 60_000;
 export const LANDED_ELSEWHERE = "landed elsewhere: ";
 export const CLOSED_ELSEWHERE = "closed elsewhere: ";
 export const DELETED_ELSEWHERE = "deleted elsewhere: ";
-
-const CAUSE_MAX_CHARS = 200;
 
 /** `gated` walks runs waiting on a pending gate, as the periodic sweep does; `live` walks every running or paused run. */
 type GoneScope = "gated" | "live";
@@ -48,8 +47,6 @@ class UnreadablePr extends Error {}
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
 const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
 
-const causeOf = (error: unknown): string => (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim().slice(0, CAUSE_MAX_CHARS);
-
 /** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
 async function goneReason(services: ShepherdServices, runId: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
@@ -57,7 +54,7 @@ async function goneReason(services: ShepherdServices, runId: string): Promise<st
   const target = `${registration.repo}#${registration.pr}`;
   let notFound = false;
   const pr = await services.port.getPr(registration.repo, registration.pr).catch((error: unknown) => {
-    if (!isNotFound(error)) throw new UnreadablePr(causeOf(error));
+    if (!isNotFound(error)) throw new UnreadablePr(failureOf(error));
     notFound = true;
     return undefined;
   });
@@ -90,7 +87,7 @@ function tryCancel(host: FactoryHost, runId: string, reason: string, options: Go
   } catch (error) {
     if (error instanceof WorkflowNotOwnedError) return "held";
     if (!options.onCancelFailed) throw error;
-    options.onCancelFailed(runId, causeOf(error));
+    options.onCancelFailed(runId, failureOf(error));
     return "failed";
   }
 }

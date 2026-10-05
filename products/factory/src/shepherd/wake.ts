@@ -9,6 +9,7 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
+import { failureOf } from "./error-class.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -89,7 +90,6 @@ type Fallback = "resume" | "message";
 export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback } | { kind: "unhandled"; reason: string };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** Waited out with no deadline: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
@@ -224,7 +224,7 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   try {
     await (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task)));
   } catch (error) {
-    return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${messageOf(error)}`);
+    return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback };
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
@@ -316,7 +316,7 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
     return typeof task === "string" ? unhandled(task) : await wakeAgent(deps, wiring, agents, task, signal);
   } catch (error) {
     signal.throwIfAborted();
-    return unhandled(`the wake was refused: ${messageOf(error)}`);
+    return unhandled(`the wake was refused: ${failureOf(error)}`);
   }
 }
 
