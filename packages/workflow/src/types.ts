@@ -297,6 +297,14 @@ export class WorkflowCancelledError extends Error {
   }
 }
 
+/** `cancel` found no run this runtime holds or may claim: another live runtime leases it, or it does not exist. */
+export class WorkflowNotOwnedError extends Error {
+  constructor(readonly runId: string) {
+    super(`workflow ${runId} is owned by another runtime or does not exist`);
+    this.name = "WorkflowNotOwnedError";
+  }
+}
+
 export class WorkflowRecoveryRequiredError extends Error {
   constructor(
     readonly runId: string,

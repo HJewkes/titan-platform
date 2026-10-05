@@ -17,6 +17,7 @@ const dirs: string[] = [];
 const stray: number[] = [];
 const track = (pid: number) => void (pid > 0 && stray.push(pid));
 afterEach(() => {
+  vi.unstubAllEnvs();
   stray.splice(0).forEach((pid) => {
     try {
       process.kill(pid, "SIGKILL");
@@ -104,6 +105,22 @@ describe("post-merge step", () => {
     expect(chore.calls[0]!.options).toMatchObject({ cwd: "/work", timeoutMs: 5_000 });
     expect(chore.calls[0]!.options.env).toMatchObject({ LAND_PR_REPO: REPO, LAND_PR_NUMBER: "1", LAND_PR_MERGE_SHA: fake.pr(1).mergeSha });
     expect(postMergeRecord(host, runId)).toMatchObject({ result: { exitCode: 0, signal: null, timedOut: false, stdoutTail: "", stderrTail: "" } });
+  });
+
+  it("leaves LAND_PR_MERGE_SHA unset, inherited value included, when the PR merged with no merge sha", async () => {
+    vi.stubEnv("LAND_PR_MERGE_SHA", "stale");
+    const chore = fakeChore();
+    const { fake, routes } = world({ argv: ["chore"] }, chore);
+    Object.assign(fake.pr(1), { merged: true, state: "closed", mergeSha: null });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
+    hosts.push(host);
+
+    const run = await host.runtime.wait(host.runtime.start("land-pr", { repo: REPO, pr: "1" }));
+
+    expect(run.status).toBe("completed");
+    expect(chore.calls).toHaveLength(1);
+    expect(chore.calls[0]!.options.env).toMatchObject({ LAND_PR_REPO: REPO, LAND_PR_NUMBER: "1" });
+    expect(chore.calls[0]!.options.env).not.toHaveProperty("LAND_PR_MERGE_SHA");
   });
 
   it("records a failing chore with redacted tails and still completes the run", async () => {

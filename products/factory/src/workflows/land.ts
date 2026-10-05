@@ -73,7 +73,8 @@ export interface LandOptions {
 }
 
 export type LandOutcome =
-  | { kind: "merged"; headSha: string; mergeSha: string }
+  /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit. */
+  | { kind: "merged"; headSha: string; mergeSha: string | null }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied"; headSha: string; detail: string };
 
@@ -161,12 +162,13 @@ function stuckBehindReason(state: LandState, headSha: string): string {
 
 async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
   if (ci.verdict === "red") return { kind: "ci-failed", headSha: ci.headSha, failing: ci.failing ?? [] };
-  if (ci.verdict === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: ci.mergeSha ?? "" };
+  if (ci.verdict === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: ci.mergeSha ?? null };
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
   const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" }, MergeResultResult);
-  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha };
+  // The port answers "" for a PR merged elsewhere with no merge commit named.
+  if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   return undefined;
 }

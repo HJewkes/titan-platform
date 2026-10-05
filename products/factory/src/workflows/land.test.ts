@@ -50,6 +50,18 @@ describe("land core", () => {
     expect(host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
   });
 
+  it("reports a null merge sha for a PR GitHub shows merged with no merge commit", async () => {
+    const scenario = landScenario();
+    Object.assign(scenario.fake.pr(1), { merged: true, state: "closed", mergeSha: null });
+    const host = hostFor(scenario);
+
+    const run = await host.runtime.wait(host.runtime.start("land-test"));
+
+    expect(run.status).toBe("completed");
+    expect(scenario.fake.effects.merge).toBe(0);
+    expect(scenario.outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: null });
+  });
+
   it("still asks for approval of a head its own update produced before any approval", async () => {
     const scenario = landScenario();
     scenario.fake.pr(1).behind = true;

@@ -31,7 +31,7 @@ const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.stri
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
 export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
-    kind: registeredKind(deps.store, input.runId) ?? null,
+    kind: registeredKind(deps.store, input.runId).kind ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
 }
