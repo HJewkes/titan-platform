@@ -6,10 +6,11 @@ const CONTROL_OPERATORS = new Set([";", "&", "&&", "||", "|", "|&", "\n"]);
 const PIPES = new Set(["|", "|&"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 /**
- * Case statements, `[[ ]]`, `(( ))`, `$(( ))` and here-docs hold operators and newlines that start no command,
- * so no token position can say where an assignment stands. Any of them in the text, quoted or not, refuses the join.
+ * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
+ * newlines that start no command, so no token position can say where an assignment stands. Any of them in the
+ * text, quoted or not, refuses the join.
  */
-const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<</;
+const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
 
 /**
  * Bash reads `NAME[...]` through the matching `]` as one word, blanks included, when it stands where an

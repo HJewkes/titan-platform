@@ -241,6 +241,11 @@ describe("subscripts with blanks inside the brackets", () => {
     ["$((", "Y[ 0 ]=x $((1))", ["Y[", "0", "]=x", "$((1))"]],
     ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
     ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
+    ...["@", "!", "?", "*", "+"].map((op): [string, string, string[]] => [
+      `${op}(`,
+      `Y[ 0 ]=x ${op}(a)`,
+      ["Y[", "0", "]=x", op, "<op>", "a", "<op>"],
+    ]),
   ])("splits as before when the text holds %s anywhere", (_token, src, expected) => {
     expect(words(src)).toEqual(expected);
   });
