@@ -1,8 +1,8 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute } from "./carry-merge.js";
-import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
+import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, type CarrySeatWiring } from "./carry-merge.js";
+import type { ReviewerAgent, ReviewerMessage } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
 import type { ForcePush } from "./force-pushes.js";
@@ -170,7 +170,7 @@ describe("the seat check of a carry", () => {
   async function seatOutcome(messages: (reviewer: ReviewerAgent) => ReviewerMessage[], run: SeatRun = {}): Promise<{ clear: boolean; reason?: string }> {
     const reviewer = seat("tc-x-review");
     const forcePushes = async () => (run.pushesFail ? Promise.reject(run.pushesFail) : (run.pushes ?? []));
-    const wiring = { reader: { read: async () => messages(reviewer) }, forcePushes, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as ReviewWiring;
+    const wiring = { reader: { read: async () => messages(reviewer) }, forcePushes, ...(run.withDispatch !== false && { dispatch: { roster: async () => [reviewer] } }) } as unknown as CarrySeatWiring;
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
     if (run.commits) github.prCommits.set(TARGET.pr, run.commits);

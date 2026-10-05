@@ -93,12 +93,15 @@ async function seatHeads(port: ShepherdDeps["port"], readForcePushes: ReadForceP
   return { heads };
 }
 
+/** The review wiring plus how the seat check reads the PR's force-pushes; absent means `gh` under the login the GitHub port uses. */
+export type CarrySeatWiring = ReviewWiring & { forcePushes?: ReadForcePushes };
+
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
  * roster to read.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: CarrySeatWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
