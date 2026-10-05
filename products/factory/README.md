@@ -171,7 +171,8 @@ script says so when the directory is not on `PATH`.
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
 4. Polls `/health`. The answer must come from the pid launchd reports for the job, so
    a `titan-factory serve` left running in a shell fails the install instead of passing for it.
-   On a timeout the verb prints the last 20 lines of `serve.err.log` and exits 1. The wait
+   On a timeout the verb prints the path of `serve.err.log` and a `tail -n 20` command for it,
+   never the log's lines, since a post-merge chore stores this output, and exits 1. The wait
    is 30 s and covers serve's first GitHub check: a `github` field other than `ok` exits 1
    with one line that carries the field.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory http://127.0.0.1:<port>/mcp`.

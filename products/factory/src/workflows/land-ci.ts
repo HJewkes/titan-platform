@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
+import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -32,13 +33,28 @@ export interface CiInput {
   strict: boolean;
 }
 
-export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapshot> {
-  const pr = await port.getPr(input.repo, input.pr);
+/**
+ * `reads` answers the PR and its check runs; every other read, and every write, goes to the port. A snapshot may answer
+ * pending, red or behind, but its green is read again through the port, because the merge that follows acts on it.
+ */
+export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads): Promise<CiSnapshot> {
+  const ci = await readCiFrom(port, input, reads ?? portReads(port));
+  if (ci.verdict !== "green" || reads === undefined) return ci;
+  return readCiFrom(port, input, portReads(port));
+}
+
+/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
+function findingsAt(input: CiInput, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+  return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+}
+
+async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads): Promise<CiSnapshot> {
+  const pr = await reads.getPr(input.repo, input.pr);
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
-  const runs = await port.checkRuns(input.repo, pr.headSha);
-  const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
+  const findings = findingsAt(input, pr.headSha, runs);
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind", ...(findings.length === 0 && !pr.draft && { checksGreen: true }) };
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
