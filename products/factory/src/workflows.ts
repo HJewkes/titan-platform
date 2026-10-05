@@ -27,6 +27,7 @@ import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shephe
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
@@ -39,6 +40,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   /** The per-repo merge train shepherd-pr runs merge through; defaults to one bound with the store. */
   train?: MergeTrainRef;
   holdPollMs?: number;
+  /** Paces the snapshot tick and is reported in `/health`; `configuredRoutes` wires one on the `rate_limit` reading. */
+  pacing?: TickPacing;
   agentChatBin?: string;
   /** The Claude config directory successors spawn under; the fixer's, since a successor is a fixer in a new session. */
   agentChatConfigDir?: string;
@@ -78,7 +81,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const guard = firstReason(freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now));
   const satisfy = holdSatisfierFor(deps);
-  const held = heldCheck(deps.port, holds, guard, satisfy);
+  const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
   const train = deps.train ?? mergeTrainRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
@@ -88,7 +91,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, snapshot: deps.snapshot, pacing: deps.pacing };
   return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
 }
 
@@ -161,8 +164,9 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const mainRed = configuredMainRed(shepherd, env, roster);
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
   const port = overrides.port ?? githubPort(ghCliWire());
-  const snapshot = prSnapshot(port, { now: overrides.now });
-  return factoryRoutesFor({ port, snapshot, store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), ...overrides, seats });
+  const pacing = tickPacing({ now: overrides.now });
+  const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
+  return factoryRoutesFor({ port, snapshot, pacing, store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

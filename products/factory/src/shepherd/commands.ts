@@ -22,6 +22,8 @@ import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
+import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import type { TickPacing } from "../tick-pacing.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -34,6 +36,10 @@ export interface ShepherdServices {
   seats: () => SeatBook;
   /** Absent means no row reports a run waiting for its repo's merge train. */
   train?: MergeTrainRef;
+  /** The per-repo PR snapshot the gone and release sweeps read; absent means they read the port. */
+  snapshot?: PrSnapshot;
+  /** How fast the snapshot ticks, for `/health`. */
+  pacing?: TickPacing;
 }
 
 export interface Registered {
