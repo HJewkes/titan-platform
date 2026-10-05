@@ -637,7 +637,7 @@ describe("sh-review", () => {
     const { result } = await steps.review(spawnIntent);
 
     expect(dispatch.spawns).toHaveLength(1);
-    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: roster read ${reads} failed` });
+    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: Error` });
   });
 
   it("says only that the reviewer did not start in time when every roster read succeeded", async () => {
@@ -847,7 +847,7 @@ describe("sh-review", () => {
     expect(clock.sleeps).toBe(2);
   });
 
-  it("answers none with the broker's reason when the spawn is refused, and does not try again", async () => {
+  it("answers none with the refusal's class when the spawn is refused, and does not try again", async () => {
     let attempts = 0;
     const dispatch = fakeDispatch();
     dispatch.spawn = async () => {
@@ -857,8 +857,18 @@ describe("sh-review", () => {
 
     const { result } = await shReview(dispatch);
 
-    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the name rv-octo-demo-7 is held by a live agent" });
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
     expect(attempts).toBe(1);
+  });
+
+  it("keeps neither a URL nor a token from a refused spawn in the stored reason", async () => {
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async () => Promise.reject(new Error("POST https://db.example.invalid/x failed for tok_FAKE0000SECRET"));
+
+    const { result } = await shReview(dispatch);
+
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
+    expect(JSON.stringify(result)).not.toMatch(/db\.example\.invalid|tok_FAKE0000SECRET/);
   });
 
   describe("a broker whose machine guard refuses the spawn", () => {
@@ -885,7 +895,7 @@ describe("sh-review", () => {
 
       const { result } = await steps.review(spawnIntent);
 
-      const waits = [1, 2, 4].map((n) => `${GUARD}; asking again in ${n} min`);
+      const waits = [1, 2, 4].map((n) => `ReviewerBrokerBusy; asking again in ${n} min`);
       expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START + 7 * 60_000, busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
@@ -893,7 +903,7 @@ describe("sh-review", () => {
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
     });
 
-    it("answers not-started with the guard's reason and every wait once the busy wait is spent, after waits capped at eight minutes", async () => {
+    it("answers not-started with the refusal's class and every wait once the busy wait is spent, after waits capped at eight minutes", async () => {
       const dispatch = busyFor(Infinity);
       const slept: number[] = [];
       const steps = reviewSteps(dispatch, { onSleep: (ms) => void slept.push(ms / 60_000) });
@@ -902,9 +912,9 @@ describe("sh-review", () => {
 
       expect(result).toEqual({
         kind: "none",
-        reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)`,
+        reason: "the reviewer dispatch was refused: ReviewerBrokerBusy (still refused after 30 min)",
         notStarted: true,
-        busyWaits: [1, 2, 4, 8, 8, 7].map((n) => `${GUARD}; asking again in ${n} min`),
+        busyWaits: [1, 2, 4, 8, 8, 7].map((n) => `ReviewerBrokerBusy; asking again in ${n} min`),
       });
       expect(slept).toEqual([1, 2, 4, 8, 8, 7]);
       expect(steps.clock.now - START).toBe(DEFAULT_BUSY_WAIT_MS);
@@ -951,7 +961,7 @@ describe("sh-review", () => {
 
       expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
       expect(result).not.toHaveProperty("notStarted");
-      expect((result as { busyWaits: string[] }).busyWaits.every((wait) => wait.startsWith(`held by the machine stop: ${HOLD}`))).toBe(true);
+      expect((result as { busyWaits: string[] }).busyWaits.every((wait) => wait.startsWith("held by the machine stop: ReviewerMachineHold;"))).toBe(true);
       expect(dispatch.spawns).toHaveLength(1);
     });
 
@@ -977,7 +987,7 @@ describe("sh-review", () => {
 
       const { result } = await reviewSteps(dispatch, { clock }).review(spawnIntent);
 
-      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: `the reviewer dispatch was refused: ${GUARD} (still refused after 30 min)` });
+      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerBrokerBusy (still refused after 30 min)" });
       expect(clock.now - START).toBe(47 * 60_000 + DEFAULT_BUSY_WAIT_MS);
       expect(dispatch.spawns).toEqual([]);
     });
@@ -988,7 +998,7 @@ describe("sh-review", () => {
 
       const { result } = await reviewSteps(dispatch, { clock }).review(spawnIntent);
 
-      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: `the reviewer dispatch was refused: ${HOLD} (still held by the machine stop after 180 min)` });
+      expect(result).toMatchObject({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerMachineHold (still held by the machine stop after 180 min)" });
       expect(clock.now - START).toBe(DEFAULT_HOLD_WAIT_MS);
       expect(dispatch.spawns).toEqual([]);
     });
@@ -1174,7 +1184,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "not-started" }]);
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`]);
-    expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "none", notStarted: true, busyWaits: expect.arrayContaining([expect.stringContaining("machine guard")]) });
+    expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "none", notStarted: true, busyWaits: expect.arrayContaining([expect.stringContaining("ReviewerBrokerBusy")]) });
     expect(dispatch.agents).toEqual([]);
   });
 
@@ -1185,7 +1195,7 @@ describe("reviewPhase", () => {
     const { verdicts, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
-    expect(resultOf(`sh-review:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: unknown profile: 'reviewer'" });
+    expect(resultOf(`sh-review:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
   });
 
   it("returns none after the intent step alone when the roster read is refused", async () => {
@@ -1196,7 +1206,7 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
     expect(stepIds).toEqual([`sh-review-intent:${H1}`]);
-    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: the roster is not readable" });
+    expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
   });
 
   /** Kills the host inside one step, before the step's body runs or after it ran and before its output is stored. */
@@ -1458,7 +1468,7 @@ describe("reviewPhase", () => {
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: unreadable, policy: AUTO });
 
-      const reason = `seat check: the transcript of ${seat.name} could not be read: unexpected end of JSON input`;
+      const reason = `seat check: the transcript of ${seat.name} could not be read: Error`;
       expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
       expect(resultOf(`sh-await-verdict:${H1}`)).toEqual({ kind: "none", reason });
       expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
