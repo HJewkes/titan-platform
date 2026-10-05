@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // codewatch-findings@1 (C-128): diffs two codewatch-metrics@1 artifacts of one repo and ranks the debt worth filing.
 // It never indexes. Like its input it carries repo paths, symbols and metrics only, so it is safe as a public artifact.
-// Status is decided per rule hit and the key is `repo|rule|path|symbol#n`, so it survives line moves and commits.
+// Status is decided per rule hit. The key is `repo|rule|path|symbol#n`, so it survives line moves and commits; its rule
+// is the one broken furthest past its threshold, never the status-weighted score, so a key does not flip with status.
 // Without a previous artifact, or when the two indexVersions differ, metric values are not comparable: every row is
 // `rebaseline` (no bonus), no row is resolved, and the file rule, which needs a new or worsened status, finds nothing.
-// `top` applies the selection caps to this one repo, so the per-repo cap of 6 binds before the run cap of 10;
-// the filer merges the repos' files and applies the run-wide caps and its dedupe from `findings`.
+// `top` is the first 10 eligible keys before dedupe; the filer applies the per-repo, file-rule and dedupe limits.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -23,7 +23,7 @@ const FILE_RULE = { id: "file-near-loc-budget", metric: "loc", threshold: THRESH
 const STATUS_WEIGHT = { new: 1.5, worsened: 1.3, persisting: 1, rebaseline: 1 };
 const WORSENED_RATIO = 1.1;
 const REACH_CAP = 20;
-const TOP_CAPS = { run: 10, perRepo: 6, fileRule: 2 };
+const TOP_SIZE = 10;
 const METRIC_COLUMNS = ["loc", "cyclomatic_max", "cognitive_max", "nesting_max"];
 
 /** Pure: ranks `current` against `previous` (or null). `sha256` records the content hashes the caller read. */
@@ -92,7 +92,13 @@ function score(value, rule, status, importers) {
   return Math.round((value / rule.threshold) * STATUS_WEIGHT[status] * reach * 1000) / 1000;
 }
 
-// One row per entity at its highest-scoring rule; ties keep rule order, so the key is deterministic.
+// Status-independent, so live and resolved rows of one entity share a key; ties keep rule order.
+function keyRule(rules, row) {
+  const ratio = (rule) => row[rule.metric] / rule.threshold;
+  return rules.reduce((best, rule) => (ratio(rule) > ratio(best) ? rule : best));
+}
+
+// One row per entity, scored and given the status of its highest-scoring hit.
 function liveFinding(repo, entity, was, rebaseline) {
   const hits = ruleHits(entity)
     .map((rule) => ({ rule, status: hitStatus(rule, entity, was, rebaseline) }))
@@ -100,15 +106,16 @@ function liveFinding(repo, entity, was, rebaseline) {
     .map((hit) => ({ ...hit, score: score(entity.row[hit.rule.metric], hit.rule, hit.status, entity.row.importers) }));
   if (hits.length === 0) return null;
   const lead = hits.reduce((best, hit) => (hit.score > best.score ? hit : best));
-  return finding(repo, entity, { ...lead, rules: hits.map((h) => h.rule), current: entity.row, previous: was?.row });
+  const rules = hits.map((h) => h.rule);
+  const rule = keyRule(rules, entity.row);
+  return finding(repo, entity, { ...lead, rule, rules, current: entity.row, previous: was?.row });
 }
 
-// Every rule the entity broke last time is now clear. Its key uses the rule it broke furthest past the threshold.
+// Every rule the entity broke last time is now clear; its key is the one its last live row carried.
 function resolvedFinding(repo, was, now) {
   const rules = ruleHits(was);
   if (rules.length === 0 || (now && ruleHits(now).length > 0)) return null;
-  const ratio = (rule) => was.row[rule.metric] / rule.threshold;
-  const rule = rules.reduce((best, r) => (ratio(r) > ratio(best) ? r : best));
+  const rule = keyRule(rules, was.row);
   return finding(repo, now ?? was, { rule, rules, status: "resolved", score: 0, current: now?.row, previous: was.row });
 }
 
@@ -138,16 +145,7 @@ function byRank(a, b) {
 }
 
 function selectTop(findings) {
-  const limit = Math.min(TOP_CAPS.run, TOP_CAPS.perRepo);
-  const top = [];
-  let fileRows = 0;
-  for (const f of findings) {
-    if (top.length === limit || f.score < 1) break;
-    if (f.symbol === null && fileRows === TOP_CAPS.fileRule) continue;
-    if (f.symbol === null) fileRows += 1;
-    top.push(f.key);
-  }
-  return top;
+  return findings.filter((f) => f.score >= 1).slice(0, TOP_SIZE).map((f) => f.key);
 }
 
 function compare(a, b) {
@@ -190,9 +188,10 @@ function readArtifact(file, pinnedSha256) {
   return { json, sha256 };
 }
 
+// A missing value, or another flag in its place, reads as absent so the usage check catches it.
 function flag(argv, name) {
-  const at = argv.indexOf(name);
-  return at >= 0 ? argv[at + 1] : undefined;
+  const value = argv[argv.indexOf(name) + 1];
+  return argv.includes(name) && value && !value.startsWith("--") ? value : undefined;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

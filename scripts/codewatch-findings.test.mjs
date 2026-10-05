@@ -146,7 +146,7 @@ describe("rankFindings rows", () => {
     ]);
   });
 
-  it("lists a symbol with several rule hits once, keyed by its highest-scoring rule", () => {
+  it("lists a symbol with several rule hits once, keyed by the rule it breaks furthest", () => {
     const report = rankFindings(oneSymbol({ cognitive_max: 26, cyclomatic_max: 30, nesting_max: 5 }), oneSymbol({}), { repo: "tp" });
 
     expect(report.findings).toHaveLength(1);
@@ -155,6 +155,18 @@ describe("rankFindings rows", () => {
       rules: ["cognitive-hotspot", "cyclomatic-near-budget", "nesting-at-budget"],
       score: 1.875,
     });
+  });
+
+  it("keeps a symbol's key when another rule newly outscores it, and resolves it under that same key", () => {
+    const week1 = oneSymbol({ cognitive_max: 40 });
+    const week2 = oneSymbol({ cognitive_max: 40, cyclomatic_max: 26 });
+    const week3 = oneSymbol({});
+
+    const live = rankFindings(week2, week1, { repo: "tp" }).findings[0];
+    const resolved = rankFindings(week3, week2, { repo: "tp" }).findings[0];
+
+    expect(live).toMatchObject({ key: KEY, status: "new", score: 1.625, rules: ["cognitive-hotspot", "cyclomatic-near-budget"] });
+    expect(resolved).toMatchObject({ key: KEY, status: "resolved" });
   });
 
   it("flags a file at the loc threshold only when it is new or worsened", () => {
@@ -182,22 +194,21 @@ describe("rankFindings top", () => {
     expect(keys).toEqual(["tp|cognitive-hotspot|src/b.ts|x#1", "tp|nesting-at-budget|src/a.ts|z#1", "tp|nesting-at-budget|src/b.ts|a#1"]);
   });
 
-  it("holds at most 6 keys for the one repo, at most 2 of them file-rule rows", () => {
+  it("holds the first 10 eligible keys in score order, leaving the per-repo and file-rule caps to the filer", () => {
     const fat = ["f1", "f2", "f3"].map((name) => fileRow(`src/${name}.ts`, { loc: 900 }));
-    const hot = Array.from({ length: 8 }, (_, i) => symbolRow("src/s.ts", `s${i}`, { cognitive_max: 30 - i }));
+    const hot = Array.from({ length: 12 }, (_, i) => symbolRow("src/s.ts", `s${String(i).padStart(2, "0")}`, { cognitive_max: 40 - i }));
     const current = artifact({ files: [...fat, fileRow("src/s.ts")], symbols: hot });
 
     const report = rankFindings(current, artifact(), { repo: "tp" });
 
-    expect(report.top).toEqual([
+    expect(report.findings).toHaveLength(15);
+    expect(report.top).toEqual(report.findings.slice(0, 10).map((f) => f.key));
+    expect(report.top.slice(0, 4)).toEqual([
       "tp|file-near-loc-budget|src/f1.ts|",
       "tp|file-near-loc-budget|src/f2.ts|",
-      "tp|cognitive-hotspot|src/s.ts|s0#1",
-      "tp|cognitive-hotspot|src/s.ts|s1#1",
-      "tp|cognitive-hotspot|src/s.ts|s2#1",
-      "tp|cognitive-hotspot|src/s.ts|s3#1",
+      "tp|file-near-loc-budget|src/f3.ts|",
+      "tp|cognitive-hotspot|src/s.ts|s00#1",
     ]);
-    expect(report.findings).toHaveLength(9);
   });
 });
 
@@ -243,7 +254,7 @@ describe("runCli", () => {
     expect(error.mock.calls[0][0]).toContain(`has sha256 ${previous.sha256}, but --previous-sha256 pins ${"0".repeat(64)}`);
   });
 
-  it("exits 2 on a missing pin, a missing --repo or an input of another schema", () => {
+  it("exits 2 on a missing pin, a missing --repo, a flag in place of a value or an input of another schema", () => {
     const dir = tempDir();
     const current = writeJson(dir, "current.json", oneSymbol({}));
     const other = writeJson(dir, "other.json", { schema: "codewatch-pr-report@1" });
@@ -252,6 +263,7 @@ describe("runCli", () => {
 
     expect(runCli(["--repo", "tp", "--current", current.file, "--previous", current.file, "--out", out])).toBe(2);
     expect(runCli(["--current", current.file, "--out", out])).toBe(2);
+    expect(runCli(["--repo", "--current", current.file, "--out", out])).toBe(2);
     expect(runCli(["--repo", "tp", "--current", other.file, "--out", out])).toBe(2);
     expect(existsSync(out)).toBe(false);
   });
