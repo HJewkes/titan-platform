@@ -90,7 +90,9 @@ stays out of the repo.
 
 - `postMerge` is the chore `land-pr` runs after a merge. It runs `argv` with no shell, with
   `LAND_PR_REPO`, `LAND_PR_NUMBER` and `LAND_PR_MERGE_SHA` in its environment, and is killed
-  after `timeoutMs` (default 10 minutes). An unknown key such as `shell` fails the load.
+  after `timeoutMs` (default 10 minutes). When GitHub reports the PR merged but names no merge
+  commit, the merged outcome's `mergeSha` is `null`, and `LAND_PR_MERGE_SHA` is left unset, even
+  when the factory's own environment has one. A chore that needs the sha should check that it is set. An unknown key such as `shell` fails the load.
 - `shepherd.agentChatBin` is the absolute path of the `agent-chat` executable. It is required
   when `shepherd.review` or `shepherd.fixer` is set. Without it, a red main still freezes the
   repo and files a fix task, but spawns no fixer.

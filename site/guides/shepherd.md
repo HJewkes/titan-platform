@@ -48,7 +48,11 @@ run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, meta
 
 A repeat without `--kind` keeps the stored kind, so it cannot drop a `correctness` or
 `security` run out of the fix-proof gate. An explicit `--kind` replaces the stored kind,
-including with a looser one; unlike the policy, kind does not only narrow.
+unless it would move a `correctness` run to a kind that skips the fix-proof gate (`feature`,
+`refactor` or `unknown`), or a `security` run to any other kind: a security run keeps its
+fix-proof gate and its fresh reviewer, which `correctness`, `feature` and `refactor` would
+loosen. That repeat is refused with exit 65 and a reason naming both kinds. Moving
+`correctness` to `security`, or a kind that skips the gate to one that needs it, still applies.
 
 A branch registered first and its pull request registered later share one run. A
 registration by number reads the pull request from GitHub to learn its head branch, so it

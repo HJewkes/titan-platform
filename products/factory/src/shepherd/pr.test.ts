@@ -178,6 +178,18 @@ describe("shepherd-pr", () => {
     expect(landedSteps(w, runId)).toHaveLength(1);
   });
 
+  it("records a landing with a null merge sha and asks the owner about main CI for a PR merged outside with no merge commit", async () => {
+    const w = world(fakePhases({}).phases);
+    const runId = await heldAtMerge(w);
+
+    Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: null });
+    await gateOpened(w.host, gateId(runId, "main-red"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(stepResult(w.host, runId, "sh-landed")).toMatchObject({ result: { mergeSha: null } });
+    expect(stepResult(w.host, runId, "sh-main-ci")).toMatchObject({ result: { verdict: "none" } });
+  });
+
   it("stops waiting on a held PR closed without merging, ends the run as closed, and records no landing", async () => {
     const w = world(fakePhases({}).phases);
     const runId = await heldAtMerge(w);
