@@ -143,18 +143,23 @@ function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
   return ci.baseMoved === true && (!state.trusted.has(ci.headSha) || state.refreshed.has(ci.headSha));
 }
 
+/**
+ * A strict repo's update spends the bound shared by every round. A non-strict repo's pre-merge refresh stays out of it:
+ * `refreshed` lets each approved head refresh once, so that path cannot loop and never reaches stuck-behind.
+ */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
-  if (budgetSpent(state.bound, ci.readAt)) {
+  const refresh = ci.baseMoved === true;
+  if (!refresh && budgetSpent(state.bound, ci.readAt)) {
     const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
     const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
     if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
     resetBound(state.bound);
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  recordUpdate(state.bound, ci.headSha, update.at);
+  if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
-  if (update.own && ci.baseMoved === true) state.refreshed.add(update.headSha);
+  if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
 }
 
