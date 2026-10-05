@@ -1,4 +1,5 @@
 import type { Chain, SimpleCommand } from "../shell/commands.js";
+import { isCaseUnsure } from "../shell/case-attrs.js";
 import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
@@ -114,11 +115,15 @@ function pushDestination(spec: string, head: string | null): string | null {
   return dest === "" ? null : dest;
 }
 
-/** A refspec's literal text; for `"$X":main` only the literal destination after the last colon is known. */
+/**
+ * A refspec's literal text; for `"$X":main` only the literal destination after the last colon is known.
+ * A destination a case attribute may have changed may be any branch, so it reads as unknown.
+ */
 function literalSpec(word: WordToken): string | null {
   if (!word.dynamic) return word.value;
   const tail = word.value.slice(word.value.lastIndexOf(":") + 1);
-  return word.value.includes(":") && !/[$`]/.test(tail) ? `:${tail}` : null;
+  if (word.value.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
+  return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
