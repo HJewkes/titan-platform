@@ -97,6 +97,8 @@ export const COMPARE_FILE_CAP = 300;
 export const COMPARE_COMMIT_CAP = 250;
 /** GitHub's limit for `pulls/{n}/files`. */
 export const PR_FILES_CAP = 3000;
+/** GitHub's limit for `pulls/{n}/commits`. */
+export const PR_COMMITS_CAP = 250;
 
 export interface IssueComment {
   id: number;
@@ -143,6 +145,8 @@ export interface GitHubWire {
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
+  /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
@@ -188,6 +192,8 @@ export interface GitHubPort {
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
   /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   /**
@@ -242,6 +248,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
+    listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
