@@ -1165,6 +1165,24 @@ describe("reviewPhase", () => {
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
   });
 
+  it("asks the reviewer for an owner brief when the run's policy is owner-gate, and not when it is auto", async () => {
+    const gated = await review({ dispatch: fakeDispatch(), policy: OWNER_GATE_POLICY });
+    const auto = await review({ dispatch: fakeDispatch(), policy: AUTO });
+
+    expect(gated.inputs[`sh-review:${H1}`]).toMatchObject({ ownerBrief: true });
+    expect(auto.inputs[`sh-review:${H1}`]).not.toHaveProperty("ownerBrief");
+  });
+
+  it("hands the owner-brief request to the spawned reviewer's brief only under an owner-gate policy", async () => {
+    const gated = fakeDispatch();
+    const auto = fakeDispatch();
+    await review({ dispatch: gated, policy: OWNER_GATE_POLICY });
+    await review({ dispatch: auto, policy: AUTO });
+
+    expect(gated.spawns[0]?.brief).toContain("OWNER-BRIEF");
+    expect(auto.spawns[0]?.brief).not.toContain("OWNER-BRIEF");
+  });
+
   it("waits out three machine-guard refusals of the spawn and takes the reviewer's MERGE, with no step that sends the PR to the owner", async () => {
     const dispatch = fakeDispatch();
     const spawn = dispatch.spawn;
