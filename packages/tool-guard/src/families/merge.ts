@@ -102,7 +102,7 @@ function gitMerge(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] 
   if (hasFlag(options, ...GIT_MERGE_CONTROL) || options.positionals.length === 0) return [];
   const head = headOf(git, ctx);
   if (head === null || !isProtected(head)) return [];
-  if (options.positionals.every((r) => !r.dynamic && isUpstream(r.value, head))) return [];
+  if (options.positionals.every((r) => !r.dynamic && !isCaseUnsure(r) && isUpstream(r.value, head))) return [];
   return [classified("bash.merge.git-merge-protected", { branch: head })];
 }
 
@@ -120,9 +120,10 @@ function pushDestination(spec: string, head: string | null): string | null {
  * A destination a case attribute may have changed may be any branch, so it reads as unknown.
  */
 function literalSpec(word: WordToken): string | null {
-  if (!word.dynamic) return word.value;
-  const tail = word.value.slice(word.value.lastIndexOf(":") + 1);
-  if (word.value.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
+  if (!word.dynamic && !isCaseUnsure(word)) return word.value;
+  const typed = word.typed ?? word.value;
+  const tail = typed.slice(typed.lastIndexOf(":") + 1);
+  if (typed.includes(":") && !/[$`]/.test(tail)) return `:${tail}`;
   return isCaseUnsure(word) ? `:${UNKNOWN}` : null;
 }
 
@@ -199,7 +200,7 @@ function guardsChain(cmd: SimpleCommand): boolean {
  * head it left was unprotected, since a failed `-b` (the branch exists) leaves that head checked out; otherwise `unknown`.
  */
 function switchedHead(sw: Switch, succeeded: boolean, ctx: ClassifyContext): string {
-  if (sw.dir === null || !sw.created || sw.created.dynamic) return UNKNOWN;
+  if (sw.dir === null || !sw.created || sw.created.dynamic || isCaseUnsure(sw.created)) return UNKNOWN;
   if (succeeded) return sw.created.value;
   return isProtected(headOf({ dir: sw.dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] }, ctx)) ? UNKNOWN : sw.created.value;
 }

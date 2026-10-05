@@ -1,12 +1,13 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
-import { CASE_UNSURE, caseChecked, cased, markCase, noteCaseUnsure } from "./case-attrs.js";
+import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
+import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
 
 /**
  * Shell variables assigned earlier in the same command string; null means assigned but not knowable.
  * Hidden `readonly@NAME` keys, which no identifier can spell, hold `""` when NAME is surely readonly and
  * null when it may be; `readonly@*` means any variable may be. Scopes copy them along with the values.
- * Hidden `case@NAME` keys hold the case attributes (`l`, `u`) NAME may carry, null when they may be any.
+ * Hidden `case@NAME` and `cased@NAME` keys track case attributes; see case-attrs.ts.
  */
 export type Vars = Map<string, string | null>;
 
@@ -14,8 +15,9 @@ export type Vars = Map<string, string | null>;
  * `NAME=value`, `NAME+=value` or `NAME[i]=value`. An `append` depends on the earlier value; an `element`
  * write keeps its value only as `NAME[0]=literal`, the element `$NAME` reads, and persists even before a command.
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
+ * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden"];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -46,25 +48,29 @@ const OPTION_LETTERS: Record<string, Set<string>> = {
   readonly: new Set("a"),
 };
 
-export function lookup(vars: Vars, home: string | null, name: string): string | null | typeof CASE_UNSURE {
+export function lookup(vars: Vars, home: string | null, name: string): string | null | CaseUnsure {
   return caseChecked(vars, name, vars.has(name) ? (vars.get(name) ?? null) : name === "HOME" ? home : null);
 }
 
-/** Replaces plain variable references with their literal values; any unknown reference leaves the word as it was. */
-export function expandWord(w: WordToken, resolve: (name: string) => string | null | typeof CASE_UNSURE): WordToken {
+/**
+ * Replaces plain variable references with their literal values; any unknown reference leaves the word as it was.
+ * A reference a case attribute may have changed expands as written and marks the word.
+ */
+export function expandWord(w: WordToken, resolve: (name: string) => string | null | CaseUnsure): WordToken {
   if (!w.dynamic || w.computed || w.refs.length === 0) return w;
+  const found = w.refs.map((ref) => resolve(ref.name));
+  const unsure = found.some(isCaseUnsureLookup);
+  const literals = found.map((f) => (isCaseUnsureLookup(f) ? f.asWritten : f));
   let value = "";
   let last = 0;
-  for (const ref of w.refs) {
-    const literal = resolve(ref.name);
-    if (literal === CASE_UNSURE) noteCaseUnsure(w);
-    if (typeof literal !== "string") return w;
-    value += w.value.slice(last, ref.start) + literal;
+  for (const [i, ref] of w.refs.entries()) {
+    value += w.value.slice(last, ref.start) + literals[i];
     last = ref.end;
   }
-  const expanded = { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
-  if (sureWords.has(w)) sureWords.add(expanded);
-  return expanded;
+  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  const result = unsure ? markWord(expanded) : expanded;
+  if (sureWords.has(w)) sureWords.add(result);
+  return result;
 }
 
 /** The words of each command that surely runs once, as the builtin it names, in the current shell. */
@@ -185,6 +191,11 @@ function runsDeclarer(words: WordToken[]): boolean {
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
+  const parsed = splitAssignment(w);
+  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+}
+
+function splitAssignment(w: WordToken): Assignment | null {
   if (w.hidden) {
     const eq = w.value.indexOf("=");
     return [w.value.slice(0, eq), w.dynamic ? null : w.value.slice(eq + 1), "hidden"];
@@ -198,13 +209,15 @@ export function parseAssignment(w: WordToken): Assignment | null {
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, kind]: Assignment): void {
+export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
+  const priorCased = isCased(vars, name);
   if (kind === "hidden") restore(vars, name, value);
   else if (kind !== "append") write(vars, name, value);
   else {
     const prior = vars.get(name) ?? null;
     write(vars, name, prior !== null && value !== null ? prior + value : null);
   }
+  markCased(vars, name, cased || (kind === "append" && priorCased));
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -220,11 +233,13 @@ const readonlyKey = (name: string) => `readonly@${name}`;
 function write(vars: Vars, name: string, value: string | null): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
-  vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : cased(vars, name, value));
+  clearCased(vars, name);
+  vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
 function restore(vars: Vars, name: string, value: string | null): void {
+  clearCased(vars, name);
   vars.set(name, value);
   if (vars.has(readonlyKey(name))) vars.set(readonlyKey(name), null);
 }
@@ -283,11 +298,12 @@ type ReadonlyMode = "scalar" | "array" | null;
  */
 function declareArg(name: string, assignment: Assignment | null, mode: ReadonlyMode, vars: Vars): void {
   if (!assignment) return;
-  const [target, value, kind] = assignment;
+  const [target, value, kind, cased] = assignment;
   if (kind === "element") {
     if (!SCALAR_DECLARERS.has(name)) write(vars, target, mode ? null : value);
   } else if (mode === "array") write(vars, target, null);
-  else assign(vars, assignment);
+  else return assign(vars, assignment);
+  markCased(vars, target, cased);
 }
 
 /**
@@ -327,4 +343,5 @@ function printfVar(args: WordToken[], vars: Vars): void {
   if (!base) return;
   const subscripted = base[0] !== base[1];
   write(vars, base[1] as string, subscripted ? null : printedText("printf", args.slice(attached ? 1 : 2)));
+  markCased(vars, base[1] as string, args.some(isCaseUnsure));
 }
