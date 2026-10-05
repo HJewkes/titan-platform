@@ -224,6 +224,14 @@ describe("the seat check of a carry", () => {
     expect(outcome).toEqual({ clear: false, reason: "seat check: the PR's commit list could not be read (HTTP 502)" });
   });
 
+  it("refuses with the fixed class Error, never a token-shaped name or a non-HTTP status, when the commit list cannot be read", async () => {
+    const failure = Object.assign(new Error("upstream said something private"), { name: "ghs_FAKE0000NOTAREALTOKEN0000", status: 1 });
+
+    const outcome = await seatOutcome(() => [], { listFails: failure });
+
+    expect(outcome).toEqual({ clear: false, reason: "seat check: the PR's commit list could not be read (Error)" });
+  });
+
   it("refuses a carry from H1 to H3 when a seat reviewer said FIX_FIRST at H2 and H2 was then force-pushed away", async () => {
     const pushedAway = fakeSha("pushed-away");
     const pushes = [{ before: pushedAway, after: NEW_HEAD }];
