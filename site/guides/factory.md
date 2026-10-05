@@ -274,7 +274,8 @@ titan-factory service install --port 7411 --mcp
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
 4. Polls `/health` for up to 30 seconds. The answer must come from the pid launchd reports
    for the job, so a `serve` you left running in a shell fails the install. On a timeout
-   the verb prints the last 20 lines of `serve.err.log`. The wait covers
+   the verb prints the path of `serve.err.log` and a `tail -n 20` command for it, never the
+   log's lines, since a post-merge chore stores this output. The wait covers
    [the GitHub check](#the-github-check): a `github` field that settles on anything but
    `ok` fails the install with one line.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory

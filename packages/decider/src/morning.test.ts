@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { extractSource } from "./extract.js";
 import { POLICY } from "./fixtures.js";
 import { LedgerRowSchema } from "./ledger.js";
-import { joinMorning, morningSource, parseMorningList, parseOwnerAnswers, type MorningCounts } from "./morning.js";
+import { initiativesOfTaskIds, joinMorning, morningSource, parseMorningList, parseOwnerAnswers, taskIdsIn, type MorningDayCounts } from "./morning.js";
 import { openLedgerStore, type LedgerStore } from "./store.js";
 
 /** The fixture pair is synthetic: invented items in the real files' line shapes. */
@@ -158,8 +158,50 @@ describe("answer lines naming several items", () => {
   });
 });
 
+describe("sub-item ids", () => {
+  const list = "[vc-65.1] **Recommend the strict rule.**\n[vc-651] **Recommend blue.**\n";
+  const join = (answers: string) => joinMorning("2026-10-04", list, answers, "a.md");
+
+  it("keeps the sub-item dot in a parsed item id", () => {
+    expect(parseMorningList(list).map((item) => item.ids)).toEqual([["vc65.1"], ["vc651"]]);
+  });
+
+  it("joins a sub-item answer to the sub-item and not to item 651", () => {
+    const { rows, counts } = join("vc-65.1: yes\n");
+
+    expect(rows.map((r) => r.key)).toEqual(["morning:2026-10-04/vc65.1"]);
+    expect(counts).toEqual({ unparseable: 0, unmatched: 0, ambiguous: 0, duplicate: 0 });
+  });
+
+  it("joins an answer to item 651 and not to sub-item 65.1", () => {
+    const { rows } = join("vc651: no\n");
+
+    expect(rows.map((r) => r.key)).toEqual(["morning:2026-10-04/vc651"]);
+  });
+
+  it("joins both when one answer file names each", () => {
+    const { rows } = join("vc-651: no\nvc 65.1 yes\n");
+
+    expect(rows.map((r) => [r.key, r.answer])).toEqual([
+      ["morning:2026-10-04/vc651", "no"],
+      ["morning:2026-10-04/vc65.1", "yes"],
+    ]);
+  });
+
+  it("reports a sub-item with no item in the list as unmatched", () => {
+    const { rows, counts } = join("vc-65.2: yes\n");
+
+    expect(rows).toEqual([]);
+    expect(counts.unmatched).toBe(1);
+  });
+
+  it("still reads a numbered item's trailing dot as no sub-item", () => {
+    expect(parseMorningList("30. **Recommend the default.**\n").map((item) => item.ids)).toEqual([["30"]]);
+  });
+});
+
 describe("morning source", () => {
-  function source(onCounts?: (date: string, counts: MorningCounts) => void) {
+  function source(onCounts?: (date: string, counts: MorningDayCounts) => void) {
     return morningSource({ dir: DIR, fs: { readdir: (d) => readdir(d), readFile: (f) => readFile(f) }, onCounts });
   }
 
@@ -173,12 +215,12 @@ describe("morning source", () => {
   });
 
   it("reports the day's counts and applies exclusion to rows", async () => {
-    const seen: MorningCounts[] = [];
+    const seen: MorningDayCounts[] = [];
     const policy = { ...POLICY, personalDataPatterns: ["widget service"] };
 
     const summary = await extractSource(store, source((_, c) => seen.push(c)), policy);
 
-    expect(seen).toEqual([{ unparseable: 1, unmatched: 2, ambiguous: 1, duplicate: 1 }]);
+    expect(seen).toEqual([{ unparseable: 1, unmatched: 2, ambiguous: 1, duplicate: 1, unresolved: 7 }]);
     expect(summary.excluded["personal-data"]).toBe(1);
     expect(summary.written).toBe(6);
   });
@@ -212,5 +254,75 @@ describe("morning source over a growing answers file", () => {
     const again = await extractSource(store, morningSource({ dir }), POLICY);
 
     expect(again).toMatchObject({ written: 1, alreadyIndexed: 7 });
+  });
+});
+
+describe("task ids in text", () => {
+  it("lists ids in order without repeats", () => {
+    expect(taskIdsIn("see WG-12, then TP-3 and WG-12 again")).toEqual(["WG-12", "TP-3"]);
+  });
+
+  it("returns nothing when no id is named", () => {
+    expect(taskIdsIn("keep the retry threshold at 5, not wg-1 or ABCDE-9")).toEqual([]);
+  });
+
+  it("unions the lookup over every id an item names", () => {
+    const lookup = new Map([["WG", ["widgets"]], ["WS", ["workspace", "widgets"]]]);
+    const resolve = initiativesOfTaskIds((id) => lookup.get(id.split("-")[0] ?? "") ?? []);
+
+    const item = { ids: ["a"], question: "Recommend X (WG-1, WS-2, QQ-3)", recommended: null };
+
+    expect(resolve(item)).toEqual(["widgets", "workspace"]);
+  });
+});
+
+describe("morning source resolving initiatives", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "morning-initiatives");
+  const prefixes = new Map([["WG", ["widgets"]], ["GD", ["garden-diary"]], ["WS", ["workspace"]]]);
+  const resolveInitiatives = initiativesOfTaskIds((id) => prefixes.get(id.split("-")[0] ?? "") ?? []);
+
+  const byKey = () => new Map(store.rows().map((row) => [row.key, row]));
+
+  it("claims a one-initiative row and excludes a human-only mention", async () => {
+    const summary = await extractSource(store, morningSource({ dir, resolveInitiatives }), POLICY);
+
+    const rows = byKey();
+    expect(summary.excluded["human-only-initiative"]).toBe(1);
+    expect(rows.get("morning:2026-10-01/ws12")).toMatchObject({ initiative: "widgets", unclaimed: false, category: "tech_design" });
+    expect(rows.has("morning:2026-10-01/ws13")).toBe(false);
+  });
+
+  it("stores an item naming two initiatives and an item naming none as unclaimed", async () => {
+    await extractSource(store, morningSource({ dir, resolveInitiatives }), POLICY);
+
+    const rows = byKey();
+    for (const id of ["ws14", "ws15"]) {
+      expect(rows.get(`morning:2026-10-01/${id}`)).toMatchObject({ initiative: null, unclaimed: true, category: "tech_design" });
+    }
+  });
+
+  it("keeps every row unclaimed with no resolver", async () => {
+    const summary = await extractSource(store, morningSource({ dir }), POLICY);
+
+    expect(summary.written).toBe(4);
+    expect(store.rows().every((row) => row.initiative === null && row.unclaimed)).toBe(true);
+  });
+
+  it("reports unresolved rows to onCounts", async () => {
+    const seen: MorningDayCounts[] = [];
+
+    await extractSource(store, morningSource({ dir, resolveInitiatives, onCounts: (_, c) => seen.push(c) }), POLICY);
+
+    expect(seen[0]?.unresolved).toBe(2);
+  });
+
+  it("leaves the day unread and reported when the resolver throws", async () => {
+    const failing = () => Promise.reject(new Error("no charter"));
+
+    const read = await morningSource({ dir, resolveInitiatives: failing }).read(new Map());
+
+    expect(read.candidates).toEqual([]);
+    expect(read.watermarks.size).toBe(0);
+    expect(read.errors[0]).toContain("no charter");
   });
 });

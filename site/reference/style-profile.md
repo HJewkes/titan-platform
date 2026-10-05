@@ -124,8 +124,9 @@ section-order = ["builtin", "external", "relative"]
 
 ## What it deliberately does not do
 
-It is a port of codewatch's `@codewatch/profile` with behaviour unchanged, so it keeps the
-original's output exactly, including the quirks listed below. It does not analyze code, run
+It is a port of codewatch's `@codewatch/profile` and keeps the original's output exactly,
+including the quirks listed below, except for the hooks export, which now follows Claude
+Code's settings schema. It does not analyze code, run
 linters, or write files: every exporter returns `{ path, content }` and the caller decides
 where it goes.
 
@@ -140,9 +141,12 @@ where it goes.
 - The ruff exporter maps `structure.functionMaxLines` (a line count) to mccabe
   `max-complexity` (a cyclomatic bound), and it strips digits from extension codes, so
   `E501` selects the whole `E` family.
-- `generateHooksConfig` ignores the profile and always returns two `codewatch diff --fix`
-  hooks. Its `{ hooks: [{ event, matcher, command }] }` shape predates Claude Code's current
-  settings schema.
+- `generateHooksConfig` ignores the profile. It always returns one `PostToolUse` hook on
+  `Write|Edit` that reads `tool_input.file_path` from the hook's stdin JSON with `jq` and
+  runs `codewatch check --fix` on that file, so `jq` and `codewatch` must be on `PATH`.
+  `exportProfile` writes it to `.claude/codewatch-hooks.json`, a fragment rather than a
+  whole settings file. Merge it into `.claude/settings.json` by appending its entries:
+  `jq -s '.[0].hooks.PostToolUse += .[1].hooks.PostToolUse | .[0]' .claude/settings.json .claude/codewatch-hooks.json`.
 - The migration registry is module-global. `registerMigration` affects every caller in the
   process, and `readProfile` does not migrate. Call `migrateProfile` before parsing an older
   profile.
@@ -156,5 +160,5 @@ Ported in TP-131 from codewatch `packages/profile`, with the Handlebars template
 codewatch `skills/code-style-personal/templates`. Generated artifacts were diffed
 byte-for-byte against the original on the codewatch export fixture and a branch-coverage
 profile. Legacy identifiers are kept as they were: the generated headers and hook command
-still say `codewatch`, and profiles may carry the
+still say `codewatch` (the hooks export alone was rewritten in TP-1221), and profiles may carry the
 `https://json.schemastore.org/code-style-profile.json` `$schema` URL.

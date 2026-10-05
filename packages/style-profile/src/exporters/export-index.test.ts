@@ -49,10 +49,10 @@ describe("exportProfile", () => {
     expect(files.some((f) => f.path === ".editorconfig")).toBe(true);
   });
 
-  it("dispatches to hooks exporter", () => {
+  it("writes hooks as a merge fragment that never replaces settings.json", () => {
     const files = exportProfile(makeProfile(), "hooks");
-    expect(files.length).toBeGreaterThan(0);
-    expect(files[0]?.path).toBe(".claude/settings.json");
+    expect(files.map((f) => f.path)).toEqual([".claude/codewatch-hooks.json"]);
+    expect(JSON.parse(files[0]?.content ?? "")).toHaveProperty("hooks.PostToolUse");
   });
 
   it("dispatches to claude-rules exporter", () => {

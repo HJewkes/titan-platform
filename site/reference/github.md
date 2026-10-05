@@ -121,6 +121,11 @@ await port.listReviewComments("o/r", pr.number); // every inline comment, with i
   view until their next response updates it.
 - `listOpenPrs` rows carry `behind: false` and `mergeableState` from the list, not computed
   values. Call `getPr` before deciding anything from them.
+- `revalidateOpenPrs(repo, etag)` is the poller's form of `listOpenPrs`: it sends the caller's
+  ETag and answers `{ notModified: true }` on a 304, which GitHub charges no rate-limit point.
+  A list longer than one page answers with a null `etag`, because one ETag covers one page. A
+  change to `mergeableState` or `behind` alone does not change the ETag. The fake counts each
+  304 in `notModified`.
 - GitHub silently caps `pulls/{n}/files` at 3,000 files. `listPrFiles` compares the list with
   the PR's `changed_files` and throws `FileListTruncatedError` (`expected`, `received`) when the
   list is short. Treat that as "cannot decide", not as an empty list; a protected-path check

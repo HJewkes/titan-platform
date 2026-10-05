@@ -3,6 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { portReads, type PrReads } from "../workflows/pr-snapshot.js";
 import { mergeableState, type MergeableState, type RunState } from "./route-table.js";
 
 export const OBSERVE_STEP = "sh-observe";
@@ -36,9 +37,10 @@ function settledState(pr: z.infer<typeof ObservedResult>): MergeableState {
   return state === "unknown" && pr.behind === true ? "behind" : state;
 }
 
-export function observeRoute(port: GitHubPort, now: () => number): StepRoute {
+/** `reads` is the repo's snapshot when one is wired: routing on a read up to one tick old only delays a write, which re-reads its PR. */
+export function observeRoute(port: GitHubPort, now: () => number, reads: PrReads = portReads(port)): StepRoute {
   return codeRoute(OBSERVE_STEP, now, async (input: PrTarget) => {
-    const { state, merged, draft, headSha, mergeableState, mergeSha, behind } = await port.getPr(input.repo, input.pr);
+    const { state, merged, draft, headSha, mergeableState, mergeSha, behind } = await reads.getPr(input.repo, input.pr);
     return { state, merged, draft, headSha, mergeableState, mergeSha, behind };
   });
 }

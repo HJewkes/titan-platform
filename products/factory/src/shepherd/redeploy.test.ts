@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FACTORY_REPO } from "../build-info.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -151,7 +152,7 @@ describe("sh-redeploy when the deployer cannot start", () => {
     await w.host.runtime.wait(runId);
 
     expect(w.host.runtime.status(runId)!.status).toBe("completed");
-    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, detail: `the deployer did not start: ${failing} refused` } } }]);
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, detail: "the deployer did not start: Error" } } }]);
     expect(stepIdsOf(w, runId)).toEqual(expect.arrayContaining(["sh-unfreeze", "sh-cleanup"]));
   });
 });
@@ -168,6 +169,20 @@ describe("redeploy", () => {
 
   it("spawns nothing when no deployer is wired", () => {
     expect(redeploy(undefined, input)).toMatchObject({ spawned: false, detail: "no deployer wired" });
+  });
+
+  it("records the error class, never a URL or token from the spawn error", () => {
+    const deployer: Deployer = {
+      runningSha: () => "unknown",
+      spawn: () => {
+        throw new Error(LEAKY_MESSAGE);
+      },
+    };
+
+    const result = redeploy(deployer, input);
+
+    expect(result).toMatchObject({ spawned: false, detail: "the deployer did not start: Error" });
+    expectNoLeak(result);
   });
 
   it("reports no spawn when the deployer got no pid", () => {

@@ -6,7 +6,7 @@ import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
-import { LAND_STEPS, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
+import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
@@ -111,7 +111,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
     ...landRoutes(deps),
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
-    codeRoute("rerun", now, (input: RerunInput, signal) => rerunFailed(deps.port, input, timing, signal)),
+    codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),
     postMergeRoute(deps),
   ];
 }
