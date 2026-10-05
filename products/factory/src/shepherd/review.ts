@@ -257,7 +257,10 @@ const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: de
 
 type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean) => Promise<T>;
 
-/** A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner gate decides. */
+/**
+ * A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner
+ * gate decides. A refusal's text goes to the local console only, since the stored reason can reach a public PR.
+ */
 const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWiring | undefined, schema: z.ZodType<I>, body: BrokerStepBody<I, T>) =>
   async (raw: unknown, signal: AbortSignal, repeat = false): Promise<T | NoReview> => {
     const input = schema.parse(raw);
@@ -265,7 +268,9 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
     return body(deps, { ...wiring, dispatch }, input, signal, repeat).catch((error: unknown) => {
       signal.throwIfAborted();
-      return { kind: "none", reason: `the reviewer dispatch was refused: ${failureOf(error)}` };
+      const failure = failureOf(error);
+      console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${error instanceof Error ? error.message : String(error)}`);
+      return { kind: "none", reason: `the reviewer dispatch was refused: ${failure}` };
     });
   };
 

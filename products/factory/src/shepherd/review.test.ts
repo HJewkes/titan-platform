@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -861,14 +862,21 @@ describe("sh-review", () => {
     expect(attempts).toBe(1);
   });
 
-  it("keeps neither a URL nor a token from a refused spawn in the stored reason", async () => {
+  it.each([
+    [new DispatchError("POST https://db.example.invalid/x failed for tok_FAKE0000SECRET"), "DispatchError"],
+    [new DispatchTimeoutError("https://db.example.invalid/x timed out with tok_FAKE0000SECRET"), "DispatchTimeoutError"],
+  ])("stores only the kind of a refused spawn and logs its text to the local console alone (%s)", async (refusal, kind) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const dispatch = fakeDispatch();
-    dispatch.spawn = async () => Promise.reject(new Error("POST https://db.example.invalid/x failed for tok_FAKE0000SECRET"));
+    dispatch.spawn = async () => Promise.reject(refusal);
 
     const { result } = await shReview(dispatch);
+    const logged = warn.mock.calls.map(([line]) => line);
+    warn.mockRestore();
 
-    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
+    expect(result).toEqual({ kind: "none", reason: `the reviewer dispatch was refused: ${kind}` });
     expect(JSON.stringify(result)).not.toMatch(/db\.example\.invalid|tok_FAKE0000SECRET/);
+    expect(logged).toContain(`shepherd: the reviewer dispatch was refused (${kind}): ${refusal.message}`);
   });
 
   describe("a broker whose machine guard refuses the spawn", () => {
