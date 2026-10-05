@@ -348,14 +348,19 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
+/** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
+export const SHEPHERD_COMMAND_MAP = {
+  "shepherd.register": registerCommand,
+  "shepherd.status": statusCommand,
+  "shepherd.list": listCommand,
+  "shepherd.timeline": timelineCommand,
+  "shepherd.hold": holdCommand,
+  "shepherd.release": releaseCommand,
+  "shepherd.merge": mergeCommand,
+  "shepherd.resync": resyncCommand,
+};
+
+export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;
+
 /** Gate resolution is deliberately absent: it stays the local `titan-factory gate resolve`, never a network call. */
-export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = [
-  registerCommand,
-  statusCommand,
-  listCommand,
-  timelineCommand,
-  holdCommand,
-  releaseCommand,
-  mergeCommand,
-  resyncCommand,
-];
+export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = Object.values(SHEPHERD_COMMAND_MAP);
