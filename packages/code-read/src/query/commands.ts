@@ -2,6 +2,7 @@ import { CODE_READ_API_VERSION, type CommandArgs, type CommandName, type Command
 import { getFinding } from "./finding-get.js";
 import { listFindings } from "./findings-list.js";
 import { getHierarchy } from "./hierarchy.js";
+import { listHotspots } from "./hotspots.js";
 import { getNeighbors } from "./neighbors.js";
 import { getNode } from "./node-get.js";
 import { resolveNode } from "./resolve.js";
@@ -40,4 +41,5 @@ export const QUERIES: { [N in CommandName]: QueryFn<N> } = {
   "findings.list": listFindings,
   "finding.get": getFinding,
   "node.neighbors": getNeighbors,
+  "hotspots.list": listHotspots,
 };

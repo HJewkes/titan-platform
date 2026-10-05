@@ -437,9 +437,12 @@
     {
       "id": "code-read-query-no-code-graph",
       "type": "forbid-import",
-      "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; ./query receives the catalogue through buildReadModel instead.",
+      "$comment": "code-graph's root pulls in ts-morph, tree-sitter, and SQLite; ./query receives the catalogue through buildReadModel instead. The one exception is the browser-safe @titan-design/code-graph/analysis subpath.",
       "from": "packages/code-read/src/query/**",
-      "to": "packages/code-graph/**"
+      "to": "packages/code-graph/**",
+      "except": [
+        "packages/code-graph/src/analysis/browser.ts"
+      ]
     },
     {
       "id": "max-file-loc",
