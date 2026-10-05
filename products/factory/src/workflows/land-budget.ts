@@ -51,3 +51,18 @@ export function stuckBehindReason(bound: UpdateBound, headSha: string, readAt: n
   const time = elapsed === undefined ? "" : ` over ${Math.round(elapsed / 60_000)} min (budget ${UPDATE_BUDGET_MS / 60_000} min)`;
   return `still behind its base after ${bound.sinceGate} updates${time}, heads ${heads}`;
 }
+
+/**
+ * How long a strict behind head waits on a required check that has not reported at all, from the head's first `ci-wait`
+ * read. A workflow that exists only on the base never reports on the old head, and only the update starts it.
+ */
+export const MISSING_CHECK_GRACE_MS = 10 * 60_000;
+
+/** When each head was first read by `ci-wait`; an in-process map, so a restarted step grants a fresh grace. */
+export type FirstReads = Map<string, number>;
+
+/** True once the head has been read for at least `graceMs`; the first read of a head starts its clock. */
+export function missingCheckGraceSpent(firstReads: FirstReads, headKey: string, now: number, graceMs: number): boolean {
+  if (!firstReads.has(headKey)) firstReads.set(headKey, now);
+  return now - firstReads.get(headKey)! >= graceMs;
+}
