@@ -222,7 +222,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result } = await reviewWith(scene);
 
-    expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
+    expect(result(REVIEW)).toMatchObject({ kind: "none", reason: "the reviewer dispatch was refused: ReviewCheckoutUnusable" });
     expect(scene.calls()).toEqual(["agent ls --json"]);
   });
 
@@ -231,7 +231,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result } = await reviewWith(scene);
 
-    expect(result(REVIEW)).toMatchObject({ kind: "none", reason: expect.stringContaining(`no checkout path is configured for ${REPO}`) });
+    expect(result(REVIEW)).toMatchObject({ kind: "none", reason: "the reviewer dispatch was refused: ReviewCheckoutUnusable" });
     expect(scene.calls()).toEqual(["agent ls --json"]);
   });
 

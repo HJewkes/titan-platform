@@ -1,5 +1,5 @@
 import type { TokenCounts } from "@titan-design/agent-protocol";
-import type { NormalizedNativeExtension } from "./normalized.js";
+import type { CacheWriteSplit, NormalizedNativeExtension } from "./normalized.js";
 import { asObject, str, type Json } from "./text.js";
 
 export interface ClaudeTextPart {
@@ -55,6 +55,15 @@ export function tokenCounts(usage: Json): TokenCounts {
   const output = count(usage.output_tokens);
   const input = directInput === null || cachedInput === null || cacheWriteInput === null ? null : directInput + cachedInput + cacheWriteInput;
   return { input, output, cachedInput, cacheWriteInput, reasoningOutput: null, total: input === null || output === null ? null : input + output };
+}
+
+/** Older transcripts carry only `cache_creation_input_tokens`, with no `cache_creation` object. */
+export function cacheWriteSplit(usage: Json): CacheWriteSplit | null {
+  const creation = asObject(usage.cache_creation);
+  const ttl5m = count(creation?.ephemeral_5m_input_tokens);
+  const ttl1h = count(creation?.ephemeral_1h_input_tokens);
+  if (ttl5m === null && ttl1h === null) return null;
+  return { ttl5m: ttl5m ?? 0, ttl1h: ttl1h ?? 0 };
 }
 
 export function booleanOrNull(value: unknown): boolean | null {

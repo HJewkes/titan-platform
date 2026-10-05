@@ -5,7 +5,7 @@ when asked, into a queryable graph. It searches that graph, clusters its recurri
 and serves all of that over a CLI, MCP, and HTTP from one command registry. It is the first product on the platform, and it exists as
 much to prove the DAG end to end as to be useful.
 
-It composes ten packages and is about a thousand lines of its own code. It lives at
+It is a thin composition over the `@titan-design/*` packages. It lives at
 `products/session-miner` and is private, so run it from a checkout.
 
 ## Run it
@@ -16,7 +16,8 @@ The first half of this page is the usage guide. The second half, from
 ### Prerequisites and build
 
 Node 20 or newer and pnpm 9. The product is private and is not on npm, so run it from a
-checkout. Nothing needs a network or a model.
+checkout. Nothing needs a model, and nothing needs a network except `insights blocked-flow`,
+which asks GitHub for PR states through `gh` unless you pass `--pulls <file>`.
 
 ```sh
 git clone https://github.com/HJewkes/titan-platform
@@ -44,11 +45,12 @@ titan-miner playbook add "Never force-push main" --negative --session <session-i
 titan-miner playbook recall "release job npm" -n 5
 titan-miner playbook reflect <session-id>    # renders the diary; applies nothing
 titan-miner playbook status
+titan-miner insights cache-ttl --since 2026-09-01   # one of six questions; see Insights
 titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on loopback
 titan-miner mcp                              # MCP over stdio
 ```
 
-Five options go before the command and apply to all of them:
+Six options go before the command and apply to all of them:
 
 | Option | Environment | Default |
 | --- | --- | --- |
@@ -56,14 +58,41 @@ Five options go before the command and apply to all of them:
 | `--corpus <dir>` | `TITAN_MINER_CORPUS` | `~/.claude/projects` |
 | `--codex-home <dir>` | `TITAN_MINER_CODEX_HOME` | unset; Codex sessions are not indexed |
 | `--namespace <name>` | `TITAN_MINER_NAMESPACE` | the hostname, when a Codex home is set |
+| `--graph <file>` | `TITAN_MINER_GRAPH` | unset; the miner uses `index.sqlite3` in the state directory |
 | `--json` | | off; prints the `{ ok, data }` envelope the HTTP and MCP surfaces return |
 
 Pick a stable `--namespace` for each host and account. Moving a Codex source must not rename
 its conversations (`products/session-miner/src/config.ts`).
 
+`--graph` points the miner at a session graph another owner writes, such as active-work's.
+The miner opens it read-only: it runs no migrations and reconciles no prices, because that
+schema is the owner's to maintain. Use it to search or ask insights of that graph, not to
+`refresh` it.
+
+### Insights
+
+`insights <question>` answers one cost or flow question and ends its text with the
+list-price caveat. Each question is also an MCP tool, `miner__insights__<question>`.
+
+| Question | What it answers | Own inputs |
+| --- | --- | --- |
+| `spend-by-action` | where each role's spend goes by turn action, and how much is mechanical | `--mechanical <class>` |
+| `handoff-threshold` | when each role should hand over: boot cost, fill growth, best context threshold K | `--k`, `--reviewer-prs`, `--broker-log` |
+| `cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
+| `wake-economics` | what wakes a coordinator, and the requests and cost of each wake episode | `--episode-role <role>` |
+| `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
+| `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
+
+The first four read the session graph and take the shared filters `--session`,
+`--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow` and `liveness` read
+agent-chat's files instead (`TITAN_MINER_EVENTS_DB`, default `~/.agent-chat/events.db`, and
+`TITAN_MINER_BROKER_LOG`, default `~/.agent-chat/broker.log`), so they take only `--since`
+and `--until` and narrow with `--seat`. Options that name a local file (`--broker-log`,
+`--transcript`, `--journal`, `--pulls`) are accepted only on the CLI.
+
 ### Where state lives
 
-Everything is in the state directory: `index.sqlite3` holds the session graph, the Drain
+Unless `--graph` names another file, everything is in the state directory: `index.sqlite3` holds the session graph, the Drain
 snapshot and the playbook. While `serve` runs, `daemon.pid` and `daemon.meta.json` sit
 beside it. `serve` logs to stderr. The miner only reads the corpus; the index stores byte
 ranges, not transcript text.

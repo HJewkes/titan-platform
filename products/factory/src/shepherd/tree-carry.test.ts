@@ -136,6 +136,19 @@ describe("carry", { timeout: 30_000 }, () => {
     expect(await probe(h1, h2, join(root, "missing"))).toMatchObject({ equal: false, reason: expect.stringContaining("git fetch") });
   });
 
+  it("keeps neither a URL nor a token from git's stderr or a thrown error in the reason", async () => {
+    const leaky = "https://db.example.invalid/x tok_FAKE0000SECRET";
+    const input = { repo: REPO, baseRef: "main", fromHead: "a".repeat(40), head: "b".repeat(40) };
+    const failing = async () => ({ code: 128, stdout: "", stderr: `fatal: ${leaky}` });
+    const throwing = async () => Promise.reject(new Error(leaky));
+
+    const refused = await carry(input, { stateDir, git: failing });
+    const thrown = await carry(input, { stateDir, git: throwing });
+
+    expect(refused).toEqual({ equal: false, reason: "git init exited 128" });
+    expect(thrown).toEqual({ equal: false, reason: "carry probe failed: Error" });
+  });
+
   it("answers not equal for malformed input without touching git", async () => {
     const result = await carry({ repo: "../escape", baseRef: "--upload-pack=x", fromHead: "abc", head: "def" }, { stateDir });
 
