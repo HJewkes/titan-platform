@@ -1,4 +1,5 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
@@ -22,27 +23,30 @@ export interface AwaitVerdictTiming {
   detachGraceMs?: number;
 }
 
+const fail = (message: string): string => `sh-await-verdict: ${message}`;
+const text = (name: string) => z.string({ error: fail(`${name} must be a non-empty string`) }).min(1, fail(`${name} must be a non-empty string`));
+const epochMs = (name: string) => z.number({ error: fail(`${name} must be epoch milliseconds`) }).refine(Number.isFinite, fail(`${name} must be epoch milliseconds`));
+const positiveInt = fail("pr must be a positive integer");
+
+/** Keys run in the order the checks are reported, so the first issue names the same field the hand-written checks did. */
+const AwaitVerdictInputSchema = z.object({
+  pr: z.number({ error: positiveInt }).refine((pr) => Number.isSafeInteger(pr) && pr >= 1, positiveInt),
+  dispatchedAt: epochMs("dispatchedAt"),
+  startedAt: epochMs("startedAt").optional(),
+  head: text("head").regex(HEAD, fail("head must be 40 lowercase hex characters")),
+  repo: text("repo"),
+  reviewerAgentId: text("reviewerAgentId"),
+  reviewerSessionId: text("reviewerSessionId"),
+});
+
+/** A step input that is not an object reads as one with no fields, so it fails on its first required field. */
+const asObject = (raw: unknown): object => (typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {});
+
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
-  const input = (raw ?? {}) as Record<string, unknown>;
-  const text = (value: unknown, name: string): string => {
-    if (typeof value !== "string" || value === "") throw new Error(`sh-await-verdict: ${name} must be a non-empty string`);
-    return value;
-  };
-  const { pr, dispatchedAt, startedAt } = input;
-  if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
-  if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
-  if (startedAt !== undefined && (typeof startedAt !== "number" || !Number.isFinite(startedAt))) throw new Error("sh-await-verdict: startedAt must be epoch milliseconds");
-  const head = text(input.head, "head");
-  if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
-  return {
-    repo: text(input.repo, "repo"),
-    pr,
-    head,
-    reviewerAgentId: text(input.reviewerAgentId, "reviewerAgentId"),
-    reviewerSessionId: text(input.reviewerSessionId, "reviewerSessionId"),
-    dispatchedAt,
-    ...(startedAt !== undefined && { startedAt }),
-  };
+  const parsed = AwaitVerdictInputSchema.safeParse(asObject(raw));
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message);
+  const { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, startedAt } = parsed.data;
+  return { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, ...(startedAt !== undefined && { startedAt }) };
 }
 
 function boundedFindings(text: string): string {
