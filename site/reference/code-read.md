@@ -124,6 +124,11 @@ open a daemon; `daemon` does.
   than an error. A file younger than the window is discounted by its age, so a freshly
   indexed repository can score every file 0 at file grain. The symbol grain applies no
   recency.
+- `overview.get` cannot measure hidden coupling yet: co-change pairs are not stored, so that
+  signal has `measured: false` and a penalty of 0. Without a `baseline`, every open finding
+  counts as carried over, so `each_carry` weighs them, not `each_new`. `combined` is 100
+  minus the penalties and is only returned when asked for; read `signals` first, because one
+  number hides which signal moved.
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 

@@ -428,6 +428,8 @@ are pure functions over rows the caller has already read, so they run in a brows
 - `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
+  Each component has a stable `key` and its `cap`. An optional second argument weighs
+  them the caller's way; `DEFAULT_HEALTH_WEIGHTS` is the dashboard's.
 
 ### Context dossier and bundle
 

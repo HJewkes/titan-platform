@@ -24,6 +24,10 @@ export interface CiSnapshot {
   waitingOn?: string[];
   /** On a `behind` read: the PR's own required checks are green at this head, so it can be reviewed before any update. */
   checksGreen?: boolean;
+  /** On a `behind` read in a repo that does not require up-to-date heads: green, but the base moved after its CI started. */
+  baseMoved?: boolean;
+  /** When `ci-wait` returned this read, so the update budget can tell how long the base has been chased. */
+  readAt?: number;
 }
 
 export interface CiInput {
@@ -55,13 +59,20 @@ async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads): Pro
   if (pr.state === "closed") return { ...base, verdict: "closed" };
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
   const findings = findingsAt(input, pr.headSha, runs);
-  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind", ...(findings.length === 0 && !pr.draft && { checksGreen: true }) };
+  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft);
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
   const verdict = await settledVerdict(port, input, pr);
-  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
+  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };
   return { ...base, verdict };
+}
+
+/** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */
+function behindVerdict(base: Pick<CiSnapshot, "headSha" | "mergeableState">, findings: CheckFinding[], draft: boolean): CiSnapshot {
+  const running = findings.filter((finding) => finding.kind !== "failed");
+  if (running.length > 0) return { ...base, verdict: "pending", waitingOn: running.map(findingName) };
+  return { ...base, verdict: "behind", ...(findings.length === 0 && !draft && { checksGreen: true }) };
 }
 
 /** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */

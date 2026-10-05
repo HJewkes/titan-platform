@@ -11,6 +11,7 @@ export { AGENT_COMMANDS, CODE_READ_API_VERSION, COMMAND_NAMES, CONTRACT, seriali
 export { HIERARCHY_ROW_CAP } from "./contract-nodes.js";
 export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
 export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
+export { AttentionSignal, LookFirstRow, OVERVIEW_ROWS_MAX, ReadingOrderRow } from "./contract-overview.js";
 export {
   Capabilities,
   MetricDescriptor,
@@ -48,6 +49,7 @@ export { getNode } from "./node-get.js";
 export { resolveNode } from "./resolve.js";
 export { listFindings } from "./findings-list.js";
 export { listHotspots } from "./hotspots.js";
+export { getOverview } from "./overview.js";
 export { RELATED_CAP, getFinding } from "./finding-get.js";
 export { getNeighbors } from "./neighbors.js";
 export { excessOf } from "./finding-rows.js";

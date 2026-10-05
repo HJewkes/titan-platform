@@ -368,6 +368,28 @@ describe("readCi on a blocked head", () => {
   });
 });
 
+describe("land in a repo that does not require up-to-date heads", () => {
+  it("asks for approval without updating, refreshes once after it, and merges though the base keeps moving", async () => {
+    const scenario = landScenario();
+    scenario.fake.rules.strict = false;
+    const keepGreen = scenario.fake.onGetPr!;
+    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    const updatesBeforeApproval = scenario.fake.effects.updateBranch;
+
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(updatesBeforeApproval).toBe(0);
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged" });
+    expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
+  });
+});
+
 describe("readCi on a behind head in a strict repo", () => {
   async function behindSnapshot(runs: CheckRun[], draft = false) {
     const fake = fakeGitHub({ repo: "octo/demo" });
@@ -380,11 +402,21 @@ describe("readCi on a behind head in a strict repo", () => {
     expect(await behindSnapshot([successRun("validate", 1), successRun("dag-check", 2)])).toMatchObject({ verdict: "behind", checksGreen: true });
   });
 
-  it("leaves the mark off while a required check is missing or red, or the PR is a draft", async () => {
-    const red = [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)];
-    const snapshots = [await behindSnapshot([successRun("validate", 1)]), await behindSnapshot(red), await behindSnapshot([successRun("validate", 1), successRun("dag-check", 2)], true)];
+  it("waits rather than reads behind while a required check is running or missing, so an update never restarts unsettled CI", async () => {
+    const running = [{ ...successRun("validate", 1), status: "in_progress", conclusion: null }, successRun("dag-check", 2)];
+    const snapshots = [await behindSnapshot(running), await behindSnapshot([successRun("validate", 1)])];
 
-    expect(snapshots.map((snapshot) => [snapshot.verdict, snapshot.checksGreen])).toEqual([["behind", undefined], ["behind", undefined], ["behind", undefined]]);
+    expect(snapshots).toMatchObject([
+      { verdict: "pending", waitingOn: ["validate"] },
+      { verdict: "pending", waitingOn: ["dag-check"] },
+    ]);
+  });
+
+  it("leaves the mark off when a required check settled red, or the PR is a draft", async () => {
+    const red = [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)];
+    const snapshots = [await behindSnapshot(red), await behindSnapshot([successRun("validate", 1), successRun("dag-check", 2)], true)];
+
+    expect(snapshots.map((snapshot) => [snapshot.verdict, snapshot.checksGreen])).toEqual([["behind", undefined], ["behind", undefined]]);
   });
 });
 

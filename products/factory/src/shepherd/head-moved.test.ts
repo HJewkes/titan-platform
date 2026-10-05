@@ -116,7 +116,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     await vi.waitFor(() => expect(reviewed).toEqual([SENT_BACK, GATED, MOVED]));
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
     expect(host.pendingGates().filter((pending) => pending.runId === runId)).toEqual([]);
@@ -129,7 +129,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services, { dryRun: true });
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
     expect(host.runtime.status(runId)?.status).toBe("paused");
   });
@@ -167,7 +167,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge", 1), from: MOVED, to: MOVED_AGAIN }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge", 1), from: MOVED, to: MOVED_AGAIN, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("cancelled");
   });
 
@@ -248,7 +248,7 @@ describe("a pending sh-sent-back gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-sent-back"), from: SENT_BACK, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-sent-back"), from: SENT_BACK, to: MOVED, condition: "head-moved" }]);
     await gateOpened(host, gateId(runId, "approve-merge"));
     expect(reviewed).toEqual([SENT_BACK, MOVED]);
     expect(Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId)).toContain("await-new-head:0");

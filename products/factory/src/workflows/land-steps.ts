@@ -21,9 +21,11 @@ export const CiSnapshotResult = z.looseObject({
   mergeSha: z.string().nullish(),
   failing: z.array(FailingCheck).optional(),
   checksGreen: z.boolean().optional(),
+  baseMoved: z.boolean().optional(),
+  readAt: z.number().optional(),
 });
 
-export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional() });
+export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), at: z.number().optional() });
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 

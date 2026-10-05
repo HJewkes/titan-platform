@@ -3,9 +3,10 @@ import { Capabilities, MetricDescriptor, RuleSummary, SnapshotInfo } from "./sch
 import { FINDING_GET, FINDINGS_LIST, NODE_NEIGHBORS } from "./contract-findings.js";
 import { HOTSPOTS_LIST } from "./contract-hotspots.js";
 import { HIERARCHY_GET, NODE_GET, NODE_RESOLVE } from "./contract-nodes.js";
+import { OVERVIEW_GET } from "./contract-overview.js";
 
 /** The read API's semver. Bump it whenever `CONTRACT` changes; `contract.lock.json` records the last one. */
-export const CODE_READ_API_VERSION = "0.1.3";
+export const CODE_READ_API_VERSION = "0.1.4";
 
 export interface CommandContract<Args extends ZodType = ZodType, Result extends ZodType = ZodType> {
   description: string;
@@ -52,6 +53,7 @@ export const CONTRACT = {
   "finding.get": FINDING_GET,
   "node.neighbors": NODE_NEIGHBORS,
   "hotspots.list": HOTSPOTS_LIST,
+  "overview.get": OVERVIEW_GET,
 } as const satisfies Record<string, CommandContract>;
 
 export type CommandName = keyof typeof CONTRACT;
