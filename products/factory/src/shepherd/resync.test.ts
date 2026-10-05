@@ -265,6 +265,26 @@ describe("resyncShepherd when superseding moved gates throws", () => {
   });
 });
 
+describe("resyncShepherd when a cancel fails for a reason other than a lease", () => {
+  it("keeps the run held for the recheck before adoption and reports the cause", async () => {
+    const w = world();
+    const runId = await gatedRun(w, 1);
+    merge(w.fake, 1);
+    const routes = w.freshRoutes();
+    const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
+    cleanups.push(() => host.close());
+    vi.spyOn(host.runtime, "cancel").mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    const report = await resyncShepherd(host, routes.shepherd!);
+
+    expect(report.ended).toEqual([]);
+    expect(report.held).toEqual([runId]);
+    expect(report.cancelErrors).toEqual([{ runId, cause: "database unavailable" }]);
+  });
+});
+
 describe("endRunsGoneElsewhere while the run moves on", () => {
   it("keeps a run whose own merge is recorded while its PR read is in flight", async () => {
     const w = world({ workflows: [approveThenMerge()] });

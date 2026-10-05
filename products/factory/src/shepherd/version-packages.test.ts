@@ -63,6 +63,18 @@ describe("sweepVersionPackages", () => {
     expect(store.byRun(last.runId)?.branch).toBeNull();
   });
 
+  it("notes a repo whose Version Packages PR could not be looked up, with the lookup's error, and registers nothing", async () => {
+    const w = await watchedRepo();
+    const services = w.routes.shepherd!;
+    const failing = { ...services, port: { ...services.port, findPr: async () => Promise.reject(new Error(`HTTP 502 ${"x".repeat(300)}`)) } };
+
+    const notes = await sweepVersionPackages(w.host, failing, () => NOW);
+
+    expect(notes).toEqual([{ repo: REPO, error: expect.stringMatching(/^HTTP 502 x+$/) }]);
+    expect(notes[0]!.error!.length).toBeLessThanOrEqual(200);
+    expect(shepherdRuns(w.host)).toHaveLength(1);
+  });
+
   it("looks only in repos Shepherd already watches", async () => {
     const fixture = shepherdFixture({ frozen: true });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });

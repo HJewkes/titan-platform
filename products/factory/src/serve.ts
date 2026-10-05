@@ -170,16 +170,18 @@ async function adopt(host: FactoryHost, services: ShepherdServices | undefined, 
   if (ids.length > 0) log.info({ runs: ids }, "adopted runs");
 }
 
-/** The held runs whose PR could not be read are returned, so adoption leaves them for the next tick instead of failing open. */
+/** The held runs whose PR could not be read, or whose cancel failed, are returned, so adoption leaves them for the next tick instead of failing open. */
 async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices, held: Set<string>, log: Logger): Promise<Set<string>> {
-  const { ended, unreadable } = await recheckHeld(host, services, held);
+  const { ended, unreadable, uncancelled } = await recheckHeld(host, services, held);
   for (const run of ended) log.info({ ...run }, "ended a held run whose PR left Shepherd before adoption");
   for (const [runId, cause] of unreadable) log.warn({ runId, cause }, "left a held run unadopted: its PR could not be read");
-  return new Set(unreadable.keys());
+  for (const [runId, cause] of uncancelled) log.warn({ runId, cause }, "left a held run unadopted: its PR left Shepherd but cancelling it failed");
+  return new Set([...unreadable.keys(), ...uncancelled.keys()]);
 }
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const ended of await endRunsGoneElsewhere(host, services)) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+  const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
+  for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
 }
 
@@ -189,6 +191,7 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
     const report = await resyncShepherd(host, services);
     for (const runId of report.held) held.add(runId);
     for (const ended of report.ended) log.info({ ...ended }, "resync ended a run whose PR left Shepherd");
+    for (const failed of report.cancelErrors) log.warn({ ...failed }, "resync could not cancel a run whose PR left Shepherd");
     if (report.supersedeError) log.error({ err: report.supersedeError }, "shepherd resync could not supersede moved gates");
     log.info({ ended: report.ended.length, orphanGates: report.orphanGates.length, superseded: report.superseded.length }, "shepherd resync at start");
   } catch (err) {
