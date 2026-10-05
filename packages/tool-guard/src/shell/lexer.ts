@@ -1,5 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
-import { type ArithTrials, cachedEnd, chargeTrial, newTrials } from "./arith-trials.js";
+import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -85,13 +85,13 @@ const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SUBSCRIPT_ACTIVE = "\\'\"`$";
 
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
-export function tokenize(src: string): Token[] {
-  const s = newState(src, 0, false);
+export function tokenize(src: string, trials = newTrials(src)): Token[] {
+  const s = newState(src, 0, false, trials);
   lex(s);
   return s.tokens;
 }
 
-function newState(src: string, i: number, nested: boolean, trials = newTrials(src)): LexState {
+function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
   return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
 }
 
@@ -154,7 +154,7 @@ function arithmeticEnd(s: LexState): number {
     lex(trial);
     reached = trial.i;
   } catch (error) {
-    if (!(error instanceof ParseError) || s.trials.budget < 0) throw error;
+    if (!(error instanceof ParseError) || spent(s.trials)) throw error;
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
   return reached < s.src.length && s.src[reached + 1] === ")" ? reached : -1;
@@ -216,7 +216,7 @@ function readHeredocBodies(s: LexState): void {
       body += `${line}\n`;
     }
     token.body = body;
-    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length);
+    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length, sameSpend(s.trials));
   }
   s.heredocs = [];
 }
@@ -266,7 +266,7 @@ function readDouble(s: LexState): void {
 
 function readBacktick(s: LexState): void {
   const w = markComputed(ensureWord(s));
-  s.i = scanBacktick(s.src, s.i, w.subs) + 1;
+  s.i = scanBacktick(s.src, s.i, w.subs, s.trials) + 1;
 }
 
 function markComputed(w: WordToken): WordToken {
@@ -336,16 +336,16 @@ export function scanSubstitutions(src: string, from: number, to: number, trials 
       lex(inner);
       found.push(inner.tokens);
       j = inner.i;
-    } else if (c === "`") j = scanBacktick(src, j, found);
+    } else if (c === "`") j = scanBacktick(src, j, found, trials);
   }
   return found;
 }
 
-function scanBacktick(src: string, start: number, found: Token[][]): number {
+function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {
   let end = start + 1;
   while (end < src.length && src[end] !== "`") end += src[end] === "\\" ? 2 : 1;
   if (end >= src.length) throw new ParseError("unterminated `");
-  found.push(tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1")));
+  found.push(tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1"), sameSpend(trials)));
   return end;
 }
 

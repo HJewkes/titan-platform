@@ -46,6 +46,9 @@ describe("a shift operator inside an arithmetic context", () => {
 describe("the cost of finding where an arithmetic command ends", () => {
   const opened = (depth: number) => "(( $( ".repeat(depth);
   const nested = (depth: number) => `${opened(depth)}1${" ) ))".repeat(depth)}; ${PUSH}`;
+  const throughHeredocs = (depth: number): string =>
+    depth === 0 ? "1" : `$( (( $(cat <<E${depth}\n${throughHeredocs(depth - 1)}\nE${depth}\n) )) )`;
+  const longSubshells = `((((((cd x; ${"echo a; ".repeat(2000)}) ) ) ) ) )`;
 
   function lexMillis(command: string): number {
     const start = performance.now();
@@ -62,12 +65,18 @@ describe("the cost of finding where an arithmetic command ends", () => {
     ["20 closed levels of (( $(", nested(20)],
     ["30 unclosed levels of (( $(", opened(30)],
     ["a run of 20000 (", "(".repeat(20000)],
+    ["20 levels of (( $( through heredoc bodies", throughHeredocs(20)],
+    ["40 levels of (( $( through heredoc bodies", throughHeredocs(40)],
   ])("stays fast for %s", (_how, command) => {
     expect(lexMillis(command)).toBeLessThan(500);
   });
 
   it("refuses to lex deep nesting rather than spend the budget", () => {
     expect(() => tokenize(opened(30))).toThrow(ParseError);
+  });
+
+  it("still reads 16 KB of commands inside subshells that open with ((", () => {
+    expect(() => tokenize(longSubshells)).not.toThrow();
   });
 
   it("still reads a few nested levels", () => {
