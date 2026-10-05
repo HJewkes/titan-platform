@@ -8,7 +8,8 @@ import { greenAfterRed, type FreezeStore } from "./freeze.js";
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, seatCheckout, tailBytes } from "./wake.js";
+import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
+import { seatCheckout } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = 60 * 60_000;
