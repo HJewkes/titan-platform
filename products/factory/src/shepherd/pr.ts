@@ -289,7 +289,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
 }
 
 function endedOutcome({ observed, headSha }: Routed): LandOutcome {
-  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha ?? "" };
+  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha };
   if (observed.runState === "closed-elsewhere") return { kind: "stopped", reason: "closed", headSha, detail: "the pull request was closed outside Shepherd" };
   return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
 }
@@ -339,7 +339,8 @@ async function narrowToRegistration(run: ShepherdRun): Promise<void> {
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
-  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha }, after, run.policy.fixer);
+  // The main-CI read answers `none` for an empty merge sha and hands that run to the owner.
+  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "" }, after, run.policy.fixer);
   return merged;
 }
 

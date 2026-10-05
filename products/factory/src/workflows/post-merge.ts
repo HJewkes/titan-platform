@@ -18,7 +18,7 @@ const KEPT_CHARS = 64 * 1024;
 export interface PostMergeInput {
   repo: RepoSlug;
   pr: number;
-  mergeSha: string;
+  mergeSha: string | null;
 }
 
 export interface ChoreOptions {
@@ -127,11 +127,19 @@ export function postMergeRoute(deps: PostMergeDeps): StepRoute {
 async function runPostMerge(deps: PostMergeDeps, input: PostMergeInput): Promise<object> {
   const config = deps.postMerge;
   if (!config) return { skipped: NO_COMMAND };
-  const env = { ...process.env, LAND_PR_REPO: input.repo, LAND_PR_NUMBER: String(input.pr), LAND_PR_MERGE_SHA: input.mergeSha };
+  const env = choreEnv(input);
   const options = { ...(config.cwd ? { cwd: config.cwd } : {}), timeoutMs: config.timeoutMs ?? POST_MERGE_TIMEOUT_MS, env };
   const result = await (deps.runChore ?? execChore)(config.argv, options);
   const { exitCode, signal, timedOut, error } = result;
   return { exitCode, signal, timedOut, stdoutTail: tail(result.stdout), stderrTail: tail(result.stderr), ...(error ? { error: tail(error) } : {}) };
+}
+
+/** An unknown merge sha leaves `LAND_PR_MERGE_SHA` unset, inherited value included, so a chore never reads a stale one. */
+function choreEnv(input: PostMergeInput): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, LAND_PR_REPO: input.repo, LAND_PR_NUMBER: String(input.pr) };
+  if (input.mergeSha === null) delete env.LAND_PR_MERGE_SHA;
+  else env.LAND_PR_MERGE_SHA = input.mergeSha;
+  return env;
 }
 
 /** Redacted before slicing, so a cut never leaves half a token that no longer matches the pattern. */

@@ -1,4 +1,4 @@
-import type { WorkflowRun } from "@titan-design/workflow";
+import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
@@ -30,6 +30,8 @@ interface GoneOptions {
   onHeld?: (runId: string) => void;
   /** Called for a run whose PR could not be read; the run is left alone and the caller decides what that means for it. */
   onUnreadable?: (runId: string, cause: string) => void;
+  /** Called for a run the runtime refused to cancel for any reason but a lease held elsewhere; the run stays live. Absent, the error is thrown. */
+  onCancelFailed?: (runId: string, cause: string) => void;
 }
 
 const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
@@ -78,13 +80,18 @@ function candidateRuns(host: FactoryHost, scope: GoneScope): WorkflowRun[] {
   return runs.filter((run) => run.workflowName === SHEPHERD_WORKFLOW && endable(run));
 }
 
-/** A run another live runtime still leases cannot be cancelled from here; it stays for the next sweep. */
-function tryCancel(host: FactoryHost, runId: string, reason: string): boolean {
+type CancelOutcome = "cancelled" | "held" | "failed";
+
+/** A run another live runtime still leases cannot be cancelled from here and stays for the next sweep; any other refusal is reported. */
+function tryCancel(host: FactoryHost, runId: string, reason: string, options: GoneOptions): CancelOutcome {
   try {
     host.runtime.cancel(runId, reason);
-    return true;
-  } catch {
-    return false;
+    return "cancelled";
+  } catch (error) {
+    if (error instanceof WorkflowNotOwnedError) return "held";
+    if (!options.onCancelFailed) throw error;
+    options.onCancelFailed(runId, causeOf(error));
+    return "failed";
   }
 }
 
@@ -105,8 +112,9 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
       continue;
     }
     if (reason === undefined || !endable(host.runtime.status(runId))) continue;
-    if (options.dryRun || tryCancel(host, runId, reason)) ended.push({ runId, reason });
-    else options.onHeld?.(runId);
+    const outcome = options.dryRun ? "cancelled" : tryCancel(host, runId, reason, options);
+    if (outcome === "cancelled") ended.push({ runId, reason });
+    else if (outcome === "held") options.onHeld?.(runId);
   }
   return ended;
 }
