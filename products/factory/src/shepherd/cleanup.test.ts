@@ -288,7 +288,7 @@ describe("sh-cleanup retire", () => {
     expect(gaps.every((gap) => gap >= SH_CLEANUP_RETRY_MS)).toBe(true);
     expect(w.clock.now).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS);
     expect(result.retired).toEqual([]);
-    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: the worktree has unpushed commits`]);
   });
 
   it("keeps a URL and a token in a GitHub or retire error out of the caveats", async () => {
@@ -300,6 +300,29 @@ describe("sh-cleanup retire", () => {
     const result = await w.run();
 
     expect(result.caveats).toEqual(["head ref of #1: Error", `retire ${IMPLEMENTER}: Error`]);
+    expectNoLeak(result);
+  });
+
+  it("names a known retire refusal in fixed words, carrying none of its text", async () => {
+    const refusals = Array.from({ length: 20 }, () => `${LEAKY_MESSAGE}: unpushed commits`);
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0, refusals }] });
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: the worktree has unpushed commits`]);
+    expectNoLeak(result);
+  });
+
+  it("names only the error class when the roster cannot be read while waiting to retire", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+    const firstRoster = w.agents.roster;
+    let reads = 0;
+    w.agents.roster = async () => (reads++ === 0 ? firstRoster() : Promise.reject(new Error(LEAKY_MESSAGE)));
+
+    const result = await w.run();
+
+    expect(w.agents.retires).toEqual([]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
     expectNoLeak(result);
   });
 

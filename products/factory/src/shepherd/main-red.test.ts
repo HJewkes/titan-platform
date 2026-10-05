@@ -142,6 +142,28 @@ describe("sh-file-fix-task", () => {
     expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixTask: null });
   });
 
+  it("names only the error class when active-work never takes the fix task", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const refusing: FixTasks = { ...r.wiring.tasks!, findByTag: async () => Promise.reject(new Error(LEAKY_MESSAGE)) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, tasks: refusing }, red, signal);
+
+    expect(result).toMatchObject({ task: null, detail: "active-work did not take the fix task: Error" });
+    expectNoLeak(result);
+  });
+
+  it("files the notes with only the error class when a failing job's log cannot be read", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, jobLogTail: async () => Promise.reject(new Error(LEAKY_MESSAGE)) } };
+
+    await fileFixTask(deps, r.wiring, red, signal);
+
+    expect(r.added[0]!.fields.notes).toContain("(log unavailable: Error)");
+    expectNoLeak(r.added);
+  });
+
   it("records nothing on a later episode when the episode thaws while the add is in flight", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);

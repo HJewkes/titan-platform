@@ -196,7 +196,7 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
       }
       const refused = await agents.retire(name).then(() => undefined, (error: unknown) => error);
       if (refused === undefined || alreadyGone(refused)) return undefined;
-      last = failureOf(refused);
+      last = retireRefusal(refused);
       nextTry = wait.now() + SH_CLEANUP_RETRY_MS;
     }
     if (wait.clock.expired()) return `retire ${name}: ${last}`;
@@ -219,5 +219,16 @@ async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAg
 
 /** Reads the refusal text only to recognise an agent that is already gone; none of it is stored. */
 const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(error instanceof Error ? error.message : String(error));
+
+/** Fixed words for the refusals an owner triages by, since the refusal's own text names paths. */
+const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
+  [/unpushed/i, "the worktree has unpushed commits"],
+  [/uncommitted|untracked/i, "the worktree has uncommitted changes"],
+];
+
+function retireRefusal(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return KNOWN_REFUSALS.find(([pattern]) => pattern.test(text))?.[1] ?? failureOf(error);
+}
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
