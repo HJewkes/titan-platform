@@ -4,8 +4,9 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, expandWord, lookup, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -96,7 +97,7 @@ function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of normalizeDeclarations(tokens)) {
+  for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
       const cmd = emit(words, redirects, w, token.value);
       w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
@@ -142,7 +143,7 @@ function nestedLists(token: Token): Token[][] {
 }
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
-  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
+  const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
   return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
 }
 
@@ -163,7 +164,7 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
-  if (raw.name === null && raw.args.length === 0) {
+  if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;
   }
@@ -172,7 +173,7 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     return;
   }
   const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  for (const args of xargsRuns(raw, stdin)) runOnce({ ...raw, args }, redirects, w, next, stdin);
+  for (const cmd of xargsCommands(raw, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {

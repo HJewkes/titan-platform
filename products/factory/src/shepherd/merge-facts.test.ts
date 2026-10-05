@@ -425,7 +425,7 @@ describe("the sh-merge-evidence route reads the registered kind", () => {
 
     expect(evidence.merge).not.toHaveProperty("kind");
     expect(evidence.record.decision.outcome).toBe("gate");
-    expect(evidence.record.decision.reason).toContain("the registered kind is unreadable: the shepherd store is not bound");
+    expect(evidence.record.decision.reason).toContain("the registered kind is unreadable: store unreadable: Error");
   });
 });
 
@@ -445,14 +445,75 @@ describe("a fact that cannot be read", () => {
     expect(evidence.record.decision.reason).not.toContain("/internal");
   });
 
-  it("gates a carried MERGE whose registration read throws, and names the store error in the reason", async () => {
-    const failing = { get: () => { throw new Error("database is locked"); } } as unknown as ShepherdStoreRef;
+  it("gates a carried MERGE whose registration read throws, and names only the store error's class, never its text", async () => {
+    const leaky = new TypeError("fetch https://db.example.invalid/store failed: Authorization: Bearer tok_FAKE0000SECRET");
+    const failing = { get: () => { throw leaky; } } as unknown as ShepherdStoreRef;
 
     const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+    const comment = evidenceComment(evidence.record);
 
     expect(evidence.merge).not.toHaveProperty("kind");
     expect(evidence.record.decision.outcome).toBe("gate");
-    expect(evidence.record.decision.reason).toContain("the registered kind is unreadable: database is locked");
+    expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: TypeError"]);
+    for (const text of [evidence.record.decision.reason, comment]) {
+      expect(text).not.toContain("db.example.invalid");
+      expect(text).not.toContain("tok_FAKE0000SECRET");
+    }
+  });
+
+  it("names a fixed word, not the thrown value, when a registration read throws something that is not an Error", () => {
+    const failing = { get: () => { throw "secret-token-value"; } } as unknown as ShepherdStoreRef;
+
+    expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: non-Error" });
+  });
+
+  it("names a plain Error when a thrown error's name is not identifier-shaped", () => {
+    const named = Object.assign(new Error("boom"), { name: "https://leak.example.invalid" });
+    const failing = { get: () => { throw named; } } as unknown as ShepherdStoreRef;
+
+    expect(registeredKind(failing, "run-1")).toEqual({ unread: "the registered kind is unreadable: store unreadable: Error" });
+  });
+
+  it("gates with the fixed class Error, never failing the step or storing the message, when a thrown error's name getter throws", async () => {
+    const hostile = new Error("boom");
+    Object.defineProperty(hostile, "name", { get: () => { throw new Error("getter-secret-message"); } });
+    const failing = { get: () => { throw hostile; } } as unknown as ShepherdStoreRef;
+
+    const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+
+    expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: Error"]);
+    expect(evidence.record.decision.outcome).toBe("gate");
+    for (const text of [evidence.record.decision.reason, evidenceComment(evidence.record)]) expect(text).not.toContain("getter-secret-message");
+  });
+
+  describe("when the thrown value is a Proxy whose type check cannot complete", () => {
+    const hostileProxies: Array<[string, () => unknown]> = [
+      ["a getPrototypeOf trap throws", () => new Proxy(new Error("x"), { getPrototypeOf() { throw new Error("proto-secret"); } })],
+      ["it is revoked", () => { const { proxy, revoke } = Proxy.revocable(new Error("x"), {}); revoke(); return proxy; }],
+    ];
+
+    it.each(hostileProxies)("gates with the fixed class Error, never failing the step or storing text, when %s", async (_case, thrown) => {
+      const failing = { get: () => { throw thrown(); } } as unknown as ShepherdStoreRef;
+
+      const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+
+      expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: Error"]);
+      expect(evidence.record.decision.outcome).toBe("gate");
+      for (const text of [evidence.record.decision.reason, evidenceComment(evidence.record)]) expect(text).not.toContain("proto-secret");
+    });
+  });
+
+  it("puts no non-identifier string in unreadFacts when a thrown error's name getter answers differently on each read", () => {
+    const answers = ["TypeError", "https://leak/secret"];
+    let reads = 0;
+    const shifty = new Error("boom");
+    Object.defineProperty(shifty, "name", { get: () => answers[Math.min(reads++, 1)] });
+    const failing = { get: () => { throw shifty; } } as unknown as ShepherdStoreRef;
+
+    const { unread } = registeredKind(failing, "run-1");
+
+    expect(unread).not.toContain("leak");
+    expect(unread).toMatch(/store unreadable: [A-Za-z][A-Za-z0-9_]*$/);
   });
 });
 

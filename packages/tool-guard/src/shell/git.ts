@@ -1,3 +1,4 @@
+import { isCaseUnsure } from "./case-attrs.js";
 import type { WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 
@@ -29,7 +30,7 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
     else if (flag === "-c" && value) inv.config.push(value.value);
   }
   const sub = args[i];
-  if (sub?.dynamic) inv.subDynamic = true;
+  if (sub?.dynamic || isCaseUnsure(sub)) inv.subDynamic = true;
   else if (sub) {
     inv.sub = sub.value;
     inv.subArgs = args.slice(i + 1);

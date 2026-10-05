@@ -70,7 +70,10 @@ directory up to `/` must be owned by root or by your OS user, with no symlink an
 write bit. The helper itself must be a regular file. If any check fails, presence fails closed, and
 stderr names the path component that failed. The search order is fixed in code: if
 `/usr/local/libexec/titan-factory/owner-presence` exists, it is the only helper used, even when it
-fails the check. Otherwise the helper is `native/build/owner-presence`.
+fails the check. Otherwise the helper is `native/build/owner-presence`. Only a missing path
+(`ENOENT` or `ENOTDIR`) counts as absent: any other `lstat` error on the root helper path or a parent,
+such as `EACCES`, makes presence fail closed, names the error code on stderr, and does not try
+`native/build`.
 
 A helper in `native/build` is owned by your OS user, so an agent running as you can still replace it.
 To close that, install the helper as root after `pnpm factory:install`, from the checkout root:

@@ -11,7 +11,8 @@ import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
-import { LOG_BUDGET_BYTES, WAKE_STEPS, tailBytes, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
+import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
 const REPO = "octo/demo";

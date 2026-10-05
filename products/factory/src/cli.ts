@@ -4,10 +4,11 @@ import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
+import { EXIT } from "./exit-codes.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
-import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
+import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
@@ -19,7 +20,7 @@ import type { ServicePorts } from "./service-control.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
-export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2, UNAVAILABLE: 69 } as const;
+export { EXIT };
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -50,7 +51,6 @@ export interface CliDeps {
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
 const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
-const SETTLED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
 export interface Verbs {
   io: CliIo;
@@ -247,7 +247,7 @@ async function landOnServer(io: CliIo, port: number, args: LandArgs): Promise<nu
 
 async function landInProcess(host: FactoryHost, { io, deps }: Verbs, args: LandArgs, port: number): Promise<number> {
   const started = startLand(host, args);
-  if (started.created) await untilSettledOrGated(host, started.runId, deps.host?.gatePollMs ?? 250);
+  if (started.created) await untilSettledOrGated(host.runtime, host.pendingGates, started.runId, deps.host?.gatePollMs ?? 250);
   const run = host.runtime.status(started.runId);
   const lines = [`${describeLand(args, { ...started, status: run?.status ?? started.status })}${run?.error ? ` (${run.error})` : ""}`];
   for (const pending of host.pendingGates().filter((gate) => gate.runId === started.runId)) lines.push(...formatGate(pending));
@@ -255,15 +255,6 @@ async function landInProcess(host: FactoryHost, { io, deps }: Verbs, args: LandA
   lines.push(`no titan-factory serve answered on port ${port}, so this ran in-process; run titan-factory serve to keep it alive`);
   io.stdout(`${lines.join("\n")}\n`);
   return run?.status === "failed" ? EXIT.FAILURE : EXIT.OK;
-}
-
-async function untilSettledOrGated(host: FactoryHost, runId: string, pollMs: number): Promise<void> {
-  for (;;) {
-    const run = host.runtime.status(runId);
-    if (!run || SETTLED.has(run.status)) return;
-    if (run.status === "paused" && host.pendingGates().some((pending) => pending.runId === runId)) return;
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
 }
 
 function describeLand(args: LandArgs, started: LandStarted): string {

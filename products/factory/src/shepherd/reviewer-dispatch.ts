@@ -5,6 +5,7 @@ import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-des
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { toPresence } from "./presence.js";
 import { ReviewerMachineHold } from "./review-wait.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
@@ -108,7 +109,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     name: row.name,
     agentId: row.agentId,
     sessionId: row.sessionId,
-    presence: row.presence,
+    presence: toPresence(row.presence),
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
