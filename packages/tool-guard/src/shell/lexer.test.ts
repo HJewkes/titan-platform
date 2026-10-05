@@ -244,21 +244,21 @@ describe("subscripts with blanks inside the brackets", () => {
   });
 
   it.each([
-    ["case", "Y[ 0 ]=x case", ["Y[", "0", "]=x", "case"]],
-    ["esac", "Y[ 0 ]=x esac", ["Y[", "0", "]=x", "esac"]],
-    ["[[", "Y[ 0 ]=x [[", ["Y[", "0", "]=x", "[["]],
-    ["]]", "Y[ 0 ]=x ]]", ["Y[", "0", "]=x", "]]"]],
-    ["((", "Y[ 0 ]=x ((", ["Y[", "0", "]=x", "<op>", "<op>"]],
-    ["))", "Y[ 0 ]=x ))", ["Y[", "0", "]=x", "<op>", "<op>"]],
-    ["$((", "Y[ 0 ]=x $((1))", ["Y[", "0", "]=x", "$((1))"]],
-    ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
-    ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
+    ["case", "Y[ 0 ]=x case", ["Y[ 0 ]=x", "case"]],
+    ["esac", "Y[ 0 ]=x esac", ["Y[ 0 ]=x", "esac"]],
+    ["[[", "Y[ 0 ]=x [[", ["Y[ 0 ]=x", "[["]],
+    ["]]", "Y[ 0 ]=x ]]", ["Y[ 0 ]=x", "]]"]],
+    ["((", "Y[ 0 ]=x ((", ["Y[ 0 ]=x", "<op>", "<op>"]],
+    ["))", "Y[ 0 ]=x ))", ["Y[ 0 ]=x", "<op>", "<op>"]],
+    ["$((", "Y[ 0 ]=x $((1))", ["Y[ 0 ]=x", "$((1))"]],
+    ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
+    ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
     ...["@", "!", "?", "*", "+"].map((op): [string, string, string[]] => [
       `${op}(`,
       `Y[ 0 ]=x ${op}(a)`,
-      ["Y[", "0", "]=x", op, "<op>", "a", "<op>"],
+      ["Y[ 0 ]=x", op, "<op>", "a", "<op>"],
     ]),
-  ])("splits as before when the text holds %s anywhere", (_token, src, expected) => {
+  ])("joins the subscript when the text holds %s after it", (_token, src, expected) => {
     expect(words(src)).toEqual(expected);
   });
 });
