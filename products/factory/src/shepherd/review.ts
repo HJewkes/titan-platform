@@ -3,16 +3,18 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { LocatorSchema, MergeEvidenceSchema } from "./review-schemas.js";
+import type { Presence } from "./presence.js";
+import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
-import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
-import { reviewerBrief } from "./reviewer-brief.js";
+import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -55,8 +57,7 @@ export interface ReviewerAgent {
   agentId: string;
   /** Empty until the agent's session has started. */
   sessionId: string;
-  /** `live`, `detached` or `exited`. */
-  presence: string;
+  presence: Presence;
   spawnedBy: string | null;
   /** The agent this one took over from, null for none; absent means the port holds no lineage, and such an agent is never resumed. */
   predecessor?: string | null;
@@ -84,7 +85,7 @@ export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
-export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
 
 export interface AwaitVerdictInput {
   repo: string;
@@ -226,15 +227,9 @@ const holds = (intent: ReviewIntent) => (agent: ReviewerAgent) => (intent.agentI
 const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
-async function startedReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<ReviewerAgent | undefined> {
-  const clock = deadline(timing);
-  for (;;) {
-    const found = (await dispatch.roster().catch(() => [])).filter(holds(intent));
-    if (found.length > 1) return undefined;
-    if (found[0] && found[0].sessionId !== "") return found[0];
-    if (clock.expired()) return undefined;
-    await clock.sleep(timing.pollMs, signal);
-  }
+function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined): NoReview {
+  const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
+  return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
 export interface ReviewWiring {
@@ -243,6 +238,8 @@ export interface ReviewWiring {
   dispatch?: ReviewerDispatch;
   /** Questions chosen by code for this PR and added to the reviewer brief. */
   questions?: (target: ReviewTarget) => Promise<readonly string[]>;
+  /** The head's codewatch report questions, which go ahead of `questions`; absent, or undefined for a target, records nothing. */
+  codewatch?: CodewatchReader;
   timeoutMs?: number;
   lateVerdictMs?: number;
   sessionStartTimeoutMs?: number;
@@ -260,7 +257,10 @@ const brokerTiming = (deps: ShepherdDeps): Timing => ({ now: deps.now, sleep: de
 
 type BrokerStepBody<I, T> = (deps: ShepherdDeps, wired: Wired, input: I, signal: AbortSignal, repeat: boolean) => Promise<T>;
 
-/** A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner gate decides. */
+/**
+ * A malformed input fails the step. With no dispatch wired the step answers `none` at once, and a throw from its body is a refusal; either way the owner
+ * gate decides. A refusal's text goes to the local console only, since the stored reason can reach a public PR.
+ */
 const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWiring | undefined, schema: z.ZodType<I>, body: BrokerStepBody<I, T>) =>
   async (raw: unknown, signal: AbortSignal, repeat = false): Promise<T | NoReview> => {
     const input = schema.parse(raw);
@@ -268,7 +268,9 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     if (!dispatch) return { kind: "none", reason: "no reviewer dispatch is wired" };
     return body(deps, { ...wiring, dispatch }, input, signal, repeat).catch((error: unknown) => {
       signal.throwIfAborted();
-      return { kind: "none", reason: `the reviewer dispatch was refused: ${error instanceof Error ? error.message : String(error)}` };
+      const failure = failureOf(error);
+      console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${error instanceof Error ? error.message : String(error)}`);
+      return { kind: "none", reason: `the reviewer dispatch was refused: ${failure}` };
     });
   };
 
@@ -280,20 +282,20 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
 };
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ...target }, signal, repeat) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
-  if (!asked) {
-    const brief = reviewerBrief({ ...target, questions: await questions?.(target), fixFirsts });
-    const refused = await startReviewer(dispatch, intent, target, brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
+  const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts }, codewatch, questions);
+  if (asking) {
+    const refused = await startReviewer(dispatch, intent, target, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
-  const started = await startedReviewer(dispatch, intent, timing, signal);
-  if (!started) return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time` };
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits) };
+  const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
+  if (!started) return notStartedInTime(intent, rosterError);
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
@@ -331,12 +333,10 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
 }
 
-const MergeEvidenceResult = z.looseObject({ head: z.string(), merge: z.looseObject({}), record: z.looseObject({}) });
-
 /** A MERGE verdict at one head, carrying the facts and record collected there once; a replay reuses the step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId };
-  const evidence = (await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceResult)) as unknown as MergeEvidence;
+  const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
   return { kind: "MERGE", headSha: input.head, evidence };
 }
 
@@ -347,7 +347,7 @@ const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("none") }),
 ]);
 const Awaited = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: z.looseObject({}), reviewer: Identity, text: z.string().optional() }),
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 
@@ -384,6 +384,6 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const awaited = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
-  const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator as unknown as SourceTextLocator };
+  const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
 }

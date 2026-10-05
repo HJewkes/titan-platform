@@ -4,10 +4,11 @@ import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
-import { parsePayload, resolveGate } from "./gate-resolve.js";
+import { EXIT } from "./exit-codes.js";
+import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
-import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
+import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
@@ -16,10 +17,11 @@ import { registerService } from "./cli-service.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
+import type { ShepherdCommandName } from "./shepherd/commands.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
-export const EXIT = { OK: 0, FAILURE: 1, USAGE: 2, UNAVAILABLE: 69 } as const;
+export { EXIT };
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -43,12 +45,13 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
+  /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
+  presence?: OwnerPresence;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
 const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
-const SETTLED: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
 export interface Verbs {
   io: CliIo;
@@ -87,14 +90,14 @@ function registerResume(program: Command, { io, withHost }: Verbs): void {
     .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
 }
 
-function registerGate(program: Command, { io, withHost }: Verbs): void {
+function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
   program
     .command("gate")
     .description("human gates")
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .action((runId: string, stepId: string, opts: { json: string }) => withHost((host) => resolveGate(host, io, runId, stepId, opts.json)));
+    .action((runId: string, stepId: string, opts: { json: string }) => withHost((host) => resolveGate(host, io, runId, stepId, opts.json, deps.presence)));
 }
 
 function registerServe(program: Command, { deps, dbPath }: Verbs): void {
@@ -182,7 +185,7 @@ function registerArgs(target: string, opts: RegisterOpts): Record<string, unknow
   return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
-async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
+async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
   let args: object;
   try {
     args = argsOf();
@@ -202,7 +205,7 @@ async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opt
   });
 }
 
-function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
+function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
     return EXIT.FAILURE;
@@ -245,7 +248,7 @@ async function landOnServer(io: CliIo, port: number, args: LandArgs): Promise<nu
 
 async function landInProcess(host: FactoryHost, { io, deps }: Verbs, args: LandArgs, port: number): Promise<number> {
   const started = startLand(host, args);
-  if (started.created) await untilSettledOrGated(host, started.runId, deps.host?.gatePollMs ?? 250);
+  if (started.created) await untilSettledOrGated(host.runtime, host.pendingGates, started.runId, deps.host?.gatePollMs ?? 250);
   const run = host.runtime.status(started.runId);
   const lines = [`${describeLand(args, { ...started, status: run?.status ?? started.status })}${run?.error ? ` (${run.error})` : ""}`];
   for (const pending of host.pendingGates().filter((gate) => gate.runId === started.runId)) lines.push(...formatGate(pending));
@@ -253,15 +256,6 @@ async function landInProcess(host: FactoryHost, { io, deps }: Verbs, args: LandA
   lines.push(`no titan-factory serve answered on port ${port}, so this ran in-process; run titan-factory serve to keep it alive`);
   io.stdout(`${lines.join("\n")}\n`);
   return run?.status === "failed" ? EXIT.FAILURE : EXIT.OK;
-}
-
-async function untilSettledOrGated(host: FactoryHost, runId: string, pollMs: number): Promise<void> {
-  for (;;) {
-    const run = host.runtime.status(runId);
-    if (!run || SETTLED.has(run.status)) return;
-    if (run.status === "paused" && host.pendingGates().some((pending) => pending.runId === runId)) return;
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
 }
 
 function describeLand(args: LandArgs, started: LandStarted): string {

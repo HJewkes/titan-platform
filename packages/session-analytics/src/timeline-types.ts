@@ -52,7 +52,12 @@ export interface TimelineToolCall {
 export interface TimelineTokens {
   input: number;
   cacheRead: number;
+  /** All cache writes, `cacheWrite5m + cacheWrite1h`. */
   cacheWrite: number;
+  /** Writes at the 5m rate, including a total the source reported without a split. */
+  cacheWrite5m: number;
+  /** Writes at the 1h rate. */
+  cacheWrite1h: number;
   output: number;
 }
 

@@ -102,24 +102,26 @@ export function registryCaller(registry: CommandRegistry): Pick<DataSource, "cal
 export interface TestDaemon {
   handle: DaemonHandle;
   origin: string;
+  /** A `fetch` for `liveSource` that sends each request to the daemon's current port, so a restart may move it. */
+  fetch: typeof fetch;
   restart(): Promise<void>;
   close(): Promise<void>;
 }
 
-/** A real daemon on an ephemeral loopback port, with default guards, restartable on the same port. */
+/** A real daemon on an ephemeral loopback port, with default guards; a restart binds a fresh ephemeral port. */
 export async function startTestDaemon(registry: CommandRegistry): Promise<TestDaemon> {
   const stateDir = await mkdtemp(path.join(tmpdir(), "rpc-client-"));
-  const start = (port: number): Promise<DaemonHandle> =>
-    startDaemon({ registry, createContext: context, version: "0.0.0-test", stateDir, port, shutdownGraceMs: 20, logger: silentLogger });
+  const start = (): Promise<DaemonHandle> =>
+    startDaemon({ registry, createContext: context, version: "0.0.0-test", stateDir, port: 0, shutdownGraceMs: 20, logger: silentLogger });
   const daemon: TestDaemon = {
-    handle: await start(0),
+    handle: await start(),
     get origin() {
       return `http://127.0.0.1:${daemon.handle.port}`;
     },
+    fetch: (input, init) => globalThis.fetch(new URL(String(input), daemon.origin), init),
     async restart() {
-      const port = daemon.handle.port;
       await daemon.handle.close();
-      daemon.handle = await start(port);
+      daemon.handle = await start();
     },
     async close() {
       await daemon.handle.close();

@@ -17,6 +17,7 @@ import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
+import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
@@ -120,7 +121,8 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
   const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster });
-  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs };
+  const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
+  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */

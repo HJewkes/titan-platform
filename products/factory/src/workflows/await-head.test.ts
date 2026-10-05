@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { H1, REPO } from "../test-support/land.js";
 import { AWAIT_HEAD_POLL_MS, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
@@ -42,6 +42,43 @@ describe("awaitNewHead", () => {
     };
 
     const pr = await awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep, pollMs: 10 });
+
+    expect(pr.headSha).toBe(H2);
+    expect(sleeps).toEqual([10]);
+  });
+
+  it.each([401, 403, 404])("fails the wait at once on a %i read, naming the pull request and the status", async (status) => {
+    const { fake, sleeps, sleep } = world();
+    fake.onGetPr = () => {
+      throw new FakeHttpError(status, "Not Found");
+    };
+
+    const wait = awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep });
+
+    await expect(wait).rejects.toThrow(`${REPO}#1: HTTP ${status}`);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("reports a transient read failure and keeps waiting through a 502", async () => {
+    const { fake, sleep } = world();
+    fake.onGetPr = (pr, reads) => {
+      if (reads === 1) throw new FakeHttpError(502, "bad gateway");
+      pr.headSha = H2;
+    };
+    const reported: string[] = [];
+
+    const pr = await awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep, onReadError: (message) => void reported.push(message) });
+
+    expect(pr.headSha).toBe(H2);
+    expect(reported).toEqual([expect.stringContaining("502")]);
+  });
+
+  it("treats a rejection that is not an Error as transient", async () => {
+    const { sleeps, sleep } = world();
+    const reads = [Promise.reject("socket hang up"), Promise.resolve({ headSha: H2, state: "open" })];
+    const port = { getPr: () => reads.shift()! } as unknown as Parameters<typeof awaitNewHead>[0];
+
+    const pr = await awaitNewHead(port, target, new AbortController().signal, { sleep, pollMs: 10 });
 
     expect(pr.headSha).toBe(H2);
     expect(sleeps).toEqual([10]);

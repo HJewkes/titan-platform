@@ -8,7 +8,7 @@ let client: RpcClient<Commands>;
 
 beforeEach(async () => {
   daemon = await startTestDaemon(createTestRegistry());
-  client = createRpcClient<Commands>(liveSource({ origin: daemon.origin, reconnectDelayMs: 10, maxReconnectDelayMs: 50 }));
+  client = createRpcClient<Commands>(liveSource({ fetch: daemon.fetch, reconnectDelayMs: 10, maxReconnectDelayMs: 50 }));
 });
 
 afterEach(async () => {

@@ -155,6 +155,12 @@ export interface NormalizedMetadataObservation extends NormalizedObservationBase
 type DeltaUsage = Extract<UsageMeasurement, { kind: "delta" }>;
 type SnapshotUsage = Extract<UsageMeasurement, { kind: "snapshot" }>;
 
+/** Cache writes by time to live; the two rates differ, so a price needs the split, not the total. */
+export interface CacheWriteSplit {
+  ttl5m: number;
+  ttl1h: number;
+}
+
 export type NormalizedUsageObservation = NormalizedObservationBase &
   (
     | {
@@ -162,6 +168,8 @@ export type NormalizedUsageObservation = NormalizedObservationBase &
         measurement: DeltaUsage;
         response: ScopedConversationItemId<"response">;
         turn: ScopedConversationItemId<"turn"> | null;
+        /** Absent when the source reports only the cache-write total. */
+        cacheWriteSplit?: CacheWriteSplit;
       }
     | {
         kind: "usage";

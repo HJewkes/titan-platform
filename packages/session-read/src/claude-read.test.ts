@@ -111,6 +111,18 @@ describe("readClaudeObservations", () => {
     }));
   });
 
+  it("carries the cache-write split by time to live, and omits it when only the total is reported", async () => {
+    const message = records[3]?.message as { usage: Record<string, unknown> };
+    message.usage.cache_creation = { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 2 };
+    writeFileSync(filePath, render(records), "utf8");
+
+    const { observations } = await collect(source);
+    const usage = observations.filter((observation) => observation.kind === "usage");
+
+    expect(usage[0]).toMatchObject({ measurement: { tokens: { cacheWriteInput: 2 } }, cacheWriteSplit: { ttl5m: 0, ttl1h: 2 } });
+    expect(usage[1]).not.toHaveProperty("cacheWriteSplit");
+  });
+
   it("gives every semantic event on one source line distinct byte and subrecord evidence", async () => {
     const { observations } = await collect(source);
     const assistantOffset = offsetAfter(records, 3);

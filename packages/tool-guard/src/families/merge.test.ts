@@ -327,3 +327,47 @@ describe("xargs -I fails closed when it cannot read the input", () => {
     expect(bash(command)).toEqual([]);
   });
 });
+
+describe("a git command whose subcommand word is dynamic", () => {
+  it.each([
+    ["a read variable", "Y=status; read Y < list; git $Y origin HEAD:main"],
+    ["a mapfile variable (TP-1491)", "Y=status; mapfile Y < list; git $Y origin HEAD:main"],
+    ["a readarray variable (TP-1491)", "Y=status; readarray Y < list; git $Y origin HEAD:main"],
+    ["an unset variable", "git $Y origin HEAD:main"],
+    ["a non-zero array index", "Y[1]=x; git $Y origin HEAD:main"],
+    ["a quoted unknown variable", 'git "$Y" status'],
+    ["an unquoted -C value", "git -C $D origin HEAD:main"],
+    ["an unquoted --git-dir value", "git --git-dir=$D origin HEAD:main"],
+    ["an unquoted --work-tree value", "git --work-tree=$D origin HEAD:main"],
+    ["an unquoted --namespace value", "git --namespace=$D origin HEAD:main"],
+    ["an unquoted -c value", "git -c $V origin HEAD:main"],
+    ["a dynamic option flag", "git -$X origin HEAD:main"],
+    ["a -C value with an empty quote after the variable", 'git -C $D"" origin HEAD:main'],
+    ["a -C value with an unquoted variable after a quoted one", 'git -C "$D"$E origin HEAD:main'],
+    ["a -C value with an unquoted variable after empty quotes", 'git -C ""$D origin HEAD:main'],
+    ["a --git-dir value with an empty quote after the variable", 'git --git-dir=$D"" origin HEAD:main'],
+    ["a --git-dir value with an unquoted variable after a quoted one", 'git --git-dir="$D"$E origin HEAD:main'],
+    ["a -c value with an empty quote after the variable", 'git -c $V"" origin HEAD:main'],
+    ["a -c value with an unquoted variable after a quoted one", 'git -c "$V"$E origin HEAD:main'],
+    ["a command substitution after a quoted -C value", 'git -C "$D"$(pwd) origin HEAD:main'],
+  ])("counts %s as a push to an unknown branch", (_name, command) => {
+    const actions = bash(command).filter((a) => a.spelling === "bash.merge.git-push-protected");
+    expect(actions.map((a) => a.subject)).toEqual([{ branch: "unknown" }]);
+  });
+
+  it.each([['git -C "$D"x status'], ['git -C x"$D" status'], ['git -C "$D" status'], ['git --git-dir="$D" status']])(
+    "still allows %s, whose variable is fully quoted",
+    (command) => {
+      expect(bash(command)).toEqual([]);
+    },
+  );
+
+  it.each([["--attr-source HEAD"], ["--super-prefix x"]])("reads the push behind the separate-value option %s", (option) => {
+    const actions = bash(`git ${option} push origin HEAD:main`);
+    expect(actions.map((a) => [a.spelling, a.subject])).toEqual([["bash.merge.git-push-protected", { branch: "main" }]]);
+  });
+
+  it("still allows a literal git status", () => {
+    expect(bash("git status")).toEqual([]);
+  });
+});

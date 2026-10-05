@@ -59,8 +59,8 @@ export interface FactoryHost {
   readonly gates: SqliteGateStore;
   /** Hydrate every unfinished run, drive each until it ends or waits on a human, then release them. */
   resume(): Promise<ResumeReport>;
-  /** Claim every unfinished run whose lease is free and keep driving it; the ids it claimed. Leases stay held until `close()`. */
-  adopt(): Promise<string[]>;
+  /** Claim every unfinished run whose lease is free and keep driving it; the ids it claimed, never those in `exclude`. Leases stay held until `close()`. */
+  adopt(options?: { exclude?: ReadonlySet<string> }): Promise<string[]>;
   pendingGates(): PendingGate[];
   close(): void;
 }
@@ -82,7 +82,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     gates,
     pendingGates,
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
-    adopt: () => runtime.hydrate(),
+    adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
     close: () => {
       runtime.shutdown();
       unbind?.();
@@ -113,14 +113,14 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
 
 async function resume(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], pollMs: number, now: () => number): Promise<ResumeReport> {
   const resumedIds = await runtime.hydrate();
-  await Promise.all(resumedIds.map((id) => untilSettled(runtime, pendingGates, id, pollMs)));
+  await Promise.all(resumedIds.map((id) => untilSettledOrGated(runtime, pendingGates, id, pollMs)));
   const resumed = resumedIds.map((id) => runtime.status(id)).filter((run): run is WorkflowRun => run !== undefined);
   const report: ResumeReport = { resumed, held: heldRuns(runtime, new Set(resumedIds), now()), gates: pendingGates() };
   runtime.shutdown();
   return report;
 }
 
-async function untilSettled(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<void> {
+export async function untilSettledOrGated(runtime: WorkflowRuntime, pendingGates: () => PendingGate[], runId: string, pollMs: number): Promise<void> {
   for (;;) {
     const run = runtime.status(runId);
     if (!run || SETTLED.has(run.status)) return;

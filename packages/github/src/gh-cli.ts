@@ -1,5 +1,5 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
-import { redact } from "./app-token.js";
+import { redact, redactStreams } from "./redact.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
@@ -55,6 +55,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     merge: async (repo, number, sha, method) => ({ sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, { sha, merge_method: method })).sha }),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
+    listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
@@ -81,7 +82,8 @@ async function createCheckRun(exec: GhExec, options: GhCliOptions, repo: string,
 function redactedError(error: unknown, secrets: readonly string[]): Error {
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
-    return new GhError(error.args, { code, stdout: redact(stdout, secrets), stderr: redact(stderr, secrets) }, error.status);
+    const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }
@@ -264,7 +266,7 @@ interface GhGraphql<T> {
 async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
   const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
   const value = answer.data === undefined ? undefined : pick(answer.data);
-  if (value === null || value === undefined) throw new Error(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`);
+  if (value === null || value === undefined) throw new Error(redact(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`, []));
   return value;
 }
 

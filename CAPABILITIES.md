@@ -430,7 +430,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +40 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +41 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -447,7 +447,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `app-token`: `appInstallationToken`
-- +55 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +56 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -588,10 +588,10 @@ Key exports:
 - `prune`: `planPrune`, `runPrune`
 - `indexer`: `indexPaths`
 - `index-source`: `workingTreeSource`
+- `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- `extractors/python-extractor`: `PythonGraphExtractor`
-- +346 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +358 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -718,7 +718,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +183 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +184 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -792,9 +792,9 @@ Tier 2, `@titan-design/workflow@0.8.1`. Durable imperative workflows: memoized s
 
 Key exports:
 
-- `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
-- `signals`: `createSignalParser`, `createSignalSetParser`, `parseSignal`
-- +72 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
+- `signals`: `createSignalParser`, `createSignalSetParser`
+- +73 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 

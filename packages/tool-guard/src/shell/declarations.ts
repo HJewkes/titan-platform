@@ -5,7 +5,7 @@ const LOCAL_MAKERS = new Set(["local", "declare", "typeset"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 const BARE_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)(\+?)=$/;
 const APPEND_RE = /^[A-Za-z_][A-Za-z0-9_]*\+=/;
-const DECLARED_NAME = /^([A-Za-z_][A-Za-z0-9_]*)(?:\+?=|$)/;
+const DECLARED_NAME = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[.*\])?(?:\+?=|$)/s;
 const PATTERN_OPS = new Set(["(", ")", "|"]);
 const SEPARATOR: OpToken = { type: "op", value: ";" };
 
@@ -35,6 +35,8 @@ interface Pass {
   cases: number;
   awaitIn: boolean;
   pattern: boolean;
+  /** The next word follows a pattern's `(` or `|`, so it is a pattern and never the `esac` keyword. */
+  patternWord: boolean;
   slots: number;
 }
 
@@ -46,7 +48,7 @@ interface Pass {
 export function normalizeDeclarations(tokens: Token[]): Token[] {
   const p: Pass = {
     out: [], start: true, header: null, depths: { "{": 0, "(": 0 }, bodies: [], local: false,
-    cases: 0, awaitIn: false, pattern: false, slots: 0,
+    cases: 0, awaitIn: false, pattern: false, patternWord: false, slots: 0,
   };
   let i = 0;
   while (i < tokens.length) {
@@ -62,9 +64,11 @@ export function normalizeDeclarations(tokens: Token[]): Token[] {
 function op(tokens: Token[], i: number, p: Pass): number {
   const token = tokens[i] as OpToken;
   const next = tokens[i + 1];
+  p.patternWord = false;
   if (p.pattern && PATTERN_OPS.has(token.value)) {
     p.out.push(SEPARATOR);
     p.pattern = token.value !== ")";
+    p.patternWord = token.value !== ")";
   } else if (token.value === "(" && next?.type === "op" && next.value === ")" && p.out.at(-1)?.type === "word") {
     p.out.push(token, next);
     p.header = "body";
@@ -75,13 +79,15 @@ function op(tokens: Token[], i: number, p: Pass): number {
     p.out.push(token);
   }
   if (token.value === ";;" && p.cases > 0) p.pattern = true;
-  p.start = true;
+  p.start = !p.patternWord;
   p.local = false;
   return i + 1;
 }
 
 function word(tokens: Token[], i: number, p: Pass): number {
   const w = tokens[i] as WordToken;
+  const patternWord = p.patternWord;
+  p.patternWord = false;
   const bare = BARE_ASSIGNMENT.exec(w.value);
   const next = tokens[i + 1];
   if (bare && next?.type === "op" && next.value === "(") return arrayAssignment(tokens, i, bare[2] === "+", p);
@@ -90,7 +96,7 @@ function word(tokens: Token[], i: number, p: Pass): number {
     return i + 1;
   }
   if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
-  else if (w.value === "esac" && !w.quoted && (p.start || p.pattern)) endCase(p);
+  else if (w.value === "esac" && !w.quoted && (p.start || (p.pattern && !patternWord))) endCase(p);
   else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
   p.out.push(p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w);
   return i + 1;

@@ -101,6 +101,14 @@ names are `${toolPrefix}${command.replaceAll(".", "__")}`.
 `/mcp` is spliced in ahead of hono on the raw Node server because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.
 
+## Port in use
+
+If the requested port is taken, `startDaemon` rejects with `DaemonPortInUseError` (carrying
+`port` and `host`, with the socket error as `cause`) rather than letting the server's
+`error` event become an uncaught exception. Other bind failures such as `EACCES` reject with
+the original error. The listener is removed once the server is listening, so a later runtime
+error is not reported as a bind failure.
+
 ## Bind address
 
 The daemon has no authentication, so `startDaemon` throws `NonLoopbackBindError` (carrying

@@ -89,6 +89,46 @@ describe("shepherd registration store", () => {
     expect(updated.policy).toEqual({ merge: "never", mergeMethod: "rebase", fixer: false, seat: "demo-seat" });
   });
 
+  it("a repeat registration without a kind keeps the stored kind", () => {
+    const store = openStore();
+    store.register({ ...base, kind: "correctness" });
+
+    store.update("run-1", { ...base, kind: undefined });
+
+    expect(store.byRun("run-1")?.kind).toBe("correctness");
+  });
+
+  it.each([
+    ["correctness", "unknown"],
+    ["security", "feature"],
+    ["correctness", "refactor"],
+    ["security", "correctness"],
+    ["security", "refactor"],
+    ["security", "unknown"],
+  ] as const)("refuses a repeat that moves %s to %s, naming both kinds", (from, to) => {
+    const store = openStore();
+    store.register({ ...base, kind: from });
+
+    expect(() => store.update("run-1", { ...base, kind: to })).toThrow(new RegExp(`${from}.*${to}`));
+    expect(store.byRun("run-1")?.kind).toBe(from);
+  });
+
+  it.each([
+    ["correctness", "correctness"],
+    ["correctness", "security"],
+    ["security", "security"],
+    ["unknown", "correctness"],
+    ["feature", "security"],
+    ["feature", "unknown"],
+  ] as const)("a repeat moving %s to %s applies", (from, to) => {
+    const store = openStore();
+    store.register({ ...base, kind: from });
+
+    store.update("run-1", { ...base, kind: to });
+
+    expect(store.byRun("run-1")?.kind).toBe(to);
+  });
+
   it("refuses an update to a run with no registration", () => {
     expect(() => openStore().update("run-9", base)).toThrow(/has no registration/);
   });

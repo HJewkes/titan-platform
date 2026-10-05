@@ -33,10 +33,10 @@ async function registered(w: World, args: object): Promise<Registered> {
 }
 
 /** A registration whose run has already failed: a run started with a malformed `after` list fails before any step reads GitHub. */
-async function failedRegistration(w: World, slice?: string): Promise<string> {
+async function failedRegistration(w: World, slice?: string, kind?: "correctness"): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1", after: "not json" });
   await w.host.runtime.wait(runId);
-  w.routes.shepherd!.store.get().register({ ...pr1, branch: BRANCH, runId, policy: OWNER_GATE_POLICY, slice });
+  w.routes.shepherd!.store.get().register({ ...pr1, branch: BRANCH, runId, policy: OWNER_GATE_POLICY, slice, kind });
   expect(w.host.runtime.status(runId)?.status).toBe("failed");
   return runId;
 }
@@ -140,6 +140,33 @@ describe("shepherd.register races", () => {
     const again = await registered(w, pr1);
 
     expect(again.registration.policy.merge).toBe("never");
+  });
+});
+
+describe("shepherd.register kind", () => {
+  it("a repeat that would move a correctness run to unknown is refused and keeps the stored kind", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, kind: "correctness" });
+
+    const envelope = await w.call("shepherd.register", { ...pr1, kind: "unknown" });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
+    expect((await registered(w, pr1)).registration.kind).toBe("correctness");
+  });
+});
+
+describe("shepherd.register kind on a failed run", () => {
+  it("a refused kind move leaves the failed run, its registration and the run count untouched", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w, undefined, "correctness");
+
+    const envelope = await w.call("shepherd.register", { ...pr1, implementer: "impl-z", kind: "unknown" });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
+    expect(shepherdRuns(w.host)).toEqual([failedRunId]);
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)).toMatchObject({ runId: failedRunId, implementer: pr1.implementer });
   });
 });
 

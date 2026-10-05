@@ -2,10 +2,12 @@ import { ParseError, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { findExecs, unwrap } from "./unwrap.js";
-import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, expandWord, lookup, trackVars } from "./vars.js";
+import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
+import { caseNamed, caseScripts } from "./case-script.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { cutReading, pipedShellTexts } from "./piped-nul.js";
+import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -61,7 +63,7 @@ interface Scope {
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 interface Inline {
-  text: string;
+  texts: string[];
   wrap: Wrapping;
 }
 
@@ -96,7 +98,7 @@ function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
-  for (const token of normalizeDeclarations(tokens)) {
+  for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
       const cmd = emit(words, redirects, w, token.value);
       w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
@@ -105,6 +107,7 @@ function walk(tokens: Token[], w: Walk): void {
       w.prev = token.value;
       if (token.value !== "|" && token.value !== "|&") w.negated = false;
       if (token.value !== "&&") w.chain = { start: token.value };
+      trackCompound(token, w.scope.vars);
       scope(token.value, w);
       continue;
     }
@@ -142,7 +145,7 @@ function nestedLists(token: Token): Token[][] {
 }
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
-  const scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping };
+  const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
   return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
 }
 
@@ -157,13 +160,15 @@ function scope(op: string, w: Walk): void {
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
-  const cmd = unwrap(rawWords.map(expand));
-  if (cmd) run(cmd, redirects, w, next);
-  return cmd;
+  const words = rawWords.map(expand);
+  const runs = caseNamed(words);
+  const cut = cutReading(words);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
+  return runs[0] ?? null;
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
-  if (raw.name === null && raw.args.length === 0) {
+  if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;
   }
@@ -172,23 +177,20 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     return;
   }
   const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  for (const args of xargsRuns(raw, stdin)) runOnce({ ...raw, args }, redirects, w, next, stdin);
+  for (const cmd of xargsCommands(raw, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
-  if (cmd.name !== null) trackVars(cmd.name, cmd.args, w.scope.vars);
+  trackVars(cmd, w.scope.vars);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
   const script = inlineScript(cmd, redirects, stdin);
-  if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
+  if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
-  for (const words of findExecs(cmd.args)) {
-    const exec = unwrap(words);
-    if (exec) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
-  }
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
 }
 
 /** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
@@ -305,21 +307,20 @@ function literalWord(value: string): WordToken {
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [name, value, append] of cmd.assigned) if (value !== null && !append) env[name] = value;
+  for (const [name, value, kind] of cmd.assigned) if (value !== null && !kind) env[name] = value;
   return env;
 }
 
 /** The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
-  if (cmd.script !== undefined) return { text: cmd.script, wrap: "sh-c" };
-  if (cmd.name === "eval") return { text: cmd.args.map((a) => a.value).join(" "), wrap: "eval" };
+  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
+  if (cmd.name === "eval") return { texts: caseScripts(cmd.args), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional?.value ?? stdin) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { text, wrap: hasC ? "sh-c" : "heredoc-shell" };
-  // bash and sh drop NUL from a piped script; zsh's NUL handling is not modelled (TP-1464).
-  return hasC || positional || stdin === null ? null : { text: stdin.replaceAll("\0", ""), wrap: "piped-shell" };
+  const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
+  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
+  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {

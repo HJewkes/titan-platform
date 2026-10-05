@@ -1,6 +1,7 @@
 import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { appInstallationToken, signAppJwt } from "./app-token.js";
+import { redact, redactStreams } from "./redact.js";
 import { GhError, type GhExec, type GhExecOptions, type GhResult } from "./exec.js";
 import { fakeGitHub, fakeSha, FAKE_APP_ID } from "./fake.js";
 import { ghCliWire } from "./gh-cli.js";
@@ -214,5 +215,298 @@ describe("fake createCheckRun round trip", () => {
 
     expect(fake.calls).toEqual(["createCheckRun"]);
     expect((await port.checkRuns(REPO, HEAD))[0]?.appId).toBe(FAKE_APP_ID);
+  });
+});
+
+describe("token shape scrub", () => {
+  const SHAPED = "ghs_" + "A1b2C3d4".repeat(5);
+  const JWT = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiIxIn0.c2ln-nature_x";
+  const exchange = (stdout: string, stderr: string) => appInstallationToken(credentials, scripted(() => ({ code: 1, stdout, stderr })).exec).catch((caught: Error) => caught.message);
+  const checkRun = (result: GhResult, appToken = async () => TOKEN) =>
+    githubPort(ghCliWire(scripted(() => result).exec, { budget: rateBudget(), appToken })).createCheckRun(REPO, request).catch((caught: Error) => caught);
+
+  it("scrubs a bare token in stderr with empty stdout, with or without a newline", async () => {
+    for (const echoed of [`denied ${SHAPED}`, `denied ${SHAPED}\n`, `denied ${JWT}\n`]) {
+      expect(await exchange("", echoed)).not.toMatch(/ghs_A1b2|eyJhbGci/);
+      const error = (await checkRun({ code: 1, stdout: "", stderr: echoed })) as GhError;
+      expect(error.result.stderr).not.toMatch(/ghs_A1b2|eyJhbGci/);
+    }
+  });
+
+  it("scrubs escaped JSON that never forms a closed token pair", async () => {
+    const message = await exchange(`{\\"token\\":\\"${SHAPED}`, `{\\"token\\":\\"${SHAPED}\\"}`);
+
+    expect(message).toContain("[redacted]");
+    expect(message).not.toContain("ghs_A1b2");
+  });
+
+  it("cuts a token split across stdout and stderr from both halves", () => {
+    const [out, err] = redactStreams(`partial ${SHAPED.slice(0, 15)}`, `${SHAPED.slice(15)} tail`, []);
+
+    expect(out + err).not.toMatch(/A1b2/);
+    expect(out).toBe("partial [redacted]");
+    expect(err).toBe("[redacted] tail");
+  });
+
+  it("redacts a token quoted by a rejecting appToken provider", async () => {
+    const error = await checkRun(ok({ id: 1 }), async () => { throw new Error(`mint failed for ${SHAPED}`); });
+
+    expect((error as Error).message).toBe("mint failed for [redacted]");
+  });
+
+  it("leaves ordinary text alone", () => {
+    expect(redact("gh: not found at api.github.com/repos/a.b", [])).toBe("gh: not found at api.github.com/repos/a.b");
+  });
+
+  it("keeps dotted names that only open like a JWT, and still redacts a real JWT", () => {
+    expect(redact("load eyJson.config.js and keyJar.x.y", [])).toBe("load eyJson.config.js and keyJar.x.y");
+    expect(redact(`bearer ${JWT}`, [])).toBe("bearer [redacted]");
+  });
+
+  it("redacts a classic 40-hex token after a token keyword, in any case, and leaves a bare sha alone", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+
+    for (const line of [`token ${hex}`, `Authorization: token ${hex}`, `BEARER ${hex}`, `{"token": "${hex}"}`]) {
+      expect(redact(line, [])).not.toContain(hex);
+    }
+    expect(redact(`commit ${hex}`, [])).toBe(`commit ${hex}`);
+  });
+
+  it("redacts a token whose underscore is URL-encoded", () => {
+    expect(redact(`next=${SHAPED.replace("_", "%5F")}&x=1`, [])).toBe("next=[redacted]&x=1");
+    expect(redact(`next=${SHAPED.replace("_", "%5f")}`, [])).toBe("next=[redacted]");
+  });
+
+  it("cuts the first word of stderr with a whole token ending stdout, since the token may go on there", () => {
+    const [out, err] = redactStreams(`minted ${SHAPED}`, "gh: Not Found (HTTP 404)", []);
+
+    expect(out).toBe("minted [redacted]");
+    expect(err).toBe("[redacted]: Not Found (HTTP 404)");
+  });
+
+  it("cuts a token split by a newline at the end of stdout from both halves", () => {
+    const [out, err] = redactStreams(`partial ${SHAPED.slice(0, 15)}\n`, `${SHAPED.slice(15)} tail`, []);
+
+    expect(out).toBe("partial [redacted]");
+    expect(err).toBe("[redacted] tail");
+  });
+
+  it("throws a REST error whose message carries neither half of a split token", async () => {
+    for (const stdout of [`partial ${SHAPED.slice(0, 15)}`, `partial ${SHAPED.slice(0, 15)}\n`]) {
+      const result = { code: 1, stdout, stderr: `${SHAPED.slice(15)} (HTTP 403)` };
+      const error = await githubPort(ghCliWire(scripted(() => result).exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+
+      expect(error).toBeInstanceOf(GhError);
+      expect((error as GhError).message).toMatch(/failed \(1\): \[redacted\] \(HTTP 403\)$/);
+      expect((error as GhError).message).not.toMatch(/A1b2|C3d4/);
+    }
+  });
+
+  it("redacts a token quoted in a GraphQL error message", async () => {
+    const body = { errors: [{ message: `bad credential ${SHAPED}` }] };
+    const exec = scripted(() => ({ code: 0, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(body)}`, stderr: "" })).exec;
+
+    await expect(githubPort(ghCliWire(exec, { budget: rateBudget() })).listReviewComments(REPO, 7)).rejects.toThrow(/bad credential \[redacted\]$/);
+  });
+
+  describe("TP-1500 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+    const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
+      const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
+      const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+      return (error as GhError).message;
+    };
+
+    it.each([
+      [`GH_TOKEN=${hex}`],
+      [`GITHUB_TOKEN: ${hex}`],
+      [`{"access_token":"${hex}"}`],
+      [`https://${hex}@github.com/o/r`],
+      [`https://x-access-token:${hex}@github.com/o/r`],
+    ])("redacts a 40-hex token in %s", async (line) => {
+      const message = await throwsWith("", line);
+
+      expect(message).not.toContain(hex);
+      expect(message).toContain("[redacted]");
+    });
+
+    it("redacts a JWT right after an underscore and keeps a dotted file name that only opens like one", () => {
+      expect(redact(`X_${JWT}`, [])).toBe("X_[redacted]");
+      expect(redact("see eyJsonwebtoken.config.js", [])).toBe("see eyJsonwebtoken.config.js");
+    });
+
+    it("keeps a bare commit sha and a sha in a URL path", () => {
+      expect(redact(`sha ${hex} https://github.com/o/r/commit/${hex}`, [])).toBe(`sha ${hex} https://github.com/o/r/commit/${hex}`);
+    });
+
+    it.each([
+      [`partial ${SHAPED.slice(0, 15)}\n\n`, `${SHAPED.slice(15)} (HTTP 403)`],
+      [`partial ${SHAPED.slice(0, 15)} \n`, `${SHAPED.slice(15)} (HTTP 403)`],
+      [`partial ${SHAPED.slice(0, 15)}\n`, `\n${SHAPED.slice(15)} (HTTP 403)`],
+      [`Authorization: Bearer `, `${hex} (HTTP 403)`],
+    ])("scrubs a token split across %j and %j", async (stdout, stderr) => {
+      const message = await throwsWith(stdout, stderr);
+
+      expect(message).not.toMatch(/A1b2|C3d4|0123456789abcdef/);
+      expect(message).toContain("(HTTP 403)");
+    });
+
+    it("redacts a token in the Link next URL of a refused page", async () => {
+      const link = `<https://evil.example/p?access_token=${hex}>; rel="next"`;
+      const exec = scripted(() => ({ code: 0, stdout: `HTTP/2.0 200 OK\r\nLink: ${link}\r\n\r\n[]`, stderr: "" })).exec;
+
+      const error = await ghCliWire(exec, { budget: rateBudget() }).listIssueComments(REPO, 7).catch((caught: Error) => caught);
+
+      expect((error as Error).message).toContain("refusing to follow");
+      expect((error as Error).message).not.toContain(hex);
+    });
+  });
+
+  describe("TP-1504 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+    const SHORT_JWT = "eyJhbGciOiJIUzI1NiJ9.e30.c2lnbmF0dXJlLXg";
+    const throwsWith = async (stdout: string, stderr: string): Promise<string> => {
+      const exec = scripted(() => ({ code: 1, stdout, stderr })).exec;
+      const error = await githubPort(ghCliWire(exec, { budget: rateBudget() })).getPr(REPO, 7).catch((caught: Error) => caught);
+      return (error as GhError).message;
+    };
+
+    it.each([
+      [`https://${hex}:x-oauth-basic@github.com/o/r`, hex],
+      [`next?a=1%26token=${hex}`, hex],
+      [`access_token%3D${hex}`, hex],
+      [`Authorization: Bearer%20${SHORT_JWT}`, "c2lnbmF0dXJl"],
+      [`Bearer%20${JWT}`, "eyJhbGci"],
+      [`token:       ${hex}`, hex],
+      [`token${" ".repeat(40)}${hex}`, hex],
+      [`GH_TOKEN ${hex}`, hex],
+    ])("redacts the secret in the thrown message for %s", async (line, secret) => {
+      const message = await throwsWith("", line);
+
+      expect(message).not.toContain(secret);
+      expect(message).toContain("[redacted]");
+    });
+
+    it.each([
+      ["GH_TOKEN", `=${hex} (HTTP 403)`],
+      ["tok", `en=${hex} (HTTP 403)`],
+      ["warning: GH_TOKEN\n", `: ${hex} (HTTP 403)`],
+    ])("scrubs a keyword ending stdout and a hex run inside stderr: %j | %j", async (stdout, stderr) => {
+      const message = await throwsWith(stdout, `${stderr}`);
+
+      expect(message).not.toContain(hex);
+      expect(message).toContain("(HTTP 403)");
+    });
+
+    it("keeps the text between a split keyword and its hex run", () => {
+      expect(redactStreams("GH_TOKEN", `=${hex} tail`, [])).toEqual(["GH_TOKEN", "=[redacted] tail"]);
+    });
+
+    it("redacts a JWT with a short payload and keeps dotted file names that only open like one", () => {
+      expect(redact(`jwt ${SHORT_JWT}`, [])).toBe("jwt [redacted]");
+      expect(redact("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts", [])).toBe("see eyJsonwebtoken.config.js and eyJsonwebtoken.e30.ts");
+    });
+
+    it("scans a megabyte of whitespace after a keyword in linear time", () => {
+      for (const keyword of ["bearer", "token", "bearer token"]) {
+        const text = `${keyword}${" ".repeat(1 << 20)}`;
+        const started = performance.now();
+
+        expect(redact(text, [])).toBe(text);
+        expect(performance.now() - started).toBeLessThan(100);
+      }
+    });
+
+    it("redacts a hex run past any gap or userinfo length that the unbounded forms redacted before", () => {
+      const user = "u".repeat(5000);
+
+      for (const line of [`bearer token${" ".repeat(65)}${hex}`, `token:${" ".repeat(64)}${hex}`, `token:${" ".repeat(65)}${hex}`, `token${" ".repeat(5000)}${hex}`, `https://${user}:${hex}@h`]) {
+        expect(redact(line, [])).not.toContain(hex);
+      }
+    });
+
+    it("keeps the text around a gap-bound or userinfo redaction", () => {
+      expect(redact(`x token:${" ".repeat(70)}${hex} y`, [])).toBe(`x token:${" ".repeat(70)}[redacted] y`);
+      expect(redact(`https://${"u".repeat(300)}:${hex}@h/p`, [])).toBe(`https://${"u".repeat(300)}:[redacted]@h/p`);
+    });
+
+    it("scans a chain of hex runs with colons in linear time", () => {
+      for (const unit of [`${hex}:`, `${hex}:x`, `${hex}@`]) {
+        const text = unit.repeat((1 << 19) / unit.length);
+        const started = performance.now();
+
+        redact(text, []);
+        expect(performance.now() - started).toBeLessThan(2000);
+      }
+    });
+
+    it("keeps a dotted snapshot file name that only opens like a JWT", () => {
+      expect(redact("see eyJsonwebtoken.spec.snapshot_file", [])).toBe("see eyJsonwebtoken.spec.snapshot_file");
+    });
+
+    it("scans a megabyte of letters and hex in linear time", () => {
+      for (const filler of ["a", "z", "ab.", "x:"]) {
+        const text = filler.repeat((1 << 20) / filler.length);
+        const started = performance.now();
+
+        redact(text, []);
+        expect(performance.now() - started).toBeLessThan(2000);
+      }
+    });
+  });
+
+  describe("TP-1509 gaps", () => {
+    const hex = "0123456789abcdef".repeat(3).slice(0, 40);
+
+    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 128 KB in linear time", (unit) => {
+      const text = unit.repeat((1 << 17) / unit.length);
+      const started = performance.now();
+
+      expect(redact(text, [])).toBe(text);
+      expect(performance.now() - started).toBeLessThan(100);
+    });
+
+    it("scans a megabyte of JWT-shaped runs, with and without dots, in linear time", () => {
+      for (const unit of ["-eyJaaaaaaaaaaaa", "-eyJaaaaaaaaaaaa.", "eyJaaaaaaaaaaaa.e30.", "x.aaaaaaaaaaaa"]) {
+        const text = unit.repeat((1 << 20) / unit.length);
+        const started = performance.now();
+
+        redactStreams(text, text, []);
+        expect(performance.now() - started).toBeLessThan(2000);
+      }
+    });
+
+    it("redacts a JWT behind a run of JWT-shaped words from its first header", () => {
+      expect(redact(`x ${"-eyJaaaaaaaaaaaa".repeat(4)}.e30.c2lnbmF0dXJlLXg y`, [])).toBe("x -[redacted] y");
+      expect(redact(`${JWT}.${JWT}`, [])).not.toMatch(/eyJ|c2ln/);
+    });
+
+    it.each([
+      [`https://${hex}`, ":x-oauth-basic@h", ["https://[redacted]", ":x-oauth-basic@h"]],
+      [`https://u:${hex}`, "@h", ["https://u:[redacted]", "@h"]],
+      [`https://u:${hex}\n`, "@github.com/o/r", ["https://u:[redacted]", "@github.com/o/r"]],
+    ])("redacts URL userinfo that only stderr completes: %j | %j", (stdout, stderr, expected) => {
+      expect(redactStreams(stdout, stderr, [])).toEqual(expected);
+    });
+
+    it.each(
+      [SHAPED, "ghp_" + "Z9y8X7w6".repeat(5), "github_pat_" + "11ABCDEFG0".repeat(8) + "xy"].flatMap((token) =>
+        [`token: ${hex} (HTTP 401)`, `\ntoken ${hex} (HTTP 401)`, `bearer ${hex} (HTTP 401)`, `GH_TOKEN=${hex} (HTTP 401)`, `https://${hex}@h`].map((stderr) => [token, stderr]),
+      ),
+    )("keeps the stderr token redacted behind its keyword or scheme when stdout ends in %s: %j", (token, stderr) => {
+      const [out, err] = redactStreams(`minted ${token}`, stderr, []);
+
+      expect(out).toBe("minted [redacted]");
+      expect(err).not.toContain(hex);
+      expect(err).toContain("[redacted]");
+    });
+
+    it("redacts the tail of a token split anywhere after its prefix", () => {
+      for (let cut = 4; cut < SHAPED.length; cut++) {
+        const [out, err] = redactStreams(`partial ${SHAPED.slice(0, cut)}`, `${SHAPED.slice(cut)} tail`, []);
+
+        expect([out, err]).toEqual(["partial [redacted]", "[redacted] tail"]);
+      }
+    });
   });
 });

@@ -31,22 +31,60 @@ const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.stri
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
 export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
-    kind: registeredKind(deps.store, input.runId) ?? null,
+    kind: registeredKind(deps.store, input.runId).kind ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
 }
 
 const SeatResult = z.looseObject({ clear: z.boolean() });
 
+/** Each head costs a roster read and a transcript scan per seat reviewer, and nothing caches them per head, so a longer walk refuses. */
+export const CARRY_SEAT_HEAD_CAP = 50;
+
+interface SeatInput extends CarryTarget {
+  fromHead: string;
+  head: string;
+  heads: string[];
+}
+
+type SeatHeads = { heads: string[] } | { reason: string };
+
+/** A fixed name for a failed read, never the error's own text: an HTTP status when it has one, else its class. */
+function readFailure(error: unknown): string {
+  const status = (error as { status?: unknown } | null)?.status;
+  if (typeof status === "number") return `HTTP ${status}`;
+  return error instanceof Error ? error.name : typeof error;
+}
+
+/**
+ * The run's heads plus every commit the PR passed through after `fromHead`, so a seat FIX_FIRST at an update the run never
+ * reviewed still refuses. After a rebase `fromHead` is not in the list, so every commit counts. A list that does not end at
+ * the head is short (GitHub stops at 250) or stale, and refuses.
+ */
+async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<SeatHeads> {
+  let commits: string[];
+  try {
+    commits = await port.listPrCommits(input.repo, input.pr);
+  } catch (error) {
+    return { reason: `seat check: the PR's commit list could not be read (${readFailure(error)})` };
+  }
+  if (commits.at(-1) !== input.head) return { reason: `seat check: the PR's commit list does not end at ${input.head}` };
+  const heads = [...new Set([...input.heads, ...commits.slice(commits.indexOf(input.fromHead) + 1)])];
+  if (heads.length > CARRY_SEAT_HEAD_CAP) return { reason: `seat check: ${heads.length} heads since ${input.fromHead} is more than ${CARRY_SEAT_HEAD_CAP}` };
+  return { heads };
+}
+
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
- * at that head would have. An unreadable roster or transcript refuses too. With no dispatch wired there is no roster to read.
+ * at that head would have. An unreadable roster, transcript or commit list refuses too. With no dispatch wired there is no roster to read.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now">, wiring: ReviewWiring | undefined): StepRoute {
-  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: CarryTarget & { heads: string[] }) => {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
+  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
-    for (const head of input.heads) {
+    const walked = await seatHeads(deps.port, input);
+    if ("reason" in walked) return { clear: false, reason: walked.reason };
+    for (const head of walked.heads) {
       const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
@@ -98,7 +136,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   const result = await carryStep(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha });
   if (!treeEqual(result)) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
-  const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, heads }, SeatResult);
+  const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, fromHead, head: headSha, heads }, SeatResult);
   if (!seats.clear) return undefined;
   const { merge } = source;
   return mergeVerdict(ctx, {

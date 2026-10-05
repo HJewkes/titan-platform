@@ -1,7 +1,8 @@
+import { isCaseUnsure } from "./case-attrs.js";
 import type { WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 
-const GLOBAL_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
+const GLOBAL_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source", "--super-prefix"]);
 
 export interface GitInvocation {
   /** Directory git operates in after `-C`, null when unknown. */
@@ -11,27 +12,34 @@ export interface GitInvocation {
   /** `-c key=value` overrides. */
   config: string[];
   sub: string | null;
+  /** True when the subcommand is, or an unquoted dynamic option word could split into, a word git could run as anything. */
+  subDynamic: boolean;
   subArgs: WordToken[];
 }
 
 /** Parses `git [global options] <subcommand> [args]` and resolves where it operates. */
 export function parseGit(args: WordToken[], dir: string | null, home: string | null = null): GitInvocation {
-  const inv: GitInvocation = { dir, otherPaths: [], config: [], sub: null, subArgs: [] };
+  const inv: GitInvocation = { dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] };
   let i = 0;
   for (; i < args.length && (args[i] as WordToken).value.startsWith("-"); i++) {
     const { flag, value, width } = option(args, i, GLOBAL_VALUE_OPTS);
+    inv.subDynamic ||= splits(args[i]) || splits(value);
     i += width - 1;
     if (flag === "-C") inv.dir = resolvePath(inv.dir, value, home);
     else if (flag === "--git-dir" || flag === "--work-tree") inv.otherPaths.push(resolvePath(inv.dir, value, home));
     else if (flag === "-c" && value) inv.config.push(value.value);
   }
   const sub = args[i];
-  if (sub && !sub.dynamic) {
+  if (sub?.dynamic || isCaseUnsure(sub)) inv.subDynamic = true;
+  else if (sub) {
     inv.sub = sub.value;
     inv.subArgs = args.slice(i + 1);
   }
   return inv;
 }
+
+/** An unquoted dynamic word word-splits, so it can carry the subcommand itself. */
+const splits = (word: WordToken | null | undefined) => Boolean(word?.dynamic && (!word.quoted || word.unquotedExpansion));
 
 function option(args: WordToken[], i: number, valueOpts: Set<string>) {
   const word = args[i] as WordToken;
