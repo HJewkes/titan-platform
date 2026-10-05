@@ -4,6 +4,7 @@ import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
 import { Project, type FileSystemHost, type RuntimeDirEntry } from "ts-morph";
 import { detectGitToplevel } from "./history/git.js";
 import { listTreeBlobs, readBlobs, resolveCommit } from "./history/git-tree.js";
+import { overlayHost, type TreeAnswers } from "./git-tree-host.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
 
 // Everything the indexer, ts-morph or generated.ts may read in the repo; batched into one cat-file.
@@ -234,19 +235,6 @@ function listTreeFiles(tree: CommitTree, rootDirs: readonly string[], languages:
   return [...seen].sort();
 }
 
-function readOnly(): never {
-  throw new Error("a git tree source is read-only");
-}
-
-/** One answer per path, shared by the IndexSource methods and the ts-morph host so they always agree. */
-interface TreeAnswers {
-  fileExists(abs: string): boolean;
-  readFile(abs: string): string;
-  directoryExists(abs: string): boolean;
-  readDir(abs: string): RuntimeDirEntry[];
-  realpath(abs: string): string;
-}
-
 /** Untracked build-output dirs on disk under a tracked dir, so a listing agrees with directoryExists. */
 function diskBuildDirs(real: FileSystemHost, canonical: string): RuntimeDirEntry[] {
   if (!real.directoryExistsSync(canonical)) return [];
@@ -302,33 +290,6 @@ function treeAnswers(tree: CommitTree, real: FileSystemHost): TreeAnswers {
     // Like the real host, realpath of an absent path throws.
     realpath: (abs) =>
       fileExists(abs) || directoryExists(abs) ? tree.locate(abs, "file").canonical : missing(abs, "file"),
-  };
-}
-
-function overlayHost(answers: TreeAnswers, real: FileSystemHost): FileSystemHost {
-  return {
-    isCaseSensitive: () => real.isCaseSensitive(),
-    readDirSync: answers.readDir,
-    readFileSync: (p) => answers.readFile(p),
-    readFile: async (p) => answers.readFile(p),
-    fileExistsSync: answers.fileExists,
-    fileExists: async (p) => answers.fileExists(p),
-    directoryExistsSync: answers.directoryExists,
-    directoryExists: async (p) => answers.directoryExists(p),
-    realpathSync: answers.realpath,
-    getCurrentDirectory: () => real.getCurrentDirectory(),
-    glob: () => Promise.reject(new Error("glob is not supported on a git tree source")),
-    globSync: () => readOnly(),
-    delete: async () => readOnly(),
-    deleteSync: readOnly,
-    writeFile: async () => readOnly(),
-    writeFileSync: readOnly,
-    mkdir: async () => readOnly(),
-    mkdirSync: readOnly,
-    move: async () => readOnly(),
-    moveSync: readOnly,
-    copy: async () => readOnly(),
-    copySync: readOnly,
   };
 }
 
