@@ -2,13 +2,14 @@ import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
 import { DamagedTranscriptError } from "./external-review.js";
+import type { Presence } from "./presence.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
 export interface TranscriptRow {
   agentId: string;
   sessionId: string;
-  presence: string;
+  presence: Presence;
   transcriptPath: string | null;
   transcriptExists: boolean;
 }
@@ -20,7 +21,7 @@ export interface TranscriptReviewerReaderOptions {
 }
 
 /** Only `exited` is a finished session; a `detached` process may still be writing its turn. */
-const FINISHED = "exited";
+const FINISHED: Presence = "exited";
 
 /** Where the last assistant text sits: the byte offset of its record and its index in that record's content. */
 interface FinalText {
@@ -143,7 +144,7 @@ async function readWholeTranscript(agentId: string, transcriptPath: string, name
 }
 
 /** Presences whose process may still append to the transcript, so a partial last record is a write in progress. */
-const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
+const RUNNING: ReadonlySet<Presence> = new Set<Presence>(["live", "exiting"]);
 
 /**
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last

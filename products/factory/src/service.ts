@@ -1,5 +1,4 @@
 import { existsSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export const SERVICE_LABEL = "dev.hjewkes.titan-factory";
@@ -37,10 +36,6 @@ export function servicePath(which: (binary: string) => string | undefined, nodeP
   const found = SERVICE_BINARIES.map((binary) => ({ binary, file: which(binary) }));
   const dirs = [...found.flatMap(({ file }) => (file === undefined ? [] : [pathEntry(file)])), pathEntry(nodePath), ...LAUNCHD_PATH];
   return { path: [...new Set(dirs)].join(":"), missing: found.filter(({ file }) => file === undefined).map(({ binary }) => binary) };
-}
-
-export function serviceLogDir(env: NodeJS.ProcessEnv): string {
-  return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory");
 }
 
 export function plistPath(home: string): string {

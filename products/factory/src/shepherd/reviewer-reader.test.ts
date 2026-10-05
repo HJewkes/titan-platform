@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
+import { toPresence, type Presence } from "./presence.js";
 
 vi.mock("@titan-design/session-read", async (importOriginal) => {
   const original = await importOriginal<typeof SessionRead>();
@@ -112,7 +113,7 @@ describe("transcriptReviewerReader", () => {
     expect(messages.at(-1)!.locator.source.namespace).toBe(os.hostname());
   });
 
-  it.each(["live", "detached", "exiting"])("returns nothing while the presence is %s, because only exited proves the turn ended", async (presence) => {
+  it.each(["live", "detached", "exiting"] as const)("returns nothing while the presence is %s, because only exited proves the turn ended", async (presence) => {
     const transcript = writeTranscript(SESSION, reviewed());
 
     expect(await read([row(transcript, { presence })])).toEqual([]);
@@ -273,7 +274,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
   /** Trimmed from a real seat reviewer transcript; ids, paths and text are synthetic, the record shapes are as Claude Code wrote them. */
   const FIXTURE_SESSION = "5e47c0de-0000-4000-8000-000000000001";
   const FIXTURE_HEAD = `c0ffee${"0".repeat(34)}`;
-  const seat = { name: "seat-a-4-review", agentId: "agent-seat-a-4-review", sessionId: FIXTURE_SESSION, presence: "exited", spawnedBy: "coord", transcriptExists: true };
+  const seat = { name: "seat-a-4-review", agentId: "agent-seat-a-4-review", sessionId: FIXTURE_SESSION, presence: "exited" as const, spawnedBy: "coord", transcriptExists: true };
   const sendVerdict = (verdict: string): Json => ({ type: "tool_use", id: "tool-send", name: "mcp__plugin_agent-chat_agent-chat__chat_send", input: { to: "coord", text: verdict } });
   const sendRequest = { ...input, reviewerAgentId: seat.agentId };
 
@@ -300,7 +301,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
   });
 
   it("does not block on a seat reviewer still running with no transcript yet", async () => {
-    const rows = [{ ...seat, presence: "live", transcriptExists: false, transcriptPath: null }];
+    const rows = [{ ...seat, presence: "live" as const, transcriptExists: false, transcriptPath: null }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
 
     expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
@@ -315,7 +316,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const reviewingPr7 = [user(SESSION, "review it"), assistant(SESSION, [BLOCK.replace(HEAD, "b".repeat(40))]), assistant(SESSION, ["Looking again."])];
 
     /** The seat check over one transcript of `records`, with `partial` appended as an unterminated last record. */
-    async function seatCheck(records: readonly Json[], presence: string, partial = false, pr = 7, warn = vi.fn()) {
+    async function seatCheck(records: readonly Json[], presence: Presence, partial = false, pr = 7, warn = vi.fn()) {
       const transcript = writeTranscript(SESSION, records);
       if (partial) appendFileSync(transcript, PARTIAL, "utf8");
       const rows = [{ ...seat, sessionId: SESSION, presence, transcriptPath: transcript }];
@@ -323,14 +324,21 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
       return seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr, head: HEAD }, warn);
     }
 
-    it.each(["exited", "detached"])("blocks on a FIX_FIRST sent by a %s reviewer whose transcript ends on the chat_send call", async (presence) => {
+    it.each(["exited", "detached"] as const)("blocks on a FIX_FIRST sent by a %s reviewer whose transcript ends on the chat_send call", async (presence) => {
       expect(await seatCheck(sentOnly, presence)).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", head: HEAD });
     });
 
-    it.each(["exited", "detached"])("blocks its own PR with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
+    it.each(["exited", "detached"] as const)("blocks its own PR with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
       expect(await seatCheck(reviewingPr7, presence, true)).toEqual({
         kind: "none",
         reason: `seat check: the transcript of ${seat.name} could not be read: the ${presence} session ${SESSION} ends in a partial record`,
+      });
+    });
+
+    it("blocks its own PR when a reviewer of unknown presence ends in a partial record, as a bare unlisted value did", async () => {
+      expect(await seatCheck(reviewingPr7, toPresence("suspended"), true)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${seat.name} could not be read: the unknown session ${SESSION} ends in a partial record`,
       });
     });
 
@@ -394,7 +402,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
 
 describe("a seat reviewer's transcript read once per roster change", () => {
   const target = { repo: "octo/demo", pr: 7, head: HEAD };
-  const seat = { name: "seat-a-1-review", agentId: "agent-seat-a-1-review", sessionId: SESSION, presence: "exited", spawnedBy: "coord", transcriptExists: true };
+  const seat = { name: "seat-a-1-review", agentId: "agent-seat-a-1-review", sessionId: SESSION, presence: "exited" as const, spawnedBy: "coord", transcriptExists: true };
   const reads = () => vi.mocked(readSessionObservations).mock.calls.length;
 
   beforeEach(() => vi.mocked(readSessionObservations).mockClear());

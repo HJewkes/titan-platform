@@ -1,3 +1,6 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { confirmOwner, defaultHelperPath, helperSearchOrder, ROOT_HELPER_PATH, type HelperRunner, type StatPort } from "./owner-presence.js";
 
@@ -125,5 +128,55 @@ describe("confirmOwner checks the helper path before each run", () => {
     const stat: StatPort = (path) => ({ uid: 0, mode: path === ROOT_HELPER_PATH ? FILE : DIR });
     const { runs } = await confirmWith(stat, helperSearchOrder());
     expect(runs).toEqual([ROOT_HELPER_PATH]);
+  });
+
+  it.each(["EACCES", "ELOOP", "EIO"])("fails closed on %s from lstat and never tries native/build", async (code) => {
+    const stat: StatPort = (path) => {
+      if (path === ROOT_HELPER_PATH) throw Object.assign(new Error(`${code}: ${path}`), { code });
+      return { uid: OWNER, mode: FILE };
+    };
+    const { proof, runs, reports } = await confirmWith(stat, helperSearchOrder());
+    expect(proof).toBeUndefined();
+    expect(runs).toEqual([]);
+    expect(reports).toEqual([`owner presence refused: lstat of the helper path failed with ${code}\n`]);
+  });
+
+  it("fails closed when lstat fails on a parent of the root helper", async () => {
+    const stat: StatPort = (path) => {
+      if (path === dirname(ROOT_HELPER_PATH)) throw Object.assign(new Error("denied"), { code: "EACCES" });
+      return { uid: 0, mode: path === ROOT_HELPER_PATH ? FILE : DIR };
+    };
+    const { proof, runs, reports } = await confirmWith(stat, helperSearchOrder());
+    expect(proof).toBeUndefined();
+    expect(runs).toEqual([]);
+    expect(reports).toEqual(["owner presence refused: lstat of the helper path failed with EACCES\n"]);
+  });
+
+  it("treats ENOENT through the stat port as absent and falls back to native/build", async () => {
+    const stat: StatPort = (path) => (path === ROOT_HELPER_PATH ? undefined : { uid: 0, mode: path === defaultHelperPath() ? FILE : DIR });
+    const { runs } = await confirmWith(stat, helperSearchOrder());
+    expect(runs).toEqual([defaultHelperPath()]);
+  });
+});
+
+describe("confirmOwner with the real lstat", () => {
+  it("reports a missing helper as absent and an unreadable parent as a named errno", async () => {
+    const root = mkdtempSync(join(tmpdir(), "owner-presence-"));
+    try {
+      const locked = join(root, "locked");
+      mkdirSync(locked, { mode: 0o700 });
+      writeFileSync(join(locked, "helper"), "");
+      const run: HelperRunner = async () => PROOF;
+      const reports: string[] = [];
+      const absent = await confirmOwner("r", { run, getuid: () => 0, helperPaths: [join(root, "missing")], report: (l) => reports.push(l) });
+      chmodSync(locked, 0o000);
+      const denied = await confirmOwner("r", { run, getuid: () => 0, helperPaths: [join(locked, "helper")], report: (l) => reports.push(l) });
+      expect([absent, denied]).toEqual([undefined, undefined]);
+      expect(reports[0]).toBe(`owner presence refused: no helper at ${join(root, "missing")}\n`);
+      expect(reports[1]).toMatch(/failed with (EACCES|EPERM)\n$/);
+    } finally {
+      chmodSync(join(root, "locked"), 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
