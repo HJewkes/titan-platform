@@ -7,6 +7,7 @@ import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
+import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -101,7 +102,7 @@ function walk(tokens: Token[], w: Walk): void {
   for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
       const cmd = emit(words, redirects, w, token.value);
-      w.stdin = nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin);
+      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
       words = [];
       redirects = [];
       w.prev = token.value;
@@ -112,7 +113,7 @@ function walk(tokens: Token[], w: Walk): void {
       continue;
     }
     if (token.type === "word") words.push(token);
-    if (token.type === "redirect") redirects.push(token);
+    redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   emit(words, redirects, w, null);
