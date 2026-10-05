@@ -217,8 +217,8 @@ async function release(
     const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" });
     if (refusal !== null) return { released: false, refusal };
   }
-  await removeWorktree(gitRoot, worktree, branch);
-  return { released: true };
+  const refused = await removeWorktree(gitRoot, worktree, branch, opts);
+  return refused === undefined ? { released: true } : { released: false, refusal: refused };
 }
 
 /** Worktree isolation for agents: one branch and one directory per agent name, under a per-repo budget. */
