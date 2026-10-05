@@ -7,8 +7,9 @@ const PIPES = new Set(["|", "|&"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 /**
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
- * newlines that start no command, so no token position can say where an assignment stands. Any of them in the
- * text, quoted or not, refuses the join.
+ * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
+ * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
+ * the join alone.
  */
 const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
 
@@ -20,7 +21,7 @@ const UNSURE = -2;
  * Returns the index of that `]` for the `[` at `open`, or -1 when the word lexes as usual.
  */
 export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[]): number {
-  if (UNPLACEABLE_RE.test(src) || !atAssignmentPosition(tokens)) return -1;
+  if (UNPLACEABLE_RE.test(src.slice(0, open)) || !atAssignmentPosition(tokens)) return -1;
   const close = matchingBracket(src, open);
   const after = close === -1 ? "" : src.slice(close + 1, close + 3);
   return after.startsWith("=") || after === "+=" ? close : -1;
