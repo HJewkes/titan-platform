@@ -31,7 +31,7 @@ function hooksFiles(profile: Profile): GeneratedFile[] {
   const config = generateHooksConfig(profile);
   return [
     {
-      path: ".claude/settings.json",
+      path: ".claude/codewatch-hooks.json",
       content: JSON.stringify(config, null, 2),
     },
   ];

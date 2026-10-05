@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
+import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -23,6 +24,10 @@ export interface CiSnapshot {
   waitingOn?: string[];
   /** On a `behind` read: the PR's own required checks are green at this head, so it can be reviewed before any update. */
   checksGreen?: boolean;
+  /** On a `behind` read in a repo that does not require up-to-date heads: green, but the base moved after its CI started. */
+  baseMoved?: boolean;
+  /** When `ci-wait` returned this read, so the update budget can tell how long the base has been chased. */
+  readAt?: number;
 }
 
 export interface CiInput {
@@ -32,20 +37,42 @@ export interface CiInput {
   strict: boolean;
 }
 
-export async function readCi(port: GitHubPort, input: CiInput): Promise<CiSnapshot> {
-  const pr = await port.getPr(input.repo, input.pr);
+/**
+ * `reads` answers the PR and its check runs; every other read, and every write, goes to the port. A snapshot may answer
+ * pending, red or behind, but its green is read again through the port, because the merge that follows acts on it.
+ */
+export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads): Promise<CiSnapshot> {
+  const ci = await readCiFrom(port, input, reads ?? portReads(port));
+  if (ci.verdict !== "green" || reads === undefined) return ci;
+  return readCiFrom(port, input, portReads(port));
+}
+
+/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
+function findingsAt(input: CiInput, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+  return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+}
+
+async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads): Promise<CiSnapshot> {
+  const pr = await reads.getPr(input.repo, input.pr);
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
-  const runs = await port.checkRuns(input.repo, pr.headSha);
-  const findings = headCheckFindings({ headSha: pr.headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
-  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return { ...base, verdict: "behind", ...(findings.length === 0 && !pr.draft && { checksGreen: true }) };
+  const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
+  const findings = findingsAt(input, pr.headSha, runs);
+  if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft);
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
   const verdict = await settledVerdict(port, input, pr);
-  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind" };
+  if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };
   return { ...base, verdict };
+}
+
+/** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */
+function behindVerdict(base: Pick<CiSnapshot, "headSha" | "mergeableState">, findings: CheckFinding[], draft: boolean): CiSnapshot {
+  const running = findings.filter((finding) => finding.kind !== "failed");
+  if (running.length > 0) return { ...base, verdict: "pending", waitingOn: running.map(findingName) };
+  return { ...base, verdict: "behind", ...(findings.length === 0 && !draft && { checksGreen: true }) };
 }
 
 /** Reached only when rules are not strict: GitHub would merge this behind head untested against base commits newer than its green. */

@@ -1,10 +1,13 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { redact, redactStreams } from "./redact.js";
+import { listForcePushes } from "./force-pushes.js";
+import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 
@@ -37,6 +40,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     },
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
+    revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
@@ -61,6 +65,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
     listReviewComments: (repo, number) => listReviewComments(api, repo, number),
+    listForcePushes: (repo, number) => listForcePushes(api, repo, number),
   };
 }
 
@@ -126,6 +131,11 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {
   const prs = await api.pages(`repos/${repo}/pulls`, { ...fields, per_page: "100" }, (page: GhPull[]) => page);
   return prs.map((pr) => toPullRequest(pr, false));
+}
+
+async function revalidateOpenPulls(api: Rest, repo: string, etag: string | null): Promise<OpenPrList> {
+  const read = await api.revalidatePages(`repos/${repo}/pulls`, { state: "open", per_page: "100" }, etag, (page: GhPull[]) => page);
+  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr, false)), etag: read.etag };
 }
 
 /** `behind` comes from the compare API, which is exact, not from the lazily computed `mergeable_state`. */
@@ -255,19 +265,6 @@ interface GhReviewThread {
   id: string;
   isResolved: boolean;
   comments: GhPage<GhReviewComment>;
-}
-
-interface GhGraphql<T> {
-  data?: T;
-  errors?: { message: string }[];
-}
-
-/** GraphQL answers 200 with `errors` and no data on a failed query, so a missing value is the failure. */
-async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
-  const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
-  const value = answer.data === undefined ? undefined : pick(answer.data);
-  if (value === null || value === undefined) throw new Error(redact(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`, []));
-  return value;
 }
 
 /** Only GraphQL review threads carry the resolved state; REST review comments do not. */

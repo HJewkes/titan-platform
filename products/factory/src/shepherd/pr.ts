@@ -197,7 +197,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     iteration: (stepId) => ctx.iteration(stepId),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: conflictCheckedGates(supersedingGates(ctx, () => new LeaveLand()), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
+    assisted: conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -368,7 +368,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     carrySeatRoute(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
-    observeRoute(deps.port, deps.now),
+    observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
   ];

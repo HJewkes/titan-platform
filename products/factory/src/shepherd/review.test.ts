@@ -879,6 +879,19 @@ describe("sh-review", () => {
     expect(logged).toContain(`shepherd: the reviewer dispatch was refused (${kind}): ${refusal.message}`);
   });
 
+  it("answers none with the refusal's class, not a failed step, when the refusal's message getter throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const refusal = new DispatchError("x");
+    Object.defineProperty(refusal, "message", { get: () => { throw new Error("getter-secret-message"); } });
+    const dispatch = fakeDispatch();
+    dispatch.spawn = async () => Promise.reject(refusal);
+
+    const { result } = await shReview(dispatch);
+    warn.mockRestore();
+
+    expect(result).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: DispatchError" });
+  });
+
   describe("a broker whose machine guard refuses the spawn", () => {
     const GUARD = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents); wait for one to exit";
 

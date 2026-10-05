@@ -44,21 +44,21 @@ describe("Enricher", () => {
   });
 
   describe("feature filtering", () => {
-    it("only enriches features that need AI (9 of 85)", async () => {
+    it("only enriches features that need AI ", async () => {
       const enricher = new Enricher({ provider: mockProvider });
 
       const features = new Map<string, AggregatedFeature>([
         ["naming.variables", makeFeature({ type: "naming.variables" })],
-        ["documentation.voice", makeFeature({ type: "documentation.voice" })],
+        ["documentation.comment-placement", makeFeature({ type: "documentation.comment-placement" })],
         ["formatting.semicolons", makeFeature({ type: "formatting.semicolons" })],
-        ["reviewVoice.tone", makeFeature({ type: "reviewVoice.tone" })],
+        ["reviewVoice.topicFrequency", makeFeature({ type: "reviewVoice.topicFrequency" })],
       ]);
 
       const result = await enricher.enrich(features);
 
       expect(mockProvider.generate).toHaveBeenCalledTimes(2);
-      expect(result.enriched.has("documentation.voice")).toBe(true);
-      expect(result.enriched.has("reviewVoice.tone")).toBe(true);
+      expect(result.enriched.has("documentation.comment-placement")).toBe(true);
+      expect(result.enriched.has("reviewVoice.topicFrequency")).toBe(true);
       expect(result.enriched.has("naming.variables")).toBe(false);
       expect(result.enriched.has("formatting.semicolons")).toBe(false);
     });
@@ -84,13 +84,13 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
+          "documentation.comment-placement",
           makeFeature({
-            type: "documentation.voice",
+            type: "documentation.comment-placement",
             convention: "imperative",
             confidence: 0.72,
             examples: [
-              { type: "documentation.voice", category: "documentation", value: "imperative", file: "test.ts", line: 1 },
+              { type: "documentation.comment-placement", category: "documentation", value: "imperative", file: "test.ts", line: 1 },
             ],
           }),
         ],
@@ -105,7 +105,7 @@ describe("Enricher", () => {
         (m: { role: string }) => m.role === "user",
       );
 
-      expect(userMessage.content).toContain("documentation.voice");
+      expect(userMessage.content).toContain("documentation.comment-placement");
       expect(userMessage.content).toContain("imperative");
       expect(userMessage.content).toContain("72%");
     });
@@ -120,15 +120,15 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
       ]);
 
       const result = await enricher.enrich(features);
 
       expect(
-        result.enriched.get("documentation.voice")?.description,
+        result.enriched.get("documentation.comment-placement")?.description,
       ).toBe(mockResponse);
     });
 
@@ -137,10 +137,10 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
-        ["reviewVoice.tone", makeFeature({ type: "reviewVoice.tone" })],
+        ["reviewVoice.topicFrequency", makeFeature({ type: "reviewVoice.topicFrequency" })],
       ]);
 
       const result = await enricher.enrich(features);
@@ -165,17 +165,17 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
-        ["reviewVoice.tone", makeFeature({ type: "reviewVoice.tone" })],
+        ["reviewVoice.topicFrequency", makeFeature({ type: "reviewVoice.topicFrequency" })],
       ]);
 
       const result = await enricher.enrich(features);
 
-      expect(result.enriched.has("reviewVoice.tone")).toBe(true);
+      expect(result.enriched.has("reviewVoice.topicFrequency")).toBe(true);
       expect(result.errors.length).toBe(1);
-      expect(result.errors[0]!.featureType).toBe("documentation.voice");
+      expect(result.errors[0]!.featureType).toBe("documentation.comment-placement");
     });
 
     it("reports all errors without throwing", async () => {
@@ -187,8 +187,8 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
       ]);
 
@@ -205,8 +205,8 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
       ]);
 
@@ -233,14 +233,14 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
         [
-          "documentation.whyVsWhat",
-          makeFeature({ type: "documentation.whyVsWhat" }),
+          "documentation.inline-comment",
+          makeFeature({ type: "documentation.inline-comment" }),
         ],
-        ["reviewVoice.tone", makeFeature({ type: "reviewVoice.tone" })],
+        ["reviewVoice.topicFrequency", makeFeature({ type: "reviewVoice.topicFrequency" })],
       ]);
 
       const result = await enricher.enrich(features);
@@ -259,8 +259,8 @@ describe("Enricher", () => {
 
       const features = new Map<string, AggregatedFeature>([
         [
-          "documentation.voice",
-          makeFeature({ type: "documentation.voice" }),
+          "documentation.comment-placement",
+          makeFeature({ type: "documentation.comment-placement" }),
         ],
       ]);
 

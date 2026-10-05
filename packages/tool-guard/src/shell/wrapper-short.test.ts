@@ -59,4 +59,68 @@ describe("a wrapper's short option that takes a separate value", () => {
   ])("gives no push verdict for %s before a harmless command", (_how, command) => {
     expect(spellings(command)).not.toContain(PUSH);
   });
+
+  it.each([
+    ["xargs -0I", "xargs -0I {} git push origin HEAD:main"],
+    ["xargs -0n", "xargs -0n 1 git push origin HEAD:main"],
+    ["env -0u", "env -0u X git push origin HEAD:main"],
+    ["xargs -r0I, a digit later in the cluster", "xargs -r0I {} git push origin HEAD:main"],
+    ["env -0, a digit-only cluster that takes no value", "env -0 git push origin HEAD:main"],
+  ])("reads %s as a push to main", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+
+  it.each([
+    ["xargs -0", "xargs -0 ls"],
+    ["env -0", "env -0 git status"],
+  ])("gives no push verdict for %s before a harmless command", (_how, command) => {
+    expect(spellings(command)).not.toContain(PUSH);
+  });
+
+  it.each([
+    ["xargs -i5n", "xargs -i5n git push origin HEAD:main"],
+    ["xargs -e5n", "xargs -e5n git push origin HEAD:main"],
+    ["xargs -l1n", "xargs -l1n git push origin HEAD:main"],
+    ["xargs -exn", "xargs -exn git push origin HEAD:main"],
+    ["xargs -ixn", "xargs -ixn git push origin HEAD:main"],
+    ["xargs -eI, whose I is the eof string", "xargs -eI git push origin HEAD:main"],
+    ["nice -1n, a digit nice does not know", "nice -1n git push origin HEAD:main"],
+    ["watch -0n, a digit watch does not know", "watch -0n git push origin HEAD:main"],
+  ])("keeps the attached value of an optional-value option out of the cluster split: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+
+  it.each([
+    ["-0I %", "-0 -I %", "git push %"],
+    ["-r0I %", "-r -0 -I %", "git push %"],
+    ["-0rI %", "-0 -r -I %", "git push %"],
+    ["-0i", "-0 -i", "git push {}"],
+    ["-0n1", "-0 -n 1", "git push origin"],
+    ["-0L1", "-0 -L 1", "git push origin"],
+    ["-0n 1", "-0 -n 1", "git push origin"],
+  ])("reads a clustered xargs %s as its split spelling %s does", (clustered, split, rest) => {
+    const stdin = "printf 'x main\\0' | xargs";
+    expect(spellings(`${stdin} ${clustered} ${rest}`)).toEqual(spellings(`${stdin} ${split} ${rest}`));
+  });
+
+  it.each([
+    ["-0I %", "git push %"],
+    ["-r0I %", "git push %"],
+    ["-0rI %", "git push %"],
+    ["-0i", "git push {}"],
+  ])("finds the push of a clustered xargs %s from piped input", (clustered, rest) => {
+    expect(spellings(`printf 'x main\\0' | xargs ${clustered} ${rest}`)).toContain(PUSH);
+  });
+
+  it.each([
+    ["env -0u X", "env -0 -u X"],
+    ["env -0uX", "env -0 -uX"],
+    ["xargs -exn", "xargs -exn"],
+    ["xargs -ixn", "xargs -ixn"],
+    ["xargs -r0n 1", "xargs -r -0 -n 1"],
+  ])("reads %s as its split spelling %s does", (clustered, split) => {
+    const rest = "git push origin HEAD:main";
+    expect(spellings(`${clustered} ${rest}`)).toEqual(spellings(`${split} ${rest}`));
+    expect(spellings(`${clustered} ${rest}`)).toContain(PUSH);
+  });
 });

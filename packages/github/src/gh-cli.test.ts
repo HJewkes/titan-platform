@@ -203,7 +203,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/rerun-failed-jobs$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
-  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } } }],
+  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
 ];
 
 function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
@@ -218,11 +218,11 @@ function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
   return { exec, argv };
 }
 
-/** Review-thread resolution exists only in GraphQL, so `listReviewComments` is the one method that posts to it. */
-const GRAPHQL_METHODS = ["listReviewComments"];
+/** Review-thread resolution and a force-push's replaced head exist only in GraphQL, so these are the methods that post to it. */
+const GRAPHQL_METHODS = ["listReviewComments", "listForcePushes"];
 
 describe("gh api adapter, REST only", () => {
-  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments", async () => {
+  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments and listForcePushes", async () => {
     const gh = routedGh();
     const port = githubPort(ghCliWire(gh.exec, { appToken: async () => "app-token" }));
     const calls: Record<keyof typeof port, () => Promise<unknown>> = {
@@ -233,6 +233,7 @@ describe("gh api adapter, REST only", () => {
       putFile: () => port.putFile(REPO, { path: "docs/a.md", branch: "topic", content: "x", message: "m", expectedBlobSha: H2 }),
       findPr: () => port.findPr(REPO, "topic"),
       listOpenPrs: () => port.listOpenPrs(REPO, "to"),
+      revalidateOpenPrs: () => port.revalidateOpenPrs(REPO, null),
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
@@ -251,6 +252,7 @@ describe("gh api adapter, REST only", () => {
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),
+      listForcePushes: () => port.listForcePushes(REPO, 7),
     };
     const graphqlCalls: string[] = [];
 
@@ -369,6 +371,29 @@ describe("gh api adapter, conditional GETs", () => {
 
     expect(again.map((pr) => pr.number)).toEqual([7, 8]);
     expect(gh.calls[3]?.args).toContain('If-None-Match: "p2"');
+  });
+
+  it("revalidates the open list with the caller's ETag and answers a 304 as not modified", async () => {
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"o1"' }, [pull]), included(304, { ETag: 'W/"o1"' }, undefined)]);
+    const port = githubPort(ghCliWire(gh.exec));
+
+    const first = await port.revalidateOpenPrs(REPO, null);
+    const second = await port.revalidateOpenPrs(REPO, 'W/"o1"');
+
+    expect(first).toMatchObject({ notModified: false, etag: 'W/"o1"', prs: [{ number: 7, headSha: H1, behind: false }] });
+    expect(second).toEqual({ notModified: true });
+    expect(gh.calls[0]?.args).not.toContain("-H");
+    expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"o1"']);
+  });
+
+  it("answers a list longer than one page with every page and no ETag", async () => {
+    const link = { Link: '<https://api.github.com/repositories/9/pulls?state=open&page=2>; rel="next"' };
+    const gh = scriptedGhSequence([included(200, { ETag: '"p1"', ...link }, [pull]), included(200, { ETag: '"p2"' }, [{ ...pull, number: 8 }])]);
+
+    const read = await ghCliWire(gh.exec).revalidateOpenPrs(REPO, null);
+
+    expect(read).toMatchObject({ notModified: false, etag: null });
+    expect(read.notModified ? [] : read.prs.map((pr) => pr.number)).toEqual([7, 8]);
   });
 
   it("refuses a next-page link that leaves api.github.com", async () => {
