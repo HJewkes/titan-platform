@@ -156,7 +156,7 @@ describe("finding what nobody is using", () => {
     const swept = await sweep([identity()], { list: lister, now: () => RECLAIM_GRACE_MS + 1 });
 
     expect(swept[0]?.status).toBe("holds-work");
-    expect(swept[0]?.detail).toMatch(/uncommitted changes/);
+    expect(swept[0]?.detail).toMatch(/uncommitted or untracked changes/);
   });
 
   /**
@@ -212,6 +212,35 @@ describe("reclaiming", () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/holds-work/);
     expect(fs.existsSync(worktree)).toBe(true);
+  });
+
+  it("refuses an untracked file that status.showUntrackedFiles=no hides", async () => {
+    const repo = makeRepo();
+    const worktree = await abandonedWorktree(repo);
+    git(["config", "status.showUntrackedFiles", "no"], worktree);
+    fs.writeFileSync(path.join(worktree, "notes.txt"), "draft\n");
+    const [entry] = await sweep([identity()], { list: lister, now: () => RECLAIM_GRACE_MS + 1 });
+
+    const result = await reclaimWorktree(entry!);
+
+    expect(entry?.status).toBe("holds-work");
+    expect(result.ok).toBe(false);
+    expect(fs.readFileSync(path.join(worktree, "notes.txt"), "utf8")).toBe("draft\n");
+  });
+
+  it("refuses a tree whose gitdir is broken, and keeps its files and branch", async () => {
+    const repo = makeRepo();
+    const worktree = await abandonedWorktree(repo);
+    fs.writeFileSync(path.join(worktree, ".git"), `gitdir: ${path.join(repo, "missing-gitdir")}\n`);
+    fs.writeFileSync(path.join(worktree, "notes.txt"), "draft\n");
+    const [entry] = await sweep([identity()], { list: lister, now: () => RECLAIM_GRACE_MS + 1 });
+
+    const result = await reclaimWorktree(entry!);
+
+    expect(entry?.detail).toMatch(/could not read git status/);
+    expect(result.ok).toBe(false);
+    expect(fs.existsSync(path.join(worktree, "notes.txt"))).toBe(true);
+    expect(git(["branch", "--list", "agent-chat/scout"], repo)).toContain("agent-chat/scout");
   });
 
   it("destroys it anyway when a human forces it", async () => {

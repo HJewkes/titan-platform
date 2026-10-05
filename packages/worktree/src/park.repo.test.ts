@@ -212,7 +212,7 @@ describe("refusing to park what the removal would lose", () => {
 
     expect(parked).toMatchObject({
       ok: false,
-      reason: expect.stringMatching(/ignored files .* \(\.env\); park removes only ignored node_modules, dist/),
+      reason: expect.stringMatching(/ignored files .* \(\.env\); only ignored node_modules, dist/),
     });
     expect(fs.existsSync(path.join(tree.worktree, ".env"))).toBe(true);
   });

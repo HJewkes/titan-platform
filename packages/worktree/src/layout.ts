@@ -1,6 +1,6 @@
-import { cpSync, lstatSync, type Stats } from "node:fs";
+import { cpSync, existsSync, lstatSync, type Stats } from "node:fs";
 import path from "node:path";
-import { gitOrNull } from "./git.js";
+import { gitOrNull, gitText } from "./git.js";
 
 /** Live worktrees under basePath, from git itself rather than a parallel table. */
 export async function allocatedPaths(gitRoot: string, basePath: string): Promise<string[]> {
@@ -64,11 +64,29 @@ export function copyClaudeDir(gitRoot: string, worktreePath: string): string[] {
   ];
 }
 
-/** Remove the tree and its branch. Callers decide first whether anything would be lost. */
-export async function removeWorktree(gitRoot: string, worktreePath: string, branch: string): Promise<void> {
-  if ((await gitOrNull(["worktree", "remove", worktreePath], gitRoot)) === null) {
-    await gitOrNull(["worktree", "remove", "--force", worktreePath], gitRoot);
+/**
+ * Remove the tree and its branch, or say why git would not. Callers decide first whether anything
+ * would be lost; a refusal from git's own non-forced remove still stands unless the caller forced,
+ * since it is the last check before files are deleted. The branch is kept while the tree remains.
+ */
+export async function removeWorktree(
+  gitRoot: string,
+  worktreePath: string,
+  branch: string,
+  opts: { force?: boolean } = {}
+): Promise<string | undefined> {
+  const remove = ["worktree", "remove", ...(opts.force ? ["--force"] : []), worktreePath];
+  try {
+    await gitText(remove, gitRoot);
+  } catch (err) {
+    if (existsSync(worktreePath)) return `git would not remove ${worktreePath}: ${firstLine(err)}`;
   }
-  await gitOrNull(["branch", "-D", branch], gitRoot);
   await pruneStaleWorktrees(gitRoot);
+  await gitOrNull(["branch", "-D", branch], gitRoot);
+  return undefined;
+}
+
+function firstLine(err: unknown): string {
+  const detail = String((err as { stderr?: unknown }).stderr || (err as Error).message).trim();
+  return detail.split("\n")[0] ?? detail;
 }
