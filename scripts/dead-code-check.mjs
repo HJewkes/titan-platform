@@ -26,8 +26,8 @@ const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 
 const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
 const IMPORTER_EDGES = new Set(["imports", "references", "calls"]);
-// Tests, fixtures, configs, scripts and app entries are roots: nothing imports them by design.
-const ROOT_ROLES = new Set(["test", "fixture", "config", "script", "entry"]);
+// Tests, fixtures, stories, labs, configs, scripts and app entries are roots: nothing imports them by design.
+const ROOT_ROLES = new Set(["test", "fixture", "story", "lab", "config", "script", "entry"]);
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts"];
 
 export function deadExportMessage({ name, file, localOnly = false }) {

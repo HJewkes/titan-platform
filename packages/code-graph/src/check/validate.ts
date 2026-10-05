@@ -262,6 +262,8 @@ function parseExclude(r: Record<string, unknown>): string[] | undefined {
 const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([
   "test",
   "fixture",
+  "story",
+  "lab",
   "barrel",
   "types",
   "config",
