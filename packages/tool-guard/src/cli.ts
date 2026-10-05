@@ -16,6 +16,8 @@ export interface CliIo {
   appendLog(file: string, lines: readonly string[]): void;
   /** A file's text, or null when it does not exist. */
   readFile(file: string): string | null;
+  /** Realpath of an existing path; throws when it does not exist. */
+  realpath(p: string): string;
   now(): Date;
   loadDecide(): Promise<DecideFn>;
   out(line: string): void;
@@ -67,7 +69,7 @@ async function runHook(io: CliIo): Promise<number> {
 
 function appendQuietly(io: CliIo, lines: readonly string[]): void {
   const file = logPath(io.env, io.home);
-  if (!isSafeLogPath(file, io.home)) return;
+  if (!isSafeLogPath(file, io.home, io.realpath)) return;
   try {
     io.appendLog(file, lines);
   } catch {
@@ -75,12 +77,37 @@ function appendQuietly(io: CliIo, lines: readonly string[]): void {
   }
 }
 
-/** A log path set to a guarded file (`TITAN_TOOL_GUARD_LOG=~/.claude/settings.json`) is never written. */
-export function isSafeLogPath(file: string, home: string): boolean {
+/**
+ * Refuses a log path that names a guarded file or lands in `~/.claude*`, as typed or after
+ * resolving its deepest existing ancestor, so `TITAN_TOOL_GUARD_LOG=~/logs/settings.json` with
+ * `~/logs` linked to `~/.claude` is not written. Checked just before the append; a link swapped in between is not caught.
+ */
+export function isSafeLogPath(file: string, home: string, realpath: (p: string) => string): boolean {
   if (!path.isAbsolute(file)) return false;
-  const resolved = path.resolve(file);
-  const config = matchGuarded(resolved, GUARDED_PATHS.config, home);
-  return matchGuarded(resolved, GUARDED_PATHS.secret, home) === null && (config === null || config.id === "home:tool-guard-state");
+  const literal = path.resolve(file);
+  const real = throughExistingAncestor(literal, realpath);
+  if (real === null || !outsideGuarded(literal, home) || !outsideGuarded(real, home)) return false;
+  const realHome = throughExistingAncestor(path.resolve(home), realpath);
+  return realHome === null || outsideGuarded(real, realHome);
+}
+
+function throughExistingAncestor(literal: string, realpath: (p: string) => string): string | null {
+  const rest: string[] = [];
+  for (let dir = literal; ; dir = path.dirname(dir)) {
+    try {
+      return path.join(realpath(dir), ...rest);
+    } catch {
+      if (path.dirname(dir) === dir) return null;
+      rest.unshift(path.basename(dir));
+    }
+  }
+}
+
+/** Outside every guarded path, and outside the `~/.claude*` trees, where a log never belongs. */
+function outsideGuarded(file: string, home: string): boolean {
+  if (/^\.claude[^/]*(\/|$)/.test(path.relative(home, file))) return false;
+  const config = matchGuarded(file, GUARDED_PATHS.config, home);
+  return matchGuarded(file, GUARDED_PATHS.secret, home) === null && (config === null || config.id === "home:tool-guard-state");
 }
 
 function runReport(io: CliIo): number {

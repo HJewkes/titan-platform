@@ -69,6 +69,7 @@ and appends one log line; otherwise it prints nothing. It never answers `ask` or
 | a call that classifies as nothing | silent, no log line |
 | stdin that is not JSON, or a known tool with the wrong input shape | silent, one `error shape` line |
 | a Bash command that cannot be parsed | deny if its raw text names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line |
+| a Bash command over 8 KiB | not classified; deny if its raw text names something guarded, as for a parse error; otherwise silent with an `error oversize` line |
 | an authority table that cannot load | deny every classified call; unclassified calls are silent |
 | `TITAN_TOOL_GUARD_BYPASS=1` in the hook's launch environment | evaluated as `owner-terminal`; a guarded call is logged as `bypass` |
 
@@ -76,15 +77,16 @@ The log is `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`: tab-separated `ts`, `kind`,
 `rule`, `action`, `spelling`, `actor`, `actor_id`, `session`, `tool`, `tool_use`, `subject`.
 It never holds command text, file contents, URLs, the cwd or any environment value except the
-agent id.
+agent id. A log path that names a guarded path or lands in a `~/.claude*` tree, as typed or
+through a symlinked parent, is refused just before the append.
 
 ## What it deliberately does not do
 
 - It is not a security boundary. The hook runs as the same OS user as the agent; anything the
   agent runs outside a tool call is never seen, and every guarded file stays readable by that
   user.
-- It never installs itself. No code path writes a settings file, hooks directory, profile or rc
-  file; `print-settings` prints JSON for the owner to paste.
+- It never installs itself. `print-settings` prints JSON for the owner to paste. The hook's
+  only write is its log append, and the log path check above keeps that out of settings files.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
 - It does not classify `titan-factory` verbs.

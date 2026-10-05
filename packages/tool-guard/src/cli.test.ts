@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { denyCounts, isSafeLogPath, readWithin, runCli, SETTINGS_ENTRY, STDIN_TIMEOUT_MS } from "./cli.js";
@@ -27,6 +30,7 @@ function fakeIo(stdin: string | null, files: Record<string, string> = {}): Recor
     readStdin: async () => stdin,
     appendLog: (file, lines) => writes.push({ file, lines }),
     readFile: (file) => files[file] ?? null,
+    realpath: (p) => p,
     now: () => new Date("2026-01-02T03:04:05.000Z"),
     loadDecide: async () => decide,
     out: (line) => out.push(line),
@@ -144,11 +148,64 @@ describe("usage", () => {
   });
 });
 
+const same = (p: string): string => p;
+
 describe("isSafeLogPath", () => {
   it("accepts the default log and refuses guarded or relative paths", () => {
-    expect(isSafeLogPath(LOG, HOME)).toBe(true);
-    expect(isSafeLogPath(`${HOME}/.claude/x/../settings.json`, HOME)).toBe(false);
-    expect(isSafeLogPath(`${HOME}/.npmrc`, HOME)).toBe(false);
-    expect(isSafeLogPath("guard.log", HOME)).toBe(false);
+    expect(isSafeLogPath(LOG, HOME, same)).toBe(true);
+    expect(isSafeLogPath(`${HOME}/.claude/x/../settings.json`, HOME, same)).toBe(false);
+    expect(isSafeLogPath(`${HOME}/.npmrc`, HOME, same)).toBe(false);
+    expect(isSafeLogPath(`${HOME}/.claude-profiles/work/logs/guard.log`, HOME, same)).toBe(false);
+    expect(isSafeLogPath("guard.log", HOME, same)).toBe(false);
+  });
+});
+
+describe("isSafeLogPath over a real temp home", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function tempHome(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tool-guard-log-"));
+    dirs.push(dir);
+    fs.mkdirSync(path.join(dir, ".claude"));
+    fs.writeFileSync(path.join(dir, ".claude/settings.json"), "{}\n");
+    return dir;
+  }
+
+  const realpath = (p: string): string => fs.realpathSync.native(p);
+
+  it("refuses a log path whose parent is a symlink into ~/.claude", () => {
+    const home = tempHome();
+    fs.symlinkSync(path.join(home, ".claude"), path.join(home, "logs"));
+
+    expect(isSafeLogPath(path.join(home, "logs/settings.json"), home, realpath)).toBe(false);
+    expect(isSafeLogPath(path.join(home, "logs/new/deeper/settings.json"), home, realpath)).toBe(false);
+  });
+
+  it("refuses a log file that is itself a symlink to a guarded file", () => {
+    const home = tempHome();
+    fs.symlinkSync(path.join(home, ".claude/settings.json"), path.join(home, "guard.log"));
+
+    expect(isSafeLogPath(path.join(home, "guard.log"), home, realpath)).toBe(false);
+  });
+
+  it("accepts the default log under a home with no links", () => {
+    const home = tempHome();
+
+    expect(isSafeLogPath(path.join(home, ".local/state/titan-tool-guard/guard.log"), home, realpath)).toBe(true);
+  });
+
+  it("writes nothing through the hook when the parent links into ~/.claude", async () => {
+    const home = tempHome();
+    fs.symlinkSync(path.join(home, ".claude"), path.join(home, "logs"));
+    const recorded = fakeIo("not json");
+    const io = { ...recorded.io, home, realpath, env: { TITAN_TOOL_GUARD_LOG: path.join(home, "logs/settings.json") } };
+
+    await runCli(["hook"], io);
+
+    expect(recorded.writes).toEqual([]);
+    expect(fs.readFileSync(path.join(home, ".claude/settings.json"), "utf-8")).toBe("{}\n");
   });
 });

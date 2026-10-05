@@ -6,7 +6,7 @@ import { BYPASS_VAR } from "./actor.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
-import { handle, namesGuarded } from "./hook.js";
+import { handle, MAX_COMMAND_BYTES, namesGuarded } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import type { ClassifyContext } from "./types.js";
 
@@ -120,6 +120,31 @@ describe("handle: failure policy", () => {
     expect(decisionOf(guarded.stdout)).toBe("deny");
     expect(guarded.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
     expect(plain).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
+  });
+
+  it("denies a credential read padded past the size cap without classifying it", async () => {
+    const padded = `${"x ".repeat(20_000)}; cat ~/.npmrc`;
+    const start = performance.now();
+
+    const result = await handle(bash(padded), {}, port());
+
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  });
+
+  it("passes a large command that names nothing guarded, and logs it as oversize", async () => {
+    const result = await handle(bash(`${"x ".repeat(20_000)}; echo done`), {}, port());
+
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
+  });
+
+  it("still classifies a command just under the size cap", async () => {
+    const command = `${"x ".repeat((MAX_COMMAND_BYTES - 40) / 2)}; cat ~/.npmrc`;
+
+    const result = await handle(bash(command), {}, port());
+
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "SEC-CO", "secret-read", "bash.secret.cat"]);
   });
 
   it("applies the same split to an exception inside the classifier", async () => {

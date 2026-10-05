@@ -27,15 +27,22 @@ export interface HookResult {
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Event = Exclude<HookEvent, { kind: "other" }>;
-/** A decision's logged fields; an unparsed command logs action `unparsed` and spelling `<kind>.unparsed`. */
+/** A decision's logged fields; an unclassified command logs action `unparsed` or `oversize` and spelling `<kind>.<action>`. */
 type Logged = Omit<Matched, "action" | "spelling"> & { action: string; spelling: string };
 type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass };
 
 const PASS: HookResult = { stdout: "", log: [] };
 const UNPARSED_REASON =
   "authority-guard could not parse this command and it names a guarded action or path; split it into simpler commands.";
+const OVERSIZE_REASON =
+  "authority-guard does not classify a command this long and it names a guarded action or path; split it into shorter commands.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
+/**
+ * Classifying costs about 50 ms per KiB of arguments, so padding a command past Claude Code's 5 s
+ * hook timeout would let it run. Over this size the raw text alone decides, as for a parse error.
+ */
+export const MAX_COMMAND_BYTES = 8 * 1024;
 
 /**
  * Answers one PreToolUse event. Never throws and never asks or allows: it either denies through
@@ -63,6 +70,7 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
   const actor = observeActor(env, event.sessionId);
+  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return failed(event, actor, "oversize", port);
   const result = classifyEvent(event, port.context);
   if (!result.ok) return failed(event, actor, result.cls, port);
   if (result.actions.length === 0) return PASS;
@@ -85,13 +93,15 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   }
 }
 
-/** A command or path that could not be classified denies only when its raw text names something guarded. */
+/** A command or path that was not classified denies only when its raw text names something guarded. */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
   const error = formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId });
   const raw = event.kind === "bash" ? event.command : event.path;
   if (actor.bypass || !namesGuarded(raw)) return logged(error);
-  const unparsed: Logged = { ruleId: null, action: "unparsed", spelling: `${event.kind}.unparsed`, subject: {} };
-  return { stdout: denyAnswer(UNPARSED_REASON), log: [decisionLine(event, actor, unparsed, "deny", port)] };
+  const action = cls === "oversize" ? "oversize" : "unparsed";
+  const unclassified: Logged = { ruleId: null, action, spelling: `${event.kind}.${action}`, subject: {} };
+  const reason = cls === "oversize" ? OVERSIZE_REASON : UNPARSED_REASON;
+  return { stdout: denyAnswer(reason), log: [decisionLine(event, actor, unclassified, "deny", port)] };
 }
 
 async function decided(event: Event, actor: ActorObservation, actions: ClassifiedAction[], port: HookPort): Promise<HookResult> {

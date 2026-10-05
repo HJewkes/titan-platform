@@ -35,7 +35,9 @@ guarded file stays readable by that user. The OS account is the real boundary.
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
   `gist` (owner decision D6). Then it denies and asks for simpler commands.
 - Claude Code treats a hook that times out (5 s) or crashes as a non-blocking error, so the
-  call runs. The bin exits 0 on every path and gives stdin 2 s.
+  call runs. The bin exits 0 on every path and gives stdin 2 s. A Bash command over 8 KiB
+  (`MAX_COMMAND_BYTES`) is not classified, since padding could push classification past the
+  timeout: it denies when its raw text names something guarded, as above, and passes otherwise.
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 
@@ -47,8 +49,8 @@ titan-tool-guard print-settings  # print the settings entry as JSON; writes noth
 titan-tool-guard report          # deny counts per UTC day and rule, from the log
 ```
 
-No command writes a settings file, a hooks directory, a profile or an rc file. The only write
-is the hook's log line.
+No code path is meant to write a settings file, a hooks directory, a profile or an rc file. The
+only write is the hook's append of its log line, and the log path is checked first (see Log).
 
 **Actor.** With no bypass, every call is evaluated for `coordinator`, `worker` and `headless`
 together and the strictest verdict wins (owner decision D2). A gate verdict denies too, since
@@ -61,7 +63,10 @@ typed by the model still denies. Never export it from a shell rc file.
 
 **Log.** `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`, mode 0600 in a 0700
-directory, opened without following a symlink. One tab-separated line per deny, bypass or error:
+directory. Before each append the path is refused when, as typed or with its deepest existing
+ancestor resolved through symlinks, it names a guarded path or lands in a `~/.claude*` tree; the
+final file is opened with `O_NOFOLLOW`. The check runs just before the open, so a link swapped
+in between the two is not caught. One tab-separated line per deny, bypass or error:
 
 ```
 ts  kind  rule  action  spelling  actor  actor_id  session  tool  tool_use  subject

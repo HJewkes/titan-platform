@@ -34,6 +34,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   readStdin: (ms) => readWithin(process.stdin, ms),
   appendLog,
   readFile,
+  realpath: (p) => fs.realpathSync.native(p),
   now: () => new Date(),
   loadDecide: async () => (await import("./decide.js")).decide,
   out: (line) => process.stdout.write(`${line}\n`),

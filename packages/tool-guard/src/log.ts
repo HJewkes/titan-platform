@@ -15,7 +15,7 @@ export interface DecisionLine {
   subject: Record<string, string>;
 }
 
-export type ErrorClass = "parse" | "shape" | "table" | "exception";
+export type ErrorClass = "parse" | "shape" | "table" | "exception" | "oversize";
 
 export interface ErrorLine {
   ts: Date;
