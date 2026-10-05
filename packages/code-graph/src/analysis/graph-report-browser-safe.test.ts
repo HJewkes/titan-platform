@@ -21,6 +21,7 @@ const ENTRIES = [
   "graph-arch-compute.ts",
   "graph-arch-types.ts",
   "package-buckets.ts",
+  "../diff/violation-buckets.ts",
 ];
 // The "./analysis" subpath's entry; it may re-export only the modules listed above.
 const SUBPATH_ENTRY = "browser.ts";

@@ -594,7 +594,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +383 more in the [reference page](/reference/code-graph)
+- +387 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -612,7 +612,7 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Finding`, `FindingStatus`, `SourceExcerpt`
-- +80 more in the [reference page](/reference/code-read)
+- +87 more in the [reference page](/reference/code-read)
 
 <a id="cap-decider"></a>
 

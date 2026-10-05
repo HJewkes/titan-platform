@@ -129,6 +129,11 @@ open a daemon; `daemon` does.
   counts as carried over, so `each_carry` weighs them, not `each_new`. `combined` is 100
   minus the penalties and is only returned when asked for; read `signals` first, because one
   number hides which signal moved.
+- `changes.get` needs a `baseline`. Across index versions it returns `comparable: false` and
+  empty lists rather than deltas between two different measures. New coupling has
+  `measured: false` until co-change pairs are stored. Findings match by id, so a renamed
+  file's finding reads as one resolved and one new until TP-187. Each list holds at most
+  `limit` rows; `counts` holds the full sizes.
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 
