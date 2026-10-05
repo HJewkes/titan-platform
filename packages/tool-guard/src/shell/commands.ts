@@ -6,7 +6,7 @@ import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
-import { pipedShellTexts, readPiped } from "./piped-nul.js";
+import { execView, pipedShellTexts } from "./piped-nul.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -180,13 +180,14 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   trackVars(cmd, w.scope.vars);
+  const ran = execView(cmd);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
-  const { name, path, args } = cmd;
+  const { name, path, args } = ran;
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, stdin);
-  if (script !== null) for (const text of script.texts) walk(readPiped(text, script.wrap), child(w, [...wrapping, script.wrap]));
+  w.out.push({ name, path, args, env: literalEnv(ran), redirects, dir: w.scope.dir, wrapping, ...links });
+  const script = inlineScript(ran, redirects, stdin);
+  if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
 }
@@ -317,7 +318,7 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
   const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { texts: [text].flat(), wrap: hasC ? "sh-c" : "heredoc-shell" };
+  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 

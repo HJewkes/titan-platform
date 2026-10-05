@@ -1,47 +1,49 @@
-import { tokenize } from "./lexer.js";
-import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import type { WordToken } from "./lexer.js";
+import { unwrap } from "./unwrap.js";
+import type { Unwrapped } from "./unwrap.js";
+
+/** zsh builtins hand their words on whole: a NUL stays in `eval` text, an assignment or printed output. */
+const BUILTINS = new Set([
+  ...["eval", "echo", "print", "printf", "cd", "pushd", "popd", "export", "declare", "typeset", "local"],
+  ...["readonly", "set", "unset", "read", "source", ".", "alias", "test", "[", "let", "return", "exit", "shift", "trap"],
+]);
 
 /**
- * exec ends a word at its first NUL, so whatever expands after it is gone. A substitution's position in
- * the word is not recorded, so one with no variable reference before the NUL reads as static here; the
- * NUL-dropped reading, walked alongside, keeps the word dynamic.
+ * The readings of text a shell reads on stdin: a pipe, here-string or heredoc. bash, sh and dash drop
+ * NUL (TP-1460). zsh keeps it in the stream (TP-1464) and ksh is not certain, so both also get the raw
+ * text; its NUL is cut by `execView` where a word reaches an external program.
  */
+export function pipedShellTexts(shell: string | null, stdin: string): string[] {
+  if (!stdin.includes("\0")) return [stdin];
+  const dropped = stdin.replaceAll("\0", "");
+  return shell === "zsh" || shell === "ksh" ? [dropped, stdin] : [dropped];
+}
+
 function cutWord(word: WordToken): WordToken {
   const at = word.value.indexOf("\0");
-  const subs = word.subs.map(cutTokens);
-  if (at === -1) return { ...word, subs };
+  if (at === -1) return word;
   const refs = word.refs.filter((ref) => ref.start < at);
-  const cut: WordToken = { ...word, value: word.value.slice(0, at), refs, subs };
+  const cut: WordToken = { ...word, value: word.value.slice(0, at), refs };
   if (word.typed !== undefined) cut.typed = word.typed.split("\0")[0] as string;
   if (refs.length > 0) return cut;
   delete cut.unquotedExpansion;
   return { ...cut, dynamic: false, computed: false };
 }
 
-function cutToken(token: Token): Token {
-  if (token.type === "word") return cutWord(token);
-  if (token.type === "subs") return { ...token, subs: token.subs.map(cutTokens) };
-  if (token.type !== "redirect") return token;
-  const cut: RedirectToken = { ...token, subs: token.subs.map(cutTokens) };
-  if (token.target) cut.target = cutWord(token.target);
-  return cut;
+const cutText = (text: string | null): string | null => (text === null ? null : (text.split("\0")[0] as string));
+
+/** A dynamic command word that a NUL cuts short names a fixed program once the cut is made: `git\0$(x)` runs `git`. */
+function namedAfterCut(cmd: Unwrapped): Unwrapped | null {
+  if (cmd.name !== null || cmd.xargs || !cmd.args[0]?.value.includes("\0")) return null;
+  const named = unwrap(cmd.args.map(cutWord));
+  return named && { ...named, assigned: [...cmd.assigned, ...named.assigned] };
 }
 
-const cutTokens = (tokens: Token[]): Token[] => tokens.map(cutToken);
-
-/**
- * The readings of text piped into a shell. bash, sh and dash drop NUL (TP-1460). zsh keeps it and an
- * exec'd word ends at its first one (TP-1464); ksh is not certain. zsh and ksh get both, so a protected
- * verdict from either reading stands. The raw reading must go through `readPiped`.
- */
-export function pipedShellTexts(shell: string, stdin: string): string[] {
-  if (!stdin.includes("\0")) return [stdin];
-  const dropped = stdin.replaceAll("\0", "");
-  return shell === "zsh" || shell === "ksh" ? [dropped, stdin] : [dropped];
-}
-
-/** Tokens of a piped script; each parsed word is cut at its first NUL, after quotes, escapes and substitutions are read. */
-export function readPiped(text: string, wrap: string): Token[] {
-  const tokens = tokenize(text);
-  return wrap === "piped-shell" && text.includes("\0") ? cutTokens(tokens) : tokens;
+/** What an external program is handed: its name, arguments and environment end at the first NUL, as in exec. */
+export function execView(cmd: Unwrapped): Unwrapped {
+  const named = namedAfterCut(cmd);
+  if (named) return execView(named);
+  if (cmd.name !== null && BUILTINS.has(cmd.name)) return cmd;
+  const assigned = cmd.assigned.map(([name, value, ...rest]) => [name, cutText(value), ...rest] as Unwrapped["assigned"][number]);
+  return { ...cmd, name: cutText(cmd.name), path: cutText(cmd.path), args: cmd.args.map(cutWord), assigned };
 }

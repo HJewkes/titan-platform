@@ -63,6 +63,18 @@ describe("piped zsh words cut after parsing", () => {
   });
 });
 
+describe("NUL kept where a zsh builtin or assignment takes the word whole", () => {
+  it.each([
+    ["eval text", "printf 'eval \"git\\0x push origin HEAD:main\"\\n' | zsh"],
+    ["a variable read by eval", "printf 'x=\"git\\0x push origin HEAD:main\"; eval $x\\n' | zsh"],
+    ["a here-string", "printf 'zsh <<< \"git\\0x push origin HEAD:main\"\\n' | zsh"],
+    ["echo piped on", "printf 'echo \"git\\0x push origin HEAD:main\" | zsh\\n' | zsh"],
+    ["a heredoc", "zsh <<'EOS'\ngit\0x push origin HEAD:main\nEOS"],
+  ])("sees the push in %s", (_how, src) => {
+    expect(gitArgs(src)).toContainEqual(pushed);
+  });
+});
+
 describe("pipedShellTexts", () => {
   it("returns text without NUL unchanged for every shell", () => {
     expect(pipedShellTexts("zsh", "git status\n")).toEqual(["git status\n"]);
