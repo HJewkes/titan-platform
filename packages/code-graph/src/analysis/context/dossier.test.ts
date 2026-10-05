@@ -108,7 +108,7 @@ describe("buildContextDossier — file target", () => {
 
   it("carries a symbol's indexed signature into its file-symbol line (C-79)", () => {
     expect(d.file!.symbols[0]).toMatchObject({ name: "foo", signature: "foo(x: number): string" });
-    expect(d.file!.symbols[1].signature).toBeUndefined();
+    expect(d.file!.symbols[1]?.signature).toBeUndefined();
   });
 });
 
