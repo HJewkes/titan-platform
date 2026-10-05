@@ -8,21 +8,23 @@ interface OptionSpec {
   digits?: boolean;
 }
 
-/** More dynamic words than this stay read as today: each one triples the readings. */
+/** More dynamic option words than this are read in one pass: each one triples the readings of the exact pass. */
 const MAX_DYNAMIC = 4;
 
 /**
- * Index of the first dynamic word that sits where a wrapper option could be, or -1. A word such as `-$O` counts
- * too: its dash is known but the option letters are not.
+ * Where the dynamic words sit among a wrapper's options, and the index of the word after them. A word such as `-$O`
+ * counts too: its dash is known but the option letters are not.
  */
-function dynamicOptionAt(words: WordToken[], start: number, spec: OptionSpec): number {
-  for (let i = start; i < words.length; ) {
+function dynamicOptions(words: WordToken[], start: number, spec: OptionSpec): { at: number[]; end: number } {
+  const at: number[] = [];
+  let i = start;
+  for (; i < words.length; ) {
     const w = words[i] as WordToken;
-    if (w.dynamic && (!w.value.startsWith("-") || w.refs.every((r) => r.start <= leadingDashes(w.value)))) return i;
-    if (!w.value.startsWith("-") || w.value === "--" || spec.stop?.includes(w.value)) return -1;
-    i += takesNextWord(w.value, spec) ? 2 : 1;
+    if (w.dynamic && (!w.value.startsWith("-") || w.refs.every((r) => r.start <= leadingDashes(w.value)))) at.push(i++);
+    else if (!w.value.startsWith("-") || w.value === "--" || spec.stop?.includes(w.value)) break;
+    else i += takesNextWord(w.value, spec) ? 2 : 1;
   }
-  return -1;
+  return { at, end: i };
 }
 
 function leadingDashes(value: string): number {
@@ -39,18 +41,27 @@ function quoteWord(w: WordToken): string {
  * an option without a value (the word is gone), to an option that takes the next word (both are gone), or to
  * a positional (a literal stands in). An `xargs` option word may also be `-I`, which makes the next word its replace
  * string; a bare dynamic `xargs` word is its dynamic command, which the xargs reading already fails closed on.
- * Null when the wrapper's options hold no dynamic word, or hold too many to read in full.
+ * Past `MAX_DYNAMIC` option words the readings drop them all, with and without the word after, rather than none.
+ * Null when the wrapper's options hold no dynamic word.
  */
 export function dynamicOptionReadings(words: WordToken[], at: number, start: number, spec: OptionSpec): string | null {
-  const d = dynamicOptionAt(words, start, spec);
-  if (d < 0 || words.filter((w) => w.dynamic).length > MAX_DYNAMIC) return null;
-  const dashed = (words[d] as WordToken).value.startsWith("-");
+  const { at: found, end } = dynamicOptions(words, start, spec);
+  const d = found[0];
+  if (d === undefined) return null;
   const xargs = /(^|\/)xargs$/.test((words[at] as WordToken).value);
+  const dashed = (words[d] as WordToken).value.startsWith("-");
   if (xargs && !dashed) return null;
+  if (found.length > MAX_DYNAMIC) return bulkReadings(words, at, found, end);
   const before = words.slice(at, d).map(quoteWord);
   const after = words.slice(d + 1).map(quoteWord);
   const readings = [after, after.slice(1)];
   if (!dashed) readings.push(["0", ...after]);
   if (xargs) readings.push(["-I", ...after]);
   return readings.map((rest) => [...before, ...rest].join(" ")).join("\n");
+}
+
+function bulkReadings(words: WordToken[], at: number, found: number[], end: number): string {
+  const kept = words.map((w, i) => (found.includes(i) ? null : quoteWord(w))).slice(at);
+  const text = (skip: number) => kept.filter((w, i) => w !== null && i + at !== skip).join(" ");
+  return [text(-1), text(end)].join("\n");
 }

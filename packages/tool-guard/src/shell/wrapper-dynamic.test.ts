@@ -59,3 +59,27 @@ describe("a dynamic word after xargs", () => {
     expect(spellings("xargs env \"$G\" push origin HEAD:main")).toContain(PUSH);
   });
 });
+
+describe("a dynamic word past the wrapper's options", () => {
+  it.each([
+    ["three dynamic arguments", "sudo $O git push origin HEAD:main $A $B $C"],
+    ["many dynamic arguments", "sudo $O git push origin HEAD:main $A $B $C $D $E $F"],
+    ["many dynamic arguments, timeout", "timeout $O 5 git push origin HEAD:main $A $B $C $D $E"],
+  ])("still reads the option position: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+});
+
+describe("more dynamic option words than the exact reading takes", () => {
+  it.each([
+    ["sudo", "sudo $A $B $C $D $E git push origin HEAD:main"],
+    ["timeout", "timeout $A $B $C $D $E 5 git push origin HEAD:main"],
+    ["sudo with a dynamic argument", "sudo $A $B $C $D $E git push origin HEAD:main $X"],
+  ])("fails closed: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+
+  it("does not flag a harmless command", () => {
+    expect(spellings("sudo $A $B $C $D $E git status")).not.toContain(PUSH);
+  });
+});
