@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -230,5 +230,16 @@ describe("shepherd timeline verdict and wake entries", () => {
     ]);
 
     for (const entry of timelineEntries(run, [])) expect(TimelineEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it("parses live and fix-proof wakes through the timeline schema", () => {
+    const run = withResults([
+      { stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "woken", agent: "impl-1", mode: "live", sessionId: "s-9" } },
+      { stepId: "sh-wake-implementer:1", at: "2026-01-01T00:03:00.000Z", result: { kind: "woken", agent: "impl-1", mode: "successor", sessionId: "s-10" } },
+    ]);
+    const entries = timelineEntries(run, []);
+    const timeline = { row: watchRow({ registration, run }), entries: [...entries, { ...entries[0], request: "fix-proof" }] };
+
+    expect(PrTimelineSchema.parse(timeline).entries.map((e) => e.kind === "wake" && [e.request, e.mode])).toEqual([[null, "live"], [null, "successor"], ["fix-proof", "live"]]);
   });
 });

@@ -4,7 +4,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, unwrap } from "./unwrap.js";
 import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
@@ -106,6 +106,7 @@ function walk(tokens: Token[], w: Walk): void {
       w.prev = token.value;
       if (token.value !== "|" && token.value !== "|&") w.negated = false;
       if (token.value !== "&&") w.chain = { start: token.value };
+      trackCompound(token, w.scope.vars);
       scope(token.value, w);
       continue;
     }

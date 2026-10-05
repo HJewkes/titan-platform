@@ -211,8 +211,20 @@ describe("subscripts with blanks inside the brackets", () => {
     ["a quoted bracket inside the brackets", "Y[ ']' ]=x git", ["Y[ ] ]=x", "git"]],
     ["an escaped bracket inside the brackets", "Y[ \\] ]=x git", ["Y[ ] ]=x", "git"]],
     ["a nested subscript", "Y[ a[ 1 ] ]=x git", ["Y[ a[ 1 ] ]=x", "git"]],
+    ["a $( ) holding ]", "Y[ $(echo ]) ]=x git", ["Y[  ]=x", "git"]],
+    ["a backtick span holding ]", "Y[ `echo ]` ]=x git", ["Y[  ]=x", "git"]],
+    ["a ${ } holding ]", "Y[ ${Z:-]} ]=x git", ["Y[ ${Z:-]} ]=x", "git"]],
+    ["a nested $( $( ] ) )", "Y[ $( $( ] ) ) ]=x git", ["Y[  ]=x", "git"]],
   ])("keeps %s as one word", (_how, src, expected) => {
     expect(words(src)).toEqual(expected);
+  });
+
+  it.each([
+    ["$(", "Y[ $(echo ]=x git push origin HEAD:main"],
+    ["a backtick", "Y[ `echo ]=x git push origin HEAD:main"],
+    ["${", "Y[ ${Z:-]=x git push origin HEAD:main"],
+  ])("falls back to the plain split on an unterminated %s", (_how, src) => {
+    expect(() => tokenize(src)).toThrow(ParseError);
   });
 
   it.each([
