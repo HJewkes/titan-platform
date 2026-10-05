@@ -111,4 +111,16 @@ describe("a wrapper's short option that takes a separate value", () => {
   ])("finds the push of a clustered xargs %s from piped input", (clustered, rest) => {
     expect(spellings(`printf 'x main\\0' | xargs ${clustered} ${rest}`)).toContain(PUSH);
   });
+
+  it.each([
+    ["env -0u X", "env -0 -u X"],
+    ["env -0uX", "env -0 -uX"],
+    ["xargs -exn", "xargs -exn"],
+    ["xargs -ixn", "xargs -ixn"],
+    ["xargs -r0n 1", "xargs -r -0 -n 1"],
+  ])("reads %s as its split spelling %s does", (clustered, split) => {
+    const rest = "git push origin HEAD:main";
+    expect(spellings(`${clustered} ${rest}`)).toEqual(spellings(`${split} ${rest}`));
+    expect(spellings(`${clustered} ${rest}`)).toContain(PUSH);
+  });
 });
