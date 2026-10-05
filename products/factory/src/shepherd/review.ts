@@ -7,7 +7,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
-import { failureOf } from "./error-class.js";
+import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { LocatorSchema, MergeEvidenceSchema } from "./review-schemas.js";
 import type { Presence } from "./presence.js";
@@ -269,7 +269,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     return body(deps, { ...wiring, dispatch }, input, signal, repeat).catch((error: unknown) => {
       signal.throwIfAborted();
       const failure = failureOf(error);
-      console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`shepherd: the reviewer dispatch was refused (${failure}): ${consoleTextOf(error)}`);
       return { kind: "none", reason: `the reviewer dispatch was refused: ${failure}` };
     });
   };

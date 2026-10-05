@@ -57,6 +57,8 @@ export interface ForbidImportRule {
   id: string;
   from: string;
   to: string;
+  /** Destination patterns `to` matches but the rule allows, such as one sanctioned entry file. */
+  except?: string[];
   severity?: Severity;
 }
 

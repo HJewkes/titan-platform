@@ -4,6 +4,7 @@ import { readIndexedText, type SessionGraph } from "@titan-design/session-graph"
 import { nowIso } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
+import { DRAIN_TABLES, requireMinerTables } from "../miner-tables.js";
 import { hasNormalized } from "../normalized-tables.js";
 
 /** Error blobs are partitioned as one tool type until tool names are threaded through facts. */
@@ -38,6 +39,7 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
   result: z.custom<DrainSummary>(),
   cli: { options: { limit: { long: "--limit", short: "-n", description: "max blobs" } } },
   async run(args, ctx) {
+    requireMinerTables(ctx, "drain.ingest", DRAIN_TABLES);
     const graph = ctx.graph();
     const clusterer = loadClusterer(graph);
     const summary: DrainSummary = { candidates: 0, screened: 0, clustered: 0, newTemplates: 0, templates: 0, unreadable: 0 };
@@ -121,6 +123,7 @@ export const drainTemplates = defineCommand<{ limit: number }, TemplateRow[], Mi
   result: z.custom<TemplateRow[]>(),
   cli: { options: { limit: { long: "--limit", short: "-n", description: "max templates" } } },
   async run(args, ctx) {
+    requireMinerTables(ctx, "drain.templates", ["template"]);
     const rows = ctx.graph().db.prepare("SELECT template_id, masked_signature, occurrence_count, created_at FROM template ORDER BY occurrence_count DESC, created_at LIMIT ?").all(args.limit) as Record<string, unknown>[];
     return rows.map((r) => ({ templateId: r.template_id as string, maskedSignature: r.masked_signature as string, occurrenceCount: r.occurrence_count as number, createdAt: r.created_at as string }));
   },
