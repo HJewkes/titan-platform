@@ -75,7 +75,7 @@ describe("acceptVerdict", () => {
   it("accepts the final message of the dispatched agent and session, and keeps its locator, not its text", () => {
     const result = acceptVerdict(input, [message()]);
 
-    expect(result).toEqual({ kind: "verdict", verdict: "MERGE", head: HEAD, locator, reviewer: { agentId: "reviewer-1", sessionId: "session-1" } });
+    expect(result).toEqual({ kind: "verdict", verdict: "MERGE", head: HEAD, locator, reviewer: { agentId: "reviewer-1", sessionId: "session-1" }, ownerBrief: null });
     expect(JSON.stringify(result)).not.toContain("Looked at it");
   });
 
