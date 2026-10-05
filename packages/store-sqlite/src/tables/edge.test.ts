@@ -35,6 +35,17 @@ describe("EdgeTable", () => {
     expect(live?.edgeId).toBe(2);
   });
 
+  it("keeps the live edge when the replacement cannot be written", () => {
+    const edges = setup();
+    edges.assert({ sourceRef: "a:1", relation: "r", targetRef: "b:1", confidence: 0.5 });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    expect(() => edges.supersede({ sourceRef: "a:1", relation: "r", targetRef: "b:1", attrs: circular })).toThrow();
+
+    expect(edges.current("a:1", "r", "b:1")).toMatchObject({ edgeId: 1, confidence: 0.5, tExpired: null });
+  });
+
   it("round-trips attrs as JSON and defaults the timestamps", () => {
     const edges = setup();
     edges.assert({ sourceRef: "a:1", relation: "r", targetRef: "b:1", attrs: { n: 1, tags: ["x"] } });
