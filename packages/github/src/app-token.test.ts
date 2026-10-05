@@ -291,6 +291,20 @@ describe("token shape scrub", () => {
     expect(err).toBe("[redacted] tail");
   });
 
+  it("cuts an exact secret from both streams wherever it is split across the seam", () => {
+    for (const secret of ["secret", "s3cr3t-Value_with.mixed+chars/0123456789"]) {
+      for (let at = 1; at < secret.length; at++) {
+        for (const newline of ["", "\n"]) {
+          const [out, err] = redactStreams(`my ${secret.slice(0, at)}${newline}`, `${secret.slice(at)} here`, [secret]);
+
+          expect(out).toBe("my [redacted]");
+          expect(err).toBe("[redacted] here");
+          expect(`${out}${err}`).not.toContain(secret);
+        }
+      }
+    }
+  });
+
   it("throws a REST error whose message carries neither half of a split token", async () => {
     for (const stdout of [`partial ${SHAPED.slice(0, 15)}`, `partial ${SHAPED.slice(0, 15)}\n`]) {
       const result = { code: 1, stdout, stderr: `${SHAPED.slice(15)} (HTTP 403)` };

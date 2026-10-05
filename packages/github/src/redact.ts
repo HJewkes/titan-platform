@@ -40,7 +40,7 @@ export function redact(text: string, secrets: readonly string[]): string {
  * has a match that neither stream has alone at the same place (one crossing the seam, even when `first` already ends in a
  * whole token, since a token's length does not say it ended; one in `second` behind a keyword that ends `first`; one in
  * `first` that only `second` completes, as a userinfo `@`), every span of the joined text and of each stream alone is cut
- * from the stream it covers. The text between spans is still redacted, so nothing either stream matches alone shows.
+ * from the stream it covers. An exact secret that crosses the seam takes the same path, since neither stream holds it whole. The text between spans is still redacted, so nothing either stream matches alone shows.
  */
 export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
   const head = first.trimEnd();
@@ -50,8 +50,10 @@ export function redactStreams(first: string, second: string, secrets: readonly s
   const ownRest = spansOf(rest).map((span) => ({ start: span.start + seam, end: span.end + seam }));
   const starts = new Set([...ownHead, ...ownRest].map((span) => span.start));
   const joined = spansOf(head + rest);
-  if (joined.every((span) => (span.end <= seam || span.start >= seam) && starts.has(span.start))) return [redact(first, secrets), redact(second, secrets)];
-  const spans = merged([...ownHead, ...ownRest, ...joined, ...secretSpans(head + rest, secrets)]);
+  const exact = secretSpans(head + rest, secrets);
+  const straddles = exact.some((span) => span.start < seam && span.end > seam);
+  if (!straddles && joined.every((span) => (span.end <= seam || span.start >= seam) && starts.has(span.start))) return [redact(first, secrets), redact(second, secrets)];
+  const spans = merged([...ownHead, ...ownRest, ...joined, ...exact]);
   const piece = (text: string): string => redact(text, secrets);
   return [render(head, clip(spans, 0, seam), piece), render(rest, clip(spans, seam, seam + rest.length), piece)];
 }
