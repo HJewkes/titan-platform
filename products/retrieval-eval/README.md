@@ -70,7 +70,7 @@ activity in an earlier session, so a re-run over a closed window gives the same 
 
 | Name | What it is |
 | --- | --- |
-| `date-order-notes` | The baseline in production today: newest notes by filename date, query ignored |
+| `date-order-notes` | The historical floor, not today's baseline: newest notes by filename date, query ignored. It is what agent-chat injected before CC-101 and the bootstrap listed before TP-26. Today's baseline is the `served` arm or the `active-work-search` row |
 | `active-work-search` | The shipped per-class RRF search, as a subprocess against the installed binary |
 | `notes-fts` | The notes-only span search the bootstrap runs, mirroring `rank-notes.ts` |
 | `hybrid-fts-vector` | `notes-fts` fused by RRF with a `HashEmbedder` vector index |
