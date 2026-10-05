@@ -8,7 +8,7 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { budgetSpent, NON_STRICT_REFRESHES, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { budgetSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
@@ -106,6 +106,8 @@ interface LandState {
   trusted: Set<string>;
   /** A policy allow covers only the head it named, so this run's updates never extend it. */
   trustedBy: "human" | "policy";
+  /** Heads this round's own update made from a stale green in a non-strict repo: each is the refresh its merge needs. */
+  refreshed: Set<string>;
 }
 
 /**
@@ -116,7 +118,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
+  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
@@ -134,10 +136,11 @@ function roundId(name: string, round: number, n?: number): string {
 
 /**
  * A repo that does not require up-to-date heads treats a stale green as green until the merge is approved, then
- * refreshes it once against the base it will merge into; a base that moves again after that does not loop it.
+ * refreshes the approved head once against the base it will merge into. The refresh belongs to the head it made, not
+ * to the run's update count, so a later head is refreshed again; a base that moves after the refresh does not loop it.
  */
 function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
-  return ci.baseMoved === true && (!state.trusted.has(ci.headSha) || state.bound.sinceGate >= NON_STRICT_REFRESHES);
+  return ci.baseMoved === true && (!state.trusted.has(ci.headSha) || state.refreshed.has(ci.headSha));
 }
 
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
@@ -151,6 +154,7 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   recordUpdate(state.bound, ci.headSha, update.at);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
+  if (update.own && ci.baseMoved === true) state.refreshed.add(update.headSha);
   return undefined;
 }
 

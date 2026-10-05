@@ -7,9 +7,6 @@ export const MAX_UPDATE_CYCLES = 3;
  */
 export const UPDATE_BUDGET_MS = 120 * 60_000;
 
-/** A repo that does not require up-to-date heads refreshes a stale green once, so a moving base never loops it. */
-export const NON_STRICT_REFRESHES = 1;
-
 export interface UpdateBound {
   sinceGate: number;
   /** The heads each of those updates started from, so a stuck-behind gate names them. */
