@@ -14,7 +14,8 @@ import type { MainRedWiring } from "./main-red.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { mergeVerdict, type ReviewWiring, type ReviewerAgent } from "./review.js";
+import { mergeVerdict, type ReviewerAgent } from "./review.js";
+import type { CarrySeatWiring } from "./carry-merge.js";
 import { ESCALATIONS } from "./route-table.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
@@ -147,7 +148,7 @@ function mainCi(fake: FakeGitHub, main: MainScript): GitHubPort {
 }
 
 /** The hold's reviewer, independent of the implementer, whose session holds a verdict block for each head it answered MERGE at. */
-function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
+function heldReviewer(replay: Replay): Omit<CarrySeatWiring, "isFrozen"> {
   const reviewer: ReviewerAgent = { name: `rv-${replay.fixture.id}`, agentId: `rv-${replay.fixture.id}`, sessionId: "synthetic-session", presence: "live", spawnedBy: null, predecessor: null };
   const implementer: ReviewerAgent = { name: "impl-a", agentId: "impl-a", sessionId: "impl-session", presence: "live", spawnedBy: null, predecessor: null };
   const seat: ReviewerAgent = { name: "tc-x-review", agentId: "tc-x-review", sessionId: "seat-session", presence: "live", spawnedBy: null, predecessor: null };
@@ -155,7 +156,7 @@ function heldReviewer(replay: Replay): Omit<ReviewWiring, "isFrozen"> {
   const refuse = async (): Promise<never> => Promise.reject(new Error("the replay starts no reviewer"));
   const said = (head: string, index: number) => ({ agentId: reviewer.agentId, sessionId: reviewer.sessionId, writtenAt: index, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}`, locator: LOCATOR });
   const carry = { stateDir: mkdtempSync(join(tmpdir(), "ledger-replay-")), git: scriptedGit(replay) };
-  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)] }, carry };
+  return { dispatch: { roster: async () => [implementer, reviewer, seat], spawn: refuse, resume: refuse }, reader: { read: async () => [...replay.heldMerges.map(said), ...replay.seatObjections.map(objected)] }, carry, forcePushes: async () => [] };
 }
 
 function fixerWiring(fixers: string[]): Omit<MainRedWiring, "freezes"> {
