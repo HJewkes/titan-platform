@@ -1,6 +1,7 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
+import { failureOf } from "./error-class.js";
 import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
 import { namesTarget } from "./verdict-target.js";
@@ -120,8 +121,6 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
 /** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
 export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
 
-const why = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** True when `text` names this PR as `<owner>/<repo>#<n>` or `<repo>#<n>`, the repo in any letter case. */
@@ -150,10 +149,10 @@ function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (l
   const failure = hard ?? read.failures[0];
   if (failure === undefined) return undefined;
   if (hard === undefined && !reviewsThisPr(target, read)) {
-    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${why(failure)}`);
+    warn(`seat check: ${name} is not the reviewer of ${target.repo}#${target.pr}, so its damaged transcript does not block it: ${failureOf(failure)}`);
     return undefined;
   }
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${why(failure)}` };
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}` };
 }
 
 function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
@@ -170,7 +169,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   try {
     listed = await roster();
   } catch (error) {
-    return { kind: "none", reason: `seat check: the roster could not be read: ${why(error)}` };
+    return { kind: "none", reason: `seat check: the roster could not be read: ${failureOf(error)}` };
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;

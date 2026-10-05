@@ -331,14 +331,14 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     it.each(["exited", "detached"] as const)("blocks its own PR with the failure named when a %s reviewer's transcript ends in a partial record", async (presence) => {
       expect(await seatCheck(reviewingPr7, presence, true)).toEqual({
         kind: "none",
-        reason: `seat check: the transcript of ${seat.name} could not be read: the ${presence} session ${SESSION} ends in a partial record`,
+        reason: `seat check: the transcript of ${seat.name} could not be read: DamagedTranscriptError`,
       });
     });
 
     it("blocks its own PR when a reviewer of unknown presence ends in a partial record, as a bare unlisted value did", async () => {
       expect(await seatCheck(reviewingPr7, toPresence("suspended"), true)).toEqual({
         kind: "none",
-        reason: `seat check: the transcript of ${seat.name} could not be read: the unknown session ${SESSION} ends in a partial record`,
+        reason: `seat check: the transcript of ${seat.name} could not be read: DamagedTranscriptError`,
       });
     });
 
@@ -352,7 +352,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     it("blocks the PR its brief names when the reviewer was torn before any verdict, and leaves another PR clear", async () => {
       const briefed = [user(SESSION, "Review octo/demo#7 and send a verdict."), assistant(SESSION, ["Reading."])];
 
-      expect(await seatCheck(briefed, "exited", true, 7)).toMatchObject({ kind: "none", reason: expect.stringContaining("ends in a partial record") });
+      expect(await seatCheck(briefed, "exited", true, 7)).toMatchObject({ kind: "none", reason: expect.stringContaining("could not be read: DamagedTranscriptError") });
       expect(await seatCheck(briefed, "exited", true, 8)).toEqual({ kind: "clear" });
     });
 
@@ -360,7 +360,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
       const warn = vi.fn();
 
       expect(await seatCheck(quiet, "exited", true, 7, warn)).toEqual({ kind: "clear" });
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("ends in a partial record"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("does not block it: DamagedTranscriptError"));
     });
 
     it("stays clear for a running reviewer whose last record is still being written", async () => {
