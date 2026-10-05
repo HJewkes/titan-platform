@@ -9,7 +9,8 @@ export interface FixtureRepo {
   dir: string;
   store: CodeGraphStore;
   write(relPath: string, contents: string): Promise<void>;
-  commit(message: string): string;
+  /** Commit everything; `at` backdates it, so a file is old enough for the churn windows to score it. */
+  commit(message: string, at?: Date): string;
   /** Index the working tree as one snapshot of `ref`; returns the snapshot id. */
   index(ref: string): Promise<number>;
   cleanup(): Promise<void>;
@@ -26,7 +27,7 @@ export const FIXTURE_FILES: Record<string, string> = {
 
 export async function makeFixtureRepo(): Promise<FixtureRepo> {
   const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "code-read-fixture-")));
-  const git = (args: string[]): string => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: GIT_ENV });
+  const git = (args: string[], env: NodeJS.ProcessEnv = GIT_ENV): string => execFileSync("git", args, { cwd: dir, encoding: "utf8", env });
   git(["init", "-q", "-b", "main"]);
   const store = openCodeGraph(path.join(dir, ".git", "graph.sqlite3"));
   const write = async (relPath: string, contents: string): Promise<void> => {
@@ -34,9 +35,10 @@ export async function makeFixtureRepo(): Promise<FixtureRepo> {
     await fs.writeFile(path.join(dir, relPath), contents);
   };
   for (const [relPath, contents] of Object.entries(FIXTURE_FILES)) await write(relPath, contents);
-  const commit = (message: string): string => {
+  const commit = (message: string, at?: Date): string => {
     git(["add", "-A"]);
-    git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message]);
+    const dated = at ? { ...GIT_ENV, GIT_AUTHOR_DATE: at.toISOString(), GIT_COMMITTER_DATE: at.toISOString() } : GIT_ENV;
+    git(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message], dated);
     return git(["rev-parse", "HEAD"]).trim();
   };
   const index = async (ref: string): Promise<number> => (await indexPaths(store, { paths: [dir], ref })).snapshotId;
