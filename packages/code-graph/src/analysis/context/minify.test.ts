@@ -143,6 +143,23 @@ describe("minifySource on Python", () => {
     expect(result).toEqual({ text: "# … 2 imports\n", lineMap: [2] });
   });
 
+  it("keeps a docstring that is a class or function body's only statement, so the suite is not empty", async () => {
+    const source = "class MessageError(Exception):\n    \"\"\"Base class for errors.\"\"\"\n\n\ndef stub():\n    '''Not yet.'''  # todo\n";
+
+    const result = await minifySource(source, "python");
+
+    expect(result.text).toBe("class MessageError(Exception):\n    \"\"\"Base class for errors.\"\"\"\n\ndef stub():\n    '''Not yet.'''\n");
+    expect(result.lineMap).toEqual([1, 2, 3, 5, 6]);
+  });
+
+  it("keeps a docstring that shares its line with the next statement, leaving no stray `;`", async () => {
+    const source = "def f():\n    \"\"\"doc\"\"\"; x = 1\n    return x\n";
+
+    const result = await minifySource(source, "python");
+
+    expect(result.text).toBe(source);
+  });
+
   it("keeps an import that shares its line with code out of the marker", async () => {
     const result = await minifySource("import os\nimport sys; x = 1\n", "python");
 
@@ -157,6 +174,10 @@ describe("minifySource on other languages", () => {
     const result = await minifySource(source, "rust");
 
     expect(result).toEqual({ text: source, lineMap: [1, 2] });
+  });
+
+  it("maps empty text to no lines", async () => {
+    expect(await minifySource("", "rust")).toEqual({ text: "", lineMap: [] });
   });
 });
 

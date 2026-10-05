@@ -1,6 +1,6 @@
 import type { Node } from "web-tree-sitter";
 import { parseFile } from "@titan-design/code-parser";
-import { descendantsOfType, pythonDocstring } from "../comment-lines.js";
+import { bodyStatements, descendantsOfType, pythonDocstring } from "../comment-lines.js";
 
 export type MinifyLanguage = "typescript" | "tsx" | "python";
 
@@ -88,7 +88,7 @@ export async function minifySource(text: string, language: string): Promise<Mini
 
 function unchanged(text: string): MinifiedSource {
   const rows = text.split("\n");
-  const count = text.endsWith("\n") ? rows.length - 1 : rows.length;
+  const count = text === "" ? 0 : text.endsWith("\n") ? rows.length - 1 : rows.length;
   return { text, lineMap: Array.from({ length: count }, (_, i) => i + 1) };
 }
 
@@ -111,8 +111,23 @@ function pythonDocstrings(root: Node): Node[] {
   const bodies = [...descendantsOfType(root, "class_definition"), ...descendantsOfType(root, "function_definition")]
     .map((def) => def.childForFieldName("body"))
     .filter((body): body is Node => body !== null);
-  const docstrings = bodies.map((body) => pythonDocstring(body));
-  return [moduleDocstring(root), ...docstrings].filter((d): d is Node => d !== null);
+  const docstrings = bodies.map((body) => droppableDocstring(body));
+  const module = moduleDocstring(root);
+  return [module && !sharesEndRow(module) ? module : null, ...docstrings].filter((d): d is Node => d !== null);
+}
+
+/** A docstring that is a body's only statement stays, or the body would be an empty suite. */
+function droppableDocstring(body: Node): Node | null {
+  const docstring = pythonDocstring(body);
+  if (!docstring || bodyStatements(body, docstring).length === 0) return null;
+  return sharesEndRow(docstring) ? null : docstring;
+}
+
+/** `"""doc"""; x = 1`: dropping the docstring would leave a stray `;` before the statement. */
+function sharesEndRow(docstring: Node): boolean {
+  let next = docstring.nextNamedSibling;
+  while (next?.type === "comment") next = next.nextNamedSibling;
+  return next?.startPosition.row === docstring.endPosition.row;
 }
 
 /** `pythonDocstring` reads a `block`; a module's docstring is the same leading string statement on the root. */
