@@ -591,7 +591,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +378 more in the [reference page](/reference/code-graph)
+- +382 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
