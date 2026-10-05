@@ -63,9 +63,26 @@ decides whether every `gate resolve` asks for presence, including a plain termin
 `pnpm build` leaves it in place. `service deploy` only installs and builds, so it does not compile
 the helper: after updating to a release that moved the helper, rerun `pnpm factory:install` or
 `node scripts/factory-build-helper.mjs`. Until then the helper is missing, and a resolve from a shell
-with `AGENT_CHAT_AGENT_ID`, including your own `!` command, is refused as `coordinator`. The helper
-and `dist/bin.js` are both writable by your OS user, so an agent that rewrites either can forge a
-proof.
+with `AGENT_CHAT_AGENT_ID`, including your own `!` command, is refused as `coordinator`.
+
+Before each run, `gate resolve` checks the helper path with `lstat`. The helper and every parent
+directory up to `/` must be owned by root or by your OS user, with no symlink and no group or other
+write bit. The helper itself must be a regular file. If any check fails, presence fails closed, and
+stderr names the path component that failed. The search order is fixed in code: if
+`/usr/local/libexec/titan-factory/owner-presence` exists, it is the only helper used, even when it
+fails the check. Otherwise the helper is `native/build/owner-presence`.
+
+A helper in `native/build` is owned by your OS user, so an agent running as you can still replace it.
+To close that, install the helper as root after `pnpm factory:install`, from the checkout root:
+
+```sh
+sudo install -d -o root -g wheel -m 755 /usr/local/libexec/titan-factory
+sudo install -o root -g wheel -m 755 products/factory/native/build/owner-presence /usr/local/libexec/titan-factory/owner-presence
+```
+
+Repeat the second command whenever the helper source changes. If `/usr/local/libexec` belongs to
+your user, as it can with an Intel Homebrew install, the check refuses that parent. `dist/bin.js` is
+still writable by your OS user, so an agent that rewrites it can skip the dialog.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
