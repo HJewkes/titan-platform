@@ -22,6 +22,16 @@ const AUTHORITY_ACTOR = { class: "automation", id: "titan-factory" } as const;
 const AUTHORITY_VERSION = Number.parseInt(DEFAULT_TABLE.version, 10);
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
 
+/** GitHub computes mergeability lazily, so a fresh PR reads `unknown` for a few seconds. */
+const SETTLE_MAX_READS = 3;
+const SETTLE_INTERVAL_MS = 5_000;
+
+interface SettleClock {
+  sleep: (ms: number) => Promise<void>;
+}
+
+const REAL_CLOCK: SettleClock = { sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
+
 export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
 
 /** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
@@ -61,6 +71,8 @@ export interface EvidenceRecord {
   verdictLocator: SourceTextLocator;
   reviewer: AgentIdentity;
   decision: GateDecision;
+  /** The `mergeable_state` the decision judged, after any re-reads. */
+  mergeableState: string;
   /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
   carry?: CarryFact;
 }
@@ -70,6 +82,7 @@ export interface MergeEvidence {
   head: string;
   merge: MergeFacts;
   record: EvidenceRecord;
+  mergeableState: string;
   /** Why the base branch's required checks could not be read; set means the merge gates. */
   requiredChecksUnknown?: string;
   /** Facts that could not be read and were taken at their closed value; a gate's reason names them. */
@@ -81,6 +94,7 @@ export interface DecidableEvidence {
   head: string;
   merge: MergeFacts;
   record: Pick<EvidenceRecord, "repo" | "pr">;
+  mergeableState?: string;
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
 }
@@ -117,6 +131,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined)
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
+  if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule("merge-state-unsettled"), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
   if (workflowPaths.length > 0) return { outcome: "gate", rule: guardRule("github-path"), reason: `the owner decides changes under .github/: ${workflowPaths.join(", ")}` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
@@ -168,6 +183,16 @@ async function reviewBypassable(port: GitHubPort, repo: RepoSlug, pr: PullReques
   }
 }
 
+/** Only `unknown` is transient; every other state is judged on the first read. */
+async function settledPr(port: GitHubPort, repo: RepoSlug, number: number, clock: SettleClock): Promise<PullRequest> {
+  let pr = await port.getPr(repo, number);
+  for (let read = 1; read < SETTLE_MAX_READS && pr.mergeableState === "unknown"; read++) {
+    await clock.sleep(SETTLE_INTERVAL_MS);
+    pr = await port.getPr(repo, number);
+  }
+  return pr;
+}
+
 interface Observed {
   pr: PullRequest;
   merge: MergeFacts;
@@ -200,8 +225,8 @@ function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact 
 }
 
 /** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}): Promise<Observed> {
-  const pr = await port.getPr(input.repo, input.pr);
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}, clock: SettleClock = REAL_CLOCK): Promise<Observed> {
+  const pr = await settledPr(port, input.repo, input.pr, clock);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
@@ -273,10 +298,11 @@ export function evidenceComment(record: EvidenceRecord): string {
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts } = await collectMergeFacts(port, input, isFrozen, kind);
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts } = await collectMergeFacts(port, input, isFrozen, kind, clock);
+  const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }) };
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, ...unknown });
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown });
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -288,8 +314,9 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     verdictLocator: input.verdict.locator,
     reviewer: input.resolver,
     decision,
+    mergeableState,
     ...(merge.carry && { carry: merge.carry }),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, ...unknown, commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, commentId: comment.id };
 }

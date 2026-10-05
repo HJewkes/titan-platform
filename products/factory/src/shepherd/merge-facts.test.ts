@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFile } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
@@ -219,6 +219,49 @@ describe("mergeEvidence", () => {
 
     expect(evidence.merge.mergeTreeClean).toBe(false);
     expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  describe("an unknown mergeable_state", () => {
+    function scripted(states: string[]): { port: GitHubPort; reads: () => number; sleeps: number[] } {
+      const fake = world();
+      fake.reviewBypass = true;
+      const real = githubPort(fake.wire);
+      let reads = 0;
+      const getPr: GitHubPort["getPr"] = async (repo, number) => ({ ...(await real.getPr(repo, number)), mergeableState: states[Math.min(reads++, states.length - 1)]! });
+      return { port: { ...real, getPr }, reads: () => reads, sleeps: [] };
+    }
+    const settle = (rig: ReturnType<typeof scripted>) => mergeEvidence(rig.port, input, noFreezeStoreUntilTp523, { kind: "correctness" }, { sleep: async (ms) => void rig.sleeps.push(ms) });
+
+    it("settles to blocked on the second read and allows MRG-AU-RV through a bypassable review rule", async () => {
+      const rig = scripted(["unknown", "blocked"]);
+
+      const evidence = await settle(rig);
+
+      expect(rig.reads()).toBe(2);
+      expect(rig.sleeps).toEqual([5_000]);
+      expect(evidence.record.mergeableState).toBe("blocked");
+      expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+    });
+
+    it("gates, naming the state, when all three reads are unknown", async () => {
+      const rig = scripted(["unknown"]);
+
+      const evidence = await settle(rig);
+
+      expect(rig.reads()).toBe(3);
+      expect(rig.sleeps).toEqual([5_000, 5_000]);
+      expect(evidence.record.mergeableState).toBe("unknown");
+      expect(evidence.record.decision).toMatchObject({ outcome: "gate", reason: "mergeable_state unknown after 3 reads" });
+    });
+
+    it("judges any other state on the first read", async () => {
+      const rig = scripted(["clean"]);
+
+      await settle(rig);
+
+      expect(rig.reads()).toBe(1);
+      expect(rig.sleeps).toEqual([]);
+    });
   });
 
   describe("a blocked PR", () => {
