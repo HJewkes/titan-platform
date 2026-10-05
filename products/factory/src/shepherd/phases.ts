@@ -3,6 +3,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { RosterReader } from "./roster.js";
 import type { ShepherdStoreRef } from "./store.js";
+import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -53,4 +54,6 @@ export interface ShepherdDeps {
   roster?: RosterReader;
   /** Absent means `sh-cleanup` deletes the head ref only, and leaves the task and the agents alone. */
   cleanup?: CleanupPorts;
+  /** The per-repo PR snapshot `sh-observe` reads; absent means it reads the port. */
+  snapshot?: PrSnapshot;
 }

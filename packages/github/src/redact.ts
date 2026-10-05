@@ -40,7 +40,10 @@ export function redact(text: string, secrets: readonly string[]): string {
  * has a match that neither stream has alone at the same place (one crossing the seam, even when `first` already ends in a
  * whole token, since a token's length does not say it ended; one in `second` behind a keyword that ends `first`; one in
  * `first` that only `second` completes, as a userinfo `@`), every span of the joined text and of each stream alone is cut
- * from the stream it covers. The text between spans is still redacted, so nothing either stream matches alone shows.
+ * from the stream it covers. An exact secret that crosses the seam takes the same path, since neither stream holds it whole. The text between spans is still redacted, so nothing either stream matches alone shows.
+ * The secret list is deduplicated before the exact scans, so a repeated secret adds no spans.
+ * Known limit: a secret whose whitespace is cut at the seam (secret `sec ret`, streams `my sec \n` and `ret`) is not
+ * found, because the dropped newline stands where the secret has a space; both halves show.
  */
 export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
   const head = first.trimEnd();
@@ -50,10 +53,31 @@ export function redactStreams(first: string, second: string, secrets: readonly s
   const ownRest = spansOf(rest).map((span) => ({ start: span.start + seam, end: span.end + seam }));
   const starts = new Set([...ownHead, ...ownRest].map((span) => span.start));
   const joined = spansOf(head + rest);
-  if (joined.every((span) => (span.end <= seam || span.start >= seam) && starts.has(span.start))) return [redact(first, secrets), redact(second, secrets)];
-  const spans = merged([...ownHead, ...ownRest, ...joined, ...secretSpans(head + rest, secrets)]);
+  const { spans: exact, straddles } = exactSpans(first, second, secrets);
+  if (!straddles && joined.every((span) => (span.end <= seam || span.start >= seam) && starts.has(span.start))) return [redact(first, secrets), redact(second, secrets)];
+  const spans = merged([...ownHead, ...ownRest, ...joined, ...exact]);
   const piece = (text: string): string => redact(text, secrets);
   return [render(head, clip(spans, 0, seam), piece), render(rest, clip(spans, seam, seam + rest.length), piece)];
+}
+
+/**
+ * Exact-secret spans in the trimmed coordinates of `head + rest`: found in the untrimmed text, since trimming drops
+ * whitespace a secret can contain, and in the trimmed text, where the dropped whitespace joins two halves of a secret.
+ */
+function exactSpans(first: string, second: string, secretList: readonly string[]): { spans: Span[]; straddles: boolean } {
+  const secrets = [...new Set(secretList.filter((value) => value.length > 0))];
+  const head = first.trimEnd().length;
+  const dropped = first.length - head;
+  const lead = second.length - second.trimStart().length;
+  const toTrimmed = (at: number): number => (at <= head ? at : at <= first.length + lead ? head : at - dropped - lead);
+  const rawSpans = secretSpans(first + second, secrets);
+  const mapped = rawSpans.map((span) => ({ start: toTrimmed(span.start), end: toTrimmed(span.end) })).filter((span) => span.start < span.end);
+  const trimmed = secretSpans(first.trimEnd() + second.trimStart(), secrets);
+  const crosses = (span: Span, seam: number): boolean => span.start < seam && span.end > seam;
+  return {
+    spans: [...mapped, ...trimmed],
+    straddles: rawSpans.some((span) => crosses(span, first.length)) || trimmed.some((span) => crosses(span, head)),
+  };
 }
 
 /** Each span of `text` becomes `[redacted]`; the text between spans goes through `piece`. */
@@ -76,7 +100,7 @@ function clip(spans: readonly Span[], from: number, to: number): Span[] {
 
 function secretSpans(text: string, secrets: readonly string[]): Span[] {
   const spans: Span[] = [];
-  for (const secret of secrets.filter((value) => value.length > 0)) {
+  for (const secret of secrets) {
     for (let at = text.indexOf(secret); at >= 0; at = text.indexOf(secret, at + 1)) spans.push({ start: at, end: at + secret.length });
   }
   return spans;

@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
@@ -107,13 +108,6 @@ export interface IssueComment {
   author: string;
 }
 
-export interface OpenPrRequest {
-  head: string;
-  base: string;
-  title: string;
-  body: string;
-}
-
 /**
  * One GitHub call per method, unconditional, as GitHub itself behaves. `gh-cli.ts` and the test
  * fake implement it; `githubPort` puts the check-then-act rules on top of either.
@@ -130,6 +124,8 @@ export interface GitHubWire {
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
+  /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -170,6 +166,8 @@ export interface GitHubPort {
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
   listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
+  /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
@@ -234,6 +232,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
+    revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
