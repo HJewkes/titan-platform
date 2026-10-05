@@ -325,6 +325,17 @@ describe("token shape scrub", () => {
     }
   });
 
+  it("cuts a token whole when a straddling secret sits inside it", () => {
+    const hexToken = "0123456789abcdef0123456789abcdef01234567";
+
+    expect(redactStreams(`token: ${hexToken.slice(0, 20)}`, `${hexToken.slice(20)} tail`, ["23456"])).toEqual(["token: [redacted]", "[redacted] tail"]);
+    expect(redactStreams(`x ${SHAPED.slice(0, 8)}`, `${SHAPED.slice(8)} tail`, [SHAPED.slice(6, 10)])).toEqual(["x [redacted]", "[redacted] tail"]);
+  });
+
+  it("cuts two overlapping secrets split by whitespace at the seam from both streams", () => {
+    expect(redactStreams("x abc \n", "def y", ["c \nd", "abcdef"])).toEqual(["x [redacted]", "[redacted] y"]);
+  });
+
   it("throws a REST error whose message carries neither half of a split token", async () => {
     for (const stdout of [`partial ${SHAPED.slice(0, 15)}`, `partial ${SHAPED.slice(0, 15)}\n`]) {
       const result = { code: 1, stdout, stderr: `${SHAPED.slice(15)} (HTTP 403)` };
@@ -510,13 +521,15 @@ describe("token shape scrub", () => {
       }
     });
 
-    it("scans a megabyte of text for a hundred exact secrets in linear time", () => {
-      const secrets = Array.from({ length: 100 }, (_, i) => `secret-${i}-aaaaaaaaaaaa`);
-      const text = "secret-aaaaaaaa ".repeat((1 << 20) / 16);
+    it("scans a megabyte of text for a hundred exact secrets, some present, in linear time", () => {
+      const secrets = [...Array.from({ length: 99 }, (_, i) => `secret-${i}-aaaaaaaaaaaa`), "needle-xyz"];
+      const text = `${"aaaaaaa ".repeat(127)}needle-xyz `.repeat(1024);
       const started = performance.now();
 
-      expect(redactStreams(text, text, secrets)).toEqual([text, text]);
+      const [out, err] = redactStreams(text, text, secrets);
+
       expect(performance.now() - started).toBeLessThan(2000);
+      expect(`${out}${err}`).not.toContain("needle-xyz");
     });
 
     it("redacts a JWT behind a run of JWT-shaped words from its first header", () => {

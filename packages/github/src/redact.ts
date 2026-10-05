@@ -43,21 +43,6 @@ export function redact(text: string, secrets: readonly string[]): string {
  * from the stream it covers. An exact secret that crosses the seam takes the same path, since neither stream holds it whole. The text between spans is still redacted, so nothing either stream matches alone shows.
  */
 export function redactStreams(first: string, second: string, secrets: readonly string[]): [string, string] {
-  const [cutFirst, cutSecond] = cutSecretsAcrossSeam(first, second, secrets);
-  return redactTrimmed(cutFirst, cutSecond, secrets);
-}
-
-/** An exact secret crossing the raw seam is cut first, since trimming the streams would drop whitespace the secret contains. */
-function cutSecretsAcrossSeam(first: string, second: string, secrets: readonly string[]): [string, string] {
-  const seam = first.length;
-  const exact = secretSpans(first + second, secrets);
-  if (!exact.some((span) => span.start < seam && span.end > seam)) return [first, second];
-  const spans = merged(exact);
-  const piece = (text: string): string => text;
-  return [render(first, clip(spans, 0, seam), piece), render(second, clip(spans, seam, seam + second.length), piece)];
-}
-
-function redactTrimmed(first: string, second: string, secrets: readonly string[]): [string, string] {
   const head = first.trimEnd();
   const rest = second.trimStart();
   const seam = head.length;
@@ -65,12 +50,30 @@ function redactTrimmed(first: string, second: string, secrets: readonly string[]
   const ownRest = spansOf(rest).map((span) => ({ start: span.start + seam, end: span.end + seam }));
   const starts = new Set([...ownHead, ...ownRest].map((span) => span.start));
   const joined = spansOf(head + rest);
-  const exact = secretSpans(head + rest, secrets);
-  const straddles = exact.some((span) => span.start < seam && span.end > seam);
+  const { spans: exact, straddles } = exactSpans(first, second, secrets);
   if (!straddles && joined.every((span) => (span.end <= seam || span.start >= seam) && starts.has(span.start))) return [redact(first, secrets), redact(second, secrets)];
   const spans = merged([...ownHead, ...ownRest, ...joined, ...exact]);
   const piece = (text: string): string => redact(text, secrets);
   return [render(head, clip(spans, 0, seam), piece), render(rest, clip(spans, seam, seam + rest.length), piece)];
+}
+
+/**
+ * Exact-secret spans in the trimmed coordinates of `head + rest`: found in the untrimmed text, since trimming drops
+ * whitespace a secret can contain, and in the trimmed text, where the dropped whitespace joins two halves of a secret.
+ */
+function exactSpans(first: string, second: string, secrets: readonly string[]): { spans: Span[]; straddles: boolean } {
+  const head = first.trimEnd().length;
+  const dropped = first.length - head;
+  const lead = second.length - second.trimStart().length;
+  const toTrimmed = (at: number): number => (at <= head ? at : at <= first.length + lead ? head : at - dropped - lead);
+  const rawSpans = secretSpans(first + second, secrets);
+  const mapped = rawSpans.map((span) => ({ start: toTrimmed(span.start), end: toTrimmed(span.end) })).filter((span) => span.start < span.end);
+  const trimmed = secretSpans(first.trimEnd() + second.trimStart(), secrets);
+  const crosses = (span: Span, seam: number): boolean => span.start < seam && span.end > seam;
+  return {
+    spans: [...mapped, ...trimmed],
+    straddles: rawSpans.some((span) => crosses(span, first.length)) || trimmed.some((span) => crosses(span, head)),
+  };
 }
 
 /** Each span of `text` becomes `[redacted]`; the text between spans goes through `piece`. */
