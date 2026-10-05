@@ -50,11 +50,12 @@ export function runLayeredDepsRule(rule: LayeredDepsRule, ctx: RuleContext): Che
 export function runForbidImportRule(rule: ForbidImportRule, ctx: RuleContext): CheckViolation[] {
   const fromRx = compilePatterns([rule.from]);
   const toRx = compilePatterns([rule.to]);
+  const exceptRx = compilePatterns(rule.except);
   const out: CheckViolation[] = [];
   for (const edge of ctx.edges) {
     if (!isImportEdge(edge)) continue;
     if (!matchesAny(edge.srcId, fromRx)) continue;
-    if (!matchesAny(edge.dstId, toRx)) continue;
+    if (!matchesAny(edge.dstId, toRx) || matchesAny(edge.dstId, exceptRx)) continue;
     out.push({
       ruleId: rule.id,
       severity: severityOf(rule),

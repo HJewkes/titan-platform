@@ -88,11 +88,17 @@ describe("the shepherd text view of each verb", () => {
   });
 
   it.each([
-    [true, "run 12345678 would end: merged outside Shepherd\nwould cancel 1 orphaned gate(s); would supersede 0 moved-head gate(s)\n"],
-    [false, "run 12345678 ended: merged outside Shepherd\ncancelled 1 orphaned gate(s); superseded 0 moved-head gate(s)\n"],
+    [true, "run 12345678 would end: merged outside Shepherd\nwould cancel 1 orphaned gate(s); would supersede 0 stale gate(s)\n"],
+    [false, "run 12345678 ended: merged outside Shepherd\ncancelled 1 orphaned gate(s); superseded 0 stale gate(s)\n"],
   ])("prints resync with dryRun %s", (dryRun, expected) => {
     const report = { dryRun, ended: [{ runId: "1234567890", reason: "merged outside Shepherd" }], orphanGates: ["run-0/merge"], superseded: [] };
     expect(formatShepherd("shepherd.resync", report)).toBe(expected);
+  });
+
+  it("prints one resync line per superseded gate naming the run, both heads and the condition", () => {
+    const superseded = [{ runId: "abcdef0123", gateId: "abcdef0123/approve-merge", from: "aaa1", to: "bbb2", condition: "head-moved" }];
+    const report = { dryRun: false, ended: [], orphanGates: [], superseded };
+    expect(formatShepherd("shepherd.resync", report)).toBe("run abcdef01 superseded its gate (head-moved): head aaa1 -> bbb2\ncancelled 0 orphaned gate(s); superseded 1 stale gate(s)\n");
   });
 });
 

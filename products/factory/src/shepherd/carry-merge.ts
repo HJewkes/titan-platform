@@ -1,4 +1,4 @@
-import type { RepoSlug } from "@titan-design/github";
+import type { ForcePush, RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -7,7 +7,6 @@ import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
-import { ghForcePushes, pushedAwaySince, type ReadForcePushes } from "./force-pushes.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
@@ -69,9 +68,22 @@ async function committedSince(port: ShepherdDeps["port"], input: SeatInput): Pro
   return { value: commits.value.slice(commits.value.indexOf(input.fromHead) + 1) };
 }
 
+/**
+ * The heads force-pushes removed after the branch held `fromHead`. A push that removed `fromHead` counts, one that brought it
+ * does not; with `fromHead` in no push every removed head counts, as after a rebase.
+ */
+export function pushedAwaySince(pushes: readonly ForcePush[], fromHead: string): (string | null)[] {
+  let start = 0;
+  pushes.forEach((push, index) => {
+    if (push.after === fromHead) start = index + 1;
+    else if (push.before === fromHead) start = index;
+  });
+  return pushes.slice(start).map((push) => push.before);
+}
+
 /** The heads force-pushed away since `fromHead`, which the commit list no longer names; one GitHub no longer has refuses. */
-async function forcedAwaySince(readForcePushes: ReadForcePushes, input: SeatInput): Promise<SeatRead<string[]>> {
-  const pushes = await seatRead("the PR's force-pushes", () => readForcePushes(input.repo, input.pr));
+async function forcedAwaySince(port: ShepherdDeps["port"], input: SeatInput): Promise<SeatRead<string[]>> {
+  const pushes = await seatRead("the PR's force-pushes", () => port.listForcePushes(input.repo, input.pr));
   if ("reason" in pushes) return pushes;
   const away = pushedAwaySince(pushes.value, input.fromHead);
   const known = away.filter((head): head is string => head !== null);
@@ -83,29 +95,26 @@ async function forcedAwaySince(readForcePushes: ReadForcePushes, input: SeatInpu
  * FIX_FIRST at an update the run never reviewed still refuses. A list that does not end at the head is short (GitHub stops at
  * 250) or stale, and refuses.
  */
-async function seatHeads(port: ShepherdDeps["port"], readForcePushes: ReadForcePushes, input: SeatInput): Promise<SeatHeads> {
+async function seatHeads(port: ShepherdDeps["port"], input: SeatInput): Promise<SeatHeads> {
   const committed = await committedSince(port, input);
   if ("reason" in committed) return committed;
-  const forced = await forcedAwaySince(readForcePushes, input);
+  const forced = await forcedAwaySince(port, input);
   if ("reason" in forced) return forced;
   const heads = [...new Set([...input.heads, ...committed.value, ...forced.value])];
   if (heads.length > CARRY_SEAT_HEAD_CAP) return { reason: `seat check: ${heads.length} heads since ${input.fromHead} is more than ${CARRY_SEAT_HEAD_CAP}` };
   return { heads };
 }
 
-/** The review wiring plus how the seat check reads the PR's force-pushes; absent means `gh` under the login the GitHub port uses. */
-export type CarrySeatWiring = ReviewWiring & { forcePushes?: ReadForcePushes };
-
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
  * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
  * roster to read.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: CarrySeatWiring | undefined): StepRoute {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: ReviewWiring | undefined): StepRoute {
   return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
-    const walked = await seatHeads(deps.port, wiring.forcePushes ?? ghForcePushes(), input);
+    const walked = await seatHeads(deps.port, input);
     if ("reason" in walked) return { clear: false, reason: walked.reason };
     for (const head of walked.heads) {
       const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });

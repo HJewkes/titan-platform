@@ -29,8 +29,9 @@ number.
 ## When to reach for it
 
 Before changing retrieval behaviour, and after. Re-run it to see whether a weight change,
-a new index, or a new corpus moved recall, and compare against `date-order-notes` — what
-the system injects today — rather than against zero.
+a new index, or a new corpus moved recall, and compare against the `active-work-search` row
+or the `served` arm, which are today's baseline, rather than against zero. `date-order-notes`
+is the historical floor from before CC-101 and TP-26, kept to show how far ranking has come.
 
 Do not reach for it to evaluate answer quality or a generated summary. It measures whether
 a document was surfaced, nothing about what was done with it.
