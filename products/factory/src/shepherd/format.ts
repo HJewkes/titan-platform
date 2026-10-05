@@ -1,26 +1,34 @@
-import type { MergeEvaluation, Registered } from "./commands.js";
+import type { CommandMapOf } from "@titan-design/registry";
+import type { ZodType } from "zod";
+import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
 import type { ResyncReport } from "./resync.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
+type ShepherdResults = { [Name in ShepherdCommandName]: CommandMapOf<typeof SHEPHERD_COMMAND_MAP>[Name]["result"] };
+type Formatters = { [Name in ShepherdCommandName]: (data: ShepherdResults[Name]) => string };
+type ResultSchemas = { [Name in ShepherdCommandName]: { result: ZodType<ShepherdResults[Name]> } };
+
+/** A verb with no entry here fails to compile, so a new one cannot fall through to another verb's text. */
+const FORMATTERS: Formatters = {
+  "shepherd.register": formatRegistered,
+  "shepherd.status": formatRows,
+  "shepherd.list": formatRows,
+  "shepherd.timeline": formatTimeline,
+  "shepherd.hold": formatHold,
+  "shepherd.release": formatHold,
+  "shepherd.merge": formatMerge,
+  "shepherd.resync": formatResync,
+};
+
+const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
+
 /** The human form of each `titan-factory shepherd` verb's result; `--json` prints the result itself instead. */
-export function formatShepherd(name: string, data: unknown): string {
-  switch (name) {
-    case "shepherd.register":
-      return formatRegistered(data as Registered);
-    case "shepherd.status":
-    case "shepherd.list":
-      return formatRows(data as WatchRow[]);
-    case "shepherd.timeline":
-      return formatTimeline(data as PrTimeline);
-    case "shepherd.merge":
-      return formatMerge(data as MergeEvaluation);
-    case "shepherd.resync":
-      return formatResync(data as ResyncReport);
-    default: {
-      const { runId, held } = data as { runId: string; held: { reason: string } | null };
-      return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
-    }
-  }
+export function formatShepherd<Name extends ShepherdCommandName>(name: Name, data: unknown): string {
+  return FORMATTERS[name](RESULT_SCHEMAS[name].result.parse(data));
+}
+
+function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
+  return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
 }
 
 function formatRegistered({ runId, created, registration, previousRunId }: Registered): string {
