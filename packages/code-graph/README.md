@@ -256,7 +256,8 @@ The rules engine turns a snapshot into pass/fail against a `check.json`. Seven r
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
-destination file has an excluded role.
+destination file has an excluded role. `forbid-import` takes `except`: destination patterns
+that `to` matches but the rule allows, such as one sanctioned entry file.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -429,6 +430,14 @@ snapshotSymbolCoupling(store, snapshotId); // symbol pairs co-imported by 2+ fil
 
 The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 `computeSymbolCoupling` take node and edge arrays instead of a store.
+
+### The `./analysis` subpath
+
+`@titan-design/code-graph/analysis` re-exports the report, dashboard, and package-architecture
+derivations below without the root's ts-morph, tree-sitter, and SQLite, so a browser bundle
+can import it. `analysis/graph-report-browser-safe.test.ts` keeps its whole import closure
+free of packages and Node builtins, and fails if the barrel re-exports a module it does not
+check. Symbol coupling is not on it: `symbol-coupling.ts` still reaches `node:path`.
 
 ### Dashboard derivations
 

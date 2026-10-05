@@ -92,7 +92,7 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 ```
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
-`forbid-import`, `layered-deps` (layers are path prefixes; an import may point only to its
+`forbid-import` (`except` lists destination patterns `to` matches but the rule allows), `layered-deps` (layers are path prefixes; an import may point only to its
 own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
 nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
@@ -266,6 +266,13 @@ exactly one caller). A callable with 2 or more resolved call sites also gets
 These metrics need edges from every file, so they are recomputed on each index. `listEdges`
 and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 `includeReferences`.
+
+### The `./analysis` subpath
+
+A browser imports the report, dashboard, and package-architecture derivations from
+`@titan-design/code-graph/analysis`, which leaves out the root's ts-morph, tree-sitter, and
+SQLite. A test keeps the subpath's import closure free of packages and Node builtins.
+Symbol coupling is not on it yet, because `symbol-coupling.ts` still reaches `node:path`.
 
 ### Dashboard derivations
 
