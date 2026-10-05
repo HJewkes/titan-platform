@@ -19,6 +19,10 @@ interface WrapperSpec {
   joined?: boolean;
   /** Options that make a joining wrapper run its words directly. */
   direct?: string[];
+  /** Short options whose value is optional and attached, so the rest of a cluster is theirs and the next word is not. */
+  optional?: string[];
+  /** Whether a digit in a short cluster is an option of this wrapper, as `-0` is for `xargs` and `env`. */
+  digits?: boolean;
   /** Whether a name word may precede a compound command, as in `coproc NAME { ...; }`. */
   named?: boolean;
 }
@@ -28,7 +32,7 @@ const COMPOUND_STARTS = new Set(["{", "if", "while", "until", "for", "case", "se
 const PACKAGE_OPTS: WrapperSpec = { values: ["-p", "--package"], script: ["-c", "--call", "--shell-mode"] };
 
 const WRAPPERS: Record<string, WrapperSpec> = {
-  env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true },
+  env: { values: [...SHORT_VALUES.env, "--unset", "--chdir", "--argv0"], script: ["-S", "--split-string"], attached: true, digits: true },
   command: { stop: ["-v", "-V"] },
   builtin: {},
   exec: { values: ["-a"] },
@@ -39,6 +43,7 @@ const WRAPPERS: Record<string, WrapperSpec> = {
   timeout: { values: [...SHORT_VALUES.timeout, "--signal", "--kill-after"], positionals: 1 },
   // `--eof`, `--max-lines` and `--replace` take their value only after `=`, so they stay out.
   xargs: {
+    optional: ["e", "i", "l"], digits: true,
     values: [...SHORT_VALUES.xargs, "--max-args", "--delimiter", "--arg-file", "--max-procs", "--max-chars", "--process-slot-var"],
   },
   stdbuf: { values: [...SHORT_VALUES.stdbuf, "--input", "--output", "--error"] },
@@ -145,7 +150,7 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
 /** `words` with the long options of a wrapper at `i` spelled out; an ambiguous one is read both ways instead. */
 function spellXargs(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): WordToken[] | Unwrapped {
   const name = commandName((words[i] as WordToken).value);
-  const spelled = spellLongOptions(name, words, i + 1, (v) => takesValue(v, wrapperSpec(name)?.values));
+  const spelled = spellLongOptions(name, words, i + 1, (v) => takesValue(v, wrapperSpec(name)));
   if (typeof spelled !== "number") return spelled;
   return { ...command(words, i, assigned), script: ambiguousReadings(words, i, spelled) };
 }
@@ -195,7 +200,7 @@ function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch 
     const rest = v.slice(k + 1);
     if (c === "l") return { unit: "lines", size: rest ? batchSize(word, rest) : 1 };
     if (c === "L" || c === "n") return { unit: c === "L" ? "lines" : "args", size: rest ? batchSize(word, rest) : batchSize(next) };
-    if (c === "i" || c === "e" || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
+    if (WRAPPERS.xargs?.optional?.includes(c) || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
   }
   return null;
 }
@@ -260,11 +265,10 @@ function clusterReplace(v: string, next: string | undefined): string | null {
   return null;
 }
 
-/** Whether option word `v` takes the next word as its value: `-I`, or a cluster ending in one, `-tI`. */
-function takesValue(v: string, values: string[] = []): boolean {
-  if (values.includes(v)) return true;
-  if (!/^-[A-Za-z]{2,}$/.test(v)) return false;
-  return [...v.slice(1)].findIndex((c) => values.includes(`-${c}`)) === v.length - 2;
+/** Whether option word `v` takes the next word as its value: `-I`, or a cluster whose first value option is its last, `-tI`, `-0n`; an optional-value option ends the scan. */
+function takesValue(v: string, { values = [], optional = [], digits }: WrapperSpec = {}): boolean {
+  if (!(digits ? /^-[A-Za-z0-9]{2,}$/ : /^-[A-Za-z]{2,}$/).test(v)) return values.includes(v);
+  return values.includes(`-${v.at(-1)}`) && ![...v.slice(1, -1)].some((c) => values.includes(`-${c}`) || optional.includes(c));
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {
@@ -276,7 +280,7 @@ function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
   while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
     const v = (words[i] as WordToken).value;
     if (spec.stop?.includes(v)) return -1;
-    i += takesValue(v, spec.values) ? 2 : 1;
+    i += takesValue(v, spec) ? 2 : 1;
     if (v === "--") break;
   }
   if (spec.named && isCompoundStart(words[i + 1])) return i + 1;
@@ -295,7 +299,7 @@ function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string
     if (at === "next") return scriptText(words[i + 1]?.value ?? "", words.slice(i + 2));
     if (at !== null) return scriptText(at.attached, words.slice(i + 1));
     if (v === "--") break;
-    i += takesValue(v, spec.values) ? 2 : 1;
+    i += takesValue(v, spec) ? 2 : 1;
   }
   if (!spec.positionals || !spec.script) return null;
   return wrapperScript(words, i + spec.positionals, { ...spec, positionals: 0 });
