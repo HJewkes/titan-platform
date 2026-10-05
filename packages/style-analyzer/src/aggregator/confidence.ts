@@ -1,5 +1,5 @@
 import type { Severity, SeverityThresholds } from "@titan-design/style-profile";
-import { DEFAULT_SEVERITY_THRESHOLDS } from "@titan-design/style-profile";
+import { DEFAULT_SEVERITY_THRESHOLDS, severityForConfidence } from "@titan-design/style-profile";
 import type { Stability } from "./stability.js";
 
 export type { Severity, SeverityThresholds };
@@ -25,12 +25,4 @@ export function computeConfidence(
   return Math.min(1.0, consistency * weights[stability]);
 }
 
-export function mapSeverity(
-  confidence: number,
-  thresholds: SeverityThresholds = DEFAULT_SEVERITY_THRESHOLDS,
-): Severity {
-  if (confidence >= thresholds.error) return "error";
-  if (confidence >= thresholds.warn) return "warn";
-  if (confidence >= thresholds.info) return "info";
-  return "off";
-}
+export { severityForConfidence as mapSeverity };

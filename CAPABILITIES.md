@@ -776,11 +776,10 @@ Key exports:
 
 - `schema/style-rule`: `StyleRuleSchema`, `ExampleSchema`, `StabilitySchema`, `FixabilitySchema`
 - `schema/profile`: `ProfileSchema`
+- `schema/severity`: `severityForConfidence`, `toEslintLevel`
 - `io`: `readProfile`, `writeProfile`, `validateProfile`
 - `migrations/migrate-profile`: `migrateProfile`, `registerMigration`
-- `exporters/skill`: `generateSkillFiles`
-- `exporters/claude-rules`: `generateClaudeRules`
-- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
+- +40 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/style-profile)
 
 <a id="cap-workflow"></a>
 
