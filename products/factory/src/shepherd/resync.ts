@@ -1,5 +1,6 @@
 import type { FactoryHost } from "../host.js";
 import type { ShepherdServices } from "./commands.js";
+import { failureOf } from "./error-class.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -54,7 +55,7 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   try {
     report.superseded = await supersedeMovedGates(host, services, { dryRun });
   } catch (err) {
-    report.supersedeError = err instanceof Error ? err.message : String(err);
+    report.supersedeError = failureOf(err);
   }
   return report;
 }
