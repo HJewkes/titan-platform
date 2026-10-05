@@ -43,21 +43,36 @@ describe("NUL in text piped into zsh", () => {
   });
 });
 
+describe("piped zsh words cut after parsing", () => {
+  it.each([
+    ["a quote after the NUL", "printf 'git\\0\"x\" push origin HEAD:main\\n' | zsh", pushed],
+    ["an escape after the NUL", "printf 'git\\0\\\\z push origin HEAD:main\\n' | zsh", pushed],
+    ["a substitution after the NUL", "printf 'git\\0$(echo z) push origin HEAD:main\\n' | zsh", pushed],
+    ["a backtick after the NUL", "printf 'git\\0`echo z` push origin HEAD:main\\n' | zsh", pushed],
+    ["a quoted blank after the NUL", "printf 'git push\\0\" \"x origin HEAD:main\\n' | zsh", pushed],
+  ])("sees the push with %s", (_how, src, args) => {
+    expect(gitArgs(src)).toContainEqual(args);
+  });
+
+  it("cuts the word inside a nested substitution", () => {
+    expect(gitArgs("printf 'echo $(git\\0x push origin HEAD:main)\\n' | zsh")).toContainEqual(pushed);
+  });
+
+  it("keeps an operator after the NUL as a separator", () => {
+    expect(gitArgs("printf 'echo x\\0y;git push origin HEAD:main\\n' | zsh")).toContainEqual(pushed);
+  });
+});
+
 describe("pipedShellTexts", () => {
   it("returns text without NUL unchanged for every shell", () => {
     expect(pipedShellTexts("zsh", "git status\n")).toEqual(["git status\n"]);
   });
 
-  it("reads zsh both ways, cutting each word at NUL but not past an operator or quote", () => {
-    expect(pipedShellTexts("zsh", "a\0b c\0d\0e\tf\0g\nh")).toEqual(["ab cde\tfg\nh", "a c\tf\nh"]);
-    expect(pipedShellTexts("zsh", "x\0y;z 'a\0b' q")).toEqual(["xy;z 'ab' q", "x;z 'a' q"]);
+  it("reads zsh and ksh as dropped and raw", () => {
+    for (const shell of ["zsh", "ksh"]) expect(pipedShellTexts(shell, "a\0b c")).toEqual(["ab c", "a\0b c"]);
   });
 
-  it("drops NUL for bash", () => {
-    expect(pipedShellTexts("bash", "a\0b c")).toEqual(["ab c"]);
-  });
-
-  it("returns one reading for ksh when both agree", () => {
-    expect(pipedShellTexts("ksh", "a\0 b")).toEqual(["a b"]);
+  it("drops NUL for bash, sh and dash", () => {
+    for (const shell of ["bash", "sh", "dash"]) expect(pipedShellTexts(shell, "a\0b c")).toEqual(["ab c"]);
   });
 });
