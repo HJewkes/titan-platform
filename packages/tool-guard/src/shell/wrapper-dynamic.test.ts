@@ -83,3 +83,25 @@ describe("more dynamic option words than the exact reading takes", () => {
     expect(spellings("sudo $A $B $C $D $E git status")).not.toContain(PUSH);
   });
 });
+
+describe("a dynamic word's literal text in the readings", () => {
+  it.each([
+    ["the reviewer's substitution in single quotes", "sudo $O $X $P'$(echo ' git push origin HEAD:main -o$Q')'"],
+    ["an unterminated substitution in single quotes", "sudo $O $P'$(' git push origin HEAD:main"],
+    ["a parameter expansion in single quotes", "sudo $O $P'${' git push origin HEAD:main"],
+    ["a backtick in single quotes", "sudo $O $P'`' git push origin HEAD:main"],
+    ["a double quote in single quotes", "sudo $O $P'\"' git push origin HEAD:main"],
+    ["a backslash in single quotes", "sudo $O $P'\\' git push origin HEAD:main"],
+    ["a semicolon in single quotes", "sudo $O $P';' git push origin HEAD:main"],
+    ["a single quote in double quotes", "sudo $O \"$P'\" git push origin HEAD:main"],
+    ["a newline in single quotes", "sudo $O $P'\n' git push origin HEAD:main"],
+    ["a substitution in a trailing word", "sudo $O git push origin HEAD:main $P'$('"],
+    ["a literal word with a quote", "sudo $O git push origin HEAD:main 'a\"b'\\''c'"],
+  ])("keeps it literal and still reads the push: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+
+  it("does not flag a harmless command", () => {
+    expect(spellings("sudo $O $P'$(' git status")).not.toContain(PUSH);
+  });
+});

@@ -8,6 +8,9 @@ interface OptionSpec {
   digits?: boolean;
 }
 
+/** An unset variable of no meaning: it stays dynamic when the reading is parsed again. */
+const PLACEHOLDER = '"$__dynamic"';
+
 /** More dynamic option words than this are read in one pass: each one triples the readings of the exact pass. */
 const MAX_DYNAMIC = 4;
 
@@ -31,9 +34,22 @@ function leadingDashes(value: string): number {
   return value.length - value.replace(/^-+/, "").length;
 }
 
+function literal(text: string): string {
+  return `'${text.replaceAll("'", "'\\''")}'`;
+}
+
+/** The word as shell text: every literal span single-quoted, so its text stays text; each expansion becomes a placeholder. */
 function quoteWord(w: WordToken): string {
-  if (w.dynamic) return `"${w.value.replace(/["\\`]/g, "\\$&")}"`;
-  return `'${w.value.replaceAll("'", "'\\''")}'`;
+  if (!w.dynamic) return literal(w.value);
+  const parts: string[] = [];
+  let at = 0;
+  for (const ref of w.refs) {
+    if (ref.start > at) parts.push(literal(w.value.slice(at, ref.start)));
+    parts.push(PLACEHOLDER);
+    at = ref.end;
+  }
+  if (at < w.value.length) parts.push(literal(w.value.slice(at)));
+  return (parts.includes(PLACEHOLDER) ? parts : [...parts, PLACEHOLDER]).join("");
 }
 
 /**
