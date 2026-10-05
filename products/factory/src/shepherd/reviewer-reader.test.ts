@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
-import type { Presence } from "./presence.js";
+import { toPresence, type Presence } from "./presence.js";
 
 vi.mock("@titan-design/session-read", async (importOriginal) => {
   const original = await importOriginal<typeof SessionRead>();
@@ -332,6 +332,13 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
       expect(await seatCheck(reviewingPr7, presence, true)).toEqual({
         kind: "none",
         reason: `seat check: the transcript of ${seat.name} could not be read: the ${presence} session ${SESSION} ends in a partial record`,
+      });
+    });
+
+    it("blocks its own PR when a reviewer of unknown presence ends in a partial record, as a bare unlisted value did", async () => {
+      expect(await seatCheck(reviewingPr7, toPresence("suspended"), true)).toEqual({
+        kind: "none",
+        reason: `seat check: the transcript of ${seat.name} could not be read: the unknown session ${SESSION} ends in a partial record`,
       });
     });
 
