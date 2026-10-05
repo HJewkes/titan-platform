@@ -295,6 +295,19 @@ describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
     ["in a group after a false &&", "Y=status; false && { readonly Y; }; Y=push; git $Y origin HEAD:main"],
     ["in a piped group", "Y=status; { readonly Y; } | cat; Y=push; git $Y origin HEAD:main"],
     ["in an uncalled function keyword body", "Y=status; function f { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues &&", "Y=status; false &&\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues ||", "Y=status; true ||\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues a pipe", "Y=status; false |\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a comment and newline that continue &&", "Y=status; false && # c\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under env", "Y=status; env readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under nohup", "Y=status; nohup readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under sudo", "Y=status; sudo readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under timeout", "Y=status; timeout 1 readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under xargs", "Y=status; echo Y | xargs readonly; Y=push; git $Y origin HEAD:main"],
+    ["under xargs -I", "Y=status; echo Y | xargs -I{} readonly {}; Y=push; git $Y origin HEAD:main"],
+    ["under coproc", "Y=status; coproc readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["in a coproc group", "Y=status; coproc { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["in a case arm reached by ;&", "Y=status; case x in y) :;& z) readonly Y;; esac; Y=push; git $Y origin HEAD:main"],
   ])("still reads a later write after a readonly bash may never run %s", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
@@ -304,6 +317,8 @@ describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
     ["in a plain group", "{ readonly Y=push; }; Y=status; git $Y"],
     ["after a closed if", "if true; then :; fi; readonly Y=push; Y=status; git $Y"],
     ["before an &&", "readonly Y=push && Y=status; git $Y"],
+    ["under builtin", "builtin readonly Y=push; Y=status; git $Y"],
+    ["under command", "command readonly Y=push; Y=status; git $Y"],
   ])("keeps the old value after a readonly that surely runs %s", (_, command) => {
     expect(gitArgs(command)).toEqual([["push"]]);
   });

@@ -61,22 +61,24 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     last = ref.end;
   }
   const expanded = { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
-  if (unsureWords.has(w)) unsureWords.add(expanded);
+  if (sureWords.has(w)) sureWords.add(expanded);
   return expanded;
 }
 
-/** The words of each command bash may skip, run more than once, or run apart from the current shell. */
-const unsureWords = new WeakSet<WordToken>();
-const COMPOUND_OPENERS = new Set(["if", "while", "until", "for", "select", "case"]);
-const COMPOUND_CLOSERS = new Set(["fi", "done", "esac", "}"]);
+/** The words of each command that surely runs once, as the builtin it names, in the current shell. */
+const sureWords = new WeakSet<WordToken>();
+const CLOSERS: Record<string, string> = { if: "fi", while: "done", until: "done", for: "done", select: "done", case: "esac" };
 const LEADING_KEYWORDS = new Set(["then", "do", "else", "elif", "!"]);
-/** A command these lead may not run. */
+/** Words that still run the builtin after them in the current shell; any other wrapper runs a program. */
+const PASS_THROUGH = new Set(["builtin", "command", "time"]);
+/** A command these lead may not run; a newline after one still continues it. */
 const CONDITIONAL_OPS = new Set(["&&", "||", "|", "|&"]);
 /** A command these follow runs in a subshell. */
 const APART_OPS = new Set(["|", "|&", "&"]);
 
-/** An open group or compound command; `unsure` when bash may skip or repeat what it holds. */
+/** An open group or compound command, the word that closes it, and whether bash may skip or repeat what it holds. */
 interface Construct {
+  closer: string;
   unsure: boolean;
   start: number;
 }
@@ -86,77 +88,97 @@ interface Structure {
   prev: string | null;
   words: WordToken[];
   start: boolean;
-  /** A function header was read, so the next group is a body that runs only when called. */
+  /** A function or `coproc` header was read, so the next group runs only when called, or apart. */
   header: boolean;
 }
 
 /**
  * Notes which commands run surely and once in the current shell. The walk is linear, so without this a
- * readonly in an untaken branch, a loop, an uncalled function, a pipeline or a background job would be
- * treated as certain. Returns the tokens unchanged.
+ * readonly in an untaken branch, a loop, an uncalled function, a pipeline, a background job or under a
+ * wrapper such as `env` or `xargs` would be treated as certain. Returns the tokens unchanged.
  */
-export function noteUnsureCommands(tokens: Token[]): Token[] {
+export function noteSureCommands(tokens: Token[]): Token[] {
   const s: Structure = { open: [], prev: null, words: [], start: true, header: false };
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i] as Token;
-    if (token.type === "word") structureWord(tokens, i, s);
+    if (token.type === "word") i = structureWord(tokens, i, s);
     else if (token.type === "op") i = structureOp(tokens, i, s);
   }
   endCommand(s, null);
   return tokens;
 }
 
-function structureWord(tokens: Token[], i: number, s: Structure): void {
+function structureWord(tokens: Token[], i: number, s: Structure): number {
   const w = tokens[i] as WordToken;
   const keyword = s.start && !w.quoted ? w.value : "";
-  if (keyword === "{") openConstruct(s, i, s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
-  else if (COMPOUND_OPENERS.has(keyword)) {
-    openConstruct(s, i, true);
-    s.start = keyword === "if" || keyword === "while" || keyword === "until";
-  } else if (COMPOUND_CLOSERS.has(keyword)) closeConstruct(tokens, i, s);
+  const closer = CLOSERS[keyword];
+  if (keyword === "{") openConstruct(s, i, "}", s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
+  else if (closer !== undefined) {
+    openConstruct(s, i, closer, true);
+    s.start = closer === "fi" || keyword === "while" || keyword === "until";
+  } else if (keyword !== "" && s.open.at(-1)?.closer === keyword) closeConstruct(tokens, i, s);
+  else if (keyword === "coproc") return coprocHeader(tokens, i, s);
   else if (!LEADING_KEYWORDS.has(keyword)) {
     s.header ||= keyword === "function";
     s.words.push(w);
     s.start = false;
   }
+  return i;
+}
+
+/** `coproc` runs its command or group apart; a name before a group is no command, so the group still opens. */
+function coprocHeader(tokens: Token[], i: number, s: Structure): number {
+  s.words.push(tokens[i] as WordToken);
+  s.header = true;
+  const [name, group] = [tokens[i + 1], tokens[i + 2]];
+  const opens = group?.type === "word" ? group.value === "{" : group?.type === "op" && group.value === "(";
+  if (name?.type !== "word" || !IDENTIFIER_RE.test(name.value) || !opens) return i;
+  s.words.push(name);
+  return i + 1;
 }
 
 /** A `( )` pair after a name is a function header; any other `(` opens a subshell group. */
 function structureOp(tokens: Token[], i: number, s: Structure): number {
   const op = (tokens[i] as OpToken).value;
   const next = tokens[i + 1];
+  if (op === "\n" && s.words.length === 0 && CONDITIONAL_OPS.has(s.prev ?? "")) return i;
   endCommand(s, op);
   if (op === "(" && next?.type === "op" && next.value === ")") {
     [s.header, s.start] = [true, true];
     return i + 1;
   }
-  if (op === "(") openConstruct(s, i, s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
-  if (op === ")") closeConstruct(tokens, i, s);
+  if (op === "(") openConstruct(s, i, ")", s.header || CONDITIONAL_OPS.has(s.prev ?? ""));
+  if (op === ")" && s.open.at(-1)?.closer === ")") closeConstruct(tokens, i, s);
   s.prev = op;
   s.start = true;
   return i;
 }
 
-function openConstruct(s: Structure, i: number, unsure: boolean): void {
-  s.open.push({ unsure, start: i });
+function openConstruct(s: Structure, i: number, closer: string, unsure: boolean): void {
+  s.open.push({ closer, unsure, start: i });
   s.header = false;
 }
 
-/** A construct piped or sent to the background runs in a subshell, so everything in it is unsure. */
+/** A construct piped or sent to the background runs in a subshell, so nothing in it is sure. */
 function closeConstruct(tokens: Token[], i: number, s: Structure): void {
-  const construct = s.open.pop();
+  const construct = s.open.pop() as Construct;
   s.start = false;
   const next = tokens.slice(i + 1).find((t) => t.type !== "redirect");
-  if (!construct || next?.type !== "op" || !APART_OPS.has(next.value)) return;
-  for (const t of tokens.slice(construct.start, i)) if (t.type === "word") unsureWords.add(t);
+  if (next?.type !== "op" || !APART_OPS.has(next.value)) return;
+  for (const t of tokens.slice(construct.start, i)) if (t.type === "word") sureWords.delete(t);
 }
 
 function endCommand(s: Structure, op: string | null): void {
   const apart = op !== null && APART_OPS.has(op);
-  if (apart || CONDITIONAL_OPS.has(s.prev ?? "") || s.open.some((c) => c.unsure)) {
-    for (const w of s.words) unsureWords.add(w);
-  }
+  const unsure = apart || CONDITIONAL_OPS.has(s.prev ?? "") || s.open.some((c) => c.unsure);
+  if (!unsure && runsDeclarer(s.words)) for (const w of s.words) sureWords.add(w);
   s.words = [];
+}
+
+/** The command word, past assignments, `builtin`, `command` and `time -p`, is a declaration builtin. */
+function runsDeclarer(words: WordToken[]): boolean {
+  const name = words.find((w) => !ASSIGNMENT_RE.test(w.value) && !PASS_THROUGH.has(w.value) && w.value !== "-p");
+  return name !== undefined && !name.dynamic && DECLARERS.has(name.value);
 }
 
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
@@ -227,7 +249,7 @@ function trackDeclaration(name: string, args: WordToken[], vars: Vars): void {
   const readonly = name === "readonly" || (name !== "export" && options.some((a) => READONLY_FLAG_RE.test(a.value)));
   const mode: ReadonlyMode = !readonly ? null : options.some((a) => a.value.includes("a")) ? "array" : "scalar";
   for (const arg of args) declareArg(name, parseAssignment(arg), mode, vars);
-  const sure = name !== "local" && !args.some((a) => unsureWords.has(a));
+  const sure = name !== "local" && args.every((a) => sureWords.has(a));
   if (readonly) for (const arg of args) markReadonly(name, arg, sure, vars);
   if (args.some((a) => unreadableDeclareWord(name, a))) forgetAll(vars);
   if (args.some((a) => a.dynamic && parseAssignment(a) === null)) vars.set(ANY_READONLY, null);
