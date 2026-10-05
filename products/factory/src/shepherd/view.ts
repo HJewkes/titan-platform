@@ -10,9 +10,9 @@ import type { WakeInput, WakeStepResult } from "./wake.js";
 
 const KINDS = ["ci-red", "review", "conflict", "fix-proof"] as const;
 const MODES = ["resume", "successor", "live"] as const;
-type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 /** Resolves to the list only when it names exactly the members of wake.ts's union, so a kind or mode added there fails the build here. */
-type Tied<List extends readonly string[], Union extends string> = Same<List[number], Union> extends true ? List : never;
+type Tied<List extends readonly string[], Union extends string> = [Same<List[number], Union>] extends [true] ? List : never;
 const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
