@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -185,5 +186,79 @@ describe("gitTreeSource where today's disk links over a tracked dir", () => {
     expect(() => host.realpathSync(absent)).toThrow(
       expect.objectContaining({ constructor: expect.objectContaining({ name: "FileNotFoundError" }) }),
     );
+  });
+});
+
+// A link chain of CHAIN_LINKS ending at a tracked file; link `n` takes n hops, so 30 resolves and 45 loops.
+const CHAIN_LINKS = 45;
+// The barrel splits t.ts's inbound weight three ways, so its utilization sums thirds in file order.
+const ORDERED: Record<string, string> = {
+  "x.ts": "export const x = 1;\n",
+  "chain/target.ts": "export const target = 1;\n",
+  "lib/index.ts": 'export * from "./t.js";\nexport * from "./u.js";\nexport * from "./v.js";\n',
+  "lib/t.ts": "export const t = 1;\n",
+  "lib/u.ts": "export const u = 1;\n",
+  "lib/v.ts": "export const v = 1;\n",
+  "src/a.ts": 'import { t } from "../lib/index.js";\nexport const a = t;\n',
+  "src/a/x.ts": 'import { t } from "../../lib/index.js";\nexport const ax = t + t;\n',
+  "src/a-b/x.ts": 'import { t } from "../../lib/index.js";\nexport const abx = t + t + t + t;\n',
+};
+
+describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
+  let repo: string;
+  const at = (rel: string) => path.join(repo, rel);
+  const repoGit = (args: readonly string[]) => execFileSync("git", [...args], { cwd: repo, env: isolatedGitEnv() });
+
+  beforeAll(async () => {
+    repo = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-git-tree-chains-"));
+    for (const [rel, content] of Object.entries(ORDERED)) {
+      await fs.mkdir(path.dirname(at(rel)), { recursive: true });
+      await fs.writeFile(at(rel), content);
+    }
+    await fs.symlink("target.ts", at("chain/1"));
+    for (let n = 2; n <= CHAIN_LINKS; n++) await fs.symlink(String(n - 1), at(`chain/${n}`));
+    await fs.mkdir(at("sub"));
+    await fs.symlink("../gone/../x.ts", at("sub/dangling.ts"));
+    await fs.symlink("../sub/../x.ts", at("sub/through.ts"));
+    repoGit(["init", "-q", "-b", "main"]);
+    repoGit(["add", "-A"]);
+    repoGit(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "only"]);
+  }, 60_000);
+
+  afterAll(async () => {
+    await fs.rm(repo, { recursive: true, force: true });
+  });
+
+  it("resolves a 30-link chain after a 45-link chain that shares its tail was cut short", () => {
+    const host = gitTreeSource(repo, "HEAD").fileSystem;
+
+    expect(host.fileExistsSync(at(`chain/${CHAIN_LINKS}`))).toBe(false);
+    expect(host.fileExistsSync(at("chain/30"))).toBe(true);
+  });
+
+  it("resolves '..' in a tracked link target against the dir reached, as a checkout does", () => {
+    const host = gitTreeSource(repo, "HEAD").fileSystem;
+
+    expect(host.fileExistsSync(at("sub/dangling.ts"))).toBe(existsSync(at("sub/dangling.ts")));
+    expect(host.fileExistsSync(at("sub/dangling.ts"))).toBe(false);
+    expect(host.readFileSync(at("sub/through.ts"))).toBe(ORDERED["x.ts"]);
+  });
+
+  it("indexes files in the same order as a checkout, so float metrics match byte for byte", async () => {
+    const index = async (options: Partial<IndexOptions>) => {
+      const store = openCodeGraph(":memory:");
+      try {
+        const result = await indexPaths(store, { paths: [repo], incremental: false, detectRenames: false, computeChurn: false, ...options });
+        return readSnapshot(store, result.snapshotId);
+      } finally {
+        store.close();
+      }
+    };
+
+    const checkout = await index({});
+    const atRev = await index({ source: gitTreeSource(repo, "HEAD") });
+
+    expect(atRev.metrics).toEqual(checkout.metrics);
+    expect(atRev).toEqual(checkout);
   });
 });

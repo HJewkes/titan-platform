@@ -1,4 +1,4 @@
-import { readlinkSync, realpathSync } from "node:fs";
+import { readlinkSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
 import { Project, type FileSystemHost, type RuntimeDirEntry } from "ts-morph";
@@ -102,7 +102,10 @@ class CommitTree {
 
   /** The one place an answer's origin is decided; every file, dir and realpath answer goes through it. */
   locate(abs: string, kind: "file" | "dir"): Location {
-    const canonical = this.resolve(path.resolve(abs), 0);
+    return this.classify(this.resolve(path.resolve(abs), 0), kind);
+  }
+
+  private classify(canonical: string, kind: "file" | "dir"): Location {
     const rel = relativeInside(this.root, canonical);
     if (rel === null) return { origin: "disk", canonical, rel: null };
     const tracked = kind === "file" ? this.oids.has(rel) : this.dirs.has(rel);
@@ -113,7 +116,7 @@ class CommitTree {
   /**
    * Untracked build output a checkout would see on disk: under an excluded dir
    * whose parent the commit tracks, so `untracked/dist` is as absent as `untracked`.
-   * A tracked symlink only lands here when its chain loops, and is then absent.
+   * A tracked symlink only lands here when its chain loops or dangles, and is then absent.
    */
   private ownsBuildOutput(rel: string, includeSelf: boolean): boolean {
     const at = firstExcluded(rel, includeSelf);
@@ -149,13 +152,17 @@ class CommitTree {
     return rel !== null && (this.oids.has(rel) || this.dirs.has(rel));
   }
 
-  /** Memoized per path, so each dir's components are resolved once. */
+  /**
+   * Memoized per path and hop budget, so each dir's components are resolved once
+   * per budget: a chain cut short by the budget never answers for a shorter one.
+   */
   private resolve(abs: string, hops: number): string {
-    let resolved = this.canonical.get(abs);
+    const key = `${hops}:${abs}`;
+    let resolved = this.canonical.get(key);
     if (resolved === undefined) {
       const parent = path.dirname(abs);
       resolved = parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
-      this.canonical.set(abs, resolved);
+      this.canonical.set(key, resolved);
     }
     return resolved;
   }
@@ -167,8 +174,31 @@ class CommitTree {
     if (this.tracks(rel)) return next;
     if (hops >= MAX_LINK_HOPS) return next;
     const linkOid = rel === null ? undefined : this.links.get(rel);
-    const target = linkOid === undefined ? linkTarget(next) : path.resolve(dir, this.blob(linkOid));
+    if (linkOid !== undefined) return this.follow(dir, this.blob(linkOid), hops + 1) ?? next;
+    const target = linkTarget(next);
     return target === null ? next : this.resolve(target, hops + 1);
+  }
+
+  /**
+   * A tracked link's target walked one component at a time from `dir`, as a
+   * checkout walks it: `..` leaves the dir actually reached, so `gone/..` dangles
+   * (null) when `gone` is absent, where lexical normalisation would drop it.
+   */
+  private follow(dir: string, target: string, hops: number): string | null {
+    let at = path.isAbsolute(target) ? path.parse(path.resolve(target)).root : dir;
+    for (const name of target.split("/")) {
+      if (name === "" || name === ".") continue;
+      if (name !== "..") at = this.step(at, name, hops);
+      else if (this.isDir(at)) at = path.dirname(at);
+      else return null;
+    }
+    return at;
+  }
+
+  private isDir(canonical: string): boolean {
+    const { origin } = this.classify(canonical, "dir");
+    if (origin !== "disk") return origin === "tree";
+    return statSync(canonical, { throwIfNoEntry: false })?.isDirectory() ?? false;
   }
 
   private addEntry(rel: string, kind: EntryKind): void {
@@ -201,7 +231,7 @@ function listTreeFiles(tree: CommitTree, rootDirs: readonly string[], languages:
   for (const rootDir of rootDirs) {
     for (const abs of ingestedUnder(tree, rootDir, languages)) seen.add(abs);
   }
-  return [...seen];
+  return [...seen].sort();
 }
 
 function readOnly(): never {
