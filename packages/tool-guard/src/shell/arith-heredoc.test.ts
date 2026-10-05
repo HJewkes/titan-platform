@@ -62,7 +62,12 @@ describe("a heredoc next to an arithmetic context", () => {
     expect(heredoc).toMatchObject({ op: "<<", target: { value: "EOF" }, body: "x\n" });
   });
 
-  it("still sees a push after a heredoc in nested subshells that open with ((", () => {
-    expect(spellings(`((cat <<EOF) )\n'\nEOF\n${PUSH} #'`)).toContain("bash.merge.git-push-protected");
+  it.each([
+    ["plain words", "((cat <<EOF) )"],
+    ["a $'..' string holding an escaped quote", "((cat $'\\'' <<EOF) ) #'))"],
+    ["a backtick holding an escaped backtick", "((cat `echo \\`)\\`` <<EOF) ) #`))"],
+    ['a "$(..)" holding a quoted )', `((cat "$(echo ")")" <<EOF) ) #"))`],
+  ])("still sees a push after a heredoc in nested subshells of %s that open with ((", (_how, head) => {
+    expect(spellings(`${head}\n'\nEOF\n${PUSH} #'`)).toContain("bash.merge.git-push-protected");
   });
 });

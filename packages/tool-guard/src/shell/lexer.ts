@@ -1,5 +1,4 @@
 import { decodeAnsiC } from "./ansi-c.js";
-import { arithmeticEnd } from "./arith-scan.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -71,7 +70,7 @@ interface LexState {
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
-  /** Index of the `))` closing an arithmetic command; before it `<<` is a shift, not a heredoc. */
+  /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
 }
 
@@ -120,12 +119,12 @@ function step(s: LexState): void {
   const c = s.src[s.i] as string;
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
-  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = arithmeticEnd(s.src, s.i);
+  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = arithmeticEnd(s);
   if (s.i < s.arithEnd && s.src.startsWith("<<", s.i)) return appendShift(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
-  if (c === "#" && !s.word) return skipComment(s);
+  if (c === "#" && !s.word && s.i >= s.arithEnd) return skipComment(s);
   if (c === "&" && s.src[s.i + 1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => s.src.startsWith(o, s.i));
   if (op) return readOperator(s, op);
@@ -137,6 +136,23 @@ function markSubscript(s: LexState): void {
   const w = s.word;
   if (!w || w.quoted || w.dynamic || s.redirect || !IDENTIFIER_RE.test(w.value)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
+}
+
+/**
+ * Index of the `))` closing the `((` at `s.i`, or -1 when bash reads nested subshells instead:
+ * like bash, it reads to the `)` matching the first `(` and wants another `)` right after it.
+ * A trial lex with every `<<` a shift finds that `)` through the same quote readers.
+ */
+function arithmeticEnd(s: LexState): number {
+  const trial = newState(s.src, s.i + 2, true);
+  trial.arithEnd = Number.POSITIVE_INFINITY;
+  try {
+    lex(trial);
+  } catch (error) {
+    if (error instanceof ParseError) return -1;
+    throw error;
+  }
+  return s.src[trial.i + 1] === ")" ? trial.i : -1;
 }
 
 function appendShift(s: LexState): void {
