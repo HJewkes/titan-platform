@@ -1,3 +1,4 @@
+import { splitCluster, takesNextWord } from "./cluster.js";
 import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
@@ -150,7 +151,7 @@ function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"])
 /** `words` with the long options of a wrapper at `i` spelled out; an ambiguous one is read both ways instead. */
 function spellXargs(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): WordToken[] | Unwrapped {
   const name = commandName((words[i] as WordToken).value);
-  const spelled = spellLongOptions(name, words, i + 1, (v) => takesValue(v, wrapperSpec(name)));
+  const spelled = spellLongOptions(name, words, i + 1, (v) => takesNextWord(v, wrapperSpec(name)));
   if (typeof spelled !== "number") return spelled;
   return { ...command(words, i, assigned), script: ambiguousReadings(words, i, spelled) };
 }
@@ -187,22 +188,21 @@ function xargsBatch(options: WordToken[]): XargsBatch | null {
     else if (v === "--max-args") found = { unit: "args", size: batchSize(next) };
     else if (v.startsWith("--max-lines=")) found = { unit: "lines", size: batchSize(word, v.slice("--max-lines=".length)) };
     else if (v.startsWith("--max-args=")) found = { unit: "args", size: batchSize(word, v.slice("--max-args=".length)) };
-    else if (/^-[A-Za-z]/.test(v) && !v.startsWith("--")) found = clusterBatch(word, next) ?? found;
+    else found = clusterBatch(word, next) ?? found;
   });
   return found;
 }
 
-/** The `-L`, `-l` or `-n` option in a short cluster; an option that takes a value ends the scan, as the value is the rest of the word. */
+function xargsCluster(word: string) {
+  return splitCluster(word, WRAPPERS.xargs);
+}
+
+/** The `-L`, `-l` or `-n` option that ends a short cluster; its value is the rest of the word. */
 function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch | null {
-  const v = word.value;
-  for (let k = 1; k < v.length; k++) {
-    const c = v[k] as string;
-    const rest = v.slice(k + 1);
-    if (c === "l") return { unit: "lines", size: rest ? batchSize(word, rest) : 1 };
-    if (c === "L" || c === "n") return { unit: c === "L" ? "lines" : "args", size: rest ? batchSize(word, rest) : batchSize(next) };
-    if (WRAPPERS.xargs?.optional?.includes(c) || WRAPPERS.xargs?.values?.includes(`-${c}`)) return null;
-  }
-  return null;
+  const end = xargsCluster(word.value)?.end;
+  if (end?.option === "l") return { unit: "lines", size: end.text ? batchSize(word, end.text) : 1 };
+  if (end?.option !== "L" && end?.option !== "n") return null;
+  return { unit: end.option === "L" ? "lines" : "args", size: end.text ? batchSize(word, end.text) : batchSize(next) };
 }
 
 const DELIMITER_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0", "\\": "\\" };
@@ -223,23 +223,20 @@ function xargsDelimiters(options: WordToken[]): string[] | null {
     if (v === "--null") out.push("\0");
     else if (v === "--delimiter") out.push(delimiterOf(options[++j]) ?? "");
     else if (v.startsWith("--delimiter=")) out.push(delimiterOf(options[j], v.slice("--delimiter=".length)) ?? "");
-    else if (/^-[A-Za-z0]/.test(v)) j = clusterDelimiters(options, j, out);
+    else j = clusterDelimiters(options, j, out);
   }
   return out.includes("") ? null : out;
 }
 
 /** Reads the `0` and `d` options of the cluster at `j`; returns the index of the last word it used. */
 function clusterDelimiters(options: WordToken[], j: number, out: string[]): number {
-  const v = (options[j] as WordToken).value;
-  for (let k = 1; k < v.length; k++) {
-    if (v[k] === "0") out.push("\0");
-    else if (v[k] === "d") {
-      const rest = v.slice(k + 1);
-      out.push((rest ? delimiterOf(options[j], rest) : delimiterOf(options[j + 1])) ?? "");
-      return rest ? j : j + 1;
-    } else if (WRAPPERS.xargs?.values?.includes(`-${v[k]}`)) return v.length > k + 1 ? j : j + 1;
-  }
-  return j;
+  const cluster = xargsCluster((options[j] as WordToken).value);
+  if (!cluster) return j;
+  out.push(...cluster.flags.filter((c) => c === "0").map(() => "\0"));
+  const end = cluster.end;
+  if (!end) return j;
+  if (end.option === "d") out.push((end.text ? delimiterOf(options[j], end.text) : delimiterOf(options[j + 1])) ?? "");
+  return end.text || end.optional ? j : j + 1;
 }
 
 /** The replace string of `-I str`, `-Istr`, `-i[str]`, `--replace[=str]` or a cluster such as `-tI{}`, `{}` when none is given. */
@@ -249,26 +246,16 @@ function xargsReplace(options: WordToken[]): string | null {
     const v = word.value;
     if (v === "--replace") replace = "{}";
     else if (v.startsWith("--replace=")) replace = v.slice("--replace=".length);
-    else if (/^-[A-Za-z]/.test(v)) replace = clusterReplace(v, options[j + 1]?.value) ?? replace;
+    else replace = clusterReplace(v, options[j + 1]?.value) ?? replace;
   });
   return replace;
 }
 
 /** The replace string a short-option cluster sets: the text after `I` or `i`, else the next word for `I` and `{}` for `i`. */
 function clusterReplace(v: string, next: string | undefined): string | null {
-  for (let k = 1; k < v.length; k++) {
-    const rest = v.slice(k + 1);
-    if (v[k] === "I") return rest || (next ?? null);
-    if (v[k] === "i") return rest || "{}";
-    if (WRAPPERS.xargs?.values?.includes(`-${v[k]}`)) return null;
-  }
-  return null;
-}
-
-/** Whether option word `v` takes the next word as its value: `-I`, or a cluster whose first value option is its last, `-tI`, `-0n`; an optional-value option ends the scan. */
-function takesValue(v: string, { values = [], optional = [], digits }: WrapperSpec = {}): boolean {
-  if (!(digits ? /^-[A-Za-z0-9]{2,}$/ : /^-[A-Za-z]{2,}$/).test(v)) return values.includes(v);
-  return values.includes(`-${v.at(-1)}`) && ![...v.slice(1, -1)].some((c) => values.includes(`-${c}`) || optional.includes(c));
+  const end = xargsCluster(v)?.end;
+  if (end?.option === "I") return end.text || (next ?? null);
+  return end?.option === "i" ? end.text || "{}" : null;
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {
@@ -280,7 +267,7 @@ function skipWrapper(words: WordToken[], i: number, spec: WrapperSpec): number {
   while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
     const v = (words[i] as WordToken).value;
     if (spec.stop?.includes(v)) return -1;
-    i += takesValue(v, spec) ? 2 : 1;
+    i += takesNextWord(v, spec) ? 2 : 1;
     if (v === "--") break;
   }
   if (spec.named && isCompoundStart(words[i + 1])) return i + 1;
@@ -299,7 +286,7 @@ function wrapperScript(words: WordToken[], i: number, spec: WrapperSpec): string
     if (at === "next") return scriptText(words[i + 1]?.value ?? "", words.slice(i + 2));
     if (at !== null) return scriptText(at.attached, words.slice(i + 1));
     if (v === "--") break;
-    i += takesValue(v, spec) ? 2 : 1;
+    i += takesNextWord(v, spec) ? 2 : 1;
   }
   if (!spec.positionals || !spec.script) return null;
   return wrapperScript(words, i + spec.positionals, { ...spec, positionals: 0 });
