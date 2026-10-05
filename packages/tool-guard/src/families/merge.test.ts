@@ -331,6 +331,8 @@ describe("xargs -I fails closed when it cannot read the input", () => {
 describe("a git command whose subcommand word is dynamic", () => {
   it.each([
     ["a read variable", "Y=status; read Y < list; git $Y origin HEAD:main"],
+    ["a mapfile variable (TP-1491)", "Y=status; mapfile Y < list; git $Y origin HEAD:main"],
+    ["a readarray variable (TP-1491)", "Y=status; readarray Y < list; git $Y origin HEAD:main"],
     ["an unset variable", "git $Y origin HEAD:main"],
     ["a non-zero array index", "Y[1]=x; git $Y origin HEAD:main"],
     ["a quoted unknown variable", 'git "$Y" status'],
