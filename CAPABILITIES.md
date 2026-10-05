@@ -588,10 +588,10 @@ Key exports:
 - `prune`: `planPrune`, `runPrune`
 - `indexer`: `indexPaths`
 - `index-source`: `workingTreeSource`
+- `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- `extractors/python-extractor`: `PythonGraphExtractor`
-- +352 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +353 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
