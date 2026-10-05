@@ -1,4 +1,6 @@
+import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
+import type { CiSnapshotResult } from "./land-steps.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -10,7 +12,7 @@ export interface FailingCheck {
   workflowRunId: number | null;
 }
 
-type CiVerdict = "pending" | "green" | "red" | "behind" | "merged" | "closed" | "not-mergeable";
+type CiVerdict = z.infer<typeof CiSnapshotResult>["verdict"];
 
 export interface CiSnapshot {
   verdict: CiVerdict;

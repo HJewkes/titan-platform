@@ -64,6 +64,13 @@ describe("literal assignments", () => {
     expect(cat?.args[0]?.dynamic).toBe(true);
   });
 
+  it("runs the command after a subscript assignment with blanks in the brackets", () => {
+    const [push] = extract("Y[ 0 ]=x git push origin HEAD:main");
+
+    expect(push?.name).toBe("git");
+    expect(values(push)).toEqual(["push", "origin", "HEAD:main"]);
+  });
+
   it("keeps a prefix assignment as env for that command only", () => {
     const [first, second] = extract("F=~/.x printenv F; cat $F");
 

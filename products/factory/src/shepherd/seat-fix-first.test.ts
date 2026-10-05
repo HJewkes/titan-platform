@@ -11,6 +11,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "./review.js";
 import { reviewPhase } from "./review.js";
 import { shepherdStoreRef } from "./store.js";
+import type { Presence } from "./presence.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -19,7 +20,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const REVIEWED = fakeSha("seat-replay-reviewed");
 const FIXED = fakeSha("seat-replay-fixed");
 
-const row = (name: string, presence = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
+const row = (name: string, presence: Presence = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
 const SEAT = row("seat-pr-1-review");
 const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
 const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
