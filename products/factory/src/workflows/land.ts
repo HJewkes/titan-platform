@@ -8,13 +8,13 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { budgetSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-export { MAX_UPDATE_CYCLES, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -74,6 +74,8 @@ export interface LandDeps {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   ciTimeoutMs?: number;
+  /** How long a strict behind head waits on a required check that never reported before it is updated; default `MISSING_CHECK_GRACE_MS`. */
+  missingCheckGraceMs?: number;
   updateTimeoutMs?: number;
   flakyChecks?: Record<string, FlakyChecks>;
   /** Where `ci-wait` reads the PR and its checks; absent means the port, once per poll. Writes always re-read through the port. */
@@ -226,9 +228,10 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   const now = deps.now ?? Date.now;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000 };
   const flaky = flakyState(deps.flakyChecks);
+  const firstReads: FirstReads = new Map();
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky)),
+    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
     codeRoute("update-branch", now, async (input: UpdateInput, signal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() })),
     codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
@@ -277,13 +280,15 @@ export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, wri
 }
 
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState): Promise<CiSnapshot> {
+async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
   const clock = deadline(timing);
+  const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
+  const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads);
+      const snapshot = await readCi(port, input, reads, { missingSettled });
       if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
       if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
