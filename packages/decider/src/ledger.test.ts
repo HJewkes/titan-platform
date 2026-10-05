@@ -31,15 +31,16 @@ describe("LedgerRowSchema reading a v1 precedent row", () => {
       prediction: null,
       unclaimed: false,
       covers: null,
+      bulk_from: null,
     });
   });
 
   it("demotes a recommended pick that accepted plural defaults to bulk", () => {
     const row = LedgerRowSchema.parse(
-      v1Row({ recommended: "Keep the defaults (recommended)", answer: "Keep the defaults", pick_type: "recommended" }),
+      v1Row({ recommended: "Accept the 6 defaults (recommended)", answer: "Accept the 6 defaults", pick_type: "recommended" }),
     );
 
-    expect(row.outcome).toBe("bulk");
+    expect(row).toMatchObject({ outcome: "bulk", covers: 6 });
   });
 
   it("keeps a rejected v1 row out of scoring", () => {

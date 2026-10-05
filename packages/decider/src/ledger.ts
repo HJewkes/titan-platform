@@ -32,6 +32,11 @@ const OptionInputSchema = z.union([
   LedgerOptionSchema,
 ]);
 
+const CoversSchema = z.number().int().nonnegative().nullable();
+
+/** What a row said before the bulk rule demoted it, so a re-read applies the current rule again. */
+const BulkOriginSchema = z.object({ outcome: z.enum(["accept", "amend"]), covers: CoversSchema });
+
 /** Every v2 field, plus v1's `class`, `pick_type`, `free_text`, `session_id` and `tool_use_id`. */
 const LedgerRowInputSchema = z.object({
   key: z.string().min(1),
@@ -53,7 +58,8 @@ const LedgerRowInputSchema = z.object({
   pick_type: z.enum(PICK_TYPES).optional(),
   free_text: z.string().nullable().default(null),
   outcome: z.enum(OUTCOMES).nullable().optional(),
-  covers: z.number().int().nonnegative().nullable().default(null),
+  covers: CoversSchema.default(null),
+  bulk_from: BulkOriginSchema.nullable().default(null),
   answered_by: z.enum(ANSWERED_BY).default("owner-terminal"),
   route: z.enum(ROUTES).nullable().default(null),
   prediction: PredictionSchema.nullable().default(null),
@@ -62,7 +68,7 @@ const LedgerRowInputSchema = z.object({
 
 type LedgerRowInput = z.output<typeof LedgerRowInputSchema>;
 
-function deriveOutcome(row: Omit<LedgerRowInput, "class" | "category" | "outcome">): Outcome | null {
+function deriveOutcome(row: LedgerRowInput): Outcome | null {
   return classifyOutcome({
     answer: row.answer,
     options: row.options.map((o) => o.label),
@@ -71,20 +77,30 @@ function deriveOutcome(row: Omit<LedgerRowInput, "class" | "category" | "outcome
   });
 }
 
+type Agreement = { outcome: Outcome | null; covers: number | null };
+
+/** A derived bulk is never stored as fact: the row falls back to what it said before demotion. */
+function undemoted(outcome: Outcome | null | undefined, row: LedgerRowInput): Agreement {
+  if (outcome === "bulk" && row.bulk_from !== null) return row.bulk_from;
+  return { outcome: outcome === undefined ? deriveOutcome(row) : outcome, covers: row.covers };
+}
+
 /** Only an agreeing outcome is demoted; a redirect on a batched question is still engagement. */
-function demoteBulk(outcome: Outcome | null, row: Pick<LedgerRowInput, "recommended" | "answer" | "covers">) {
-  if (outcome !== "accept" && outcome !== "amend") return { outcome, covers: row.covers };
-  const signal = bulkSignal(row);
-  return signal === null ? { outcome, covers: row.covers } : { outcome: "bulk" as const, covers: signal.covers ?? row.covers };
+function demoteBulk({ outcome, covers }: Agreement, recommended: string | null, answer: string | null) {
+  const kept = { outcome, covers, bulk_from: null };
+  if (outcome !== "accept" && outcome !== "amend") return kept;
+  const signal = bulkSignal({ recommended, answer, covers });
+  if (signal === null) return kept;
+  return { outcome: "bulk" as const, covers: signal.covers ?? covers, bulk_from: { outcome, covers } };
 }
 
 function upgrade({ class: v1Class, category, outcome, ...row }: LedgerRowInput) {
-  const derived = outcome !== undefined ? outcome : deriveOutcome(row);
+  const recommended = row.recommended === null ? null : stripRecommended(row.recommended);
   return {
     ...row,
-    ...demoteBulk(derived, row),
+    ...demoteBulk(undemoted(outcome, row), recommended, row.answer),
     category: category ?? v1Class ?? "other",
-    recommended: row.recommended === null ? null : stripRecommended(row.recommended),
+    recommended,
   };
 }
 
