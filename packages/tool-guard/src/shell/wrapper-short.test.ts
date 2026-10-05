@@ -59,4 +59,33 @@ describe("a wrapper's short option that takes a separate value", () => {
   ])("gives no push verdict for %s before a harmless command", (_how, command) => {
     expect(spellings(command)).not.toContain(PUSH);
   });
+
+  it.each([
+    ["xargs -0I", "xargs -0I {} git push origin HEAD:main"],
+    ["xargs -0n", "xargs -0n 1 git push origin HEAD:main"],
+    ["env -0u", "env -0u X git push origin HEAD:main"],
+    ["xargs -r0I, a digit later in the cluster", "xargs -r0I {} git push origin HEAD:main"],
+    ["env -0, a digit-only cluster that takes no value", "env -0 git push origin HEAD:main"],
+  ])("reads %s as a push to main", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
+
+  it.each([
+    ["xargs -0", "xargs -0 ls"],
+    ["env -0", "env -0 git status"],
+  ])("gives no push verdict for %s before a harmless command", (_how, command) => {
+    expect(spellings(command)).not.toContain(PUSH);
+  });
+
+  it.each([
+    ["xargs -i5n", "xargs -i5n git push origin HEAD:main"],
+    ["xargs -e5n", "xargs -e5n git push origin HEAD:main"],
+    ["xargs -l1n", "xargs -l1n git push origin HEAD:main"],
+    ["xargs -exn", "xargs -exn git push origin HEAD:main"],
+    ["xargs -ixn", "xargs -ixn git push origin HEAD:main"],
+    ["nice -1n, a digit nice does not know", "nice -1n git push origin HEAD:main"],
+    ["watch -0n, a digit watch does not know", "watch -0n git push origin HEAD:main"],
+  ])("keeps the attached value of an optional-value option out of the cluster split: %s", (_how, command) => {
+    expect(spellings(command)).toContain(PUSH);
+  });
 });
