@@ -2,13 +2,14 @@ import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
 import { DamagedTranscriptError } from "./external-review.js";
+import type { Presence } from "./presence.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 
 /** The roster fields the reader needs; an `agent ls --json` row carries all of them. */
 export interface TranscriptRow {
   agentId: string;
   sessionId: string;
-  presence: string;
+  presence: Presence;
   transcriptPath: string | null;
   transcriptExists: boolean;
 }
@@ -20,7 +21,7 @@ export interface TranscriptReviewerReaderOptions {
 }
 
 /** Only `exited` is a finished session; a `detached` process may still be writing its turn. */
-const FINISHED = "exited";
+const FINISHED: Presence = "exited";
 
 /** Where the last assistant text sits: the byte offset of its record and its index in that record's content. */
 interface FinalText {
@@ -143,7 +144,7 @@ async function readWholeTranscript(agentId: string, transcriptPath: string, name
 }
 
 /** Presences whose process may still append to the transcript, so a partial last record is a write in progress. */
-const RUNNING: ReadonlySet<string> = new Set(["live", "exiting"]);
+const RUNNING: ReadonlySet<Presence> = new Set<Presence>(["live", "exiting"]);
 
 /**
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
@@ -179,10 +180,15 @@ async function seatSignature(row: SeatRow): Promise<string | null> {
   }
 }
 
+interface SeatReader {
+  read: (row: SeatRow) => Promise<readonly ReviewerMessage[]>;
+  retain: (rows: readonly TranscriptRow[]) => void;
+}
+
 /** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
-function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly ReviewerMessage[]> {
+function cachedSeatReader(namespace: string): SeatReader {
   const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
-  return async (row) => {
+  const read = async (row: SeatRow) => {
     const signature = await seatSignature(row);
     if (signature === null) return readSeatTranscript(row, namespace);
     const hit = cache.get(row.transcriptPath);
@@ -194,20 +200,30 @@ function cachedSeatReader(namespace: string): (row: SeatRow) => Promise<readonly
     });
     return result;
   };
+  /** Drops the entries of transcripts the roster no longer lists, so a retired reviewer's messages are not held for the process's life. */
+  const retain = (rows: readonly TranscriptRow[]): void => {
+    const listed = new Set(rows.map((candidate) => candidate.transcriptPath));
+    for (const key of cache.keys()) if (!listed.has(key)) cache.delete(key);
+  };
+  return { read, retain };
 }
 
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
 export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): ReviewerReader {
   const namespace = options.namespace ?? os.hostname();
-  const readSeatOnce = cachedSeatReader(namespace);
+  const seats = cachedSeatReader(namespace);
   return {
     async read(input) {
-      const row = finishedTranscript(await options.roster(), input);
+      const rows = await options.roster();
+      seats.retain(rows);
+      const row = finishedTranscript(rows, input);
       return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace) : [];
     },
     async readSeat(input) {
-      const row = seatTranscript(await options.roster(), input);
-      return row ? readSeatOnce(row) : [];
+      const rows = await options.roster();
+      seats.retain(rows);
+      const row = seatTranscript(rows, input);
+      return row ? seats.read(row) : [];
     },
   };
 }

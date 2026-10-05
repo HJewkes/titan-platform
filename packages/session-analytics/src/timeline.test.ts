@@ -82,10 +82,10 @@ describe("a session that crosses midnight", () => {
 
   it("totals the session and splits tokens and cost by turn", () => {
     expect(timeline.totals).toMatchObject({ turns: 2, userMessages: 2, assistantMessages: 2, toolCalls: 4, errors: 1, compactions: 1, requests: 6, unpricedRequests: 0 });
-    expect(timeline.totals.tokens).toEqual({ input: 3_100_000, cacheRead: 1_000_000, cacheWrite: 500_000, output: 300_000 });
+    expect(timeline.totals.tokens).toEqual({ input: 3_100_000, cacheRead: 1_000_000, cacheWrite: 500_000, cacheWrite5m: 500_000, cacheWrite1h: 0, output: 300_000 });
     expect(timeline.totals.costUsd).toBeCloseTo(5.7);
     expect(timeline.turns[0]?.costUsd).toBeCloseTo(3.6);
-    expect(timeline.turns[1]?.tokens).toEqual({ input: 2_100_000, cacheRead: 0, cacheWrite: 0, output: 0 });
+    expect(timeline.turns[1]?.tokens).toEqual({ input: 2_100_000, cacheRead: 0, cacheWrite: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0 });
   });
 
   it("breaks tools down by name and family", () => {

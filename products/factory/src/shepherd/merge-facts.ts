@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
-import { readRequiredChecks } from "../required-checks.js";
+import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { CarryResult } from "./tree-carry.js";
@@ -20,6 +20,8 @@ export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
 const AUTHORITY_ACTOR = { class: "automation", id: "titan-factory" } as const;
 const AUTHORITY_VERSION = Number.parseInt(DEFAULT_TABLE.version, 10);
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
+/** A name is set by whoever threw, so only an identifier-shaped one is echoed. */
+const ERROR_CLASS_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
 
@@ -71,6 +73,8 @@ export interface MergeEvidence {
   record: EvidenceRecord;
   /** Why the base branch's required checks could not be read; set means the merge gates. */
   requiredChecksUnknown?: string;
+  /** Facts that could not be read and were taken at their closed value; a gate's reason names them. */
+  unreadFacts?: string[];
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -79,6 +83,7 @@ export interface DecidableEvidence {
   merge: MergeFacts;
   record: Pick<EvidenceRecord, "repo" | "pr">;
   requiredChecksUnknown?: string;
+  unreadFacts?: string[];
 }
 
 function guardRule(rowId: string): PolicyRule {
@@ -95,8 +100,19 @@ export function isGithubPath(path: string): boolean {
   return first.toLowerCase().replace(/[ .]+$/, "") === ".github";
 }
 
+/** Names the facts read at their closed value, so the owner sees why a gate fell back; an allow is left as it is. */
+function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | undefined): GateDecision {
+  const unread = evidence?.unreadFacts ?? [];
+  if (decision.outcome !== "gate" || unread.length === 0) return decision;
+  return { ...decision, reason: `${decision.reason}; read closed: ${unread.join("; ")}` };
+}
+
 /** The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, or MRG-AU-RC for a tree-equal carry of the verdict to it, allows. */
 export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
+  return withUnreadFacts(decideOnFacts(headSha, evidence), evidence);
+}
+
+function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
@@ -138,13 +154,18 @@ function mergeTreeClean(pr: PullRequest, head: string, reviewBypassable: boolean
   return pr.state === "open" && !pr.merged && pr.headSha === head && pr.mergeSha !== null && mergeable;
 }
 
+interface Bypass {
+  bypassable: boolean;
+  unread?: string;
+}
+
 /** GitHub reports a review-only block as `blocked`; an unreadable ruleset is not bypassable, so the merge gates. */
-async function reviewBypassable(port: GitHubPort, repo: RepoSlug, pr: PullRequest): Promise<boolean> {
-  if (pr.mergeableState !== "blocked") return false;
+async function reviewBypassable(port: GitHubPort, repo: RepoSlug, pr: PullRequest): Promise<Bypass> {
+  if (pr.mergeableState !== "blocked") return { bypassable: false };
   try {
-    return await port.reviewRulesBypassable(repo, pr.baseRef);
-  } catch {
-    return false;
+    return { bypassable: await port.reviewRulesBypassable(repo, pr.baseRef) };
+  } catch (error) {
+    return { bypassable: false, unread: `review rules of ${repo}@${pr.baseRef} are unreadable: ${statusOf(error)}` };
   }
 }
 
@@ -153,14 +174,34 @@ interface Observed {
   merge: MergeFacts;
   runs: CheckRun[];
   requiredChecksUnknown?: string;
+  unreadFacts?: string[];
 }
 
-/** A store that is not bound reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
-export function registeredKind(store: ShepherdStoreRef, runId: string): string | undefined {
+interface KindRead {
+  kind?: string;
+  /** Why the registration could not be read. */
+  unread?: string;
+}
+
+/** A store that is not bound or fails reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
+export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead {
   try {
-    return store.get().byRun(runId)?.kind;
+    const kind = store.get().byRun(runId)?.kind;
+    return kind === undefined ? {} : { kind };
+  } catch (error) {
+    return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
+  }
+}
+
+/** Only the error's class name, so a reason that reaches a public PR comment carries nothing from the error's text. */
+function errorClass(error: unknown): string {
+  try {
+    if (!(error instanceof Error)) return "non-Error";
+    const name = String(error.name);
+    return ERROR_CLASS_NAME.test(name) ? name : "Error";
   } catch {
-    return undefined;
+    // A hostile Proxy or getter can throw from the type check or the name read; none of it is echoed.
+    return "Error";
   }
 }
 
@@ -172,7 +213,7 @@ function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact 
 }
 
 /** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<Observed> {
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}): Promise<Observed> {
   const pr = await port.getPr(input.repo, input.pr);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
@@ -189,7 +230,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     requiredContexts: required.readable ? required.checks.contexts : [],
     allowedApps: [...ALLOWED_CHECK_APPS],
     checkRuns: runs.map(runFact),
-    mergeTreeClean: mergeTreeClean(pr, input.head, bypassable),
+    mergeTreeClean: mergeTreeClean(pr, input.head, bypassable.bypassable),
     repoFrozen: frozen,
     changedPaths: paths,
     seatGrants: input.seatGrants,
@@ -197,7 +238,8 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
-  return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }) };
+  const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
+  return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }), ...(unreadFacts.length > 0 && { unreadFacts }) };
 }
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
@@ -244,9 +286,9 @@ export function evidenceComment(record: EvidenceRecord): string {
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: string): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown } = await collectMergeFacts(port, input, isFrozen, kind);
-  const unknown = requiredChecksUnknown === undefined ? {} : { requiredChecksUnknown };
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts } = await collectMergeFacts(port, input, isFrozen, kind);
+  const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }) };
   const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, ...unknown });
   const record: EvidenceRecord = {
     runId: input.runId,

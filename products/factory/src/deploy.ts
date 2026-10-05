@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -9,7 +10,7 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   healthWithin: (port: number, timeoutMs: number) => Promise<Record<string, unknown> | null>;
   /** Runs in the service checkout. */
   git: (args: readonly string[]) => Promise<CommandResult>;
-  /** Runs in the service checkout under the worktree setup env, so pnpm never switches versions mid-deploy. */
+  /** Runs in the service checkout under the worktree setup env, except that pnpm honors the checkout's packageManager pin. */
   pnpm: (args: readonly string[]) => Promise<CommandResult>;
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
@@ -60,7 +61,6 @@ type Stop = { kind: "stop"; code: number; message: string; record?: DeployRecord
 type Plan = { kind: "go"; go: Go } | Stop;
 
 const UNKNOWN = "unknown";
-const DIRTY_SUFFIX = "-dirty";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
 const OUTPUT_TAIL_LINES = 20;

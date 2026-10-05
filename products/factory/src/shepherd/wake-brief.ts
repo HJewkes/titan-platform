@@ -1,6 +1,7 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
+import { failureOf } from "./error-class.js";
 import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
@@ -31,8 +32,6 @@ export interface WakeFacts {
   fixFirst?: number;
 }
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
 async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
   const failing = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
@@ -44,7 +43,7 @@ async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
 
 async function logSection(port: GitHubPort, repo: RepoSlug, run: CheckRun, budget: number): Promise<string> {
   const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${messageOf(error)})`);
+  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
   return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header)));
 }
 

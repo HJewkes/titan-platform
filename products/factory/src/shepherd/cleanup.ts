@@ -1,6 +1,8 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
+import { failureOf } from "./error-class.js";
+import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
@@ -11,8 +13,7 @@ export const SH_CLEANUP_POLL_MS = 30_000;
 
 export interface CleanupAgent {
   name: string;
-  /** `live`, `detached` or `exited`, as agent-chat's roster reports it. */
-  presence: string;
+  presence: Presence;
   status: string;
 }
 
@@ -136,7 +137,7 @@ async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter
       return await attempt();
     } catch (error) {
       if (wait.clock.expired()) {
-        wait.caveats.push(`${what}: ${message(error)}`);
+        wait.caveats.push(`${what}: ${failureOf(error)}`);
         return undefined;
       }
       await wait.clock.sleep(wait.pollMs, wait.signal);
@@ -183,7 +184,7 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
   let nextTry = 0;
   let last = "not seen exited";
   for (;;) {
-    const row = await rosterRow(agents, name).catch((error: unknown) => (last = message(error), "unread" as const));
+    const row = await rosterRow(agents, name).catch((error: unknown) => (last = failureOf(error), "unread" as const));
     if (row === undefined || (row !== "unread" && row.status === "retired")) return undefined;
     if (row !== "unread") exitedAt = row.presence === "exited" ? (exitedAt ?? wait.now()) : undefined;
     if (exitedAt !== undefined && wait.now() >= Math.max(exitedAt + SH_CLEANUP_GRACE_MS, nextTry)) {
@@ -195,7 +196,7 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
       }
       const refused = await agents.retire(name).then(() => undefined, (error: unknown) => error);
       if (refused === undefined || alreadyGone(refused)) return undefined;
-      last = message(refused);
+      last = retireRefusal(refused);
       nextTry = wait.now() + SH_CLEANUP_RETRY_MS;
     }
     if (wait.clock.expired()) return `retire ${name}: ${last}`;
@@ -207,7 +208,7 @@ async function retireWhenSettled(agents: CleanupAgents, name: string, wait: Wait
 async function heldByFreshRoster(agents: CleanupAgents, name: string): Promise<string | undefined> {
   agents.invalidate();
   let unreadable = "";
-  const row = await rosterRow(agents, name).catch((error: unknown) => ((unreadable = `roster unreadable before retire: ${message(error)}`), "unread" as const));
+  const row = await rosterRow(agents, name).catch((error: unknown) => ((unreadable = `roster unreadable before retire: ${failureOf(error)}`), "unread" as const));
   if (row === "unread") return unreadable;
   return row !== undefined && row.presence !== "exited" && row.status !== "retired" ? "resumed before retire" : undefined;
 }
@@ -216,8 +217,18 @@ async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAg
   return (await agents.roster()).find((agent) => agent.name === name);
 }
 
-const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(message(error));
+/** Reads the refusal text only to recognise an agent that is already gone; none of it is stored. */
+const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(error instanceof Error ? error.message : String(error));
 
-const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+/** Fixed words for the refusals an owner triages by, since the refusal's own text names paths. */
+const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
+  [/unpushed/i, "the worktree has unpushed commits"],
+  [/uncommitted|untracked/i, "the worktree has uncommitted changes"],
+];
+
+function retireRefusal(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return KNOWN_REFUSALS.find(([pattern]) => pattern.test(text))?.[1] ?? failureOf(error);
+}
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

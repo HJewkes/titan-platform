@@ -10,7 +10,7 @@ export const OUTCOME_STEPS: readonly StepDeclaration[] = [
   { id: "sh-stopped", kind: "dispatch" },
 ];
 
-const LandedResult = z.looseObject({ mergeSha: z.string() });
+const LandedResult = z.looseObject({ mergeSha: z.string().nullable() });
 const StoppedResult = z.looseObject({ reason: z.string() });
 
 export async function recordLanded(ctx: WorkflowContext, target: { repo: RepoSlug; pr: number }, merged: Extract<LandOutcome, { kind: "merged" }>): Promise<void> {

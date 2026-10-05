@@ -26,6 +26,8 @@ export const ReviewConfigSchema = z.strictObject({
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
+  /** Repos whose CI uploads a `codewatch-report` artifact; their reviewer briefs get its questions. */
+  codewatchRepos: z.array(z.string().refine(isRepoKey, "must be an owner/name repo")).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;

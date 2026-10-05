@@ -4,11 +4,12 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { failureOf } from "./error-class.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
-import { MAIN_CI_ROUTES, type MainCiRead } from "./route-table.js";
+import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -158,7 +159,7 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
       else if (read.verdict !== "pending") return { ...base, ...(sha !== input.mergeSha && { readSha: sha }), verdict: read.verdict, detail: read.detail };
       last = read.detail;
     } catch (error) {
-      last = error instanceof Error ? error.message : String(error);
+      last = failureOf(error);
     }
     if (clock.expired()) return { ...base, verdict: "none", detail: `no verdict after ${timing.timeoutMs} ms: ${last}` };
     await clock.sleep(timing.pollMs, signal);
@@ -170,15 +171,36 @@ async function readAt(port: GitHubPort, input: MainCiInput, sha: string): Promis
   const read = evaluate(sha, await port.checkRuns(input.repo, sha));
   if (read.verdict === "pending") return { verdict: "pending", detail: read.detail };
   const newer = read.verdict === "cancelled" ? await newerMainPush(port, input, sha) : undefined;
-  const classified: MainCiRead = newer === undefined ? read.verdict : "cancelled-superseded";
-  switch (MAIN_CI_ROUTES[classified]) {
+  const classified: Classified = newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer };
+  const routed = routeOf(classified);
+  switch (routed.route) {
     case "done":
       return { verdict: "green", detail: read.detail };
     case "main-red":
       return { verdict: "red", detail: read.detail };
     case "read-newer-run":
-      return { verdict: "newer", sha: newer!, detail: `${read.detail} at ${sha}; reading the run at newer main push ${newer}` };
+      return { verdict: "newer", sha: routed.newer, detail: `${read.detail} at ${sha}; reading the run at newer main push ${routed.newer}` };
   }
+}
+
+type MainCiTable = Readonly<Record<MainCiRead, MainCiRoute>>;
+
+/** The reads a table sends to `read-newer-run`. */
+type NewerRead<T extends MainCiTable> = { [K in MainCiRead]: T[K] extends "read-newer-run" ? K : never }[MainCiRead];
+
+/**
+ * A finished read carries a newer sha exactly when MAIN_CI_ROUTES sends it to `read-newer-run`, so a table edit that
+ * routes a read with no newer sha there no longer type-checks where reads are classified.
+ */
+export type Classified<T extends MainCiTable = typeof MAIN_CI_ROUTES> =
+  | { read: NewerRead<T>; newer: string }
+  | { read: Exclude<MainCiRead, NewerRead<T>>; newer?: undefined };
+
+type Routed = { route: "read-newer-run"; newer: string } | { route: Exclude<MainCiRoute, "read-newer-run"> };
+
+function routeOf(classified: Classified): Routed {
+  if (classified.newer === undefined) return { route: MAIN_CI_ROUTES[classified.read] };
+  return { route: MAIN_CI_ROUTES[classified.read], newer: classified.newer };
 }
 
 /** The base branch's tip when it is a later push that contains `sha`, else undefined. */

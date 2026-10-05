@@ -67,7 +67,7 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
     case "forbid-import":
       return assertForbidImport(r);
     case "layered-deps":
-      return assertLayeredDeps(r);
+      return assertLayeredDeps(r, warn);
     case "no-internal-only-barrels":
       return assertNoInternalOnlyBarrels(r);
     default:
@@ -97,7 +97,7 @@ function assertNoInternalOnlyBarrels(
   };
 }
 
-function assertLayeredDeps(r: Record<string, unknown>): LayeredDepsRule {
+function assertLayeredDeps(r: Record<string, unknown>, warn: Warn): LayeredDepsRule {
   if (!Array.isArray(r.layers) || r.layers.length < 2) {
     throw new Error(`${r.id}: layers must be an array of 2+ string arrays`);
   }
@@ -123,6 +123,7 @@ function assertLayeredDeps(r: Record<string, unknown>): LayeredDepsRule {
     id: r.id as string,
     layers: r.layers as string[][],
     severity: parseSeverity(r),
+    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
   };
 }
 

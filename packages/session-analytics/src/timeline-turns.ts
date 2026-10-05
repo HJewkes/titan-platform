@@ -120,7 +120,7 @@ function emptyTurn(index: number, origin: TimelineTurnOrigin, atMs: number | nul
     assistant: [],
     toolCalls: [],
     errorCount: 0,
-    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
+    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0 },
     costUsd: 0,
   };
 }

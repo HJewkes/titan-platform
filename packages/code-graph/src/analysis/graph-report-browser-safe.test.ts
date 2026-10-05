@@ -13,6 +13,8 @@ const ENTRIES = [
   "graph-report-types.ts",
   "dead-modules.ts",
   "unused-exports.ts",
+  "growth-risks.ts",
+  "untested-risks.ts",
   "dashboard-coupling.ts",
   "dashboard-health.ts",
   "dashboard-node-metrics.ts",

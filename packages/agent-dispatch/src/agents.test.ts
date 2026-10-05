@@ -1,10 +1,4 @@
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +10,7 @@ import {
   retire,
 } from "./agents.js";
 import { DispatchError } from "./dispatch.js";
+import { installExecutable } from "./test-support.js";
 
 let dir: string;
 
@@ -30,14 +25,13 @@ afterEach(() => {
 /** A fake `agent-chat` that records its argv NUL-separated, then runs `script`. */
 function fakeAgentChat(script: string): string {
   const path = join(dir, "agent-chat");
-  writeFileSync(
+  installExecutable(
     path,
     `#!/bin/sh\n` +
       `: >"${dir}/argv"\n` +
       `for a in "$@"; do printf '%s\\0' "$a" >>"${dir}/argv"; done\n` +
       script,
   );
-  chmodSync(path, 0o755);
   return path;
 }
 
@@ -71,35 +65,48 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("listAgents", () => {
-  it("asks for the JSON roster and returns every row agent-chat printed", () => {
+  it("asks for the JSON roster and returns every row agent-chat printed", async () => {
     const rows = [row(), row({ name: "item-7", status: "running", presence: "live" })];
     const bin = printing(rows);
 
-    expect(listAgents(bin, 10_000)).toEqual(rows);
+    expect(await listAgents(bin, 10_000)).toEqual(rows);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
   });
 
-  it("skips a row missing a field it relies on, rather than guessing its status", () => {
+  it("skips a row missing a field it relies on, rather than guessing its status", async () => {
     const bin = printing([row(), { name: "half-a-row", agentId: "x" }, null]);
-    expect(listAgents(bin, 10_000).map((agent) => agent.name)).toEqual(["item-42"]);
+    expect((await listAgents(bin, 10_000)).map((agent) => agent.name)).toEqual(["item-42"]);
   });
 
-  it("refuses output that is not a JSON array, such as an agent-chat without --json", () => {
+  it("refuses output that is not a JSON array, such as an agent-chat without --json", async () => {
     const bin = fakeAgentChat(`echo "item-42  finished  implementer  9e3faa6c"\n`);
-    expect(() => listAgents(bin, 10_000)).toThrow(/invalid JSON/);
-    expect(() => listAgents(printing({ agents: [] }), 10_000)).toThrow(/not print an array/);
+    await expect(listAgents(bin, 10_000)).rejects.toThrow(/invalid JSON/);
+    await expect(listAgents(printing({ agents: [] }), 10_000)).rejects.toThrow(/not print an array/);
   });
 
-  it("reports an unknown --json option from stderr, not as a bare exit code", () => {
+  it("reports an unknown --json option from stderr, not as a bare exit code", async () => {
     const bin = fakeAgentChat(`echo "error: unknown option '--json'" >&2\nexit 1\n`);
-    expect(() => listAgents(bin, 10_000)).toThrow(/unknown option '--json'/);
+    await expect(listAgents(bin, 10_000)).rejects.toThrow(/unknown option '--json'/);
   });
 
-  it("marks a hung CLI as a timeout, apart from a CLI that refused", () => {
-    expect(() => listAgents(fakeAgentChat("sleep 3\n"), 200)).toThrow(DispatchTimeoutError);
-    expect(() => listAgents(fakeAgentChat("exit 1\n"), 10_000)).not.toThrow(
-      DispatchTimeoutError,
-    );
+  it("marks a hung CLI as a timeout, apart from a CLI that refused", async () => {
+    await expect(listAgents(fakeAgentChat("sleep 3\n"), 200)).rejects.toThrow(DispatchTimeoutError);
+    const refused = await listAgents(fakeAgentChat("exit 1\n"), 10_000).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(DispatchError);
+    expect(refused).not.toBeInstanceOf(DispatchTimeoutError);
+  });
+
+  it("keeps the event loop free while a slow roster read is in flight", async () => {
+    const bin = fakeAgentChat(`sleep 1\ncat "${join(dir, "roster.json")}"\n`);
+    writeFileSync(join(dir, "roster.json"), JSON.stringify([row()]));
+    const order: string[] = [];
+    const ticker = setTimeout(() => order.push("tick"), 50);
+
+    const read = listAgents(bin, 10_000).then(() => order.push("roster"));
+    await read;
+    clearTimeout(ticker);
+
+    expect(order).toEqual(["tick", "roster"]);
   });
 });
 

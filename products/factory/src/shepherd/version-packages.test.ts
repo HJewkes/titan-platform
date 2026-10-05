@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type ShepherdFixture } from "../test-support/shepherd.js";
 import { REGISTRY_BACKOFF_MS, VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { START_CI_AFTER_MS, START_CI_MESSAGE, startCiIfIdle, sweepVersionPackages } from "./version-packages.js";
@@ -61,6 +62,18 @@ describe("sweepVersionPackages", () => {
     expect(notes).toMatchObject([{ pr: next, registered: expect.any(String) }]);
     expect(store.byPr(REPO, next)?.branch).toBe(VERSION_PACKAGES_BRANCH);
     expect(store.byRun(last.runId)?.branch).toBeNull();
+  });
+
+  it("notes a repo whose Version Packages PR could not be looked up, with the lookup's status, never its text, and registers nothing", async () => {
+    const w = await watchedRepo();
+    const services = w.routes.shepherd!;
+    const failing = { ...services, port: { ...services.port, findPr: async () => Promise.reject(Object.assign(new Error(LEAKY_MESSAGE), { status: 502 })) } };
+
+    const notes = await sweepVersionPackages(w.host, failing, () => NOW);
+
+    expect(notes).toEqual([{ repo: REPO, error: "HTTP 502" }]);
+    expectNoLeak(notes);
+    expect(shepherdRuns(w.host)).toHaveLength(1);
   });
 
   it("looks only in repos Shepherd already watches", async () => {

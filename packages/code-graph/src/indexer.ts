@@ -7,7 +7,8 @@ import { detectGitHead, detectGitToplevel } from "./git-renames.js";
 import { computeAliasBridge } from "./identity/index-aliases.js";
 import { ALIAS_BASE_ATTR } from "./identity/lineage.js";
 import { annotateRoles, computeRoleHints } from "./roles.js";
-import { walkSourceFiles } from "./file-walk.js";
+import { workingTreeSource, type IndexSource } from "./index-source.js";
+import { rootsAtRevision } from "./git-tree-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
 import {
@@ -30,7 +31,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.19.0";
+export const INDEX_VERSION = "0.20.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -58,6 +59,8 @@ export interface IndexOptions {
   churnWindows?: number[];
   /** Also store an all-time `lifetime` churn and ownership window over full git history. */
   lifetime?: boolean;
+  /** Where files are listed and read from. Defaults to {@link workingTreeSource}. */
+  source?: IndexSource;
 }
 
 export interface IndexResult {
@@ -131,9 +134,11 @@ function resolveSymbolAliases(
  * with a whole-repo one. Inside git, roots are canonicalized to match
  * `git rev-parse --show-toplevel`, which resolves symlinks (`/var` →
  * `/private/var` on macOS); outside git they are left as the caller wrote them.
+ * A revision source roots ids at its own repo root instead.
  */
-function resolveRoots(paths: readonly string[]): { rootDirs: string[]; idRoot: string } {
+function resolveRoots(paths: readonly string[], source: IndexSource): { rootDirs: string[]; idRoot: string } {
   const raw = normalizePaths(paths);
+  if (source.revision) return rootsAtRevision(raw, source.revision);
   const gitToplevel = detectGitToplevel(raw[0]!);
   const rootDirs = gitToplevel !== null ? raw.map(canonicalizePath) : raw;
   return { rootDirs, idRoot: gitToplevel ?? rootDirs[0]! };
@@ -164,8 +169,9 @@ function historyOptions(options: IndexOptions): HistoryMetricsOptions {
  * matches a full index regardless of how much was reused.
  */
 export async function indexPaths(store: CodeGraphStore, options: IndexOptions): Promise<IndexResult> {
-  const { rootDirs, idRoot } = resolveRoots(options.paths);
-  const readFiles = await readSourceFiles(await walkSourceFiles(rootDirs, LANGUAGES));
+  const source = options.source ?? workingTreeSource();
+  const { rootDirs, idRoot } = resolveRoots(options.paths, source);
+  const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
   const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
   const currentFileIds = new Set(readFiles.map((rf) => fileId(idRoot, rf.filePath)));
@@ -183,10 +189,11 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
       parsedByPath,
       reuse,
       cosmeticFileIds: classified.cosmeticFileIds,
-      extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig }),
+      extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig, source }),
     }),
   );
-  const annotated = annotateRoles([...accumulator.nodes.values()], computeRoleHints(readFiles, idRoot, fileId));
+  const roleHints = computeRoleHints(readFiles, idRoot, fileId, source);
+  const annotated = annotateRoles([...accumulator.nodes.values()], roleHints);
   accumulator.nodes = new Map(annotated.map((n) => [n.id, n]));
   pruneDanglingReferences(accumulator.nodes, accumulator.edges);
 
@@ -201,17 +208,19 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
             ? reusedFileIds.flatMap((id) => reuse.sourceMetricsByFile.get(id) ?? [])
             : [],
           idRoot,
-          history: options.computeChurn === false ? undefined : historyOptions(options),
+          // History at a revision is TP-1472; until then it is off rather than read from HEAD.
+          history: options.computeChurn === false || source.revision ? undefined : historyOptions(options),
         });
 
-  const rootDir = rootDirs[0]!;
+  // A revision's indexed dirs may be gone from disk, so its git calls run at the repo root.
+  const rootDir = source.revision ? idRoot : rootDirs[0]!;
   const ref = options.ref ?? "wd";
-  const bridge = computeAliasBridge(store, { ...options, rootDir, idRoot, ref, nodes: accumulator.nodes });
+  const commitHash = options.commitHash ?? source.revision?.commit ?? detectGitHead(rootDir) ?? undefined;
+  const bridge = computeAliasBridge(store, { ...options, rootDir, idRoot, ref, commitHash, nodes: accumulator.nodes });
   const aliases = [
     ...bridge.aliases,
     ...resolveSymbolAliases(store, idRoot, parsedByPath, new Set(accumulator.nodes.keys())),
   ];
-  const commitHash = options.commitHash ?? detectGitHead(rootDir) ?? undefined;
   const snapshot = { ref, commitHash, aliasBase: bridge.baseSnapshotId };
   const fingerprints = buildFingerprints(readFiles, idRoot, classified.structuralByFileId);
   const snapshotId = store.atomically(() => {

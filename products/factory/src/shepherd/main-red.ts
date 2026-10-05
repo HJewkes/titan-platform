@@ -7,8 +7,10 @@ import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, type FreezeStore } from "./freeze.js";
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
+import { failureOf } from "./error-class.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, seatCheckout, tailBytes } from "./wake.js";
+import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
+import { seatCheckout } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = 60 * 60_000;
@@ -111,8 +113,6 @@ export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInp
 
 type Patient<T> = { value: T } | { error: string };
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
 /** Retries any throw until the give-up deadline, so a daemon that is down delays the step and never fails it. */
 async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: () => Promise<T>, retryable: (error: unknown) => boolean = () => true): Promise<Patient<T>> {
   const clock = deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_MAIN_RED_GIVE_UP_MS });
@@ -120,7 +120,7 @@ async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: ()
     try {
       return { value: await attempt() };
     } catch (error) {
-      if (!retryable(error) || clock.expired()) return { error: messageOf(error) };
+      if (!retryable(error) || clock.expired()) return { error: failureOf(error) };
     }
     await clock.sleep(deps.pollMs ?? SH_MAIN_RED_POLL_MS, signal);
   }
@@ -134,7 +134,7 @@ export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string)
   const budget = Math.floor(LOG_BUDGET_BYTES / failing.length);
   const sections = await Promise.all(failing.map(async (run) => {
     const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-    const log = await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${messageOf(error)})`);
+    const log = await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
     return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header) - 1));
   }));
   return { failing, log: sections.join("\n") };
@@ -233,7 +233,7 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
     if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live.redSha))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
   } catch (error) {
-    return stays(`main could not be read: ${messageOf(error)}`);
+    return stays(`main could not be read: ${failureOf(error)}`);
   }
   const unfrozen = freezes.unfreeze(input.repo, input.mergeSha);
   return { unfrozen, frozen: freezes.isFrozen(input.repo), episode: live.episode, detail: "green after the red sha" };

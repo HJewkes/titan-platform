@@ -1,7 +1,9 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { WorkflowNotOwnedError } from "@titan-design/workflow";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
@@ -65,5 +67,69 @@ describe("endRunsGoneElsewhere", () => {
 
     expect(ended).toEqual([]);
     expect(runs.map((runId) => host.runtime.status(runId)?.status)).toEqual(["paused", "paused"]);
+  });
+
+  it("ends a run whose PR answers 404 and reports a 5xx as unreadable with its status, never its text", async () => {
+    const { host, runs, services } = await gatedRuns();
+    const failing = (error: Error) => ({ ...services, port: { ...services.port, getPr: async (_repo: string, pr: number) => (pr === 1 ? Promise.reject(error) : services.port.getPr(REPO, pr)) } });
+    const unreadable: [string, string][] = [];
+
+    const kept = await endRunsGoneElsewhere(host, failing(Object.assign(new Error(LEAKY_MESSAGE), { status: 502 })), { onUnreadable: (runId, cause) => unreadable.push([runId, cause]) });
+    expect(kept).toEqual([]);
+    expect(unreadable).toHaveLength(1);
+    expect(unreadable[0]![0]).toBe(runs[0]);
+    expect(unreadable[0]![1]).toBe("HTTP 502");
+    expectNoLeak(unreadable);
+
+    const ended = await endRunsGoneElsewhere(host, failing(Object.assign(new Error("Not Found"), { status: 404 })));
+    expect(ended).toHaveLength(1);
+    expect(ended[0]!.runId).toBe(runs[0]);
+    expect(ended[0]!.reason).toContain("404");
+  });
+
+  it("reports a held run when the runtime refuses the cancel because another runtime leases it", async () => {
+    const { host, fake, runs, services } = await gatedRuns();
+    Object.assign(fake.pr(1), { merged: true, state: "closed" });
+    vi.spyOn(host.runtime, "cancel").mockImplementation((runId) => {
+      throw new WorkflowNotOwnedError(runId);
+    });
+    const held: string[] = [];
+    const failed: string[] = [];
+
+    const ended = await endRunsGoneElsewhere(host, services, { onHeld: (runId) => held.push(runId), onCancelFailed: (runId) => failed.push(runId) });
+
+    expect(ended).toEqual([]);
+    expect(held).toEqual([runs[0]]);
+    expect(failed).toEqual([]);
+  });
+
+  it("reports a cancel that fails for any other reason with its error class, never its text, and never as held", async () => {
+    const { host, fake, runs, services } = await gatedRuns();
+    Object.assign(fake.pr(1), { merged: true, state: "closed" });
+    vi.spyOn(host.runtime, "cancel").mockImplementation(() => {
+      throw new Error(LEAKY_MESSAGE);
+    });
+    const held: string[] = [];
+    const failed: [string, string][] = [];
+
+    const ended = await endRunsGoneElsewhere(host, services, { onHeld: (runId) => held.push(runId), onCancelFailed: (runId, cause) => failed.push([runId, cause]) });
+
+    expect(ended).toEqual([]);
+    expect(held).toEqual([]);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]![0]).toBe(runs[0]);
+    expect(failed[0]![1]).toBe("Error");
+    expectNoLeak(failed);
+    expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
+  });
+
+  it("throws a non-lease cancel failure when no caller asked to hear of it", async () => {
+    const { host, fake, services } = await gatedRuns();
+    Object.assign(fake.pr(1), { merged: true, state: "closed" });
+    vi.spyOn(host.runtime, "cancel").mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    await expect(endRunsGoneElsewhere(host, services)).rejects.toThrow("database unavailable");
   });
 });

@@ -18,8 +18,9 @@ import {
 } from "./policy.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
-import { TASK_KINDS, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
@@ -94,22 +95,30 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
   }
 }
 
-const FINISHED_RUNS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
+/** The registration of another PR that holds `branch` under a run that has finished, if any. */
+function finishedBranchHolder(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
+  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
+  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return undefined;
+  return FINISHED_RUN_STATUSES.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed") ? byBranch : undefined;
+}
 
 /**
  * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
- * PR's run is live; a finished run gives the branch up, as the changesets branch is reused by every release.
+ * PR's run is live; a finished run gives the branch up (see `releaseFinishedBranch`). Reads only.
  */
 function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
   const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
   if (byPr) return byPr;
   const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
   if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
-  if (FINISHED_RUNS.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed")) {
-    store.releaseBranch(byBranch.runId);
-    return undefined;
-  }
+  if (finishedBranchHolder(ctx, store, repo, pr, branch)) return undefined;
   throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
+}
+
+/** The changesets branch is reused by every release, so a finished run's hold on it is dropped once a lookup finds nothing. */
+function releaseFinishedBranch(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): void {
+  const holder = finishedBranchHolder(ctx, store, repo, pr, branch);
+  if (holder) store.releaseBranch(holder.runId);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -126,9 +135,20 @@ function sliceAfter(existing: Registration, args: RegisterArgs): string | undefi
   return args.slice ?? existing.slice ?? undefined;
 }
 
+/** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
+function refuseKindMove(existing: Registration, args: RegisterArgs): void {
+  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind);
+  if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
+}
+
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   const { runId } = existing;
-  store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+  try {
+    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args) });
+  } catch (error) {
+    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
+    throw error;
+  }
   if (args.pr !== undefined && existing.pr === null) store.setPr(runId, args.pr);
   return { runId, created: false, registration: store.byRun(runId)! };
 }
@@ -142,13 +162,17 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 /** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
 function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
   if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
+  refuseKindMove(known, args);
   const previousRunId = known.runId;
   let runId: string;
   try {
     runId = startRun(ctx, args, known.branch ?? undefined, policy, (started) => store.repoint(previousRunId, started));
   } catch (error) {
     const winner = store.byRun(previousRunId) ? undefined : findRegistration(ctx, store, args.repo, args.pr, known.branch ?? undefined);
-    if (!winner) throw error;
+    if (!winner) {
+      if (!store.byRun(previousRunId)) releaseFinishedBranch(ctx, store, args.repo, args.pr, known.branch ?? undefined);
+      throw error;
+    }
     return refresh(store, winner, args, policy);
   }
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
@@ -164,7 +188,10 @@ function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: Regist
     return { runId, created: true, registration: registration! };
   } catch (error) {
     const winner = findRegistration(ctx, store, args.repo, args.pr, branch);
-    if (!winner) throw error;
+    if (!winner) {
+      releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
+      throw error;
+    }
     return reuseOrRestart(ctx, store, winner, args, policy);
   }
 }
@@ -174,10 +201,12 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   const policy = policyFor(services, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
   if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
+  releaseFinishedBranch(ctx, services.store.get(), args.repo, args.pr, args.branch);
   const branch = await headBranch(services, args);
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
+  releaseFinishedBranch(ctx, store, args.repo, args.pr, branch);
   return startRegistered(ctx, store, args, branch, policy);
 }
 
@@ -336,14 +365,19 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
+/** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
+export const SHEPHERD_COMMAND_MAP = {
+  "shepherd.register": registerCommand,
+  "shepherd.status": statusCommand,
+  "shepherd.list": listCommand,
+  "shepherd.timeline": timelineCommand,
+  "shepherd.hold": holdCommand,
+  "shepherd.release": releaseCommand,
+  "shepherd.merge": mergeCommand,
+  "shepherd.resync": resyncCommand,
+};
+
+export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;
+
 /** Gate resolution is deliberately absent: it stays the local `titan-factory gate resolve`, never a network call. */
-export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = [
-  registerCommand,
-  statusCommand,
-  listCommand,
-  timelineCommand,
-  holdCommand,
-  releaseCommand,
-  mergeCommand,
-  resyncCommand,
-];
+export const SHEPHERD_COMMANDS: readonly AnyCommand<FactoryContext>[] = Object.values(SHEPHERD_COMMAND_MAP);

@@ -5,6 +5,7 @@ import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
+import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, ShepherdStore, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
@@ -273,7 +274,7 @@ describe("sh-cleanup retire", () => {
     const result = await w.run();
 
     expect(result).toMatchObject({ ref: "unread", task: "done", retired: [IMPLEMENTER] });
-    expect(result.caveats).toEqual(["head ref of #1: github is down"]);
+    expect(result.caveats).toEqual(["head ref of #1: Error"]);
     expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
   });
 
@@ -287,13 +288,48 @@ describe("sh-cleanup retire", () => {
     expect(gaps.every((gap) => gap >= SH_CLEANUP_RETRY_MS)).toBe(true);
     expect(w.clock.now).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS);
     expect(result.retired).toEqual([]);
-    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: worktree has unpushed commits`]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: the worktree has unpushed commits`]);
+  });
+
+  it("keeps a URL and a token in a GitHub or retire error out of the caveats", async () => {
+    const fake = mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
+    const port = githubPort(fake.wire);
+    vi.spyOn(port, "getPr").mockRejectedValue(new Error(LEAKY_MESSAGE));
+    const w = world({ fake, port, agents: [{ name: IMPLEMENTER, exitAt: 0, refusals: Array.from({ length: 20 }, () => LEAKY_MESSAGE) }] });
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual(["head ref of #1: Error", `retire ${IMPLEMENTER}: Error`]);
+    expectNoLeak(result);
+  });
+
+  it("names a known retire refusal in fixed words, carrying none of its text", async () => {
+    const refusals = Array.from({ length: 20 }, () => `${LEAKY_MESSAGE}: unpushed commits`);
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0, refusals }] });
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: the worktree has unpushed commits`]);
+    expectNoLeak(result);
+  });
+
+  it("names only the error class when the roster cannot be read while waiting to retire", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+    const firstRoster = w.agents.roster;
+    let reads = 0;
+    w.agents.roster = async () => (reads++ === 0 ? firstRoster() : Promise.reject(new Error(LEAKY_MESSAGE)));
+
+    const result = await w.run();
+
+    expect(w.agents.retires).toEqual([]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
+    expectNoLeak(result);
   });
 
   it("does not retire an agent resumed inside the roster cache window", async () => {
     const clock = { now: 0 };
     const rowAt = (): AgentRow => ({ name: IMPLEMENTER, agentId: "id", state: "live", presence: clock.now < 100_000 ? "exited" : "live", status: "finished", profile: "implementer", surface: "headless", model: null, cwd: "/repo", sessionId: "s", transcriptPath: null, transcriptExists: false, spawnedBy: null, account: null, generation: 1, teleportFrom: null });
-    const calls: AgentChatCalls = { listAgents: vi.fn(() => [rowAt()]), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
+    const calls: AgentChatCalls = { listAgents: vi.fn(async () => [rowAt()]), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
     const roster = createRosterReader(async () => calls.listAgents("/bin/agent-chat", 1_000), { now: () => clock.now, ttlMs: SH_CLEANUP_GIVE_UP_MS * 2 });
     const agents = agentChatCleanupAgents("/bin/agent-chat", calls, 1_000, roster);
     const w = world();
@@ -322,7 +358,7 @@ describe("sh-cleanup retire", () => {
 
     expect(w.agents.retires).toEqual([]);
     expect(result.retired).toEqual([]);
-    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: roster unreadable before retire: broker unreachable`]);
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: roster unreadable before retire: Error`]);
   });
 
   it("leaves the task and the agents alone when no ports are wired", async () => {
@@ -344,7 +380,7 @@ describe("fresh reviewer names", () => {
 
 describe("cleanup ports", () => {
   it("retires through agent-chat without --force", async () => {
-    const calls: AgentChatCalls = { listAgents: vi.fn(() => []), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
+    const calls: AgentChatCalls = { listAgents: vi.fn(async () => []), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
 
     await agentChatCleanupAgents("/bin/agent-chat", calls, 1_000).retire(IMPLEMENTER);
 

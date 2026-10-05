@@ -21,12 +21,15 @@ import {
   ExecError,
   ExecTimeoutError,
   execSafe,
+  execSafeAsync,
   resolveBinaryPath,
   type SafeExecResult,
 } from "./exec.js";
 
 /** The CLI did not answer in time, so a retire may already have happened. */
-export class DispatchTimeoutError extends DispatchError {}
+export class DispatchTimeoutError extends DispatchError {
+  override readonly name: string = "DispatchTimeoutError";
+}
 
 /** One `agent ls --json` row, as agent-chat's `lsJsonRow` writes it. */
 export interface AgentRow {
@@ -67,11 +70,15 @@ export function buildRetireArgs(name: string, force = false): string[] {
 }
 
 /** Every agent the broker's log knows, live or ended. */
-export function listAgents(
+export async function listAgents(
   agentChatBinPath: string,
   timeoutMs: number,
-): AgentRow[] {
-  const result = runAgentChat(agentChatBinPath, buildListAgentsArgs(), timeoutMs);
+): Promise<AgentRow[]> {
+  const result = await runAgentChatAsync(
+    agentChatBinPath,
+    buildListAgentsArgs(),
+    timeoutMs,
+  );
   if (result.status !== 0) throw refusal("agent ls", result);
   return parseAgentRows(result.stdout);
 }
@@ -136,10 +143,28 @@ export function runAgentChat(
     const bin = resolveBinaryPath(binPath, "agent-chat");
     return execSafe(bin, args, agentChatEnv(), timeoutMs);
   } catch (err) {
-    if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
-    if (err instanceof ExecError) throw new DispatchError(err.message);
-    throw err;
+    throw mapExecError(err);
   }
+}
+
+/** The roster is large (hundreds of rows), so its read must not block the caller's event loop. */
+async function runAgentChatAsync(
+  binPath: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<SafeExecResult> {
+  try {
+    const bin = resolveBinaryPath(binPath, "agent-chat");
+    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs);
+  } catch (err) {
+    throw mapExecError(err);
+  }
+}
+
+function mapExecError(err: unknown): unknown {
+  if (err instanceof ExecTimeoutError) return new DispatchTimeoutError(err.message);
+  if (err instanceof ExecError) return new DispatchError(err.message);
+  return err;
 }
 
 /** Same stream rule as a spawn: a broker refusal is on stdout, a usage error on stderr. */

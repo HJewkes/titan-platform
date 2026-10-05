@@ -230,7 +230,8 @@ the file is unreadable.
 The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
-fail a check.
+fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
+destination file has an excluded role.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -419,6 +420,24 @@ are pure functions over rows the caller has already read, so they run in a brows
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
 
+### Context dossier and bundle
+
+Ported with TP-1454 from codewatch's `graph context`, unchanged apart from import paths. All
+three are deterministic projections of rows the caller has already read; no LLM is involved.
+
+- `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
+  churn, centrality, ownership, consumers split into source and test files, coupling
+  partners, and blast radius. A file target lists its symbols, exports first, each with an
+  `importance` that splits the file's centrality by utilization share. The record carries
+  `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
+- `renderContextMarkdown(dossier)` renders the same facts as markdown.
+- `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
+  from `repoRoot`, so this one touches the filesystem), its `references` and `imports` edges as
+  explicit callers, dependencies, and coupling partners, and its `coverage_pct`. Pass
+  `relevanceByFile` (from `computeRelevance`) and `targetFileId` to order edges by relevance
+  to the target instead of by weight. `renderBundleText(bundle)` concatenates it for an
+  embedder or an LLM.
+
 ### Unused exports and dead modules
 
 Ported with TP-1467 from codewatch's `graph report`, unchanged apart from import paths. Both
@@ -435,6 +454,19 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
+
+### Growth and untested risks
+
+Ported with TP-1468 from codewatch's `graph report`, unchanged apart from import paths. Both
+take a `ReportContext` and a limit, return `GrowthRiskRow[]` and `UntestedRiskRow[]`, and drop
+files that `keepNode` rejects:
+
+- `topGrowthRisks(ctx, limit)` lists files with a structural scaling smell: loop nesting of
+  depth 2 or more, `recursive_functions`, or `search_in_loop`. It is a heuristic, not a Big-O
+  bound. Ranked by `loop_depth`, then smell count.
+- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`. Files with no
+  `coverage_pct` metric or full coverage are left out, so a repo with no coverage overlay
+  gets an empty list.
 
 ### Partition quality
 

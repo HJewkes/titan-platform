@@ -1,5 +1,6 @@
 import type { RateBudget } from "./budget.js";
-import { GhError, type GhExec } from "./exec.js";
+import { GhError, type GhExec, type GhResult } from "./exec.js";
+import { redact, redactStreams } from "./redact.js";
 
 export interface HttpResponse {
   status: number;
@@ -10,6 +11,9 @@ export interface HttpResponse {
 
 export type Fields = Record<string, string>;
 
+/** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
+type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
+
 /** Every call is `gh api -i`, so the status line, ETag, Link and rate headers are all visible. */
 export interface Rest {
   /** Conditional on the ETag of the same request's last 200; a 304 answers with that cached body. */
@@ -17,6 +21,11 @@ export interface Rest {
   getOrNull<T>(path: string, fields?: Fields): Promise<T | null>;
   /** Follows `Link: rel="next"`, each page conditional on its own ETag. */
   pages<P, T>(path: string, fields: Fields, pick: (page: P) => T[]): Promise<T[]>;
+  /**
+   * Like `pages`, but conditional on the caller's `etag` rather than the cache. One ETag vouches for one page, so a list
+   * longer than a page answers every page with a null `etag`, and the caller's next read is unconditional.
+   */
+  revalidatePages<P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>>;
   /** Unconditional, for bodies that are not JSON. */
   text(path: string): Promise<string>;
   send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
@@ -43,15 +52,18 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number):
         throw error;
       }
     },
-    pages: async <P, T>(path: string, fields: Fields, pick: (page: P) => T[]) => {
-      const items: T[] = [];
-      for (let args: string[] | null = getArgs(path, fields); args; ) {
-        const response = await conditional(args);
-        items.push(...pick(json<P>(response.body)));
-        const next = nextPage(response.headers.get("link"));
-        args = next ? getArgs(next, {}) : null;
+    pages: async <P, T>(path: string, fields: Fields, pick: (page: P) => T[]) => followPages(conditional, getArgs(path, fields), pick, []),
+    revalidatePages: async <P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]) => {
+      const args = getArgs(path, fields);
+      const response = await run(etag === null ? args : [...args, "-H", `If-None-Match: ${etag}`]);
+      if (response.status === 304) {
+        if (etag === null) throw new Error(`gh api ${args.join(" ")} answered 304 to an unconditional request`);
+        return { notModified: true };
       }
-      return items;
+      const first = pick(json<P>(response.body));
+      const next = nextPage(response.headers.get("link"));
+      if (!next) return { notModified: false, body: first, etag: response.headers.get("etag") ?? null };
+      return { notModified: false, body: await followPages(conditional, getArgs(next, {}), pick, first), etag: null };
     },
     text: async (path) => (await run(getArgs(path, {}))).body,
     send: async <T>(method: string, path: string, fields: Fields = {}, input?: string) => {
@@ -72,9 +84,25 @@ function runner(exec: GhExec, budget: RateBudget): Run {
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
-    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, result, response?.status);
+    if (result.code !== 0 || (response && response.status >= 400)) throw new GhError(full, scrubbed(result), response?.status);
     return response ?? { status: 200, headers: new Map(), body: result.stdout };
   };
+}
+
+/** Every non-exchange call's error quotes raw `gh` output, which can carry a token shape. */
+function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
+  const [cleanOut, cleanErr] = redactStreams(stdout, stderr, []);
+  return { code, stdout: cleanOut, stderr: cleanErr };
+}
+
+async function followPages<P, T>(get: (args: readonly string[]) => Promise<HttpResponse>, start: string[], pick: (page: P) => T[], items: T[]): Promise<T[]> {
+  for (let args: string[] | null = start; args; ) {
+    const response = await get(args);
+    items.push(...pick(json<P>(response.body)));
+    const next = nextPage(response.headers.get("link"));
+    args = next ? getArgs(next, {}) : null;
+  }
+  return items;
 }
 
 function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[]) => Promise<HttpResponse> {
@@ -114,7 +142,7 @@ export function parseIncluded(stdout: string): HttpResponse | null {
 function nextPage(link: string | undefined): string | null {
   const next = link ? /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] : undefined;
   if (!next) return null;
-  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${next}`);
+  if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${redact(next, [])}`);
   return next.slice(API_ORIGIN.length);
 }
 

@@ -191,6 +191,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/issues\/7\/comments$/, []],
   [/^user$/, { login: "octo" }],
   [/pulls\/7\/files$/, []],
+  [/pulls\/7\/commits$/, []],
   [/git\/ref\/heads\//, { object: { sha: H1 } }],
   [/git\/refs/, undefined],
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
@@ -232,6 +233,7 @@ describe("gh api adapter, REST only", () => {
       putFile: () => port.putFile(REPO, { path: "docs/a.md", branch: "topic", content: "x", message: "m", expectedBlobSha: H2 }),
       findPr: () => port.findPr(REPO, "topic"),
       listOpenPrs: () => port.listOpenPrs(REPO, "to"),
+      revalidateOpenPrs: () => port.revalidateOpenPrs(REPO, null),
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
@@ -246,6 +248,7 @@ describe("gh api adapter, REST only", () => {
       merge: () => port.merge(REPO, 7, H1, "squash"),
       rerunFailed: () => port.rerunFailed(REPO, 55),
       listPrFiles: () => port.listPrFiles(REPO, 7),
+      listPrCommits: () => port.listPrCommits(REPO, 7),
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),
@@ -367,6 +370,29 @@ describe("gh api adapter, conditional GETs", () => {
 
     expect(again.map((pr) => pr.number)).toEqual([7, 8]);
     expect(gh.calls[3]?.args).toContain('If-None-Match: "p2"');
+  });
+
+  it("revalidates the open list with the caller's ETag and answers a 304 as not modified", async () => {
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"o1"' }, [pull]), included(304, { ETag: 'W/"o1"' }, undefined)]);
+    const port = githubPort(ghCliWire(gh.exec));
+
+    const first = await port.revalidateOpenPrs(REPO, null);
+    const second = await port.revalidateOpenPrs(REPO, 'W/"o1"');
+
+    expect(first).toMatchObject({ notModified: false, etag: 'W/"o1"', prs: [{ number: 7, headSha: H1, behind: false }] });
+    expect(second).toEqual({ notModified: true });
+    expect(gh.calls[0]?.args).not.toContain("-H");
+    expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"o1"']);
+  });
+
+  it("answers a list longer than one page with every page and no ETag", async () => {
+    const link = { Link: '<https://api.github.com/repositories/9/pulls?state=open&page=2>; rel="next"' };
+    const gh = scriptedGhSequence([included(200, { ETag: '"p1"', ...link }, [pull]), included(200, { ETag: '"p2"' }, [{ ...pull, number: 8 }])]);
+
+    const read = await ghCliWire(gh.exec).revalidateOpenPrs(REPO, null);
+
+    expect(read).toMatchObject({ notModified: false, etag: null });
+    expect(read.notModified ? [] : read.prs.map((pr) => pr.number)).toEqual([7, 8]);
   });
 
   it("refuses a next-page link that leaves api.github.com", async () => {

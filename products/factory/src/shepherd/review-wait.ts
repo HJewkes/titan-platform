@@ -1,3 +1,8 @@
+import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
+import { errorClass, failureOf } from "./error-class.js";
+
+const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
+
 /** The port throws this when the broker refused a start for a reason that clears with time, such as its machine guard; nobody was started. */
 export class ReviewerBrokerBusy extends Error {
   override readonly name: string = "ReviewerBrokerBusy";
@@ -8,9 +13,17 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
   override readonly name = "ReviewerMachineHold";
 }
 
-/** The busy wait ran out with the broker still refusing; nobody was started, so the review never began. */
+/**
+ * The busy wait ran out with the broker still refusing; nobody was started, so the review never began. The message is
+ * built here from the refusal's class and the budget alone, since it becomes a stored step reason.
+ */
 export class ReviewerStillBusy extends Error {
   override readonly name = "ReviewerStillBusy";
+
+  constructor(cause: ReviewerBrokerBusy, budgetMs: number) {
+    const why = cause instanceof ReviewerMachineHold ? "still held by the machine stop" : "still refused";
+    super(`${errorClass(cause)} (${why} after ${minutes(budgetMs)})`, { cause });
+  }
 }
 
 /** Every wait a busy broker cost, oldest first; absent when the broker never refused as busy. */
@@ -40,16 +53,9 @@ export interface BusyTiming {
   busyWaitMs: number;
 }
 
-const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
-
 type BusyKind = "busy" | "hold";
 
 const kindOf = (error: ReviewerBrokerBusy): BusyKind => (error instanceof ReviewerMachineHold ? "hold" : "busy");
-
-function stillRefused(error: ReviewerBrokerBusy, kind: BusyKind, budgetMs: number): ReviewerStillBusy {
-  const why = kind === "hold" ? "still held by the machine stop" : "still refused";
-  return new ReviewerStillBusy(`${error.message} (${why} after ${minutes(budgetMs)})`, { cause: error });
-}
 
 /**
  * Asks again after a busy refusal, doubling the wait, until `busyWaitMs` of busy refusals has passed; time held by the machine
@@ -68,9 +74,9 @@ export async function whileBrokerBusy<T>(timing: BusyTiming, signal: AbortSignal
       const kind = kindOf(error);
       spent[waitingOn ?? kind] += timing.now() - mark;
       const left = budget[kind] - spent[kind];
-      if (left <= 0) throw stillRefused(error, kind, budget[kind]);
+      if (left <= 0) throw new ReviewerStillBusy(error, budget[kind]);
       const ms = Math.min(wait, left);
-      note(`${kind === "hold" ? "held by the machine stop: " : ""}${error.message}; asking again in ${minutes(ms)}`);
+      note(`${kind === "hold" ? "held by the machine stop: " : ""}${errorClass(error)}; asking again in ${minutes(ms)}`);
       mark = timing.now();
       waitingOn = kind;
       await timing.sleep(ms, signal);
@@ -93,4 +99,32 @@ export function clearReviewWait(repo: string, pr: number): void {
 
 export function reviewWait(repo: string, pr: number | null): string | undefined {
   return pr === null ? undefined : waits.get(keyOf(repo, pr));
+}
+
+type Started<A> = { agent?: A; rosterError?: string };
+
+async function readRoster<A>(roster: () => Promise<readonly A[]>): Promise<{ agents: readonly A[]; error?: string }> {
+  try {
+    return { agents: await roster() };
+  } catch (error) {
+    return { agents: [], error: failureOf(error) };
+  }
+}
+
+/**
+ * Polls the roster until exactly one agent `holds` and its session has started. Two holders end the wait at once. A failed
+ * read is retried until the deadline, and the last failure is kept so a timeout can say why the agent was never seen.
+ */
+export async function startedSession<A extends { sessionId: string }>(roster: () => Promise<readonly A[]>, holds: (agent: A) => boolean, timing: DeadlineTiming & { pollMs: number }, signal: AbortSignal): Promise<Started<A>> {
+  const clock = deadline(timing);
+  let rosterError: string | undefined;
+  for (;;) {
+    const read = await readRoster(roster);
+    rosterError = read.error ?? rosterError;
+    const found = read.agents.filter(holds);
+    if (found.length > 1) return {};
+    if (found[0] && found[0].sessionId !== "") return { agent: found[0] };
+    if (clock.expired()) return rosterError === undefined ? {} : { rosterError };
+    await clock.sleep(timing.pollMs, signal);
+  }
 }

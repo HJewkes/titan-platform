@@ -90,7 +90,9 @@ stays out of the repo.
 
 - `postMerge` is the chore `land-pr` runs after a merge. It runs `argv` with no shell, with
   `LAND_PR_REPO`, `LAND_PR_NUMBER` and `LAND_PR_MERGE_SHA` in its environment, and is killed
-  after `timeoutMs` (default 10 minutes). An unknown key such as `shell` fails the load.
+  after `timeoutMs` (default 10 minutes). When GitHub reports the PR merged but names no merge
+  commit, the merged outcome's `mergeSha` is `null`, and `LAND_PR_MERGE_SHA` is left unset, even
+  when the factory's own environment has one. A chore that needs the sha should check that it is set. An unknown key such as `shell` fails the load.
 - `shepherd.agentChatBin` is the absolute path of the `agent-chat` executable. It is required
   when `shepherd.review` or `shepherd.fixer` is set. Without it, a red main still freezes the
   repo and files a fix task, but spawns no fixer.
@@ -125,7 +127,7 @@ and again every 30 seconds for runs whose owner died and whose lease lapsed. It 
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the GitHub probe, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
 
@@ -272,7 +274,8 @@ titan-factory service install --port 7411 --mcp
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
 4. Polls `/health` for up to 30 seconds. The answer must come from the pid launchd reports
    for the job, so a `serve` you left running in a shell fails the install. On a timeout
-   the verb prints the last 20 lines of `serve.err.log`. The wait covers
+   the verb prints the path of `serve.err.log` and a `tail -n 20` command for it, never the
+   log's lines, since a post-merge chore stores this output. The wait covers
    [the GitHub check](#the-github-check): a `github` field that settles on anything but
    `ok` fails the install with one line.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory

@@ -49,7 +49,7 @@ describe("literal assignments", () => {
   it.each([
     ["a substitution", "F=$(echo ~/.x); cat $F"],
     ["read", "read F; cat $F"],
-    ["printf -v", "printf -v F %s x; cat $F"],
+    ["printf -v of a substitution", "printf -v F %s \"$(cmd)\"; cat $F"],
     ["a for loop", "for F in a b; do cat $F; done"],
     ["an unassigned variable", "cat $F"],
   ])("leaves a value set by %s dynamic", (_how, src) => {
@@ -62,6 +62,13 @@ describe("literal assignments", () => {
     const cat = extract("(F=~/.x); cat $F").find((c) => c.name === "cat");
 
     expect(cat?.args[0]?.dynamic).toBe(true);
+  });
+
+  it("runs the command after a subscript assignment with blanks in the brackets", () => {
+    const [push] = extract("Y[ 0 ]=x git push origin HEAD:main");
+
+    expect(push?.name).toBe("git");
+    expect(values(push)).toEqual(["push", "origin", "HEAD:main"]);
   });
 
   it("keeps a prefix assignment as env for that command only", () => {

@@ -5,7 +5,7 @@ import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefin
 import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
-import { LAND_STEPS, codeRoute, land, step, type CiSnapshot, type LandOptions, type LandOutcome } from "../workflows/land.js";
+import { LAND_STEPS, codeRoute, land, newUpdateBound, step, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
 import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
@@ -98,6 +98,8 @@ interface ShepherdRun {
   freezeChecks: number;
   /** Heads whose next review spawns a never-held reviewer. */
   fresh: Set<string>;
+  /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
+  updateBound: UpdateBound;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
 }
@@ -117,7 +119,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -134,7 +136,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
 async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
   try {
-    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, round: run.state.round }, options);
+    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, round: run.state.round, updateBound: run.updateBound }, options);
   } catch (error) {
     if (error instanceof LeaveLand) return error.outcome;
     throw error;
@@ -287,7 +289,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
 }
 
 function endedOutcome({ observed, headSha }: Routed): LandOutcome {
-  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha ?? "" };
+  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha };
   if (observed.runState === "closed-elsewhere") return { kind: "stopped", reason: "closed", headSha, detail: "the pull request was closed outside Shepherd" };
   return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
 }
@@ -337,7 +339,8 @@ async function narrowToRegistration(run: ShepherdRun): Promise<void> {
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
-  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha }, after, run.policy.fixer);
+  // The main-CI read answers `none` for an empty merge sha and hands that run to the owner.
+  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "" }, after, run.policy.fixer);
   return merged;
 }
 
@@ -365,7 +368,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     carrySeatRoute(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
-    observeRoute(deps.port, deps.now),
+    observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
   ];

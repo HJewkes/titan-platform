@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
 
@@ -97,19 +98,14 @@ export const COMPARE_FILE_CAP = 300;
 export const COMPARE_COMMIT_CAP = 250;
 /** GitHub's limit for `pulls/{n}/files`. */
 export const PR_FILES_CAP = 3000;
+/** GitHub's limit for `pulls/{n}/commits`. */
+export const PR_COMMITS_CAP = 250;
 
 export interface IssueComment {
   id: number;
   body: string;
   /** Login of the commenter. */
   author: string;
-}
-
-export interface OpenPrRequest {
-  head: string;
-  base: string;
-  title: string;
-  body: string;
 }
 
 /**
@@ -128,6 +124,8 @@ export interface GitHubWire {
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
+  /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -143,6 +141,8 @@ export interface GitHubWire {
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
+  /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
@@ -166,6 +166,8 @@ export interface GitHubPort {
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
   listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
+  /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
+  revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
@@ -188,6 +190,8 @@ export interface GitHubPort {
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
+  /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
+  listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
   /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   /**
@@ -228,6 +232,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
+    revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
@@ -242,6 +247,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
+    listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),

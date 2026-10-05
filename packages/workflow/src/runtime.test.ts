@@ -20,7 +20,7 @@ import type {
   WorkflowFn,
   WorkflowRun,
 } from "./types.js";
-import { GATE_CANCELLED_SIGNAL } from "./types.js";
+import { GATE_CANCELLED_SIGNAL, WorkflowNotOwnedError } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
 
@@ -202,6 +202,22 @@ describe("WorkflowRuntime", () => {
     expect(run.status).toBe("completed");
     expect(run.stepResults.approve).toMatchObject({ signal: "approved", data: { signal: "approved", by: "reviewer" } });
     expect(run.stepResults["ship:0"]).toBeDefined();
+  });
+
+  it("hydrate leaves an excluded run unclaimed and still hydrates the rest", async () => {
+    const db = makeDb();
+    const first = runtime(db, inlineRunner(() => "ok"));
+    const gated: WorkflowFn = async (ctx) => void (await ctx.assisted("approve", "ok?"));
+    first.register("gated", gated);
+    const kept = first.start("gated");
+    const skipped = first.start("gated");
+    await vi.waitFor(() => expect([kept, skipped].map((id) => first.status(id)?.status)).toEqual(["paused", "paused"]));
+    first.shutdown();
+
+    const second = runtime(db, inlineRunner(() => "ok"));
+    second.register("gated", gated);
+    expect(await second.hydrate({ exclude: new Set([skipped]) })).toEqual([kept]);
+    expect(await second.hydrate()).toEqual([skipped]);
   });
 
   it("replays a paused run after a restart without re-running finished steps", async () => {
@@ -849,6 +865,12 @@ describe("WorkflowRuntime", () => {
     rt.cancel(runId, "too late");
 
     expect(rt.status(runId)).toMatchObject({ status: "completed", completedAt: before.completedAt, error: null });
+  });
+
+  it("refuses to cancel a run it cannot claim with a typed not-owned error", () => {
+    const rt = runtime(makeDb(), inlineRunner(() => "unused"));
+
+    expect(() => rt.cancel("no-such-run", "stop")).toThrow(WorkflowNotOwnedError);
   });
 
   it("does not cancel gates when cancellation intent cannot be persisted", async () => {

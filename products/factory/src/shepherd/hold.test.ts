@@ -71,6 +71,16 @@ describe("a hold that names a reviewer", () => {
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdSatisfied: { head: H1, by: { reviewer: REVIEWER, agentId: `agent-${REVIEWER}`, sessionId: `session-${REVIEWER}` } } });
   });
 
+  it("merges when the reviewer writes the repo in a different letter case than the run was registered with", async () => {
+    const r = rig();
+    say(r, verdictAt(H1, "MERGE", 1, "Octo/Demo"));
+
+    const merged = await mergeAt(r, H1);
+
+    expect(merged.done).toBe(true);
+    expect(r.store.byRun("run-1")).toMatchObject({ holdSatisfied: { head: H1 } });
+  });
+
   it("keeps waiting when the MERGE names an older head", async () => {
     const r = rig();
     say(r, verdictAt(H1));
@@ -264,6 +274,22 @@ describe("a satisfied hold across an update of the reviewed head", () => {
     await satisfy(REPO, r.pr, H3, "main");
 
     expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
+    await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+  });
+
+  it.each([["FIX_FIRST", null], ["WAIT", H1]] as const)("does not carry past a mixed-case-repo %s at an update nobody asked the hold about", async (verdict, kept) => {
+    const r = rig("correctness");
+    const satisfy = holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: { read: async () => r.messages }, carry: async () => EQUAL });
+    say(r, verdictAt(H1, "MERGE", 1, "Octo/Demo"));
+    await satisfy(REPO, r.pr, H1, "main");
+    r.fake.pushHead(r.pr, H2);
+    say(r, verdictAt(H2, verdict, 1, "Octo/Demo"));
+    const H3 = fakeSha("head-3");
+    r.fake.pushHead(r.pr, H3);
+
+    await satisfy(REPO, r.pr, H3, "main");
+
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head ?? null).toBe(kept);
     await expect(guardedWith(r, EQUAL).merge(REPO, r.pr, H3, "squash")).rejects.toBeInstanceOf(MergeHeldError);
   });
 

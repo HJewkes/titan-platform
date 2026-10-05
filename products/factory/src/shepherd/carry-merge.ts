@@ -5,7 +5,9 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
+import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
+import { ghForcePushes, pushedAwaySince, type ReadForcePushes } from "./force-pushes.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
@@ -31,22 +33,81 @@ const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.stri
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
 export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
-    kind: registeredKind(deps.store, input.runId) ?? null,
+    kind: registeredKind(deps.store, input.runId).kind ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
 }
 
 const SeatResult = z.looseObject({ clear: z.boolean() });
 
+/** Each head costs a roster read and a transcript scan per seat reviewer, and nothing caches them per head, so a longer walk refuses. */
+export const CARRY_SEAT_HEAD_CAP = 50;
+
+interface SeatInput extends CarryTarget {
+  fromHead: string;
+  head: string;
+  heads: string[];
+}
+
+type SeatHeads = { heads: string[] } | { reason: string };
+type SeatRead<T> = { value: T } | { reason: string };
+
+/** A failed read refuses under a fixed name, never the error's own text. */
+async function seatRead<T>(what: string, read: () => Promise<T>): Promise<SeatRead<T>> {
+  try {
+    return { value: await read() };
+  } catch (error) {
+    return { reason: `seat check: ${what} could not be read (${failureOf(error)})` };
+  }
+}
+
+/** The PR's commits after `fromHead`; after a rebase `fromHead` is not in the list, so every commit counts. */
+async function committedSince(port: ShepherdDeps["port"], input: SeatInput): Promise<SeatRead<string[]>> {
+  const commits = await seatRead("the PR's commit list", () => port.listPrCommits(input.repo, input.pr));
+  if ("reason" in commits) return commits;
+  if (commits.value.at(-1) !== input.head) return { reason: `seat check: the PR's commit list does not end at ${input.head}` };
+  return { value: commits.value.slice(commits.value.indexOf(input.fromHead) + 1) };
+}
+
+/** The heads force-pushed away since `fromHead`, which the commit list no longer names; one GitHub no longer has refuses. */
+async function forcedAwaySince(readForcePushes: ReadForcePushes, input: SeatInput): Promise<SeatRead<string[]>> {
+  const pushes = await seatRead("the PR's force-pushes", () => readForcePushes(input.repo, input.pr));
+  if ("reason" in pushes) return pushes;
+  const away = pushedAwaySince(pushes.value, input.fromHead);
+  const known = away.filter((head): head is string => head !== null);
+  return known.length === away.length ? { value: known } : { reason: `seat check: a head force-pushed away since ${input.fromHead} is gone from GitHub` };
+}
+
+/**
+ * The run's heads, every commit the PR passed through after `fromHead`, and every head force-pushed away since, so a seat
+ * FIX_FIRST at an update the run never reviewed still refuses. A list that does not end at the head is short (GitHub stops at
+ * 250) or stale, and refuses.
+ */
+async function seatHeads(port: ShepherdDeps["port"], readForcePushes: ReadForcePushes, input: SeatInput): Promise<SeatHeads> {
+  const committed = await committedSince(port, input);
+  if ("reason" in committed) return committed;
+  const forced = await forcedAwaySince(readForcePushes, input);
+  if ("reason" in forced) return forced;
+  const heads = [...new Set([...input.heads, ...committed.value, ...forced.value])];
+  if (heads.length > CARRY_SEAT_HEAD_CAP) return { reason: `seat check: ${heads.length} heads since ${input.fromHead} is more than ${CARRY_SEAT_HEAD_CAP}` };
+  return { heads };
+}
+
+/** The review wiring plus how the seat check reads the PR's force-pushes; absent means `gh` under the login the GitHub port uses. */
+export type CarrySeatWiring = ReviewWiring & { forcePushes?: ReadForcePushes };
+
 /**
  * Reads every seat reviewer at each head a carry would vouch for, so a FIX_FIRST at any of them refuses it, as the fresh review
- * at that head would have. An unreadable roster or transcript refuses too. With no dispatch wired there is no roster to read.
+ * at that head would have. An unreadable roster, transcript, commit list or force-push list refuses too. With no dispatch wired there is no
+ * roster to read.
  */
-export function carrySeatRoute(deps: Pick<ShepherdDeps, "now">, wiring: ReviewWiring | undefined): StepRoute {
-  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: CarryTarget & { heads: string[] }) => {
+export function carrySeatRoute(deps: Pick<ShepherdDeps, "now" | "port">, wiring: CarrySeatWiring | undefined): StepRoute {
+  return codeRoute(CARRY_SEAT_STEP, deps.now, async (input: SeatInput) => {
     const dispatch = wiring?.dispatch;
     if (!dispatch) return { clear: true };
-    for (const head of input.heads) {
+    const walked = await seatHeads(deps.port, wiring.forcePushes ?? ghForcePushes(), input);
+    if ("reason" in walked) return { clear: false, reason: walked.reason };
+    for (const head of walked.heads) {
       const check = await seatFixFirst(() => dispatch.roster(), wiring.reader, { repo: input.repo, pr: input.pr, head });
       if (check.kind !== "clear") return { clear: false, reason: check.kind === "none" ? check.reason : `a seat reviewer said FIX_FIRST at ${head}` };
     }
@@ -98,7 +159,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   const result = await carryStep(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha });
   if (!treeEqual(result)) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
-  const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, heads }, SeatResult);
+  const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, fromHead, head: headSha, heads }, SeatResult);
   if (!seats.clear) return undefined;
   const { merge } = source;
   return mergeVerdict(ctx, {

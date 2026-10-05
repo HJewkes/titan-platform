@@ -6,6 +6,15 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
+import type { WakeInput, WakeStepResult } from "./wake.js";
+
+const KINDS = ["ci-red", "review", "conflict", "fix-proof"] as const;
+const MODES = ["resume", "successor", "live"] as const;
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/** Resolves to the list only when it names exactly the members of wake.ts's union, so a kind or mode added there fails the build here. */
+type Tied<List extends readonly string[], Union extends string> = [Same<List[number], Union>] extends [true] ? List : never;
+const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
+const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
@@ -45,10 +54,12 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("wake"),
     stepId: z.string(),
-    request: z.enum(["ci-red", "review", "conflict"]),
-    outcome: z.enum(["woken", "unhandled"]),
+    /** Null where the step's record does not say: an implementer wake records its outcome, not its request. */
+    request: z.enum(WAKE_KINDS).nullable(),
+    /** Null for the FIX_FIRST counter, which is recorded before the wake it counts. */
+    outcome: z.enum(["woken", "unhandled"]).nullable(),
     agent: z.string().nullable(),
-    mode: z.enum(["resume", "successor"]).nullable(),
+    mode: z.enum(WAKE_MODES).nullable(),
     sessionId: z.string().nullable(),
   }),
   z.object({
@@ -68,7 +79,6 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
   }),
-  z.object({ kind: z.literal("evidence"), stepId: z.string(), record: z.record(z.string(), z.unknown()) }),
 ]);
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 
@@ -280,9 +290,61 @@ export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[]):
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
-  const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse((result.data as { result?: unknown } | undefined)?.result) : undefined;
+  const payload = (result.data as { result?: unknown } | undefined)?.result;
+  const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse(payload) : undefined;
   if (ci?.success) return { kind: "ci", stepId: result.stepId, headSha: ci.data.headSha, conclusion: ci.data.verdict, runUrl: null };
+  const recorded = recordedEntry(result.stepId, payload);
+  if (recorded !== undefined) return recorded;
   return { kind: "step", stepId: result.stepId, iteration: result.iteration, startedAt: null, completedAt: result.completedAt, signal: result.signal, status: "done" };
+}
+
+const LocatorRecord = z.looseObject({
+  source: z.looseObject({ path: z.string() }),
+  evidence: z.looseObject({ line: z.looseObject({ byteOffset: z.number(), byteLength: z.number() }) }),
+});
+const VerdictRecord = z.discriminatedUnion("kind", [
+  z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: z.unknown(), reviewer: z.looseObject({ agentId: z.string() }) }),
+  z.looseObject({ kind: z.literal("none") }),
+]);
+const WakeRecord = z.discriminatedUnion("kind", [
+  z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(WAKE_MODES).optional(), sessionId: z.string().optional() }),
+  z.looseObject({ kind: z.literal("unhandled") }),
+]);
+const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
+
+/** A verdict or wake step whose record parses gets its own entry; anything else stays a plain step. */
+function recordedEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
+  if (stepIdMatches("sh-await-verdict", stepId)) return verdictEntry(stepId, payload);
+  if (stepIdMatches("sh-wake-implementer", stepId)) return wakeEntry(stepId, payload);
+  if (stepIdMatches("sh-wake-fix-first", stepId) && FixFirstRecord.safeParse(payload).success) {
+    return { kind: "wake", stepId, request: "review", outcome: null, agent: null, mode: null, sessionId: null };
+  }
+  return undefined;
+}
+
+function verdictEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
+  const parsed = VerdictRecord.safeParse(payload);
+  if (!parsed.success) return undefined;
+  const none = { kind: "verdict", stepId, verdict: "none", headSha: null, locator: null, reviewer: null } as const;
+  if (parsed.data.kind === "none") return none;
+  const { verdict, head, reviewer } = parsed.data;
+  return { ...none, verdict, headSha: head, locator: locatorView(parsed.data.locator), reviewer: reviewer.agentId };
+}
+
+/** The transcript path and the byte span of the verdict's line; an external review's locator has neither. */
+function locatorView(raw: unknown): { path: string; start: number; end: number } | null {
+  const parsed = LocatorRecord.safeParse(raw);
+  if (!parsed.success) return null;
+  const { byteOffset, byteLength } = parsed.data.evidence.line;
+  return { path: parsed.data.source.path, start: byteOffset, end: byteOffset + byteLength };
+}
+
+function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined {
+  const parsed = WakeRecord.safeParse(payload);
+  if (!parsed.success) return undefined;
+  const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
+  if (parsed.data.kind === "unhandled") return unhandled;
+  return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
 }
 
 function gateEntry(gate: GateRecord): TimelineEntry {

@@ -1,17 +1,20 @@
 import { GITHUB_ACTIONS_APP_ID, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { FactoryHost } from "../host.js";
 import { registerVersionPackages, type ShepherdServices } from "./commands.js";
+import { failureOf } from "./error-class.js";
 import { VERSION_PACKAGES_BRANCH, blockedOnlyByNpm, npmRegistry, publishedSince, type PackageRegistry } from "./release.js";
 
 /** How often `titan-factory serve` looks for a Version Packages PR in each shepherded repo. */
 export const RELEASE_SWEEP_MS = 60_000;
 /** A head this old with no Actions run never started CI, because the changesets action pushes with GITHUB_TOKEN. */
 export const START_CI_AFTER_MS = 2 * 60_000;
+
 export const START_CI_MESSAGE = "Start CI for the Version Packages PR\n\nShepherd pushed this empty commit: a push by the changesets action starts no workflow until the GitHub App (TP-447) pushes instead.";
 
 export interface ReleaseSweepNote {
   repo: RepoSlug;
-  pr: number;
+  /** Absent when the Version Packages PR could not be looked up; `error` says why. */
+  pr?: number;
   registered?: string;
   /** The owner gate cancelled because every package that blocked the release is on npm now. */
   unblocked?: string;
@@ -24,9 +27,15 @@ export async function sweepVersionPackages(host: FactoryHost, services: Shepherd
   const repos = [...new Set(services.store.get().all().map((registration) => registration.repo))];
   const notes: ReleaseSweepNote[] = [];
   for (const repo of repos) {
-    const pr = await services.port.findPr(repo, VERSION_PACKAGES_BRANCH).catch(() => null);
+    let pr: PullRequest | null;
+    try {
+      pr = await services.port.findPr(repo, VERSION_PACKAGES_BRANCH);
+    } catch (error) {
+      notes.push({ repo, error: failureOf(error) });
+      continue;
+    }
     if (pr === null || pr.state !== "open") continue;
-    const note = await sweepOne(host, services, { repo, pr, now, registry }).catch((error: unknown) => ({ repo, pr: pr.number, error: error instanceof Error ? error.message : String(error) }));
+    const note = await sweepOne(host, services, { repo, pr, now, registry }).catch((error: unknown) => ({ repo, pr: pr.number, error: failureOf(error) }));
     if (Object.keys(note).length > 2) notes.push(note);
   }
   return notes;

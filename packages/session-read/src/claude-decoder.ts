@@ -4,6 +4,7 @@ import type { ConversationIdentity, UsageMeasurement } from "@titan-design/agent
 import { assertClaudeSessionSource } from "./claude-source.js";
 import {
   booleanOrNull,
+  cacheWriteSplit,
   extractCompactionSummary,
   messageTextParts,
   metadataEntries,
@@ -216,12 +217,14 @@ class ClaudeContext {
       source: "claude.message.usage",
     };
     const base = this.base(["message", "usage"]);
+    const split = cacheWriteSplit(usage);
     this.observe({
       ...base,
       kind: "usage",
       measurement,
       response: this.item("response", responseId),
       turn: this.activeTurnId ? this.item("turn", this.activeTurnId) : null,
+      ...(split ? { cacheWriteSplit: split } : {}),
     });
   }
 

@@ -1,0 +1,5 @@
+---
+"@titan-design/tool-guard": patch
+---
+
+The variable tracker now honours readonly variables. A variable made readonly by `readonly`, or by `declare`, `typeset` or `local` with an `r` option, keeps its value when a later plain or element assignment, `read`, `printf -v`, `mapfile`, `unset`, `for` or declaration tries to write it, as bash does. A readonly array assignment (`declare -ra`, `readonly -a`) leaves the value unknown, because bash 3.2 rejects it and bash 5 does not. A readonly makes a variable surely readonly only when it surely runs once in the current shell. A readonly after `&&` or `||`, in an `if`, loop or `case` body, in a function body, in a pipeline, background job or `coproc`, under a wrapper that runs a program (`env`, `sudo`, `xargs`), or from `local` makes it only possibly readonly. A variable that only may be readonly becomes unknown on a write, including after a function returns from a `local -r`, inside `eval` or a child shell, or after a declaration word known only at run time.

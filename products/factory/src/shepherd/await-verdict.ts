@@ -1,6 +1,9 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { Presence } from "./presence.js";
+import { namesTarget } from "./verdict-target.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
 export const DEFAULT_EXIT_GRACE_MS = 60_000;
@@ -20,27 +23,30 @@ export interface AwaitVerdictTiming {
   detachGraceMs?: number;
 }
 
+const fail = (message: string): string => `sh-await-verdict: ${message}`;
+const text = (name: string) => z.string({ error: fail(`${name} must be a non-empty string`) }).min(1, fail(`${name} must be a non-empty string`));
+const epochMs = (name: string) => z.number({ error: fail(`${name} must be epoch milliseconds`) }).refine(Number.isFinite, fail(`${name} must be epoch milliseconds`));
+const positiveInt = fail("pr must be a positive integer");
+
+/** Keys run in the order the checks are reported, so the first issue names the same field the hand-written checks did. */
+const AwaitVerdictInputSchema = z.object({
+  pr: z.number({ error: positiveInt }).refine((pr) => Number.isSafeInteger(pr) && pr >= 1, positiveInt),
+  dispatchedAt: epochMs("dispatchedAt"),
+  startedAt: epochMs("startedAt").optional(),
+  head: text("head").regex(HEAD, fail("head must be 40 lowercase hex characters")),
+  repo: text("repo"),
+  reviewerAgentId: text("reviewerAgentId"),
+  reviewerSessionId: text("reviewerSessionId"),
+});
+
+/** A step input that is not an object reads as one with no fields, so it fails on its first required field. */
+const asObject = (raw: unknown): object => (typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {});
+
 export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
-  const input = (raw ?? {}) as Record<string, unknown>;
-  const text = (value: unknown, name: string): string => {
-    if (typeof value !== "string" || value === "") throw new Error(`sh-await-verdict: ${name} must be a non-empty string`);
-    return value;
-  };
-  const { pr, dispatchedAt, startedAt } = input;
-  if (typeof pr !== "number" || !Number.isSafeInteger(pr) || pr < 1) throw new Error("sh-await-verdict: pr must be a positive integer");
-  if (typeof dispatchedAt !== "number" || !Number.isFinite(dispatchedAt)) throw new Error("sh-await-verdict: dispatchedAt must be epoch milliseconds");
-  if (startedAt !== undefined && (typeof startedAt !== "number" || !Number.isFinite(startedAt))) throw new Error("sh-await-verdict: startedAt must be epoch milliseconds");
-  const head = text(input.head, "head");
-  if (!HEAD.test(head)) throw new Error("sh-await-verdict: head must be 40 lowercase hex characters");
-  return {
-    repo: text(input.repo, "repo"),
-    pr,
-    head,
-    reviewerAgentId: text(input.reviewerAgentId, "reviewerAgentId"),
-    reviewerSessionId: text(input.reviewerSessionId, "reviewerSessionId"),
-    dispatchedAt,
-    ...(startedAt !== undefined && { startedAt }),
-  };
+  const parsed = AwaitVerdictInputSchema.safeParse(asObject(raw));
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message);
+  const { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, startedAt } = parsed.data;
+  return { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, ...(startedAt !== undefined && { startedAt }) };
 }
 
 function boundedFindings(text: string): string {
@@ -64,14 +70,14 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   const block = parseVerdictBlock(final.text);
   if (!("repo" in block)) return { kind: "none" };
-  if (block.repo !== input.repo || block.pr !== input.pr || block.head !== input.head) return { kind: "none" };
+  if (!namesTarget(block, input)) return { kind: "none" };
   if (!block.ok) return { kind: "none", reason: "wait" };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
-type Roster = () => Promise<readonly { agentId: string; presence: string }[]>;
+type Roster = () => Promise<readonly { agentId: string; presence: Presence }[]>;
 
 /**
  * Time spent since the reviewer's session was up, or since the intent for a run recorded before that was stamped. The intent
@@ -85,14 +91,14 @@ const sinceStart = (timing: AwaitVerdictTiming, input: AwaitVerdictInput): numbe
  * a broker restart detaches everyone, so its grace runs from first sight.
  */
 function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
-  let gone: { presence: string; since: number } | undefined;
+  let gone: { presence: Presence; since: number } | undefined;
   let firstRead = true;
   return async (input) => {
     const rows = await roster().catch(() => undefined);
     if (!rows) return false;
     const atStart = firstRead;
     firstRead = false;
-    const presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
+    const presence: Presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
     if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
     const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
     if (atStart && presence !== "detached" && sinceStart(timing, input) >= grace) return true;

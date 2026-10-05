@@ -10,6 +10,7 @@ import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import {
   WorkflowCancelledError,
+  WorkflowNotOwnedError,
   WorkflowRecoveryRequiredError,
   type ActiveStep,
   type WorkflowFn,
@@ -78,8 +79,9 @@ export class WorkflowRuntime {
     return run.id;
   }
 
-  async hydrate(): Promise<string[]> {
-    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]);
+  /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
+  async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
+    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]).filter((run) => !options.exclude?.has(run.id));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
@@ -238,7 +240,7 @@ export class WorkflowRuntime {
     if (!run) {
       const current = this.store.get(runId);
       if (current && isTerminal(current.status)) return;
-      throw new Error(`workflow ${runId} is owned by another runtime or does not exist`);
+      throw new WorkflowNotOwnedError(runId);
     }
     run.status = "cancelling";
     run.error = reason;

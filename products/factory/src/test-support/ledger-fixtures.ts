@@ -23,6 +23,8 @@ export interface HeadScript {
   treeEqual?: boolean;
   /** A seat reviewer (a `*-review` agent) said FIX_FIRST at this head, whether or not a review was asked there. */
   seatFixFirst?: boolean;
+  /** The first reads of this behind head report `mergeable_state` unknown, as GitHub does while it has not settled; the compare still says behind. */
+  unknownReads?: number;
 }
 
 /** Main CI at the merge commit: red freezes and fixes, `cancelled-superseded` is read on the newer main push. */
@@ -102,9 +104,9 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
   {
     id: 7,
     gate: "approve-merge",
-    story: "two updates, FIX_FIRST, a behind fix, MERGE, tree-equal update",
+    story: "two updates, FIX_FIRST, a behind fix, MERGE, a fourth update across rounds stops at the bound",
     heads: [{ state: "behind" }, { state: "behind" }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
-    today: merged(2),
+    today: { outcome: "gated", gates: ["stuck-behind"], reviewers: 2, fixers: 0 },
   },
   {
     id: 8,
@@ -175,8 +177,8 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
   {
     id: 17,
     gate: "approve-merge",
-    story: "three updates, MERGE, tree-equal update",
+    story: "three updates, MERGE, a fourth update across rounds stops at the bound",
     heads: [{ state: "behind" }, { state: "behind" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
-    today: merged(1),
+    today: { outcome: "gated", gates: ["stuck-behind"], reviewers: 1, fixers: 0 },
   },
 ];

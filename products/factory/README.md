@@ -42,9 +42,50 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 Owner-specific bindings live in that config file, never in this repo.
 
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
-`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set resolves as `coordinator`, which hitl refuses,
-so the command exits 1 and the gate stays pending. `CLAUDECODE` does not count, because the owner's
-`!` commands in Claude Code set it too.
+`factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
+an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
+login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
+resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
+a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
+which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
+dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
+hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
+agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because
+the owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof
+or a helper path.
+
+The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
+an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
+to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
+decides whether every `gate resolve` asks for presence, including a plain terminal.
+
+`pnpm factory:install` compiles the helper into `native/build/owner-presence`, outside `dist`, so a
+`pnpm build` leaves it in place. `service deploy` only installs and builds, so it does not compile
+the helper: after updating to a release that moved the helper, rerun `pnpm factory:install` or
+`node scripts/factory-build-helper.mjs`. Until then the helper is missing, and a resolve from a shell
+with `AGENT_CHAT_AGENT_ID`, including your own `!` command, is refused as `coordinator`.
+
+Before each run, `gate resolve` checks the helper path with `lstat`. The helper and every parent
+directory up to `/` must be owned by root or by your OS user, with no symlink and no group or other
+write bit. The helper itself must be a regular file. If any check fails, presence fails closed, and
+stderr names the path component that failed. The search order is fixed in code: if
+`/usr/local/libexec/titan-factory/owner-presence` exists, it is the only helper used, even when it
+fails the check. Otherwise the helper is `native/build/owner-presence`. Only a missing path
+(`ENOENT` or `ENOTDIR`) counts as absent: any other `lstat` error on the root helper path or a parent,
+such as `EACCES`, makes presence fail closed, names the error code on stderr, and does not try
+`native/build`.
+
+A helper in `native/build` is owned by your OS user, so an agent running as you can still replace it.
+To close that, install the helper as root after `pnpm factory:install`, from the checkout root:
+
+```sh
+sudo install -d -o root -g wheel -m 755 /usr/local/libexec/titan-factory
+sudo install -o root -g wheel -m 755 products/factory/native/build/owner-presence /usr/local/libexec/titan-factory/owner-presence
+```
+
+Repeat the second command whenever the helper source changes. If `/usr/local/libexec` belongs to
+your user, as it can with an Intel Homebrew install, the check refuses that parent. `dist/bin.js` is
+still writable by your OS user, so an agent that rewrites it can skip the dialog.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
@@ -130,7 +171,8 @@ script says so when the directory is not on `PATH`.
 3. Runs `launchctl bootstrap gui/<uid> <plist>`.
 4. Polls `/health`. The answer must come from the pid launchd reports for the job, so
    a `titan-factory serve` left running in a shell fails the install instead of passing for it.
-   On a timeout the verb prints the last 20 lines of `serve.err.log` and exits 1. The wait
+   On a timeout the verb prints the path of `serve.err.log` and a `tail -n 20` command for it,
+   never the log's lines, since a post-merge chore stores this output, and exits 1. The wait
    is 30 s and covers serve's first GitHub check: a `github` field other than `ok` exits 1
    with one line that carries the field.
 5. With `--mcp`, runs `claude mcp add --transport http --scope user titan-factory http://127.0.0.1:<port>/mcp`.
@@ -278,6 +320,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
+| `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
