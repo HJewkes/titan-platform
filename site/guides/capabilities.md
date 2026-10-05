@@ -591,7 +591,7 @@ Key exports:
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
 - `extractors/python-extractor`: `PythonGraphExtractor`
-- +346 more in the [reference page](/reference/code-graph)
+- +352 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
