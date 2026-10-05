@@ -25,6 +25,7 @@ export const TS_MODULE = lines(
   "export async function load(path: string): Promise<Config> {   ",
   "  const url = \"https://example.test/a\"; // trailing note",
   "  const glob = `/* not a comment */ ${path} // still text`;",
+  "  const kind = typeof/* c */path;",
   "  /* block",
   "     comment */",
   "  return JSON.parse(await readFile(path, \"utf8\")) as Config;",

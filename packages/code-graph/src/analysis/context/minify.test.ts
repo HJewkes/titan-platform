@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Tree } from "web-tree-sitter";
 import { importMarker, minifySource, originalLine } from "./minify.js";
 import { FIXTURES, PY_CLASS, PY_ONLY_IMPORTS, TS_MODULE, TS_NO_IMPORTS, TSX_COMPONENT } from "./minify.fixtures.js";
 
@@ -7,13 +8,19 @@ const isMarker = (line: string): boolean => /^(\/\/|#) … \d+ imports?$/.test(l
 const indent = (line: string): string => /^\s*/.exec(line)?.[0] ?? "";
 const COMMENT = /^\s*(\/\/.*|#.*|\/\*.*\*\/|\{\/\*.*\*\/\})?\s*$/;
 
-/** The one contiguous slice of `source` that `line` lacks, found by common prefix and suffix. */
+/**
+ * The one contiguous slice of `source` that `line` lacks, found by common prefix
+ * and suffix. Where the slice was, `line` may hold one space that keeps two
+ * tokens apart; anything else it holds there is a mismatch.
+ */
 function droppedSlice(source: string, line: string): string | null {
   let prefix = 0;
   while (prefix < line.length && line[prefix] === source[prefix]) prefix++;
-  const suffix = line.length - prefix;
-  if (source.slice(source.length - suffix) !== line.slice(prefix)) return null;
-  return source.slice(prefix, source.length - suffix);
+  let suffix = 0;
+  const room = Math.min(line.length, source.length) - prefix;
+  while (suffix < room && line.at(-1 - suffix) === source.at(-1 - suffix)) suffix++;
+  const inserted = line.slice(prefix, line.length - suffix);
+  return inserted === "" || inserted === " " ? source.slice(prefix, source.length - suffix) : null;
 }
 
 describe("minifySource keeps every surviving line byte-identical (C-90 A)", () => {
@@ -55,6 +62,7 @@ describe("minifySource on TypeScript", () => {
         "export async function load(path: string): Promise<Config> {",
         "  const url = \"https://example.test/a\";",
         "  const glob = `/* not a comment */ ${path} // still text`;",
+        "  const kind = typeof path;",
         "  return JSON.parse(await readFile(path, \"utf8\")) as Config;",
         "}",
         "",
@@ -78,6 +86,17 @@ describe("minifySource on TypeScript", () => {
 
     expect(result.text).toBe("const t = `a  \n\n\nb`;\n");
     expect(result.lineMap).toEqual([1, 2, 3, 4]);
+  });
+
+  it.each([
+    ["typeof/**/x;", "typeof x;"],
+    ["a +/**/+b;", "a + +b;"],
+    ["return/* c */x;", "return x;"],
+    ["f(/* why */x);", "f(x);"],
+  ])("puts one space where %j held a comment between two tokens, none beside a delimiter", async (code, kept) => {
+    const result = await minifySource(`function f(x) {\n  ${code}\n}\n`, "typescript");
+
+    expect(outputLines(result.text)[1]).toBe(`  ${kept}`);
   });
 
   it("removes a mid-line block comment and keeps the code around it", async () => {
@@ -112,6 +131,12 @@ describe("minifySource on TSX", () => {
       "}",
     ]);
     expect(result.lineMap).toEqual([1, 2, 3, 4, 5, 6, 8, 12, 13, 14, 15]);
+  });
+
+  it("puts one space where a `{/* */}` sat between two words of JSX text", async () => {
+    const result = await minifySource("const b = <b>one{/* c */}two</b>;\n", "tsx");
+
+    expect(result.text).toBe("const b = <b>one two</b>;\n");
   });
 });
 
@@ -160,10 +185,36 @@ describe("minifySource on Python", () => {
     expect(result.text).toBe(source);
   });
 
+  it("drops a docstring's trailing `;` with it, leaving no bare `;` row", async () => {
+    const result = await minifySource("def f():\n    \"\"\"doc\"\"\";\n    return 1\n", "python");
+
+    expect(result.text).toBe("def f():\n    return 1\n");
+  });
+
+  it("keeps a module docstring's line out of the marker when an import shares it", async () => {
+    const source = "\"\"\"doc\"\"\"; import os\nimport sys\nimport re\n\nx = 1\n";
+
+    const result = await minifySource(source, "python");
+
+    expect(result).toEqual({ text: "\"\"\"doc\"\"\"; import os\n# … 2 imports\n\nx = 1\n", lineMap: [1, 2, 4, 5] });
+  });
+
   it("keeps an import that shares its line with code out of the marker", async () => {
     const result = await minifySource("import os\nimport sys; x = 1\n", "python");
 
     expect(result).toEqual({ text: "# … 1 import\nimport sys; x = 1\n", lineMap: [1, 2] });
+  });
+});
+
+describe("minifySource tree lifetime", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("deletes the parse tree of every call, so repeated calls do not grow WASM memory", async () => {
+    const deleted = vi.spyOn(Tree.prototype, "delete");
+
+    for (const fixture of FIXTURES) await minifySource(fixture.source, fixture.language);
+
+    expect(deleted).toHaveBeenCalledTimes(FIXTURES.length);
   });
 });
 

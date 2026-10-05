@@ -1,4 +1,4 @@
-import type { Node } from "web-tree-sitter";
+import type { Node, Point } from "web-tree-sitter";
 import { parseFile } from "@titan-design/code-parser";
 import { bodyStatements, descendantsOfType, pythonDocstring } from "../comment-lines.js";
 
@@ -27,6 +27,12 @@ interface Cut {
   pad: boolean;
 }
 
+/** A removed source range: a node, or a docstring with its trailing `;`. */
+interface Span {
+  start: Point;
+  end: Point;
+}
+
 interface ImportBlock {
   startRow: number;
   endRow: number;
@@ -38,6 +44,9 @@ const IMPORT_TYPES: Record<MinifyLanguage, ReadonlySet<string>> = {
   tsx: new Set(["import_statement"]),
   python: new Set(["import_statement", "import_from_statement", "future_import_statement"]),
 };
+
+/** Characters that end a token on their own, so nothing fuses across them. */
+const DELIMITERS: ReadonlySet<string> = new Set(["(", ")", "[", "]", "{", "}", ",", ";"]);
 
 const STRING_TYPES: Record<MinifyLanguage, readonly string[]> = {
   typescript: ["string", "template_string"],
@@ -69,9 +78,18 @@ export function isMinifyLanguage(language: string): language is MinifyLanguage {
  */
 export async function minifySource(text: string, language: string): Promise<MinifiedSource> {
   if (!isMinifyLanguage(language)) return unchanged(text);
-  const root = (await parseFile(text, "source", language)).tree.rootNode;
+  const { tree } = await parseFile(text, "source", language);
+  try {
+    return minifyTree(tree.rootNode, text, language);
+  } finally {
+    tree.delete();
+  }
+}
+
+/** The tree lives in WASM memory, so `minifySource` owns it and deletes it once this returns. */
+function minifyTree(root: Node, text: string, language: MinifyLanguage): MinifiedSource {
   const rows = text.split("\n");
-  const cuts = cutsByRow(removedNodes(root, language));
+  const cuts = cutsByRow(removedSpans(root, language));
   const verbatim = verbatimRows(root, language);
   const block = leadingImportBlock(root, language);
   const out: OutputLine[] = [];
@@ -92,12 +110,23 @@ function unchanged(text: string): MinifiedSource {
   return { text, lineMap: Array.from({ length: count }, (_, i) => i + 1) };
 }
 
-function removedNodes(root: Node, language: MinifyLanguage): Node[] {
+function removedSpans(root: Node, language: MinifyLanguage): Span[] {
   const comments = descendantsOfType(root, "comment");
   if (language !== "python") {
-    return [...comments, ...descendantsOfType(root, "hash_bang_line"), ...jsxCommentExpressions(root)];
+    return [...comments, ...descendantsOfType(root, "hash_bang_line"), ...jsxCommentExpressions(root)].map(spanOf);
   }
-  return [...comments, ...pythonDocstrings(root)];
+  return [...comments.map(spanOf), ...pythonDocstrings(root).map(docstringSpan)];
+}
+
+function spanOf(node: Node): Span {
+  return { start: node.startPosition, end: node.endPosition };
+}
+
+/** `"""doc""";` alone on its row: the `;` goes with the docstring, or the row keeps a bare `;`. */
+function docstringSpan(docstring: Node): Span {
+  const semicolon = docstring.nextSibling;
+  const sameRow = semicolon?.type === ";" && semicolon.startPosition.row === docstring.endPosition.row;
+  return { start: docstring.startPosition, end: sameRow ? semicolon.endPosition : docstring.endPosition };
 }
 
 /** `{/* … *\/}` in JSX: removing only the comment would leave an empty `{}` behind. */
@@ -137,14 +166,14 @@ function moduleDocstring(root: Node): Node | null {
   return first.namedChildren[0]?.type === "string" ? first : null;
 }
 
-function cutsByRow(nodes: readonly Node[]): Map<number, Cut[]> {
+function cutsByRow(spans: readonly Span[]): Map<number, Cut[]> {
   const cuts = new Map<number, Cut[]>();
-  for (const n of nodes) {
-    for (let row = n.startPosition.row; row <= n.endPosition.row; row++) {
-      const from = row === n.startPosition.row ? n.startPosition.column : 0;
-      const to = row === n.endPosition.row ? n.endPosition.column : Number.MAX_SAFE_INTEGER;
+  for (const { start, end } of spans) {
+    for (let row = start.row; row <= end.row; row++) {
+      const from = row === start.row ? start.column : 0;
+      const to = row === end.row ? end.column : Number.MAX_SAFE_INTEGER;
       const list = cuts.get(row) ?? [];
-      list.push({ from, to, pad: row !== n.startPosition.row });
+      list.push({ from, to, pad: row !== start.row });
       cuts.set(row, list);
     }
   }
@@ -166,14 +195,25 @@ function verbatimRows(root: Node, language: MinifyLanguage): Set<number> {
 function keepRow(row: string, cuts: readonly Cut[] | undefined, verbatim: boolean): string | null {
   if (!cuts) return verbatim ? row : row.trimEnd();
   let kept = "";
+  let cutSinceKept = false;
   for (let col = 0; col < row.length; col++) {
     const hits = cuts.filter((c) => col >= c.from && col < c.to);
-    if (hits.length === 0) kept += row[col];
-    else if (hits.every((c) => c.pad)) kept += " ";
+    const char = row[col] ?? "";
+    if (hits.length === 0) {
+      if (cutSinceKept && wouldFuse(kept.at(-1) ?? " ", char)) kept += " ";
+      kept += char;
+      cutSinceKept = false;
+    } else if (hits.every((c) => c.pad)) kept += " ";
+    else cutSinceKept = true;
   }
   const trimmed = kept.trimEnd();
   if (trimmed === "") return null;
   return verbatim ? kept : trimmed;
+}
+
+/** `typeof/**\/x` or `a +/**\/+b`: closing the gap would join two tokens into one, so one space stands in. */
+function wouldFuse(before: string, after: string): boolean {
+  return /\S/.test(before) && /\S/.test(after) && !DELIMITERS.has(before) && !DELIMITERS.has(after);
 }
 
 function leadingImportBlock(root: Node, language: MinifyLanguage): ImportBlock | null {
@@ -188,6 +228,7 @@ function leadingImportBlock(root: Node, language: MinifyLanguage): ImportBlock |
     if (!IMPORT_TYPES[language].has(child.type)) break;
     imports.push(child);
   }
+  while (docstring && imports[0]?.startPosition.row === docstring.endPosition.row) imports.shift();
   const next = children[i];
   while (next && imports.length > 0 && imports[imports.length - 1]?.endPosition.row === next.startPosition.row) imports.pop();
   const first = imports[0];
