@@ -368,7 +368,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     carrySeatRoute(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
-    observeRoute(deps.port, deps.now),
+    observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
   ];
