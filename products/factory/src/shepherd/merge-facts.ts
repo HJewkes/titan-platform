@@ -195,8 +195,14 @@ export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead
 
 /** Only the error's class name, so a reason that reaches a public PR comment carries nothing from the error's text. */
 function errorClass(error: unknown): string {
-  if (!(error instanceof Error)) return "non-Error";
-  return ERROR_CLASS_NAME.test(error.name) ? error.name : "Error";
+  try {
+    if (!(error instanceof Error)) return "non-Error";
+    const name = String(error.name);
+    return ERROR_CLASS_NAME.test(name) ? name : "Error";
+  } catch {
+    // A hostile Proxy or getter can throw from the type check or the name read; none of it is echoed.
+    return "Error";
+  }
 }
 
 /** Only an equal probe result for this head becomes a fact; the reviewer's text never does. */

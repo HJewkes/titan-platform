@@ -1,6 +1,6 @@
 import type { TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
 import { foldUsage } from "@titan-design/agent-protocol";
-import type { NormalizedObservationOf } from "@titan-design/session-read";
+import type { CacheWriteSplit, NormalizedObservationOf } from "@titan-design/session-read";
 import type { PriceRow } from "./prices.js";
 import { priceRequest } from "./price-request.js";
 import type { CompactionMark, ModelRequests, TimelineTokens, TimelineTokenPoint, TokenTimeline } from "./timeline-types.js";
@@ -30,13 +30,15 @@ export interface TokenFoldResult {
 }
 
 export function emptyTokens(): TimelineTokens {
-  return { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  return { input: 0, cacheRead: 0, cacheWrite: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0 };
 }
 
 export function addTokens(into: TimelineTokens, from: TimelineTokens): void {
   into.input += from.input;
   into.cacheRead += from.cacheRead;
   into.cacheWrite += from.cacheWrite;
+  into.cacheWrite5m += from.cacheWrite5m;
+  into.cacheWrite1h += from.cacheWrite1h;
   into.output += from.output;
 }
 
@@ -60,7 +62,7 @@ export class TokenFold {
     }
     // A response written over several lines repeats its usage; the last line holds the final counts.
     const held = this.requests.get(measurement.responseId);
-    const tokens = disjointTokens(measurement.tokens);
+    const tokens = disjointTokens(measurement.tokens, "cacheWriteSplit" in observation ? observation.cacheWriteSplit : undefined);
     const priced = priceRequest(priceInput(tokens), measurement.model ?? "", isoOf(held ? held.atMs : atMs), this.prices);
     this.requests.set(measurement.responseId, {
       atMs: held ? held.atMs : atMs,
@@ -115,14 +117,27 @@ export class TokenFold {
 }
 
 /** Both decoders report `input` as the whole prompt, so cache reads and writes come out of it. */
-function disjointTokens(counts: TokenCounts): TimelineTokens {
+function disjointTokens(counts: TokenCounts, split?: CacheWriteSplit): TimelineTokens {
   const cacheRead = counts.cachedInput ?? 0;
   const cacheWrite = counts.cacheWriteInput ?? 0;
-  return { input: Math.max(0, (counts.input ?? 0) - cacheRead - cacheWrite), cacheRead, cacheWrite, output: counts.output ?? 0 };
+  const input = Math.max(0, (counts.input ?? 0) - cacheRead - cacheWrite);
+  return { input, cacheRead, cacheWrite, ...cacheWriteByTtl(cacheWrite, split), output: counts.output ?? 0 };
+}
+
+/** A total with no usable split is all 5m, the harness default; costReport's request view uses the same rule. */
+function cacheWriteByTtl(total: number, split: CacheWriteSplit | undefined): Pick<TimelineTokens, "cacheWrite5m" | "cacheWrite1h"> {
+  if (split && split.ttl5m + split.ttl1h > 0) return { cacheWrite5m: split.ttl5m, cacheWrite1h: split.ttl1h };
+  return { cacheWrite5m: total, cacheWrite1h: 0 };
 }
 
 function priceInput(tokens: TimelineTokens) {
-  return { inputTokens: tokens.input, cacheReadTokens: tokens.cacheRead, cacheCreationTokens: tokens.cacheWrite, outputTokens: tokens.output };
+  return {
+    inputTokens: tokens.input,
+    cacheReadTokens: tokens.cacheRead,
+    cacheCreation5mTokens: tokens.cacheWrite5m,
+    cacheCreation1hTokens: tokens.cacheWrite1h,
+    outputTokens: tokens.output,
+  };
 }
 
 function isoOf(atMs: number | null): string {
