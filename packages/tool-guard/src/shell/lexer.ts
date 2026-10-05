@@ -1,4 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
+import { type ArithTrials, cachedEnd, chargeTrial, newTrials } from "./arith-trials.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -72,6 +73,7 @@ interface LexState {
   subscriptEnd: number;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
+  trials: ArithTrials;
 }
 
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
@@ -89,8 +91,8 @@ export function tokenize(src: string): Token[] {
   return s.tokens;
 }
 
-function newState(src: string, i: number, nested: boolean): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1 };
+function newState(src: string, i: number, nested: boolean, trials = newTrials(src)): LexState {
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -119,7 +121,7 @@ function step(s: LexState): void {
   const c = s.src[s.i] as string;
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
-  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = arithmeticEnd(s);
+  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s));
   if (s.i < s.arithEnd && s.src.startsWith("<<", s.i)) return appendShift(s);
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
@@ -141,18 +143,21 @@ function markSubscript(s: LexState): void {
 /**
  * Index of the `))` closing the `((` at `s.i`, or -1 when bash reads nested subshells instead:
  * like bash, it reads to the `)` matching the first `(` and wants another `)` right after it.
- * A trial lex with every `<<` a shift finds that `)` through the same quote readers.
+ * A trial lex with every `<<` a shift finds that `)` through the same quote readers; it fails
+ * closed once the source's trials have spent their budget.
  */
 function arithmeticEnd(s: LexState): number {
-  const trial = newState(s.src, s.i + 2, true);
+  const trial = newState(s.src, s.i + 2, true, s.trials);
   trial.arithEnd = Number.POSITIVE_INFINITY;
+  let reached = s.src.length;
   try {
     lex(trial);
+    reached = trial.i;
   } catch (error) {
-    if (error instanceof ParseError) return -1;
-    throw error;
+    if (!(error instanceof ParseError) || s.trials.budget < 0) throw error;
   }
-  return s.src[trial.i + 1] === ")" ? trial.i : -1;
+  if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
+  return reached < s.src.length && s.src[reached + 1] === ")" ? reached : -1;
 }
 
 function appendShift(s: LexState): void {
@@ -291,7 +296,7 @@ function pushRef(w: WordToken, name: string, text: string): void {
 }
 
 function readSubstitution(s: LexState, start: number): Token[] {
-  const inner = newState(s.src, start, true);
+  const inner = newState(s.src, start, true, s.trials);
   lex(inner);
   s.i = inner.i + 1;
   return inner.tokens;
@@ -315,19 +320,19 @@ function readBalanced(s: LexState, w: WordToken, open: string, close: string): v
   if (name) pushRef(w, name, text);
   else {
     markComputed(w).value += text;
-    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i));
+    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials));
   }
   s.i = i + 1;
 }
 
 /** Token lists of every `$(...)` and backtick substitution in `src` between `from` and `to`. */
-export function scanSubstitutions(src: string, from: number, to: number): Token[][] {
+export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
   const found: Token[][] = [];
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
     else if (c === "$" && src[j + 1] === "(" && src[j + 2] !== "(") {
-      const inner = newState(src, j + 2, true);
+      const inner = newState(src, j + 2, true, trials);
       lex(inner);
       found.push(inner.tokens);
       j = inner.i;

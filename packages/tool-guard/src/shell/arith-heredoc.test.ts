@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
-import { type RedirectToken, tokenize } from "./lexer.js";
+import { ParseError, type RedirectToken, tokenize } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -40,6 +40,38 @@ describe("a shift operator inside an arithmetic context", () => {
 
   it("makes no redirect for the shift", () => {
     expect(redirects("(( Y<<1 ))")).toEqual([]);
+  });
+});
+
+describe("the cost of finding where an arithmetic command ends", () => {
+  const opened = (depth: number) => "(( $( ".repeat(depth);
+  const nested = (depth: number) => `${opened(depth)}1${" ) ))".repeat(depth)}; ${PUSH}`;
+
+  function lexMillis(command: string): number {
+    const start = performance.now();
+    try {
+      tokenize(command);
+    } catch (error) {
+      if (!(error instanceof ParseError)) throw error;
+    }
+    return performance.now() - start;
+  }
+
+  it.each([
+    ["20 unclosed levels of (( $(", opened(20)],
+    ["20 closed levels of (( $(", nested(20)],
+    ["30 unclosed levels of (( $(", opened(30)],
+    ["a run of 20000 (", "(".repeat(20000)],
+  ])("stays fast for %s", (_how, command) => {
+    expect(lexMillis(command)).toBeLessThan(500);
+  });
+
+  it("refuses to lex deep nesting rather than spend the budget", () => {
+    expect(() => tokenize(opened(30))).toThrow(ParseError);
+  });
+
+  it("still reads a few nested levels", () => {
+    expect(spellings(nested(3))).toContain("bash.merge.git-push-protected");
   });
 });
 
