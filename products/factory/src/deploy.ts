@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -60,7 +61,6 @@ type Stop = { kind: "stop"; code: number; message: string; record?: DeployRecord
 type Plan = { kind: "go"; go: Go } | Stop;
 
 const UNKNOWN = "unknown";
-const DIRTY_SUFFIX = "-dirty";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
 const OUTPUT_TAIL_LINES = 20;

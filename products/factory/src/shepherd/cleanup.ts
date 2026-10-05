@@ -1,6 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
+import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
@@ -11,8 +12,7 @@ export const SH_CLEANUP_POLL_MS = 30_000;
 
 export interface CleanupAgent {
   name: string;
-  /** `live`, `detached` or `exited`, as agent-chat's roster reports it. */
-  presence: string;
+  presence: Presence;
   status: string;
 }
 

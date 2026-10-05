@@ -62,4 +62,19 @@ describe("behindMain", () => {
     expect(behindMain({ sha: "unknown", exec }).status()).toBe("unknown");
     expect(exec).not.toHaveBeenCalled();
   });
+
+  it("reports unknown without calling gh when the factory repo is undefined", () => {
+    const exec = vi.fn<GhExec>(ok("1"));
+
+    expect(behindMain({ sha: "abc", repo: undefined, exec }).status()).toBe("unknown");
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("compares against the repo it is given", async () => {
+    const exec = vi.fn<GhExec>(ok("0"));
+
+    await behindMain({ sha: "abc", repo: "acme/fork", exec }).refresh();
+
+    expect(exec.mock.calls[0]?.[0]).toContain("repos/acme/fork/compare/abc...main");
+  });
 });

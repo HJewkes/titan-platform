@@ -1,9 +1,10 @@
 import { execGh, type GhExec } from "@titan-design/github";
+import { PROBE_PENDING } from "./build-info.js";
+import { cachedProbe, type CachedProbe } from "./cached-probe.js";
 import { redactForEvidence } from "./redact.js";
 
 export const GITHUB_PROBE_TTL_MS = 60_000;
 export const GITHUB_PROBE_TIMEOUT_MS = 10_000;
-const PENDING = "checking";
 
 export interface GithubHealthOptions {
   exec?: GhExec;
@@ -12,32 +13,13 @@ export interface GithubHealthOptions {
   timeoutMs?: number;
 }
 
-export interface GithubHealth {
-  /** `ok`, the redacted gh error, or `checking` before the first probe lands; never waits on gh. */
-  status(): string;
-  /** Probe now unless one is in flight or the last result is still fresh. */
-  refresh(): Promise<void>;
-}
+/** `ok`, the redacted gh error, or `checking` before the first probe lands; never waits on gh. */
+export type GithubHealth = CachedProbe<string, string>;
 
-/** Health is synchronous, so it reports the last `gh api rate_limit` result and refreshes it in the background at most once per ttl. */
+/** Reports the last `gh api rate_limit` result and refreshes it in the background at most once per ttl. */
 export function githubHealth(options: GithubHealthOptions = {}): GithubHealth {
   const { exec = execGh, now = Date.now, ttlMs = GITHUB_PROBE_TTL_MS, timeoutMs = GITHUB_PROBE_TIMEOUT_MS } = options;
-  let last: { value: string; at: number } | undefined;
-  let inFlight: Promise<void> | null = null;
-  const refresh = (): Promise<void> => {
-    if (inFlight || (last && now() - last.at < ttlMs)) return inFlight ?? Promise.resolve();
-    inFlight = probe(exec, timeoutMs)
-      .then((value) => void (last = { value, at: now() }))
-      .finally(() => (inFlight = null));
-    return inFlight;
-  };
-  return {
-    status: () => {
-      void refresh();
-      return last?.value ?? PENDING;
-    },
-    refresh,
-  };
+  return cachedProbe(() => probe(exec, timeoutMs), { now, ttlMs, pending: PROBE_PENDING });
 }
 
 async function probe(exec: GhExec, timeoutMs: number): Promise<string> {
