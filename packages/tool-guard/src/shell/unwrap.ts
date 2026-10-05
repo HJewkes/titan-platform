@@ -260,10 +260,10 @@ function clusterReplace(v: string, next: string | undefined): string | null {
   return null;
 }
 
-/** Whether option word `v` takes the next word as its value: `-I`, or a cluster ending in one, `-tI`. */
+/** Whether option word `v` takes the next word as its value: `-I`, or a cluster whose first value option ends it, `-tI`, `-0n`. */
 function takesValue(v: string, values: string[] = []): boolean {
   if (values.includes(v)) return true;
-  if (!/^-[A-Za-z]{2,}$/.test(v)) return false;
+  if (!/^-[A-Za-z0-9]{2,}$/.test(v)) return false;
   return [...v.slice(1)].findIndex((c) => values.includes(`-${c}`)) === v.length - 2;
 }
 
