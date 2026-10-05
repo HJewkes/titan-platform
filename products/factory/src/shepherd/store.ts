@@ -9,13 +9,18 @@ export type TaskKind = (typeof TASK_KINDS)[number];
 
 const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "security"]);
 
-/** Why an explicit move from `from` to `to` is refused, or undefined when it applies. A security run never leaves security: it skips the fix-proof gate and gains carried verdicts. */
+/**
+ * Why an explicit move from `from` to `to` is refused, or undefined when it applies. A security run never leaves security,
+ * because only the other kinds may carry a reviewed MERGE across a tree-equal update (`CARRYING_KINDS`, MRG-AU-RC).
+ * A correctness run may not move to a kind outside `FIX_PROOF_KINDS`. Nothing reads the kind to run or skip fix-proof today;
+ * these refusals are a guard on the stored kind, not a gate.
+ */
 export function kindMoveRefusal(from: TaskKind, to: TaskKind): string | undefined {
   if (from === "security" && to !== "security") {
-    return `kind ${from} cannot move to ${to}: a security run keeps its fix-proof gate and its fresh reviewer, and ${to} would drop at least one of them`;
+    return `kind ${from} cannot move to ${to}: a security run keeps its fresh reviewer, and ${to} would let it carry a reviewed MERGE across an update`;
   }
   if (FIX_PROOF_KINDS.has(from) && !FIX_PROOF_KINDS.has(to)) {
-    return `kind ${from} requires the fix-proof gate and cannot move to ${to}, which skips it`;
+    return `kind ${from} cannot move to ${to}, which is outside the fix-proof kinds`;
   }
   return undefined;
 }
@@ -30,7 +35,7 @@ export interface RegistrationInput {
   implementer: string;
   reviewer?: string;
   policy: EffectivePolicy;
-  /** Absent means `unknown`; a value outside `TASK_KINDS` is refused, because `unknown` skips the fix-proof gate. */
+  /** Absent means `unknown`; a value outside `TASK_KINDS` is refused. `unknown` never carries a reviewed MERGE. */
   kind?: string;
   /** Names the slice of a multi-slice task this PR delivers; landing then notes the task instead of closing it. */
   slice?: string;
@@ -240,8 +245,8 @@ export class ShepherdStore implements HoldLookup {
 
   /**
    * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
-   * An omitted kind keeps the stored one, so a repeat without `--kind` cannot drop a run out of the fix-proof gate.
-   * An explicit kind that would move a gated run past its gate, or a security run to any other kind, is refused (`kindMoveRefusal`).
+   * An omitted kind keeps the stored one, so a repeat without `--kind` cannot change whether the run carries a reviewed MERGE.
+   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`).
    */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);

@@ -2,6 +2,7 @@ import type { FactoryHost } from "../host.js";
 import type { ShepherdServices } from "./commands.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { supersedeMovedGates, type SupersededGate } from "./head-moved.js";
+import { FINISHED_RUN_STATUSES } from "./run-status.js";
 
 export const ORPHANED = "orphaned: the run already ended";
 
@@ -25,14 +26,12 @@ export interface ResyncReport {
   supersedeError?: string;
 }
 
-const ENDED_RUNS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
-
 /** A gate id is `<runId>/<step>`; a gate whose run is gone from the store is left alone. */
 function orphanGates(host: FactoryHost): string[] {
   return host.gates.listPending().flatMap((gate) => {
     const runId = gate.id.slice(0, Math.max(0, gate.id.indexOf("/")));
     const status = runId ? host.runtime.status(runId)?.status : undefined;
-    return status !== undefined && ENDED_RUNS.has(status) ? [gate.id] : [];
+    return status !== undefined && FINISHED_RUN_STATUSES.has(status) ? [gate.id] : [];
   });
 }
 

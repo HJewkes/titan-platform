@@ -226,3 +226,104 @@ describe("variables built up before the command they name", () => {
     expect(gitArgs("X=status; printf -vX %s \"$(cmd)\"; git $X")).toEqual([["$X"]]);
   });
 });
+
+describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
+  it.each([
+    ["a plain write", "readonly Y=push; Y=status; git $Y origin HEAD:main"],
+    ["an element write", "declare -r Y=push; Y[0]=status; git $Y origin HEAD:main"],
+    ["read", "readonly Y=push; read Y; git $Y origin HEAD:main"],
+    ["printf -v", "readonly Y=push; printf -v Y status; git $Y origin HEAD:main"],
+    ["mapfile", "readonly Y=push; mapfile Y < list; git $Y origin HEAD:main"],
+    ["a later declare", "readonly Y=push; declare Y=status; git $Y origin HEAD:main"],
+    ["unset", "readonly Y=push; unset Y; git $Y origin HEAD:main"],
+    ["an element write before a command", "readonly Y=push; Y[0]=status true; git $Y origin HEAD:main"],
+    ["a local over a readonly global", "readonly Y=push; f() { local Y=status; git $Y origin HEAD:main; }; f"],
+    ["a readonly name listed alone", "Y=push; readonly Y; Y=status; git $Y origin HEAD:main"],
+    ["a write in a subshell", "readonly Y=push; ( Y=status; git $Y origin HEAD:main )"],
+  ])("keeps %s from changing the subcommand", (_, command) => {
+    expect(pushSubjects(command)).toEqual([{ branch: "main" }]);
+  });
+
+  it.each([
+    ["readonly -a", "Y=push; readonly -a Y=status; git $Y origin HEAD:main"],
+    ["declare -ra", "Y=push; declare -ra Y=status; git $Y origin HEAD:main"],
+    ["declare -a -r", "Y=push; declare -a -r Y=status; git $Y origin HEAD:main"],
+    ["typeset -ar", "Y=push; typeset -ar Y=status; git $Y origin HEAD:main"],
+  ])("still reads a push after %s, which bash 3.2 rejects", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a plain write", "readonly Y=push; Y=status; git $Y"],
+    ["an element write", "declare -r Y=push; Y[0]=status; git $Y"],
+    ["read", "readonly Y=push; read Y; git $Y"],
+    ["a later declare", "readonly Y=push; declare Y=status; git $Y"],
+    ["a later readonly", "readonly Y=push; readonly Y=status; git $Y"],
+  ])("keeps the old value after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["push"]]);
+  });
+
+  it.each([
+    ["a non-readonly variable", "Y=push; Y=status; git $Y"],
+    ["a readonly variable in a subshell that ended", "Y=push; ( readonly Y=x ); Y=status; git $Y"],
+    ["a -r word after a name, which bash reads as a name", "declare Y=push -r; Y=status; git $Y"],
+    ["an export -n", "export -n Y=push; Y=status; git $Y"],
+  ])("tracks the new value of %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["status"]]);
+  });
+
+  it.each([
+    ["a function's local -r ended", "Y=status; f() { local -r Y=x; }; f; Y=push; git $Y origin HEAD:main"],
+    ["a run-time declaration word", "F=$(cmd); declare $F; Z=status; git $Z origin HEAD:main"],
+    ["eval, which keeps readonly in a scope of its own", "readonly Y=push; eval 'Y=status; git $Y origin HEAD:main'"],
+    ["a child shell, which drops readonly", "readonly Y=status; export Y; bash -c 'Y=push; git $Y origin HEAD:main'"],
+  ])("still reads a push after %s may or may not leave a variable readonly", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["after a false &&", "Y=status; false && readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a true ||", "Y=status; true || readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["in an untaken if", "Y=status; if false; then readonly Y; fi; Y=push; git $Y origin HEAD:main"],
+    ["with a value in an untaken if", "Y=status; if false; then readonly Y=status; fi; Y=push; git $Y origin HEAD:main"],
+    ["in an unmatched case arm", "Y=status; case a in b) readonly Y;; esac; Y=push; git $Y origin HEAD:main"],
+    ["in a while false body", "Y=status; while false; do readonly Y; done; Y=push; git $Y origin HEAD:main"],
+    ["in an uncalled function", "Y=status; f() { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["as a top-level local -r", "Y=status; local -r Y; Y=push; git $Y origin HEAD:main"],
+    ["piped to cat", "Y=status; readonly Y | cat; Y=push; git $Y origin HEAD:main"],
+    ["in the background", "Y=status; readonly Y & Y=push; git $Y origin HEAD:main"],
+    ["in a group after a false &&", "Y=status; false && { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["in a piped group", "Y=status; { readonly Y; } | cat; Y=push; git $Y origin HEAD:main"],
+    ["in an uncalled function keyword body", "Y=status; function f { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues &&", "Y=status; false &&\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues ||", "Y=status; true ||\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a newline that continues a pipe", "Y=status; false |\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["after a comment and newline that continue &&", "Y=status; false && # c\nreadonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under env", "Y=status; env readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under nohup", "Y=status; nohup readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under sudo", "Y=status; sudo readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under timeout", "Y=status; timeout 1 readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["under xargs", "Y=status; echo Y | xargs readonly; Y=push; git $Y origin HEAD:main"],
+    ["under xargs -I", "Y=status; echo Y | xargs -I{} readonly {}; Y=push; git $Y origin HEAD:main"],
+    ["under coproc", "Y=status; coproc readonly Y; Y=push; git $Y origin HEAD:main"],
+    ["in a coproc group", "Y=status; coproc { readonly Y; }; Y=push; git $Y origin HEAD:main"],
+    ["in a case arm reached by ;&", "Y=status; case x in y) :;& z) readonly Y;; esac; Y=push; git $Y origin HEAD:main"],
+  ])("still reads a later write after a readonly bash may never run %s", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["after a plain command", "false; readonly Y=push; Y=status; git $Y"],
+    ["in a plain group", "{ readonly Y=push; }; Y=status; git $Y"],
+    ["after a closed if", "if true; then :; fi; readonly Y=push; Y=status; git $Y"],
+    ["before an &&", "readonly Y=push && Y=status; git $Y"],
+    ["under builtin", "builtin readonly Y=push; Y=status; git $Y"],
+    ["under command", "command readonly Y=push; Y=status; git $Y"],
+  ])("keeps the old value after a readonly that surely runs %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["push"]]);
+  });
+
+  it("restores a function local's outer value even while it is readonly", () => {
+    expect(gitArgs("Y=push; f() { local -r Y=status; }; f; git $Y")).toEqual([["push"]]);
+  });
+});

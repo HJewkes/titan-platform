@@ -198,6 +198,59 @@ describe("ANSI-C strings", () => {
   });
 });
 
+describe("subscripts with blanks inside the brackets", () => {
+  const words = (src: string) => tokenize(src).map((t) => (t.type === "word" ? t.value : `<${t.type}>`));
+
+  it.each([
+    ["a prefix assignment", "Y[ 0 ]=x git push origin HEAD:main", ["Y[ 0 ]=x", "git", "push", "origin", "HEAD:main"]],
+    ["an append", "Y[ 1 ]+=x", ["Y[ 1 ]+=x"]],
+    ["an assignment after another", "A=1 Y[ 0 ]=x git", ["A=1", "Y[ 0 ]=x", "git"]],
+    ["an assignment after an operator", "Y=status; Y[ 0 ]=push", ["Y=status", "<op>", "Y[ 0 ]=push"]],
+    ["an assignment after a reserved word", "if true; then Y[ 0 ]=x git; fi", ["if", "true", "<op>", "then", "Y[ 0 ]=x", "git", "<op>", "fi"]],
+    ["an operator inside the brackets", "Y[ 0;1 ]=x git", ["Y[ 0;1 ]=x", "git"]],
+    ["a quoted bracket inside the brackets", "Y[ ']' ]=x git", ["Y[ ] ]=x", "git"]],
+    ["an escaped bracket inside the brackets", "Y[ \\] ]=x git", ["Y[ ] ]=x", "git"]],
+    ["a nested subscript", "Y[ a[ 1 ] ]=x git", ["Y[ a[ 1 ] ]=x", "git"]],
+  ])("keeps %s as one word", (_how, src, expected) => {
+    expect(words(src)).toEqual(expected);
+  });
+
+  it.each([
+    ["the test command", "[ 0 ]", ["[", "0", "]"]],
+    ["an argument", "echo Y[ 0 ]", ["echo", "Y[", "0", "]"]],
+    ["an argument shaped like an assignment", "echo Y[ 0 ]=x", ["echo", "Y[", "0", "]=x"]],
+    ["an unclosed bracket", "Y[ 0", ["Y[", "0"]],
+    ["a bracket with no = after it", "Y[ 0 ] x", ["Y[", "0", "]", "x"]],
+    ["a word that opens a subshell", "( Y[ 0 ]=x )", ["<op>", "Y[", "0", "]=x", "<op>"]],
+    ["a reserved word after an assignment", "A=1 then Y[ 0 ]=x", ["A=1", "then", "Y[", "0", "]=x"]],
+    ["a word after a redirect", ">/dev/null Y[ 0 ]=x", ["<redirect>", "Y[", "0", "]=x"]],
+    ["a quoted assignment before it", 'A="1" Y[ 0 ]=x', ["A=1", "Y[", "0", "]=x"]],
+    ["brackets whose $'..' string holds quotes", `Y[ $'\\'"' ]; echo "]=x"`, ["Y[", "'\"", "]", "<op>", "echo", "]=x"]],
+    ["a case pattern after ;;", "case a in b) :;; Y[ 0 ]=x) :;; esac", ["case", "a", "in", "b", "<op>", ":", "<op>", "Y[", "0", "]=x", "<op>", ":", "<op>", "esac"]],
+  ])("splits %s as before", (_how, src, expected) => {
+    expect(words(src)).toEqual(expected);
+  });
+
+  it.each([
+    ["case", "Y[ 0 ]=x case", ["Y[", "0", "]=x", "case"]],
+    ["esac", "Y[ 0 ]=x esac", ["Y[", "0", "]=x", "esac"]],
+    ["[[", "Y[ 0 ]=x [[", ["Y[", "0", "]=x", "[["]],
+    ["]]", "Y[ 0 ]=x ]]", ["Y[", "0", "]=x", "]]"]],
+    ["((", "Y[ 0 ]=x ((", ["Y[", "0", "]=x", "<op>", "<op>"]],
+    ["))", "Y[ 0 ]=x ))", ["Y[", "0", "]=x", "<op>", "<op>"]],
+    ["$((", "Y[ 0 ]=x $((1))", ["Y[", "0", "]=x", "$((1))"]],
+    ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
+    ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
+    ...["@", "!", "?", "*", "+"].map((op): [string, string, string[]] => [
+      `${op}(`,
+      `Y[ 0 ]=x ${op}(a)`,
+      ["Y[", "0", "]=x", op, "<op>", "a", "<op>"],
+    ]),
+  ])("splits as before when the text holds %s anywhere", (_token, src, expected) => {
+    expect(words(src)).toEqual(expected);
+  });
+});
+
 describe("variable references", () => {
   it("records plain references and marks substitutions as computed", () => {
     const [plain, braced, computed] = tokenize('"$F" ${HOME}/x "$(pwd)"') as WordToken[];
