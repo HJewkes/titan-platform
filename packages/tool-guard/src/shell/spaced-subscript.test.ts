@@ -58,6 +58,9 @@ describe("a subscript assignment with blanks inside the brackets", () => {
     ["a backtick span holding ]", "Y[ `echo ]` ]=x git push origin HEAD:main"],
     ["a ${ } holding ]", "Y[ ${Z:-]} ]=x git push origin HEAD:main"],
     ["a nested $( $( ] ) )", "Y[ $( $( ] ) ) ]=x git push origin HEAD:main"],
+    ["a $( ) holding a nested subscript", "Y[ $( A[ ) ]=1 ) ]=x git push origin HEAD:main"],
+    ["a backtick span holding a nested subscript", "Y[ `A[ ) ]=1` ]=x git push origin HEAD:main"],
+    ["a ${ } holding a $( ) with a nested subscript", "Y[ ${Z:-$( A[ ) ]=1 )} ]=x git push origin HEAD:main"],
   ])("does not hide a push behind a subscript holding %s", (_how, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
