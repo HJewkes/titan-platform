@@ -1,6 +1,6 @@
 import type { MinifyLanguage } from "./minify.js";
 
-export interface MinifyFixture {
+interface MinifyFixture {
   name: string;
   language: MinifyLanguage;
   source: string;
