@@ -16,7 +16,7 @@ export interface PrSnapshot extends PrReads {
   invalidate(repo: RepoSlug): void;
 }
 
-export interface PrSnapshotOptions {
+interface PrSnapshotOptions {
   now?: () => number;
   /** One conditional open-list read per repo per tick. */
   tickMs?: number;
@@ -26,9 +26,9 @@ export interface PrSnapshotOptions {
   settledMs?: number;
 }
 
-export const SNAPSHOT_TICK_MS = 60_000;
-export const SNAPSHOT_PENDING_MS = 3 * 60_000;
-export const SNAPSHOT_SETTLED_MS = 30 * 60_000;
+const SNAPSHOT_TICK_MS = 60_000;
+const SNAPSHOT_PENDING_MS = 3 * 60_000;
+const SNAPSHOT_SETTLED_MS = 30 * 60_000;
 
 interface Timing {
   now: () => number;

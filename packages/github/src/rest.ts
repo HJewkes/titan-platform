@@ -12,7 +12,7 @@ export interface HttpResponse {
 export type Fields = Record<string, string>;
 
 /** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
-export type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
+type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
 
 /** Every call is `gh api -i`, so the status line, ETag, Link and rate headers are all visible. */
 export interface Rest {
