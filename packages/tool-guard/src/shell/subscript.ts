@@ -7,10 +7,13 @@ const PIPES = new Set(["|", "|&"]);
 const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 /**
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
- * newlines that start no command, so no token position can say where an assignment stands. Any of them in the
- * text, quoted or not, refuses the join.
+ * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
+ * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
+ * the join alone.
  */
 const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
+
+const UNSURE = -2;
 
 /**
  * Bash reads `NAME[...]` through the matching `]` as one word, blanks included, when it stands where an
@@ -18,7 +21,7 @@ const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/;
  * Returns the index of that `]` for the `[` at `open`, or -1 when the word lexes as usual.
  */
 export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[]): number {
-  if (UNPLACEABLE_RE.test(src) || !atAssignmentPosition(tokens)) return -1;
+  if (UNPLACEABLE_RE.test(src.slice(0, open)) || !atAssignmentPosition(tokens)) return -1;
   const close = matchingBracket(src, open);
   const after = close === -1 ? "" : src.slice(close + 1, close + 3);
   return after.startsWith("=") || after === "+=" ? close : -1;
@@ -71,7 +74,34 @@ function skipQuoted(src: string, j: number): number {
   if (c === "'") return src.indexOf("'", j + 1);
   if (c === '"') return closingQuote(src, j + 1, '"');
   if (c === "$" && src[j + 1] === "'") return closingQuote(src, j + 2, "'");
+  if (c === "`") return skippedSpan(j, closingBacktick(src, j));
+  if (c === "$" && src[j + 1] === "(") return skippedSpan(j, closingSubstitution(src, j + 2, "(", ")"));
+  if (c === "$" && src[j + 1] === "{") return skippedSpan(j, closingSubstitution(src, j + 2, "{", "}"));
   return j;
+}
+
+/** An unsure span is not skipped: the bracket scan reads its characters one by one, as it did before spans were skipped. */
+function skippedSpan(j: number, end: number): number {
+  return end === UNSURE ? j : end;
+}
+
+/**
+ * Index of the `close` ending a `$( )` or `${ }` body that starts at `from`, nesting and quotes included; UNSURE when
+ * it never closes. A `#` in `$( )` may open a comment that hides the closer, and a `[` may open a nested spaced
+ * subscript whose `)` or `}` is no closer, so the scan cannot be sure and returns UNSURE.
+ */
+function closingSubstitution(src: string, from: number, open: string, close: string): number {
+  let depth = 1;
+  for (let k = from; k < src.length; k++) {
+    const end = skipQuoted(src, k);
+    if (end === -1) return UNSURE;
+    const c = end === k ? src[k] : "";
+    if (c === "[" || (c === "#" && open === "(")) return UNSURE;
+    if (c === open) depth++;
+    if (c === close && --depth === 0) return k;
+    k = end;
+  }
+  return UNSURE;
 }
 
 /** Index of the next unescaped `quote` from `from`; -1 when there is none. */
@@ -81,4 +111,10 @@ function closingQuote(src: string, from: number, quote: string): number {
     else if (src[k] === quote) return k;
   }
   return -1;
+}
+
+/** Index of the closing backtick; UNSURE when there is none or the span holds a `[` the scan cannot match. */
+function closingBacktick(src: string, j: number): number {
+  const end = closingQuote(src, j + 1, "`");
+  return end === -1 || src.slice(j, end).includes("[") ? UNSURE : end;
 }

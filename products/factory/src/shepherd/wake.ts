@@ -27,7 +27,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 
 /** The agent-chat profile a successor starts under; the profile is its tool grant. */
 export const SUCCESSOR_PROFILE = "implementer";
-export { FIX_FIRST_STEP, LOG_BUDGET_BYTES, LOG_TAIL_LINES, STRUCTURAL_FIX_FIRST, defectClassSection, isRegistry, tailBytes } from "./wake-brief.js";
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
@@ -83,7 +82,7 @@ const WakeInputSchema = z.object({
   fixFirst: z.number().int().positive().optional(),
 });
 
-type WakeInput = z.infer<typeof WakeInputSchema>;
+export type WakeInput = z.infer<typeof WakeInputSchema>;
 type Mode = "resume" | "successor" | "live";
 type Fallback = "resume" | "message";
 /** The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. */

@@ -17,6 +17,7 @@ import { registerService } from "./cli-service.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
+import type { ShepherdCommandName } from "./shepherd/commands.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -184,7 +185,7 @@ function registerArgs(target: string, opts: RegisterOpts): Record<string, unknow
   return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
-async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
+async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
   let args: object;
   try {
     args = argsOf();
@@ -204,7 +205,7 @@ async function runShepherd(verbs: Verbs, name: string, argsOf: () => object, opt
   });
 }
 
-function printShepherd(io: CliIo, name: string, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
+function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
     return EXIT.FAILURE;

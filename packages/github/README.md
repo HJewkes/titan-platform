@@ -64,7 +64,9 @@ an empty or partial list. `compareFiles(repo, base, head)` returns `{ mergeBaseS
 truncated }`. GitHub caps compare at 300 files and 250 commits, also silently; `truncated` is
 true when `files` reaches 300 or the commits returned are fewer than `total_commits`. When it is
 true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
-unknown. `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
+unknown. `listPrCommits(repo, pr)` returns the PR's commit shas oldest first; GitHub stops at
+the first 250 (`PR_COMMITS_CAP`), so a list whose last sha is not the head is short.
+`upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
 when none by the authenticated `gh` user has `marker` (an HTML comment the caller builds, also
 put in `body`) alone on a line; trailing whitespace on that line still counts. Another author's comment or a longer marker never counts. Under a GitHub App installation token,
 `GET /user` is 403, so pass the app's bot login: `githubPort(wire, { login: "my-app[bot]" })`

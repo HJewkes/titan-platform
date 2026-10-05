@@ -52,10 +52,15 @@ export function resolveCheckout(repo: string, configured: string | undefined, ho
   return { dir };
 }
 
+/** Named so a step reason, which carries only an error's class, still says the checkout was the problem; the message holds a local path. */
+class ReviewCheckoutUnusable extends Error {
+  override readonly name = "ReviewCheckoutUnusable";
+}
+
 /** Throws unless the repo has an absolute checkout path that is a directory, so a reviewer never starts in the factory's own cwd. */
 function checkoutDir(repo: string, cwdFor: AgentChatReviewerDispatchOptions["cwdFor"]): string {
   const resolved = resolveCheckout(repo, cwdFor(repo));
-  if ("problem" in resolved) throw new Error(resolved.problem);
+  if ("problem" in resolved) throw new ReviewCheckoutUnusable(resolved.problem);
   return resolved.dir;
 }
 

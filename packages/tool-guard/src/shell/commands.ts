@@ -2,10 +2,11 @@ import { ParseError, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { findExecs, unwrap } from "./unwrap.js";
-import type { Unwrapped, XargsBatch } from "./unwrap.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, trackVars } from "./vars.js";
+import { findExecs, type Unwrapped, type XargsBatch } from "./unwrap.js";
+import { caseNamed, caseScripts } from "./case-script.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { xargsCommands } from "./xargs-runs.js";
 import type { Vars } from "./vars.js";
 
@@ -62,7 +63,7 @@ interface Scope {
 
 /** Shell text a command runs, and how it reaches the commands in it. */
 interface Inline {
-  text: string;
+  texts: string[];
   wrap: Wrapping;
 }
 
@@ -106,6 +107,7 @@ function walk(tokens: Token[], w: Walk): void {
       w.prev = token.value;
       if (token.value !== "|" && token.value !== "|&") w.negated = false;
       if (token.value !== "&&") w.chain = { start: token.value };
+      trackCompound(token, w.scope.vars);
       scope(token.value, w);
       continue;
     }
@@ -158,9 +160,11 @@ function scope(op: string, w: Walk): void {
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
-  const cmd = unwrap(rawWords.map(expand));
-  if (cmd) run(cmd, redirects, w, next);
-  return cmd;
+  const words = rawWords.map(expand);
+  const runs = caseNamed(words);
+  const cut = cutReading(words);
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
+  return runs[0] ?? null;
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -184,12 +188,9 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
   const script = inlineScript(cmd, redirects, stdin);
-  if (script !== null) walk(tokenize(script.text), child(w, [...wrapping, script.wrap]));
+  if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
-  for (const words of findExecs(cmd.args)) {
-    const exec = unwrap(words);
-    if (exec) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
-  }
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
 }
 
 /** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
@@ -312,15 +313,14 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
 
 /** The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
-  if (cmd.script !== undefined) return { text: cmd.script, wrap: "sh-c" };
-  if (cmd.name === "eval") return { text: cmd.args.map((a) => a.value).join(" "), wrap: "eval" };
+  if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
+  if (cmd.name === "eval") return { texts: caseScripts(cmd.args), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional?.value ?? stdin) : positional ? null : stdinScript(redirects);
-  if (text !== null) return { text, wrap: hasC ? "sh-c" : "heredoc-shell" };
-  // bash and sh drop NUL from a piped script; zsh's NUL handling is not modelled (TP-1464).
-  return hasC || positional || stdin === null ? null : { text: stdin.replaceAll("\0", ""), wrap: "piped-shell" };
+  const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
+  if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
+  return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {

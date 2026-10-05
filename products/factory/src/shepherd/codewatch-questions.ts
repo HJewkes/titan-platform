@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { failureOf } from "./error-class.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief, type ReviewerBriefInput } from "./reviewer-brief.js";
 
 /** The part of a review target the report is looked up by. */
@@ -77,7 +78,7 @@ export function codewatchReader(fetchReport: FetchCodewatchReport, repos: readon
       const raw = await fetchReport(target);
       return raw === undefined ? absent() : fromReport(raw);
     } catch (error) {
-      return absent(`codewatch report fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+      return absent(`codewatch report fetch failed: ${failureOf(error)}`);
     }
   };
 }
@@ -105,10 +106,15 @@ type GhExec = (args: readonly string[], timeoutMs: number) => Promise<string>;
 
 const execGh = (gh: string): GhExec => async (args, timeoutMs) => (await run(gh, [...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 })).stdout;
 
+/** Named so the evidence warning, which carries only an error's class, still says the fetch timed out. */
+class GhTimedOut extends Error {
+  override readonly name = "GhTimedOut";
+}
+
 /** A hung `gh` must not hang sh-review, so the wait ends at the deadline whether or not the process does. */
 function bounded<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
-  const expiry = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`gh timed out after ${ms}ms`)), ms)));
+  const expiry = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new GhTimedOut(`gh timed out after ${ms}ms`)), ms)));
   return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
 }
 

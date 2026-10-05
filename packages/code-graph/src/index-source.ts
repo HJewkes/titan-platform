@@ -15,6 +15,14 @@ export interface IndexSource {
   fileExists(abs: string): boolean;
   /** The host ts-morph resolves imports and reads tsconfig through. */
   readonly fileSystem: FileSystemHost;
+  /** Set when the source is a git commit rather than the working tree; undefined for the working tree. */
+  readonly revision?: {
+    /** The repo's toplevel, canonicalized with realpath. */
+    readonly repoRoot: string;
+    readonly commit: string;
+    /** Committer time, seconds since the epoch. */
+    readonly commitEpoch: number;
+  };
 }
 
 let realFileSystem: FileSystemHost | undefined;

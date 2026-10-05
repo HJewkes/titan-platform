@@ -22,6 +22,7 @@ export type { IndexOptions, IndexResult } from "./indexer.js";
 export { INDEX_VERSION, indexPaths } from "./indexer.js";
 export type { IndexSource } from "./index-source.js";
 export { workingTreeSource } from "./index-source.js";
+export { gitTreeSource } from "./git-tree-source.js";
 
 export type { Extractor, ParsedFile } from "@titan-design/code-parser";
 export { getLanguageFromPath, getSupportedLanguages, parseFile, shouldIncludeFile } from "@titan-design/code-parser";
@@ -78,6 +79,8 @@ export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/te
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
 export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME } from "./analysis/coverage.js";
+export type { MinifiedSource, MinifyLanguage } from "./analysis/context/minify.js";
+export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./analysis/context/minify.js";
 /**
  * The history adapter: it turns `./history`'s primitives into `GraphMetric` rows, so it
  * lives at the root rather than behind the `./history` seam, which speaks no graph types.
@@ -94,6 +97,13 @@ export type { PageRankOptions, PageRankResult, PageRankRow } from "./analysis/pa
 export { computePageRank, getEdgeWeight } from "./analysis/pagerank.js";
 export type { RelevanceOptions } from "./analysis/relevance.js";
 export { computeRelevance } from "./analysis/relevance.js";
+export {
+  DEFAULT_MAX_LINE_CHARS,
+  ELISION_MARKER,
+  TRUNCATION_SUFFIX,
+  renderSignatureTree,
+} from "./analysis/context/signature-tree.js";
+export type { SignatureTreeOptions } from "./analysis/context/signature-tree.js";
 export type {
   ReferenceEdgeLite,
   SymbolConsumers,

@@ -1,5 +1,6 @@
 import { gitOrNull, gitText as git } from "./git.js";
 import type { WorktreeRecord } from "./reattach.js";
+import { unsavedWork } from "./unsaved-work.js";
 
 /**
  * Park a finished agent's worktree: the tree is removed and the branch kept, so
@@ -27,30 +28,6 @@ async function offBranch(target: WorktreeRecord): Promise<string | undefined> {
   return `HEAD in ${target.worktree} is ${where}, not on ${target.branch}; check out ${target.branch} first`;
 }
 
-/** Ignored paths `git worktree remove` would delete that a build or re-attach puts back. */
-const REGENERABLE_DIRS = ["node_modules", "dist", "coverage", ".turbo"];
-
-/** `.claude` only at the top, since re-attach copies it from the repository root. */
-const isRegenerable = (entry: string): boolean => {
-  const segments = entry.split("/").filter(Boolean);
-  return segments[0] === ".claude" || segments.some((segment) => REGENERABLE_DIRS.includes(segment));
-};
-
-/** `-uall` so `status.showUntrackedFiles=no` cannot hide an untracked file the removal would take. */
-async function unsaved(worktree: string): Promise<string | undefined> {
-  const status = await gitOrNull(["status", "--porcelain", "-uall"], worktree);
-  if (status === null) return `could not read git status in ${worktree}`;
-  if (status !== "") return `uncommitted or untracked changes in ${worktree}`;
-  const ignored = await gitOrNull(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory"], worktree);
-  if (ignored === null) return `could not list ignored files in ${worktree}`;
-  const kept = ignored.split("\n").filter((entry) => entry !== "" && !isRegenerable(entry));
-  if (kept.length === 0) return undefined;
-  return (
-    `ignored files in ${worktree} would be deleted (${kept.slice(0, 3).join(", ")}); ` +
-    `park removes only ignored ${REGENERABLE_DIRS.join(", ")} and a top-level .claude`
-  );
-}
-
 /**
  * Refuse a tree that would lose anything; otherwise remove it without --force and keep the branch.
  * `recheck` runs after the git checks and right before the removal, so a spawn or resume that
@@ -60,7 +37,7 @@ export async function parkWorktree(
   target: WorktreeRecord,
   recheck: () => string | undefined = () => undefined
 ): Promise<{ ok: true; head: string } | { ok: false; reason: string }> {
-  const refusal = (await offBranch(target)) ?? (await unsaved(target.worktree)) ?? (await unpushed(target));
+  const refusal = (await offBranch(target)) ?? (await unsavedWork(target.worktree)) ?? (await unpushed(target));
   if (refusal) return { ok: false, reason: refusal };
   const head = await git(["rev-parse", "HEAD"], target.worktree);
   const late = recheck();

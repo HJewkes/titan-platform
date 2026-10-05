@@ -211,8 +211,20 @@ describe("subscripts with blanks inside the brackets", () => {
     ["a quoted bracket inside the brackets", "Y[ ']' ]=x git", ["Y[ ] ]=x", "git"]],
     ["an escaped bracket inside the brackets", "Y[ \\] ]=x git", ["Y[ ] ]=x", "git"]],
     ["a nested subscript", "Y[ a[ 1 ] ]=x git", ["Y[ a[ 1 ] ]=x", "git"]],
+    ["a $( ) holding ]", "Y[ $(echo ]) ]=x git", ["Y[  ]=x", "git"]],
+    ["a backtick span holding ]", "Y[ `echo ]` ]=x git", ["Y[  ]=x", "git"]],
+    ["a ${ } holding ]", "Y[ ${Z:-]} ]=x git", ["Y[ ${Z:-]} ]=x", "git"]],
+    ["a nested $( $( ] ) )", "Y[ $( $( ] ) ) ]=x git", ["Y[  ]=x", "git"]],
   ])("keeps %s as one word", (_how, src, expected) => {
     expect(words(src)).toEqual(expected);
+  });
+
+  it.each([
+    ["$(", "Y[ $(echo ]=x git push origin HEAD:main"],
+    ["a backtick", "Y[ `echo ]=x git push origin HEAD:main"],
+    ["${", "Y[ ${Z:-]=x git push origin HEAD:main"],
+  ])("falls back to the plain split on an unterminated %s", (_how, src) => {
+    expect(() => tokenize(src)).toThrow(ParseError);
   });
 
   it.each([
@@ -232,21 +244,21 @@ describe("subscripts with blanks inside the brackets", () => {
   });
 
   it.each([
-    ["case", "Y[ 0 ]=x case", ["Y[", "0", "]=x", "case"]],
-    ["esac", "Y[ 0 ]=x esac", ["Y[", "0", "]=x", "esac"]],
-    ["[[", "Y[ 0 ]=x [[", ["Y[", "0", "]=x", "[["]],
-    ["]]", "Y[ 0 ]=x ]]", ["Y[", "0", "]=x", "]]"]],
-    ["((", "Y[ 0 ]=x ((", ["Y[", "0", "]=x", "<op>", "<op>"]],
-    ["))", "Y[ 0 ]=x ))", ["Y[", "0", "]=x", "<op>", "<op>"]],
-    ["$((", "Y[ 0 ]=x $((1))", ["Y[", "0", "]=x", "$((1))"]],
-    ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
-    ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[", "0", "]=x", "<redirect>", "<op>"]],
+    ["case", "Y[ 0 ]=x case", ["Y[ 0 ]=x", "case"]],
+    ["esac", "Y[ 0 ]=x esac", ["Y[ 0 ]=x", "esac"]],
+    ["[[", "Y[ 0 ]=x [[", ["Y[ 0 ]=x", "[["]],
+    ["]]", "Y[ 0 ]=x ]]", ["Y[ 0 ]=x", "]]"]],
+    ["((", "Y[ 0 ]=x ((", ["Y[ 0 ]=x", "<op>", "<op>"]],
+    ["))", "Y[ 0 ]=x ))", ["Y[ 0 ]=x", "<op>", "<op>"]],
+    ["$((", "Y[ 0 ]=x $((1))", ["Y[ 0 ]=x", "$((1))"]],
+    ["<<", "Y[ 0 ]=x <<E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
+    ["<<-", "Y[ 0 ]=x <<-E\nE\n", ["Y[ 0 ]=x", "<redirect>", "<op>"]],
     ...["@", "!", "?", "*", "+"].map((op): [string, string, string[]] => [
       `${op}(`,
       `Y[ 0 ]=x ${op}(a)`,
-      ["Y[", "0", "]=x", op, "<op>", "a", "<op>"],
+      ["Y[ 0 ]=x", op, "<op>", "a", "<op>"],
     ]),
-  ])("splits as before when the text holds %s anywhere", (_token, src, expected) => {
+  ])("joins the subscript when the text holds %s after it", (_token, src, expected) => {
     expect(words(src)).toEqual(expected);
   });
 });

@@ -35,13 +35,23 @@ describe("codewatchReader", () => {
     expect(await read(target)).toEqual({ questions: [], evidence: { found: false, schema: null, questions: 0, dropped: 0 } });
   });
 
-  it("records found=false with the cause when the fetch answers 404", async () => {
-    const read = codewatchReader(async () => Promise.reject(new Error("HTTP 404: Not Found")), [REPO]);
+  it("records found=false with the HTTP status when the fetch answers 404", async () => {
+    const read = codewatchReader(async () => Promise.reject(Object.assign(new Error("HTTP 404: Not Found"), { status: 404 })), [REPO]);
 
     const result = await read(target);
 
     expect(result?.questions).toEqual([]);
-    expect(result?.evidence).toMatchObject({ found: false, schema: null, questions: 0, warning: expect.stringContaining("404") });
+    expect(result?.evidence).toEqual({ found: false, schema: null, questions: 0, dropped: 0, warning: "codewatch report fetch failed: HTTP 404" });
+  });
+
+  it("keeps neither a URL nor a token from a failed fetch in the evidence warning", async () => {
+    const read = codewatchReader(async () => Promise.reject(new Error("GET https://db.example.invalid/x?auth=tok_FAKE0000SECRET failed")), [REPO]);
+
+    const evidence = JSON.stringify((await read(target))?.evidence);
+
+    expect(evidence).toContain("codewatch report fetch failed: Error");
+    expect(evidence).not.toContain("db.example.invalid");
+    expect(evidence).not.toContain("tok_FAKE0000SECRET");
   });
 
   it("gives no questions and a warning for a report with the wrong schema", async () => {
@@ -100,7 +110,7 @@ describe("codewatchReader", () => {
 
     const result = await read(target);
 
-    expect(result?.evidence).toMatchObject({ found: false, questions: 0, warning: expect.stringContaining("timed out") });
+    expect(result?.evidence).toMatchObject({ found: false, questions: 0, warning: "codewatch report fetch failed: GhTimedOut" });
   });
 
   it("finds the head's artifact past the first page and answers undefined for a head with none", async () => {

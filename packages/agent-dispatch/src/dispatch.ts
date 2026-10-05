@@ -68,10 +68,15 @@ import {
   type SafeExecResult,
 } from "./exec.js";
 
-export class DispatchError extends Error {}
+/** Each class carries a fixed `name`, so a caller can record which kind of failure it was without its message. */
+export class DispatchError extends Error {
+  override readonly name: string = "DispatchError";
+}
 
 /** The CLI could not connect to the broker, so nothing was asked of it; retrying later is safe. */
-export class BrokerUnavailableError extends DispatchError {}
+export class BrokerUnavailableError extends DispatchError {
+  override readonly name: string = "BrokerUnavailableError";
+}
 
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
 export const PEER_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;

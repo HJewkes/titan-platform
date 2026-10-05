@@ -116,6 +116,7 @@ export class SpanFtsTables {
   private readonly deleteSpansStmt;
   private readonly countSpans;
   private readonly countFts;
+  private readonly indexTxn;
 
   constructor(db: Db, { name = "search" }: SpanFtsOptions = {}) {
     const { span, fts } = names(name);
@@ -142,6 +143,13 @@ export class SpanFtsTables {
     this.deleteSpansStmt = db.prepare(`DELETE FROM ${span} WHERE owner_ref = ?`);
     this.countSpans = db.prepare(`SELECT count(*) AS n FROM ${span}`);
     this.countFts = db.prepare(`SELECT count(*) AS n FROM ${fts}`);
+    // One transaction, so a failed FTS insert cannot strand a span row with no FTS row.
+    this.indexTxn = db.transaction((span: SpanInput, text: string): number => {
+      const inserted = this.insertSpan.run(span.ownerRef, span.field, span.sourceId, span.byteOffset, span.byteLength);
+      const spanId = (this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset) as { span_id: number }).span_id;
+      if (inserted.changes === 1 || this.hasFtsRow.get(spanId) === undefined) this.insertFts.run(spanId, text);
+      return spanId;
+    });
   }
 
   /**
@@ -152,10 +160,7 @@ export class SpanFtsTables {
    * clear-then-re-stream a rebuild. Only the conflict path pays the rowid probe.
    */
   index(span: SpanInput, text: string): number {
-    const inserted = this.insertSpan.run(span.ownerRef, span.field, span.sourceId, span.byteOffset, span.byteLength);
-    const spanId = (this.findSpan.get(span.ownerRef, span.field, span.sourceId, span.byteOffset) as { span_id: number }).span_id;
-    if (inserted.changes === 1 || this.hasFtsRow.get(spanId) === undefined) this.insertFts.run(spanId, text);
-    return spanId;
+    return this.indexTxn(span, text);
   }
 
   /**
