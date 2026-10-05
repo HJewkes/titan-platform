@@ -1,8 +1,10 @@
 import type { Token, WordToken } from "./lexer.js";
 
 const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
-const CONTROL_OPERATORS = new Set([";", "&", "&&", "||", "|", "|&", "\n", "("]);
-const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!", "time"]);
+/** `(` is left out: inside a case pattern it opens no command, and a subshell then splits as on main. */
+const CONTROL_OPERATORS = new Set([";", "&", "&&", "||", "|", "|&", "\n"]);
+const PIPES = new Set(["|", "|&"]);
+const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while", "until", "!"]);
 
 /**
  * Bash reads `NAME[...]` through the matching `]` as one word, blanks included, when it stands where an
@@ -27,9 +29,15 @@ function atAssignmentPosition(tokens: Token[]): boolean {
   const before = tokens[start - 1];
   if (before?.type === "op" && !CONTROL_OPERATORS.has(before.value)) return false;
   const run = tokens.slice(start);
+  const pipelineStart = before?.type !== "op" || !PIPES.has(before.value);
   let k = 0;
-  while (k < run.length && isWord(run[k], (t) => COMMAND_STARTS.has(t.value))) k++;
+  while (k < run.length && isWord(run[k], (t) => isReserved(t.value, k === 0 && pipelineStart))) k++;
   return run.slice(k).every((t) => isWord(t, (w) => ASSIGNMENT_WORD_RE.test(w.value)));
+}
+
+/** `time` is reserved only as the first word of a pipeline; elsewhere, even after `!` or `time`, it is a command name. */
+function isReserved(value: string, pipelineStart: boolean): boolean {
+  return COMMAND_STARTS.has(value) || (pipelineStart && value === "time");
 }
 
 function isWord(t: Token | undefined, test: (w: WordToken) => boolean): boolean {
