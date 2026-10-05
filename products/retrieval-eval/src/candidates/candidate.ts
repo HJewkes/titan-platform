@@ -6,7 +6,7 @@ import type { Arm } from "../pairs.js";
 /**
  * What a candidate knows about the pair beyond its query text.
  *
- * The date-order baseline needs it: what agent-chat injects today is a function
+ * The date-order baseline needs it: what agent-chat injected before CC-101 was a function
  * of the initiative, not of the query, and a baseline that could not see the
  * initiative could not reproduce it.
  */
