@@ -16,17 +16,34 @@ export interface AwaitHeadTarget {
 export interface AwaitHeadTiming {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
+  /** Told of each transient read failure, so a wait stuck on one is visible while it runs. */
+  onReadError?: (message: string) => void;
+}
+
+const FATAL_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a non-Error rejection has none and is transient. */
+function fatalStatus(error: unknown): number | undefined {
+  const status = error instanceof Error ? (error as { status?: unknown }).status : undefined;
+  return typeof status === "number" && FATAL_STATUSES.has(status) ? status : undefined;
 }
 
 /**
  * Block until the PR's head differs from `target.headSha` or the PR is no longer open, and return that read. No
- * timeout, because a fix can take days; a failed read is polled again, and `signal` aborts the wait between polls.
+ * timeout, because a fix can take days; a transient failed read is reported and polled again, a 401, 403 or 404 fails the wait because it
+ * cannot heal, and `signal` aborts the wait between polls.
  */
 export async function awaitNewHead(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<PullRequest> {
   const pause = timing.sleep ?? sleep;
   for (;;) {
     signal.throwIfAborted();
-    const pr = await port.getPr(target.repo, target.pr).catch(() => undefined);
+    const pr = await port.getPr(target.repo, target.pr).catch((error: unknown) => {
+      const status = fatalStatus(error);
+      const reason = error instanceof Error ? error.message : String(error);
+      if (status !== undefined) throw new Error(`await-new-head cannot read ${target.repo}#${target.pr}: HTTP ${status}: ${reason}`);
+      timing.onReadError?.(`${target.repo}#${target.pr}: ${reason}`);
+      return undefined;
+    });
     if (pr && (pr.headSha !== target.headSha || pr.state !== "open")) return pr;
     await pause(timing.pollMs ?? AWAIT_HEAD_POLL_MS, signal);
   }

@@ -10,6 +10,7 @@ import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import {
   WorkflowCancelledError,
+  WorkflowNotOwnedError,
   WorkflowRecoveryRequiredError,
   type ActiveStep,
   type WorkflowFn,
@@ -239,7 +240,7 @@ export class WorkflowRuntime {
     if (!run) {
       const current = this.store.get(runId);
       if (current && isTerminal(current.status)) return;
-      throw new Error(`workflow ${runId} is owned by another runtime or does not exist`);
+      throw new WorkflowNotOwnedError(runId);
     }
     run.status = "cancelling";
     run.error = reason;

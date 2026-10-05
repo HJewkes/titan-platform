@@ -20,7 +20,7 @@ import type {
   WorkflowFn,
   WorkflowRun,
 } from "./types.js";
-import { GATE_CANCELLED_SIGNAL } from "./types.js";
+import { GATE_CANCELLED_SIGNAL, WorkflowNotOwnedError } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
 
@@ -865,6 +865,12 @@ describe("WorkflowRuntime", () => {
     rt.cancel(runId, "too late");
 
     expect(rt.status(runId)).toMatchObject({ status: "completed", completedAt: before.completedAt, error: null });
+  });
+
+  it("refuses to cancel a run it cannot claim with a typed not-owned error", () => {
+    const rt = runtime(makeDb(), inlineRunner(() => "unused"));
+
+    expect(() => rt.cancel("no-such-run", "stop")).toThrow(WorkflowNotOwnedError);
   });
 
   it("does not cancel gates when cancellation intent cannot be persisted", async () => {
