@@ -447,7 +447,7 @@ Key exports:
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
 - `app-token`: `appInstallationToken`
-- +56 more in the [reference page](/reference/github)
+- +57 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
