@@ -5,21 +5,22 @@ import type { Arm } from "../pairs.js";
 import type { Candidate, SearchContext } from "./candidate.js";
 
 /**
- * The baseline the whole harness exists to beat: notes chosen by date, not by
- * relevance.
+ * The historical floor the harness measures ranking against: notes chosen by
+ * date, not by relevance.
  *
- * This is not a strawman, it is production. `agent_spawn` injects the newest
+ * This is no longer production. Before CC-101 `agent_spawn` injected the newest
  * notes of the initiative into every brief, and the pre-TP-26 bootstrap did the
- * same with a longer list. The query is ignored on purpose — that is the point
- * being measured. Without this row, "recall@10 is 0.4" has nothing to be better
- * than.
+ * same with a longer list; both now rank. Today's baseline is the `served` arm
+ * or the `active-work-search` row. The query is ignored on purpose — that is the
+ * point being measured. Without this row, "recall@10 is 0.4" has nothing to be
+ * better than.
  */
 
 /**
- * How many notes each trigger injects today.
+ * How many notes each trigger injected before CC-101 and TP-26.
  *
- * Both are production constants, not tuning: 5 is agent-chat's `MAX_NOTES` in
- * `src/agents/active-work.ts`, and 12 is what the bootstrap listed before
+ * Both were production constants, not tuning: 5 was agent-chat's `MAX_NOTES` in
+ * `src/agents/active-work.ts`, and 12 was what the bootstrap listed before
  * TP-26 replaced date order with ranking.
  */
 export const INJECTED_TODAY: Record<Arm, number> = { spawn: 5, bootstrap: 12 };
@@ -42,7 +43,7 @@ export function newestNotes(initiativeDir: string, limit: number): string[] {
 
 export interface DateOrderOptions {
   activeRoot: string;
-  /** Overrides the production counts; only a test should need this. */
+  /** Overrides the historical counts; only a test should need this. */
   counts?: Record<Arm, number>;
 }
 
