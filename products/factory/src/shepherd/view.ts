@@ -79,7 +79,6 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
   }),
-  z.object({ kind: z.literal("evidence"), stepId: z.string(), record: z.record(z.string(), z.unknown()) }),
 ]);
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 
