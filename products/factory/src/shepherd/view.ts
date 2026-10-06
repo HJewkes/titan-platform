@@ -17,7 +17,7 @@ const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
+export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "held", "merging", "post-merge", "done", "failed", "cancelled"] as const;
 
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
@@ -172,6 +172,7 @@ const WAITING: Readonly<Record<Phase, string>> = {
   fixing: "waiting for the implementer's new head",
   review: "waiting for the review",
   "awaiting-approval": "waiting on the merge decision",
+  held: "waiting for the hold to be released",
   merging: "merging",
   "post-merge": "watching main CI after the merge",
   done: "none",
@@ -181,9 +182,24 @@ const WAITING: Readonly<Record<Phase, string>> = {
 
 function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration, behind: TrainHolder | undefined): string {
   if (gate) return `owner: resolve ${gateStep}`;
+  if (phase === "held") return holdWait(registration, headSha);
   if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
   return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
+}
+
+/**
+ * A held run's merge step polls the hold rather than merging, so it reads as `held`, which has no stall limit. Only a
+ * hold satisfied at the run's own head lets the merge through; a MERGE from anyone but the hold's reviewer never does.
+ */
+function waitsOnHold(run: WorkflowRun, registration: Registration, headSha: string | null): boolean {
+  const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);
+  return merging && registration.held && (headSha === null || registration.holdSatisfied?.head !== headSha);
+}
+
+function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | null): string {
+  const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
+  return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
 
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
@@ -227,7 +243,7 @@ function notStartedStreak(steps: readonly StepResult[]): number {
 
 const MINUTE = 60_000;
 
-/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
+/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design, `held` among them, have no limit. */
 export const PHASE_STALL_LIMIT_MS: Readonly<Partial<Record<Phase, number>>> = {
   ci: 60 * MINUTE,
   fixing: 240 * MINUTE,
@@ -258,8 +274,9 @@ function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const stepped = runPhase(run, steps);
+  const phase = stepped === "merging" && waitsOnHold(run, registration, headSha) ? "held" : stepped;
   const since = phaseSince(run, steps, phase);
   const stalled = stallReason(run, steps, phase, since, now);
   return {

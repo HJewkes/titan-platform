@@ -325,3 +325,87 @@ describe("a satisfied hold across an update of the reviewed head", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 });
+
+describe("a run held at registration whose seat sends the reviewed head back", () => {
+  const SEAT = "seat-review";
+  const OWN = "rv-octo-demo-1";
+  const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
+
+  /** Held before any review with the seat's reviewer named, as a g10-review hold is; Shepherd's own reviewer reviews too. */
+  function heldAtRegistration(): Rig {
+    const r = rig();
+    r.store.hold("run-1", "g10-review: +415/-0 diff over 400", SEAT);
+    r.roster.push(agent(SEAT), agent(OWN));
+    return r;
+  }
+
+  type Run = (input: unknown) => Promise<{ ok: boolean; output?: string }>;
+
+  function mergeStep(r: Rig, sleep: (ms: number, signal: AbortSignal) => Promise<void>) {
+    const probe = { ran: false };
+    const route = { match: "merge", runner: { run: async () => ((probe.ran = true), { ok: true as const, output: "{}" }) } };
+    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep, now: () => 0 });
+    const run = (sha: string, signal = new AbortController().signal) => (waiting.runner.run as Run)({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha }), signal, stepId: "merge:0", attempt: 0 });
+    return { probe, run };
+  }
+
+  it("does not merge on Shepherd's own MERGE at a head the seat sent back with FIX_FIRST", async () => {
+    const r = heldAtRegistration();
+    say(r, verdictAt(H1), agent(OWN));
+    say(r, verdictAt(H1, "FIX_FIRST"), agent(SEAT));
+
+    await expect(mergeAt(r, H1)).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("does not merge the fix round's head on Shepherd's own MERGE, and merges it on the seat's", async () => {
+    const r = heldAtRegistration();
+    say(r, verdictAt(H1, "FIX_FIRST"), agent(SEAT));
+    r.fake.pushHead(r.pr, H2);
+    say(r, verdictAt(H2), agent(OWN));
+
+    await expect(mergeAt(r, H2)).rejects.toBeInstanceOf(MergeHeldError);
+    say(r, verdictAt(H2), agent(SEAT));
+    await expect(mergeAt(r, H2)).resolves.toMatchObject({ done: true });
+  });
+
+  it("ends a merge step waiting at the sent-back head once the seat sends MERGE at the new head, so land reads CI there", async () => {
+    const r = heldAtRegistration();
+    say(r, verdictAt(H1), agent(OWN));
+    say(r, verdictAt(H1, "FIX_FIRST"), agent(SEAT));
+    const step = mergeStep(r, async () => (r.fake.pushHead(r.pr, H2), say(r, verdictAt(H2), agent(SEAT))));
+
+    const result = await step.run(H1);
+
+    expect(step.probe.ran).toBe(false);
+    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(r.fake.pr(r.pr).merged).toBe(false);
+  });
+
+  it("keeps the merge step waiting while only Shepherd's own reviewer has sent MERGE at the new head", async () => {
+    const r = heldAtRegistration();
+    say(r, verdictAt(H1, "FIX_FIRST"), agent(SEAT));
+    const control = new AbortController();
+    let polls = 0;
+    const step = mergeStep(r, async () => {
+      if (++polls === 1) return void (r.fake.pushHead(r.pr, H2), say(r, verdictAt(H2), agent(OWN)));
+      if (polls === 3) control.abort();
+    });
+
+    const result = await step.run(H1, control.signal);
+
+    expect(result.ok).toBe(false);
+    expect(polls).toBe(3);
+    expect(step.probe.ran).toBe(false);
+  });
+
+  it("answers no merge on the owner's release, so land reads CI again before merging", async () => {
+    const r = heldAtRegistration();
+    const step = mergeStep(r, async () => void r.store.release("run-1"));
+
+    const result = await step.run(H1);
+
+    expect(step.probe.ran).toBe(false);
+    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+  });
+});
