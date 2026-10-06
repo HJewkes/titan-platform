@@ -102,6 +102,11 @@ open a daemon; `daemon` does.
   (`direction: "higher-worse"`), rank 1 is the file with the most lines, the worst offender,
   not the best. For `bus_factor_30d` (`direction: "lower-worse"`), rank 1 is the safest file.
   Read `direction` on the same metric before labelling anything "top" or "best".
+- `node.get` returns `lenses` only when asked for. Coupled partners have `measured: false`
+  until co-change pairs are stored. The `tests` lens lists path-linked tests only, for the
+  same reason, so `indexedCount` can exceed its length. The `exports` lens keeps at most 8
+  exported and 8 internal symbols. Generated files get a null centrality rank, because the
+  reading order leaves them out.
 - Baseline deltas match nodes by id, so a moved file reads as removed plus added until alias
   following lands (TP-187).
 - **A derived finding disappears when its rule or baseline changes.** Findings are computed

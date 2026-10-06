@@ -28,6 +28,8 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
       baseline: { long: "--baseline", description: "Snapshot id or ref to compute deltas against" },
       metrics: { long: "--metric", description: "Metric to report; repeatable (default: every one that applies)" },
+      lenses: { long: "--lens", description: "exports, score, centrality, coupling, or tests; repeatable" },
+      window: { long: "--window", description: "Churn window the score lens reads, such as 90d, or lifetime (default 30d)" },
     },
   },
   "node.resolve": {

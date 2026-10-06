@@ -9,6 +9,7 @@ export type {
 } from "./contract.js";
 export { AGENT_COMMANDS, CODE_READ_API_VERSION, COMMAND_NAMES, CONTRACT, serializeContract } from "./contract.js";
 export { HIERARCHY_ROW_CAP } from "./contract-nodes.js";
+export { Centrality, CoupledPartners, ExportRow, LinkedTests, NodeLens, NodeLenses, ScoreBreakdown } from "./contract-node-lenses.js";
 export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
 export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
 export { AttentionSignal, LookFirstRow, OVERVIEW_ROWS_MAX, ReadingOrderRow } from "./contract-overview.js";
