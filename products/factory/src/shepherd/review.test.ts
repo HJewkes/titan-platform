@@ -42,6 +42,7 @@ import {
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
+import type { ReviewerFacts } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 
@@ -392,7 +393,7 @@ const standing = (overrides: Partial<ReviewerAgent> = {}) => agent("rv-standing"
 
 interface FakeDispatch extends ReviewerDispatch {
   agents: ReviewerAgent[];
-  spawns: { name: string; brief: string; target: ReviewTarget }[];
+  spawns: { name: string; brief: string; target: ReviewTarget; facts?: ReviewerFacts }[];
   resumes: { name: string; brief: string }[];
 }
 
@@ -403,8 +404,8 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
     spawns: [],
     resumes: [],
     roster: async () => [...fake.agents],
-    spawn: async (name, brief, target) => {
-      fake.spawns.push({ name, brief, target });
+    spawn: async (name, brief, target, facts) => {
+      fake.spawns.push({ name, brief, target, facts });
       if (hooks.onSpawn) return hooks.onSpawn(name);
       fake.agents.push(agent(name, { presence: "live" }));
     },
@@ -466,7 +467,7 @@ describe("sh-review", () => {
     return {
       clock,
       intent: () => run<ReviewIntentResult>("sh-review-intent", { ...target, runId: "run-1" }, 0),
-      review: (intent: unknown, attempt = 0) => run<ReviewDispatchResult>("sh-review", { ...target, intent }, attempt),
+      review: (intent: unknown, attempt = 0, runId?: string) => run<ReviewDispatchResult>("sh-review", { ...target, intent, ...(runId && { runId }) }, attempt),
     };
   }
 
@@ -479,6 +480,22 @@ describe("sh-review", () => {
   }
 
   const spawnIntent: ReviewIntent = { head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn" };
+
+  it("sh-review passes the kind registered for the run through to the spawn", async () => {
+    const dispatch = fakeDispatch();
+
+    await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
+
+    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security" });
+  });
+
+  it("sh-review gives the spawn the strict facts when the step carries no run id", async () => {
+    const dispatch = fakeDispatch();
+
+    await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true });
+  });
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
     const dispatch = fakeDispatch();

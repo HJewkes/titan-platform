@@ -15,6 +15,10 @@ describe("reviewerRoleFor", () => {
     expect(reviewerClassFor({})).toBe("standard");
   });
 
+  it("puts a PR whose kind could not be read in the g10 class", () => {
+    expect(reviewerClassFor({ unread: true })).toBe("g10");
+  });
+
   it("uses the table it is given", () => {
     expect(reviewerRoleFor({ kind: "security" }, { g10: "a", standard: "b" })).toBe("a");
   });

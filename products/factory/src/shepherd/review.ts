@@ -284,6 +284,12 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   return { kind: "intent", head: input.head, ...choice, at: deps.now() };
 };
 
+/** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
+function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerFacts {
+  const read = runId === undefined ? { unread: "no run id" } : registeredKind(deps.store, runId);
+  return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
+}
+
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs }, { intent, runId, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
@@ -293,7 +299,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
   if (asking) {
-    const refused = await startReviewer(dispatch, intent, target, runId === undefined ? {} : registeredKind(deps.store, runId), asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
+    const refused = await startReviewer(dispatch, intent, target, reviewerFacts(deps, runId), asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
   const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);

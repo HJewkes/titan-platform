@@ -115,6 +115,12 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
   });
 
+  it("rejects a role table naming a class that does not exist", () => {
+    const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
+
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } })))).toThrow(/roles/);
+  });
+
   it("reads an agent-chat binary with no reviewer, and a reviewer that names only its profile", () => {
     expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat" } }))).shepherd).toEqual({ agentChatBin: "/opt/bin/agent-chat" });
     expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv" } } }))).shepherd?.review).toEqual({ profile: "rv" });
