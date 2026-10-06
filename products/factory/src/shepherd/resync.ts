@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
-import { frozenFor } from "./freeze.js";
+import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -63,26 +63,32 @@ interface TransientSweep {
   repo?: RepoSlug;
 }
 
-/** A freeze store that cannot be read counts as frozen, so its gates stay with the owner; the freeze's own fix PR never does. */
-function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: number | null): boolean {
+/**
+ * A freeze store that cannot be read counts as frozen, so its gates stay with the owner; the freeze's own fix PR never does.
+ * Outside a dry run the PR's default branch is re-read as merge policy does, so a main fixed outside Shepherd thaws here too.
+ */
+async function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: number | null, dryRun: boolean): Promise<boolean> {
   try {
     const freezes = services.freeze?.get();
     if (!freezes) return false;
-    return pr === null ? freezes.isFrozen(repo) : frozenFor(freezes, services.store.get(), repo, pr);
+    if (pr === null) return freezes.isFrozen(repo);
+    if (dryRun) return frozenFor(freezes, services.store.get(), repo, pr);
+    return await recheckedFrozen(services.port, () => freezes, () => services.store.get())(repo, pr);
   } catch {
     return true;
   }
 }
 
 /** A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen. */
-function transientGate(host: FactoryHost, services: ShepherdServices, pending: PendingGate, only: RepoSlug | undefined): { head: string; conditions: string[] } | undefined {
+async function transientGate(host: FactoryHost, services: ShepherdServices, pending: PendingGate, { dryRun = false, repo: only }: TransientSweep): Promise<{ head: string; conditions: string[] } | undefined> {
   const run = approveMergeRun(host, pending);
   const gate = run && authorityGate(run, pending.gate.prompt);
   const conditions = gate ? transientOnlyConditions(gate.reason) : [];
   const registration = services.store.get().byRun(pending.runId);
   const repo = registration?.repo;
-  if (!gate || conditions.length === 0 || !repo || stillFrozen(services, repo, registration.pr)) return undefined;
+  if (!gate || conditions.length === 0 || !repo) return undefined;
   if (only !== undefined && repo.toLowerCase() !== only.toLowerCase()) return undefined;
+  if (await stillFrozen(services, repo, registration.pr, dryRun)) return undefined;
   return { head: gate.head, conditions };
 }
 
@@ -97,7 +103,7 @@ const onlyUnmet = (conditions: string[]): string =>
 export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo }: TransientSweep = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   for (const pending of host.pendingGates()) {
-    const gate = transientGate(host, services, pending, repo);
+    const gate = await transientGate(host, services, pending, { dryRun, repo });
     if (!gate) continue;
     if ((await openHead(services, pending.runId)) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
     if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`);
