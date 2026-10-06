@@ -8,6 +8,7 @@ import { codeRoute, step, type LandOptions } from "../workflows/land.js";
 import type { FreezeGuard } from "./freeze.js";
 import { isGithubPath } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import { publishReview } from "./publish-review.js";
 import type { EffectivePolicy, MergeMode } from "./policy.js";
 import type { ShepherdStore } from "./store.js";
 
@@ -220,6 +221,7 @@ export async function publishedSince(registry: PackageRegistry, preflight: Relea
 /** The Version Packages PR is reviewed by its preflight, not by an agent: changesets wrote it, and the preflight checks exactly that. */
 export async function releaseVerdict(ctx: WorkflowContext, target: ReleaseTarget, merge: MergeMode): Promise<Verdict> {
   const preflight = await step(ctx, `${RELEASE_PREFLIGHT_STEP}:${target.head}`, { ...target, runId: ctx.runId, merge }, PreflightResult);
+  await publishReview(ctx, target, { outcome: "MERGE", verdictHead: preflight.head, head: target.head, releaseBlockers: preflight.blockers.length });
   return { kind: "MERGE", headSha: target.head, evidence: { release: preflight } };
 }
 
