@@ -48,13 +48,13 @@ export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffe
       cwd,
       encoding: "utf-8",
       maxBuffer,
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
       env: discoveryEnv(),
     });
     return { ok: true, out };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = failureDetail(error);
     if (code === "ENOENT") return { ok: false, reason: "not-git", detail };
     if (code === "ENOBUFS")
       return {
@@ -64,6 +64,19 @@ export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffe
       };
     return { ok: false, reason: "git-error", detail };
   }
+}
+
+/** git's own stderr when it said something, since the thrown message only echoes the command line. */
+function failureDetail(error: unknown): string {
+  const stderr = (error as { stderr?: unknown }).stderr;
+  const text = typeof stderr === "string" ? stderr.trim() : "";
+  if (text) return text;
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** True for a freshly `git init`ed checkout: HEAD names no commit, so there is no history rather than a failed read. */
+export function hasNoCommits(cwd: string): boolean {
+  return runGit(cwd, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null;
 }
 
 /** A history load that is neither a success nor a plain "not a git checkout". */

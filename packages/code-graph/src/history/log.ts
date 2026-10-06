@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import * as path from "node:path";
-import { detectGitToplevel, runGitLargeResult, valueOrNull, type GitLargeResult, type HistoryLoad } from "./git.js";
+import { detectGitToplevel, hasNoCommits, runGitLargeResult, valueOrNull, type GitLargeResult, type HistoryLoad } from "./git.js";
 import { revArgs, sinceArgs, windowCutoff, type ChurnWindow } from "./window.js";
 
 export interface ChurnEntry {
@@ -45,6 +45,7 @@ export function loadChurnResult(options: LoadChurnOptions): HistoryLoad<ChurnEnt
   const windowDays = options.windowDays ?? DEFAULT_WINDOW_DAYS;
   const gitRoot = detectGitToplevel(options.repoRoot);
   if (gitRoot === null) return { ok: false, reason: "not-git", detail: `${options.repoRoot} is not a git checkout` };
+  if (options.rev === undefined && hasNoCommits(options.repoRoot)) return { ok: true, value: [] };
   const log = runChurnLog(options.repoRoot, windowDays, options.rev, options.untilEpoch);
   if (!log.ok) return log;
   const canonicalRoot = canonicalize(options.repoRoot);

@@ -89,4 +89,22 @@ describe("git log overflow versus a non-repo", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("treats a repository with no commits as empty history, not a git failure", async () => {
+    const empty = await makeTestRepo();
+    try {
+      expect(loadChurnResult({ repoRoot: empty.dir })).toEqual({ ok: true, value: [] });
+      expect(loadFirstSeenResult({ repoRoot: empty.dir })).toEqual({ ok: true, value: new Map() });
+      expect(loadChurnEntries({ repoRoot: empty.dir })).toEqual([]);
+    } finally {
+      await empty.cleanup();
+    }
+  });
+
+  it("puts git's stderr in the git-error detail", () => {
+    const result = runGitLargeResult(repo.dir, ["log", "no-such-rev", "--"], 1024);
+    expect(result).toMatchObject({ ok: false, reason: "git-error" });
+    expect(!result.ok && result.detail).toContain("no-such-rev");
+    expect(!result.ok && result.detail).not.toContain("Command failed");
+  });
 });

@@ -1,4 +1,4 @@
-import { detectGitToplevel, runGitLargeResult, valueOrNull, type GitLargeResult, type HistoryLoad } from "./git.js";
+import { detectGitToplevel, hasNoCommits, runGitLargeResult, valueOrNull, type GitLargeResult, type HistoryLoad } from "./git.js";
 import { revArgs } from "./window.js";
 import { canonicalize, COMMIT_HASH_RE, rebasePath, resolveRenamedPath } from "./log.js";
 
@@ -27,6 +27,7 @@ export function loadFileFirstSeen(options: FirstSeenOptions): Map<string, number
 export function loadFirstSeenResult(options: FirstSeenOptions): HistoryLoad<Map<string, number>> {
   const gitRoot = detectGitToplevel(options.repoRoot);
   if (gitRoot === null) return { ok: false, reason: "not-git", detail: `${options.repoRoot} is not a git checkout` };
+  if (options.rev === undefined && hasNoCommits(options.repoRoot)) return { ok: true, value: new Map() };
   const log = runFirstSeenLog(options.repoRoot, options.rev);
   if (!log.ok) return log;
   const canonicalRoot = canonicalize(options.repoRoot);
