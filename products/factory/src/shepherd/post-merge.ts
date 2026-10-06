@@ -5,6 +5,7 @@ import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { actionsRunsAt, withoutSupersededCancels } from "./freeze.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -180,6 +181,8 @@ async function readAt(port: GitHubPort, input: MainCiInput, sha: string): Promis
       return { verdict: "red", detail: read.detail };
     case "read-newer-run":
       return { verdict: "newer", sha: routed.newer, detail: `${read.detail} at ${sha}; reading the run at newer main push ${routed.newer}` };
+    case "wait":
+      return { verdict: "pending", detail: `${read.detail} at ${sha}; waiting for a later run of the same check` };
   }
 }
 
@@ -214,9 +217,12 @@ async function newerMainPush(port: GitHubPort, input: MainCiInput, sha: string):
 
 type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded"> | "pending"; detail: string };
 
-/** Only allowed-app runs at the merge sha count, and each counts, so an older red survives a newer green of its name. */
+/**
+ * Only allowed-app runs at the merge sha count, and each counts but a cancel a newer run of its name superseded, so an
+ * older red survives a newer green of its name while a concurrency cancel does not.
+ */
 function evaluate(mergeSha: string, runs: readonly CheckRun[]): Evaluated {
-  const counted = runs.filter((run) => run.headSha === mergeSha && run.appId === GITHUB_ACTIONS_APP_ID);
+  const counted = withoutSupersededCancels(actionsRunsAt(runs, mergeSha));
   if (counted.length === 0) return { verdict: "pending", detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const findings = headCheckFindings({ headSha: mergeSha, contexts: [], runs: counted, requiredApps: [GITHUB_ACTIONS_APP_ID] });
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));

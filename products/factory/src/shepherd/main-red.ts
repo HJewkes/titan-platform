@@ -4,7 +4,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
-import { greenAfterRed, type FreezeStore } from "./freeze.js";
+import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js";
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -102,11 +102,11 @@ export interface FixerInput {
 }
 
 /** `again` when the live freeze already has a fixer, so this red came from the fixer's own merge or through it, and the owner decides. */
-export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">): z.infer<typeof FreezeResult> {
+export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">, cancelOnly = false): z.infer<typeof FreezeResult> {
   if (!wiring) return { state: "unwired", fixTask: null, fixer: null, episode: null };
   const freezes = wiring.freezes();
   const again = (freezes.get(input.repo)?.fixer ?? null) !== null;
-  const frozen = freezes.freeze(input.repo, input.mergeSha);
+  const frozen = freezes.freeze(input.repo, input.mergeSha, cancelOnly);
   return { state: again ? "again" : "new", fixTask: frozen.fixTask, fixer: frozen.fixer, episode: frozen.episode, redCount: frozen.redCount };
 }
 
@@ -230,7 +230,7 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
-    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live.redSha))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
+    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
   } catch (error) {
     return stays(`main could not be read: ${failureOf(error)}`);
   }
@@ -238,9 +238,12 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   return { unfrozen, frozen: freezes.isFrozen(input.repo), episode: live.episode, detail: "green after the red sha" };
 }
 
+/** A read that fails records an ordinary red, which only a later green sha clears. */
+const cancelOnlyAt = (port: GitHubPort, input: RedInput): Promise<boolean> => redOnlyFromCancels(port, input.repo, input.mergeSha).catch(() => false);
+
 export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefined): StepRoute[] {
   return [
-    codeRoute("sh-freeze", deps.now, async (input: RedInput) => freezeStep(wiring, input)),
+    codeRoute("sh-freeze", deps.now, async (input: RedInput) => freezeStep(wiring, input, wiring !== undefined && (await cancelOnlyAt(deps.port, input)))),
     codeRoute("sh-file-fix-task", deps.now, (input: EpisodeInput, signal) => fileFixTask(deps, wiring, input, signal)),
     codeRoute("sh-spawn-fixer", deps.now, (input: FixerInput, signal) => spawnFixer(deps, wiring, input, signal)),
     codeRoute("sh-unfreeze", deps.now, (input: RedInput) => unfreezeStep(deps, wiring, input)),
