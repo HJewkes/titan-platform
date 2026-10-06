@@ -36,18 +36,21 @@ export interface AskItemFindings {
 /** A sub-item suffix stays part of the id, so `VW-65.1` is never read as `VW-65` or `VW-651`. */
 const ID_TOKEN = /\b[A-Z]{1,4}-\d+(?:\.\d+)?\b|\b\w+#\d+\b|\b[QD]\d+\b|\b[Ii]tem \d+\b/g;
 const ID_IN_WORD = new RegExp(ID_TOKEN.source);
-const RANGE_END = String.raw`(?:\b[A-Z]{1,4}-\d+|\w*#\d+|\b[QD]\d+)`;
+/** `(?<!\w)` anchors `\w*#` so a long word-run is scanned once, not from every offset. */
+const RANGE_END = String.raw`(?:\b[A-Z]{1,4}-\d+|(?<!\w)\w*#\d+|\b[QD]\d+)`;
 const ID_RANGE = new RegExp(String.raw`${RANGE_END}\s*(?:to|through|-|–)\s*${RANGE_END}\b`);
 /** The lookbehind keeps an id's or a date's digits ("VW-258 defaults", "10-03 calls") from reading as a count. */
 const QUESTION_COUNT = /(?<![\w.-])\d+ (?:Qs|questions|items|calls|defaults)\b/i;
 const QD_TOKEN = /\b[QD]\d+\b/g;
 const BACKTICK_SPAN = /`[^`]*`/g;
 const URL = /\bhttps?:\/\/\S+/g;
-const FILE_PATH = /(?:[~.]*\/)?(?:[\w.@-]+\/)*[\w@-]+\.(?:md|mdx|ts|tsx|js|mjs|cjs|json|ya?ml|sh|py|txt|toml)\b/g;
-const ROOTED_PATH = /(?:~|\.{1,2})?\/[\w.@-]+\/[\w.@/-]+/g;
+/** Both path patterns start at a token edge, which keeps them linear; a capitalised bare `Name.js` is a product ("Node.js"). */
+const FILE_PATH = /(?<![\w.@~/-])(?![A-Z]\w*\.js\b)(?:[~.]*\/)?(?:[\w.@-]+\/)*[\w@-]+\.(?:md|mdx|ts|tsx|js|mjs|cjs|json|ya?ml|sh|py|txt|toml)\b/g;
+/** Rooted by `/`, `~/` or `./`; "left/right/center" is a slash-separated list, not a path. */
+const ROOTED_PATH = /(?<![\w.@~/-])(?:~|\.{1,2})?\/[\w.@-]+\/[\w.@/-]+/g;
 const PR_BODY = /\bPR body\b/i;
 const NOW_MARKER = /\bNow:/;
-const COVERED_ENUMERATOR = /\((?:[a-z]|\d{1,2})\)/g;
+const COVERED_ENUMERATOR = /(?<!\w)\((?:[a-z]|\d{1,2})\)/g;
 const ASK_WORDS = new Set(["ok", "accept", "recommend", "recommended", "yes", "no", "default", "defaults"]);
 const FUNCTION_WORDS = new Set(
   ("a an the and or but nor of in on at to for from by with as into onto than then so if " +
@@ -55,6 +58,8 @@ const FUNCTION_WORDS = new Set(
     "any all each may can will would should do does did has have had not").split(" "),
 );
 const ID_WINDOW = 4;
+/** Context is read from a bounded slice, so each id costs the same however long the text is. */
+const ID_WINDOW_CHARS = 400;
 const MIN_ID_CONTEXT = 3;
 const MIN_POINTER_WORDS = 12;
 const DEFAULTS_REACH = 4;
@@ -122,18 +127,19 @@ function principleTriggers(text: string): string[] {
 }
 
 function wordsAround(text: string, start: number, end: number): string[] {
-  const before = text.slice(0, start).split(/\s+/).filter(Boolean).slice(-ID_WINDOW);
-  const after = text.slice(end).split(/\s+/).filter(Boolean).slice(0, ID_WINDOW);
+  const before = text.slice(Math.max(0, start - ID_WINDOW_CHARS), start).split(/\s+/).filter(Boolean).slice(-ID_WINDOW);
+  const after = text.slice(end, end + ID_WINDOW_CHARS).split(/\s+/).filter(Boolean).slice(0, ID_WINDOW);
   return [...before, ...after].filter((token) => !ID_IN_WORD.test(token) && isContentWord(token));
 }
 
 function bareIdTriggers(text: string): string[] {
   const body = masked(text);
   const matches = [...body.matchAll(ID_TOKEN)];
-  const seen = matches.map((m) => m[0]);
+  const counts = new Map<string, number>();
+  for (const m of matches) counts.set(m[0], (counts.get(m[0]) ?? 0) + 1);
   const triggers: string[] = [];
   for (const match of matches) {
-    if (seen.indexOf(match[0]) !== seen.lastIndexOf(match[0])) continue;
+    if ((counts.get(match[0]) ?? 0) > 1) continue;
     const context = wordsAround(body, match.index, match.index + match[0].length).length;
     if (context < MIN_ID_CONTEXT) triggers.push(`bare id ${match[0]} (${context} content words nearby)`);
   }
