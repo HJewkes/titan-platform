@@ -282,7 +282,7 @@ export function frozenFor(freezes: FreezeStore, registrations: RegistrationTasks
   return freeze !== undefined && !isFixersPr(freeze, registrations.byPr(repo, pr));
 }
 
-export interface FreezeRecheck {
+interface FreezeRecheck {
   port: GitHubPort;
   freezes: FreezeStore;
   registrations: RegistrationTasks;
@@ -294,7 +294,7 @@ export interface FreezeRecheck {
  * per repo and thawing when it is green after the red. The freeze guard and merge policy both decide through this, so
  * a main fixed outside Shepherd thaws whichever reads it first.
  */
-export async function frozenAfterRecheck(read: FreezeRecheck, repo: RepoSlug, pr: number, baseRef: () => Promise<string>): Promise<boolean> {
+async function frozenAfterRecheck(read: FreezeRecheck, repo: RepoSlug, pr: number, baseRef: () => Promise<string>): Promise<boolean> {
   const freeze = read.freezes.get(repo);
   if (!freeze || isFixersPr(freeze, read.registrations.byPr(repo, pr))) return false;
   return !(await thawedByRecheck(read, repo, freeze, baseRef));
