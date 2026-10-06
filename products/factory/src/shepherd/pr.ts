@@ -101,8 +101,6 @@ interface ShepherdRun extends WakeRun {
   fresh: Set<string>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
-  /** Heads whose failed jobs were rerun after the fixer exited without a push; a head gets one. */
-  rerunHeads: Set<string>;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
 }
@@ -122,7 +120,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set(), rerunHeads: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -182,11 +180,7 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   if (await awaitedPast(run, headSha)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
-  if (outcome.kind === "unhandled" && outcome.exited) {
-    const exit = await afterFixerExit(run, kind, headSha, payload, outcome.reason);
-    if (exit === "rerun") return true;
-    throw new LeaveLand(exit);
-  }
+  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome.reason, (left) => new LeaveLand(left));
   return tookWake(run, headSha, outcome);
 }
 

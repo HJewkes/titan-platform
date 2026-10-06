@@ -51,26 +51,27 @@ export function flakeCheckRoute(port: GitHubPort, now: () => number): StepRoute 
 
 const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string(), workflowRunId: z.number().nullable() })) });
 
-/** What a fixer's exit without a push needs: the run's gate context, plus the heads already rerun, which a head gets once. */
-export interface ExitRun extends GateRun {
-  state: GateRun["state"] & { round: number; reruns: number };
-  rerunHeads: Set<string>;
-}
+type ExitRun = GateRun & { state: { round: number; reruns: number } };
+
+/** Heads rerun after a fixer's exit, per run; a head gets one, and a replay of the run's steps rebuilds the set. */
+const rerunHeads = new WeakMap<object, Set<string>>();
 
 /**
  * A fixer that exited with no push gets no second wait. A red whose failing tests the PR did not touch is rerun once
- * at the same head; anything else opens the sent-back gate naming the exit. Undefined from the gate lands the next round.
+ * at the same head, and the round goes on. Anything else opens the sent-back gate naming the exit and leaves the round
+ * through `leave`, which builds the error that ends it.
  */
-export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, reason: string): Promise<"rerun" | LandOutcome | undefined> {
-  const red = kind === "ci-red" && !run.rerunHeads.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
+export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, reason: string, leave: (outcome?: LandOutcome) => Error): Promise<true> {
+  const reran = rerunHeads.get(run.ctx) ?? rerunHeads.set(run.ctx, new Set()).get(run.ctx)!;
+  const red = kind === "ci-red" && !reran.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
   if (red?.success) {
     const check = await step(run.ctx, `${FLAKE_CHECK_STEP}:${run.state.round}`, { ...run.target, headSha, failing: red.data.failing }, FlakeCheckResult);
     if (check.outside) {
-      run.rerunHeads.add(headSha);
+      reran.add(headSha);
       await rerun(run.ctx, run.target, { kind: "ci-failed", headSha, failing: red.data.failing }, run.state);
-      return "rerun";
+      return true;
     }
   }
   const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${reason}. Await a new head or abandon?`;
-  return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`);
+  throw leave(await sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`));
 }
