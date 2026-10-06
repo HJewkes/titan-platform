@@ -190,8 +190,10 @@ describe("gitTreeSource where today's disk links over a tracked dir", () => {
 });
 
 // Link chains of CHAIN_LINKS ending at a tracked file; link `n` takes n hops, so 30 resolves and 45 loops.
-// chain/ is committed; loose/ is made on disk after the commit, so only it resolves through the memo.
+// chain/ is committed and loose/ is made on disk after the commit; both resolve through the per-hop memo.
 const CHAIN_LINKS = 45;
+// nest/k -> k+1/../k+1/../k+1: without a memo per link, resolving nest/1 takes 3^NEST_DEPTH steps.
+const NEST_DEPTH = 25;
 // The barrel splits t.ts's inbound weight three ways, so its utilization sums thirds in file order.
 const ORDERED: Record<string, string> = {
   "x.ts": "export const x = 1;\n",
@@ -221,6 +223,10 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
     await fs.mkdir(at("sub"));
     await fs.symlink("../gone/../x.ts", at("sub/dangling.ts"));
     await fs.symlink("../sub/../x.ts", at("sub/through.ts"));
+    await fs.mkdir(at("nest/d"), { recursive: true });
+    await fs.writeFile(at("nest/d/x.txt"), "");
+    for (let k = 1; k < NEST_DEPTH; k++) await fs.symlink(`${k + 1}/../${k + 1}/../${k + 1}`, at(`nest/${k}`));
+    await fs.symlink("d", at(`nest/${NEST_DEPTH}`));
     repoGit(["init", "-q", "-b", "main"]);
     repoGit(["add", "-A"]);
     repoGit(["-c", "user.name=alice", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "only"]);
@@ -249,6 +255,15 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
     expect(host.fileExistsSync(at("sub/dangling.ts"))).toBe(existsSync(at("sub/dangling.ts")));
     expect(host.fileExistsSync(at("sub/dangling.ts"))).toBe(false);
     expect(host.readFileSync(at("sub/through.ts"))).toBe(ORDERED["x.ts"]);
+  });
+
+  it("resolves each tracked link once per hop budget when nested targets name it repeatedly", () => {
+    const host = gitTreeSource(repo, "HEAD").fileSystem;
+    const started = performance.now();
+
+    host.fileExistsSync(at("nest/1/x.txt"));
+
+    expect(performance.now() - started).toBeLessThan(2_000);
   });
 
   it("indexes files in the same order as a checkout, so float metrics match byte for byte", async () => {

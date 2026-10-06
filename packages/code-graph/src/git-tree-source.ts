@@ -153,23 +153,28 @@ class CommitTree {
     return rel !== null && (this.oids.has(rel) || this.dirs.has(rel));
   }
 
-  /**
-   * Memoized per path and hop budget, so each dir's components are resolved once
-   * per budget: a chain cut short by the budget never answers for a shorter one.
-   */
   private resolve(abs: string, hops: number): string {
-    const key = `${hops}:${abs}`;
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
+  }
+
+  /**
+   * Every component of every path and link target passes through here, memoized
+   * per path and hop budget: a link named many times in nested targets is followed
+   * once per budget, and a chain cut short by the budget never answers for a shorter one.
+   */
+  private step(dir: string, name: string, hops: number): string {
+    const key = `${hops}:${path.join(dir, name)}`;
     let resolved = this.canonical.get(key);
     if (resolved === undefined) {
-      const parent = path.dirname(abs);
-      resolved = parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
+      resolved = this.stepOnce(dir, name, hops);
       this.canonical.set(key, resolved);
     }
     return resolved;
   }
 
   /** Disk is never consulted for a component the commit tracks, a symlink included. */
-  private step(dir: string, name: string, hops: number): string {
+  private stepOnce(dir: string, name: string, hops: number): string {
     const next = path.join(dir, name);
     const rel = relativeInside(this.root, next);
     if (this.tracks(rel)) return next;
