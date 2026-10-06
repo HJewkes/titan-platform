@@ -39,6 +39,28 @@ describe("bulkSignal on the worked examples", () => {
   });
 });
 
+describe("bulkSignal on every wording of a batch acceptance", () => {
+  it.each([
+    ["yes to all defaults", null],
+    ["yes to all the defaults", null],
+    ["yes to all recommended answers", null],
+    ["ok with all defaults", null],
+    ["ok for all defaults", null],
+    ["accept all the defaults", null],
+    ["yes, all defaults", null],
+    ["ok to all 6 defaults", 6],
+    ["accepted all 6 recommendations", 6],
+    ["Approved all nine defaults", 9],
+    ["accepts every recommendation as written", null],
+    ["accept all 3 recommendations, only change naming", 3],
+    ["all as written", null],
+    ["ok, all as written", null],
+    ["yes, all as recommended", null],
+  ])("reads %j as plural defaults wherever the owner adopts it", (phrase, covers) => {
+    for (const input of adoptions(phrase)) expect(bulkSignal(input)).toEqual({ covers, reason: "plural-defaults" });
+  });
+});
+
 describe("bulkSignal signals", () => {
   it("trusts a source that says one answer covered several items", () => {
     expect(bulkSignal({ recommended: "Retry once", answer: "Retry once", covers: 3 })).toEqual({
@@ -53,14 +75,9 @@ describe("bulkSignal signals", () => {
     ["go with D2 to D7", 6],
     ["ok, questions 1-10 are fine", 10],
     ["ok, the fourteen plans", 14],
-  ])("reads the range or count in %j", (answer, covers) => {
-    const signal = bulkSignal({ recommended: null, answer, covers: null });
-
-    expect(signal?.covers).toBe(covers);
-  });
-
-  it.each(["all as written", "ok, all as written", "yes, all as recommended"])("reads %j as plural defaults", (answer) => {
-    expect(bulkSignal({ recommended: null, answer, covers: null })?.reason).toBe("plural-defaults");
+    ["okayed all 4 questions", 4],
+  ])("reads the range or count in %j wherever the owner adopts it", (phrase, covers) => {
+    for (const input of adoptions(phrase)) expect(bulkSignal(input)?.covers).toBe(covers);
   });
 
   it("reads a batch the owner adds after the recommendation", () => {
@@ -75,12 +92,10 @@ describe("bulkSignal signals", () => {
     "All nine defaults not accepted",
     "Approve all defaults? no",
     "Accept all as written in the doc for Q2 only",
-  ])(
-    "finds nothing in the negated %j",
-    (answer) => {
-      expect(bulkSignal({ recommended: null, answer, covers: null })).toBeNull();
-    },
-  );
+    "Recommend all defaults be reviewed",
+  ])("finds nothing in the negated, questioned or scoped %j wherever the owner adopts it", (phrase) => {
+    for (const input of adoptions(phrase)) expect(bulkSignal(input)).toBeNull();
+  });
 
   it.each([
     "Target Q4-2026 for launch",

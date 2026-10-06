@@ -18,13 +18,16 @@ interface BulkSignal {
 const MAX_COVERS = 50;
 const CLAUSE = "[^.;:!?\\n]*";
 /**
- * Each accept word and the rest of its clause; the lookahead lets a later accept word in that
- * clause start its own. Keep, take and leave are left out: they choose a value ("keep 10
- * questions per page"), they do not accept a batch.
+ * Every form of an accept word, and the rest of its clause; the lookahead lets a later accept
+ * word in that clause start its own. Keep, take and leave are left out: they choose a value
+ * ("keep 10 questions per page"). So is recommend, which proposes rather than accepts.
  */
-const ACCEPT_CLAUSE = new RegExp(`\\b(?:accept|ok|okay|yes|approve|recommend|go with)\\b(?=(${CLAUSE}))`, "gi");
-const LEAD = /^[\s,'"`“]*(?:(?:to|with|the|all|of|these|those)\s+)*/i;
-const OPEN = `^[\\s,'"\`“]*`;
+const ACCEPT_WORD = new RegExp(
+  `(?<![\\w-])(?:accept(?:s|ed|ing)?|ok(?:ay)?(?:ed)?|yes|approv(?:e|es|ed|ing)|go(?:es|ing)? with|went with)\\b(?=(${CLAUSE}))`,
+  "gi",
+);
+/** Punctuation and the small words between an accept word and its object, as in "yes to the". */
+const LEAD = /^[\s,'"`“]*(?:(?:to|with|for|on|of|the|these|those)\s+)*/i;
 /** A negation earlier in the clause, as in "I don't accept" or "not ok to go with". */
 const NEGATION = /\b(?:not|never|cannot)\b|n['’]t\b/i;
 /** "Only" scopes the acceptance to part of the batch, as in "all as written for Q2 only". */
@@ -39,25 +42,22 @@ const NUMBER_WORDS = [
 ];
 const COUNT = `(\\d+|${NUMBER_WORDS.join("|")})`;
 /** A rate, as in "10 questions per page", sizes one setting rather than counting decisions. */
-const COUNTED_NOUN = `\\s+(?:plan\\s+)?(?:qs|questions|defaults|plans|decisions)\\b(?!\\s+(?:per|each|at a time|in parallel)\\b)`;
+const COUNTED_NOUN = `\\s+(?:plan\\s+)?(?:qs|questions|defaults|plans|decisions|recommendations|recommended answers)\\b(?!\\s+(?:per|each|at a time|in parallel)\\b)`;
 /** An id's number, as in "ZZ-343 defaults", is not a count. */
 const COUNTED = new RegExp(`(?<![\\w-])${COUNT}${COUNTED_NOUN}`, "gi");
 
 /**
- * The plural is the signal, and only when the accept word governs a batch: all, every, a
+ * The plural is the signal, and only when the accepted object is a batch: all, every, a
  * count or a plan, or an id directly naming its defaults. "Accept the defaults" is one choice.
  */
 const QUALIFIED_DEFAULTS = new RegExp(
-  `${OPEN}(?:the\\s+)?(?:(?:all|every|${COUNT}|plan|planner)\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)|${ID}\\s+(?:plan\\s+)?defaults)\\b`,
+  `^(?:(?:all|every|${COUNT}|plan|planner)\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)|${ID}\\s+(?:plan\\s+)?defaults)\\b`,
   "i",
 );
-const ALL_AS_WRITTEN = new RegExp(`${OPEN}all\\b${CLAUSE}?\\bas (?:recommended|written)\\b`, "i");
-/** The accept word after the batch, as in "All nine defaults accepted". */
-const BATCH_ACCEPTED = new RegExp(
-  `${OPEN}(?:the\\s+)?(?:all|every|${COUNT})\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)\\b${CLAUSE}?\\b(?:accepted|approved)\\b`,
-  "i",
-);
+const ALL_AS_WRITTEN = new RegExp(`^(?:all|every)\\b${CLAUSE}?\\bas (?:recommended|written)\\b`, "i");
 
+/** "All of the" before a count or range, as in "ok to all 6 questions". */
+const ALL_OF = /^(?:all|every)(?:\s+of)?(?:\s+(?:the|these|those))?\s+/i;
 const GOVERNED_COUNT = new RegExp(`^${COUNT}${COUNTED_NOUN}`, "i");
 const GOVERNED_LABEL_RANGE = /^([QD])(\d+)\s*(?:-|–|to)\s*\1(\d+)\b/i;
 const GOVERNED_QUESTION_RANGE = /^questions?\s+(\d+)\s*(?:-|–|to)\s*(\d+)\b/i;
@@ -75,54 +75,58 @@ function rangeSize(low: string | undefined, high: string | undefined): number {
   return Number(high) - Number(low) + 1;
 }
 
-/** An accept word negated earlier in its clause, or a clause asked as a question, accepts nothing. */
-function accepts(text: string, match: RegExpExecArray): boolean {
-  const clause = match[1] ?? "";
-  if (NEGATION.test(CLAUSE_SO_FAR.exec(text.slice(0, match.index))?.[0] ?? "")) return false;
-  return text[match.index + match[0].length + clause.length] !== "?";
+/**
+ * What one accept word accepts: the rest of its clause, or the clause before it when it ends
+ * the clause ("All nine defaults accepted"), with the lead-in stripped. Null when the word is
+ * negated earlier in its clause, asked as a question, or scoped with "only".
+ */
+function acceptedObject(text: string, match: RegExpExecArray): string | null {
+  const before = CLAUSE_SO_FAR.exec(text.slice(0, match.index))?.[0] ?? "";
+  const after = match[1] ?? "";
+  if (NEGATION.test(before) || text[match.index + match[0].length + after.length] === "?") return null;
+  const following = after.replace(LEAD, "");
+  const object = following.trim() === "" ? before.replace(LEAD, "") : following;
+  return SCOPED.test(object.split(",")[0] ?? "") ? null : object;
 }
 
-/** The clause after each accept word that accepts something. */
-function acceptClauses(text: string): string[] {
-  return [...text.matchAll(ACCEPT_CLAUSE)].filter((m) => accepts(text, m)).map((m) => m[1] ?? "");
+/** The object of every accept word in the phrase; each matcher below reads only these. */
+function acceptedObjects(phrase: string): string[] {
+  return [...phrase.matchAll(ACCEPT_WORD)]
+    .map((m) => acceptedObject(phrase, m))
+    .filter((object): object is string => object !== null && object.trim() !== "");
 }
 
-/** Whole clauses that end by accepting a batch, as in "All nine section 9 defaults accepted". */
-function batchAcceptedClauses(text: string): string[] {
-  return text.split(/[.;:!?\n]/).filter((clause) => BATCH_ACCEPTED.test(clause) && !NEGATION.test(clause));
-}
-
-/** The largest count the clauses state, or null when none is plausible. */
-function largestCount(clauses: readonly string[]): number | null {
-  const counts = clauses.flatMap((clause) => [...clause.matchAll(COUNTED)].map((m) => countOf(m[1] ?? "")));
+/** The largest count the objects state, or null when none is plausible. */
+function largestCount(objects: readonly string[]): number | null {
+  const counts = objects.flatMap((object) => [...object.matchAll(COUNTED)].map((m) => countOf(m[1] ?? "")));
   const plausibleCounts = counts.filter((n) => plausible(n) !== null);
   return plausibleCounts.length === 0 ? null : Math.max(...plausibleCounts);
 }
 
-/** A count or range the accept word takes as its object, as in "yes to Q1-Q5"; never one further on. */
-function governedCount(clause: string): number | null {
-  const object = clause.replace(LEAD, "");
-  const counted = GOVERNED_COUNT.exec(object);
+/** A count or range that is the accepted object, as in "yes to Q1-Q5"; never one further on. */
+function governedCount(object: string): number | null {
+  const head = object.replace(ALL_OF, "");
+  const counted = GOVERNED_COUNT.exec(head);
   if (counted) return plausible(countOf(counted[1] ?? ""));
-  const labels = GOVERNED_LABEL_RANGE.exec(object);
+  const labels = GOVERNED_LABEL_RANGE.exec(head);
   if (labels) return plausible(rangeSize(labels[2], labels[3]));
-  const questions = GOVERNED_QUESTION_RANGE.exec(object);
+  const questions = GOVERNED_QUESTION_RANGE.exec(head);
   return questions ? plausible(rangeSize(questions[1], questions[2])) : null;
 }
 
-function pluralDefaults(phrase: string, clauses: readonly string[]): BulkSignal | null {
-  const governed = clauses.filter((clause) => QUALIFIED_DEFAULTS.test(clause) || ALL_AS_WRITTEN.test(clause));
-  const matched = [...governed, ...batchAcceptedClauses(phrase)].filter((clause) => !SCOPED.test(clause));
-  if (matched.length > 0) return { covers: largestCount(matched), reason: "plural-defaults" };
-  return ALL_AS_WRITTEN.test(phrase) && !SCOPED.test(phrase) ? { covers: null, reason: "plural-defaults" } : null;
+/** A clause that is "all as written" needs no accept word: it is the acceptance. */
+function allAsWritten(phrase: string): boolean {
+  const clauses = phrase.split(/[.;:!?\n]/).map((clause) => clause.replace(LEAD, ""));
+  return clauses.some((clause) => ALL_AS_WRITTEN.test(clause) && !SCOPED.test(clause));
 }
 
 /** Whether one phrase accepts a batch; it gives the same answer wherever the phrase appears. */
 function phraseSignal(phrase: string): BulkSignal | null {
-  const clauses = acceptClauses(phrase);
-  const plural = pluralDefaults(phrase, clauses);
-  if (plural !== null) return plural;
-  const governed = clauses.map(governedCount).find((n) => n !== null) ?? null;
+  const objects = acceptedObjects(phrase);
+  const batches = objects.filter((object) => QUALIFIED_DEFAULTS.test(object) || ALL_AS_WRITTEN.test(object));
+  if (batches.length > 0) return { covers: largestCount(batches), reason: "plural-defaults" };
+  if (allAsWritten(phrase)) return { covers: null, reason: "plural-defaults" };
+  const governed = objects.map(governedCount).find((n) => n !== null) ?? null;
   return governed === null ? null : { covers: governed, reason: "question-range" };
 }
 
