@@ -102,6 +102,11 @@ open a daemon; `daemon` does.
   (`direction: "higher-worse"`), rank 1 is the file with the most lines, the worst offender,
   not the best. For `bus_factor_30d` (`direction: "lower-worse"`), rank 1 is the safest file.
   Read `direction` on the same metric before labelling anything "top" or "best".
+- `node.get` returns `lenses` only when asked for. Coupled partners have `measured: false`
+  until co-change pairs are stored. The `tests` lens lists path-linked tests only, for the
+  same reason, so `indexedCount` can exceed its length. The `exports` lens keeps at most 8
+  exported and 8 internal symbols. Generated files get a null centrality rank, because the
+  reading order leaves them out.
 - Baseline deltas match nodes by id, so a moved file reads as removed plus added until alias
   following lands (TP-187).
 - **A derived finding disappears when its rule or baseline changes.** Findings are computed
@@ -119,6 +124,21 @@ open a daemon; `daemon` does.
   matches the snapshot; otherwise `excerptMissing: "changed-since-snapshot"`.
 - `node.neighbors` takes a stored node. A directory id is DATAERR; use `hierarchy.get` for
   directories until `deps.matrix` lands.
+- `hotspots.list` takes `window` as metric names spell it (`30d`, `lifetime`), not a bare
+  number. A window the snapshot never measured has no churn, so it returns no rows rather
+  than an error. A file younger than the window is discounted by its age, so a freshly
+  indexed repository can score every file 0 at file grain. The symbol grain applies no
+  recency.
+- `overview.get` cannot measure hidden coupling yet: co-change pairs are not stored, so that
+  signal has `measured: false` and a penalty of 0. Without a `baseline`, every open finding
+  counts as carried over, so `each_carry` weighs them, not `each_new`. `combined` is 100
+  minus the penalties and is only returned when asked for; read `signals` first, because one
+  number hides which signal moved.
+- `changes.get` needs a `baseline`. Across index versions it returns `comparable: false` and
+  empty lists rather than deltas between two different measures. New coupling has
+  `measured: false` until co-change pairs are stored. Findings match by id, so a renamed
+  file's finding reads as one resolved and one new until TP-187. Each list holds at most
+  `limit` rows; `counts` holds the full sizes.
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 

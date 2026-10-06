@@ -421,6 +421,29 @@ describe("runChecks — forbid-import", () => {
       db.close();
     }
   });
+
+  it("allows a destination the except list names and still flags the rest", async () => {
+    fixture = await createFixture((db, snapshotId) => {
+      db.insertNodes(snapshotId, [
+        { id: "render/foo.ts", kind: "file", name: "" },
+        { id: "cli/index.ts", kind: "file", name: "" },
+        { id: "cli/browser.ts", kind: "file", name: "" },
+      ]);
+      db.insertEdges(snapshotId, [
+        { srcId: "render/foo.ts", dstId: "cli/index.ts", kind: "imports" },
+        { srcId: "render/foo.ts", dstId: "cli/browser.ts", kind: "imports" },
+      ]);
+    });
+
+    const db = openCodeGraph(fixture.dbPath);
+    try {
+      const rule = { type: "forbid-import" as const, id: "r", from: "render/**", to: "cli/**", except: ["cli/browser.ts"] };
+      const result = runChecks(db, { snapshotId: fixture.snapshotId, rules: [rule] });
+      expect(result.violations.map((v) => v.destinationId)).toEqual(["cli/index.ts"]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("runChecks — layered-deps", () => {
