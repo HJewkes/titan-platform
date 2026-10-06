@@ -1,5 +1,19 @@
 # @titan-design/egress-scan
 
+## 0.5.0
+
+### Minor Changes
+
+- f7161c0: `.egress-allow` globs now compile through fix-proof's shared glob compiler, so `docs/{a,b}.md` expands braces instead of matching nothing. The literal-segment guard checks every brace alternative. `AllowEntry.pattern` (a `RegExp`) is replaced by `AllowEntry.matches`. fix-proof exports `expandBraces`.
+
+### Patch Changes
+
+- f7161c0: `expandBraces` rejects a glob longer than 1024 characters or with more than 32 brace groups before expanding, so single-choice brace chains cannot exhaust memory. egress-scan turns any glob compile failure into an `AllowFileError`, and the root `prepare` builds fix-proof before egress-scan.
+- Updated dependencies [f7161c0]
+- Updated dependencies [f7161c0]
+- Updated dependencies [f7161c0]
+  - @titan-design/fix-proof@0.2.0
+
 ## 0.4.0
 
 ### Minor Changes

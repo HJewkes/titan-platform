@@ -5,6 +5,7 @@ import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-des
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { ReviewerMachineHold } from "./review-wait.js";
 import { SpawnDeferred, type SpawnGate } from "./spawn-gate.js";
@@ -22,8 +23,8 @@ export interface ReviewerRosterRow extends ReviewerAgent {
 export interface AgentChatReviewerDispatchOptions {
   /** Absolute path of the `agent-chat` executable. */
   agentChatBin: string;
-  /** The one agent-chat profile a reviewer is spawned with; the profile is the reviewer's tool grant. */
-  profile: string;
+  /** The agent-chat profile each class of PR is spawned with; the profile is the reviewer's tool grant, model and effort. */
+  roles: ReviewerRoles;
   /** The checkout of `repo` on this machine, where its reviewer starts; undefined when there is none. */
   cwdFor: (repo: string) => string | undefined;
   /** Claude config directory for the reviewer; absent means agent-chat's default. */
@@ -135,13 +136,13 @@ async function runningReviews(roster: RosterReader): Promise<number> {
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
-  const { agentChatBin, profile, cwdFor, configDir } = options;
+  const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target) => askBroker(async () => agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews(roster) }) })),
+    spawn: (name, brief, target, facts = {}) => askBroker(async () => agents.spawn({ name, profile: reviewerRoleFor(facts, roles), brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews(roster) }) })),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews(roster)))),
   };
 }

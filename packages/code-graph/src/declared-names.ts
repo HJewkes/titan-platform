@@ -1,11 +1,11 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
-import { qualify, walkScopes } from "./scope-path.js";
+import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
 
 const TS_DECL_TYPES = new Set([
-  "function_declaration",
-  "method_definition",
+  ...TS_FUNCTION_DECL_TYPES,
   "class_declaration",
+  "abstract_class_declaration",
 ]);
 
 const PY_DECL_TYPES = new Set(["function_definition", "class_definition"]);
@@ -78,7 +78,7 @@ export function collectDeclaredNames(file: ParsedFile): Set<string> {
 /**
  * The declaration at this node — its name plus the node whose line span
  * represents it — or null. Mirrors source-metrics' `functionAt` handling of an
- * arrow / function-expression bound to a `const`/`let` (the span is the callable
+ * arrow, function or generator expression bound to a `const`/`let` (the span is the callable
  * body's node, so it contains the coverage `fnMap` loc), extended to classes.
  */
 function declaredNodeAt(
@@ -89,10 +89,7 @@ function declaredNodeAt(
     const name = node.childForFieldName("name")?.text;
     return name ? { name, node } : null;
   }
-  if (
-    (node.type === "arrow_function" || node.type === "function_expression") &&
-    node.parent?.type === "variable_declarator"
-  ) {
+  if (TS_BOUND_FUNCTION_TYPES.has(node.type) && node.parent?.type === "variable_declarator") {
     const name = node.parent.childForFieldName("name")?.text;
     return name ? { name, node } : null;
   }

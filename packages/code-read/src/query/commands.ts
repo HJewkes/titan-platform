@@ -7,6 +7,7 @@ import { listHotspots } from "./hotspots.js";
 import { getNeighbors } from "./neighbors.js";
 import { getNode } from "./node-get.js";
 import { getOverview } from "./overview.js";
+import { packagesStats } from "./packages-stats.js";
 import { pathsImpact } from "./paths-impact.js";
 import { resolveNode } from "./resolve.js";
 import type { ReadSource } from "./source.js";
@@ -48,4 +49,5 @@ export const QUERIES: { [N in CommandName]: QueryFn<N> } = {
   "overview.get": getOverview,
   "changes.get": getChanges,
   "paths.impact": pathsImpact,
+  "packages.stats": packagesStats,
 };

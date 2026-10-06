@@ -7,21 +7,31 @@ export const TS_CLASS_TYPES: ReadonlySet<string> = new Set([
   "class",
 ]);
 
-/** Declarations that name the scope they open. */
-const TS_NAMED_SCOPES = new Set([
-  ...TS_CLASS_TYPES,
+/** Function declarations that carry their own name: plain, generator and method. */
+export const TS_FUNCTION_DECL_TYPES: ReadonlySet<string> = new Set([
   "function_declaration",
   "generator_function_declaration",
   "method_definition",
+]);
+
+/** Function values that take the name of the `const`/`let` they are bound to. */
+export const TS_BOUND_FUNCTION_TYPES: ReadonlySet<string> = new Set([
+  "arrow_function",
+  "function_expression",
+  "generator_function",
+]);
+
+/** Declarations that name the scope they open. */
+const TS_NAMED_SCOPES = new Set([
+  ...TS_CLASS_TYPES,
+  ...TS_FUNCTION_DECL_TYPES,
   "internal_module",
 ]);
 
 /** Values that take the name they are bound to, or open an anonymous scope when unbound. */
 const TS_BOUND_SCOPES = new Set([
   "class",
-  "arrow_function",
-  "function_expression",
-  "generator_function",
+  ...TS_BOUND_FUNCTION_TYPES,
   "object",
 ]);
 
