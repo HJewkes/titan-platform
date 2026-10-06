@@ -37,6 +37,8 @@ export interface ModelRule {
   type: string;
   severity: string;
   text: string;
+  /** A `layered-deps` rule's tiers of package roots, lowest first; the repo's tier config. */
+  layers?: readonly (readonly string[])[];
 }
 
 /** One check-rule violation, keyed by the ratchet's `violationKey`; `ranges` are the flagged lines, absent for a whole-node finding. */

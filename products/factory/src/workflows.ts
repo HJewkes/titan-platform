@@ -21,6 +21,7 @@ import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeplo
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
@@ -124,7 +125,7 @@ function checkoutPath(book: SeatBook, repo: string): string | undefined {
 function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined, gate: SpawnGate): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
-  const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate });
+  const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate });
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
   return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, ...(codewatch && { codewatch }) };
 }

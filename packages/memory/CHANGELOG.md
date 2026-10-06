@@ -1,5 +1,14 @@
 # @titan-design/memory
 
+## 0.1.3
+
+### Patch Changes
+
+- 87e5857: `curate` now counts at most one `helpful` and one `harmful` vote per bullet per batch, whatever the `reason`, and an `add` that folds into an existing bullet counts as that bullet's `helpful` vote. Extra votes land in `report.skipped`.
+- Updated dependencies [ea96b66]
+- Updated dependencies [f886302]
+  - @titan-design/store-sqlite@0.3.3
+
 ## 0.1.2
 
 ### Patch Changes

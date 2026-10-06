@@ -1,5 +1,5 @@
 import type { SignalKind } from "./audit-events.js";
-import { IGNORED_PATH, commandHeads, parseTaskIntents, type GitIntent } from "./bash-parse.js";
+import { IGNORED_PATH, commandHeads, gitCommands, parseTaskIntents, type GitIntent } from "./bash-parse.js";
 import type { LineContext, LineReader } from "./line-reader.js";
 import { toRepoRelative } from "./refs.js";
 import { str, type Json } from "./text.js";
@@ -14,7 +14,7 @@ export interface AuditSignal {
 
 const STATUS = /\bStatus:\**\s*(DONE_WITH_CONCERNS|DONE|BLOCKED|NEEDS_[A-Z_]+)\b/;
 const WRAP = /\b(?:active-work|aw)\s+(?:session\s+)?(wrap|record)\b/;
-const PR_CREATE = /\bgh\s+pr\s+create\b/;
+const PR_CREATE = /^gh\s+pr\s+create\b/;
 const ACTIVE_WORK_SKILL = /(^|:)active-work$/;
 const MARKDOWN = /\.md$/i;
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -41,7 +41,7 @@ export function bashSignals(command: string, git: GitIntent | null): AuditSignal
   const signals: AuditSignal[] = [];
   if (git?.commit) signals.push({ signal: "commit", detail: null });
   if (git?.push) signals.push({ signal: "push", detail: null });
-  if (PR_CREATE.test(command)) signals.push({ signal: "pr_create", detail: null });
+  if (gitCommands(command).some((simple) => PR_CREATE.test(simple))) signals.push({ signal: "pr_create", detail: null });
   if (git?.mergedPr) signals.push({ signal: "pr_merge", detail: String(git.mergedPr) });
   const wrap = WRAP.exec(command)?.[1];
   if (wrap) signals.push({ signal: "task_wrap", detail: wrap });
