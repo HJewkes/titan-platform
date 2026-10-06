@@ -3,7 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
-import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
+import { onCiFailed, rerun, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, newUpdateBound, step, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
@@ -26,6 +26,7 @@ import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, roundKind, route
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, sentBackGate, tookWake, type PrTarget, type WakeRun } from "./gates.js";
 import { repairGate, spendRepair } from "./repair.js";
+import { FLAKE_CHECK_STEP, FlakeCheckResult } from "./flake-check.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -100,6 +101,8 @@ interface ShepherdRun extends WakeRun {
   fresh: Set<string>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
+  /** Heads whose failed jobs were rerun after the fixer exited without a push; a head gets one. */
+  rerunHeads: Set<string>;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
 }
@@ -119,7 +122,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set(), rerunHeads: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -178,7 +181,29 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   if (await awaitedPast(run, headSha)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
-  return tookWake(run, headSha, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }));
+  const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
+  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome.reason);
+  return tookWake(run, headSha, outcome);
+}
+
+const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string(), workflowRunId: z.number().nullable() })) });
+
+/**
+ * A fixer that exited with no push gets no second wait. A red whose failing tests the PR did not touch is rerun once
+ * at the same head; anything else opens the sent-back gate naming the exit, and leaves the round.
+ */
+async function afterFixerExit(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, reason: string): Promise<true> {
+  const red = kind === "ci-red" && !run.rerunHeads.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
+  if (red?.success) {
+    const check = await step(run.ctx, `${FLAKE_CHECK_STEP}:${run.state.round}`, { ...run.target, headSha, failing: red.data.failing }, FlakeCheckResult);
+    if (check.outside) {
+      run.rerunHeads.add(headSha);
+      await rerun(run.ctx, run.target, { kind: "ci-failed", headSha, failing: red.data.failing }, run.state);
+      return true;
+    }
+  }
+  const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${reason}. Await a new head or abandon?`;
+  throw new LeaveLand(await sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`));
 }
 
 /** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
