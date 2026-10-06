@@ -12,3 +12,18 @@ export const DAY_SECONDS = 86400;
 export function windowCutoff(windowDays: number, nowEpoch: number): number {
   return nowEpoch - windowDays * DAY_SECONDS;
 }
+
+/**
+ * `git log` arguments bounding a window: none for lifetime, a cutoff at `untilEpoch`
+ * when given, else relative to the wall clock.
+ */
+export function sinceArgs(windowDays: ChurnWindow, untilEpoch?: number): string[] {
+  if (windowDays === "lifetime") return [];
+  if (untilEpoch === undefined) return [`--since=${windowDays}.days.ago`];
+  return [`--since=@${windowCutoff(windowDays, untilEpoch)}`];
+}
+
+/** The rev to walk from, terminated by `--` so it never reads as a path; none walks from HEAD. */
+export function revArgs(rev?: string): string[] {
+  return rev === undefined ? [] : [rev, "--"];
+}
