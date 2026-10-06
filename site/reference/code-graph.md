@@ -59,6 +59,19 @@ content (`readFile`), existence checks for Python imports and the `dist` to `src
 imports. It defaults to `workingTreeSource()`, which reads the checkout through `node:fs`. A
 source answers for the same absolute paths a checkout would, so node ids do not change.
 
+Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
+glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture`, `script`, `entry`, `barrel`, `types`,
+`config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
+`.gitattributes` syntax:
+
+```json
+{ "lab": ["packages/ui/src/lab/**"] }
+```
+
+`UNIMPORTED_ROLES` names the roles nothing imports by design. Dead-module reachability treats
+them, plus `barrel`, as roots, so a story or lab file with no importer is not reported dead.
+
 ## Checking a snapshot
 
 The rules engine turns a snapshot into pass/fail against a `check.json`. Verified against

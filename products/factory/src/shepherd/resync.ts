@@ -1,4 +1,5 @@
-import type { FactoryHost } from "../host.js";
+import type { RepoSlug } from "@titan-design/github";
+import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
@@ -23,7 +24,7 @@ export interface ResyncReport {
   cancelErrors: CancelError[];
   /** Pending gates whose run already completed, failed or was cancelled. */
   orphanGates: string[];
-  /** Gates cancelled because their head moved or their MRG-AU gate failed only on merge-tree-clean; each run starts a new cycle. */
+  /** Gates cancelled because their head moved or their MRG-AU gate failed only on transient conditions; each run starts a new cycle. */
   superseded: SupersededGate[];
   /** Why superseding moved gates failed; the rest of the report still stands. */
   supersedeError?: string;
@@ -38,26 +39,65 @@ function orphanGates(host: FactoryHost): string[] {
   });
 }
 
-const SOLE_MERGE_TREE = /^MRG-AU-[A-Z]+ unmet: merge-tree-clean$/;
+/** Unmet conditions a fresh read can clear at the same head: a stale merge-tree read, and a freeze that has since thawed. */
+const TRANSIENT_CONDITIONS: readonly string[] = ["merge-tree-clean", "repo-not-frozen"];
+
+const MRG_AU_UNMET = /^MRG-AU-[A-Z]+ unmet: (.+)$/;
 
 /**
- * True when some MRG-AU allow row failed on merge-tree-clean alone, so a fresh read may let it hold. A row with a second
- * unmet condition does not count; a carry row always lists its carry condition on a head nobody carried to.
+ * The transient conditions unmet on the MRG-AU allow rows whose every unmet condition is transient, so a fresh read may let
+ * one hold; empty when each row also missed a lasting condition, such as a verdict at the head or a carry nobody made.
  */
-export function failedOnlyOnMergeTree(reason: string): boolean {
-  return reason.split("; ").some((part) => SOLE_MERGE_TREE.test(part));
+export function transientOnlyConditions(reason: string): string[] {
+  const unmet = reason.split("; ").flatMap((part) => {
+    const conditions = MRG_AU_UNMET.exec(part)?.[1]?.split(", ") ?? [];
+    return conditions.every((condition) => TRANSIENT_CONDITIONS.includes(condition)) ? conditions : [];
+  });
+  return TRANSIENT_CONDITIONS.filter((condition) => unmet.includes(condition));
 }
 
-/** Cancels each pending MRG-AU approve-merge gate still at the PR head whose only unmet condition was merge-tree-clean. */
-async function supersedeMergeTreeOnlyGates(host: FactoryHost, services: ShepherdServices, dryRun: boolean): Promise<SupersededGate[]> {
+interface TransientSweep {
+  dryRun?: boolean;
+  /** Only gates of runs on this repo, as a thaw sweeps; absent sweeps every repo. */
+  repo?: RepoSlug;
+}
+
+/** A freeze store that cannot be read counts as frozen, so its gates stay with the owner. */
+function stillFrozen(services: ShepherdServices, repo: RepoSlug): boolean {
+  try {
+    return services.freeze?.get().isFrozen(repo) ?? false;
+  } catch {
+    return true;
+  }
+}
+
+/** A pending MRG-AU approve-merge gate that failed only on transient conditions, in a repo the store no longer holds frozen. */
+function transientGate(host: FactoryHost, services: ShepherdServices, pending: PendingGate, only: RepoSlug | undefined): { head: string; conditions: string[] } | undefined {
+  const run = approveMergeRun(host, pending);
+  const gate = run && authorityGate(run, pending.gate.prompt);
+  const conditions = gate ? transientOnlyConditions(gate.reason) : [];
+  const repo = services.store.get().byRun(pending.runId)?.repo;
+  if (!gate || conditions.length === 0 || !repo || stillFrozen(services, repo)) return undefined;
+  if (only !== undefined && repo.toLowerCase() !== only.toLowerCase()) return undefined;
+  return { head: gate.head, conditions };
+}
+
+const onlyUnmet = (conditions: string[]): string =>
+  conditions.length === 1 ? `${conditions[0]} was the only unmet condition` : `${conditions.join(" and ")} were the only unmet conditions`;
+
+/**
+ * Cancels each pending MRG-AU approve-merge gate still at the PR head whose only unmet conditions were transient, unless
+ * its repo is frozen now, so the run asks the policy again at the same head.
+ */
+export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo }: TransientSweep = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   for (const pending of host.pendingGates()) {
-    const run = approveMergeRun(host, pending);
-    const gate = run && authorityGate(run, pending.gate.prompt);
-    if (!gate || !failedOnlyOnMergeTree(gate.reason)) continue;
+    const gate = transientGate(host, services, pending, repo);
+    if (!gate) continue;
     if ((await openHead(services, pending.runId)) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
-    if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}merge-tree-clean was the only unmet condition at head ${gate.head}`);
-    superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition: "merge-tree-only" });
+    if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`);
+    const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
+    superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });
   }
   return superseded;
 }
@@ -65,7 +105,7 @@ async function supersedeMergeTreeOnlyGates(host: FactoryHost, services: Shepherd
 /**
  * Brings Shepherd's runs and gates in line with GitHub after time away: ends live runs whose PR left Shepherd, cancels
  * the gates of runs that already ended, then supersedes gates whose open PR moved head and MRG-AU gates whose only unmet
- * condition was merge-tree-clean. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
+ * conditions were transient, in a repo no longer frozen. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
  * resolved: the run's new cycle asks again. `dryRun` computes the same report and writes nothing.
  */
 export async function resyncShepherd(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<ResyncReport> {
@@ -81,7 +121,7 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [] };
   try {
     report.superseded = await supersedeMovedGates(host, services, { dryRun });
-    report.superseded.push(...(await supersedeMergeTreeOnlyGates(host, services, dryRun)));
+    report.superseded.push(...(await supersedeTransientGates(host, services, { dryRun })));
   } catch (err) {
     report.supersedeError = failureOf(err);
   }
