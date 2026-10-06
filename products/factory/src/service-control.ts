@@ -65,7 +65,7 @@ const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${SERVI
 const detail = (result: CommandResult): string => (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`);
 const isSystemd = (ports: ServicePorts): boolean => ports.platform === "linux";
 const serviceName = (ports: ServicePorts): string => (isSystemd(ports) ? UNIT_NAME : SERVICE_LABEL);
-export const serviceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home));
+const serviceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home));
 export const renderServiceFile = (ports: ServicePorts, options: PlistOptions): string => (isSystemd(ports) ? renderUnit(options) : renderPlist(options));
 
 function fail(io: ServiceIo, message: string): number {
