@@ -506,6 +506,18 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
   });
 
+  it("asks again for a review a busy broker never started on a behind head, and opens no approve-merge gate before it runs", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length === 1 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
+    Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.slice(0, 2).map((request) => request.headSha)).toEqual([H1, H1]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
   it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
     const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
     const asked: ReviewRequest[] = [];
