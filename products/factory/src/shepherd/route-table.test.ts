@@ -8,7 +8,7 @@ function expectedRoute(run: RunState, state: MergeableState, outcome: ReviewOutc
   if (run !== "open") return "end-run";
   if (outcome === "head-moved") return "new-cycle";
   if (outcome === "FIX_FIRST" || state === "dirty") return "wake-fixer";
-  if (state === "behind") return "update-branch";
+  if (state === "behind") return outcome === "not-started" ? "retry-review" : "update-branch";
   if (state === "unknown") return "new-cycle";
   if (state === "draft") return "end-run";
   return MERGE_COLUMN[outcome]!;

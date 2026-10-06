@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
-import { GateStoreSchemaOutdated, type GateQuestion, type GateResolver, type GateRule } from "./types.js";
+import { GateAlreadySettled, GateExpired, GateStoreSchemaOutdated, type GateQuestion, type GateResolver, type GateRule } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
 const REMOTE: GateResolver = { class: "owner-remote", id: "@owner:example.test", channel: "matrix", confirmEvent: "$evt1" };
@@ -228,6 +228,61 @@ describe("SqliteGateStore resolver round trip", () => {
     writer.resolve("g1", { approved: true }, REMOTE);
     const reader = new SqliteGateStore(open(dbPath), { migrate: false });
     expect(reader.get("g1")?.resolvedBy).toEqual(REMOTE);
+  });
+});
+
+describe("SqliteGateStore concurrent settle", () => {
+  it("keeps the first answer when another store resolves while authorize runs", () => {
+    const dbPath = tempDbPath();
+    const storeB = new SqliteGateStore(open(dbPath));
+    const storeA = new SqliteGateStore(open(dbPath), {
+      migrate: false,
+      authorize: (gate) => {
+        storeB.resolve(gate.id, "from B", OWNER);
+        return { allowed: true };
+      },
+    });
+    storeA.create({ id: "g1", prompt: "ship it?" });
+
+    expect(() => storeA.resolve("g1", "from A", OWNER)).toThrow(GateAlreadySettled);
+    expect(new SqliteGateStore(open(dbPath), { migrate: false }).get("g1")).toMatchObject({ status: "resolved", payload: "from B" });
+  });
+
+  it("returns the other store's row when it resolved with the same answer while authorize ran", () => {
+    const dbPath = tempDbPath();
+    const storeB = new SqliteGateStore(open(dbPath));
+    const storeA = new SqliteGateStore(open(dbPath), {
+      migrate: false,
+      authorize: (gate) => {
+        storeB.resolve(gate.id, { decision: "merge", headSha: "abc" }, REMOTE);
+        return { allowed: true };
+      },
+    });
+    storeA.create({ id: "g1", prompt: "ship it?" });
+
+    const returned = storeA.resolve("g1", { headSha: "abc", decision: "merge" }, OWNER);
+
+    expect(returned).toMatchObject({ status: "resolved", payload: { decision: "merge", headSha: "abc" }, resolvedBy: REMOTE });
+    expect(storeB.get("g1")).toEqual(returned);
+  });
+
+  it("reports GateExpired when the other store's read expired the gate first", () => {
+    const dbPath = tempDbPath();
+    let millis = Date.parse(T_CREATED);
+    const storeB = new SqliteGateStore(open(dbPath), { now: () => millis });
+    const storeA = new SqliteGateStore(open(dbPath), {
+      migrate: false,
+      now: () => millis,
+      authorize: (gate) => {
+        millis = Date.parse(T_SETTLED);
+        storeB.get(gate.id);
+        return { allowed: true };
+      },
+    });
+    storeA.create({ id: "g1", prompt: "ship it?", expiresAt: T_SETTLED });
+
+    expect(() => storeA.resolve("g1", "late", OWNER)).toThrow(GateExpired);
+    expect(rawRow(open(dbPath), "g1")).toMatchObject({ status: "expired", payload: null });
   });
 });
 
