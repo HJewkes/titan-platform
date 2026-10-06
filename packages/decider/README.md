@@ -38,6 +38,10 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `@titan-design/session-read`, ported from active-work's `src/precedent/transcripts.ts`.
 - `noteSource({ root })` reads decision notes and feedback memory imports under
   `<root>/<initiative>/sources/notes/`, ported from active-work's `src/precedent/notes.ts`.
+- `morningSource({ dir, resolveInitiatives })` joins Morning lists with the owner's answers.
+  `initiativesOfTaskIds(lookup)` builds the resolver from a task-id lookup and `taskIdsIn(text)`
+  finds the ids. Without a resolver every row stays unclaimed, and a human-only mention in the
+  resolver's result excludes the row.
 
 ## `ask-lint`
 

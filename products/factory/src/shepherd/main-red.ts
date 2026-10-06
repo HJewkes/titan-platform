@@ -10,12 +10,11 @@ import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
-import { seatCheckout } from "./wake.js";
+import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = 60 * 60_000;
 export const SH_MAIN_RED_POLL_MS = 30_000;
-export const FIXER_PROFILE = "implementer";
 /** Where a fix task goes when the merged PR's registration names no `<initiative>/<id>` task. */
 export const DEFAULT_FIX_INITIATIVE = "titan-platform";
 
@@ -52,7 +51,7 @@ export interface MainRedWiring {
 /** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
 export const fixersOver = (agents: AgentChatAgents): FixerAgents => ({
   roster: () => agents.roster(),
-  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FIXER_PROFILE, brief, cwd }),
+  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
 });
 
 const slug = (part: string | undefined): string => (part ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
