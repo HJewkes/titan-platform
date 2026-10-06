@@ -165,11 +165,15 @@ interface MergeTarget {
   sha: string;
 }
 
-/** True when the PR was held at least once before its release. */
+/**
+ * True when the PR was held at least once before its release. A head that moved on past `sha` stays held at `sha`
+ * forever, so a hold its reviewer satisfied at the new head ends the wait too: land then reads CI at that head.
+ */
 async function untilReleased(held: HeldCheck, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
+    if ((await held(target.repo, target.pr)) === undefined) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }
 }
