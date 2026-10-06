@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { loadavg } from "node:os";
+import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
@@ -59,9 +60,17 @@ function sysctlNumber(name: string): number | undefined {
   }
 }
 
-/** The same reads the broker's machine guard makes: `os.loadavg()[1]` and macOS sysctl, absent off macOS. */
-function readMachine(): MachineReadings {
-  return { load5: loadavg()[1] ?? 0, pressureLevel: sysctlNumber("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctlNumber("kern.memorystatus_level") };
+interface MachineSources {
+  platform?: NodeJS.Platform;
+  readFile?: ReadFile;
+  sysctl?: (name: string) => number | undefined;
+}
+
+/** The same reads the broker's machine guard makes: `os.loadavg()[1]`, then macOS sysctl or Linux /proc; absent elsewhere. */
+export function readMachine({ platform = process.platform, readFile, sysctl = sysctlNumber }: MachineSources = {}): MachineReadings {
+  const load5 = loadavg()[1] ?? 0;
+  if (platform === "linux") return { load5, ...readLinuxMemory(readFile) };
+  return { load5, pressureLevel: sysctl("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctl("kern.memorystatus_level") };
 }
 
 /** Thrown when the gate would not admit a spawn; nobody was started, so the caller asks again on its next poll. */
@@ -85,7 +94,7 @@ interface SpawnGateOptions {
 /** Remembers the admissions of this process, so every spawn site shares one window. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
-  const { read = readMachine, now = Date.now, log = (line) => console.warn(line) } = options;
+  const { read = () => readMachine(), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
   return {
     admit(name, runningReviews = []) {
