@@ -2,6 +2,7 @@ import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-desig
 import { BaseGateStore } from "./base-store.js";
 import {
   GateStoreSchemaOutdated,
+  type GateAnswerAllowance,
   type GateAuthorize,
   type GateQuestion,
   type GateRecord,
@@ -168,6 +169,8 @@ export interface SqliteGateStoreOptions {
   authorize?: GateAuthorize;
   /** Refuse `create` without a `summary` and an `evidenceRef`. Off by default; needs `gateBriefMigration`. */
   requireBrief?: boolean;
+  /** Answers a non-owner class may give, each exact in class, step and payload. Nothing else widens the default class check. */
+  allowances?: readonly GateAnswerAllowance[];
 }
 
 interface RawGateRow {
@@ -202,7 +205,7 @@ export class SqliteGateStore extends BaseGateStore {
     private readonly db: Db,
     options: SqliteGateStoreOptions = {},
   ) {
-    super(options.now ?? Date.now, options.authorize, options.requireBrief);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
     if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
     const missing = missingMigration(db, this.table, options.requireBrief ?? false);

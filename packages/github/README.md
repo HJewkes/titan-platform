@@ -66,6 +66,12 @@ true when `files` reaches 300 or the commits returned are fewer than `total_comm
 true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
 unknown. `listPrCommits(repo, pr)` returns the PR's commit shas oldest first; GitHub stops at
 the first 250 (`PR_COMMITS_CAP`), so a list whose last sha is not the head is short.
+`listForcePushes(repo, pr)` returns the PR's head force-pushes oldest first, each as `{ before,
+after }`: the head it replaced (null once GitHub no longer has that commit) and the new head.
+REST timeline events name only the new head, so this one read posts to GraphQL
+(`HeadRefForcePushedEvent`) on the same `gh` login. It reads one page of `FORCE_PUSHES_CAP` (100)
+and throws `ForcePushesTruncated` when there are more, never a short list. The fake reads
+`fake.forcePushes`, a map of PR number to pushes.
 `upsertComment(repo, pr, marker, body)` lists the PR's comments first and posts only
 when none by the authenticated `gh` user has `marker` (an HTML comment the caller builds, also
 put in `body`) alone on a line; trailing whitespace on that line still counts. Another author's comment or a longer marker never counts. Under a GitHub App installation token,

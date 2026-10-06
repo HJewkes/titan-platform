@@ -1,10 +1,15 @@
 import type { Node } from "web-tree-sitter";
 
-/** Declarations that name the scope they open. */
-const TS_NAMED_SCOPES = new Set([
+/** Node types the TypeScript grammar emits for a class: declarations, abstract declarations and class expressions. */
+export const TS_CLASS_TYPES: ReadonlySet<string> = new Set([
   "class_declaration",
   "abstract_class_declaration",
   "class",
+]);
+
+/** Declarations that name the scope they open. */
+const TS_NAMED_SCOPES = new Set([
+  ...TS_CLASS_TYPES,
   "function_declaration",
   "generator_function_declaration",
   "method_definition",
