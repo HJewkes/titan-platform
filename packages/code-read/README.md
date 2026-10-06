@@ -16,22 +16,26 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 | `@titan-design/code-read/query` | browser or Node | the contract (`CONTRACT`, `CODE_READ_API_VERSION`, zod schemas), `ReadModel` and `buildReadModel`, the `ReadSource` seam, `QUERIES`, `createQueryResolver` |
 | `@titan-design/code-read` | Node | everything in `./query`, plus `loadReadModel`, `createLiveSource` (SQLite plus an LRU of models), and `registerCodeReadCommands` |
 
-`./query` imports only its own files, `zod`, and `rpc-protocol`. Three rules in
+`./query` imports only its own files, `zod`, `rpc-protocol`, and code-graph's browser-safe
+`./analysis` subpath, never code-graph's root. Three rules in
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.2)
+## Commands (contract 0.1.6)
 
 | Command | Args | Result |
 | --- | --- | --- |
 | `api.describe` | none | `api`, `dataset`, `commands`, `newest`, `indexVersions`, `capabilities`, `metrics` (catalogue descriptors with provenance), `rules` |
 | `snapshot.list` | `ref?`, `limit` (1 to 500, default 50) | `snapshots`, newest first |
 | `hierarchy.get` | `snapshot?`, `root?`, `depth` (1 to 8, default 2), `metrics` (default `["loc"]`), `baseline?`, `include_symbols`, `exclude_roles` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `nodes` (flat, shallowest first, with `parentId`, `depth`, `childCount`, `values`, `missing?`, `deltas?`), `truncated` |
-| `node.get` | `snapshot?`, `id`, `baseline?`, `metrics` (default: every one that applies) | `node`, `ancestors` (repo first), `childCounts`, `metrics` (value, `direction`, `rollup`, `percentile`, `siblingMedian`, `siblingRank`, `siblingCount`, `baseline?`, `delta?`, `missing?`) |
+| `node.get` | `snapshot?`, `id`, `baseline?`, `metrics` (default: every one that applies), `lenses` (any of `exports`, `score`, `centrality`, `coupling`, `tests`; default none), `window` (`30d` default, for `score`) | `node`, `ancestors` (repo first), `childCounts`, `metrics` (value, `direction`, `rollup`, `percentile`, `siblingMedian`, `siblingRank`, `siblingCount`, `baseline?`, `delta?`, `missing?`), `lenses?` (one key per lens asked for) |
 | `node.resolve` | exactly one of `query` or `path`, plus `line?` with `path`, `limit` (1 to 50, default 10) | `candidates`: `node`, `score`, `match` |
 | `findings.list` | `snapshot?`, `baseline?`, `scope?`, filters `rule`, `severity`, `tool`, `provenance`, `kind`, `status` (arrays, empty means all), `sort` (`severity` default, `excess`, `value`, `path`, `rule`), `order` (`desc` default), `offset`, `limit` (0 to 500, default 20), `facets` | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`Finding`), `total`, `facets?` |
 | `finding.get` | `snapshot?`, `id`, `baseline?`, `context_lines` (0 to 20, default 5) | `finding`, `rule` (with `text`), `measured`, `why`, `excerpt` (or null with `excerptMissing`), `related` (at most 10) |
 | `node.neighbors` | `snapshot?`, `id` (a stored node), `direction` (`both` default), `edge_kinds`, `metrics` (default `loc`, `utilization`), `offset`, `limit` (1 to 100, default 20) | `snapshotId`, `node`, `inbound`, `outbound` (each `node`, `kind`, `weight`, `specifier?`, `values`), `total` per side |
+| `hotspots.list` | `snapshot?`, `baseline?`, `grain` (`file` default, `symbol`), `window` (`30d` default, any `<n>d`, or `lifetime`), `cutoff?`, `offset`, `limit` (0 to 500, default 20) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`node`, `churn`, `complexity`, `recency`, `score`, `utilization?`, `baselineScore?`, `mark?`), `total` |
+| `overview.get` | `snapshot?`, `baseline?`, `window` (`30d` default), `cutoff` (default 3000), `weights` (per signal, defaults from code-graph's `DEFAULT_HEALTH_WEIGHTS`), `exclude_rules`, `combined` (default false), `reading_limit` (default 6), `look_limit` (default 8; both 0 to 50) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `kpis`, `signals` (`key`, `label`, `penalty`, `cap`, `measured`, `detail`), `combined?`, `readingOrder` (`node`, `centrality`), `lookFirst` (`node`, `score`, `churn`, `complexity`, `recency`, `reasons`) |
+| `changes.get` | `baseline` (required), `snapshot?`, `window` (`30d` default), `cutoff` (default 3000), `limit` (rows per list, 0 to 500, default 20) | `snapshotId`, `baselineSnapshotId`, `comparable`, `files` (`crossedCutoff`, `added`), `findings` (`new`, `worsened`, `improved`, `resolved`), `coupling` (`measured`, `added`), `regressions` (`node`, `before`, `after`, `delta`, `findings`), `counts` |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -131,6 +135,69 @@ and its findings vanish from every snapshot, old ones included, and their ids ne
 back. A finding's `status` also depends on the baseline you pass: the same row is
 `carryover` against one snapshot and `new` against another. Do not persist a derived id
 as if it were durable until the findings store lands.
+
+## Hotspots
+
+`hotspots.list` computes nothing of its own. It runs code-graph's report derivations from
+the browser-safe `@titan-design/code-graph/analysis` subpath, so the daemon and a static
+dataset rank alike.
+
+- **File grain** is `topHotspots`: `round(churn_<window> × complexity × recency_<window>)`,
+  where complexity is `cognitive_max`, else `cyclomatic_max`. A file with no churn or no
+  complexity has no row, and generated files are left out.
+- **Symbol grain** is `buildBlastRadius`: `utilization × complexity × file churn`, with the
+  symbol's own `symbol_cognitive`, else its file's. It applies no recency, so `recency` is 1.
+  Symbols of generated files are left out.
+- **Marks** come from `computeReportDrift` over every row: `new` when the node had no row at
+  the baseline, `worsened` when its score rose. `baselineScore` is null for a new row.
+- **Cutoff** is the caller's policy, such as the dashboard's 3000. It filters before paging,
+  and `total` counts the rows it keeps. Marks do not depend on it.
+
+## Overview
+
+`overview.get` answers "where do I look first" with named attention signals, not a risk or
+defect score. It also reuses code-graph's derivations from `./analysis`:
+
+- **Signals** are `computeHealth`'s components, weighted and capped by the caller's
+  `weights`: files over `cutoff`, open findings (new and carried over weigh apart), max
+  complexity over budget, and hidden coupling, which is unmeasured until co-change pairs
+  are stored. `combined` (100 minus the penalties) is optional and secondary.
+- **Reading order** is `topCentralFiles`: PageRank over files and structural edges.
+- **Look first** is the file-grain hotspots, highest first. Each row names its reasons:
+  `over-cutoff`, `findings`, or else `churn-complexity`.
+
+## Node lenses
+
+`node.get` takes optional `lenses`. With none, the result has no `lenses` field and is the
+same as before. Each lens reuses a code-graph derivation from `./analysis`, and answers
+`null` on a node kind it does not describe: `score` describes files and symbols, the rest
+describe files only.
+
+- **exports** is `buildHotExports`: the file's top 8 exported and top 8 internal symbols,
+  each with utilization, its own cognitive complexity, and how many files reference it
+  (`computeSymbolConsumers`).
+- **score** is the node's row in `hotspots.list` at its grain for `window`: the score, its
+  factors, and its rank among non-zero scores. A node scoring 0 has no factors and no rank.
+- **centrality** is `topCentralFiles` with no limit, the ranking behind `overview.get`'s
+  reading order, so every file in it has a rank. Generated code is left out and gets null.
+- **coupling** is `measured: false` until co-change pairs are stored.
+- **tests** lists tests linked by path convention (`linkTestsToSources` with no co-edit
+  pairs) beside the index's `linked_test_count`, which also counts co-edit links.
+
+## Changes
+
+`changes.get` answers "what moved since the baseline". It recomputes nothing code-graph
+already derives:
+
+- **Files** come from `computeReportDrift` over every file-grain hotspot. `crossedCutoff`
+  holds files below `cutoff` at the baseline and at or above it now; `added` holds files the
+  baseline does not hold, generated files left out.
+- **Findings** are bucketed by `bucketViolations`, the store-free core of `diffCheckResults`:
+  new, worsened or improved by value, and resolved. Ids match as they are; following
+  renames is TP-187.
+- **Coupling** is unmeasured (`measured: false`) until co-change pairs are stored.
+- **Regressions** are files whose score rose that carry an open finding now.
+- Across index versions `comparable` is false and every list is empty.
 
 ## Serving the commands
 
