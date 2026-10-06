@@ -83,6 +83,18 @@ export type GateAuthorization = { allowed: true } | { allowed: false; reason: st
  */
 export type GateAuthorize = (gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>) => GateAuthorization;
 
+/**
+ * One answer a non-owner class may give, declared by the product when it builds the store.
+ * It admits exactly: `resolverClass`, a gate whose step is `stepId` (a bare id or `<id>:<n>` after
+ * the last `/`), and a payload deep-equal to `payload`. Evaluated in place of the default refusal for
+ * those gates only; the gate's rule and `authorize` still run after it. The resolver's id must be non-blank.
+ */
+export interface GateAnswerAllowance {
+  resolverClass: ActorClass;
+  stepId: string;
+  payload: Readonly<Record<string, unknown>>;
+}
+
 export interface GateInput {
   /** Defaults to a random UUID. Supply one to make the gate addressable by a name you already own. */
   id?: string;

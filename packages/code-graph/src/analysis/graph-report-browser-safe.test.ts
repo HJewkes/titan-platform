@@ -18,14 +18,16 @@ const ENTRIES = [
   "dashboard-coupling.ts",
   "dashboard-health.ts",
   "dashboard-node-metrics.ts",
+  "dashboard-symbol-coupling.ts",
   "graph-arch-compute.ts",
   "graph-arch-types.ts",
   "package-buckets.ts",
+  "symbol-coupling.ts",
+  "test-linker.ts",
+  "../diff/violation-buckets.ts",
 ];
 // The "./analysis" subpath's entry; it may re-export only the modules listed above.
 const SUBPATH_ENTRY = "browser.ts";
-// dashboard-symbol-coupling.ts is left out: symbol-coupling.ts reaches node:path through
-// extractors/ids.ts, so the coupling payload is not yet browser-safe.
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 // Type-only imports are erased at build time, so they cannot pull a module into a bundle.

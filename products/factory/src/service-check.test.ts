@@ -7,6 +7,9 @@ const UID = 501;
 const PID = 4242;
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 const BUILD = "a".repeat(40);
+const TICK_FILE = "/srv/tester/.agent-chat/burndown-status.json";
+const tickFixture = (over: Record<string, unknown> = {}): string =>
+  JSON.stringify({ version: 1, loop: "burndown-tick", heartbeatAt: new Date(NOW - 60_000).toISOString(), outcome: "failed", consecutiveFailures: 1, lastErrorClass: "LedgerMalformedError", intervalSeconds: 600, ...over });
 
 interface Machine {
   /** launchctl print output; undefined means the job is not loaded. */
@@ -15,6 +18,8 @@ interface Machine {
   dead?: number[];
   startedAgoMs?: number;
   installed?: string;
+  /** The status file's text; undefined means the file is absent. */
+  tick?: string;
 }
 
 const printed = (fields: string[]): string => `gui/${UID}/${SERVICE_LABEL} = {\n${fields.map((f) => `\t${f}\n`).join("")}}\n`;
@@ -45,6 +50,7 @@ function fakePorts(init: Machine) {
     isAlive: (pid) => !(init.dead ?? []).includes(pid),
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
     installedBuildSha: () => init.installed ?? BUILD,
+    tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
   };
   return { ports, calls };
 }
@@ -199,5 +205,63 @@ describe("titan-factory service check", () => {
     const { calls } = await check({ print: running, health: healthy() });
 
     expect(calls.every((call) => call.startsWith("print "))).toBe(true);
+  });
+
+  describe("burndown tick status", () => {
+    it("exits 1 naming tick failing and the file path after one failed tick", async () => {
+      const { code, out } = await check({ print: running, health: healthy(), tick: tickFixture() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^tick failing: /);
+      expect(out).toContain(TICK_FILE);
+    });
+
+    it("carries the count and class in --json", async () => {
+      const { out } = await check({ print: running, health: healthy(), tick: tickFixture({ consecutiveFailures: 2 }) }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ cause: "tick failing", detail: { tickFile: TICK_FILE, tickFailures: 2, tickErrorClass: "LedgerMalformedError" } });
+    });
+
+    it("exits 0 when the status file is absent", async () => {
+      const { code } = await check({ print: running, health: healthy() });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
+    it("exits 0 for a fresh ok heartbeat", async () => {
+      const { code } = await check({ print: running, health: healthy(), tick: tickFixture({ outcome: "ok", consecutiveFailures: 0 }) });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
+    it("reports tick stale when the heartbeat is older than three intervals", async () => {
+      const old = new Date(NOW - 1801_000).toISOString();
+      const { code, out } = await check({ print: running, health: healthy(), tick: tickFixture({ outcome: "ok", consecutiveFailures: 0, heartbeatAt: old }) });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^tick stale: /);
+    });
+
+    it("judges staleness by the file's own intervalSeconds", async () => {
+      const beat = new Date(NOW - 1801_000).toISOString();
+      const { code } = await check({ print: running, health: healthy(), tick: tickFixture({ outcome: "ok", consecutiveFailures: 0, heartbeatAt: beat, intervalSeconds: 3600 }) });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
+    it("never prints a class holding credential-shaped text", async () => {
+      const secret = "ghp_x y0123456789";
+      const { out } = await check({ print: running, health: healthy(), tick: tickFixture({ lastErrorClass: secret }) }, "--json");
+      const human = (await check({ print: running, health: healthy(), tick: tickFixture({ lastErrorClass: secret }) })).out;
+
+      expect(out + human).not.toContain("ghp_");
+      expect(out).toContain("tick failing");
+    });
+
+    it("reports stale pid before a failing tick", async () => {
+      const { out } = await check({ print: running, health: healthy(), dead: [PID], tick: tickFixture() });
+
+      expect(out).toMatch(/^stale pid: /);
+    });
   });
 });

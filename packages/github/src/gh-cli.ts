@@ -1,5 +1,7 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { redact, redactStreams } from "./redact.js";
+import { listForcePushes } from "./force-pushes.js";
+import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
@@ -63,6 +65,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
     listReviewComments: (repo, number) => listReviewComments(api, repo, number),
+    listForcePushes: (repo, number) => listForcePushes(api, repo, number),
   };
 }
 
@@ -262,19 +265,6 @@ interface GhReviewThread {
   id: string;
   isResolved: boolean;
   comments: GhPage<GhReviewComment>;
-}
-
-interface GhGraphql<T> {
-  data?: T;
-  errors?: { message: string }[];
-}
-
-/** GraphQL answers 200 with `errors` and no data on a failed query, so a missing value is the failure. */
-async function graphql<T, R>(api: Rest, what: string, query: string, variables: Record<string, unknown>, pick: (data: T) => R | null | undefined): Promise<R> {
-  const answer = await api.send<GhGraphql<T>>("POST", "graphql", {}, JSON.stringify({ query, variables }));
-  const value = answer.data === undefined ? undefined : pick(answer.data);
-  if (value === null || value === undefined) throw new Error(redact(`${what} unreadable: ${answer.errors?.map((error) => error.message).join("; ") ?? "not found"}`, []));
-  return value;
 }
 
 /** Only GraphQL review threads carry the resolved state; REST review comments do not. */

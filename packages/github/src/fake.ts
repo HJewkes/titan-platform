@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
+import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
@@ -60,6 +61,8 @@ export interface FakeGitHub {
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
   reviewComments: Map<number, ReviewComment[]>;
+  /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
+  forcePushes: Map<number, ForcePush[]>;
 }
 
 export class FakeHttpError extends Error {
@@ -112,6 +115,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
+    forcePushes: new Map(),
     addPr(fields) {
       const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
       prs.set(pr.number, pr);
@@ -198,6 +202,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return { id: comment.id };
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
+    listForcePushes: async (_repo, number) => {
+      const all = fake.forcePushes.get(number) ?? [];
+      return record("listForcePushes", { pushes: all.slice(0, FORCE_PUSHES_CAP).map((push) => ({ ...push })), more: all.length > FORCE_PUSHES_CAP });
+    },
   };
   return fake;
 }
