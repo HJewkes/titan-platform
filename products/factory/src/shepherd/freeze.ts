@@ -222,10 +222,20 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
   };
 }
 
-/** The fixer half catches an honest PR on the fix task; `implementer` is caller-supplied, so this is no security boundary. */
+/**
+ * Both halves come from the freeze row, so only a registration naming this episode's fix task and its fixer passes.
+ * `implementer` is caller-supplied, so this is no identity check: whoever can register can name the fixer, and still
+ * gets only the exemption, never past the review and checks every merge needs.
+ */
 export function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
   if (freeze.fixTask === null || freeze.fixer === null || registration === undefined) return false;
   return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;
+}
+
+/** Frozen for every PR in `repo` but the fixer's own, the one PR the freeze guard lets land, so merge policy agrees with it. */
+export function frozenFor(freezes: FreezeStore, registrations: RegistrationTasks, repo: RepoSlug, pr: number): boolean {
+  const freeze = freezes.get(repo);
+  return freeze !== undefined && !isFixersPr(freeze, registrations.byPr(repo, pr));
 }
 
 /** A failed read leaves the freeze in place, because the merge it guards is already blocked. */
