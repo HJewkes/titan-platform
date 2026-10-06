@@ -8,7 +8,7 @@ import { CHANGES_GET } from "./contract-changes.js";
 import { PATHS_IMPACT } from "./contract-paths-impact.js";
 
 /** The read API's semver. Bump it whenever `CONTRACT` changes; `contract.lock.json` records the last one. */
-export const CODE_READ_API_VERSION = "0.1.7";
+export const CODE_READ_API_VERSION = "0.1.8";
 
 export interface CommandContract<Args extends ZodType = ZodType, Result extends ZodType = ZodType> {
   description: string;

@@ -40,6 +40,8 @@ export interface ReadSource {
   model(snapshotId: number): ReadModel;
   /** A file's text at the snapshot; absent when the source holds no source text at all. */
   readSource?(snapshotId: number, path: string): SourceRead;
+  /** The directory the snapshots were indexed from; absent or null when the source does not know it (a static export). */
+  repoRoot?: string | null;
 }
 
 /** A failure carrying the sysexits code every surface reports, so the registry's `describeError` maps it as is. */
