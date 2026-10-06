@@ -1,15 +1,18 @@
 import { detectGitToplevel, runGitLarge } from "./git.js";
+import { revArgs } from "./window.js";
 import { canonicalize, COMMIT_HASH_RE, rebasePath, resolveRenamedPath } from "./log.js";
 
 export interface FirstSeenOptions {
   /** Directory paths are made relative to; paths outside it are dropped. */
   repoRoot: string;
   knownPaths?: ReadonlySet<string>;
+  /** Walk history from this rev instead of HEAD. */
+  rev?: string;
 }
 
 /**
  * Earliest commit time (epoch seconds) per path, from one reverse-ordered pass
- * over full history: the first commit that touched a path approximates its birth.
+ * over full history up to `rev` (default HEAD): the first commit that touched a path approximates its birth.
  * Rebased onto `repoRoot` and filtered to `knownPaths` when given. Renames slightly
  * underestimate age (pre-rename history lives under the old path). Returns null
  * when git is unavailable, so callers degrade to "no age discount".
@@ -17,7 +20,7 @@ export interface FirstSeenOptions {
 export function loadFileFirstSeen(options: FirstSeenOptions): Map<string, number> | null {
   const gitRoot = detectGitToplevel(options.repoRoot);
   if (gitRoot === null) return null;
-  const log = runFirstSeenLog(options.repoRoot);
+  const log = runFirstSeenLog(options.repoRoot, options.rev);
   if (log === null) return null;
   const canonicalRoot = canonicalize(options.repoRoot);
   const firstSeen = new Map<string, number>();
@@ -48,7 +51,7 @@ export function parseFirstSeenLog(text: string): { epoch: number; gitPath: strin
 }
 
 /** `--reverse` so the first time a path is seen is its birth; `--no-renames` keeps name lines bare. */
-function runFirstSeenLog(repoRoot: string): string | null {
-  const args = ["log", "--reverse", "--no-merges", "--no-renames", "--name-only", "--pretty=format:%H%x09%ct"];
+function runFirstSeenLog(repoRoot: string, rev?: string): string | null {
+  const args = ["log", "--reverse", "--no-merges", "--no-renames", "--name-only", "--pretty=format:%H%x09%ct", ...revArgs(rev)];
   return runGitLarge(repoRoot, args, 128 * 1024 * 1024);
 }

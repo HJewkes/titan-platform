@@ -1,4 +1,4 @@
-import { PROFILE_CATEGORIES } from "@titan-design/style-profile";
+import { PROFILE_CATEGORIES, severityForConfidence } from "@titan-design/style-profile";
 import type { Profile, ProfileCategory } from "@titan-design/style-profile";
 import type { Observation } from "@titan-design/style-analyzer";
 
@@ -20,13 +20,13 @@ export interface DiffResult {
   };
 }
 
+// A deviation from any profiled rule is reported, so confidence below the info threshold still reports as info.
 function getSeverity(
   confidence: number,
   thresholds: Profile["severityThresholds"],
-): "error" | "warn" | "info" {
-  if (confidence >= thresholds.error) return "error";
-  if (confidence >= thresholds.warn) return "warn";
-  return "info";
+): Deviation["severity"] {
+  const tier = severityForConfidence(confidence, thresholds);
+  return tier === "off" ? "info" : tier;
 }
 
 function resolveProfileRule(

@@ -2,6 +2,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { RosterReader } from "./roster.js";
+import type { SpawnGate } from "./spawn-gate.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
@@ -52,6 +53,8 @@ export interface ShepherdDeps {
   agentChatConfigDir?: string;
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
+  /** Admits a successor spawn; absent means it is not gated. */
+  spawnGate?: SpawnGate;
   /** Absent means `sh-cleanup` deletes the head ref only, and leaves the task and the agents alone. */
   cleanup?: CleanupPorts;
   /** The per-repo PR snapshot `sh-observe` reads; absent means it reads the port. */
