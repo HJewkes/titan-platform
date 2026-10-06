@@ -1,12 +1,12 @@
 /** The result every enricher reports when its caller-supplied resolver throws. */
-export interface ResolverFailure {
+interface ResolverFailure {
   requested: number;
   applied: 0;
   failed: true;
   error: string;
 }
 
-export type ResolverOutcome<T> = { ok: true; value: T } | { ok: false; failure: ResolverFailure };
+type ResolverOutcome<T> = { ok: true; value: T } | { ok: false; failure: ResolverFailure };
 
 /**
  * Only the resolver is soft-failed: it is the caller's external dependency, so its
