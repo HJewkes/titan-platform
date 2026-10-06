@@ -26,8 +26,8 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: REPAIR_STEP, kind: "dispatch" },
 ];
 
-/** The agent-chat profile a successor starts under; the profile is its tool grant. */
-export const SUCCESSOR_PROFILE = "implementer";
+/** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
+export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
@@ -45,9 +45,9 @@ export interface ImplementerAgents {
   spawn(name: string, brief: string, cwd: string): Promise<void>;
 }
 
-const implementersOver = (agents: AgentChatAgents): ImplementerAgents => ({
+export const implementersOver = (agents: AgentChatAgents): ImplementerAgents => ({
   ...agents,
-  spawn: (name, brief, cwd) => agents.spawn({ name, profile: SUCCESSOR_PROFILE, brief, cwd }),
+  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
 });
 
 export interface WakeWiring {
