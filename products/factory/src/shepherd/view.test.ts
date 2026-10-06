@@ -83,6 +83,56 @@ describe("shepherd view holds", () => {
   });
 });
 
+describe("a run held at registration waiting in its merge step", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const waitedFrom = Date.parse("2026-01-01T00:10:00.000Z");
+  const reason = "g10-review: +415/-0 diff over 400";
+  const by = { reviewer: "seat-review", agentId: "agent-seat", sessionId: "session-seat", locator: {} };
+  const held = { ...registration, held: true, holdReason: reason, holdReviewer: "seat-review", holdSatisfied: null } as Registration;
+
+  /** Shepherd's own reviewer sent MERGE at `head`, the policy allowed it, and the run has sat in `merge` ever since. */
+  function mergingAt(head: string): WorkflowRun {
+    const run = { ...pausedAt("merge:0"), status: "running" } as WorkflowRun;
+    const record = (stepId: string, at: number, result: object) => {
+      run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(at).toISOString(), data: { result } };
+    };
+    record(`sh-await-verdict:${head}`, waitedFrom - 2000, { kind: "verdict", verdict: "MERGE", head, locator: {}, reviewer: { agentId: "agent-rv-own" } });
+    record("merge-policy:0", waitedFrom - 1000, { outcome: "allow", headSha: head });
+    record("ci-wait:1", waitedFrom, { verdict: "green", headSha: head });
+    return run;
+  }
+  const twentyMinutesIn = new Date(waitedFrom + 20 * 60_000);
+
+  it("reads as held, naming the hold and its reviewer, and does not stall after 20 minutes", () => {
+    const row = watchRow({ registration: held, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row).toMatchObject({ phase: "held", headSha: H1, phaseSince: new Date(waitedFrom).toISOString(), stalled: null });
+    expect(row.nextAction).toBe(`waiting for the hold to be released (${reason}), or for a MERGE from seat-review at ${H1.slice(0, 7)}`);
+  });
+
+  it("stays held when the hold's reviewer has sent MERGE only at the fix round's newer head", () => {
+    const satisfiedLater = { ...held, holdSatisfied: { head: H2, by } } as Registration;
+
+    expect(watchRow({ registration: satisfiedLater, run: mergingAt(H1), now: twentyMinutesIn }).phase).toBe("held");
+  });
+
+  it("reads as merging, with its stall limit, once the hold is satisfied at the run's head", () => {
+    const satisfied = { ...held, holdSatisfied: { head: H2, by } } as Registration;
+
+    const row = watchRow({ registration: satisfied, run: mergingAt(H2), now: twentyMinutesIn });
+
+    expect(row.phase).toBe("merging");
+    expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
+  });
+
+  it("names a hold with no reviewer by its reason alone", () => {
+    const owner = { ...held, holdReviewer: null } as Registration;
+
+    expect(watchRow({ registration: owner, run: mergingAt(H1), now: twentyMinutesIn }).nextAction).toBe(`waiting for the hold to be released (${reason})`);
+  });
+});
+
 describe("shepherd view stalls", () => {
   function reviewedRun(outcomes: readonly ("started" | "not-started")[]): WorkflowRun {
     const run = pausedAt("sh-review:abc1234");
