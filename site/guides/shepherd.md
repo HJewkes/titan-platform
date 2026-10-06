@@ -46,6 +46,14 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
+A repeat starts a new run instead when the registration's run is dead: it failed, or it
+completed stopped `not-mergeable` or on a `conflict` while the pull request is still open,
+as when no agent took the conflict wake and a seat then pushed a fix. The new run starts at
+the pull request's current head, the registration and its recorded authors move to it, and
+the old run still reads. The verb prints `restarted after failed run <id>` or
+`restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
+reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
+
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
@@ -86,7 +94,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
-| `merging` | merging the approved head; a held pull request, or one waiting for the [merge train](#merge-train), waits here |
+| `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
@@ -123,7 +131,8 @@ contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTE
    minutes.
 3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
    grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
-   fixer is an agent-chat agent on the `implementer` profile, named
+   fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
+   watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
    register its fix pull request with the fix task and with itself as `--implementer`. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
@@ -175,17 +184,29 @@ A head that moved during the review always starts a new round, and the new head 
 A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
 post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
 request of each run that is waiting on a gate. When that pull request was merged or closed
-elsewhere, the serve process cancels the run and its gate.
+elsewhere, the serve process cancels the run and its gate. The same check supersedes a gate
+whose open pull request moved head, as resync does below.
 
 Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
 whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
-request moved head is superseded. A run that recorded its own `merge`, `sh-landed` or a
+request moved head is superseded. That covers a seat-policy or MRG-AU `approve-merge` gate,
+an `sh-sent-back` gate and a `ci-failed` gate; a superseded `ci-failed` gate reads as
+`await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
 its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
+
+Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
+MRG-AU allow row must have had only transient conditions unmet, `merge-tree-clean`,
+`repo-not-frozen` or both, and the gate must still be at the pull request's head. The cancel
+reason starts `superseded: review again: ` and names the conditions, and the run asks the
+policy again at the same head. A row with any other unmet condition, such as
+`verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
+still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
+the same sweep at once for that repo's gates.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
@@ -354,11 +375,17 @@ run ab0f9228-…: released
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits
 in `merging`, polling every 10 seconds, until `release`
-(`products/factory/src/shepherd/hold.ts`). The check covers `land-pr` too, so
+(`products/factory/src/shepherd/hold.ts`). While it waits, the watch row's `held` field and
+next action name the hold's reason and reviewer, and the merging stall limit does not apply.
+Both are read from the registration and the run's current step, never stored. The check covers `land-pr` too, so
 `titan-factory land` on a held pull request also waits. Both verbs take `owner/repo#N`, so a
 branch registration can be held only once its pull request exists. `--reviewer` names the
-reviewer whose verdict the run waits for; `release` clears it. A merge that waited on a hold
-does not go through on release: land reads CI again first, because the base may have moved.
+reviewer whose verdict the run waits for; `release` clears it. Only that reviewer's `MERGE`, at
+the head being merged, satisfies the hold. A `MERGE` from Shepherd's own reviewer never does,
+so it cannot carry a held run past a seat's `FIX_FIRST`. When a fix round moves the head, the
+merge waiting at the old head ends once the hold's reviewer sends `MERGE` at the new one. A
+merge that waited on a hold does not go through on release: land reads CI again first,
+because the base or the head may have moved.
 
 ## Merge train {#merge-train}
 
@@ -434,6 +461,14 @@ pull request is held, and what the run waits on. It never signals the run and ne
 resolves a gate. An agent can call it over MCP to learn why a pull request has not merged.
 It cannot use it to merge.
 
+## A slow CI queue does not fail the run
+
+The `ci-wait` step times out after 45 minutes. If, at that moment, every check it waits on exists and is
+queued or in progress (none red, none unreported), the wait extends, up to three times the timeout (135
+minutes). Past that ceiling the step fails with a reason that names the CI backlog. A red check ends the
+wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
+repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
+
 ## Resolving a gate is CLI-only
 
 `gate resolve` is not a registry command. No `/rpc` route and no MCP tool can answer a gate
@@ -448,8 +483,8 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 | --- | --- | --- |
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
-| `stuck-behind` | the branch is still behind after three updates | `{"decision":"retry"\|"abandon"}` |
-| `sh-sent-back` | a review sent the head back and no agent took the wake | `{"decision":"await-new-head"\|"abandon"}` |
+| `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved as is and refreshed once before the merge | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
+| `sh-sent-back` | a review sent the head back and no agent took the wake, or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}` |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
@@ -526,4 +561,4 @@ These limits remain:
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
 | a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |
 | a row with `[stalled: 3 review dispatches in a row started no reviewer]` | the run is live, but the agent-chat broker keeps refusing to start a reviewer; check the broker, and `timeline` shows each refused `sh-review` |
-| a row with `[stalled: <n> min in <phase>, over the <limit> min limit]` | the run is live but slow; `timeline` shows the step it waits on, for example a CI run that never finishes or an implementer that pushes no new head |
+| a row with `[stalled: <n> min in <phase>, over the <limit> min limit]` | the run is live but slow; `titan-factory shepherd timeline` shows the step it waits on. Per phase:<br>`ci`: a required check has not finished; open it on GitHub, where a hung run can be cancelled or rerun<br>`fixing`: the implementer pushed no new head; resume it with `agent-chat agent resume <name> --message <text>`<br>`review`: no verdict yet; `timeline` shows the `sh-review` dispatch, and the reviewer's agent-chat row shows whether it is still running<br>`merging`: `titan-factory shepherd status` shows a `held:` blocker, which `titan-factory shepherd release` lifts, or the run ahead of it in the merge train |

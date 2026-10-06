@@ -41,6 +41,12 @@ source.
   `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
 - You judge whether a category may graduate: `score(predictions, ledger, { policy, now })` gives
   per-category agreement, whether to recommend `auto`, and whether 2 overrules in 7 days demote it.
+- You check the section about one PR before it reaches the owner: `lintPrSection(markdown)`
+  returns `AskFinding`s for rules PR1 (the PR URL), PR2 (a what-it-does paragraph of 2 or more
+  sentences), PR3 (a why-asked part naming a gate class and a rule id in backticks), PR4 (a pro
+  and a con) and PR5 (for a UI PR, a before and after image pair per changed story, or a stated
+  reason there is none). It finds the parts by their headings: What it does, Why it reaches you,
+  Pros, Cons, and Before and after.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw
 transcript parsing, use [`session-read`](./session-read).
@@ -98,6 +104,22 @@ await extractSource(store, noteSource({ root: "/var/example/active-work" }), pol
 // rows keyed note:<slug>/<file>, outcome "none"
 ```
 
+Extracting the owner's Morning answers, where `<dir>` holds `<date>.md` and
+`<date>-owner-answers.md` pairs. `resolveInitiatives` names the initiatives each item touches;
+`initiativesOfTaskIds` builds one from a task-id lookup:
+
+```ts
+import { extractSource, initiativesOfTaskIds, morningSource } from "@titan-design/decider";
+
+const initiativesByTask = new Map([["TP-1", ["example-initiative"]]]);
+const source = morningSource({
+  dir: "/var/example/morning",
+  resolveInitiatives: initiativesOfTaskIds((taskId) => initiativesByTask.get(taskId) ?? []),
+});
+await extractSource(store, source, policy);
+// rows keyed by day and item; one resolved initiative claims the row
+```
+
 Principles live in a `memory` playbook. An owner answer that agrees with a principle is helpful
 feedback, one that contradicts it is harmful, and the playbook's maturity pass does the rest.
 
@@ -132,8 +154,7 @@ writePrincipleDocs({
 
 - It never reads the charter or an owner overlay. Exclusion policy arrives as data.
 - It does not choose where the ledger file lives; the caller passes the path.
-- The decision-notes source is not ported yet, and the agent-chat and Morning sources come in
-  TP-699 and TP-700.
+- The agent-chat source is not ported yet (TP-699).
 - `classifyQuestion` is only a keyword seed for `category`; the decider corrects it when it cites.
 - It does not judge whether an answer agrees with a principle. The reflector supplies the
   `Citation` verdicts; this package only maps them to feedback.
@@ -141,6 +162,10 @@ writePrincipleDocs({
 
 ## Gotchas
 
+- Without `resolveInitiatives`, every Morning row stays unclaimed. A row is claimed only when the
+  resolver returns exactly one initiative; none or several leave it unclaimed.
+- Every initiative the resolver returns travels as `mentionedInitiatives`, so a single
+  human-only mention excludes the row even when other mentions are ordinary.
 - `isExcluded` returns a verdict object, not a boolean. A row that is not excluded can still be
   `unclaimed`; write it with `unclaimed: true` so condensation and recall skip it.
 - A string personal-data pattern matches as a case-insensitive whole word. Pass a `RegExp` for

@@ -50,6 +50,7 @@ describe("the shepherd text view of each verb", () => {
     ["a new run", registered({}), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner\n"],
     ["a repeat registration", registered({ created: false }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): already registered, metadata updated; policy owner\n"],
     ["a restart after a failed run", registered({ previousRunId: "run-0" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after failed run run-0; policy owner\n"],
+    ["a restart after a stopped run", registered({ previousRunId: "run-0", previousStop: "not-mergeable" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after run run-0 stopped not-mergeable; policy owner\n"],
     [
       "a branch with no PR yet",
       registered({ registration: { repo: "acme/widgets", pr: null, branch: "feat/x", policy: { merge: "auto" } } }),
@@ -88,11 +89,17 @@ describe("the shepherd text view of each verb", () => {
   });
 
   it.each([
-    [true, "run 12345678 would end: merged outside Shepherd\nwould cancel 1 orphaned gate(s); would supersede 0 moved-head gate(s)\n"],
-    [false, "run 12345678 ended: merged outside Shepherd\ncancelled 1 orphaned gate(s); superseded 0 moved-head gate(s)\n"],
+    [true, "run 12345678 would end: merged outside Shepherd\nwould cancel 1 orphaned gate(s); would supersede 0 stale gate(s)\n"],
+    [false, "run 12345678 ended: merged outside Shepherd\ncancelled 1 orphaned gate(s); superseded 0 stale gate(s)\n"],
   ])("prints resync with dryRun %s", (dryRun, expected) => {
     const report = { dryRun, ended: [{ runId: "1234567890", reason: "merged outside Shepherd" }], orphanGates: ["run-0/merge"], superseded: [] };
     expect(formatShepherd("shepherd.resync", report)).toBe(expected);
+  });
+
+  it("prints one resync line per superseded gate naming the run, both heads and the condition", () => {
+    const superseded = [{ runId: "abcdef0123", gateId: "abcdef0123/approve-merge", from: "aaa1", to: "bbb2", condition: "head-moved" }];
+    const report = { dryRun: false, ended: [], orphanGates: [], superseded };
+    expect(formatShepherd("shepherd.resync", report)).toBe("run abcdef01 superseded its gate (head-moved): head aaa1 -> bbb2\ncancelled 0 orphaned gate(s); superseded 1 stale gate(s)\n");
   });
 });
 

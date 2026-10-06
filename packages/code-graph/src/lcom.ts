@@ -1,5 +1,6 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
+import { TS_CLASS_TYPES } from "./scope-path.js";
 import type { GraphMetric } from "./types.js";
 
 /**
@@ -44,8 +45,7 @@ function collectClasses(file: ParsedFile): Node[] {
   const isClass =
     file.language === "python"
       ? (n: Node) => n.type === "class_definition"
-      : (n: Node) =>
-          n.type === "class_declaration" || n.type === "class_expression";
+      : (n: Node) => TS_CLASS_TYPES.has(n.type);
   const out: Node[] = [];
   const visit = (node: Node): void => {
     if (isClass(node)) out.push(node);
@@ -94,13 +94,22 @@ function collectPythonMethods(classNode: Node): MethodInfo[] {
   if (!body) return [];
   const out: MethodInfo[] = [];
   for (const child of body.namedChildren) {
-    if (!child || child.type !== "function_definition") continue;
-    const name = child.childForFieldName("name")?.text;
+    const fn = child ? pythonMethodNode(child) : null;
+    if (!fn) continue;
+    const name = fn.childForFieldName("name")?.text;
     if (!name || name === "__init__") continue;
-    if (isPythonStaticOrClassMethod(child)) continue;
-    out.push({ name, usedNames: thisRefs(child, "self") });
+    out.push({ name, usedNames: thisRefs(fn, "self") });
   }
   return out;
+}
+
+/** The `function_definition` a class-body statement declares, unwrapping decorators; null for static and class methods. */
+function pythonMethodNode(stmt: Node): Node | null {
+  if (stmt.type === "function_definition") return stmt;
+  if (stmt.type !== "decorated_definition") return null;
+  if (isPythonStaticOrClassMethod(stmt)) return null;
+  const def = stmt.childForFieldName("definition");
+  return def?.type === "function_definition" ? def : null;
 }
 
 function methodName(methodNode: Node): string | null {
@@ -115,16 +124,12 @@ function hasStaticModifier(methodNode: Node): boolean {
   return false;
 }
 
-function isPythonStaticOrClassMethod(funcNode: Node): boolean {
-  let prev = funcNode.previousNamedSibling;
-  while (prev && prev.type === "decorator") {
-    const text = prev.text;
-    if (text.includes("@staticmethod") || text.includes("@classmethod")) {
-      return true;
-    }
-    prev = prev.previousNamedSibling;
-  }
-  return false;
+function isPythonStaticOrClassMethod(decorated: Node): boolean {
+  return decorated.namedChildren.some(
+    (c) =>
+      c?.type === "decorator" &&
+      (c.text === "@staticmethod" || c.text === "@classmethod"),
+  );
 }
 
 function thisRefs(methodNode: Node, selfKeyword: string): Set<string> {

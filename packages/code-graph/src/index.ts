@@ -51,7 +51,10 @@ export { hashContent, readSourceFiles, structuralSignature } from "./incremental
 export { walkSourceFiles } from "./file-walk.js";
 export { collectDeclaredNames, collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barrel-resolve.js";
-export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints } from "./roles.js";
+export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
+export { UNIMPORTED_ROLES } from "./unimported-roles.js";
+export type { AnnotateRolesOptions, RoleHints } from "./roles.js";
+export type { RoleGlobs } from "./role-globs.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
 export {
@@ -184,8 +187,8 @@ export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
 export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export { computeReportDrift } from "./analysis/graph-report-drift.js";
-export type { HealthComponent } from "./analysis/dashboard-health.js";
-export { computeHealth } from "./analysis/dashboard-health.js";
+export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./analysis/dashboard-health.js";
+export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./analysis/dashboard-health.js";
 export type {
   BlastRadiusEntry,
   HotExport,
@@ -293,6 +296,9 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+export type { BucketableViolation, ViolationBuckets } from "./diff/violation-buckets.js";
+export { bucketViolations } from "./diff/violation-buckets.js";
+export type { ViolationIdentity } from "./check/violation-key.js";
 export type {
   FootprintGraph,
   FootprintOptions,

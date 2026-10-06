@@ -500,3 +500,29 @@ describe("a seat reviewer's transcript read once per roster change", () => {
     expect(reads()).toBe(2);
   });
 });
+
+describe("an owner brief beside the verdict", () => {
+  const BRIEF = ["OWNER-BRIEF", "What: Adds a widget retry.", "Why: It reaches the owner.", "Pros:", "- Fewer drops.", "Cons:", "- Timing is unreviewed.", "Door: two-way", "END-OWNER-BRIEF"].join("\n");
+  const accepted = async (message: string) => {
+    const messages = await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, [message])]))]);
+    return acceptVerdict(input, messages);
+  };
+
+  it("is stored on the accepted verdict as typed fields", async () => {
+    const result = await accepted(`${BLOCK}\n${BRIEF}\n`);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", ownerBrief: { what: "Adds a widget retry.", pros: ["Fewer drops."], cons: ["Timing is unreviewed."], doorType: "two-way" } });
+  });
+
+  it("is null when the reviewer wrote none, and the verdict is the same", async () => {
+    expect(await accepted(BLOCK)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, ownerBrief: null });
+  });
+
+  it("is null when malformed, and the verdict and its locator are unchanged", async () => {
+    const plain = await accepted(BLOCK);
+    const malformed = await accepted(`${BLOCK}\n${BRIEF.replace("two-way", "sideways")}\n`);
+
+    expect(malformed).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, ownerBrief: null });
+    expect(malformed.kind === "verdict" && plain.kind === "verdict" && malformed.locator.selector).toEqual(plain.kind === "verdict" && plain.locator.selector);
+  });
+});

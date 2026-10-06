@@ -8,14 +8,13 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
+import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-
-/** Update cycles allowed before the run asks a human whether to keep chasing the base. */
-export const MAX_UPDATE_CYCLES = 3;
+export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -42,16 +41,6 @@ export interface LandInput {
   round?: number;
   /** Updates since the last human gate, counted across every round of the run; a caller that re-enters `land` passes the same bound each time. */
   updateBound?: UpdateBound;
-}
-
-export interface UpdateBound {
-  sinceGate: number;
-  /** The heads each of those updates started from, so a stuck-behind gate names them. */
-  from: string[];
-}
-
-export function newUpdateBound(): UpdateBound {
-  return { sinceGate: 0, from: [] };
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
@@ -85,6 +74,8 @@ export interface LandDeps {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   ciTimeoutMs?: number;
+  /** How long a strict behind head waits on a required check that never reported before it is updated; default `MISSING_CHECK_GRACE_MS`. */
+  missingCheckGraceMs?: number;
   updateTimeoutMs?: number;
   flakyChecks?: Record<string, FlakyChecks>;
   /** Where `ci-wait` reads the PR and its checks; absent means the port, once per poll. Writes always re-read through the port. */
@@ -117,6 +108,8 @@ interface LandState {
   trusted: Set<string>;
   /** A policy allow covers only the head it named, so this run's updates never extend it. */
   trustedBy: "human" | "policy";
+  /** Heads this round's own update made from a stale green in a non-strict repo: each is the refresh its merge needs. */
+  refreshed: Set<string>;
 }
 
 /**
@@ -127,11 +120,12 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human" };
+  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
-    const next = ci.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, ci, state, options);
+    const settled = landsAsIs(ci, state) ? { ...ci, verdict: "green" as const } : ci;
+    const next = settled.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, settled, state, options);
     if (next) return next;
   }
 }
@@ -142,25 +136,33 @@ function roundId(name: string, round: number, n?: number): string {
   return parts.join(":");
 }
 
+/**
+ * A repo that does not require up-to-date heads treats a stale green as green until the merge is approved, then
+ * refreshes the approved head once against the base it will merge into. The refresh belongs to the head it made, not
+ * to the run's update count, so a later head is refreshed again; a base that moves after the refresh does not loop it.
+ */
+function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
+  return ci.baseMoved === true && (!state.trusted.has(ci.headSha) || state.refreshed.has(ci.headSha));
+}
+
+/**
+ * A strict repo's update spends the bound shared by every round. A non-strict repo's pre-merge refresh stays out of it:
+ * `refreshed` lets each approved head refresh once, so that path cannot loop and never reaches stuck-behind.
+ */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
-  if (state.bound.sinceGate >= MAX_UPDATE_CYCLES) {
-    const why = stuckBehindReason(state, ci.headSha);
+  const refresh = ci.baseMoved === true;
+  if (!refresh && budgetSpent(state.bound, ci.readAt)) {
+    const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
     const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
     if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
     resetBound(state.bound);
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  state.bound.sinceGate += 1;
-  state.bound.from.push(ci.headSha);
+  if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
+  if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
-}
-
-/** The base kept moving while each updated head's CI ran; the owner sees every head the updates started from. */
-function stuckBehindReason(state: LandState, headSha: string): string {
-  const heads = [...state.bound.from, headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
-  return `still behind its base after ${state.bound.sinceGate} updates, heads ${heads}`;
 }
 
 async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
@@ -205,12 +207,6 @@ async function decideMerge(ctx: WorkflowContext, input: LandInput, ci: CiSnapsho
   return { outcome: recorded.outcome, rule: recorded.rule, reason: recorded.reason };
 }
 
-/** Only a human answer restarts the update count; an allow per head must not let a racing base loop unasked. */
-function resetBound(bound: UpdateBound): void {
-  bound.sinceGate = 0;
-  bound.from = [];
-}
-
 function trust(state: LandState, headSha: string, by: LandState["trustedBy"]): void {
   state.trusted = new Set([headSha]);
   state.trustedBy = by;
@@ -232,10 +228,11 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   const now = deps.now ?? Date.now;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000 };
   const flaky = flakyState(deps.flakyChecks);
+  const firstReads: FirstReads = new Map();
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
-    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky)),
-    codeRoute("update-branch", now, (input: UpdateInput, signal) => afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))),
+    codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
+    codeRoute("update-branch", now, async (input: UpdateInput, signal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() })),
     codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
   ];
@@ -283,20 +280,30 @@ export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, wri
 }
 
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState): Promise<CiSnapshot> {
+async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
   const clock = deadline(timing);
+  const startedAt = timing.now();
+  let backlog = false;
+  const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
+  const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads);
+      const snapshot = await readCi(port, input, reads, { missingSettled });
       if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
-      if (snapshot.verdict !== "pending") return snapshot;
+      if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
+      backlog = snapshot.backlog === true;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
+      backlog = false;
     }
-    if (clock.expired()) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
+    if (clock.expired()) {
+      const ceilingMs = timing.timeoutMs * CI_BACKLOG_CEILING_FACTOR;
+      if (!backlog) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
+      if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${last}`);
+    }
     await clock.sleep(timing.pollMs, signal);
   }
 }

@@ -126,6 +126,19 @@ never fewer. It must return `{ allowed }` synchronously, or the store throws
 `GateAuthorizeInvalid`.
 Refusals name the gate id and the actor class, never the resolver's other fields.
 
+### Allowances
+
+A product may admit a non-owner class for specific answers by passing `allowances` to the store:
+a list of `{ resolverClass, stepId, payload }`. An allowance admits exactly that class, a gate whose
+step is `stepId` (the text after the last `/` of its id, with any `:<n>` repeat suffix removed) and a
+payload deep-equal to `payload`, and only when the resolver's `id` is not blank. Anything else gets the
+default refusal unchanged. The list is copied when the store is built, so a caller cannot widen it
+later, and the gate's rule and `authorize` still run after it.
+
+```ts
+new MemoryGateStore({ allowances: [{ resolverClass: "coordinator", stepId: "stuck-behind", payload: { decision: "retry" } }] });
+```
+
 hitl records a claim about the resolver; it cannot prove one. Any process that can write
 the database can claim any class.
 
