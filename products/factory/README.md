@@ -114,6 +114,29 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 Gate resolution is not a registry command, so no MCP or `/rpc` caller can answer a gate. It
 stays the local `titan-factory gate resolve`.
 
+### Escalations
+
+Shepherd opens `approve-merge` for the owner for five reasons only, listed in `ESCALATIONS` in
+`src/shepherd/route-table.ts`. The gate prompt names the reason.
+
+- `conflict`: a merge conflict survived one fixer attempt. Shepherd finds a conflict in one of
+  three ways: update-branch fails with a 422, the head reads `dirty`, or the check that runs
+  before a gate finds one. It then wakes the implementer once, with the files that likely
+  conflict. The next round reads CI at the fixer's head. If that head is behind, it runs a
+  fresh update-branch first. If that head still conflicts, the gate opens and no second fixer
+  starts. The fixer already had the conflict and failed to settle it, so a second wake would
+  likely fail the same way. The count resets when a head reads green, so a later conflict gets
+  its own fixer. This is by design (TP-1753). Allowing a second fixer would change merge policy,
+  so it needs its own task.
+- `policy-denial`: the seat's authority policy does not allow an automated merge, so only the
+  owner can approve this one.
+- `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
+  timeout or an unanswered hold. Retrying again would only repeat the stall.
+- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
+  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
+  caps what one PR can spend on agents before a human looks at it.
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:
