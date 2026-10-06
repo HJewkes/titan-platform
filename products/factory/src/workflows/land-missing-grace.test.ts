@@ -61,7 +61,7 @@ describe("ci-wait on a strict behind head with a required check that never repor
     const out = await h.ciWait();
 
     expect(out.ok).toBe(false);
-    expect(out.error).toContain("timed out");
+    expect(out.error).toContain("CI backlog");
     expect(out.error).toContain("dag-check");
   });
 
