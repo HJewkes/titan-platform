@@ -66,3 +66,9 @@ export function missingCheckGraceSpent(firstReads: FirstReads, headKey: string, 
   if (!firstReads.has(headKey)) firstReads.set(headKey, now);
   return now - firstReads.get(headKey)! >= graceMs;
 }
+
+/**
+ * How many `ci-wait` timeouts a run may spend while its checks are only queued or running. A runner backlog is not a
+ * red check, so the wait extends; the ceiling keeps a truly hung check from holding the run forever.
+ */
+export const CI_BACKLOG_CEILING_FACTOR = 3;
