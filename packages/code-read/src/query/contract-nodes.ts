@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ChurnWindow } from "./contract-hotspots.js";
+import { NodeLens, NodeLenses } from "./contract-node-lenses.js";
 import { MetricDescriptor, MissingReason, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** The row cap on `hierarchy.get`; past it the result says `truncated` and the shallowest rows are kept. */
@@ -54,6 +56,10 @@ const nodeGetArgs = z.object({
   id: z.string(),
   baseline: SnapshotRef.optional(),
   metrics: MetricNames.default([]),
+  /** Extra readings of the node; with none the result carries no `lenses` field. */
+  lenses: z.array(NodeLens).max(NodeLens.options.length).default([]),
+  /** The churn window the `score` lens reads. */
+  window: ChurnWindow.default("30d"),
 });
 
 const NodeMetric = z.object({
@@ -84,12 +90,16 @@ const nodeGetResult = z.object({
   ancestors: z.array(NodeRef),
   childCounts: z.record(z.string(), z.number().int()),
   metrics: z.array(NodeMetric),
+  /** Present only when `lenses` asked for any. */
+  lenses: NodeLenses.optional(),
 });
 
 export const NODE_GET = {
   description:
     "One node by id (a directory id ends in '/', the repo is ''): its containing chain, child counts, and each metric " +
-    "with direction, percentile among same-kind nodes, sibling median and rank, and a delta against an optional baseline.",
+    "with direction, percentile among same-kind nodes, sibling median and rank, and a delta against an optional baseline. " +
+    "Optional `lenses` add a file's exports, its hotspot score breakdown, its centrality rank, co-changed partners " +
+    "(unmeasured until pairs are stored), and its linked tests.",
   args: nodeGetArgs,
   result: nodeGetResult,
 } as const;

@@ -1,18 +1,17 @@
 import {
   computeHealth,
   topBusFactorRisks,
-  topCentralFiles,
   type HealthWeights,
   type HotspotRow,
-  type ReportContext,
 } from "@titan-design/code-graph/analysis";
 import { baselineFields, openBaseline, type Baseline } from "./baseline.js";
 import type { CommandArgs, CommandResult } from "./contract.js";
 import type { AttentionSignal, LookFirstRow, ReadingOrderRow } from "./contract-overview.js";
 import type { Finding } from "./contract-findings.js";
 import { findingsFor, withStatus } from "./finding-rows.js";
-import { inputsFor, reportContext, scoredRows } from "./hotspots.js";
+import { reportContext, scoredRows } from "./hotspots.js";
 import type { ReadModel } from "./model.js";
+import { centralFiles } from "./node-lenses.js";
 import { modelFor } from "./snapshot-ref.js";
 import type { ReadSource } from "./source.js";
 import { toRef } from "./tree.js";
@@ -20,7 +19,6 @@ import { toRef } from "./tree.js";
 type OverviewArgs = CommandArgs<"overview.get">;
 type OverviewResult = CommandResult<"overview.get">;
 type Kpis = OverviewResult["kpis"];
-type CentralInput = Parameters<typeof topCentralFiles>;
 
 // Co-change pairs are not stored in the index yet, so hidden coupling cannot be measured here.
 const UNMEASURED = new Set<AttentionSignal["key"]>(["hidden-coupling"]);
@@ -63,11 +61,10 @@ function signals(args: OverviewArgs, kpis: Kpis, findings: readonly Finding[]): 
   return { signals: healthBreakdown.map((c) => ({ ...c, measured: !UNMEASURED.has(c.key) })), combined: health };
 }
 
-// Files and structural edges only, as code-graph's report ranks centrality.
-function readingOrder(model: ReadModel, ctx: ReportContext, limit: number): ReadingOrderRow[] {
-  const nodes = inputsFor(model).nodes.filter((n) => n.kind !== "symbol");
-  const edges = model.edges.filter((e) => e.kind !== "references" && e.kind !== "calls") as CentralInput[1];
-  return topCentralFiles(nodes, edges, ctx, limit).map((r) => ({ node: toRef(model.nodeById.get(r.nodeId)!), centrality: r.score }));
+function readingOrder(model: ReadModel, limit: number): ReadingOrderRow[] {
+  return centralFiles(model)
+    .slice(0, limit)
+    .map((r) => ({ node: toRef(model.nodeById.get(r.nodeId)!), centrality: r.score }));
 }
 
 function lookFirst(model: ReadModel, hotspots: readonly HotspotRow[], findings: readonly Finding[], args: OverviewArgs): LookFirstRow[] {
@@ -102,7 +99,7 @@ export function getOverview(source: ReadSource, args: OverviewArgs): OverviewRes
     kpis,
     signals: attention,
     ...(args.combined ? { combined } : {}),
-    readingOrder: readingOrder(model, ctx, args.reading_limit),
+    readingOrder: readingOrder(model, args.reading_limit),
     lookFirst: lookFirst(model, hotspots, findings, args),
   };
 }
