@@ -1,5 +1,6 @@
 import { dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
+import type { SpawnGate } from "./spawn-gate.js";
 
 export const AGENT_CALL_TIMEOUT_MS = 30_000;
 
@@ -8,6 +9,8 @@ export interface AgentChatOptions {
   configDir?: string;
   timeoutMs?: number;
   roster?: RosterReader;
+  /** Every spawn is admitted by it first; absent means spawns are not gated. */
+  gate?: SpawnGate;
 }
 
 export interface SpawnRequest {
@@ -15,6 +18,8 @@ export interface SpawnRequest {
   profile: string;
   brief: string;
   cwd: string;
+  /** Reviews already running, which count against the build-capable load limit. */
+  runningReviews?: number;
 }
 
 /** Shepherd's one adapter over the `agent-chat` CLI; each caller picks its profile per spawn. */
@@ -28,11 +33,14 @@ export interface AgentChatAgents {
 
 /** Every mutation invalidates `roster`, so the read that checks whether it took effect is never a cached one. */
 export function agentChatAgents(agentChatBin: string, options: AgentChatOptions = {}): AgentChatAgents {
-  const { configDir, timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin) } = options;
+  const { configDir, timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd }) =>
-      mutating(roster, async () => void dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile])),
+    spawn: ({ name, profile, brief, cwd, runningReviews }) =>
+      mutating(roster, async () => {
+        gate?.admit(name, runningReviews);
+        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
+      }),
     resume: (name, message) => mutating(roster, async () => void resumeAgent(agentChatBin, name, message, timeoutMs)),
     message: (name, message) => mutating(roster, async () => messageAgent(agentChatBin, name, message, timeoutMs)),
   };

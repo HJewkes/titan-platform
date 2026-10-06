@@ -63,6 +63,16 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
+/** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
+export const SpawnGateConfigSchema = z.strictObject({
+  load5: z.number().positive().optional(),
+  buildLoad5: z.number().positive().optional(),
+  pressureLevel: z.number().int().positive().optional(),
+  freeMemoryPct: z.number().min(0).max(100).optional(),
+  windowMs: z.number().int().min(0).optional(),
+  reviewLoad: z.number().min(0).optional(),
+});
+
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
@@ -78,6 +88,7 @@ export const FactoryConfigSchema = z.object({
       agentChatBin: absolutePath.optional(),
       review: ReviewConfigSchema.optional(),
       fixer: FixerConfigSchema.optional(),
+      spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })

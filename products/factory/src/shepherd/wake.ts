@@ -10,6 +10,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -197,7 +198,7 @@ async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice
     else await (choice.mode === "resume" ? agents.resume(choice.agent, choice.message) : agents.message(choice.agent, choice.message));
     return true;
   } catch (error) {
-    if (brokerDown(error)) return false;
+    if (brokerDown(error) || error instanceof SpawnDeferred) return false;
     if (reask && tookEffect(choice, await rosterWhileBrokerDown(deps, agents, signal))) return true;
     throw error;
   }
@@ -306,7 +307,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
-  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster })) : undefined);
+  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster, gate: deps.spawnGate })) : undefined);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
   try {
     const registration = deps.store.get().byRun(input.runId);

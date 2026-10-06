@@ -7,6 +7,7 @@ import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
 import { toPresence } from "./presence.js";
 import { ReviewerMachineHold } from "./review-wait.js";
+import { SpawnDeferred, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
@@ -31,6 +32,8 @@ export interface AgentChatReviewerDispatchOptions {
   spawnTimeoutMs?: number;
   /** The serve process's shared roster reader; absent means one of this dispatch's own. */
   roster?: RosterReader;
+  /** Admits each spawn; a deferral is a busy refusal, asked again on the step's next wait. */
+  gate?: SpawnGate;
 }
 
 export interface AgentChatReviewerDispatch extends ReviewerDispatch {
@@ -90,6 +93,7 @@ async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
+    if (error instanceof SpawnDeferred) throw new ReviewerBrokerBusy(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
     if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });
@@ -122,15 +126,22 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
   };
 }
 
+const REVIEWER_NAME = /^rv-/;
+
+/** Fresh reviewers that hold a session now, which are the ones running a full check in a checkout. */
+async function runningReviews(roster: RosterReader): Promise<number> {
+  return (await roster.rows()).filter((row) => REVIEWER_NAME.test(row.name) && (row.presence === "live" || row.presence === "detached")).length;
+}
+
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, profile, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
-  const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster });
+  const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target) => askBroker(() => agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor) })),
+    spawn: (name, brief, target) => askBroker(async () => agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews(roster) }) })),
     resume: (name, brief) => askBroker(() => agents.resume(name, brief)),
   };
 }
