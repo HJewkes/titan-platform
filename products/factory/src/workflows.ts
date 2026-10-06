@@ -7,7 +7,7 @@ import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
-import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
+import { freezeGuard, freezeMigration, freezeStoreRef, frozenFor, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
@@ -88,7 +88,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
   const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, cleanup: deps.cleanup, snapshot: deps.snapshot };
-  const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
+  const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string, pr: number) => frozenFor(freeze.get(), holds(), repo, pr)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing };

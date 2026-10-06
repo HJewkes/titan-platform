@@ -32,7 +32,8 @@ interface SettleClock {
 
 const REAL_CLOCK: SettleClock = { sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
-export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
+/** Whether `repo` is frozen for `pr`: a freeze's own fix PR reads not frozen, as the freeze guard lets it land. */
+export type IsFrozen = (repo: RepoSlug, pr: number) => Promise<boolean>;
 
 /** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
 export const noFreezeStoreUntilTp523: IsFrozen = async () => false;
@@ -231,7 +232,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
     prPaths(port, input.repo, input.pr),
-    isFrozen(input.repo),
+    isFrozen(input.repo, input.pr),
     reviewBypassable(port, input.repo, pr),
   ]);
   const merge: MergeFacts = {
