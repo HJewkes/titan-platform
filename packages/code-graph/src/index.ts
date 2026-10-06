@@ -51,7 +51,10 @@ export { hashContent, readSourceFiles, structuralSignature } from "./incremental
 export { walkSourceFiles } from "./file-walk.js";
 export { collectDeclaredNames, collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barrel-resolve.js";
-export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints } from "./roles.js";
+export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
+export { UNIMPORTED_ROLES } from "./unimported-roles.js";
+export type { AnnotateRolesOptions, RoleHints } from "./roles.js";
+export type { RoleGlobs } from "./role-globs.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
 export {

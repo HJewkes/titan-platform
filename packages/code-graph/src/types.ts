@@ -20,6 +20,8 @@ export type IdAliasReason = "rename" | "move" | "merge" | "requalify";
 export type NodeRole =
   | "test"
   | "fixture"
+  | "story"
+  | "lab"
   | "barrel"
   | "types"
   | "config"

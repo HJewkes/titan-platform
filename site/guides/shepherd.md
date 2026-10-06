@@ -46,6 +46,14 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
+A repeat starts a new run instead when the registration's run is dead: it failed, or it
+completed stopped `not-mergeable` or on a `conflict` while the pull request is still open,
+as when no agent took the conflict wake and a seat then pushed a fix. The new run starts at
+the pull request's current head, the registration and its recorded authors move to it, and
+the old run still reads. The verb prints `restarted after failed run <id>` or
+`restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
+reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
+
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
@@ -123,7 +131,8 @@ contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTE
    minutes.
 3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
    grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
-   fixer is an agent-chat agent on the `implementer` profile, named
+   fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
+   watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
    register its fix pull request with the fix task and with itself as `--implementer`. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
@@ -175,17 +184,29 @@ A head that moved during the review always starts a new round, and the new head 
 A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
 post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
 request of each run that is waiting on a gate. When that pull request was merged or closed
-elsewhere, the serve process cancels the run and its gate.
+elsewhere, the serve process cancels the run and its gate. The same check supersedes a gate
+whose open pull request moved head, as resync does below.
 
 Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
 whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
-request moved head is superseded. A run that recorded its own `merge`, `sh-landed` or a
+request moved head is superseded. That covers a seat-policy or MRG-AU `approve-merge` gate,
+an `sh-sent-back` gate and a `ci-failed` gate; a superseded `ci-failed` gate reads as
+`await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
 its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
+
+Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
+MRG-AU allow row must have had only transient conditions unmet, `merge-tree-clean`,
+`repo-not-frozen` or both, and the gate must still be at the pull request's head. The cancel
+reason starts `superseded: review again: ` and names the conditions, and the run asks the
+policy again at the same head. A row with any other unmet condition, such as
+`verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
+still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
+the same sweep at once for that repo's gates.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
