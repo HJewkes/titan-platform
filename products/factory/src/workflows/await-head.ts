@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute, sleep } from "./land.js";
+import type { PrSnapshot } from "./pr-snapshot.js";
 
 export const AWAIT_HEAD_POLL_MS = 30_000;
 
@@ -56,12 +57,19 @@ export const AwaitHeadResult = z.looseObject({ headSha: z.string(), state: z.enu
 export interface AwaitHeadDeps extends AwaitHeadTiming {
   port: GitHubPort;
   now?: () => number;
+  /** Dropped for the repo once the wait sees the new head, so the next ci-wait and sh-observe read that head too. */
+  snapshot?: Pick<PrSnapshot, "invalidate">;
 }
 
-/** The step reads and never writes, so a crash mid-wait repeats it; `match` lets a caller name its own step family. */
+/**
+ * The step reads and never writes, so a crash mid-wait repeats it; `match` lets a caller name its own step family.
+ * The wait reads the port, while ci-wait reads a snapshot that may still hold the old head for a tick, and a round
+ * that read the old head would send it back to the fixer again.
+ */
 export function awaitNewHeadRoute(deps: AwaitHeadDeps, match = "await-new-head"): StepRoute {
   return codeRoute(match, deps.now ?? Date.now, async (target: AwaitHeadTarget, signal) => {
     const pr = await awaitNewHead(deps.port, target, signal, deps);
+    deps.snapshot?.invalidate(target.repo);
     return { headSha: pr.headSha, state: pr.state, merged: pr.merged };
   });
 }

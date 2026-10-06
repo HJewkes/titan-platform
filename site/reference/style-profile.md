@@ -42,7 +42,9 @@ codewatch).
 | `migrateProfile(profile)`, `registerMigration({ from, to, migrate })` | walk registered migrations up to `SCHEMA_VERSION` |
 | `exportProfile(profile, format)`, `SUPPORTED_FORMATS`, `ExportFormat` | one entry point for every format; returns `GeneratedFile[]` (`{ path, content }`) |
 | `generateEslintExport`, `generateRuffExport`, `generateEditorConfigExport`, `generateMarkdownExport`, `generateClaudeRules`, `generateHooksConfig`, `generateSkillFiles` | the per-format generators behind `exportProfile` |
-| `toEslintSeverity`, `severityRank`, `build*Rule`, `buildJsdocRules` | single ESLint rules derived from a profile |
+| `severityForConfidence(confidence, thresholds?)` | the one confidence ladder: `error`, `warn`, `info` or `off` |
+| `toEslintLevel(severity)`, `EslintSeverity` | the ESLint level for a tier; `info` becomes `warn`, since ESLint has no info level |
+| `toEslintSeverity`, `severityRank`, `build*Rule`, `buildJsdocRules` | single ESLint rules derived from a profile; they emit `error` or `warn`, never `info` |
 | `extractAllRules`, `getTopRules`, `getRulesByCategory`, `getRulesForCategory`, `detectLanguages` | flatten and group a profile's rules |
 
 ## Example

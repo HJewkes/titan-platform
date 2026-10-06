@@ -21,6 +21,7 @@ export type { ReportContext, ReportContextInput } from "./graph-report-sections.
 export {
   buildReportContext,
   busFactorOf,
+  hotspotComplexityOf,
   hotspotScoreOf,
   keepNode,
   lookupMetric,
