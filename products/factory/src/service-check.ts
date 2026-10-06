@@ -4,9 +4,10 @@ import { FACTORY_PORT } from "./serve.js";
 import { SERVICE_LABEL } from "./service.js";
 import { runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
 import { systemCheckPorts } from "./service-ports.js";
+import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down";
+type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "tick failing" | "tick stale";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -15,6 +16,8 @@ export interface CheckPorts extends ServicePorts {
   processStartedAt: (pid: number) => Promise<Date | null>;
   /** The build sha of the dist this CLI runs from, which is the installed build; `unknown` when it carries none. */
   installedBuildSha: () => string;
+  /** The burndown tick's status file path and its text, undefined when the file is absent. */
+  tickStatus: () => TickStatusRead;
 }
 
 interface CheckResult {
@@ -87,7 +90,14 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, health);
   if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port), job, health, { healthPid: healthPid ?? null });
-  return judgeRunning(job, health, ports.installedBuildSha());
+  const running = judgeRunning(job, health, ports.installedBuildSha());
+  return running.ok ? withTick(running, ports) : running;
+}
+
+/** Last in order: a server fault is reported before the tick that depends on it. */
+function withTick(running: CheckResult, ports: CheckPorts): CheckResult {
+  const problem = judgeTick(ports.tickStatus(), ports.now());
+  return problem === undefined ? running : { ...running, ok: false, cause: problem.cause, message: problem.message, detail: problem.detail };
 }
 
 const RESTART = "stop any other process on the port, then run titan-factory service restart";
