@@ -72,7 +72,7 @@ describe("MAIN_CI_ROUTES", () => {
   it.each([
     ["green", "done"],
     ["red", "main-red"],
-    ["cancelled", "main-red"],
+    ["cancelled", "wait"],
     ["cancelled-superseded", "read-newer-run"],
   ] as const)("routes a %s main CI read to %s", (read, route) => {
     expect(MAIN_CI_ROUTES[read]).toBe(route);
