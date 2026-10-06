@@ -42,10 +42,3 @@ function wordReplace(v: string, end: ClusterEnd, next: string | undefined): stri
   if (end?.option === "I") return end.text || (next ?? null);
   return end?.option === "i" ? end.text || "{}" : null;
 }
-
-/** The command once per replace string it may have: as getopt reads its options, and with `replaceAsOption` when that differs. */
-export function replaceReadings<T extends { xargs?: { replace: string | null; replaceAsOption: string | null } }>(cmd: T): T[] {
-  const xargs = cmd.xargs;
-  if (!xargs || xargs.replaceAsOption === xargs.replace) return [cmd];
-  return [cmd, { ...cmd, xargs: { ...xargs, replace: xargs.replaceAsOption } }];
-}
