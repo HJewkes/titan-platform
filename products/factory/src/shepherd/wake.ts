@@ -10,6 +10,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -197,7 +198,7 @@ async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice
     else await (choice.mode === "resume" ? agents.resume(choice.agent, choice.message) : agents.message(choice.agent, choice.message));
     return true;
   } catch (error) {
-    if (brokerDown(error)) return false;
+    if (brokerDown(error) || error instanceof SpawnDeferred) return false;
     if (reask && tookEffect(choice, await rosterWhileBrokerDown(deps, agents, signal))) return true;
     throw error;
   }
@@ -222,12 +223,24 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
   const at = deps.now();
   try {
-    await (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task)));
+    await whileDeferred(deps, signal, () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task))));
   } catch (error) {
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback };
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
+}
+
+/** A spawn gate that defers the resume is waited out on the poll, as a broker that is down is. */
+async function whileDeferred(deps: ShepherdDeps, signal: AbortSignal, ask: () => Promise<void>): Promise<void> {
+  for (;;) {
+    try {
+      return await ask();
+    } catch (error) {
+      if (!(error instanceof SpawnDeferred)) throw error;
+    }
+    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+  }
 }
 
 function turnWatch(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, name: string, signal: AbortSignal) {
@@ -306,7 +319,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
-  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster })) : undefined);
+  const agents = wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster, gate: deps.spawnGate })) : undefined);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
   try {
     const registration = deps.store.get().byRun(input.runId);
