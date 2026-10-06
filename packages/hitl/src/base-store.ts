@@ -34,7 +34,8 @@ export abstract class BaseGateStore implements GateStore {
 
   protected abstract insert(record: GateRecord): void;
   protected abstract read(id: string): GateRecord | undefined;
-  protected abstract update(record: GateRecord): void;
+  /** Writes only while the stored row is still pending; false means another writer settled it first. */
+  protected abstract update(record: GateRecord): boolean;
   protected abstract readByStatus(status: GateRecord["status"]): GateRecord[];
 
   create(input: GateInput): GateRecord {
@@ -75,15 +76,13 @@ export abstract class BaseGateStore implements GateStore {
       if (issues.length > 0) throw new GatePayloadInvalid(id, issues);
     }
     const resolved: GateRecord = { ...record, status: "resolved", payload, resolvedAt: this.nowIso(), resolvedBy: resolver };
-    this.update(resolved);
-    return resolved;
+    return this.settle(resolved);
   }
 
   cancel(id: string, reason: string): GateRecord {
     const record = this.requirePending(id);
     const cancelled: GateRecord = { ...record, status: "cancelled", reason, resolvedAt: this.nowIso() };
-    this.update(cancelled);
-    return cancelled;
+    return this.settle(cancelled);
   }
 
   listPending(): GateRecord[] {
@@ -95,10 +94,14 @@ export abstract class BaseGateStore implements GateStore {
 
   private requirePending(id: string): GateRecord {
     const record = this.get(id);
-    if (!record) throw new GateNotFound(id);
-    if (record.status === "expired") throw new GateExpired(id);
-    if (record.status !== "pending") throw new GateAlreadySettled(id, record.status);
+    if (record?.status !== "pending") throw notPending(id, record);
     return record;
+  }
+
+  /** `authorize` runs between the pending check and the write, and another store may settle the row in that gap. */
+  private settle(record: GateRecord): GateRecord {
+    if (this.update(record)) return record;
+    throw notPending(record.id, this.read(record.id));
   }
 
   /** The default check (or a listed allowance) runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
@@ -117,13 +120,18 @@ export abstract class BaseGateStore implements GateStore {
     if (record.status !== "pending" || !record.expiresAt) return record;
     if (Date.parse(record.expiresAt) > this.clock()) return record;
     const expired: GateRecord = { ...record, status: "expired", resolvedAt: this.nowIso() };
-    this.update(expired);
-    return expired;
+    return this.update(expired) ? expired : (this.read(record.id) ?? expired);
   }
 
   protected nowIso(): string {
     return new Date(this.clock()).toISOString();
   }
+}
+
+function notPending(id: string, record: GateRecord | undefined): Error {
+  if (!record) return new GateNotFound(id);
+  if (record.status === "expired") return new GateExpired(id);
+  return new GateAlreadySettled(id, record.status);
 }
 
 function toIso(value: Date | string | undefined): string | undefined {

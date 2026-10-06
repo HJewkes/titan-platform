@@ -445,6 +445,24 @@ describe.each([
     expect(store.get("g1")?.questions).toEqual(SHIP_QUESTIONS);
   });
 
+  it("keeps a cancel that lands while authorize runs and refuses the resolve", () => {
+    const cancelDuringAuthorize: { store?: GateStore } = {};
+    const racing = scoped(
+      makeHarness((gate) => {
+        cancelDuringAuthorize.store?.cancel(gate.id, "withdrawn");
+        return { allowed: true };
+      }),
+    ).store;
+    cancelDuringAuthorize.store = racing;
+    racing.create({ id: "g1", prompt: "ship it?" });
+
+    const error = catchError(() => racing.resolve("g1", "ok", OWNER));
+
+    expect(error).toBeInstanceOf(GateAlreadySettled);
+    expect(error).toMatchObject({ status: "cancelled" });
+    expect(racing.get("g1")).toMatchObject({ status: "cancelled", reason: "withdrawn", payload: undefined, resolvedBy: undefined });
+  });
+
   function scoped(extra: Harness): Harness {
     extraHarnesses.push(extra);
     return extra;
