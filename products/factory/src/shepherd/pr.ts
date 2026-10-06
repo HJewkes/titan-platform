@@ -277,7 +277,8 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       throw new LeaveLand(endedOutcome(routed));
     case "update-branch":
     case "new-cycle":
-      if (route === "update-branch" && behindAt(run.lastCi, headSha)) return true;
+      // A head behind a moved base lands as it stands, so only a MERGE verdict may take it to the merge decision.
+      if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
 }

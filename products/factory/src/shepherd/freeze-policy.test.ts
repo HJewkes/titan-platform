@@ -4,7 +4,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
-import { freezeCancelOnlyMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
+import { FREEZE_RECHECK_MS, freezeCancelOnlyMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
 import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { EffectivePolicy } from "./policy.js";
 import type { ReviewerReader } from "./review.js";
@@ -26,6 +26,7 @@ interface Scene {
   fake: FakeGitHub;
   freezes: FreezeStore;
   registrations: ShepherdStore;
+  clock: { at: number };
   /** The production sh-merge-evidence route, with the default freeze reader `factoryRoutesFor` wires. */
   evidence: (pr: number) => Promise<MergeEvidence>;
 }
@@ -39,7 +40,8 @@ function scene(): Scene {
   store.bind(db);
   freeze.bind(db);
   const fake = fakeGitHub();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, freeze, now: () => 0, sleep: async () => undefined, review: { reader: {} as ReviewerReader } });
+  const clock = { at: 0 };
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, freeze, now: () => clock.at, sleep: async () => undefined, review: { reader: {} as ReviewerReader } });
   const route = routes.find((candidate) => candidate.match === MERGE_EVIDENCE_STEP)!;
   const evidence = async (pr: number) => {
     const head = fake.pr(pr).headSha;
@@ -48,7 +50,7 @@ function scene(): Scene {
     if (!outcome.ok) throw new Error(outcome.error);
     return (JSON.parse(outcome.output) as { result: MergeEvidence }).result;
   };
-  return { fake, freezes: freeze.get(), registrations: store.get(), evidence };
+  return { fake, freezes: freeze.get(), registrations: store.get(), clock, evidence };
 }
 
 /** A green, cleanly mergeable PR registered under `task` by `implementer`. */
@@ -132,5 +134,63 @@ describe("repo-not-frozen in merge policy once the repo has thawed", () => {
       expect(evidence.merge.repoFrozen).toBe(false);
       expect(evidence.record.decision).toMatchObject(RV_ALLOW);
     }
+  });
+});
+
+/** Main moves from the red sha to a green child of it, as a merge outside Shepherd would leave it. */
+function mainFixedOutsideShepherd(s: Scene): void {
+  s.fake.commits.set(GREEN, { sha: GREEN, parents: [RED], tree: fakeSha("freeze-policy-green-tree") });
+  s.fake.refs.set("main", GREEN);
+  s.fake.setRuns(GREEN, [successRun("validate", 1), successRun("dag-check", 2)]);
+}
+
+const mainReads = (s: Scene): number => s.fake.calls.filter((call) => call === "getRef").length;
+
+describe("repo-not-frozen in merge policy once main went green outside Shepherd", () => {
+  it("thaws the stale freeze before deciding, so a MERGE verdict merges by MRG-AU-RV with no approve-merge gate", async () => {
+    const s = scene();
+    const pr = openPr(s, "demo/OTHER-2", "impl-b");
+    s.freezes.freeze(REPO, RED);
+    mainFixedOutsideShepherd(s);
+
+    const evidence = await s.evidence(pr);
+
+    expect(evidence.merge.repoFrozen).toBe(false);
+    expect(evidence.record.decision).toMatchObject(RV_ALLOW);
+    expect(s.freezes.isFrozen(REPO)).toBe(false);
+  });
+
+  it("stays frozen and gates when the read of main fails", async () => {
+    const s = scene();
+    const pr = openPr(s, "demo/OTHER-2", "impl-b");
+    s.freezes.freeze(REPO, RED);
+    mainFixedOutsideShepherd(s);
+    s.fake.wire.getRef = async () => {
+      throw new Error("github unavailable");
+    };
+
+    const evidence = await s.evidence(pr);
+
+    expect(evidence.merge.repoFrozen).toBe(true);
+    expect(evidence.record.decision.outcome).toBe("gate");
+    expect(s.freezes.isFrozen(REPO)).toBe(true);
+  });
+
+  it("reads main once for two decisions inside five minutes, and again after", async () => {
+    const s = scene();
+    const pr = openPr(s, "demo/OTHER-2", "impl-b");
+    s.freezes.freeze(REPO, RED);
+
+    await s.evidence(pr);
+    mainFixedOutsideShepherd(s);
+    s.clock.at += FREEZE_RECHECK_MS - 1;
+    const early = await s.evidence(pr);
+    const readsInsideWindow = mainReads(s);
+    s.clock.at += 1;
+    const later = await s.evidence(pr);
+
+    expect(readsInsideWindow).toBe(1);
+    expect(early.merge.repoFrozen).toBe(true);
+    expect(later.merge.repoFrozen).toBe(false);
   });
 });

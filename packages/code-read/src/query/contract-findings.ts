@@ -24,7 +24,7 @@ export const Finding = z.object({
   severity: Severity,
   node: NodeRef,
   destination: NodeRef.optional(),
-  /** The first flagged line range; absent when the finding is about the whole node. */
+  /** The first flagged line range; absent for a whole-node finding, except that `finding.get` gives a symbol's span. */
   range: Span.optional(),
   metric: z.string().optional(),
   value: z.number().optional(),
