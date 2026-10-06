@@ -337,12 +337,13 @@ topDeadModules(nodes, edges, ctx, 10);
 // [ { nodeId: 'orphan.ts', loc: 0, role: 'source' } ]
 
 topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
-// [ { nodeId: 'api.ts#run', name: 'run', fileId: 'api.ts', cognitive: 0, publicApi: true } ]
+// [ { nodeId: 'api.ts#run', name: 'run', fileId: 'api.ts', cognitive: 0, loc: 0, publicApi: true } ]
 ```
 
 - `topUnusedExports` lists exported symbols whose `utilization` is 0 or absent. Exports in
   files a barrel re-exports one hop away carry `publicApi: true`, since an npm consumer may
-  still use them, and rank after internal ones; ties break on `symbol_cognitive`.
+  still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
+  `symbol_loc` (0 when unmeasured).
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
   ranked by `loc`. The walk starts at files with the role `entry`, `barrel`, `test`,
   `script`, `config` or `fixture`, and at any `main.{ts,tsx,js,jsx}`. A computed
