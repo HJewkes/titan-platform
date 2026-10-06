@@ -22,7 +22,7 @@ function conflictAnswer(headSha: string) {
   return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
 }
 
-async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
+export async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
   await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
   return undefined;
 }

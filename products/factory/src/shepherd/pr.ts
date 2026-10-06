@@ -24,7 +24,7 @@ import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./out
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
-import { conflictGate, sentBackGate, type PrTarget } from "./gates.js";
+import { awaitNewHead, conflictGate, sentBackGate, type PrTarget } from "./gates.js";
 import { repairGate, spendRepair } from "./repair.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
@@ -102,6 +102,8 @@ interface ShepherdRun {
   updateBound: UpdateBound;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
+  /** Heads a wake's await-new-head saw replaced; replaying the run's wakes rebuilds it. */
+  wokenPast: Set<string>;
 }
 
 /** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
@@ -119,7 +121,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map() },
+    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha));
@@ -176,9 +178,21 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
  * a wake past the budget asks the owner instead and leaves the round.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  if (run.wokenPast.has(headSha)) return awaitedPast(run, headSha);
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
-  return outcome.kind === "woken";
+  if (outcome.kind !== "woken") return false;
+  run.wokenPast.add(headSha);
+  return true;
+}
+
+/**
+ * A wake at a head an earlier wake already saw replaced is a stale read of that head, so it waits for the head to
+ * differ again instead of spending a repair and resuming an agent with nothing to do.
+ */
+async function awaitedPast(run: ShepherdRun, headSha: string): Promise<boolean> {
+  await awaitNewHead(run, headSha);
+  return true;
 }
 
 /** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
