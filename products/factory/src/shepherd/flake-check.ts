@@ -2,7 +2,10 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
-import { codeRoute } from "../workflows/land.js";
+import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
+import { rerun } from "../workflows/land-pr.js";
+import type { WakeRequest } from "./phases.js";
+import { sentBackGate, type GateRun } from "./gates.js";
 
 export const FLAKE_CHECK_STEP = "sh-flake-check";
 export const FLAKE_CHECK_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }];
@@ -44,4 +47,30 @@ export async function failuresOutsideDiff(port: GitHubPort, input: FlakeCheckInp
 /** A read that fails is not a verdict: the run takes the gate rather than a rerun. */
 export function flakeCheckRoute(port: GitHubPort, now: () => number): StepRoute {
   return codeRoute(FLAKE_CHECK_STEP, now, async (input: FlakeCheckInput) => failuresOutsideDiff(port, input).catch((error: unknown) => ({ outside: false, detail: `the check could not read: ${error instanceof Error ? error.message : String(error)}` })));
+}
+
+const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string(), workflowRunId: z.number().nullable() })) });
+
+/** What a fixer's exit without a push needs: the run's gate context, plus the heads already rerun, which a head gets once. */
+export interface ExitRun extends GateRun {
+  state: GateRun["state"] & { round: number; reruns: number };
+  rerunHeads: Set<string>;
+}
+
+/**
+ * A fixer that exited with no push gets no second wait. A red whose failing tests the PR did not touch is rerun once
+ * at the same head; anything else opens the sent-back gate naming the exit. Undefined from the gate lands the next round.
+ */
+export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, reason: string): Promise<"rerun" | LandOutcome | undefined> {
+  const red = kind === "ci-red" && !run.rerunHeads.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
+  if (red?.success) {
+    const check = await step(run.ctx, `${FLAKE_CHECK_STEP}:${run.state.round}`, { ...run.target, headSha, failing: red.data.failing }, FlakeCheckResult);
+    if (check.outside) {
+      run.rerunHeads.add(headSha);
+      await rerun(run.ctx, run.target, { kind: "ci-failed", headSha, failing: red.data.failing }, run.state);
+      return "rerun";
+    }
+  }
+  const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${reason}. Await a new head or abandon?`;
+  return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`);
 }
