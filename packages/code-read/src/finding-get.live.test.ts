@@ -42,7 +42,7 @@ async function live(args: object): Promise<Get> {
 function exported(): MemorySnapshot {
   const { snapshot: info, nodes, edges, findings, rules } = loadReadModel(repo.store, snapshotId, { rules: RULES });
   const metrics = repo.store.listMetrics(snapshotId);
-  const sources = { "src/walk.ts": { lines: WALK.split("\n") } };
+  const sources = { "src/walk.ts": { lines: WALK.trimEnd().split("\n") } };
   return JSON.parse(JSON.stringify({ info, nodes, edges, metrics, findings, rules, sources })) as MemorySnapshot;
 }
 
