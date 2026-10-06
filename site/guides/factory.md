@@ -319,7 +319,11 @@ current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` in
 its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
-`--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service
+`--force` restarts anyway. A run in a merge step whose Shepherd hold is active and not yet
+satisfied is not busy: it cannot merge until release, so a restart repeats nothing. `/health`
+lists it under `heldSkipped`, and the drain names it. A hold its reviewer has satisfied, a
+held run in a review step, a park-routed step, and a hold that cannot be read all stay busy.
+`--no-drain` checks `/health` once and does not wait. A service
 that does not answer, or a build from before `busy`, has nothing to drain.
 
 ### `service deploy`: redeploy from main
