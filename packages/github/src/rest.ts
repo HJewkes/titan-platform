@@ -38,10 +38,14 @@ interface Cached {
   response: HttpResponse;
 }
 
-export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number): Rest {
+/** Waits before attempts 2 and 3 of a read, so a persistent failure surfaces after about four seconds. */
+const READ_RETRY_DELAYS_MS = [1000, 3000];
+
+export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, sleep: (ms: number) => Promise<void> = pause): Rest {
   const run = runner(exec, budget);
   const conditional = conditionalGetter(run, cacheSize);
-  const get = async <T>(path: string, fields: Fields = {}): Promise<T> => json<T>((await conditional(getArgs(path, fields))).body);
+  const retried = <A extends unknown[], R>(read: (...args: A) => Promise<R>) => (...args: A): Promise<R> => retryRead(() => read(...args), sleep);
+  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => json<T>((await conditional(getArgs(path, fields))).body));
   return {
     get,
     getOrNull: async <T>(path: string, fields?: Fields) => {
@@ -52,8 +56,8 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number):
         throw error;
       }
     },
-    pages: async <P, T>(path: string, fields: Fields, pick: (page: P) => T[]) => followPages(conditional, getArgs(path, fields), pick, []),
-    revalidatePages: async <P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]) => {
+    pages: retried(async <P, T>(path: string, fields: Fields, pick: (page: P) => T[]) => followPages(conditional, getArgs(path, fields), pick, [])),
+    revalidatePages: retried(async <P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]) => {
       const args = getArgs(path, fields);
       const response = await run(etag === null ? args : [...args, "-H", `If-None-Match: ${etag}`]);
       if (response.status === 304) {
@@ -64,13 +68,37 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number):
       const next = nextPage(response.headers.get("link"));
       if (!next) return { notModified: false, body: first, etag: response.headers.get("etag") ?? null };
       return { notModified: false, body: await followPages(conditional, getArgs(next, {}), pick, first), etag: null };
-    },
-    text: async (path) => (await run(getArgs(path, {}))).body,
+    }),
+    text: retried(async (path: string) => (await run(getArgs(path, {}))).body),
     send: async <T>(method: string, path: string, fields: Fields = {}, input?: string) => {
       const args = ["-X", method, path, ...fieldArgs(fields), ...(input === undefined ? [] : ["--input", "-"])];
       return json<T>((await run(args, input)).body);
     },
   };
+}
+
+const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Only reads go through here: a write that may have landed is never sent twice. 4xx answers are final. */
+async function retryRead<R>(attempt: () => Promise<R>, sleep: (ms: number) => Promise<void>): Promise<R> {
+  for (const delay of READ_RETRY_DELAYS_MS) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!isTransient(error)) throw error;
+      await sleep(delay);
+    }
+  }
+  return attempt();
+}
+
+const CONNECTION_FAILURE = /error connecting|connection (reset|refused)|timed? ?out|ECONN|ETIMEDOUT|EOF|no such host|temporary failure/i;
+
+function isTransient(error: unknown): boolean {
+  if (error instanceof SyntaxError) return true;
+  if (!(error instanceof GhError)) return false;
+  if (error.status !== undefined) return error.status >= 500;
+  return CONNECTION_FAILURE.test(error.result.stderr);
 }
 
 type Run = (args: readonly string[], input?: string) => Promise<HttpResponse>;
