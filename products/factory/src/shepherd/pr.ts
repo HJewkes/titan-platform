@@ -24,9 +24,8 @@ import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./out
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
-import { awaitedPast, conflictGate, sentBackGate, tookWake, type PrTarget, type WakeRun } from "./gates.js";
-import { repairGate, spendRepair } from "./repair.js";
-import { afterFixerExit } from "./flake-check.js";
+import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
+import { afterWake, repairGate, spendRepair } from "./repair.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -179,9 +178,7 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   if (await awaitedPast(run, headSha)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
-  const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
-  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome.reason, (left) => new LeaveLand(left));
-  return tookWake(run, headSha, outcome);
+  return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
 }
 
 /** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
