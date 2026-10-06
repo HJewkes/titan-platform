@@ -17,6 +17,11 @@ export {
   type SeverityThresholds,
   type Severity,
 } from "./schema/profile.js";
+export {
+  severityForConfidence,
+  toEslintLevel,
+  type EslintSeverity,
+} from "./schema/severity.js";
 
 export { readProfile, writeProfile, validateProfile } from "./io.js";
 

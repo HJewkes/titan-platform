@@ -115,7 +115,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000 };
   return [
     ...landRoutes(deps),
-    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs }),
+    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs, snapshot: deps.snapshot }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),
     postMergeRoute(deps),

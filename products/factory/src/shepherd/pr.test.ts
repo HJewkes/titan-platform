@@ -2,14 +2,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
+import { AwaitHeadResult } from "../workflows/await-head.js";
+import { sleep, step } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
@@ -52,14 +54,14 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:"): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
@@ -1046,5 +1048,64 @@ describe("the repair budget", () => {
 
     expect(repairs(second.w.host, runId)).toBe(MAX_REPAIRS);
     expect(second.w.host.gates.get(gateId(runId, "sh-sent-back"))?.status).toBe("pending");
+  });
+});
+
+describe("the round after a wake's await-new-head", () => {
+  const RUN_HEAD = fakeSha("run-head");
+  const FIRST_PUSH = fakeSha("first-push");
+  const BRANCH_HEAD = fakeSha("branch-head");
+
+  /** The run's head is behind with green checks and reviewed FIX_FIRST; the woken fixer pushes twice and the branch settles clean, so the owner gate is next. */
+  function sentBackBehind(snapshotOf: (port: GitHubPort, fake: FakeGitHub) => PrSnapshot): { w: World; wakes: WakeRequest[] } {
+    const fake = fakeGitHub();
+    const wakes: WakeRequest[] = [];
+    const phases: ShepherdPhases = {
+      review: async (_ctx, request) => (request.headSha === RUN_HEAD ? { kind: "FIX_FIRST", headSha: RUN_HEAD, text: "missing test" } : { kind: "none" }),
+      wake: async (ctx, request) => {
+        wakes.push(request);
+        if (wakes.length === 1) [FIRST_PUSH, BRANCH_HEAD].forEach((head) => fake.pushHead(1, head));
+        Object.assign(fake.pr(1), { mergeableState: "clean", behind: false });
+        const head = await step(ctx, `sh-await-new-head:${request.round}`, { repo: request.repo, pr: request.pr, headSha: request.headSha }, AwaitHeadResult);
+        return head.headSha === request.headSha ? UNHANDLED : { kind: "woken", agent: "impl-a" };
+      },
+    };
+    const w = world(phases, undefined, fake, undefined, undefined, undefined, (port) => snapshotOf(port, fake));
+    fake.addPr({ headSha: RUN_HEAD, mergeableState: "behind", behind: true });
+    return { w, wakes };
+  }
+
+  it("reads the branch's current head in the next ci-wait and wakes the fixer once, not once per stale round", async () => {
+    const { w, wakes } = sentBackBehind((port) => prSnapshot(port, { now: () => 0 }));
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
+    expect(stepResult(w.host, runId, "ci-wait:r1:0")).toMatchObject({ result: { headSha: BRANCH_HEAD } });
+    expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
+  });
+
+  it("does not wake the fixer again when a read still shows the head an earlier wake saw replaced", async () => {
+    let staleReads = 0;
+    const lagging = (port: GitHubPort): PrSnapshot => ({
+      getPr: async (repo, number) => {
+        const pr = await port.getPr(repo, number);
+        if (pr.headSha === RUN_HEAD || staleReads >= 4) return pr;
+        staleReads += 1;
+        return { ...pr, headSha: RUN_HEAD, mergeableState: "behind", behind: true };
+      },
+      checkRuns: (repo, sha) => port.checkRuns(repo, sha),
+      invalidate: () => undefined,
+    });
+    const { w, wakes } = sentBackBehind(lagging);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(staleReads).toBe(4);
+    expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
+    expect(stepIds(w.host, runId).filter((id) => id === "sh-repair")).toHaveLength(1);
+    expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
   });
 });

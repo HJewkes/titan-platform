@@ -1,4 +1,5 @@
-import { PROFILE_CATEGORIES, type Profile } from "../schema/profile.js";
+import { PROFILE_CATEGORIES, type Profile, type Severity } from "../schema/profile.js";
+import { severityForConfidence } from "../schema/severity.js";
 
 export interface RuleEntry {
   category: string;
@@ -38,13 +39,16 @@ export function extractAllRules(profile: Profile): RuleEntry[] {
   return rules;
 }
 
+export function tierOf(profile: Profile, rule: RuleEntry): Severity {
+  return severityForConfidence(rule.confidence, profile.severityThresholds);
+}
+
 export function getTopRules(
   profile: Profile,
   count: number = 8,
 ): RuleEntry[] {
-  const errorThreshold = profile.severityThresholds?.error ?? 0.85;
   return extractAllRules(profile)
-    .filter((r) => r.confidence >= errorThreshold)
+    .filter((r) => tierOf(profile, r) === "error")
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, count);
 }
@@ -76,23 +80,17 @@ export function getRulesByTier(profile: Profile): {
   strong: RuleEntry[];
   preferred: RuleEntry[];
 } {
-  const allRules = extractAllRules(profile);
-  const errorThreshold = profile.severityThresholds?.error ?? 0.85;
-  const warnThreshold = profile.severityThresholds?.warn ?? 0.60;
-  const infoThreshold = profile.severityThresholds?.info ?? 0.40;
-
   const critical: RuleEntry[] = [];
   const strong: RuleEntry[] = [];
   const preferred: RuleEntry[] = [];
+  const buckets: Partial<Record<Severity, RuleEntry[]>> = {
+    error: critical,
+    warn: strong,
+    info: preferred,
+  };
 
-  for (const rule of allRules) {
-    if (rule.confidence >= errorThreshold) {
-      critical.push(rule);
-    } else if (rule.confidence >= warnThreshold) {
-      strong.push(rule);
-    } else if (rule.confidence >= infoThreshold) {
-      preferred.push(rule);
-    }
+  for (const rule of extractAllRules(profile)) {
+    buckets[tierOf(profile, rule)]?.push(rule);
   }
 
   critical.sort(byConfidence);

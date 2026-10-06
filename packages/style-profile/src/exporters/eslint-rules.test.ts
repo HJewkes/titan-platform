@@ -2,7 +2,14 @@ import { describe, it, expect } from "vitest";
 import { ESLint, type Linter } from "eslint";
 import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
-import { buildNamingConvention } from "./eslint-rules.js";
+import {
+  buildFileNamingRule,
+  buildFunctionLengthRule,
+  buildImportOrderRule,
+  buildJsdocRules,
+  buildNamingConvention,
+  buildNamingConventionRule,
+} from "./eslint-rules.js";
 import type { Profile } from "../schema/profile.js";
 import type { StyleRule } from "../schema/style-rule.js";
 
@@ -145,5 +152,42 @@ describe("buildNamingConvention under real ESLint", () => {
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0]!.message).toContain("badConst");
     expect(result.messages[1]!.message).toContain("BAD_LET");
+  });
+});
+
+describe("ESLint rule builders at the info tier", () => {
+  const atInfoTier = 0.5;
+
+  function infoTierProfile(): Profile {
+    return {
+      ...makeProfile({
+        variables: naming("camelCase", atInfoTier),
+        files: naming("kebab-case", atInfoTier),
+      }),
+      structure: {
+        importOrder: naming(["builtin", "external"], atInfoTier),
+        functionMaxLines: naming(30, atInfoTier),
+      },
+      documentation: { functionDocs: naming("jsdoc-all", atInfoTier) },
+    };
+  }
+
+  function allBuilderRules(profile: Profile): Array<[string, unknown]> {
+    const single = [
+      buildNamingConventionRule(profile),
+      buildImportOrderRule(profile),
+      buildFunctionLengthRule(profile),
+      buildFileNamingRule(profile),
+    ];
+    return [...single.filter((r) => r !== null), ...buildJsdocRules(profile)];
+  }
+
+  it("never emits the info severity, which ESLint rejects, and warns instead", () => {
+    const rules = allBuilderRules(infoTierProfile());
+
+    expect(rules).toHaveLength(5);
+    for (const [, config] of rules) {
+      expect((config as unknown[])[0]).toBe("warn");
+    }
   });
 });
