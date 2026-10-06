@@ -47,7 +47,7 @@ formats lives in `style-profile`.
 | `Aggregator` | `aggregate(observations)` returns `{ features, reviewQueue, summary }`; config: `stabilityWeights`, `severityThresholds`, `reviewThreshold` (0.6), `maxExamples` (5) |
 | `AggregatedFeature`, `AggregatorConfig`, `AggregatorResult`, `FrequencyDistribution` | the aggregator's shapes |
 | `computeConfidence(consistency, stability, weights?)` | `min(1, consistency * weight)`, weights high 1.0, medium 0.85, low 0.7 |
-| `mapSeverity(confidence, thresholds?)` | `error`, `warn`, `info` or `off`, using style-profile's thresholds |
+| `mapSeverity(confidence, thresholds?)` | `error`, `warn`, `info` or `off`, re-exported from style-profile's `severityForConfidence` |
 | `lookupStability(type)`, `Stability`, `StabilityWeights`, `Severity`, `SeverityThresholds` | stability table lookup (exact type, then category, then `medium`) |
 | `Enricher`, `EnricherConfig`, `EnrichmentResult`, `EnrichmentEntry`, `EnrichmentError` | LLM descriptions for the seven emitted feature types in `AI_ENRICHED_FEATURES` |
 | `LlmProvider`, `LlmMessage`, `LlmResponse` | the injected "complete this prompt" interface |
