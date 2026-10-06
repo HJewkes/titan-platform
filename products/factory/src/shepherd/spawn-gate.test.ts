@@ -92,7 +92,7 @@ describe("every factory-started agent passes the one gate", () => {
 
   it("defers a reviewer spawn as a busy refusal and starts nobody", async () => {
     mkdirSync(join(dir, "co"));
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), profile: "rv", cwdFor: () => join(dir, "co"), roster, gate: overloaded() });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate: overloaded() });
 
     await expect(dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) })).rejects.toBeInstanceOf(ReviewerBrokerBusy);
     expect(ran()).toBe(false);
@@ -115,7 +115,7 @@ describe("every factory-started agent passes the one gate", () => {
   it("defers the resume of an exited agent, for the standing reviewer as a busy refusal, and starts nobody", async () => {
     mkdirSync(join(dir, "co"));
     const gate = overloaded();
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), profile: "rv", cwdFor: () => join(dir, "co"), roster, gate });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
 
     await expect(agentChatAgents(bin(), { roster, gate }).resume("impl-a", "wake")).rejects.toBeInstanceOf(SpawnDeferred);
     await expect(dispatch.resume("rv-standing", "brief")).rejects.toBeInstanceOf(ReviewerBrokerBusy);
@@ -126,7 +126,7 @@ describe("every factory-started agent passes the one gate", () => {
     mkdirSync(join(dir, "co"));
     const state = { load5: 40, now: 0 };
     const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log: () => undefined });
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), profile: "rv", cwdFor: () => join(dir, "co"), roster, gate });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
     const waits: string[] = [];
     const timing = { now: () => state.now, busyWaitMs: 30 * 60_000, sleep: async (ms: number) => { state.now += ms; state.load5 = 3; } };
 
