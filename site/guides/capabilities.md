@@ -629,7 +629,7 @@ Key exports:
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
 - `parse-answer`: `answerFor`, `parseAnswerText`
-- +170 more in the [reference page](/reference/decider)
+- +174 more in the [reference page](/reference/decider)
 
 <a id="cap-memory"></a>
 
