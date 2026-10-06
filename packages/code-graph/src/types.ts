@@ -1,9 +1,5 @@
-export type NodeKind =
-  | "package"
-  | "module"
-  | "file"
-  | "symbol"
-  | "external";
+export const NODE_KINDS = ["package", "module", "file", "symbol", "external"] as const;
+export type NodeKind = (typeof NODE_KINDS)[number];
 
 export type EdgeKind =
   | "imports"
@@ -17,18 +13,20 @@ export type EdgeKind =
 /** `requalify` maps a bare-name symbol id from before index version 0.14.0 to its scope-qualified successor. */
 export type IdAliasReason = "rename" | "move" | "merge" | "requalify";
 
-export type NodeRole =
-  | "test"
-  | "fixture"
-  | "story"
-  | "lab"
-  | "barrel"
-  | "types"
-  | "config"
-  | "script"
-  | "entry"
-  | "generated"
-  | "source";
+export const NODE_ROLES = [
+  "test",
+  "fixture",
+  "story",
+  "lab",
+  "barrel",
+  "types",
+  "config",
+  "script",
+  "entry",
+  "generated",
+  "source",
+] as const;
+export type NodeRole = (typeof NODE_ROLES)[number];
 
 export interface GraphNode {
   id: string;
