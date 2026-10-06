@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,17 +6,25 @@ import { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts } fr
 
 let home: string;
 let originalHome: string | undefined;
+let locked: string[];
 
 beforeEach(() => {
   home = mkdtempSync(path.join(os.tmpdir(), "titan-discover-roots-"));
   originalHome = process.env.HOME;
   process.env.HOME = home;
+  locked = [];
 });
 
 afterEach(() => {
   process.env.HOME = originalHome;
+  for (const lockedPath of locked) chmodSync(lockedPath, 0o700);
   rmSync(home, { recursive: true, force: true });
 });
+
+function lock(target: string): void {
+  chmodSync(target, 0o000);
+  locked.push(target);
+}
 
 function makeProjectsDir(configDir: string): void {
   mkdirSync(path.join(configDir, "projects"), { recursive: true });
@@ -94,5 +102,29 @@ describe("discoverTranscripts", () => {
 
     expect(found).toHaveLength(1);
     expect(found[0]?.account).toBeNull();
+  });
+
+  it("returns no transcripts when the projects dir is missing", async () => {
+    await expect(discoverTranscripts(path.join(home, ".claude", "projects"))).resolves.toEqual([]);
+  });
+
+  it("skips a stray file beside the project directories", async () => {
+    const root = path.join(home, ".claude", "projects");
+    mkdirSync(path.join(root, "proj-a"), { recursive: true });
+    writeFileSync(path.join(root, "proj-a", "session-1.jsonl"), "");
+    writeFileSync(path.join(root, ".DS_Store"), "");
+
+    const found = await discoverTranscripts(root);
+
+    expect(found.map((t) => t.projectDir)).toEqual(["proj-a"]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("rejects instead of returning no transcripts when a project dir is unreadable", async () => {
+    const projectDir = path.join(home, ".claude", "projects", "proj-a");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session-1.jsonl"), "");
+    lock(projectDir);
+
+    await expect(discoverTranscripts(path.join(home, ".claude", "projects"))).rejects.toMatchObject({ code: "EACCES" });
   });
 });

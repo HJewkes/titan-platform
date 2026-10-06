@@ -8,6 +8,7 @@ import { adjacencyOf } from "./neighbors.js";
 import { columnFor } from "./rollup.js";
 import { modelFor } from "./snapshot-ref.js";
 import { findingNotFound, type ReadSource } from "./source.js";
+import type { Span } from "./schemas.js";
 import { peerStats } from "./stats.js";
 import { treeFor } from "./tree.js";
 
@@ -59,10 +60,21 @@ function ruleOf(model: ReadModel, finding: Finding): ModelRule {
   return { id: rule.id, type: rule.type, severity: rule.severity, text: rule.text };
 }
 
-function excerptOf(source: ReadSource, model: ReadModel, finding: Finding, context: number): ExcerptResult {
+// A whole-node finding on a symbol has no stored ranges, yet its node's span is exactly the flagged code.
+function flaggedRanges(model: ReadModel, finding: Finding): readonly Span[] {
+  const stored = model.findings.find((f) => f.id === finding.id)?.ranges;
+  if (stored && stored.length > 0) return stored;
+  return finding.node.span ? [finding.node.span] : [];
+}
+
+function excerptOf(source: ReadSource, model: ReadModel, finding: Finding, ranges: readonly Span[], context: number): ExcerptResult {
   if (!source.readSource) return { excerpt: null, missing: "no-source" };
-  const stored = model.findings.find((f) => f.id === finding.id);
-  return buildExcerpt(source.readSource(model.snapshot.id, finding.node.path), stored?.ranges ?? [], context);
+  return buildExcerpt(source.readSource(model.snapshot.id, finding.node.path), ranges, context);
+}
+
+// Copied rather than set, because the rows are cached per model and shared with findings.list.
+function withRange(finding: Finding, ranges: readonly Span[]): Finding {
+  return finding.range || !ranges[0] ? finding : { ...finding, range: ranges[0] };
 }
 
 /** `finding.get`: one finding with its rule, numbers in context, the flagged source, and related findings. */
@@ -74,11 +86,12 @@ export function getFinding(source: ReadSource, args: CommandArgs<"finding.get">)
   const finding = rows.find((f) => f.id === args.id);
   if (!finding) throw findingNotFound(args.id, model.snapshot.id);
   const rule = ruleOf(model, finding);
-  const { excerpt, missing } = excerptOf(source, model, finding, args.context_lines);
+  const ranges = flaggedRanges(model, finding);
+  const { excerpt, missing } = excerptOf(source, model, finding, ranges, args.context_lines);
   const result: GetResult = {
     snapshotId: model.snapshot.id,
     ...baselineFields(model, baseline),
-    finding,
+    finding: withRange(finding, ranges),
     rule,
     measured: measure(model, finding, baseline),
     why: rule.text ? `${rule.text} Here: ${finding.message}.` : finding.message,
