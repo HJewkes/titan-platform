@@ -1,14 +1,15 @@
 import type { Profile, SeverityThresholds, Severity } from "../schema/profile.js";
+import { severityForConfidence, toEslintLevel } from "../schema/severity.js";
 import type { StyleRule } from "../schema/style-rule.js";
+
+type EmittedEslintSeverity = "error" | "warn";
 
 export function toEslintSeverity(
   confidence: number,
   thresholds: SeverityThresholds,
-): Severity | null {
-  if (confidence >= thresholds.error) return "error";
-  if (confidence >= thresholds.warn) return "warn";
-  if (confidence >= thresholds.info) return "info";
-  return null;
+): EmittedEslintSeverity | null {
+  const level = toEslintLevel(severityForConfidence(confidence, thresholds));
+  return level === "off" ? null : level;
 }
 
 export function severityRank(s: Severity): number {
@@ -100,7 +101,7 @@ export function buildNamingConvention(profile: Profile): NamingConventionResult 
   const thresholds = profile.severityThresholds;
   const selectors: unknown[] = [];
   const skippedRules: EslintSkippedRule[] = [];
-  let maxSeverity: Severity | null = null;
+  let maxSeverity: EmittedEslintSeverity | null = null;
 
   for (const key of Object.keys(NAMING_SELECTORS)) {
     const rule = profile.naming?.[key];
