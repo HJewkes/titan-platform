@@ -71,6 +71,16 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("reads the review-check App, and rejects a relative key path, a non-integer id and an unknown key", () => {
+    const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
+
+    expect(load(reviewCheck).shepherd?.reviewCheck).toEqual(reviewCheck);
+    expect(() => load({ ...reviewCheck, privateKeyPath: "keys/app.pem" })).toThrow(/reviewCheck/);
+    expect(() => load({ ...reviewCheck, appId: "101" })).toThrow(/reviewCheck/);
+    expect(() => load({ ...reviewCheck, token: "x" })).toThrow(/reviewCheck/);
+  });
+
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
   });
