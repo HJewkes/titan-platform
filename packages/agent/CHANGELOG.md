@@ -1,5 +1,13 @@
 # @titan-design/agent
 
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [411b4f0]
+  - @titan-design/agent-protocol@0.5.0
+  - @titan-design/agent-lifecycle@0.1.5
+
 ## 0.4.4
 
 ### Patch Changes

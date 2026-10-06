@@ -1,5 +1,17 @@
 # @titan-design/style-checker
 
+## 0.4.2
+
+### Patch Changes
+
+- d4c2741: The ESLint generator drops its local `"info"`-to-`"warn"` patch, since style-profile's builders no longer emit `"info"`. Profile-diff deviations take their tier from style-profile's `severityForConfidence`.
+- Updated dependencies [71e0d20]
+- Updated dependencies [d4c2741]
+- Updated dependencies [bbb4821]
+- Updated dependencies [d4c2741]
+  - @titan-design/style-analyzer@0.1.3
+  - @titan-design/style-profile@0.4.0
+
 ## 0.4.1
 
 ### Patch Changes
