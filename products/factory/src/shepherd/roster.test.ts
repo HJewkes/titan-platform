@@ -129,7 +129,7 @@ function portReads(roster: RosterReader): (() => Promise<readonly unknown[]>)[] 
     () => agentChatAgents(BIN, { timeoutMs: 1_000, roster }).roster(),
     () => agentChatAgents(BIN, { timeoutMs: 1_000, roster }).roster(),
     () => agentChatCleanupAgents(BIN, undefined, 1_000, roster).roster(),
-    () => agentChatReviewerDispatch({ agentChatBin: BIN, profile: "reviewer", cwdFor: () => undefined, roster }).roster(),
+    () => agentChatReviewerDispatch({ agentChatBin: BIN, roles: { g10: "reviewer", standard: "reviewer" }, cwdFor: () => undefined, roster }).roster(),
   ];
 }
 
