@@ -1,4 +1,4 @@
-export const SURFACE_NAMES = ["headless", "iterm-pane", "iterm-tab", "iterm-window"] as const;
+export const SURFACE_NAMES = ["headless", "iterm-pane", "iterm-tab", "iterm-window", "tmux-window"] as const;
 
 export type SurfaceName = (typeof SURFACE_NAMES)[number];
 
@@ -29,7 +29,7 @@ export interface LaunchHandle {
   surface: SurfaceName;
   /** Headless only. */
   pid?: number;
-  /** iTerm session UUID. */
+  /** iTerm session UUID, or a tmux window id (`@N`). */
   paneRef?: string;
   /**
    * How many sessions the anchor's tab held when this launch looked, before it
