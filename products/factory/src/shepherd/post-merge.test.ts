@@ -122,22 +122,55 @@ describe("readMainCi", () => {
       expect(await read(superseded("failure"), clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "red", readSha: NEWER });
     });
 
-    it("answers red when main has not moved past the merge sha", async () => {
+    it("waits out the deadline, never red, when main has not moved past the merge sha", async () => {
       const fake = superseded("success");
       fake.refs.set("main", MERGE);
 
-      expect(await read(fake, clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "red", detail: "cancelled: validate" });
+      expect(await read(fake, clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "none", detail: expect.stringContaining("cancelled: validate") });
     });
 
-    it("answers red when main's tip does not contain the merge sha", async () => {
+    it("waits out the deadline when main's tip does not contain the merge sha", async () => {
       const fake = superseded("success");
       fake.compares.set(`${MERGE}...${NEWER}`, { mergeBaseSha: fakeSha("elsewhere"), files: [] });
 
-      expect((await read(fake, clockedTiming(), { ...input, pr: 1 })).verdict).toBe("red");
+      expect((await read(fake, clockedTiming(), { ...input, pr: 1 })).verdict).toBe("none");
     });
 
-    it("answers red when the step input names no PR to read the base branch from", async () => {
-      expect((await read(superseded("success"))).verdict).toBe("red");
+    it("waits out the deadline when the step input names no PR to read the base branch from", async () => {
+      expect((await read(superseded("success"))).verdict).toBe("none");
+    });
+  });
+
+  describe("a run cancelled and re-run at the same sha", () => {
+    const CANCELLED_AT = "2026-10-05T00:29:38Z";
+    const RERUN_AT = "2026-10-05T00:31:31Z";
+
+    it("answers green when the later run of each cancelled check passed, whatever the array order", async () => {
+      const fake = fakeGitHub();
+      fake.setRuns(MERGE, [successRun("validate", 7, RERUN_AT), successRun("build", 8, RERUN_AT), successRun("validate", 3, CANCELLED_AT, "cancelled"), successRun("build", 4, CANCELLED_AT, "cancelled")]);
+
+      expect(await read(fake)).toMatchObject({ verdict: "green", detail: "2 runs passed" });
+    });
+
+    it("answers red when the later run of the cancelled check failed", async () => {
+      const fake = fakeGitHub();
+      fake.setRuns(MERGE, [successRun("validate", 3, CANCELLED_AT, "cancelled"), successRun("validate", 7, RERUN_AT, "failure")]);
+
+      expect(await read(fake)).toMatchObject({ verdict: "red", detail: "failed: validate" });
+    });
+
+    it("breaks a start-time tie by run id, so the higher id is the newer run", async () => {
+      const fake = fakeGitHub();
+      fake.setRuns(MERGE, [successRun("validate", 9, RERUN_AT, "cancelled"), successRun("validate", 8, RERUN_AT)]);
+
+      expect((await read(fake)).verdict).toBe("none");
+    });
+
+    it("stays pending, never green, while a lone cancelled run has no later run", async () => {
+      const fake = fakeGitHub();
+      fake.setRuns(MERGE, [successRun("validate", 3, CANCELLED_AT, "cancelled"), successRun("build", 4, CANCELLED_AT)]);
+
+      expect(await read(fake)).toMatchObject({ verdict: "none", detail: expect.stringContaining("waiting for a later run of the same check") });
     });
   });
 
@@ -259,6 +292,16 @@ describe("shepherd-pr after land", () => {
 
     expect(stepIds(w, runId)).toContain("sh-freeze");
     expect(w.freezes().get(REPO)?.redSha).toBe(w.fake.pr(1).mergeSha);
+  });
+
+  it("opens no freeze when each check's cancelled run at the merge sha was re-run green", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 6, "2026-10-05T00:31:31Z")]);
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    expect(stepIds(w, runId)).not.toContain("sh-freeze");
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
   it("gates on a non-empty after list and runs no stage", async () => {
