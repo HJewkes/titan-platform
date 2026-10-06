@@ -15,6 +15,7 @@ import {
   graphFromDb,
   parseCliArgs,
   readBaseBaseline,
+  ROOT_ROLES,
   updatedBaseline,
 } from "./dead-code-check.mjs";
 import { maskSource } from "./dead-code-check-source.mjs";
@@ -253,6 +254,14 @@ describe("the script header", () => {
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
     expect(header).toContain("Exits 2 on an index failure, a lock timeout, a BASE_REF that names no commit, an unknown flag,");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
+  });
+});
+
+describe("root roles", () => {
+  it("match the roles code-graph treats as unimported by design", async () => {
+    const { UNIMPORTED_ROLES } = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
+
+    expect([...ROOT_ROLES].sort()).toEqual([...UNIMPORTED_ROLES].sort());
   });
 });
 

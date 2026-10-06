@@ -13,7 +13,7 @@ import { createFactoryRegistry, factoryContext, type FactoryContext } from "./re
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
-import { recheckHeld, resyncShepherd } from "./shepherd/resync.js";
+import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -75,10 +75,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const log = options.logger ?? consoleLogger;
   const services = options.routes.shepherd;
   const held = new Set<string>();
+  const thaws = watchThaws(services);
   if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
   const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
-  const goneSweep = services && startSweep(() => endGone(host, services, log), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  thaws.onThaw(() => void goneSweep?.tick());
   await goneSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
@@ -86,6 +88,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
+    thaws.stop();
     await goneSweep?.stop();
     await releaseSweep?.stop();
     await checkoutSweep?.stop();
@@ -180,10 +183,33 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
   return new Set([...unreadable.keys(), ...uncancelled.keys()]);
 }
 
-async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
+  for (const repo of thawed) {
+    thawed.delete(repo);
+    for (const gate of await supersedeTransientGates(host, services, { repo })) log.info({ ...gate, repo }, "superseded an approve-merge gate a freeze caused once the repo thawed");
+  }
+}
+
+interface ThawWatch {
+  /** Repos thawed since the sweep last read them. */
+  thawed: Set<string>;
+  /** Runs `start` on each later thaw, outside the thaw's own call, so a gate the freeze caused is not left waiting out the sweep interval. */
+  onThaw(start: () => void): void;
+  stop(): void;
+}
+
+/** Watches from before resync and the first adoption, so a thaw any run causes then is still swept. */
+function watchThaws(services: ShepherdServices | undefined): ThawWatch {
+  const thawed = new Set<string>();
+  let start = (): void => undefined;
+  const stop = services?.freeze?.onThaw((repo) => {
+    thawed.add(repo);
+    queueMicrotask(() => start());
+  });
+  return { thawed, onThaw: (next) => void (start = next), stop: () => stop?.() };
 }
 
 /** Runs before the first adoption, so no run whose PR left Shepherd is driven again; a failure is logged and startup goes on. */
