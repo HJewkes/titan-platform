@@ -15,4 +15,6 @@ export interface MatchResult {
   isNew: boolean;
   /** True when joining an existing cluster generalized one or more positions. */
   templateChanged: boolean;
+  /** Ids of clusters this insert evicted to stay under `maxClusters`; may include `cluster` itself. */
+  evicted: number[];
 }
