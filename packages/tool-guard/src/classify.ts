@@ -31,11 +31,24 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
   const out: ClassifiedAction[] = [];
   let line = ctx;
   for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
+    if (cmd.added) {
+      out.push(...addedActions(cmd, line, followScripts));
+      continue;
+    }
     out.push(...classifySimple(cmd, line));
     if (followScripts) out.push(...scriptActions(cmd, line));
     line = afterDynamic(cmd, afterAll(cmd, line));
   }
   return unique(out);
+}
+
+/** A command only an added xargs reading runs adds its actions, but an error drops it and it never moves the line's state. */
+function addedActions(cmd: SimpleCommand, line: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+  try {
+    return [...classifySimple(cmd, line), ...(followScripts ? scriptActions(cmd, line) : [])];
+  } catch {
+    return [];
+  }
 }
 
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
