@@ -93,7 +93,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # prepare also builds it but swallows a failure; this step fails loudly.
-      - run: pnpm --filter @titan-design/egress-scan run build
+      - run: pnpm --filter @titan-design/egress-scan... run build
       # The PR head sha, not the merge ref, so GitHub's synthetic merge commit is not scanned. CI has no term list.
       - name: Scan the pushed commits
         env:
