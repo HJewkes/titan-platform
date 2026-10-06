@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { annotateRoles, classifyRole, computeRoleHints } from "./roles.js";
+import { annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
 import { fileId } from "./extractors/ids.js";
 import type { GraphNode } from "./types.js";
 
@@ -182,5 +185,56 @@ describe("annotateRoles", () => {
     });
     expect(out.find((n) => n.id === "src/client.gen.ts")?.role).toBe("generated");
     expect(out.find((n) => n.id === "src/index.ts")?.role).toBe("barrel");
+  });
+});
+
+describe("story and lab roles", () => {
+  const fileNode = (id: string): GraphNode => ({ id, kind: "file", name: id });
+  const labGlobs = { lab: ["packages/ui/src/lab/**"] };
+
+  it(".stories.tsx is story, even under a fixtures/ directory", () => {
+    expect(classifyRole("src/Button.stories.tsx")).toBe("story");
+    expect(classifyRole("src/Button.stories")).toBe("story");
+    expect(classifyRole("src/fixtures/Card.stories.tsx")).toBe("story");
+    expect(classifyRole("src/Button.test.tsx")).toBe("test");
+  });
+
+  it(".mdx docs pages are story", () => {
+    expect(classifyRole("docs/Intro.mdx")).toBe("story");
+  });
+
+  it("a configured lab glob beats source and the barrel heuristic", () => {
+    const out = annotateRoles(
+      [fileNode("packages/ui/src/lab/Demo.tsx"), fileNode("packages/ui/src/lab/index.ts"), fileNode("packages/ui/src/Button.tsx")],
+      { roleGlobs: labGlobs },
+    );
+    expect(out.map((n) => n.role)).toEqual(["lab", "lab", "source"]);
+  });
+
+  it("generated still wins over a configured lab glob", () => {
+    const id = "packages/ui/src/lab/api.gen.ts";
+    const out = annotateRoles([fileNode(id)], { roleGlobs: labGlobs, generatedIds: new Set([id]) });
+    expect(out[0]!.role).toBe("generated");
+  });
+
+  it("loads lab globs from .codewatch/roles.json through computeRoleHints", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "roles-"));
+    mkdirSync(path.join(repo, ".codewatch"));
+    writeFileSync(path.join(repo, ".codewatch/roles.json"), JSON.stringify(labGlobs));
+    const hints = computeRoleHints([], repo, fileId);
+    rmSync(repo, { recursive: true, force: true });
+    expect(hints.roleGlobs).toEqual(labGlobs);
+  });
+
+  it("rejects a roles.json key that is not a role", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "roles-"));
+    mkdirSync(path.join(repo, ".codewatch"));
+    writeFileSync(path.join(repo, ".codewatch/roles.json"), JSON.stringify({ labs: ["x/**"] }));
+    expect(() => loadRoleGlobs(repo)).toThrow(/unknown role "labs"/);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("configures no globs when roles.json is absent", () => {
+    expect(loadRoleGlobs("/nonexistent-repo")).toEqual({});
   });
 });

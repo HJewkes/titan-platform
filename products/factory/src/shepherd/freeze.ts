@@ -49,7 +49,7 @@ const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
 /** One freeze row per repo in the factory database; the table comes from `freezeMigration`. */
 export class FreezeStore {
-  constructor(private readonly db: Db, private readonly now: () => number = Date.now) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onThaw: (repo: RepoSlug) => void = () => undefined) {}
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string): Freeze {
@@ -102,11 +102,13 @@ export class FreezeStore {
     return this.release(repo, freeze.episode);
   }
 
-  /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. */
+  /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. Every thaw, `unfreeze` included, ends here. */
   release(repo: RepoSlug, episode: number): boolean {
-    return this.db
+    const thawed = this.db
       .prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL")
       .run(new Date(this.now()).toISOString(), repoKey(repo), episode).changes > 0;
+    if (thawed) this.onThaw(repo);
+    return thawed;
   }
 
   private setField(repo: RepoSlug, episode: number, column: "fix_task" | "fixer", value: string): boolean {
@@ -140,10 +142,14 @@ export interface FreezeStoreRef {
   get(): FreezeStore;
   /** Returns the unbind, which the host calls before it closes the database. */
   bind(db: Db): () => void;
+  /** Calls `listener` with the repo each time a freeze thaws, whichever path thawed it; returns the unsubscribe. */
+  onThaw(listener: (repo: RepoSlug) => void): () => void;
 }
 
 export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
   let store: FreezeStore | undefined;
+  const listeners = new Set<(repo: RepoSlug) => void>();
+  const thawed = (repo: RepoSlug) => listeners.forEach((listener) => listener(repo));
   return {
     get() {
       if (!store) throw new Error("the freeze store is not bound to an open factory database");
@@ -151,9 +157,13 @@ export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
     },
     bind(db) {
       if (store) throw new Error("the freeze store is already bound to an open factory database");
-      const bound = new FreezeStore(db, now);
+      const bound = new FreezeStore(db, now, thawed);
       store = bound;
       return () => void (store === bound && (store = undefined));
+    },
+    onThaw(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
     },
   };
 }
