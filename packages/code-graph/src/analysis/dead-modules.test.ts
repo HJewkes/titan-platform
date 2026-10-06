@@ -68,6 +68,23 @@ describe("topDeadModules (C-65)", () => {
     expect(ids).not.toContain("src/thing.test.ts"); // test root
   });
 
+  it("treats story and lab files, and what only they import, as reachable", () => {
+    const withRoots = [
+      ...nodes,
+      file("src/Button.stories.tsx", "story"),
+      file("src/lab/Playground.tsx", "lab"),
+      file("src/lab/helper.ts", "source"),
+    ];
+    const withEdges = [...edges, edge("src/lab/Playground.tsx", "src/lab/helper.ts", "imports")];
+
+    const ids = topDeadModules(withRoots, withEdges, ctxOf(), 10).map((r) => r.nodeId);
+
+    expect(ids).not.toContain("src/Button.stories.tsx");
+    expect(ids).not.toContain("src/lab/Playground.tsx");
+    expect(ids).not.toContain("src/lab/helper.ts");
+    expect(ids).toContain("src/orphan.ts");
+  });
+
   it("ranks by LOC descending (largest unreferenced file first)", () => {
     const rows = topDeadModules(nodes, edges, ctxOf(), 10);
     expect(rows[0]!.nodeId).toBe("src/deep.ts"); // 80 loc > orphan 40

@@ -27,7 +27,8 @@ const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
 const IMPORTER_EDGES = new Set(["imports", "references", "calls"]);
 // Tests, fixtures, stories, labs, configs, scripts and app entries are roots: nothing imports them by design.
-const ROOT_ROLES = new Set(["test", "fixture", "story", "lab", "config", "script", "entry"]);
+// Kept equal to code-graph's UNIMPORTED_ROLES by a test; importing it here would need dist before the build check.
+export const ROOT_ROLES = new Set(["test", "fixture", "story", "lab", "config", "script", "entry"]);
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts"];
 
 export function deadExportMessage({ name, file, localOnly = false }) {

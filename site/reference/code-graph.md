@@ -69,6 +69,9 @@ glob in `.codewatch/roles.json`, then the built-in filename and directory heuris
 { "lab": ["packages/ui/src/lab/**"] }
 ```
 
+`UNIMPORTED_ROLES` names the roles nothing imports by design. Dead-module reachability treats
+them, plus `barrel`, as roots, so a story or lab file with no importer is not reported dead.
+
 ## Checking a snapshot
 
 The rules engine turns a snapshot into pass/fail against a `check.json`. Verified against

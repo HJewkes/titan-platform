@@ -102,6 +102,9 @@ match wins, in this order:
    so a story under `fixtures/` is still a story.
 4. `fixture`, `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
 
+`UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
+`config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
+
 `lab` has no built-in rule, since a `lab/` directory name is too generic to guess. A repo
 assigns it, or any other role, with `.codewatch/roles.json`, which maps roles to
 `.gitattributes`-style globs matched against file ids:
