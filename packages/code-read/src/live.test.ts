@@ -44,7 +44,7 @@ describe("api.describe through the registry, over a real index", () => {
     expect(result).toMatchObject({ api: CODE_READ_API_VERSION, dataset: "live", indexVersions: [INDEX_VERSION] });
     expect(result.commands).toEqual([
       "api.describe", "changes.get", "finding.get", "findings.list", "hierarchy.get", "hotspots.list", "node.get", "node.neighbors",
-      "node.resolve", "overview.get", "paths.impact", "snapshot.list",
+      "node.resolve", "overview.get", "packages.stats", "paths.impact", "snapshot.list",
     ]);
     expect(result.newest).toMatchObject({ id: snapshotIds.at(-1), ref: "main", commit: head });
   });

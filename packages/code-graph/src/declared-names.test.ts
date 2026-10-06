@@ -34,6 +34,21 @@ describe("declared names", () => {
     expect(spans.get("alpha")).toEqual({ startLine: 1, endLine: 2 });
   });
 
+  it("collects an abstract class with its span", async () => {
+    const file = await parseFile("\nabstract class Shape {\n  abstract area(): number;\n}\n", "/repo/src/a.ts", "typescript");
+    expect(collectDeclaredSpans(file).get("Shape")).toEqual({ startLine: 2, endLine: 4 });
+  });
+
+  it("collects a generator function declaration with its span", async () => {
+    const file = await parseFile("function* walk() {\n  yield 1;\n}\n", "/repo/src/a.ts", "typescript");
+    expect(collectDeclaredSpans(file).get("walk")).toEqual({ startLine: 1, endLine: 3 });
+  });
+
+  it("collects a generator expression bound to a const with its span", async () => {
+    const file = await parseFile("const pairs = function* () {\n  yield 2;\n};\n", "/repo/src/a.ts", "typescript");
+    expect(collectDeclaredSpans(file).get("pairs")).toEqual({ startLine: 1, endLine: 3 });
+  });
+
   it("skips anonymous declarations", async () => {
     const file = await parseFile("export default () => 1;\n", "/repo/src/a.ts", "typescript");
     expect(collectDeclaredNames(file).size).toBe(0);

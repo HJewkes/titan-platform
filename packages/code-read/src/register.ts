@@ -108,6 +108,12 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
     },
   },
+  "packages.stats": {
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      packages: { long: "--package", description: "Package root such as packages/cli; repeatable (default: every package the tier config declares)" },
+    },
+  },
   "node.neighbors": {
     positional: ["id"],
     options: {
