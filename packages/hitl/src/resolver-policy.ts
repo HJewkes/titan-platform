@@ -50,7 +50,7 @@ export function matchesAllowance(allowances: readonly GateAnswerAllowance[], gat
 }
 
 /** Deep equality over plain JSON data (objects, arrays, primitives); anything else, such as a class instance, is unequal. */
-function jsonEqual(a: unknown, b: unknown): boolean {
+export function jsonEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
