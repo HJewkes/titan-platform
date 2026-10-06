@@ -20,6 +20,7 @@ export const CiSnapshotResult = z.looseObject({
   mergeableState: z.string(),
   mergeSha: z.string().nullish(),
   failing: z.array(FailingCheck).optional(),
+  backlog: z.boolean().optional(),
   checksGreen: z.boolean().optional(),
   baseMoved: z.boolean().optional(),
   readAt: z.number().optional(),

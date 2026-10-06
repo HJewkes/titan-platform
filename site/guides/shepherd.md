@@ -434,6 +434,14 @@ pull request is held, and what the run waits on. It never signals the run and ne
 resolves a gate. An agent can call it over MCP to learn why a pull request has not merged.
 It cannot use it to merge.
 
+## A slow CI queue does not fail the run
+
+The `ci-wait` step times out after 45 minutes. If, at that moment, every check it waits on exists and is
+queued or in progress (none red, none unreported), the wait extends, up to three times the timeout (135
+minutes). Past that ceiling the step fails with a reason that names the CI backlog. A red check ends the
+wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
+repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
+
 ## Resolving a gate is CLI-only
 
 `gate resolve` is not a registry command. No `/rpc` route and no MCP tool can answer a gate
