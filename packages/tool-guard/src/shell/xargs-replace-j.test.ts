@@ -34,6 +34,9 @@ describe("BSD xargs -J puts every input item of a run at the insert argument", (
     ["-J after -I, the last one winning", "echo push origin HEAD:main | xargs -I{} -J % git %"],
     ["-I after -J, the last one winning", "printf 'status\\npush origin HEAD:main' | xargs -J % -I{} git {}"],
     ["no argument equal to the insert string", "echo HEAD:main | xargs -J % git push origin"],
+    ["-J after -I, no argument equal to the insert string", "echo push origin HEAD:main | xargs -I{} -J % git"],
+    ["-J after -I, the target appended", "echo HEAD:main | xargs -I{} -J % git push origin"],
+    ["-J after -I with -n 3, appended", "printf 'push origin HEAD:main' | xargs -I{} -J % -n 3 git"],
   ])("denies a push whose target comes from stdin under %s", (_how, command) => {
     expect(spellings(command)).toEqual(PUSH);
   });
@@ -83,6 +86,7 @@ describe("BSD xargs -J puts every input item of a run at the insert argument", (
   it.each([
     ["a stdin file", "xargs -J % git push origin % < targets.txt"],
     ["a stdin file at the subcommand", "xargs -J % git % < cmds.txt"],
+    ["a stdin file appended after -I then -J", "xargs -I{} -J % git < cmds.txt"],
     ["a non-static -d value", "printf 'xXHEAD:main' | xargs -J % -d \"$D\" git push origin %"],
     ["a heredoc fed through cat", "cat <<EOF | xargs -J % git %\npush origin HEAD:main\nEOF"],
   ])("fails closed behind %s", (_how, command) => {
