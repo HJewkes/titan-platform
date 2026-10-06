@@ -91,9 +91,6 @@ async function attachWorktree(
     await resetTo(gitRoot, branch, worktreePath, opts);
     return false;
   }
-  const holder = await checkoutOf(gitRoot, branch);
-  if (holder !== null || existsSync(worktreePath)) throw new WorktreeInUseError(branch, holder ?? worktreePath);
-
   const safety = await inspectForRelease(gitRoot, worktreePath, branch, opts.base);
   if (safety.unmerged) await addWorktree(gitRoot, ["worktree", "add", worktreePath, branch], opts.run);
   else await resetTo(gitRoot, branch, worktreePath, opts);
@@ -112,17 +109,12 @@ async function refuseRelease(
 }
 
 /** A gone assigned tree comes back only from the caller's record of allocating it. */
-function recreateAssigned(
-  assigned: string,
-  record: WorktreeRecord | undefined,
-  opts: WorktreeOptions
-): Promise<WorktreeAllocation> {
-  if (record === undefined || path.resolve(record.worktree) !== assigned)
-    throw new Error(
-      `assigned worktree ${assigned} does not exist, and there is no record of allocating it ` +
-        "to re-create it from. Not spawned"
-    );
-  return readoptWorktree(record, opts);
+function unrecoverableAssigned(assigned: string, record: WorktreeRecord | undefined): Error | undefined {
+  if (existsSync(assigned) || (record !== undefined && path.resolve(record.worktree) === assigned)) return undefined;
+  return new Error(
+    `assigned worktree ${assigned} does not exist, and there is no record of allocating it ` +
+      "to re-create it from. Not spawned"
+  );
 }
 
 async function adoptAssigned(
@@ -131,7 +123,7 @@ async function adoptAssigned(
   opts: WorktreeOptions
 ): Promise<WorktreeAllocation> {
   const assigned = path.resolve(req.assignedWorktree as string);
-  if (!existsSync(assigned)) return recreateAssigned(assigned, req.assignedRecord, opts);
+  if (!existsSync(assigned)) return readoptWorktree(req.assignedRecord as WorktreeRecord, opts);
   const branch = (await gitOrNull(["rev-parse", "--abbrev-ref", "HEAD"], assigned)) ?? "HEAD";
   return {
     cwd: assigned,
@@ -140,35 +132,53 @@ async function adoptAssigned(
   };
 }
 
+/** Everything allocate would refuse, as the errors it throws, so check and allocate cannot disagree. */
+interface Preflight {
+  refusals: Error[];
+  warnings: string[];
+}
+
+/** An existing branch is re-attached unless forced, which needs both it and its directory to be free. */
+async function holderRefusal(gitRoot: string, branch: string, worktreePath: string): Promise<Error[]> {
+  const holder = await checkoutOf(gitRoot, branch);
+  if (holder === null && !existsSync(worktreePath)) return [];
+  return [new WorktreeInUseError(branch, holder ?? worktreePath)];
+}
+
+async function preflight(req: WorktreeRequest, gitRoot: string, opts: WorktreeOptions): Promise<Preflight> {
+  if (req.assignedWorktree !== undefined) {
+    const refusal = unrecoverableAssigned(path.resolve(req.assignedWorktree), req.assignedRecord);
+    return { refusals: refusal === undefined ? [] : [refusal], warnings: [] };
+  }
+  await pruneStaleWorktrees(gitRoot);
+  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
+  const budget = budgetOf(opts);
+  const refusals: Error[] =
+    allocated.length >= budget ? [new WorktreeBudgetExhaustedError(allocated.length, budget)] : [];
+  const branch = branchFor(req.agentName, opts);
+  if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null) return { refusals, warnings: [] };
+  if (req.forceReset !== true) {
+    const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
+    refusals.push(...(await holderRefusal(gitRoot, branch, worktreePath)));
+  }
+  const warnings = [`branch ${branch} already exists; it will be adopted if it holds commits, reset if it does not`];
+  return { refusals, warnings };
+}
+
 async function check(req: WorktreeRequest, opts: WorktreeOptions): Promise<WorktreeCheck> {
   const gitRoot = await findGitRoot(req.baseCwd);
   if (gitRoot === null)
     return { refusals: [`${req.baseCwd} is not a git repository; worktree isolation needs one`], warnings: [] };
-
-  await pruneStaleWorktrees(gitRoot);
-  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
-  const budget = budgetOf(opts);
-  const refusals =
-    allocated.length >= budget
-      ? [`worktree budget exhausted: ${allocated.length}/${budget} allocated under ${basePathOf(opts)}`]
-      : [];
-  const branch = branchFor(req.agentName, opts);
-  const exists = (await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) !== null;
-  const warnings = exists
-    ? [`branch ${branch} already exists; it will be adopted if it holds commits, reset if it does not`]
-    : [];
-  return { refusals, warnings };
+  const { refusals, warnings } = await preflight(req, gitRoot, opts);
+  return { refusals: refusals.map((error) => error.message), warnings };
 }
 
 async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<WorktreeAllocation> {
   const gitRoot = await findGitRoot(req.baseCwd);
   if (gitRoot === null) throw new Error(`${req.baseCwd} is not a git repository`);
+  const [refusal] = (await preflight(req, gitRoot, opts)).refusals;
+  if (refusal !== undefined) throw refusal;
   if (req.assignedWorktree !== undefined) return adoptAssigned(req, gitRoot, opts);
-
-  await pruneStaleWorktrees(gitRoot);
-  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
-  const budget = budgetOf(opts);
-  if (allocated.length >= budget) throw new WorktreeBudgetExhaustedError(allocated.length, budget);
 
   const branch = branchFor(req.agentName, opts);
   const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
