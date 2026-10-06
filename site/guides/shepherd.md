@@ -81,8 +81,6 @@ graph LR
   fixing --> ci
   review --> approval["awaiting-approval"]
   approval --> merging
-  approval --> held
-  held --> merging
   merging --> postMerge["post-merge"]
   postMerge --> done
 ```
@@ -96,8 +94,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
-| `held` | in the merge step, waiting for a [hold](#hold-and-release) to be released; no stall limit |
-| `merging` | merging the approved head; a pull request waiting for the [merge train](#merge-train) or a frozen repo waits here |
+| `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
@@ -377,10 +374,10 @@ run ab0f9228-…: released
 
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits
-in the `held` phase, polling every 10 seconds, until `release`
-(`products/factory/src/shepherd/hold.ts`). The watch row's next action names the hold's reason
-and reviewer, and `held` has no stall limit. The phase is read from the registration and the
-run's current step, never stored, so a replay of the run's steps cannot disagree with it. The check covers `land-pr` too, so
+in `merging`, polling every 10 seconds, until `release`
+(`products/factory/src/shepherd/hold.ts`). While it waits, the watch row's `held` field and
+next action name the hold's reason and reviewer, and the merging stall limit does not apply.
+Both are read from the registration and the run's current step, never stored. The check covers `land-pr` too, so
 `titan-factory land` on a held pull request also waits. Both verbs take `owner/repo#N`, so a
 branch registration can be held only once its pull request exists. `--reviewer` names the
 reviewer whose verdict the run waits for; `release` clears it. Only that reviewer's `MERGE`, at

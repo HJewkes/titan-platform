@@ -17,7 +17,7 @@ const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "held", "merging", "post-merge", "done", "failed", "cancelled"] as const;
+export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
 
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
@@ -172,7 +172,6 @@ const WAITING: Readonly<Record<Phase, string>> = {
   fixing: "waiting for the implementer's new head",
   review: "waiting for the review",
   "awaiting-approval": "waiting on the merge decision",
-  held: "waiting for the hold to be released",
   merging: "merging",
   "post-merge": "watching main CI after the merge",
   done: "none",
@@ -182,19 +181,19 @@ const WAITING: Readonly<Record<Phase, string>> = {
 
 function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | undefined, gateStep: string | undefined, registration: Registration, behind: TrainHolder | undefined): string {
   if (gate) return `owner: resolve ${gateStep}`;
-  if (phase === "held") return holdWait(registration, headSha);
   if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
   return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
 }
 
 /**
- * A held run's merge step polls the hold rather than merging, so it reads as `held`, which has no stall limit. Only a
- * hold satisfied at the run's own head lets the merge through; a MERGE from anyone but the hold's reviewer never does.
+ * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit
+ * does not apply. The phase stays `merging` until CC-791: agent-chat's burndown rejects a status array with any phase
+ * it does not know. Only a hold satisfied at the run's own head lets the merge through.
  */
-function waitsOnHold(run: WorkflowRun, registration: Registration, headSha: string | null): boolean {
+function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string | null): boolean {
   const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);
-  return merging && registration.held && (headSha === null || registration.holdSatisfied?.head !== headSha);
+  return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
 }
 
 function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | null): string {
@@ -243,7 +242,7 @@ function notStartedStreak(steps: readonly StepResult[]): number {
 
 const MINUTE = 60_000;
 
-/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design, `held` among them, have no limit. */
+/** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
 export const PHASE_STALL_LIMIT_MS: Readonly<Partial<Record<Phase, number>>> = {
   ci: 60 * MINUTE,
   fixing: 240 * MINUTE,
@@ -257,10 +256,12 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
   return limit !== undefined && elapsed > limit ? `${Math.floor(elapsed / MINUTE)} min in ${phase}, over the ${limit / MINUTE} min limit` : undefined;
 }
 
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date): string | undefined {
+/** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
-  return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : overstayReason(phase, since, now);
+  if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
+  return holding ? undefined : overstayReason(phase, since, now);
 }
 
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
@@ -275,10 +276,11 @@ function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
-  const stepped = runPhase(run, steps);
-  const phase = stepped === "merging" && waitsOnHold(run, registration, headSha) ? "held" : stepped;
+  const phase = runPhase(run, steps);
+  const held = heldView(registration);
+  const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now);
+  const stalled = stallReason(run, steps, phase, since, now, holding);
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -288,9 +290,9 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
+    nextAction: freezeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
-    held: heldView(registration),
+    held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
   };

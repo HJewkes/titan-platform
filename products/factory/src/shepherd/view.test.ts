@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { PHASES, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -104,26 +104,39 @@ describe("a run held at registration waiting in its merge step", () => {
   }
   const twentyMinutesIn = new Date(waitedFrom + 20 * 60_000);
 
-  it("reads as held, naming the hold and its reviewer, and does not stall after 20 minutes", () => {
+  it("keeps the merging phase, names the hold and its reviewer, and does not stall after 20 minutes", () => {
     const row = watchRow({ registration: held, run: mergingAt(H1), now: twentyMinutesIn });
 
-    expect(row).toMatchObject({ phase: "held", headSha: H1, phaseSince: new Date(waitedFrom).toISOString(), stalled: null });
+    expect(row).toMatchObject({ phase: "merging", headSha: H1, held: { reason }, phaseSince: new Date(waitedFrom).toISOString(), stalled: null });
     expect(row.nextAction).toBe(`waiting for the hold to be released (${reason}), or for a MERGE from seat-review at ${H1.slice(0, 7)}`);
   });
 
-  it("stays held when the hold's reviewer has sent MERGE only at the fix round's newer head", () => {
+  it("still waits on the hold when its reviewer has sent MERGE only at the fix round's newer head", () => {
     const satisfiedLater = { ...held, holdSatisfied: { head: H2, by } } as Registration;
 
-    expect(watchRow({ registration: satisfiedLater, run: mergingAt(H1), now: twentyMinutesIn }).phase).toBe("held");
+    const row = watchRow({ registration: satisfiedLater, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row).toMatchObject({ phase: "merging", stalled: null });
+    expect(row.nextAction).toMatch(/^waiting for the hold to be released/);
   });
 
-  it("reads as merging, with its stall limit, once the hold is satisfied at the run's head", () => {
+  it("merges, with its stall limit, once the hold is satisfied at the run's head", () => {
     const satisfied = { ...held, holdSatisfied: { head: H2, by } } as Registration;
 
     const row = watchRow({ registration: satisfied, run: mergingAt(H2), now: twentyMinutesIn });
 
-    expect(row.phase).toBe("merging");
+    expect(row).toMatchObject({ phase: "merging", nextAction: "merging" });
     expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
+  });
+
+  it("still stalls an unheld run 20 minutes into its merge step", () => {
+    const row = watchRow({ registration, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
+  });
+
+  it("emits only the phases agent-chat's burndown parses, which rejects the whole status array on any other (CC-791)", () => {
+    expect(PHASES).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
   });
 
   it("names a hold with no reviewer by its reason alone", () => {
