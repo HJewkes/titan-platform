@@ -173,10 +173,14 @@ describe("plan owner questions", () => {
 });
 
 describe("linear time and two false positives (TP-1684)", () => {
+  // Best of three, so a CI runner stalling once under parallel load does not read as superlinear time.
   const elapsedMs = (run: () => void) => {
-    const start = performance.now();
-    run();
-    return performance.now() - start;
+    const samples = [0, 1, 2].map(() => {
+      const start = performance.now();
+      run();
+      return performance.now() - start;
+    });
+    return Math.min(...samples);
   };
   // Best of three: a loaded CI runner can stall any single run past the bound (#577).
   const lintTime = (question: string) =>
