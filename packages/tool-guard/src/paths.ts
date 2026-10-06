@@ -127,7 +127,8 @@ export function matchGuarded(path: string, list: GuardedList, home: string): Gua
 
 /** The first entry one of whose samples the glob `pattern` (absolute) would expand to. */
 export function matchGlob(pattern: string, list: GuardedList, home: string): GuardedPath | null {
-  const re = globRegExp(pattern);
+  // A command word that cannot compile could match anything, so it matches every entry.
+  const re = globRegExp(pattern, MATCH_ANY);
   return list.paths.find((entry) => samplesOf(entry, home, pattern).some((s) => re.test(s))) ?? null;
 }
 
@@ -138,8 +139,9 @@ export function containsGuarded(dir: string, list: GuardedList, home: string): G
 }
 
 function covers(entry: GuardedPath, path: string, home: string): boolean {
-  if (!patternRegExp(entry.pattern, home).test(path)) return false;
-  return !(entry.except ?? []).some((x) => patternRegExp(x, home).test(path));
+  // Uncompilable configured patterns fail closed: a pattern covers, an exception does not except.
+  if (!patternRegExp(entry.pattern, home, MATCH_ANY).test(path)) return false;
+  return !(entry.except ?? []).some((x) => patternRegExp(x, home, MATCH_NONE).test(path));
 }
 
 /** Samples as absolute paths. Any-directory samples are grafted onto `near`'s directory, or dropped without it. */
@@ -159,19 +161,27 @@ function graft(near: string, relative: string): string {
   return [...base.slice(0, Math.max(1, base.length - tail.length)), ...tail].join("/");
 }
 
-function patternRegExp(pattern: string, home: string): RegExp {
-  if (pattern.startsWith("~/")) return globRegExp(home + pattern.slice(1));
-  return globRegExp(pattern.startsWith("**/") ? `/${pattern}` : pattern);
+const MATCH_ANY = /^/;
+const MATCH_NONE = /$^/;
+
+function patternRegExp(pattern: string, home: string, onFail: RegExp): RegExp {
+  if (pattern.startsWith("~/")) return globRegExp(home + pattern.slice(1), onFail);
+  return globRegExp(pattern.startsWith("**/") ? `/${pattern}` : pattern, onFail);
 }
 
-function globRegExp(glob: string): RegExp {
+/** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */
+function globRegExp(glob: string, onFail: RegExp): RegExp {
   let src = "";
   for (let i = 0; i < glob.length; ) {
     const [piece, width] = globPiece(glob, i);
     src += piece;
     i += width;
   }
-  return new RegExp(`^${src}$`);
+  try {
+    return new RegExp(`^${src}$`);
+  } catch {
+    return onFail;
+  }
 }
 
 /** Regex source for the glob syntax starting at `i`, and how many characters it consumed. */
@@ -182,7 +192,32 @@ function globPiece(glob: string, i: number): [string, number] {
   const c = glob[i] as string;
   if (c === "*") return ["[^/]*", 1];
   if (c === "?") return ["[^/]", 1];
-  const end = c === "[" ? glob.indexOf("]", i + 2) : -1;
-  if (end > 0) return [`[${glob.slice(i + 1, end).replace(/^!/, "^").replaceAll("\\", "\\\\")}]`, end - i + 1];
+  if (c === "[") {
+    const cls = bracketClass(glob, i);
+    if (cls) return cls;
+  }
   return [c.replace(/[.+^${}()|[\]\\]/g, "\\$&"), 1];
+}
+
+/** A bash bracket expression at `i` as a regex class, or null when unterminated (the `[` is then literal). */
+function bracketClass(glob: string, i: number): [string, number] | null {
+  const negated = glob[i + 1] === "!" || glob[i + 1] === "^";
+  const start = i + (negated ? 2 : 1);
+  const end = glob.indexOf("]", start + 1);
+  if (end < 0) return null;
+  const body = glob.slice(start, end);
+  let members = "";
+  for (let n = 0; n < body.length; n++) {
+    const lo = body[n] as string;
+    const hi = body[n + 2];
+    if (body[n + 1] === "-" && hi !== undefined && lo <= hi) {
+      members += `${classChar(lo)}-${classChar(hi)}`;
+      n += 2;
+    } else members += classChar(lo);
+  }
+  return [`[${negated ? "^" : ""}${members}]`, end - i + 1];
+}
+
+function classChar(c: string): string {
+  return /[\\\][^-]/.test(c) ? `\\${c}` : c;
 }
