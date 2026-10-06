@@ -1,10 +1,10 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubWire, type PullRequest } from "@titan-design/github";
 import type { GhExec } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { tickPacing } from "../tick-pacing.js";
 import { prSnapshot } from "../workflows/pr-snapshot.js";
 import { heldCheck } from "./hold.js";
-import { openOnBranch } from "./snapshot-reads.js";
+import { openOnBranch, openOrRead } from "./snapshot-reads.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import type { HoldLookup } from "./store.js";
 
@@ -70,16 +70,50 @@ describe("snapshot reads in the release sweep", () => {
   });
 });
 
-describe("snapshot reads in the release sweep, forks", () => {
-  it("ignores a fork's PR on a branch named like the release branch", async () => {
+/** The port as GitHub answers `findPr`: `head=<owner>:<branch>` lists that owner's heads only, so another owner's fork never matches. */
+function sameOwnerHeads(fake: FakeGitHub): GitHubWire {
+  const owner = (slug: string): string => slug.split("/")[0]!.toLowerCase();
+  return { ...fake.wire, listPrs: async (repo, branch) => (await fake.wire.listPrs(repo, branch)).filter((pr) => owner(pr.headRepo ?? "") === owner(repo)) };
+}
+
+type Seed = (fake: FakeGitHub) => void;
+const add = (fake: FakeGitHub, tag: string, fields: Partial<PullRequest> = {}): number => fake.addPr({ headSha: fakeSha(tag), headRef: VERSION_PACKAGES_BRANCH, ...fields }).number;
+const openAnswer = (pr: PullRequest | null) => (pr && pr.state === "open" ? { number: pr.number, headSha: pr.headSha } : null);
+
+describe("snapshot reads answer as the port reads they replace", () => {
+  const lookups: [string, Seed][] = [
+    ["a fork PR numbered above the real one", (fake) => (add(fake, "real"), add(fake, "fork", { headRepo: "fork/x" }), void 0)],
+    ["only a fork PR on the branch", (fake) => void add(fake, "fork", { headRepo: "fork/x" })],
+    ["a closed PR above the open one", (fake) => (add(fake, "open"), add(fake, "closed", { state: "closed" }), void 0)],
+    ["only a closed PR on the branch", (fake) => void add(fake, "closed", { state: "closed", merged: true })],
+    ["no PR on the branch", (fake) => void add(fake, "other", { headRef: "topic" })],
+  ];
+
+  it.each(lookups)("openOnBranch finds the same open PR with and without a snapshot: %s", async (_name, seed) => {
     const fake = fakeGitHub({ repo: REPO });
-    fake.addPr({ headSha: fakeSha("fork"), headRef: VERSION_PACKAGES_BRANCH, headRepo: "fork/x" });
-    const real = fake.addPr({ headSha: fakeSha("real"), headRef: VERSION_PACKAGES_BRANCH });
-    const port = githubPort(fake.wire);
+    seed(fake);
+    const port = githubPort(sameOwnerHeads(fake));
 
-    const found = await openOnBranch(port, prSnapshot(port), REPO, VERSION_PACKAGES_BRANCH);
+    const viaPort = await openOnBranch(port, undefined, REPO, VERSION_PACKAGES_BRANCH);
+    const viaSnapshot = await openOnBranch(port, prSnapshot(port), REPO, VERSION_PACKAGES_BRANCH);
 
-    expect(found?.number).toBe(real.number);
+    expect(openAnswer(viaSnapshot)).toEqual(openAnswer(viaPort));
+  });
+
+  it.each([
+    ["an open PR on the list", (fake: FakeGitHub) => add(fake, "open")],
+    ["a merged PR that left the list", (fake: FakeGitHub) => add(fake, "merged", { state: "closed", merged: true })],
+    ["a closed PR that left the list", (fake: FakeGitHub) => add(fake, "closed", { state: "closed" })],
+    ["a fork's open PR", (fake: FakeGitHub) => add(fake, "fork", { headRepo: "fork/x" })],
+  ])("openOrRead returns the same PR with and without a snapshot: %s", async (_name, seed) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const number = seed(fake);
+    const port = githubPort(sameOwnerHeads(fake));
+
+    const viaPort = await openOrRead(port, undefined, REPO, number);
+    const viaSnapshot = await openOrRead(port, prSnapshot(port), REPO, number);
+
+    expect(viaSnapshot).toMatchObject({ number: viaPort.number, state: viaPort.state, merged: viaPort.merged, headSha: viaPort.headSha, headRef: viaPort.headRef, baseRef: viaPort.baseRef });
   });
 });
 
