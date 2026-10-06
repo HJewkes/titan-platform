@@ -24,6 +24,40 @@ describe("parseGitIntent", () => {
     expect(parseGitIntent("git branch -D old/thing")?.deletedBranch).toBe("old/thing");
     expect(parseGitIntent("ls -la")).toBeNull();
   });
+
+  it("reads a commit whose heredoc message mentions git push as a commit only", () => {
+    const command = "git commit -m \"$(cat <<'EOF'\nthen git push origin feat/z\nEOF\n)\"";
+
+    const intent = parseGitIntent(command);
+
+    expect(intent).toMatchObject({ commit: true, push: false, setBranch: null, mergedPr: null });
+  });
+
+  it("finds no merge in an echoed gh pr merge", () => {
+    const intent = parseGitIntent('echo "gh pr merge 42"');
+
+    expect(intent).toMatchObject({ mergedPr: null, push: false });
+  });
+
+  it("finds no merge in a heredoc body written to a file", () => {
+    const intent = parseGitIntent("cat > f <<EOF\ngh pr merge 7\ngit push\nEOF");
+
+    expect(intent).toMatchObject({ mergedPr: null, push: false });
+  });
+
+  it("finds no branch or head in quoted prose, while the real command still counts", () => {
+    const command = 'gh pr create --title "t" --body "run git checkout -b oops then --head bad"';
+
+    const intent = parseGitIntent(command);
+
+    expect(intent).toMatchObject({ setBranch: null, branchBase: null, commit: false });
+  });
+
+  it("still reads a real push chained after a commit and a merge after a wrapper", () => {
+    expect(parseGitIntent('git commit -m "x" && git push')).toMatchObject({ commit: true, push: true });
+    expect(parseGitIntent("cd repo && timeout 60 gh pr merge 42 --squash")?.mergedPr).toBe(42);
+    expect(parseGitIntent("(git push origin feat/q)")?.push).toBe(true);
+  });
 });
 
 describe("shell helpers", () => {
