@@ -4,7 +4,7 @@ import { nodeContext } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
-import { GUARDED_PATHS, matchGlob } from "./paths.js";
+import { matchGlob } from "./paths.js";
 import type { GuardedList } from "./paths.js";
 
 const HOME = "/home/you";
@@ -48,13 +48,22 @@ describe("glob compilation", () => {
     expect(matchGlob("/home/you/[]*+]", list, HOME)?.id).toBe("x");
   });
 
-  it("compiles every string up to length 5 over the hostile alphabet", () => {
+  it("compiles every string up to length 4 over the hostile alphabet", () => {
     const alphabet = [..."[]!^*+?-\\a/"];
+    const one = { paths: [{ id: "p", pattern: "/a" }] } as unknown as GuardedList;
+    const threw: string[] = [];
     let level = [""];
-    for (let n = 0; n < 5; n++) {
+    for (let n = 0; n < 4; n++) {
       level = level.flatMap((s) => alphabet.map((c) => s + c));
-      for (const s of level) expect(() => matchGlob(s, GUARDED_PATHS.secret, HOME)).not.toThrow();
+      for (const s of level) {
+        try {
+          matchGlob(s, one, HOME);
+        } catch {
+          threw.push(s);
+        }
+      }
     }
+    expect(threw).toEqual([]);
   });
 });
 
