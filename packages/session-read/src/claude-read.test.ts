@@ -18,6 +18,7 @@ import type { ReadSessionObservationOptions, SessionObservationReadResult } from
 import { readSessionObservations, readSessionSourceText } from "./session-observations.js";
 import { normalizedSearchText } from "./text.js";
 import { TranscriptParseError } from "./read.js";
+import { SessionIdentityError } from "./recent-claude.js";
 
 const SESSION = "session-1";
 const NAMESPACE = "host-a";
@@ -178,6 +179,7 @@ describe("readClaudeObservations", () => {
     records[3]!.sessionId = "different-session";
     writeFileSync(filePath, render(records), "utf8");
     await expect(collect(source)).rejects.toThrow(/contains session different-session/);
+    await expect(collect(source)).rejects.toBeInstanceOf(SessionIdentityError);
   });
 
   it("scopes a subagent transcript to the child and emits its observed parent identity", async () => {

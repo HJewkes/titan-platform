@@ -62,6 +62,13 @@ describe("normalized ingestion", () => {
       rmSync(file);expect(await indexCodexSource(graph,source)).toMatchObject({status:"missing"});expect(await readIndexedText(graph,graph.spans.search("replacementword")[0]!)).toBeNull();
     } finally {graph.db.close();}
   });
+  it("quarantines a rollout whose session_meta names another conversation", async () => {
+    const {dir,file}=fixture();const source=(await discoverCodexSources({codexHome:dir,namespace:"host"}))[0]!;const graph=openSessionGraph(":memory:");
+    try {
+      appendFileSync(file,line("session_meta",{id:"other-id"}));
+      expect(await indexCodexSource(graph,source)).toMatchObject({status:"quarantined",reason:expect.stringContaining("does not match")});
+    } finally {graph.db.close();}
+  });
   it("propagates a store error raised during the swap and leaves the watermark unchanged", async () => {
     const {dir,file}=fixture();const source=(await discoverCodexSources({codexHome:dir,namespace:"host"}))[0]!;const graph=openSessionGraph(":memory:");
     try {
