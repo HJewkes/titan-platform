@@ -119,7 +119,7 @@ afterAll(async () => {
 
 describe("gitTreeSource", () => {
   it("indexes HEAD~1 with the same nodes, edges and metrics as a checkout of it", async () => {
-    const atRev = await indexInto({ source: gitTreeSource(dir, "HEAD~1") });
+    const atRev = await indexInto({ source: gitTreeSource(dir, "HEAD~1"), computeChurn: false });
 
     expect(atRev.snapshot).toEqual(checkoutAtFirst.whole);
     expect(atRev.snapshot.nodes.some((n) => n.includes('"name":"later.ts"'))).toBe(false);
@@ -129,7 +129,11 @@ describe("gitTreeSource", () => {
   });
 
   it("roots ids at the repo root when the indexed subdir is gone from the working tree", async () => {
-    const atRev = await indexInto({ paths: [path.join(dir, "sub")], source: gitTreeSource(dir, "HEAD~1") });
+    const atRev = await indexInto({
+      paths: [path.join(dir, "sub")],
+      source: gitTreeSource(dir, "HEAD~1"),
+      computeChurn: false,
+    });
 
     expect(atRev.snapshot.nodes.length).toBeGreaterThan(0);
     expect(atRev.snapshot).toEqual(checkoutAtFirst.sub);
@@ -156,12 +160,13 @@ describe("gitTreeSource", () => {
     }
   });
 
-  it("computes no history metrics for a revision until history reads up to a rev", async () => {
+  it("records the same history metrics as a checkout of the revision", async () => {
     const atRev = await indexInto({ source: gitTreeSource(dir, "HEAD~1") });
 
     expect(checkoutAtFirst.churnNames.has("churn_30d")).toBe(true);
     const history = /^(churn_|bus_factor_|top_author_share_|test_bus_factor_|test_top_author_share_|recency_|file_age_days)/;
-    expect([...atRev.metricNames].filter((name) => history.test(name))).toEqual([]);
+    const historyNames = (names: Set<string>) => [...names].filter((name) => history.test(name)).sort();
+    expect(historyNames(atRev.metricNames)).toEqual(historyNames(checkoutAtFirst.churnNames));
   });
 
   it("writes nothing in the repo", async () => {

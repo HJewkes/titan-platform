@@ -84,7 +84,7 @@ describe("acceptVerdict", () => {
   });
 
   it("reads a WAIT block for another head as plain none", () => {
-    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("carries a FIX_FIRST verdict with the reviewer's words, which the implementer has to read", () => {
@@ -122,7 +122,7 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a block whose head differs from the requested head", () => {
-    expect(acceptVerdict(input, [message({ text: block({ head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ head: OTHER_HEAD }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a message written before dispatch", () => {
@@ -150,17 +150,17 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a block for another PR number", () => {
-    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/demo#8" }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/demo#8" }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a block for another repository", () => {
-    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/other#7" }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/other#7" }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a valid block that is not the final message", () => {
     const later = message({ writtenAt: 3_000, text: "One more thought, no verdict here." });
 
-    expect(acceptVerdict(input, [message(), later])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message(), later])).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
   });
 
   it("lets a later MERGE decide over an earlier FIX_FIRST for the same head in one read", () => {
@@ -182,7 +182,7 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses when the final message has no parseable block", () => {
-    expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toMatchObject({ kind: "none", malformed: { refusal: "bad_verdict" } });
   });
 
   it("refuses when there are no messages", () => {
@@ -1449,7 +1449,7 @@ describe("reviewPhase", () => {
       const { verdicts, resultOf } = await review({ dispatch, read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO });
 
       expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
-      expect(resultOf(`sh-late-verdict:${H1}`)).toEqual({ kind: "none" });
+      expect(resultOf(`sh-late-verdict:${H1}`)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     });
   });
 
