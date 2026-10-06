@@ -1,6 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fakeSha } from "@titan-design/github";
+import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -315,6 +317,86 @@ describe("shepherd.register after a failed run", () => {
 
     expect(again).toMatchObject({ runId: first.runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([first.runId]);
+  });
+});
+
+const FIXED = fakeSha("cc749-fixed-head");
+
+/** A run whose PR conflicts and whose conflict wake no agent takes, so it ends stopped not-mergeable at H1. */
+async function stoppedNotMergeable(w: World): Promise<string> {
+  w.fake.addPr({ headSha: H1, headRef: BRANCH, mergeableState: "dirty" });
+  const { runId } = await registered(w, pr1);
+  await w.host.runtime.wait(runId);
+  return runId;
+}
+
+function stoppedStep(reason: string): StepResult {
+  return { stepId: "sh-stopped", iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt: "2026-10-05T00:00:00Z", data: { result: { reason } } };
+}
+
+const LANDED: StepResult = { stepId: "sh-landed", iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt: "2026-10-05T00:00:00Z", data: { result: { mergeSha: H1 } } };
+
+/** The registered run reads as completed with `result` as its only recorded outcome step. */
+async function endedAs(w: World, result: StepResult): Promise<string> {
+  w.fake.addPr({ headSha: H1, headRef: BRANCH });
+  const { runId } = await registered(w, pr1);
+  const status = w.host.runtime.status.bind(w.host.runtime);
+  vi.spyOn(w.host.runtime, "status").mockImplementation((id) => (id === runId ? { ...status(id)!, status: "completed", stepResults: { [`${result.stepId}:0`]: result } } : status(id)));
+  return runId;
+}
+
+describe("shepherd.register after a stopped run", () => {
+  it("a run stopped not-mergeable gets a new run at the pull request's current head", async () => {
+    const w = world();
+    const stoppedRunId = await stoppedNotMergeable(w);
+    Object.assign(w.fake.pr(1), { mergeableState: "clean" });
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: stoppedRunId, previousStop: "not-mergeable", registration: { runId: again.runId } });
+    await gateOpened(w.host, gateId(again.runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(again.runId, "approve-merge"))?.prompt).toContain(`at head ${FIXED}`);
+    expect(w.host.runtime.status(stoppedRunId)?.status).toBe("completed");
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("a run stopped on a conflict gets a new run", async () => {
+    const w = world({ frozen: true });
+    const stoppedRunId = await endedAs(w, stoppedStep("conflict"));
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: stoppedRunId, previousStop: "conflict" });
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+  });
+
+  it.each([
+    ["merged", LANDED],
+    ["abandoned", stoppedStep("abandoned")],
+    ["closed", stoppedStep("closed")],
+    ["stuck-behind", stoppedStep("stuck-behind")],
+    ["merge-denied", stoppedStep("merge-denied")],
+  ])("a run that ended %s starts nothing and only updates the metadata", async (_ended, result) => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, result);
+
+    const again = await registered(w, { ...pr1, implementer: "impl-b" });
+
+    expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
+    expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run stopped not-mergeable whose pull request has since closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("not-mergeable"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
+    expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 });
 

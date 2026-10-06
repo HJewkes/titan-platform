@@ -17,6 +17,7 @@ import {
   type EffectivePolicy,
 } from "./policy.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
@@ -41,8 +42,10 @@ export interface Registered {
   /** False when `repo#pr`, or the PR's head branch, was already registered and its run came back instead. */
   created: boolean;
   registration: Registration;
-  /** Set when a failed run was replaced: the run this registration pointed at before. */
+  /** Set when a failed or restartable stopped run was replaced: the run this registration pointed at before. */
   previousRunId?: string;
+  /** Why the replaced run stopped, when it completed rather than failed. */
+  previousStop?: string;
 }
 
 export interface MergeEvaluation {
@@ -159,9 +162,10 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
   return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task }, { onStart });
 }
 
-/** A failed run is dead and nothing retries it, so its registration moves to a new run; any other status comes back unchanged. */
-function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
-  if (ctx.host.runtime.status(known.runId)?.status !== "failed") return refresh(store, known, args, policy);
+/** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
+async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
+  const restart = await restartFor(ctx.host, servicesOf(ctx), known);
+  if (!restart) return refresh(store, known, args, policy);
   refuseKindMove(known, args);
   const previousRunId = known.runId;
   let runId: string;
@@ -175,11 +179,11 @@ function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: Regist
     }
     return refresh(store, winner, args, policy);
   }
-  return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId };
+  return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
 }
 
 /** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
-function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Registered {
+async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Promise<Registered> {
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
@@ -279,7 +283,7 @@ const FINISHED: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: register,
