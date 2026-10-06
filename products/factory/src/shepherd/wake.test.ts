@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -360,6 +361,18 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     expect(scene.clock.sleeps).toEqual([1_000, 1_000, 1_000]);
     expect(result).toMatchObject({ kind: "woken", agent: "impl-a", mode: "resume" });
+  });
+
+  it("polls again when the spawn gate defers the successor, and starts it once the gate admits", async () => {
+    const scene = wakeStep();
+    scene.agents.fail.spawn = [new SpawnDeferred("load5 40 is past the limit 28")];
+
+    const { outcome, result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(outcome.ok).toBe(true);
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(scene.clock.sleeps).toContain(1_000);
+    expect(scene.agents.rows.filter((agent) => agent.name === "impl-a-s1")).toHaveLength(1);
   });
 
   it("does not spawn twice when a timed-out spawn had landed", async () => {
