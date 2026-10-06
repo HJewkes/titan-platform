@@ -189,10 +189,11 @@ describe("linear time and two false positives (TP-1684)", () => {
     }
   });
 
+  /** Linear runs ~30 ms locally but reached 237 ms on a loaded CI runner; the quadratic version took ~1.5 s locally. */
   it("lints 7k distinct ids in bounded time", () => {
     const ids = Array.from({ length: 7000 }, (_, i) => `VW-${i}`).join(" ");
 
-    expect(lintTime("Recommend yes. " + ids + NOW)).toBeLessThan(Math.max(4 * baseline() + 50, 200));
+    expect(lintTime("Recommend yes. " + ids + NOW)).toBeLessThan(Math.max(4 * baseline() + 50, 1000));
   });
 
   it("does not read Node.js or a slash-separated list as a path", () => {
