@@ -100,10 +100,13 @@ export function escalationReason(escalation: Escalation, detail: string): string
   return `${ESCALATIONS[escalation]}: ${detail}`;
 }
 
-/** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled. */
+/** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled and no later run of its name superseded it. */
 export const MAIN_CI_READS = ["green", "red", "cancelled", "cancelled-superseded"] as const;
 export type MainCiRead = (typeof MAIN_CI_READS)[number];
-export type MainCiRoute = "done" | "main-red" | "read-newer-run";
+export type MainCiRoute = "done" | "main-red" | "read-newer-run" | "wait";
 
-/** A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does. */
-export const MAIN_CI_ROUTES = { green: "done", red: "main-red", cancelled: "main-red", "cancelled-superseded": "read-newer-run" } as const satisfies Readonly<Record<MainCiRead, MainCiRoute>>;
+/**
+ * A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does.
+ * A cancel with no successor is not red either: the read waits for a later run of its name, or its deadline.
+ */
+export const MAIN_CI_ROUTES = { green: "done", red: "main-red", cancelled: "wait", "cancelled-superseded": "read-newer-run" } as const satisfies Readonly<Record<MainCiRead, MainCiRoute>>;
