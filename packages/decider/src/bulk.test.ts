@@ -19,14 +19,14 @@ function row(fields: Partial<LedgerRowWire>): LedgerRowWire {
 }
 
 describe("bulkSignal on the worked examples", () => {
-  it("reads 'ok <plan> defaults' over six questions as plural defaults covering six", () => {
+  it("reads a bare 'ok' to a quoted 'ok <plan> defaults' reply as plural defaults", () => {
     const signal = bulkSignal({
       recommended: "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)",
       answer: "ok",
       covers: null,
     });
 
-    expect(signal).toEqual({ covers: 6, reason: "plural-defaults" });
+    expect(signal).toEqual({ covers: null, reason: "plural-defaults" });
   });
 
   it("reads 'accept all recommended answers' as plural defaults", () => {
@@ -70,9 +70,22 @@ describe("bulkSignal signals", () => {
     expect(signal?.covers).toBe(covers);
   });
 
-  it("reads 'all as written' as plural defaults", () => {
-    expect(bulkSignal({ recommended: null, answer: "all as written", covers: null })?.reason).toBe("plural-defaults");
+  it.each(["all as written", "ok, all as written", "yes, all as recommended"])("reads %j as plural defaults", (answer) => {
+    expect(bulkSignal({ recommended: null, answer, covers: null })?.reason).toBe("plural-defaults");
   });
+
+  it("reads a batch the owner adds after the recommendation", () => {
+    const signal = bulkSignal({ recommended: "Retry once", answer: "Retry once, and accept the 4 plan defaults", covers: null });
+
+    expect(signal).toEqual({ covers: 4, reason: "plural-defaults" });
+  });
+
+  it.each(["I don't accept all recommended answers", "not ok to take all defaults", "All nine defaults not accepted"])(
+    "finds nothing in the negated %j",
+    (answer) => {
+      expect(bulkSignal({ recommended: null, answer, covers: null })).toBeNull();
+    },
+  );
 
   it.each([
     "Target Q4-2026 for launch",
@@ -86,9 +99,18 @@ describe("bulkSignal signals", () => {
     "ok, run 3 plans in parallel",
     "ok, cap at 2 questions per page",
     "accept a 2026 defaults review",
+    "Keep 10 questions per page",
+    "Keep three plans running",
+    "Keep Q1-Q4 reporting",
+    "Take 2 decisions per batch",
+    "Keep all defaults",
+    "Keep the UTF-8 defaults",
+    "Approve PR-12 recommendations",
+    "Accept the 9 defaults",
   ])("finds nothing in the single decision %j accepted as written", (label) => {
     expect(bulkSignal({ recommended: label, answer: label, covers: null })).toBeNull();
     expect(bulkSignal({ recommended: label, answer: "ok", covers: null })).toBeNull();
+    expect(bulkSignal({ recommended: `${label} (Recommended)`, answer: label, covers: null })).toBeNull();
   });
 
   it("finds nothing in one value applied everywhere", () => {
@@ -107,12 +129,22 @@ describe("bulkSignal signals", () => {
 });
 
 describe("LedgerRowSchema applying the bulk rule", () => {
-  it("demotes a derived accept to bulk with the count it read", () => {
+  it("demotes a recommended pick that sends a quoted batch reply", () => {
     const label = "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)";
-    const parsed = LedgerRowSchema.parse(row({ options: [{ label }, { label: "Hold" }], recommended: label, answer: label }));
+    const parsed = LedgerRowSchema.parse(row({ recommended: label, answer: "ok", pick_type: "recommended" }));
 
-    expect(parsed).toMatchObject({ outcome: "bulk", covers: 6, bulk_from: { outcome: "accept", covers: null } });
+    expect(parsed).toMatchObject({ outcome: "bulk", covers: null, bulk_from: { outcome: "accept", covers: null } });
   });
+
+  it.each(["Keep 10 questions per page", "Keep Q1-Q4 reporting", "Keep all defaults"])(
+    "keeps the recommended option %j accepted as written as accept",
+    (label) => {
+      const options = [{ label: `${label} (Recommended)` }, { label: "Hold" }];
+      const parsed = LedgerRowSchema.parse(row({ options, recommended: options[0]?.label ?? null, answer: label }));
+
+      expect(parsed).toMatchObject({ outcome: "accept", covers: null });
+    },
+  );
 
   it("demotes an explicit accept from a source that counted several ids", () => {
     const parsed = LedgerRowSchema.parse(row({ recommended: "Retry once", answer: "ok", outcome: "accept", covers: 4 }));
@@ -122,14 +154,14 @@ describe("LedgerRowSchema applying the bulk rule", () => {
 
   it("demotes an amend to bulk", () => {
     const parsed = LedgerRowSchema.parse(
-      row({ recommended: "Accept all plan defaults", answer: "Accept all plan defaults, and ship today", options: [{ label: "Accept all plan defaults" }] }),
+      row({ recommended: "Ship today", answer: "Ship today, and accept all plan defaults", options: [{ label: "Ship today" }] }),
     );
 
     expect(parsed.outcome).toBe("bulk");
   });
 
   it("gives the same row on re-read", () => {
-    const first = LedgerRowSchema.parse(row({ recommended: "accept the 9 defaults", answer: "accept the 9 defaults" }));
+    const first = LedgerRowSchema.parse(row({ recommended: "Retry once", answer: "Retry once; accept the 9 defaults" }));
     const second = LedgerRowSchema.parse(first);
 
     expect(second).toEqual(first);

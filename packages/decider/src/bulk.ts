@@ -1,3 +1,5 @@
+import { stripRecommended } from "./outcome.js";
+
 type BulkReason = "multi-item" | "plural-defaults" | "question-range";
 
 interface BulkInput {
@@ -18,6 +20,13 @@ const CLAUSE = "[^.;:!?\\n]*";
 /** Each accept word and the rest of its clause; the lookahead lets a later accept word in that clause start its own. */
 const ACCEPT_CLAUSE = new RegExp(`\\b(?:accept|ok|okay|yes|keep|take|leave|approve|recommend|go with)\\b(?=(${CLAUSE}))`, "gi");
 const LEAD = /^[\s,'"`“]*(?:(?:to|with|the|all|of|these|those)\s+)*/i;
+const OPEN = `^[\\s,'"\`“]*`;
+/** A negation earlier in the clause, as in "I don't accept" or "not ok to take". */
+const NEGATION = /\b(?:not|never|cannot)\b|n['’]t\b/i;
+const CLAUSE_SO_FAR = new RegExp(`${CLAUSE}$`);
+const BARE_ACK = /^[\s"'`“”]*(?:ok(?:ay)?|yes|yep|sure|accept(?:ed)?|approved?|lgtm)[\s.!"'`“”]*$/i;
+/** A reply the recommendation quotes for the owner to send, as in "Recommend 'ok ZZ-343 defaults'". */
+const QUOTED_REPLY = /['"`“]((?:ok|okay|yes|accept|approve)\b[^'"`”\n]*)['"`”]/i;
 
 const NUMBER_WORDS = [
   "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
@@ -33,10 +42,15 @@ const COUNTED = new RegExp(`(?<![\\w-])${COUNT}${COUNTED_NOUN}`, "gi");
  * count, an id or a plan. "Keep the defaults" is one choice and never matches.
  */
 const QUALIFIED_DEFAULTS = new RegExp(
-  `^[\\s,'"\`“]*(?:the\\s+)?(?:all|every|${COUNT}|[a-z]+-\\d+|plan|planner)\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)\\b`,
+  `${OPEN}(?:the\\s+)?(?:all|every|${COUNT}|[a-z]+-\\d+|plan|planner)\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)\\b`,
   "i",
 );
-const ALL_AS_WRITTEN = new RegExp(`^\\s*all\\b${CLAUSE}?\\bas (?:recommended|written)\\b`, "i");
+const ALL_AS_WRITTEN = new RegExp(`${OPEN}all\\b${CLAUSE}?\\bas (?:recommended|written)\\b`, "i");
+/** The accept word after the batch, as in "All nine defaults accepted". */
+const BATCH_ACCEPTED = new RegExp(
+  `${OPEN}(?:the\\s+)?(?:all|every|${COUNT})\\b${CLAUSE}?\\b(?:defaults|recommended answers|recommendations)\\b${CLAUSE}?\\b(?:accepted|approved)\\b`,
+  "i",
+);
 
 const GOVERNED_COUNT = new RegExp(`^${COUNT}${COUNTED_NOUN}`, "i");
 const GOVERNED_LABEL_RANGE = /^([QD])(\d+)\s*(?:-|–|to)\s*\1(\d+)\b/i;
@@ -55,8 +69,18 @@ function rangeSize(low: string | undefined, high: string | undefined): number {
   return Number(high) - Number(low) + 1;
 }
 
+function negatedBefore(text: string, index: number): boolean {
+  return NEGATION.test(CLAUSE_SO_FAR.exec(text.slice(0, index))?.[0] ?? "");
+}
+
+/** The clause after each accept word that no earlier word in its clause negates. */
 function acceptClauses(text: string): string[] {
-  return [...text.matchAll(ACCEPT_CLAUSE)].map((m) => m[1] ?? "");
+  return [...text.matchAll(ACCEPT_CLAUSE)].filter((m) => !negatedBefore(text, m.index)).map((m) => m[1] ?? "");
+}
+
+/** Whole clauses that end by accepting a batch, as in "All nine section 9 defaults accepted". */
+function batchAcceptedClauses(text: string): string[] {
+  return text.split(/[.;:!?\n]/).filter((clause) => BATCH_ACCEPTED.test(clause) && !NEGATION.test(clause));
 }
 
 /** The largest count the clauses state, or null when none is plausible. */
@@ -77,22 +101,42 @@ function governedCount(clause: string): number | null {
   return questions ? plausible(rangeSize(questions[1], questions[2])) : null;
 }
 
-function pluralDefaults(answer: string | null, clauses: readonly string[]): BulkSignal | null {
-  const matched = clauses.filter((clause) => QUALIFIED_DEFAULTS.test(clause) || ALL_AS_WRITTEN.test(clause));
+function pluralDefaults(words: string, clauses: readonly string[]): BulkSignal | null {
+  const governed = clauses.filter((clause) => QUALIFIED_DEFAULTS.test(clause) || ALL_AS_WRITTEN.test(clause));
+  const matched = [...governed, ...batchAcceptedClauses(words)];
   if (matched.length > 0) return { covers: largestCount(matched), reason: "plural-defaults" };
-  return answer !== null && ALL_AS_WRITTEN.test(answer) ? { covers: null, reason: "plural-defaults" } : null;
+  return ALL_AS_WRITTEN.test(words) ? { covers: null, reason: "plural-defaults" } : null;
+}
+
+function withoutLabel(answer: string, label: string): string {
+  const at = answer.toLowerCase().indexOf(label.toLowerCase());
+  return at === -1 ? answer : `${answer.slice(0, at)}\n${answer.slice(at + label.length)}`;
 }
 
 /**
- * Whether one answer accepted several decisions at once. Reads only the recommendation and
- * the answer, never the question body, and only inside a clause an accept word opens; the
- * first of multi-item, plural-defaults and question-range to match names the reason.
+ * What the owner said beyond the recommendation, so the decision's own wording never reads as
+ * the owner accepting a batch. A bare "ok" sends the reply the recommendation quotes, if any.
+ */
+function ownerWords(answer: string | null, recommended: string | null): string | null {
+  if (answer === null) return null;
+  const label = recommended === null ? "" : stripRecommended(recommended);
+  if (label === "") return answer;
+  if (stripRecommended(answer).toLowerCase() === label.toLowerCase()) return null;
+  if (BARE_ACK.test(answer)) return QUOTED_REPLY.exec(label)?.[1] ?? null;
+  return withoutLabel(answer, label);
+}
+
+/**
+ * Whether one answer accepted several decisions at once. Reads only the owner's own words,
+ * never the recommendation's or the question's, and only where an un-negated accept word
+ * governs them; the first of multi-item, plural-defaults and question-range names the reason.
  */
 export function bulkSignal({ recommended, answer, covers }: BulkInput): BulkSignal | null {
   if (covers !== null && covers > 1) return { covers, reason: "multi-item" };
-  const text = [answer, recommended].filter((t): t is string => t !== null).join("\n");
-  const clauses = acceptClauses(text);
-  const plural = pluralDefaults(answer, clauses);
+  const words = ownerWords(answer, recommended);
+  if (words === null) return null;
+  const clauses = acceptClauses(words);
+  const plural = pluralDefaults(words, clauses);
   if (plural !== null) return plural;
   const governed = clauses.map(governedCount).find((n) => n !== null) ?? null;
   return governed === null ? null : { covers: governed, reason: "question-range" };

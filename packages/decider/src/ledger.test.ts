@@ -35,12 +35,20 @@ describe("LedgerRowSchema reading a v1 precedent row", () => {
     });
   });
 
-  it("demotes a recommended pick that accepted plural defaults to bulk", () => {
+  it("demotes a free-text amend that adds plural defaults to bulk", () => {
+    const row = LedgerRowSchema.parse(
+      v1Row({ recommended: "Ship today (recommended)", answer: "Ship today; accept the 6 defaults", pick_type: "free_text" }),
+    );
+
+    expect(row).toMatchObject({ outcome: "bulk", covers: 6 });
+  });
+
+  it("keeps a recommended pick whose own wording names plural defaults as accept", () => {
     const row = LedgerRowSchema.parse(
       v1Row({ recommended: "Accept the 6 defaults (recommended)", answer: "Accept the 6 defaults", pick_type: "recommended" }),
     );
 
-    expect(row).toMatchObject({ outcome: "bulk", covers: 6 });
+    expect(row).toMatchObject({ outcome: "accept", covers: null });
   });
 
   it("keeps a rejected v1 row out of scoring", () => {
