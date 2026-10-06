@@ -6,6 +6,7 @@ import { HIERARCHY_GET, NODE_GET, NODE_RESOLVE } from "./contract-nodes.js";
 import { OVERVIEW_GET } from "./contract-overview.js";
 import { CHANGES_GET } from "./contract-changes.js";
 import { PATHS_IMPACT } from "./contract-paths-impact.js";
+import { PACKAGES_STATS } from "./contract-packages.js";
 
 /** The read API's semver. Bump it whenever `CONTRACT` changes; `contract.lock.json` records the last one. */
 export const CODE_READ_API_VERSION = "0.1.8";
@@ -58,6 +59,7 @@ export const CONTRACT = {
   "overview.get": OVERVIEW_GET,
   "changes.get": CHANGES_GET,
   "paths.impact": PATHS_IMPACT,
+  "packages.stats": PACKAGES_STATS,
 } as const satisfies Record<string, CommandContract>;
 
 export type CommandName = keyof typeof CONTRACT;

@@ -4408,6 +4408,227 @@
         "additionalProperties": false
       }
     },
+    "packages.stats": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "packages": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "result": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "packagesFrom": {
+            "type": "string",
+            "enum": [
+              "args",
+              "tiers",
+              "none"
+            ]
+          },
+          "modularity": {
+            "type": "number"
+          },
+          "totalEdges": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unassignedFiles": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "fileCount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "internalEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "outgoingEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "incomingEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "cohesion": {
+                  "type": "number"
+                },
+                "instability": {
+                  "type": "number"
+                },
+                "abstractness": {
+                  "type": "number"
+                },
+                "band": {
+                  "type": "string",
+                  "enum": [
+                    "foundation",
+                    "middle",
+                    "top"
+                  ]
+                },
+                "flags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "layer": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "declared"
+                        },
+                        "tier": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "rule": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "tier",
+                        "rule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "undeclared"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "fileCount",
+                "internalEdges",
+                "outgoingEdges",
+                "incomingEdges",
+                "cohesion",
+                "instability",
+                "abstractness",
+                "band",
+                "flags",
+                "layer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "crossEdges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "edges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "intensity": {
+                  "type": "number"
+                },
+                "flag": {
+                  "type": "string",
+                  "enum": [
+                    "tight",
+                    "moderate",
+                    "none"
+                  ]
+                }
+              },
+              "required": [
+                "from",
+                "to",
+                "edges",
+                "intensity",
+                "flag"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "snapshotId",
+          "packagesFrom",
+          "modularity",
+          "totalEdges",
+          "unassignedFiles",
+          "packages",
+          "crossEdges"
+        ],
+        "additionalProperties": false
+      }
+    },
     "paths.impact": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

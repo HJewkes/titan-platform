@@ -37,6 +37,7 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `overview.get` | `snapshot?`, `baseline?`, `window` (`30d` default), `cutoff` (default 3000), `weights` (per signal, defaults from code-graph's `DEFAULT_HEALTH_WEIGHTS`), `exclude_rules`, `combined` (default false), `reading_limit` (default 6), `look_limit` (default 8; both 0 to 50) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `kpis`, `signals` (`key`, `label`, `penalty`, `cap`, `measured`, `detail`), `combined?`, `readingOrder` (`node`, `centrality`), `lookFirst` (`node`, `score`, `churn`, `complexity`, `recency`, `reasons`) |
 | `changes.get` | `baseline` (required), `snapshot?`, `window` (`30d` default), `cutoff` (default 3000), `limit` (rows per list, 0 to 500, default 20) | `snapshotId`, `baselineSnapshotId`, `comparable`, `files` (`crossedCutoff`, `added`), `findings` (`new`, `worsened`, `improved`, `resolved`), `coupling` (`measured`, `added`), `regressions` (`node`, `before`, `after`, `delta`, `findings`), `counts` |
 | `paths.impact` | `paths` (up to 500), `snapshot?`, `baseline?`, `root?` (absolute checkout directory), `window` (`30d` default) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (by `status`: `indexed` with `node`, `complexity`, `hotspot` (`score`, `rank`), `findings`, `delta?`; `not-indexed` with `path`; `outside-repo`), `ranked`, `rollup` |
+| `packages.stats` | `snapshot?`, `packages?` (package roots, up to 500; default every package the tier config declares) | `snapshotId`, `packagesFrom` (`args`, `tiers`, `none`), `modularity`, `totalEdges`, `unassignedFiles`, `packages` (`id`, `name`, `fileCount`, `internalEdges`, `outgoingEdges`, `incomingEdges`, `cohesion`, `instability`, `abstractness`, `band`, `flags`, `layer`), `crossEdges` (`from`, `to`, `edges`, `intensity`, `flag`) |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -220,6 +221,24 @@ touches. It ranks nothing a second way:
 - The **rollup** counts each status, sums scores and open findings, and takes the top
   complexity and best rank; with a comparable baseline it sums the deltas, a new file adding
   its whole score.
+
+## Package stats
+
+`packages.stats` is code-graph's `computePartitionQuality` over a set of package roots, the
+numbers codewatch's `graph arch --health` prints:
+
+- **Roots** are repo-relative path prefixes. Given as `packages`, those; otherwise every root a
+  `layered-deps` rule names, the repo's tier config. `packagesFrom` says which, and is `none`
+  when neither names one. A file sits in the longest root it falls under; the rest count as
+  `unassignedFiles`.
+- **Edges** are the structural layer the store reads by default, so `references` and `calls`
+  edges are left out, as are test and fixture files, as `computeArch` leaves them out.
+- **Per package**: file count, internal, outgoing, and incoming edges, `cohesion`,
+  `instability`, `abstractness` (the share of `types` files), the measured `band`, and flags.
+- **Layer** is declared, not measured: the root's tier in the first `layered-deps` rule that
+  names it, 0 the lowest. A root no rule names has `layer: { status: "undeclared" }`.
+- **Cross edges** are the package-to-package counts with their intensity and flag, and
+  `modularity` is the partition's Newman-Girvan Q.
 
 ## Serving the commands
 

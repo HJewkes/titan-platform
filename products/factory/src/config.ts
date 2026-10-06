@@ -21,8 +21,12 @@ export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
 const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no leading dash, no whitespace");
 
 /** The reviewer Shepherd dispatches; strict, so a misspelt timeout fails the load instead of leaving the default in force. */
+const profileName = argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or ..");
+
 export const ReviewConfigSchema = z.strictObject({
-  profile: argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or .."),
+  profile: profileName,
+  /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
+  roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
