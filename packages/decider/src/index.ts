@@ -52,6 +52,8 @@ export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } 
 export type { UnlockCheck } from "./unlock.js";
 export { ASK_RULES, lintAsk, lintMorningList, lintOwnerQuestions } from "./ask-lint.js";
 export type { AskFinding, AskItemFindings, AskOption, AskQuestion, AskRule } from "./ask-lint.js";
+export { PR_SECTION_RULES, lintPrSection } from "./pr-section-lint.js";
+export type { PrSectionFinding, PrSectionRule } from "./pr-section-lint.js";
 export {
   CategoryPolicySchema,
   DECIDER_MODES,
@@ -93,11 +95,21 @@ export {
   verdict,
 } from "./shadow.js";
 export type { CategoryScore, ScoreOptions, Verdict } from "./shadow.js";
-export { MORNING_SOURCE, joinMorning, morningSource, parseMorningList, parseOwnerAnswers } from "./morning.js";
+export {
+  MORNING_SOURCE,
+  initiativesOfTaskIds,
+  joinMorning,
+  morningSource,
+  parseMorningList,
+  parseOwnerAnswers,
+  taskIdsIn,
+} from "./morning.js";
 export type {
   MorningAnswer,
   MorningCounts,
+  MorningDayCounts,
   MorningFileSystem,
+  MorningInitiativeResolver,
   MorningItem,
   MorningJoin,
   MorningSourceOptions,

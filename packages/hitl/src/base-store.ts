@@ -1,6 +1,6 @@
 import { snapshotBrief } from "./gate-brief.js";
 import { checkAgainstJsonSchema } from "./json-schema.js";
-import { defaultResolverRefusal, readDecision, ruleResolverRefusal, snapshotResolver, snapshotRule } from "./resolver-policy.js";
+import { readDecision, resolverRefusal, ruleResolverRefusal, snapshotAllowances, snapshotResolver, snapshotRule } from "./resolver-policy.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
@@ -8,6 +8,7 @@ import {
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
+  type GateAnswerAllowance,
   type GateAuthorize,
   type GateInput,
   type GateRecord,
@@ -24,7 +25,12 @@ export abstract class BaseGateStore implements GateStore {
     protected readonly clock: () => number,
     private readonly authorize?: GateAuthorize,
     private readonly requireBrief = false,
-  ) {}
+    allowances?: readonly GateAnswerAllowance[],
+  ) {
+    this.allowances = snapshotAllowances(allowances);
+  }
+
+  private readonly allowances: readonly GateAnswerAllowance[];
 
   protected abstract insert(record: GateRecord): void;
   protected abstract read(id: string): GateRecord | undefined;
@@ -63,7 +69,7 @@ export abstract class BaseGateStore implements GateStore {
     if (!resolvedBy) throw new GateResolverRefused(id, undefined, "a resolver is required");
     const resolver = snapshotResolver(id, resolvedBy);
     const record = this.requirePending(id);
-    this.requireAuthorized(record, resolver);
+    this.requireAuthorized(record, resolver, payload);
     if (record.schema) {
       const issues = checkAgainstJsonSchema(record.schema, payload);
       if (issues.length > 0) throw new GatePayloadInvalid(id, issues);
@@ -95,9 +101,9 @@ export abstract class BaseGateStore implements GateStore {
     return record;
   }
 
-  /** The default check runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
-  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>): void {
-    const refusal = defaultResolverRefusal(resolver);
+  /** The default check (or a listed allowance) runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
+  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>, payload: unknown): void {
+    const refusal = resolverRefusal(record.id, resolver, payload, this.allowances);
     if (refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
     const ruleRefusal = ruleResolverRefusal(record, resolver);
     if (ruleRefusal) throw new GateResolverRefused(record.id, resolver.class, ruleRefusal);

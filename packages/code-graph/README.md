@@ -83,11 +83,39 @@ index version 0.14.0:
   bare name, so same-named methods in one file collapsed into one node (TP-182).
 - An **external** id is `npm:<package>` (scope-aware) or the `node:` builtin verbatim.
 
-`NodeKind`, `EdgeKind`, and the `role` vocabulary are unchanged. So is the property the DAG
+`NodeKind` and `EdgeKind` are unchanged, and the `role` vocabulary only grew (see
+[File roles](#file-roles)). So is the property the DAG
 check rests on: an import of a workspace package by its published name resolves to that
 package's source file, not to an `npm:` external, by remapping the `dist/*.d.ts` entry
 ts-morph resolves back onto `src/`. That remap needs the target package built, which is why
 `pnpm build` precedes both `pnpm test` and `dag:check`.
+
+## File roles
+
+Every file and module node carries a `role`, one of `ALL_ROLES`: `test`, `fixture`, `story`,
+`lab`, `barrel`, `types`, `config`, `script`, `entry`, `generated` and `source`. The first
+match wins, in this order:
+
+1. `generated`: a `.gitattributes linguist-generated` path or a `*.gen.*`/`generated/` path.
+2. A configured glob from `.codewatch/roles.json` (below).
+3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
+   so a story under `fixtures/` is still a story.
+4. `fixture`, `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+
+`UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
+`config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
+
+`lab` has no built-in rule, since a `lab/` directory name is too generic to guess. A repo
+assigns it, or any other role, with `.codewatch/roles.json`, which maps roles to
+`.gitattributes`-style globs matched against file ids:
+
+```json
+{ "lab": ["packages/ui/src/lab/**"] }
+```
+
+`loadRoleGlobs(repoRoot)` reads that file (an absent file configures nothing, an unknown role
+throws), and `computeRoleHints` passes the result to `annotateRoles` as `roleGlobs`. `story`,
+`lab` and roles.json arrived in index version 0.21.0.
 
 ## Identity across renames
 
@@ -428,6 +456,8 @@ are pure functions over rows the caller has already read, so they run in a brows
 - `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
 - `computeHealth` sums four capped penalties into a score out of 100 with its breakdown.
+  Each component has a stable `key` and its `cap`. An optional second argument weighs
+  them the caller's way; `DEFAULT_HEALTH_WEIGHTS` is the dashboard's.
 
 ### Context dossier and bundle
 
@@ -473,7 +503,8 @@ files that `keepNode` rejects:
 - `topGrowthRisks(ctx, limit)` lists files with a structural scaling smell: loop nesting of
   depth 2 or more, `recursive_functions`, or `search_in_loop`. It is a heuristic, not a Big-O
   bound. Ranked by `loop_depth`, then smell count.
-- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`. Files with no
+- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`, where the hotspot
+  score is churn × complexity, after Adam Tornhill and CodeScene. Files with no
   `coverage_pct` metric or full coverage are left out, so a repo with no coverage overlay
   gets an empty list.
 

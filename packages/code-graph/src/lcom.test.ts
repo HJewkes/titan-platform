@@ -120,6 +120,30 @@ describe("computeLcomMetrics (TypeScript)", () => {
     expect(metric(computeLcomMetrics(file, "f.ts"), "lcom4_max")).toBe(1);
   });
 
+  it("counts an abstract class", async () => {
+    const file = await parseTs(
+      [
+        "abstract class Base {",
+        "  abstract run(): void;",
+        "  a() { return this.x; }",
+        "  b() { return this.y; }",
+        "}",
+      ].join("\n"),
+    );
+    const m = computeLcomMetrics(file, "f.ts");
+    expect(metric(m, "class_count")).toBe(1);
+    expect(metric(m, "lcom4_max")).toBe(2);
+  });
+
+  it("counts a class expression bound to a variable", async () => {
+    const file = await parseTs(
+      "const Anon = class { a() { return 1; } b() { return 2; } };\n",
+    );
+    const m = computeLcomMetrics(file, "f.ts");
+    expect(metric(m, "class_count")).toBe(1);
+    expect(metric(m, "lcom4_max")).toBe(2);
+  });
+
   it("omits lcom4_max when classes are constructor-only", async () => {
     const file = await parseTs("class Empty { constructor() {} }\n");
     const m = computeLcomMetrics(file, "f.ts");
@@ -161,6 +185,23 @@ describe("computeLcomMetrics (Python)", () => {
         "        return self.x",
         "    def b(self):",
         "        return self.x",
+        "",
+      ].join("\n"),
+    );
+    expect(metric(computeLcomMetrics(file, "f.py"), "lcom4_max")).toBe(1);
+  });
+
+  it("scores a decorated method that joins two field groups", async () => {
+    const file = await parsePy(
+      [
+        "class C:",
+        "    def a(self):",
+        "        return self.x",
+        "    def b(self):",
+        "        return self.y",
+        "    @property",
+        "    def both(self):",
+        "        return self.x + self.y",
         "",
       ].join("\n"),
     );

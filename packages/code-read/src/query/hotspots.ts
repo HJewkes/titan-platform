@@ -6,6 +6,7 @@ import {
   computeReportDrift,
   keepNode,
   topHotspots,
+  type ComputeDriftInput,
   type HotspotRow,
   type ReportContext,
   type ReportContextInput,
@@ -51,7 +52,7 @@ function metricRows(model: ReadModel): ReportContextInput["metrics"][number][] {
 const inputs = new WeakMap<ReadModel, Pick<ReportContextInput, "nodes" | "metrics">>();
 
 /** The model in the derivations' row shapes; converted once per model. */
-function inputsFor(model: ReadModel): Pick<ReportContextInput, "nodes" | "metrics"> {
+export function inputsFor(model: ReadModel): Pick<ReportContextInput, "nodes" | "metrics"> {
   let found = inputs.get(model);
   if (!found) inputs.set(model, (found = { nodes: model.nodes.map(toGraphNode), metrics: metricRows(model) }));
   return found;
@@ -77,19 +78,27 @@ function windowDays(window: string): ReportContextInput["windowDays"] {
 
 const byScoreThenId = (a: Scored, b: Scored): number => b.score - a.score || (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0);
 
-/** Every node with a non-zero score at the grain, highest first, ties by id. */
-function scoredRows(model: ReadModel, args: ListArgs): Scored[] {
-  const rows = inputsFor(model);
-  const ctx = buildReportContext({ ...rows, excluders: [], excludedRoles: NO_ROLES, windowDays: windowDays(args.window) });
-  const scored: Scored[] = args.grain === "file" ? topHotspots(ctx, Infinity) : symbolRows(rows, ctx);
+export function reportContext(model: ReadModel, window: string): ReportContext {
+  return buildReportContext({ ...inputsFor(model), excluders: [], excludedRoles: NO_ROLES, windowDays: windowDays(window) });
+}
+
+/** Every file with non-zero churn and complexity, or symbol with a positive blast score (a rounded file score can still be 0), highest first, ties by id. */
+export function scoredRows(model: ReadModel, args: Pick<ListArgs, "grain" | "window">): Scored[] {
+  const ctx = reportContext(model, args.window);
+  const scored: Scored[] = args.grain === "file" ? topHotspots(ctx, Infinity) : symbolRows(inputsFor(model), ctx);
   return scored.sort(byScoreThenId);
+}
+
+/** A snapshot in the row shape code-graph's report drift records as its baseline. */
+export function driftBaseline(info: SnapshotInfo): ComputeDriftInput["baselineSnapshot"] {
+  const { commit, ...rest } = info;
+  return { ...rest, commitHash: commit, attrs: {} };
 }
 
 /** New and worsened as code-graph's report drift defines them, over every row rather than a top N. */
 function compare(current: readonly Scored[], before: readonly Scored[], baseline: SnapshotInfo): Comparison {
-  const { commit, ...rest } = baseline;
   const drift = computeReportDrift({
-    baselineSnapshot: { ...rest, commitHash: commit, attrs: {} },
+    baselineSnapshot: driftBaseline(baseline),
     currentHotspots: current,
     baselineHotspots: before,
     currentHotspotScore: () => 0,

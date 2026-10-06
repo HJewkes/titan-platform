@@ -5,12 +5,14 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitH
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
-import { FREEZE_RECHECK_MS, FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
 import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const RED = fakeSha("red");
+const CANCELLED_AT = "2026-10-05T00:29:38Z";
+const RERUN_AT = "2026-10-05T00:31:31Z";
 const GREEN = fakeSha("green");
 const A = "octo/a";
 const B = "octo/b";
@@ -26,7 +28,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -135,6 +137,26 @@ describe("the frozen-merge guard", () => {
     r.freezes.freeze(A, RED);
     r.fake.refs.set("main", RED);
     r.fake.setRuns(RED, [successRun("validate", 1)]);
+
+    await expect(land(r, openPr(r, A))).rejects.toThrow(/frozen/);
+    expect(r.freezes.isFrozen(A)).toBe(true);
+  });
+
+  it("clears a freeze whose red was only cancels once the red sha itself re-ran each check green", async () => {
+    const r = rig();
+    r.freezes.freeze(A, RED, true);
+    r.fake.refs.set("main", RED);
+    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled")]);
+
+    await expect(land(r, openPr(r, A))).resolves.toMatchObject({ done: true });
+    expect(r.freezes.isFrozen(A)).toBe(false);
+  });
+
+  it("keeps a freeze whose red was only cancels while the cancelled check has no later run", async () => {
+    const r = rig();
+    r.freezes.freeze(A, RED, true);
+    r.fake.refs.set("main", RED);
+    r.fake.setRuns(RED, [successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("build", 2, CANCELLED_AT)]);
 
     await expect(land(r, openPr(r, A))).rejects.toThrow(/frozen/);
     expect(r.freezes.isFrozen(A)).toBe(true);
@@ -297,6 +319,23 @@ describe("the freeze store", () => {
     expect(r.freezes.exemptTask(A)).toBeUndefined();
   });
 
+  it("unfreezes at the red sha itself only when the freeze recorded its red as only cancels", () => {
+    const r = rig();
+    r.freezes.freeze(A, RED, true);
+    r.freezes.freeze(B, RED);
+
+    expect([r.freezes.unfreeze(A, RED), r.freezes.unfreeze(B, RED)]).toEqual([true, false]);
+  });
+
+  it("records the newest red sha's cancel-only flag when a live freeze counts up", () => {
+    const r = rig();
+    r.freezes.freeze(A, RED, true);
+
+    const later = r.freezes.freeze(A, fakeSha("red2"));
+
+    expect(later).toMatchObject({ redCount: 2, cancelOnly: false });
+  });
+
   it("refuses to name a fix task for a repo that is not frozen, or for an episode that has thawed", () => {
     const r = rig();
     const unfrozen = r.freezes.setFixTask(A, 1, "demo/fix");
@@ -308,6 +347,57 @@ describe("the freeze store", () => {
 
     expect([unfrozen, stale]).toEqual([false, false]);
     expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixTask: null, fixer: null });
+  });
+});
+
+describe("redOnlyFromCancels", () => {
+  const at = (runs: ReturnType<typeof successRun>[]) => {
+    const fake = fakeGitHub();
+    fake.setRuns(RED, runs);
+    return redOnlyFromCancels(githubPort(fake.wire), A, RED);
+  };
+
+  it("is true when every red Actions run at the sha was cancelled, superseded or not", async () => {
+    expect(await at([successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("validate", 2, RERUN_AT), successRun("build", 3, CANCELLED_AT, "cancelled")])).toBe(true);
+  });
+
+  it("is false when any red run failed, or when nothing at the sha is red", async () => {
+    expect(await at([successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("build", 2, CANCELLED_AT, "failure")])).toBe(false);
+    expect(await at([successRun("validate", 1)])).toBe(false);
+  });
+});
+
+describe("thaw notice from the freeze store ref", () => {
+  function boundRef(): { ref: ReturnType<typeof freezeStoreRef>; thawed: string[]; unsubscribe: () => void } {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12)]);
+    const ref = freezeStoreRef(() => 0);
+    ref.bind(db);
+    const thawed: string[] = [];
+    const unsubscribe = ref.onThaw((repo) => thawed.push(repo));
+    return { ref, thawed, unsubscribe };
+  }
+
+  it("names the repo once for a green unfreeze and once for an owner release", () => {
+    const { ref, thawed } = boundRef();
+    ref.get().freeze(A, RED);
+    ref.get().unfreeze(A, GREEN);
+    const episode = ref.get().freeze(B, RED).episode;
+
+    ref.get().release(B, episode);
+    ref.get().release(B, episode);
+
+    expect(thawed).toEqual([A, B]);
+  });
+
+  it("stays quiet for a refused unfreeze, and after the listener unsubscribes", () => {
+    const { ref, thawed, unsubscribe } = boundRef();
+    ref.get().freeze(A, RED);
+    ref.get().unfreeze(A, RED);
+    unsubscribe();
+    ref.get().unfreeze(A, GREEN);
+
+    expect(thawed).toEqual([]);
   });
 });
 
@@ -345,9 +435,22 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
+    db.close();
+  });
+
+  it("adds the cancel-only flag to a live freeze row as false, so that freeze still refuses its red sha", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [freezeMigration(6)]);
+    db.prepare("INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode) VALUES (?, ?, 1, ?, 1)").run(A, RED, "2026-10-05T00:29:50Z");
+
+    expect(runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12)])).toEqual([12]);
+    const freezes = new FreezeStore(db);
+
+    expect(freezes.get(A)).toMatchObject({ redSha: RED, episode: 1, cancelOnly: false });
+    expect(freezes.unfreeze(A, RED)).toBe(false);
     db.close();
   });
 });

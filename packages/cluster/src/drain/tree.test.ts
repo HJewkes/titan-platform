@@ -66,6 +66,14 @@ describe("DrainTree", () => {
     expect(tree.clusterCount).toBeLessThanOrEqual(2);
   });
 
+  it("reports the id of the cluster an insert evicts", () => {
+    const tree = new DrainTree({ maxClusters: 2, simTh: 0.99 });
+    const one = tree.insert(["one"]);
+    expect(tree.insert(["two"]).evicted).toEqual([]);
+    expect(tree.insert(["three"]).evicted).toEqual([one.cluster.clusterId]);
+    expect(tree.insert(["two"]).evicted).toEqual([]);
+  });
+
   it("keeps the same survivors at capacity regardless of insertion order", () => {
     const survivors = (lines: string[]): string[] => {
       const tree = new DrainTree({ maxClusters: 3, simTh: 0.99 });

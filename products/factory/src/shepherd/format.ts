@@ -31,13 +31,14 @@ function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
   return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
 }
 
-function formatRegistered({ runId, created, registration, previousRunId }: Registered): string {
+function formatRegistered(registered: Registered): string {
+  const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(created, previousRunId)}; policy ${registration.policy.merge}\n`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}\n`;
 }
 
-function registerOutcome(created: boolean, previousRunId: string | undefined): string {
-  if (previousRunId) return `restarted after failed run ${previousRunId}`;
+function registerOutcome({ created, previousRunId, previousStop }: Registered): string {
+  if (previousRunId) return previousStop ? `restarted after run ${previousRunId} stopped ${previousStop}` : `restarted after failed run ${previousRunId}`;
   return created ? "started" : "already registered, metadata updated";
 }
 
@@ -76,6 +77,7 @@ function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation)
 function formatResync({ dryRun, ended, orphanGates, superseded }: ResyncReport): string {
   const verb = dryRun ? "would end" : "ended";
   const runs = ended.map(({ runId, reason }) => `run ${runId.slice(0, 8)} ${verb}: ${reason}`);
-  const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} moved-head gate(s)`;
-  return `${[...runs, summary].join("\n")}\n`;
+  const gates = superseded.map(({ runId, from, to, condition }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its gate (${condition}): head ${from} -> ${to}`);
+  const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} stale gate(s)`;
+  return `${[...runs, ...gates, summary].join("\n")}\n`;
 }

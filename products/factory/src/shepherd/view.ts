@@ -186,6 +186,21 @@ function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | und
   return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
 }
 
+/**
+ * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit
+ * does not apply. The phase stays `merging` until CC-791: agent-chat's burndown rejects a status array with any phase
+ * it does not know. Only a hold satisfied at the run's own head lets the merge through.
+ */
+function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string | null): boolean {
+  const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);
+  return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
+}
+
+function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | null): string {
+  const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
+  return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
+}
+
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
 /** While a red head waits out a frozen main, the hold's own reason is the next action. */
@@ -208,7 +223,8 @@ export interface RowInput {
 
 const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
 
-function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
+/** How a finished run ended, from its sh-landed or sh-stopped step; null while neither is recorded. */
+export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
   const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
   const parsed = stopped && StoppedData.safeParse(stopped.data);
@@ -240,10 +256,12 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
   return limit !== undefined && elapsed > limit ? `${Math.floor(elapsed / MINUTE)} min in ${phase}, over the ${limit / MINUTE} min limit` : undefined;
 }
 
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date): string | undefined {
+/** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
-  return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : overstayReason(phase, since, now);
+  if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
+  return holding ? undefined : overstayReason(phase, since, now);
 }
 
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
@@ -257,10 +275,12 @@ function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const phase = runPhase(run, steps);
+  const held = heldView(registration);
+  const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now);
+  const stalled = stallReason(run, steps, phase, since, now, holding);
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -270,9 +290,9 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
+    nextAction: freezeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
-    held: heldView(registration),
+    held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
   };

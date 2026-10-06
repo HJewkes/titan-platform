@@ -1,5 +1,8 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import type { StepResult, WorkflowRun } from "@titan-design/workflow";
+import { GATE_CANCELLED_SIGNAL, type StepResult, type WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -116,7 +119,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     await vi.waitFor(() => expect(reviewed).toEqual([SENT_BACK, GATED, MOVED]));
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
     expect(host.pendingGates().filter((pending) => pending.runId === runId)).toEqual([]);
@@ -129,7 +132,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services, { dryRun: true });
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
     expect(host.runtime.status(runId)?.status).toBe("paused");
   });
@@ -167,7 +170,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge", 1), from: MOVED, to: MOVED_AGAIN }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge", 1), from: MOVED, to: MOVED_AGAIN, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("cancelled");
   });
 
@@ -248,7 +251,7 @@ describe("a pending sh-sent-back gate whose pull request head moved", () => {
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-sent-back"), from: SENT_BACK, to: MOVED }]);
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "sh-sent-back"), from: SENT_BACK, to: MOVED, condition: "head-moved" }]);
     await gateOpened(host, gateId(runId, "approve-merge"));
     expect(reviewed).toEqual([SENT_BACK, MOVED]);
     expect(Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId)).toContain("await-new-head:0");
@@ -269,6 +272,90 @@ describe("a pending sh-sent-back gate whose pull request head moved", () => {
     host.gates.cancel(gateId(runId, "sh-sent-back"), "the owner cancelled it");
 
     expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("sh-sent-back was cancelled: the owner cancelled it") });
+  });
+});
+
+/** Synthetic heads for a red PR whose fixer pushes after the owner's ci-failed gate opened. */
+const RED = fakeSha("cc749-red");
+const FIXED = fakeSha("cc749-fixed");
+
+/** A host where RED fails `validate` and the ci-red wake is unhandled, as when the implementer detached. */
+function redUnwoken(fake: FakeGitHub, dbPath = ":memory:"): { host: FactoryHost; services: Services; reviewed: string[] } {
+  fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1, undefined, open.headSha === RED ? "failure" : "success"), successRun("dag-check", 2)]);
+  const reviewed: string[] = [];
+  const phases: ShepherdPhases = {
+    review: async (_ctx, request) => (reviewed.push(request.headSha), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
+    wake: async () => ({ kind: "unhandled", reason: "the implementer detached" }),
+  };
+  const store = shepherdStoreRef();
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  hosts.push(host);
+  return { host, services: routes.shepherd!, reviewed };
+}
+
+/** A shepherd-pr run on PR 1 at RED, waiting on the owner's ci-failed gate. */
+async function ciFailedAtRed(dbPath?: string): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[] }> {
+  const fake = fakeGitHub();
+  const opened = redUnwoken(fake, dbPath);
+  fake.addPr({ headSha: RED });
+  const runId = opened.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+  opened.services.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+  await gateOpened(opened.host, gateId(runId, "ci-failed"));
+  return { ...opened, fake, runId };
+}
+
+function ciFailedResults(host: FactoryHost, runId: string): StepResult[] {
+  return Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId === "ci-failed");
+}
+
+describe("a pending ci-failed gate whose pull request head moved", () => {
+  it("is superseded, and the run takes the new head through CI and review with no owner answer", async () => {
+    const { host, fake, services, runId, reviewed } = await ciFailedAtRed();
+    fake.pushHead(1, FIXED);
+
+    const superseded = await supersedeMovedGates(host, services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "ci-failed"), from: RED, to: FIXED, condition: "head-moved" }]);
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    expect(host.gates.get(gateId(runId, "ci-failed"))?.status).toBe("cancelled");
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${FIXED}`);
+    expect(reviewed).toEqual([FIXED]);
+    expect(Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId)).toContain("await-new-head:0");
+  });
+
+  it("stays with the owner while the red head is still the pull request's head", async () => {
+    const { host, services, runId } = await ciFailedAtRed();
+
+    expect(await supersedeMovedGates(host, services)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "ci-failed"))?.status).toBe("pending");
+    expect(host.runtime.status(runId)?.status).toBe("paused");
+  });
+
+  it("still fails the run when the gate is cancelled for any other reason", async () => {
+    const { host, runId } = await ciFailedAtRed();
+
+    host.gates.cancel(gateId(runId, "ci-failed"), "the owner cancelled it");
+
+    expect(await host.runtime.wait(runId)).toMatchObject({ status: "failed", error: expect.stringContaining("ci-failed was cancelled: the owner cancelled it") });
+  });
+
+  it("records the supersede once, and a restarted run replays it without asking about the red head again", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "cc749-")), "factory.db");
+    const first = await ciFailedAtRed(dbPath);
+    first.fake.pushHead(1, FIXED);
+    await supersedeMovedGates(first.host, first.services);
+    await gateOpened(first.host, gateId(first.runId, "approve-merge"));
+    first.host.close();
+
+    const second = redUnwoken(first.fake, dbPath);
+    await second.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(ciFailedResults(second.host, first.runId)).toEqual([expect.objectContaining({ signal: GATE_CANCELLED_SIGNAL, data: expect.objectContaining({ reason: expect.stringContaining(`moved from head ${RED} to ${FIXED}`) }) })]);
+    expect(second.host.gates.get(gateId(first.runId, "ci-failed", 1))).toBeUndefined();
+    expect(second.host.gates.get(gateId(first.runId, "approve-merge"))?.status).toBe("pending");
+    expect(second.host.runtime.status(first.runId)?.status).toBe("paused");
   });
 });
 
