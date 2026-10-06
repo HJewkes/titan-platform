@@ -171,3 +171,45 @@ describe("plan owner questions", () => {
     expect(items.map((item) => item.id)).toEqual(["1", "2"]);
   });
 });
+
+describe("linear time and two false positives (TP-1684)", () => {
+  const elapsedMs = (run: () => void) => {
+    const start = performance.now();
+    run();
+    return performance.now() - start;
+  };
+  // Best of three: a loaded CI runner can stall any single run past the bound (#577).
+  const lintTime = (question: string) =>
+    Math.min(...[1, 2, 3].map(() => elapsedMs(() => lintAsk({ question }))));
+  const baseline = () => Math.max(lintTime("Recommend yes." + NOW), lintTime("Recommend yes." + NOW));
+
+  it("lints a 50 kB token with no spaces in bounded time", () => {
+    const bound = 4 * baseline() + 50;
+
+    for (const filler of ["a", "a.", "a#", "a/"]) {
+      expect(lintTime("Recommend yes. " + filler.repeat(50_000 / filler.length) + NOW)).toBeLessThan(Math.max(bound, 100));
+    }
+  });
+
+  it("lints 7k distinct ids in bounded time", () => {
+    const ids = Array.from({ length: 7000 }, (_, i) => `VW-${i}`).join(" ");
+
+    expect(lintTime("Recommend yes. " + ids + NOW)).toBeLessThan(Math.max(4 * baseline() + 50, 200));
+  });
+
+  it("does not read Node.js or a slash-separated list as a path", () => {
+    const question = "Recommend yes: run the build on Node.js and align the label left/right/center in the card header." + NOW;
+
+    expect(rulesOf(lintAsk({ question }))).not.toContain("AQ4");
+  });
+
+  it("still reads a real file path as a pointer", () => {
+    expect(rulesOf(lintAsk({ question: "Recommend yes, see docs/plan.md." + NOW }))).toContain("AQ4");
+  });
+
+  it("does not count item(s) as a Principle enumerator", () => {
+    const findings = lintAsk({ question: "Principle: keep item(s) small and one(s) clear." + NOW });
+
+    expect(evidenceOf(findings, "AQ1")).toBe("Principle: lists 0 covered items, needs 2 or more");
+  });
+});

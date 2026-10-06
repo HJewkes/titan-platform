@@ -94,7 +94,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
 | `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
-| `merging` | merging the approved head; a held pull request, or one waiting for the [merge train](#merge-train), waits here |
+| `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
 
@@ -131,7 +131,8 @@ contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTE
    minutes.
 3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
    grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
-   fixer is an agent-chat agent on the `implementer` profile, named
+   fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
+   watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
    register its fix pull request with the fix task and with itself as `--implementer`. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
@@ -374,11 +375,17 @@ run ab0f9228-…: released
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits
 in `merging`, polling every 10 seconds, until `release`
-(`products/factory/src/shepherd/hold.ts`). The check covers `land-pr` too, so
+(`products/factory/src/shepherd/hold.ts`). While it waits, the watch row's `held` field and
+next action name the hold's reason and reviewer, and the merging stall limit does not apply.
+Both are read from the registration and the run's current step, never stored. The check covers `land-pr` too, so
 `titan-factory land` on a held pull request also waits. Both verbs take `owner/repo#N`, so a
 branch registration can be held only once its pull request exists. `--reviewer` names the
-reviewer whose verdict the run waits for; `release` clears it. A merge that waited on a hold
-does not go through on release: land reads CI again first, because the base may have moved.
+reviewer whose verdict the run waits for; `release` clears it. Only that reviewer's `MERGE`, at
+the head being merged, satisfies the hold. A `MERGE` from Shepherd's own reviewer never does,
+so it cannot carry a held run past a seat's `FIX_FIRST`. When a fix round moves the head, the
+merge waiting at the old head ends once the hold's reviewer sends `MERGE` at the new one. A
+merge that waited on a hold does not go through on release: land reads CI again first,
+because the base or the head may have moved.
 
 ## Merge train {#merge-train}
 
@@ -453,6 +460,14 @@ run ab0f9228-… awaiting-approval: policy says gate (seat none policy owner-gat
 pull request is held, and what the run waits on. It never signals the run and never
 resolves a gate. An agent can call it over MCP to learn why a pull request has not merged.
 It cannot use it to merge.
+
+## A slow CI queue does not fail the run
+
+The `ci-wait` step times out after 45 minutes. If, at that moment, every check it waits on exists and is
+queued or in progress (none red, none unreported), the wait extends, up to three times the timeout (135
+minutes). Past that ceiling the step fails with a reason that names the CI backlog. A red check ends the
+wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
+repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
 
 ## Resolving a gate is CLI-only
 
