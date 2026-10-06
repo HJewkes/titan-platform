@@ -34,6 +34,15 @@ describe("signal emitter", () => {
     expect(toolUseSignals("Write", { file_path: "/tmp/app.ts" })).toEqual([{ signal: "file_write", detail: "/tmp/app.ts" }]);
   });
 
+  it("a gh pr merge or create that is only quoted or heredoc text emits no pr signal", () => {
+    const commands = ['echo "gh pr merge 42 && gh pr create"', "cat > f <<EOF\ngh pr merge 7\ngh pr create\nEOF"];
+
+    const signals = commands.flatMap((command) => bashSignals(command, parseGitIntent(command)).map((s) => s.signal));
+
+    expect(signals).not.toContain("pr_merge");
+    expect(signals).not.toContain("pr_create");
+  });
+
   it("gh pr merge emits signal pr_merge", () => {
     expect(signalsAt("2026-07-01T00:00:16Z")).toEqual([
       ["pr_merge", "42", "t8", 0],

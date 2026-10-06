@@ -1,5 +1,15 @@
 # @titan-design/agent-dispatch
 
+## 0.4.0
+
+### Minor Changes
+
+- 0ae0123: `listAgents` now returns a promise and reads the roster through the new `execSafeAsync`, so a slow `agent ls --json` no longer blocks the caller's event loop; the Shepherd roster reader awaits it.
+
+### Patch Changes
+
+- fe4badd: `DispatchError`, `BrokerUnavailableError` and `DispatchTimeoutError` carry a fixed `name`, so a caller can record which kind of failure it was without its message.
+
 ## 0.3.0
 
 ### Minor Changes
