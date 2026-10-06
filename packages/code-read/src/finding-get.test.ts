@@ -22,7 +22,10 @@ const maxLoc = (nodeId: string, value: number): ModelFinding => ({
 
 const SNAPSHOT: MemorySnapshot = {
   info: snapshotInfo(1),
-  nodes: [file("lib/f.ts"), file("lib/g.ts"), file("lib/long.ts"), file("src/a.ts"), file("src/b.ts"), file("src/c.ts"), symbol("src/a.ts", "run", 1, 3)],
+  nodes: [
+    file("lib/f.ts"), file("lib/g.ts"), file("lib/long.ts"), file("src/a.ts"), file("src/b.ts"), file("src/c.ts"),
+    symbol("src/a.ts", "run", 1, 3), symbol("lib/long.ts", "walk", 120, 130),
+  ],
   metrics: [metric("lib/f.ts", "loc", 30), metric("lib/g.ts", "loc", 12), metric("lib/long.ts", "loc", 200), metric("src/a.ts", "loc", 3)],
   edges: [
     edge("lib/f.ts", "src/a.ts", "imports", 2), edge("lib/f.ts", "src/b.ts", "imports", 5), edge("lib/f.ts", "src/c.ts", "re-exports", 2),
@@ -30,7 +33,7 @@ const SNAPSHOT: MemorySnapshot = {
   ],
   findings: [
     importAt("src/a.ts", 3), importAt("src/b.ts", 28), importAt("src/c.ts", 12, 13),
-    maxLoc("lib/f.ts", 30), maxLoc("lib/g.ts", 12), maxLoc("lib/long.ts", 200),
+    maxLoc("lib/f.ts", 30), maxLoc("lib/g.ts", 12), maxLoc("lib/long.ts", 200), maxLoc("lib/long.ts#walk", 11),
     { ...importAt("src/a.ts", 10), id: "no-up|lib/long.ts|src/a.ts", nodeId: "lib/long.ts", ranges: [{ startLine: 10, endLine: 10 }, { startLine: 150, endLine: 150 }] },
   ],
   rules: [
@@ -64,6 +67,18 @@ describe("finding.get excerpts", () => {
   it("shows a whole-node finding from the top with no highlight, capped and marked truncated", () => {
     expect(get("max-loc|lib/f.ts").excerpt).toMatchObject({ startLine: 1, endLine: 30, highlights: [], truncated: false });
     expect(get("max-loc|lib/long.ts").excerpt).toMatchObject({ startLine: 1, endLine: EXCERPT_LINE_CAP, truncated: true });
+  });
+
+  it("locates a whole-node finding on a symbol at the symbol's span", () => {
+    const { finding, excerpt } = get("max-loc|lib/long.ts#walk");
+
+    expect(finding.range).toEqual({ startLine: 120, endLine: 130 });
+    expect(excerpt).toMatchObject({ startLine: 115, endLine: 135, highlights: [{ startLine: 120, endLine: 130 }], truncated: false });
+    expect(excerpt?.text.split("\n")).toEqual(numbered(135).slice(114));
+  });
+
+  it("leaves a whole-file finding without a range", () => {
+    expect(get("max-loc|lib/f.ts").finding.range).toBeUndefined();
   });
 
   it("drops highlights the capped window cannot show", () => {

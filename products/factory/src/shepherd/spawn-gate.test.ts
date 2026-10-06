@@ -20,13 +20,23 @@ describe("admitSpawn", () => {
   });
 
   it.each([
-    ["load5 above the dispatch limit", { ...idle, load5: 29 }, 0],
-    ["load5 above the build limit", { ...idle, load5: 21 }, 0],
-    ["a running review pushing load5 past the build limit", { ...idle, load5: 17 }, 1],
-    ["memory pressure at the warn level", { ...idle, pressureLevel: 2 }, 0],
-    ["free memory under 20 percent", { ...idle, freeMemoryPct: 19 }, 0],
+    ["load5 above the dispatch limit", { ...idle, load5: 29 }, []],
+    ["load5 above the build limit", { ...idle, load5: 21 }, []],
+    ["a just-started review pushing load5 past the build limit", { ...idle, load5: 17 }, [1_000]],
+    ["memory pressure at the warn level", { ...idle, pressureLevel: 2 }, []],
+    ["free memory under 20 percent", { ...idle, freeMemoryPct: 19 }, []],
   ])("refuses on %s", (_name, readings, running) => {
     expect(admitSpawn(readings, limits, [], 1_000, running).admit).toBe(false);
+  });
+
+  it("admits a fourth review at load5 10 when three started over five minutes ago", () => {
+    const started = [1_000_000 - 600_001, 1_000_000 - 700_000, 1_000_000 - 900_000];
+    expect(admitSpawn({ ...idle, load5: 10 }, limits, [], 1_000_000, started)).toEqual({ admit: true });
+  });
+
+  it("refuses a fourth review at load5 10 when three started under five minutes ago", () => {
+    const started = [1_000_000 - 60_000, 1_000_000 - 120_000, 1_000_000 - 299_999];
+    expect(admitSpawn({ ...idle, load5: 10 }, limits, [], 1_000_000, started).admit).toBe(false);
   });
 
   it("admits at the limits themselves", () => {

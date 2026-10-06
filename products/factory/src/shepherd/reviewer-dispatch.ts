@@ -129,20 +129,37 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
 
 const REVIEWER_NAME = /^rv-/;
 
-/** Fresh reviewers that hold a session now, which are the ones running a full check in a checkout. */
-async function runningReviews(roster: RosterReader): Promise<number> {
-  return (await roster.rows()).filter((row) => REVIEWER_NAME.test(row.name) && (row.presence === "live" || row.presence === "detached")).length;
+const STALE_TRANSCRIPT_MS = 15 * 60_000;
+
+/** The roster carries no pid, so a detached or reconnecting row proves it is alive only by a recent transcript write; a live row with no transcript yet has just started. */
+function holdsLiveSession(row: ReviewerRosterRow, now: number): boolean {
+  if (row.presence !== "live" && row.presence !== "detached") return false;
+  if (row.lastWrittenAt === undefined) return row.presence === "live";
+  return now - row.lastWrittenAt <= STALE_TRANSCRIPT_MS;
+}
+
+/**
+ * The epoch-ms each running reviewer was first seen, which the spawn gate uses to tell a review load5 has absorbed from one it has not.
+ * `firstSeen` remembers earlier sightings and forgets reviewers that no longer run.
+ */
+export function runningReviewStarts(rows: readonly ReviewerRosterRow[], firstSeen: Map<string, number>, now: number): number[] {
+  const running = rows.filter((row) => REVIEWER_NAME.test(row.name) && holdsLiveSession(row, now));
+  const names = new Set(running.map((row) => row.name));
+  for (const name of firstSeen.keys()) if (!names.has(name)) firstSeen.delete(name);
+  return running.map((row) => firstSeen.get(row.name) ?? (firstSeen.set(row.name, now), now));
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
+  const firstSeen = new Map<string, number>();
+  const runningReviews = async () => runningReviewStarts((await roster.rows()).map(rosterRow), firstSeen, Date.now());
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(async () => agents.spawn({ name, profile: reviewerRoleFor(facts, roles), brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews(roster) }) })),
-    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews(roster)))),
+    spawn: (name, brief, target, facts = {}) => askBroker(async () => agents.spawn({ name, profile: reviewerRoleFor(facts, roles), brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews() }) })),
+    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()))),
   };
 }
