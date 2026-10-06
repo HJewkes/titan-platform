@@ -3,7 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type FailingCheck } from "../workflows/land.js";
-import { FREEZE_RECHECK_MS, failingAt, greenHead, isFixersPr, type FreezeStore } from "./freeze.js";
+import { FREEZE_RECHECK_MS, failingAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
 import type { PrTarget } from "./gates.js";
 import type { ShepherdDeps } from "./phases.js";
 
@@ -56,8 +56,8 @@ async function decideHold(deps: ShepherdDeps, freezes: FreezeStore, input: HoldI
 }
 
 /** Thaws through the same green-after-red test the merge guard uses, so a main fixed outside Shepherd still releases its held PRs. */
-async function thawIfGreen(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string, redSha: string): Promise<void> {
-  const green = await greenHead(port, repo, baseRef, redSha).catch(() => undefined);
+async function thawIfGreen(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string, red: Red): Promise<void> {
+  const green = await greenHead(port, repo, baseRef, red).catch(() => undefined);
   if (green !== undefined) freezes.unfreeze(repo, green);
 }
 
@@ -72,7 +72,7 @@ async function awaitThaw(deps: ShepherdDeps, freezes: FreezeStore, input: WaitIn
     if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { thawed: false, headSha: pr.headSha };
     if (pr && deps.now() - lastRecheck >= FREEZE_RECHECK_MS) {
       lastRecheck = deps.now();
-      await thawIfGreen(deps.port, freezes, input.repo, pr.baseRef, live.redSha);
+      await thawIfGreen(deps.port, freezes, input.repo, pr.baseRef, live);
       continue;
     }
     await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
