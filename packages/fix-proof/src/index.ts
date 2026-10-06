@@ -6,7 +6,7 @@ export {
   type ConfigResult,
   type FixProofConfig,
 } from "./config.js";
-export { compileGlobs } from "./glob.js";
+export { compileGlobs, expandBraces } from "./glob.js";
 export { planFixProof, type FixProofPlan, type PlanInput, type PlanResult } from "./plan.js";
 export {
   classifyReports,

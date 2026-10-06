@@ -83,6 +83,9 @@ term's line number, so the owner can find it locally without the report naming i
 glob is anchored to the repo-relative path: `**` spans directories, `*` and `?` do not. The
 glob must name at least one literal path segment, one with no wildcard, so `**`, `*`,
 `**/*` and `*/*.md` are rejected: they would allow a rule across the whole tree. The
+glob may use braces: `docs/{a,b}.md` matches both files, and every alternative must name a
+literal segment, so `{**,docs}/**` is rejected. A glob that expands past 256 alternatives is
+malformed. A backslash is not an escape; it matches a literal backslash. The
 reason must name a task id such as `TP-405`. An entry suppresses only its rule, only in
 matching files, and every suppression is counted in the report's `allowed:` line. There
 are no inline suppression comments.

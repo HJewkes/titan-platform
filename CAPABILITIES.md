@@ -275,11 +275,11 @@ Tier 0, `@titan-design/fix-proof@0.1.0`. Proves a fix PR's new tests fail on the
 Key exports:
 
 - `config`: `CONFIG_PATH`, `DEFAULT_CARRY_GLOBS`, `DEFAULT_TEST_GLOBS`, `parseFixProofConfig`
-- `glob`: `compileGlobs`
+- `glob`: `compileGlobs`, `expandBraces`
 - `plan`: `planFixProof`
-- `classify`: `classifyReports`, `TEST_CLASSES`, `VERDICTS`
+- `classify`: `classifyReports`, `TEST_CLASSES`
 - `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- +17 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
+- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
 

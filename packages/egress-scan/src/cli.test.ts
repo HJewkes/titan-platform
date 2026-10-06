@@ -93,6 +93,18 @@ describe("range", () => {
     expect(result.err).toContain(".egress-allow line 1");
   });
 
+  it("exits 2 on a pathological .egress-allow glob instead of crashing", () => {
+    const repo = newRepo();
+    const base = repo.commit("base");
+    const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
+    repo.write(".egress-allow", `docs/${"{a}".repeat(5000)} home-path fixture, TP-405\n`);
+
+    const result = run(repo, ["range", base, leak]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain(".egress-allow line 1");
+  });
+
   it("honours a valid .egress-allow entry and counts it", () => {
     const repo = newRepo();
     const base = repo.commit("base");
