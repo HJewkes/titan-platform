@@ -594,7 +594,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +387 more in the [reference page](/reference/code-graph)
+- +392 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -629,7 +629,7 @@ Key exports:
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
 - `parse-answer`: `answerFor`, `parseAnswerText`
-- +166 more in the [reference page](/reference/decider)
+- +170 more in the [reference page](/reference/decider)
 
 <a id="cap-memory"></a>
 

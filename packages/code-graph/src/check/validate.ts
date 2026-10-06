@@ -268,6 +268,8 @@ function parseStringList(r: Record<string, unknown>, key: string): string[] | un
 const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([
   "test",
   "fixture",
+  "story",
+  "lab",
   "barrel",
   "types",
   "config",
