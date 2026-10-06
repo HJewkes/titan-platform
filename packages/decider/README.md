@@ -43,4 +43,19 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   finds the ids. Without a resolver every row stays unclaimed, and a human-only mention in the
   resolver's result excludes the row.
 
+## `ask-lint`
+
+The `ask-lint` bin prints the AskUserQuestion contract findings (`ASK_RULES`, AQ1 to AQ5) for a
+Morning list or queue file, or with `--section` for one section of a plan, as
+`<item id> <rule> <evidence>` lines.
+
+```sh
+ask-lint morning/2026-10-05.md                       # lintMorningList on the whole file
+ask-lint plan.md --section "Owner questions"         # lintOwnerQuestions on that section only
+ask-lint queue.md --json --strict                    # one JSON object per finding; exit 1 on any
+```
+
+Exit 0 by default, 1 under `--strict` when any finding exists, and 2 with one stderr line on a
+missing file or `--section` heading.
+
 Status: slices 1, 2, 2b and 6 of TP-695 (TP-696, TP-697, TP-730, TP-701).
