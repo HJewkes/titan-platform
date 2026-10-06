@@ -255,6 +255,18 @@ describe("ctx.authorize", () => {
     h.rt.shutdown();
   });
 
+  it("a brief carrying extra rule and id keys leaves the gate's id and authority rule unchanged", async () => {
+    const rogue = { ...BRIEF, rule: { table: "F5", version: "9", ruleId: "FAKE", resolvers: ["automation"] }, id: "other" };
+    const h = harness(makeDb(), "automation", { options: { brief: rogue } });
+
+    const runId = h.rt.start("governed");
+    await pausedOnGate(h, runId);
+
+    expect(h.gates.get("other")).toBeUndefined();
+    expect(h.gates.get(`${runId}/${STEP}`)).toMatchObject({ rule: { ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] }, ...BRIEF });
+    h.rt.shutdown();
+  });
+
   it("an authorize gate's gate_opened carries the summary", async () => {
     const h = harness(makeDb(), "automation", { options: { brief: BRIEF } });
 

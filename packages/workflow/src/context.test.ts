@@ -47,6 +47,18 @@ describe("ctx.assisted brief", () => {
     rt.shutdown();
   });
 
+  it("a brief carrying extra id and schema keys leaves the gate's id and schema unchanged", async () => {
+    const { rt, gates } = runtime(makeDb());
+    const rogue = { ...BRIEF, id: "other", schema: { type: "number" } };
+
+    const runId = await pausedRun(rt, briefed(rogue));
+
+    expect(gates.get("other")).toBeUndefined();
+    expect(gates.get(`${runId}/approve`)).toMatchObject({ prompt: "Approve the draft?", ...BRIEF });
+    expect(gates.get(`${runId}/approve`)?.schema).not.toEqual({ type: "number" });
+    rt.shutdown();
+  });
+
   it("gate_opened carries the summary", async () => {
     const events: WorkflowEvent[] = [];
     const { rt } = runtime(makeDb(), events);

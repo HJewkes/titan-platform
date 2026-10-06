@@ -2,6 +2,7 @@ import { DEFAULT_TABLE, canResolve, evaluate, type ActorClass, type Decision, ty
 import { policyGateId } from "@titan-design/agent-protocol/trace";
 import { nowIso } from "@titan-design/store-sqlite";
 import { waitForGate, type GateInput, type GateRecord, type GateResolver, type GateRule, type GateStore, type JsonSchema, type WaitOptions } from "@titan-design/hitl";
+import { briefFields } from "./gate-brief.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import { AuthorityDeniedError, AuthorityRefusedError, workflowStepRequestKey, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type StepResult } from "./types.js";
 
@@ -142,7 +143,7 @@ export function authorityGateInput(
 ): GateInput {
   const rule: GateRule = { table: AUTHORITY_TABLE_NAME, version: authority.table.version, ruleId: decision.ruleId, resolvers: [...decision.resolvers] };
   const prompt = options.prompt ?? `${decision.reason}: approve ${request.action} of ${JSON.stringify(request.subject)}?`;
-  return { id: gateId, prompt, schema: answerSchema(request.subject), expiresAt: options.expiresAt, rule, ...options.brief };
+  return { ...briefFields(options.brief), id: gateId, prompt, schema: answerSchema(request.subject), expiresAt: options.expiresAt, rule };
 }
 
 /** The answer must read back the subject it approves, so an approval cannot land on a different head or version. */

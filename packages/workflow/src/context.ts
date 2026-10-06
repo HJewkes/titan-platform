@@ -2,6 +2,7 @@ import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecor
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
+import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape } from "./gate-ids.js";
 import type { ContextDeps, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
@@ -200,7 +201,7 @@ export class RunContext implements WorkflowContext {
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
     try {
-      openGate(this.deps.gates, { id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt, ...options.brief });
+      openGate(this.deps.gates, { ...briefFields(options.brief), id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt });
       this.emitGateOpened(stepId, gateId, prompt, options.brief?.summary);
     } catch (error) {
       if (!(error instanceof GateAlreadyExists)) throw error;
