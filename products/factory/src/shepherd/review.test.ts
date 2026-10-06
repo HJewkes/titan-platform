@@ -937,7 +937,7 @@ describe("sh-review", () => {
       expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START + 7 * 60_000, busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
-      expect(seen).toEqual(waits.map((wait) => `waiting for the broker to start reviewer rv-octo-demo-7: ${wait}`));
+      expect(seen).toEqual(waits.map((wait) => `waiting for reviewer admission (the broker has not started rv-octo-demo-7): ${wait}`));
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
     });
 
@@ -1177,7 +1177,7 @@ describe("reviewPhase", () => {
     const { stepIds, resultOf, inputs } = await review({ dispatch: fakeDispatch(), policy: AUTO });
     const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
 
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
   });
@@ -1209,7 +1209,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "dispatched", busyWaits: [expect.any(String), expect.any(String), expect.any(String)] });
     expect(dispatch.spawns).toHaveLength(1);
   });
@@ -1229,7 +1229,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
   });
 
   it("answers not-started, not no-verdict, when the machine guard outlasts the busy wait, and starts nobody", async () => {
@@ -1455,7 +1455,7 @@ describe("reviewPhase", () => {
 
       const { verdicts, stepIds } = await review({ dispatch, read: lateReader(18_000), policy: AUTO });
 
-      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(dispatch.spawns).toHaveLength(1);
     });
