@@ -79,6 +79,15 @@ export const SpawnGateConfigSchema = z.strictObject({
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
+/** The GitHub App `shepherd/review` is posted as; absent means the publish step records `published: false`. */
+export const ReviewCheckConfigSchema = z.strictObject({
+  appId: z.number().int().positive(),
+  installationId: z.number().int().positive(),
+  privateKeyPath: absolutePath,
+});
+
+export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
@@ -94,6 +103,7 @@ export const FactoryConfigSchema = z.object({
       fixer: FixerConfigSchema.optional(),
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
+      reviewCheck: ReviewCheckConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
