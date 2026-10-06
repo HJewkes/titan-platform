@@ -84,8 +84,9 @@ typecheck, so a test for a brand-new export fails on base this way without provi
 
 The verdict is `reproduced` when any test reproduces. Otherwise it is `unproven` when any test
 is `new-api`, and `vacuous` in every other case. The verdict is `no-tests` when nothing was
-selected. It is `error` when a report is malformed, lists a file twice, or holds none of the
-selected files.
+selected. It is `error` when a report is malformed, lists a file twice, holds none of the
+selected files, or when any selected file is missing from the head report or fails to load
+there, even if another file reproduces.
 
 ## Direction rule
 
