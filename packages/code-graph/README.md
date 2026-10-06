@@ -503,7 +503,8 @@ files that `keepNode` rejects:
 - `topGrowthRisks(ctx, limit)` lists files with a structural scaling smell: loop nesting of
   depth 2 or more, `recursive_functions`, or `search_in_loop`. It is a heuristic, not a Big-O
   bound. Ranked by `loop_depth`, then smell count.
-- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`. Files with no
+- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`, where the hotspot
+  score is churn × complexity, after Adam Tornhill and CodeScene. Files with no
   `coverage_pct` metric or full coverage are left out, so a repo with no coverage overlay
   gets an empty list.
 
