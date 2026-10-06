@@ -1,16 +1,22 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CodexSourceCollisionError, codexSourceId, discoverCodexSources } from "./codex-discover.js";
+import { CodexSourceCollisionError, codexHome, codexSourceId, discoverCodexSources } from "./codex-discover.js";
 import { CODEX_THREAD, CODEX_TREE, codexFixtureRecords, renderCodexRollout } from "./codex-fixture.js";
 
 let home: string;
+let locked: string[];
+const asRoot = process.getuid?.() === 0;
 
 beforeEach(() => {
   home = mkdtempSync(path.join(os.tmpdir(), "titan-codex-discovery-"));
+  locked = [];
 });
-afterEach(() => rmSync(home, { recursive: true, force: true }));
+afterEach(() => {
+  for (const lockedPath of locked) chmodSync(lockedPath, 0o700);
+  rmSync(home, { recursive: true, force: true });
+});
 
 describe("discoverCodexSources", () => {
   it("discovers active and archived rollouts from session metadata", async () => {
@@ -57,7 +63,58 @@ describe("discoverCodexSources", () => {
     writeRollout("archived_sessions/rollout-child.jsonl", divergent);
     await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).rejects.toBeInstanceOf(CodexSourceCollisionError);
   });
+
+  it("returns no sources when the Codex home has no session directories", async () => {
+    await expect(discoverCodexSources({ codexHome: path.join(home, "absent"), namespace: "host-a" })).resolves.toEqual([]);
+  });
+
+  it("skips a file whose first line is not JSON", async () => {
+    const filePath = path.join(home, "sessions", "rollout-garbled.jsonl");
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, "not json\n", "utf8");
+
+    await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).resolves.toEqual([]);
+  });
+
+  it.skipIf(asRoot)("rejects instead of returning no sources when a rollout directory is unreadable", async () => {
+    writeRollout("sessions/2026/09/11/rollout-child.jsonl", codexFixtureRecords());
+    lock(path.join(home, "sessions", "2026"));
+
+    await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).rejects.toMatchObject({ code: "EACCES" });
+  });
+
+  it.skipIf(asRoot)("rejects when a rollout file is unreadable", async () => {
+    lock(writeRollout("sessions/2026/09/11/rollout-child.jsonl", codexFixtureRecords()));
+
+    await expect(discoverCodexSources({ codexHome: home, namespace: "host-a" })).rejects.toMatchObject({ code: "EACCES" });
+  });
 });
+
+describe("codexHome", () => {
+  const original = process.env.CODEX_HOME;
+  afterEach(() => {
+    if (original === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = original;
+  });
+
+  it("discovers rollouts under CODEX_HOME when no home is passed", async () => {
+    const active = writeRollout("sessions/2026/09/11/rollout-child.jsonl", codexFixtureRecords());
+    process.env.CODEX_HOME = home;
+
+    const sources = await discoverCodexSources({ namespace: "host-a" });
+
+    expect(sources.map((source) => source.path)).toEqual([active]);
+  });
+
+  it("falls back to ~/.codex when CODEX_HOME is empty", () => {
+    expect(codexHome({ CODEX_HOME: "" })).toBe(path.join(os.homedir(), ".codex"));
+  });
+});
+
+function lock(target: string): void {
+  chmodSync(target, 0o000);
+  locked.push(target);
+}
 
 function writeRollout(relative: string, records: readonly Record<string, unknown>[]): string {
   const filePath = path.join(home, relative);

@@ -4,6 +4,7 @@ import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
+import { replaceStrings } from "./xargs-replace.js";
 
 interface WrapperSpec {
   /** Options that take a separate value. */
@@ -91,6 +92,10 @@ export interface Unwrapped {
   /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input record. */
   xargs?: {
     replace: string | null;
+    /** The replace string read when an option's value word is taken as an option, as in `-I -i`; its runs are read too. */
+    replaceAsOption: string | null;
+    /** The BSD `-J` string all input items of a run replace, set only when `-J` comes after every `-I`. */
+    insert: string | null;
     /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
     delimiters: string[] | null;
     /** The `-L`/`-n` batching: how many lines or arguments one run takes; `size` is null when it cannot be read statically. */
@@ -170,7 +175,10 @@ function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): Omit<N
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
   const batch = xargsBatch(options) ?? earlier?.batch ?? null;
-  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters, batch };
+  const read = replaceStrings(options, { endOf: (word) => xargsCluster(word)?.end, takesValue: (word) => takesNextWord(word, WRAPPERS.xargs) });
+  const replace = read.replace ?? earlier?.replace ?? null;
+  const replaceAsOption = read.replaceAsOption ?? earlier?.replaceAsOption ?? null;
+  return { replace, replaceAsOption, insert: read.insert ?? earlier?.insert ?? null, delimiters, batch };
 }
 
 function batchSize(word: WordToken | undefined, text: string | undefined = word?.value): number | null {
@@ -237,25 +245,6 @@ function clusterDelimiters(options: WordToken[], j: number, out: string[]): numb
   if (!end) return j;
   if (end.option === "d") out.push((end.text ? delimiterOf(options[j], end.text) : delimiterOf(options[j + 1])) ?? "");
   return end.text || end.optional ? j : j + 1;
-}
-
-/** The replace string of `-I str`, `-Istr`, `-i[str]`, `--replace[=str]` or a cluster such as `-tI{}`, `{}` when none is given. */
-function xargsReplace(options: WordToken[]): string | null {
-  let replace: string | null = null;
-  options.forEach((word, j) => {
-    const v = word.value;
-    if (v === "--replace") replace = "{}";
-    else if (v.startsWith("--replace=")) replace = v.slice("--replace=".length);
-    else replace = clusterReplace(v, options[j + 1]?.value) ?? replace;
-  });
-  return replace;
-}
-
-/** The replace string a short-option cluster sets: the text after `I` or `i`, else the next word for `I` and `{}` for `i`. */
-function clusterReplace(v: string, next: string | undefined): string | null {
-  const end = xargsCluster(v)?.end;
-  if (end?.option === "I") return end.text || (next ?? null);
-  return end?.option === "i" ? end.text || "{}" : null;
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {

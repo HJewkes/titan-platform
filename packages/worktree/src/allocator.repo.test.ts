@@ -203,8 +203,30 @@ describe("worktree re-allocation after a crash", () => {
     const first = await worktreeStrategy.allocate(ctx);
     fs.writeFileSync(path.join(first.cwd, "scratch.ts"), "half-finished\n");
 
+    expect((await worktreeStrategy.check(ctx)).refusals[0]).toContain("still on disk");
     await expect(worktreeStrategy.allocate(ctx)).rejects.toBeInstanceOf(WorktreeInUseError);
     expect(fs.readFileSync(path.join(first.cwd, "scratch.ts"), "utf8")).toBe("half-finished\n");
+  });
+
+  it("refuses from check and allocate when a directory sits where the branch would be re-attached", async () => {
+    const repo = makeRepo();
+    git(["branch", "agent-chat/alice"], repo);
+    fs.mkdirSync(path.join(repo, ".worktrees", "alice"), { recursive: true });
+    const ctx = ctxFor(repo);
+
+    expect((await worktreeStrategy.check(ctx)).refusals[0]).toContain("still on disk");
+    await expect(worktreeStrategy.allocate(ctx)).rejects.toBeInstanceOf(WorktreeInUseError);
+  });
+
+  it("re-attaches a name while an agent whose name extends it holds its own tree", async () => {
+    const repo = makeRepo();
+    const ctx = ctxFor(repo, { agentName: "scout" });
+    const sha = await crashLeavingCommit(repo, ctx);
+    await worktreeStrategy.allocate(ctxFor(repo, { agentName: "scout-2" }));
+
+    expect((await worktreeStrategy.check(ctx)).refusals).toEqual([]);
+    const second = await worktreeStrategy.allocate(ctx);
+    expect(git(["rev-parse", "HEAD"], second.cwd)).toBe(sha);
   });
 
   it("clobbers that worktree when forced, like release does", async () => {
@@ -761,11 +783,22 @@ describe("an assigned worktree", () => {
     expect(alloc.note).toMatch(/sharing it with other agents/);
   });
 
+  it("passes check on a full budget, since allocate takes no slot for it", async () => {
+    const repo = makeRepo();
+    const strategy = createWorktreeAllocator({ budget: 1 });
+    await strategy.allocate(ctxFor(repo));
+    const ctx = ctxFor(repo, { agentName: "bob", assignedWorktree: assignedIn(repo) });
+
+    expect((await strategy.check(ctx)).refusals).toEqual([]);
+    await expect(strategy.allocate(ctx)).resolves.toBeDefined();
+  });
+
   it("refuses a path that does not exist, rather than inventing one", async () => {
     const repo = makeRepo();
-    await expect(
-      worktreeStrategy.allocate(ctxFor(repo, { assignedWorktree: path.join(repo, "nope") }))
-    ).rejects.toThrow(/does not exist/);
+    const ctx = ctxFor(repo, { assignedWorktree: path.join(repo, "nope") });
+
+    expect((await worktreeStrategy.check(ctx)).refusals[0]).toMatch(/does not exist/);
+    await expect(worktreeStrategy.allocate(ctx)).rejects.toThrow(/does not exist/);
   });
 
   it("survives release, even forced — the task system owns it, not this agent", async () => {

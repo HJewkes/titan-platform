@@ -44,4 +44,25 @@ describe("runRuffAudit", () => {
     const toml = readFileSync(join(bin.dir, "seen.toml"), "utf-8");
     expect(toml.startsWith("preview = true\n[lint]\nselect = [\"C901\", \"PLR0904\"")).toBe(true);
   });
+
+  it("reports a file ruff could not parse with a repo-relative path", async () => {
+    const syntaxError = { ...ruffEntry(join(repo, "pkg/broken.py")), code: null, message: "SyntaxError: Expected ':'" };
+    bin.install("ruff", `${heredoc(JSON.stringify([syntaxError]))}\nexit 1`);
+    bin.onPathFirst();
+
+    const result = await runRuffAudit(["pkg"], { cwd: repo });
+
+    expect(result.failures).toEqual([
+      expect.objectContaining({ tool: "ruff", kind: "file-not-checked", file: "pkg/broken.py" }),
+    ]);
+  });
+
+  it("warns with the install command when ruff is not installed", async () => {
+    bin.onPathOnly();
+
+    const result = await runRuffAudit(["pkg"], { cwd: repo });
+
+    expect(result.failures).toEqual([]);
+    expect(result.warnings).toEqual(["ruff not found; install with `pip install ruff`"]);
+  });
 });
