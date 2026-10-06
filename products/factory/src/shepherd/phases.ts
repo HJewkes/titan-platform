@@ -59,4 +59,6 @@ export interface ShepherdDeps {
   cleanup?: CleanupPorts;
   /** The per-repo PR snapshot `sh-observe` reads; absent means it reads the port. */
   snapshot?: PrSnapshot;
+  /** The App-token port `sh-publish-review` posts `shepherd/review` through; absent means it records `published: false`. */
+  reviewCheck?: GitHubPort;
 }
