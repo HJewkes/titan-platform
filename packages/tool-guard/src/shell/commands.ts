@@ -49,6 +49,8 @@ export interface SimpleCommand {
   /** Whether `!` negates the status of the pipeline the command is in. */
   negated: boolean;
   chain: Chain;
+  /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
+  added?: true;
 }
 
 export interface ExtractOptions {
@@ -184,12 +186,18 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
 }
 
-/** A reading xargs added beside main's is dropped when its script cannot parse, so it never turns a parsed line into an unparsed one. */
+/**
+ * A reading xargs added beside main's may only add commands: it walks a copy of the variables, so it cannot rebind one main's
+ * reading set, an error drops what is left of it, and every command it emits is marked `added` for the classifier to drop on error.
+ */
 function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
+  const start = w.out.length;
   try {
-    runOnce(cmd, redirects, w, next, stdin);
-  } catch (error) {
-    if (!(error instanceof ParseError)) throw error;
+    runOnce(cmd, redirects, { ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }, next, stdin);
+  } catch {
+    // Main's runs of the same command still decide; this reading is dropped.
+  } finally {
+    for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true };
   }
 }
 
