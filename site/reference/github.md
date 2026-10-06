@@ -83,13 +83,16 @@ await port.upsertComment("o/r", pr.number, marker, `${marker}\nchecks green`); /
 
 fake.reviewComments.set(pr.number, [{ id: 1, author: "alice", authorAssociation: "MEMBER", path: "src/a.ts", line: 12, body: "nit", resolved: false }]);
 await port.listReviewComments("o/r", pr.number); // every inline comment, with its author's association and its thread's resolved state
+
+fake.forcePushes.set(pr.number, [{ before: "<replaced head sha>", after: pr.headSha }]);
+await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest first; more than 100 throws ForcePushesTruncated
 ```
 
 ## What it deliberately does not do
 
-- No `gh pr view`, and no GraphQL but for `listReviewComments`. Every call is `gh api`; only
-  `listReviewComments` posts to `graphql`, because GitHub reports a review thread's resolved state
-  nowhere in REST.
+- No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every
+  call is `gh api`; only those two post to `graphql`, because GitHub reports a review thread's
+  resolved state and a force-push's replaced head nowhere in REST.
 - No token handling. It runs on the caller's existing `gh` login.
 - No polling, timeouts or retry policy. The caller owns when to read again. The rate budget
   only paces calls; it never drops one.
@@ -133,6 +136,9 @@ await port.listReviewComments("o/r", pr.number); // every inline comment, with i
 - GitHub silently caps `pulls/{n}/commits` at the first 250 commits (`PR_COMMITS_CAP`).
   `listPrCommits` returns the shas oldest first and does not detect the cap; a caller checks
   that the last sha is the PR's head and treats any other list as short.
+- `listForcePushes` reads one GraphQL page of `FORCE_PUSHES_CAP` (100) head force-pushes and
+  throws `ForcePushesTruncated` when GitHub says there are more. Treat that as "cannot decide",
+  never as the whole list. `before` is null when GitHub no longer has the replaced commit.
 - GitHub silently caps compare at 300 files and 250 commits. `compareFiles` sets `truncated`
   when `files` reaches 300 or fewer commits came back than `total_commits`. When `truncated`
   is true, `files` may be missing paths: read `listPrFiles` instead, or treat the result as
@@ -176,4 +182,5 @@ now depends on this package and its copy is deleted. `appId`, `headRepo`, `jobLo
 `deleteRef`, `listOpenPrs`, the ETag cache, the rate budget and `mergeReadiness` were added for
 Shepherd, the factory's PR shepherding workflow (TP-459). `listPrFiles`, `compareFiles` and
 `upsertComment` followed for its conflict and evidence steps (TP-517), and `listReviewComments`
-for the review wake brief (TP-1003).
+for the review wake brief (TP-1003). `listForcePushes` replaced the factory's product-side
+GraphQL reader for the carry seat check (TP-1649).

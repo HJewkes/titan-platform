@@ -3,12 +3,21 @@ import { expect, vi } from "vitest";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { gateEverything, type GatePolicy } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
-import { LAND_STEPS, land, landRoutes, type LandOutcome } from "../workflows/land.js";
+import { LAND_STEPS, MAX_UPDATE_CYCLES, UPDATE_BUDGET_MS, land, landRoutes, type LandOutcome } from "../workflows/land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "./resolver.js";
 
 export const REPO = "octo/demo";
 export const H1 = fakeSha("head1");
+
+/** Updates this far apart spend the strict update budget on the bound's last update, as the old fixed count did. */
+export const UPDATE_GAP_MS = UPDATE_BUDGET_MS / (MAX_UPDATE_CYCLES - 1);
+
+/** Each update-branch moves the fake clock by `gapMs`, standing in for main's pace between updates. */
+export function spaceUpdates(fake: FakeGitHub, advance: (ms: number) => void, gapMs = UPDATE_GAP_MS): void {
+  const update = fake.wire.updateBranch;
+  fake.wire.updateBranch = async (...args) => (advance(gapMs), update(...args));
+}
 
 export interface LandScenario {
   fake: FakeGitHub;
@@ -19,11 +28,12 @@ export interface LandScenario {
 }
 
 /** One PR on a fake repo whose required checks pass on every head, and a workflow that lands it. */
-export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: number } = {}): LandScenario {
+export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: number; updateGapMs?: number } = {}): LandScenario {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
+  spaceUpdates(fake, (ms) => void (clock += ms), options.updateGapMs);
   const routes = landRoutes({
     port: githubPort(fake.wire),
     now: () => clock,

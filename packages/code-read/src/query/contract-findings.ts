@@ -9,7 +9,7 @@ export const EXCERPT_LINE_CAP = 80;
 
 export const FindingStatus = z.enum(["new", "carryover", "resolved", "worsened", "improved"]);
 
-const BaselineFields = {
+export const BaselineFields = {
   baselineSnapshotId: z.number().int().optional(),
   comparable: z.boolean().optional(),
 };

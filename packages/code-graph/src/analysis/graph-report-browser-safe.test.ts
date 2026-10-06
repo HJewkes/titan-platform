@@ -18,12 +18,16 @@ const ENTRIES = [
   "dashboard-coupling.ts",
   "dashboard-health.ts",
   "dashboard-node-metrics.ts",
+  "dashboard-symbol-coupling.ts",
   "graph-arch-compute.ts",
   "graph-arch-types.ts",
   "package-buckets.ts",
+  "symbol-coupling.ts",
+  "test-linker.ts",
+  "../diff/violation-buckets.ts",
 ];
-// dashboard-symbol-coupling.ts is left out: symbol-coupling.ts reaches node:path through
-// extractors/ids.ts, so the coupling payload is not yet browser-safe.
+// The "./analysis" subpath's entry; it may re-export only the modules listed above.
+const SUBPATH_ENTRY = "browser.ts";
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 // Type-only imports are erased at build time, so they cannot pull a module into a bundle.
@@ -44,7 +48,7 @@ function importClosure(entries: readonly string[]): Map<string, string> {
   return seen;
 }
 
-const closure = [...importClosure(ENTRIES)].map(([file, text]) => ({ file: path.relative(here, file), text }));
+const closure = [...importClosure([...ENTRIES, SUBPATH_ENTRY])].map(([file, text]) => ({ file: path.relative(here, file), text }));
 
 describe("report derivations in a browser", () => {
   it("walks past the entry files into their dependencies", () => {
@@ -59,5 +63,12 @@ describe("report derivations in a browser", () => {
 
   it.each(closure)("$file touches no Node-only global", ({ text }) => {
     expect(text).not.toMatch(NODE_GLOBAL_USE);
+  });
+
+  it("the ./analysis subpath re-exports only checked entry modules", () => {
+    const text = readFileSync(path.join(here, SUBPATH_ENTRY), "utf8");
+    const reExported = [...text.matchAll(IMPORT_SPECIFIER)].map((m) => m[1]!.replace(/^\.\//, "").replace(/\.js$/, ".ts"));
+
+    expect(reExported.filter((file) => !ENTRIES.includes(file))).toEqual([]);
   });
 });

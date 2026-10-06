@@ -1,6 +1,7 @@
 import type { CommandArgs, CommandResult } from "./contract.js";
 import { baselineFields, baselineValue, delta, openBaseline, type Baseline } from "./baseline.js";
 import type { ReadModel } from "./model.js";
+import { lensesFor } from "./node-lenses.js";
 import { columnFor, describesKind } from "./rollup.js";
 import type { NodeRef } from "./schemas.js";
 import { modelFor } from "./snapshot-ref.js";
@@ -78,5 +79,6 @@ export function getNode(source: ReadSource, args: CommandArgs<"node.get">): Node
     ancestors: ancestorsOf(tree, node),
     childCounts: childCounts(node),
     metrics: metricNames(model, node.ref.kind, args.metrics).map((name) => measure(model, tree, node, name, baseline)),
+    ...(args.lenses.length > 0 ? { lenses: lensesFor(model, node, args) } : {}),
   };
 }
