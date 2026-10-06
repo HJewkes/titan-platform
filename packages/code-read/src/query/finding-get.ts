@@ -52,8 +52,11 @@ function relatedTo(model: ReadModel, rows: readonly Finding[], finding: Finding)
   return [...sameNode, ...sameRule].slice(0, RELATED_CAP);
 }
 
+// Picked field by field, so a rule's tier config never rides along into the finding.
 function ruleOf(model: ReadModel, finding: Finding): ModelRule {
-  return model.rules.find((r) => r.id === finding.rule) ?? { id: finding.rule, type: "unknown", severity: finding.severity, text: "" };
+  const rule = model.rules.find((r) => r.id === finding.rule);
+  if (!rule) return { id: finding.rule, type: "unknown", severity: finding.severity, text: "" };
+  return { id: rule.id, type: rule.type, severity: rule.severity, text: rule.text };
 }
 
 function excerptOf(source: ReadSource, model: ReadModel, finding: Finding, context: number): ExcerptResult {

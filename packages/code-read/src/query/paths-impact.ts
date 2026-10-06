@@ -8,7 +8,7 @@ import { compareFindings, findingsFor } from "./finding-rows.js";
 import { reportContext, scoredRows } from "./hotspots.js";
 import type { ReadModel } from "./model.js";
 import { modelFor } from "./snapshot-ref.js";
-import type { ReadSource } from "./source.js";
+import { invalidArgs, type ReadSource } from "./source.js";
 import { toRef } from "./tree.js";
 
 type ImpactArgs = CommandArgs<"paths.impact">;
@@ -55,6 +55,18 @@ function underRoot(input: string, root: string | undefined): string | null {
   const base = root.replace(/\/+$/, "");
   if (input === base) return "";
   return input.startsWith(`${base}/`) ? input.slice(base.length + 1) : null;
+}
+
+const trimmed = (dir: string): string => dir.replace(/\/+$/, "");
+
+/** A root above the index's repo root would read every path as a different repo's file, so it is refused. */
+function checkRoot(root: string | undefined, repoRoot: string | null | undefined): void {
+  if (root === undefined || !repoRoot) return;
+  const base = trimmed(repoRoot);
+  const given = trimmed(root);
+  if (given !== base && `${base}/`.startsWith(`${given}/`)) {
+    throw invalidArgs(`root "${root}" is above the index's repo root; give the repo, or a checkout of it, as root`);
+  }
 }
 
 const isFile = (model: ReadModel, id: string): boolean => model.nodeById.get(id)?.kind === "file";
@@ -160,13 +172,19 @@ const best = (values: (number | null)[], pick: (...n: number[]) => number): numb
   return measured.length > 0 ? pick(...measured) : null;
 };
 
-function rollupDelta(indexed: readonly Indexed[]): NonNullable<ImpactRollup["delta"]> {
+/** A file the snapshot no longer holds has no row delta, but the findings it resolved still count. */
+function deletedResolved(rows: readonly PathImpact[], comparison: Comparison): number {
+  return rows.reduce((sum, r) => sum + (r.status === "not-indexed" ? (comparison.findings.get(r.path)?.resolved ?? 0) : 0), 0);
+}
+
+function rollupDelta(indexed: readonly Indexed[], deleted: number): NonNullable<ImpactRollup["delta"]> {
   const findings: FindingDelta = { new: 0, worsened: 0, improved: 0, resolved: 0 };
   let score = 0;
   for (const { delta: d, hotspot } of indexed) {
     score += d!.score ?? hotspot.score;
     for (const key of Object.keys(findings) as (keyof FindingDelta)[]) findings[key] += d!.findings[key];
   }
+  findings.resolved += deleted;
   return { score, findings };
 }
 
@@ -181,12 +199,13 @@ function rollupOf(rows: readonly PathImpact[], comparison: Reading["comparison"]
     topRank: best(indexed.map((r) => r.hotspot.rank), Math.min),
     openFindings: indexed.reduce((sum, r) => sum + r.findings.length, 0),
   };
-  if (comparison !== undefined) rollup.delta = comparison && rollupDelta(indexed);
+  if (comparison !== undefined) rollup.delta = comparison && rollupDelta(indexed, deletedResolved(rows, comparison));
   return rollup;
 }
 
 /** `paths.impact`: complexity, hotspot rank, and open findings for each given file, optionally against a baseline. */
 export function pathsImpact(source: ReadSource, args: ImpactArgs): ImpactResult {
+  checkRoot(args.root, source.repoRoot);
   const model = modelFor(source, args.snapshot);
   const baseline = openBaseline(source, args.baseline);
   const fields = baselineFields(model, baseline);
