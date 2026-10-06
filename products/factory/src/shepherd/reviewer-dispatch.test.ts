@@ -5,7 +5,7 @@ import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
 import { ReviewerMachineHold } from "./review-wait.js";
-import { agentChatReviewerDispatch, expandHome, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
+import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -312,5 +312,34 @@ describe("agentChatReviewerDispatch resume", () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).resume("rv-standing", BRIEF));
 
     expectRefusal(error, "timed out");
+  });
+});
+
+describe("runningReviewStarts", () => {
+  const NOW = 10_000_000;
+  const rv = (name: string, over: Partial<ReviewerRosterRow> = {}): ReviewerRosterRow => ({
+    name, agentId: name, sessionId: "s", presence: "live", spawnedBy: null, transcriptPath: null, transcriptExists: false, ...over,
+  });
+
+  it("counts a detached reviewer with no transcript write as not running", () => {
+    expect(runningReviewStarts([rv("rv-demo-1", { presence: "detached" })], new Map(), NOW)).toEqual([]);
+  });
+
+  it("counts a detached reviewer whose transcript was last written over 15 minutes ago as not running", () => {
+    const stale = rv("rv-demo-1", { presence: "detached", lastWrittenAt: NOW - 15 * 60_000 - 1 });
+    expect(runningReviewStarts([stale], new Map(), NOW)).toEqual([]);
+  });
+
+  it("counts a live reviewer, and a detached one written recently, from when each was first seen", () => {
+    const seen = new Map([["rv-demo-1", NOW - 600_000]]);
+    const rows = [rv("rv-demo-1"), rv("rv-demo-2", { presence: "detached", lastWrittenAt: NOW - 60_000 }), rv("coord"), rv("rv-demo-3", { presence: "exited" })];
+
+    expect(runningReviewStarts(rows, seen, NOW)).toEqual([NOW - 600_000, NOW]);
+  });
+
+  it("forgets a reviewer that no longer runs", () => {
+    const seen = new Map([["rv-demo-1", NOW - 600_000]]);
+    runningReviewStarts([], seen, NOW);
+    expect(seen.size).toBe(0);
   });
 });
