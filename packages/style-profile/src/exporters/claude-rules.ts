@@ -1,5 +1,5 @@
 import type { Profile } from "../schema/profile.js";
-import { extractAllRules, type RuleEntry } from "./template-helpers.js";
+import { extractAllRules, tierOf, type RuleEntry } from "./template-helpers.js";
 import type { GeneratedFile } from "./types.js";
 
 function formatFrontmatter(globs: string[], description: string): string {
@@ -42,11 +42,7 @@ function formatBody(author: string, rules: RuleEntry[]): string {
 export function generateClaudeRules(profile: Profile): GeneratedFile[] {
   const files: GeneratedFile[] = [];
   const allRules = extractAllRules(profile);
-  const infoThreshold = profile.severityThresholds?.info ?? 0.40;
-
-  const eligibleRules = allRules.filter(
-    (r) => r.confidence >= infoThreshold,
-  );
+  const eligibleRules = allRules.filter((r) => tierOf(profile, r) !== "off");
 
   if (eligibleRules.length > 0) {
     const frontmatter = formatFrontmatter(

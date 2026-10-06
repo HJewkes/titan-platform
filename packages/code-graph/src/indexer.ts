@@ -154,11 +154,14 @@ async function parseAll(
   return parsed;
 }
 
-function historyOptions(options: IndexOptions): HistoryMetricsOptions {
+/** A revision's history ends at its commit, so its windows end at the commit's time, not the wall clock. */
+function historyOptions(options: IndexOptions, source: IndexSource): HistoryMetricsOptions {
   return {
     churnWindowDays: options.churnWindowDays,
     churnWindows: options.churnWindows,
     includeLifetime: options.lifetime === true,
+    rev: source.revision?.commit,
+    nowEpoch: source.revision?.commitEpoch,
   };
 }
 
@@ -208,8 +211,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
             ? reusedFileIds.flatMap((id) => reuse.sourceMetricsByFile.get(id) ?? [])
             : [],
           idRoot,
-          // History at a revision is TP-1472; until then it is off rather than read from HEAD.
-          history: options.computeChurn === false || source.revision ? undefined : historyOptions(options),
+          history: options.computeChurn === false ? undefined : historyOptions(options, source),
         });
 
   // A revision's indexed dirs may be gone from disk, so its git calls run at the repo root.

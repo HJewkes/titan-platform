@@ -6,13 +6,14 @@ import {
   GatePayloadInvalid,
   GateResolverRefused,
   MemoryGateStore,
+  type GateBrief,
   type GateInput,
   type GateRecord,
   type GateRule,
   type GateResolver,
   type GateStore,
 } from "@titan-design/hitl";
-import { SqliteGateStore, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
+import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunContext, type ContextDeps } from "./context.js";
@@ -25,6 +26,7 @@ import { workflowMigration, workflowOwnershipMigration } from "./store.js";
 import {
   AuthorityDeniedError,
   AuthorityRefusedError,
+  type AuthorizeOptions,
   type AuthorizeRequest,
   type AuthorizeResult,
   type WorkflowEvent,
@@ -39,6 +41,11 @@ const STEP = "merge-authorize";
 const OWNER_TERMINAL: GateResolver = { class: "owner-terminal", id: "owner", channel: "terminal" };
 const OWNER_REMOTE: GateResolver = { class: "owner-remote", id: "owner", channel: "chat" };
 const APPROVE = { decision: "approve", subject: SUBJECT };
+const BRIEF: GateBrief = {
+  summary: "Merge example/widgets#7 at a1b2c3? CI green. Recommend merge.",
+  evidenceRef: "https://example.com/widgets/pull/7/checks",
+  questions: [{ id: "decision", question: "Land this head?", options: [{ id: "merge", label: "Merge at a1b2c3", recommended: true }, { id: "abandon", label: "Abandon" }] }],
+};
 
 const scratch: string[] = [];
 afterEach(() => {
@@ -47,7 +54,7 @@ afterEach(() => {
 
 function makeDb(path = ":memory:"): Db {
   const db = openDatabase(path);
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4), gateRuleMigration(5)]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(4), gateRuleMigration(5), gateBriefMigration(6)]);
   return db;
 }
 
@@ -65,7 +72,7 @@ interface Harness {
   errors: unknown[];
 }
 
-function harness(db: Db, actor: ActorClass, extra: { table?: PolicyTable; gates?: GateStore; request?: AuthorizeRequest } = {}): Harness {
+function harness(db: Db, actor: ActorClass, extra: { table?: PolicyTable; gates?: GateStore; request?: AuthorizeRequest; options?: AuthorizeOptions } = {}): Harness {
   const gates = extra.gates ?? new SqliteGateStore(db, { migrate: false });
   const events: WorkflowEvent[] = [];
   const results: AuthorizeResult[] = [];
@@ -74,7 +81,7 @@ function harness(db: Db, actor: ActorClass, extra: { table?: PolicyTable; gates?
   const rt = new WorkflowRuntime({ db, gates, runner: inlineRunner(() => "unused"), onEvent: (e) => events.push(e), gatePollMs: 5, authority });
   const flow: WorkflowFn = async (ctx) => {
     try {
-      results.push(await ctx.authorize(STEP, extra.request ?? MERGE));
+      results.push(await ctx.authorize(STEP, extra.request ?? MERGE, extra.options));
     } catch (error) {
       errors.push(error);
       throw error;
@@ -236,6 +243,38 @@ describe("ctx.authorize", () => {
 
     expect((await h.rt.wait(runId)).status).toBe("completed");
     expect(h.results).toEqual([{ verdict: "approved", ruleId: "MRG-AU", gateId: `${runId}/${STEP}`, resolvedBy: OWNER_REMOTE }]);
+  });
+
+  it("an authorize gate carries the brief given in options", async () => {
+    const h = harness(makeDb(), "automation", { options: { brief: BRIEF } });
+
+    const runId = h.rt.start("governed");
+    await pausedOnGate(h, runId);
+
+    expect(h.gates.get(`${runId}/${STEP}`)).toMatchObject({ rule: { ruleId: "MRG-AU" }, ...BRIEF });
+    h.rt.shutdown();
+  });
+
+  it("a brief carrying extra rule and id keys leaves the gate's id and authority rule unchanged", async () => {
+    const rogue = { ...BRIEF, rule: { table: "F5", version: "9", ruleId: "FAKE", resolvers: ["automation"] }, id: "other" };
+    const h = harness(makeDb(), "automation", { options: { brief: rogue } });
+
+    const runId = h.rt.start("governed");
+    await pausedOnGate(h, runId);
+
+    expect(h.gates.get("other")).toBeUndefined();
+    expect(h.gates.get(`${runId}/${STEP}`)).toMatchObject({ rule: { ruleId: "MRG-AU", resolvers: ["owner-terminal", "owner-remote"] }, ...BRIEF });
+    h.rt.shutdown();
+  });
+
+  it("an authorize gate's gate_opened carries the summary", async () => {
+    const h = harness(makeDb(), "automation", { options: { brief: BRIEF } });
+
+    const runId = h.rt.start("governed");
+    await pausedOnGate(h, runId);
+
+    expect(h.events.find((event) => event.type === "gate_opened")).toMatchObject({ gateId: `${runId}/${STEP}`, summary: BRIEF.summary });
+    h.rt.shutdown();
   });
 
   it("resumes onto the same gate id after a kill and restart", async () => {
