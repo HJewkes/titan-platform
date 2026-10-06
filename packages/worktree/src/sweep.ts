@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
-import path from "node:path";
 import { gitChildEnv } from "./git.js";
-import { removeWorktree } from "./layout.js";
+import { parseWorktreeList, removeWorktree } from "./layout.js";
 import { branchPrefixOf, RECLAIM_GRACE_MS } from "./options.js";
 import { inspectForRelease } from "./release-safety.js";
 
@@ -75,18 +74,6 @@ export interface SweepOptions {
 const porcelain: GitLister = async (gitRoot) =>
   execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: gitRoot, encoding: "utf8", env: gitChildEnv() });
 
-interface ListedWorktree {
-  worktree?: string;
-  branch?: string;
-  locked: boolean;
-}
-
-const parseBlock = (block: string): ListedWorktree => ({
-  worktree: block.match(/^worktree (.+)$/m)?.[1]?.trim(),
-  branch: block.match(/^branch refs\/heads\/(.+)$/m)?.[1]?.trim(),
-  locked: /^locked/m.test(block),
-});
-
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
 export async function agentWorktreesIn(
   gitRoot: string,
@@ -94,14 +81,9 @@ export async function agentWorktreesIn(
   branchPrefix: string = branchPrefixOf({})
 ): Promise<{ worktree: string; branch: string }[]> {
   const out = await list(gitRoot).catch(() => "");
-  return (
-    out
-      .split("\n\n")
-      .map(parseBlock)
-      .filter((e): e is Required<ListedWorktree> => e.worktree !== undefined && e.branch !== undefined)
-      // Locked is another tool's "do not touch"; honour it rather than report a reclaim we would refuse.
-      .filter((e) => !e.locked && e.branch.startsWith(branchPrefix))
-      .map(({ worktree, branch }) => ({ worktree: path.resolve(worktree), branch }))
+  // Locked is another tool's "do not touch"; honour it rather than report a reclaim we would refuse.
+  return parseWorktreeList(out).flatMap(({ worktree, branch, locked }) =>
+    !locked && branch?.startsWith(branchPrefix) ? [{ worktree, branch }] : []
   );
 }
 

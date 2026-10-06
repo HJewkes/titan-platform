@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { loadavg } from "node:os";
+import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
@@ -8,7 +9,7 @@ import { loadavg } from "node:os";
 interface SpawnLimits {
   /** No new dispatch at a load5 above this. */
   load5: number;
-  /** No new dispatch at a build-capable load5 above this; a running review adds `reviewLoad` to the reading. */
+  /** No new dispatch at a build-capable load5 above this; a review started in the last five minutes adds `reviewLoad` to the reading. */
   buildLoad5: number;
   /** The memory pressure level (1 normal, 2 warn, 4 critical) at which nothing starts. */
   pressureLevel: number;
@@ -31,12 +32,16 @@ export interface MachineReadings {
 
 type Admission = { admit: true } | { admit: false; reason: string };
 
-/** Pure: the verdict for one spawn from the readings, the limits, the epoch-ms of earlier admissions and the reviews already running. */
-export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews = 0): Admission {
+/** load5 is a five-minute average, so a review older than this is already in the reading. */
+const LOAD5_WINDOW_MS = 5 * 60_000;
+
+/** Pure: the verdict for one spawn from the readings, the limits, the epoch-ms of earlier admissions and the start of each review already running. */
+export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews: readonly number[] = []): Admission {
   const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
   if (readings.load5 > limits.load5) return refuse("load5", readings.load5, limits.load5);
-  const build = readings.load5 + runningReviews * limits.reviewLoad;
-  if (build > limits.buildLoad5) return refuse(`load5 with ${runningReviews} running reviews`, build, limits.buildLoad5);
+  const unabsorbed = runningReviews.filter((startedAt) => now - startedAt < LOAD5_WINDOW_MS).length;
+  const build = readings.load5 + unabsorbed * limits.reviewLoad;
+  if (build > limits.buildLoad5) return refuse(`load5 with ${unabsorbed} unabsorbed reviews`, build, limits.buildLoad5);
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
   const last = Math.max(0, ...recentStarts);
@@ -55,9 +60,17 @@ function sysctlNumber(name: string): number | undefined {
   }
 }
 
-/** The same reads the broker's machine guard makes: `os.loadavg()[1]` and macOS sysctl, absent off macOS. */
-function readMachine(): MachineReadings {
-  return { load5: loadavg()[1] ?? 0, pressureLevel: sysctlNumber("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctlNumber("kern.memorystatus_level") };
+interface MachineSources {
+  platform?: NodeJS.Platform;
+  readFile?: ReadFile;
+  sysctl?: (name: string) => number | undefined;
+}
+
+/** The same reads the broker's machine guard makes: `os.loadavg()[1]`, then macOS sysctl or Linux /proc; absent elsewhere. */
+export function readMachine({ platform = process.platform, readFile, sysctl = sysctlNumber }: MachineSources = {}): MachineReadings {
+  const load5 = loadavg()[1] ?? 0;
+  if (platform === "linux") return { load5, ...readLinuxMemory(readFile) };
+  return { load5, pressureLevel: sysctl("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctl("kern.memorystatus_level") };
 }
 
 /** Thrown when the gate would not admit a spawn; nobody was started, so the caller asks again on its next poll. */
@@ -67,7 +80,7 @@ export class SpawnDeferred extends Error {
 
 export interface SpawnGate {
   /** Resolves when the spawn of `name` is admitted; throws `SpawnDeferred` when it is not. */
-  admit(name: string, runningReviews?: number): void;
+  admit(name: string, runningReviews?: readonly number[]): void;
 }
 
 interface SpawnGateOptions {
@@ -81,10 +94,10 @@ interface SpawnGateOptions {
 /** Remembers the admissions of this process, so every spawn site shares one window. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
-  const { read = readMachine, now = Date.now, log = (line) => console.warn(line) } = options;
+  const { read = () => readMachine(), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
   return {
-    admit(name, runningReviews = 0) {
+    admit(name, runningReviews = []) {
       const at = now();
       const readings = read();
       const verdict = admitSpawn(readings, limits, starts, at, runningReviews);

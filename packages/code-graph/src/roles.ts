@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { GraphNode, NodeRole } from "./types.js";
+import { NODE_ROLES, type GraphNode, type NodeRole } from "./types.js";
 import { isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { parseRoleGlobs, roleGlobMatcher, type RoleGlobs } from "./role-globs.js";
@@ -15,19 +15,7 @@ const BARREL_RE = /(?:^|\/)index(?:\.[a-z]+)?$/;
 const TYPES_RE = /(?:^|\/)(?:[a-z][\w-]*\.)?types(?:\.[a-z]+)?$/i;
 const CONFIG_RE = /\.config(?:\.[a-z]+)?$/;
 
-export const ALL_ROLES: readonly NodeRole[] = [
-  "test",
-  "fixture",
-  "story",
-  "lab",
-  "barrel",
-  "types",
-  "config",
-  "script",
-  "entry",
-  "generated",
-  "source",
-];
+export const ALL_ROLES: readonly NodeRole[] = NODE_ROLES;
 
 export interface RoleHints {
   /** File begins with a `#!` shebang, i.e. it is an executable entry point. */

@@ -1,4 +1,4 @@
-import { replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
+import { EPISODE_TABLE, replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import { classifySession, type SessionClass } from "./classify-session.js";
 import { readSessionContexts } from "./cost-report-queries.js";
@@ -289,15 +289,60 @@ export interface WrittenEpisodes {
   episodes: number;
 }
 
-/** Segments each session with its class's heuristic and replaces that heuristic's rows. Headless sessions are skipped. */
-export function writeEpisodes(graph: SessionGraph, sessionIds: readonly string[]): WrittenEpisodes[] {
-  const written: WrittenEpisodes[] = [];
-  for (const [sessionId, context] of readSessionContexts(graph.db, sessionIds)) {
+interface SegmentedSession {
+  sessionId: string;
+  heuristic: Heuristic;
+  spawned: boolean;
+}
+
+/** The one place a session's heuristic is chosen, so writing and staleness never disagree. Headless sessions are dropped. */
+function segmentedSessions(db: Db, sessionIds: readonly string[]): SegmentedSession[] {
+  const sessions: SegmentedSession[] = [];
+  for (const [sessionId, context] of readSessionContexts(db, sessionIds)) {
     const { sessionClass } = classifySession(context.facts);
     const heuristic = heuristicFor(sessionClass);
-    if (!heuristic) continue;
-    const rows = buildEpisodes(readEpisodeInput(graph.db, sessionId, sessionClass === "agent_spawned"), heuristic);
-    written.push({ sessionId, heuristic, episodes: replaceEpisodes(graph, sessionId, heuristic, rows) });
+    if (heuristic) sessions.push({ sessionId, heuristic, spawned: sessionClass === "agent_spawned" });
   }
-  return written;
+  return sessions;
+}
+
+/** Segments each session with its class's heuristic and replaces that heuristic's rows. Headless sessions are skipped. */
+export function writeEpisodes(graph: SessionGraph, sessionIds: readonly string[]): WrittenEpisodes[] {
+  return segmentedSessions(graph.db, sessionIds).map(({ sessionId, heuristic, spawned }) => {
+    const rows = buildEpisodes(readEpisodeInput(graph.db, sessionId, spawned), heuristic);
+    return { sessionId, heuristic, episodes: replaceEpisodes(graph, sessionId, heuristic, rows) };
+  });
+}
+
+// request_dedup, not request: a copied request belongs only to the session the view keeps it for.
+const LAST_MAIN_REQUESTS = `
+  SELECT session_id AS sessionId, MAX(ts) AS lastRequestAt FROM request_dedup
+  WHERE is_sidechain = 0 AND (@ids IS NULL OR session_id IN (SELECT value FROM json_each(@ids)))
+  GROUP BY session_id ORDER BY lastRequestAt DESC, session_id`;
+
+const EPISODE_ENDS = `SELECT session_id AS sessionId, heuristic, MAX(ended_at) AS endedAt FROM "${EPISODE_TABLE}" GROUP BY session_id, heuristic`;
+
+function episodeEnds(db: Db): Map<string, number> {
+  const rows = db.prepare(EPISODE_ENDS).all() as { sessionId: string; heuristic: Heuristic; endedAt: string }[];
+  return new Map(rows.map((row) => [endKey(row.sessionId, row.heuristic), Date.parse(row.endedAt)]));
+}
+
+const endKey = (sessionId: string, heuristic: Heuristic): string => `${sessionId}\u0000${heuristic}`;
+
+/**
+ * Sessions `writeEpisodes` would change, most recently active first: the class has a heuristic and
+ * the last main-thread request runs past that heuristic's stored episodes, or none are stored. A
+ * session with no main-thread request is never stale, since segmenting it writes nothing. Timestamps
+ * compare parsed, because a worker episode can end on an inbound whose ISO form differs from the request's.
+ */
+export function staleEpisodeSessions(db: Db, ids?: readonly string[]): string[] {
+  const rows = db.prepare(LAST_MAIN_REQUESTS).all({ ids: ids ? JSON.stringify(ids) : null }) as { sessionId: string; lastRequestAt: string }[];
+  const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
+  const ends = episodeEnds(db);
+  const isStale = ({ sessionId, heuristic }: SegmentedSession): boolean => {
+    const endedAt = ends.get(endKey(sessionId, heuristic));
+    return endedAt === undefined || lastRequest.get(sessionId)! > endedAt;
+  };
+  const stale = new Set(segmentedSessions(db, [...lastRequest.keys()]).filter(isStale).map((session) => session.sessionId));
+  return rows.map((row) => row.sessionId).filter((id) => stale.has(id));
 }
