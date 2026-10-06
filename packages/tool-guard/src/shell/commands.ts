@@ -9,6 +9,7 @@ import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
+import { insertRuns, literalWord } from "./xargs-insert.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -200,18 +201,21 @@ function xargsStdin(redirects: RedirectToken[], piped: string | null): string | 
   return feeds ? stdinScript(redirects) : piped;
 }
 
-/** The argument lists `xargs` runs the command with: one per input line under a replace string, one per `-L`/`-n` batch, else one with the piped words appended. */
+/**
+ * The argument lists `xargs` runs the command with: one per input line under a replace string, one per `-L`/`-n` batch, else one with the
+ * piped words appended. A `-J` insert adds its own runs to those readings rather than replacing them, so it never drops a run main read.
+ */
 function xargsRuns(cmd: Unwrapped, stdin: string | null): WordToken[][] {
   if (!cmd.xargs) return [cmd.args];
-  const { replace, delimiters, batch } = cmd.xargs;
+  const { replace, insert, delimiters, batch } = cmd.xargs;
   const shell = cmd.name !== null && SHELLS.has(cmd.name);
-  if (stdin === null) return unknownRuns(cmd, replace);
-  if (replace !== null) return inputRecords(stdin, delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell));
+  if (stdin === null) return [...unknownRuns(cmd, replace), ...insertRuns(cmd.args, insert, [WORST_CASE[cmd.name ?? ""] ?? []])];
+  const groups = inputReadings(stdin, delimiters).flatMap((lines) => batches(stdin, lines, batch));
+  const inserted = insertRuns(cmd.args, insert, groups);
+  if (replace !== null) return [...inputRecords(stdin, delimiters).flatMap((line) => lineRuns(cmd.args, replace, line, !shell)), ...inserted];
   // A shell's operands are not appended: a bare `-c` already runs the piped text as its string.
-  if (shell) return [cmd.args];
-  return inputReadings(stdin, delimiters)
-    .flatMap((lines) => batches(stdin, lines, batch))
-    .map((words) => [...cmd.args, ...words.map(literalWord)]);
+  if (shell) return [cmd.args, ...inserted];
+  return [...groups.map((words) => [...cmd.args, ...words.map(literalWord)]), ...inserted];
 }
 
 const WORST_CASE: Record<string, string[]> = { git: ["push", "origin", "HEAD:main"], gh: ["pr", "merge", "1"] };
@@ -300,10 +304,6 @@ function lineRuns(args: WordToken[], replace: string, line: string, split: boole
   if (!split || words.length < 2 || !args.some((a) => a.value === replace)) return [exact];
   const spread = args.flatMap((a, i) => (a.value === replace ? words.map(literalWord) : [exact[i] as WordToken]));
   return [exact, spread];
-}
-
-function literalWord(value: string): WordToken {
-  return { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
 }
 
 function literalEnv(cmd: Unwrapped): Record<string, string> {
