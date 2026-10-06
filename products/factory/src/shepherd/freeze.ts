@@ -57,7 +57,17 @@ const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
 /** One freeze row per repo in the factory database; the table comes from `freezeMigration`. */
 export class FreezeStore {
+  private readonly rechecked = new Map<string, number>();
+
   constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onThaw: (repo: RepoSlug) => void = () => undefined) {}
+
+  /** Claims `repo`'s re-read of its default branch at `at`; false within `FREEZE_RECHECK_MS` of the last claim, so every reader of this store shares one limit. */
+  claimRecheck(repo: RepoSlug, at: number): boolean {
+    const previous = this.rechecked.get(repoKey(repo));
+    if (previous !== undefined && at - previous < FREEZE_RECHECK_MS) return false;
+    this.rechecked.set(repoKey(repo), at);
+    return true;
+  }
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string, cancelOnly = false): Freeze {
@@ -245,15 +255,13 @@ export interface FreezeGuard {
 
 export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
   const now = deps.now ?? Date.now;
-  const lastRead = new Map<string, number>();
   return {
     async reason(port, repo, pr, baseRef) {
       const freezes = deps.freezes();
       const freeze = freezes.get(repo);
       if (!freeze) return undefined;
-      if (isFixersPr(freeze, deps.registrations().byPr(repo, pr))) return undefined;
-      if (await recheck(port, freezes, repo, baseRef, lastRead, now())) return undefined;
-      return `${repo} is frozen: main is red at ${freeze.redSha}`;
+      const frozen = await frozenAfterRecheck({ port, freezes, registrations: deps.registrations(), at: now() }, repo, pr, async () => baseRef);
+      return frozen ? `${repo} is frozen: main is red at ${freeze.redSha}` : undefined;
     },
   };
 }
@@ -268,22 +276,41 @@ export function isFixersPr(freeze: Freeze, registration: { task: string; impleme
   return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;
 }
 
-/** Frozen for every PR in `repo` but the fixer's own, the one PR the freeze guard lets land, so merge policy agrees with it. */
+/** Frozen for every PR in `repo` but the fixer's own, from the store alone with no re-read of main. */
 export function frozenFor(freezes: FreezeStore, registrations: RegistrationTasks, repo: RepoSlug, pr: number): boolean {
   const freeze = freezes.get(repo);
   return freeze !== undefined && !isFixersPr(freeze, registrations.byPr(repo, pr));
 }
 
+interface FreezeRecheck {
+  port: GitHubPort;
+  freezes: FreezeStore;
+  registrations: RegistrationTasks;
+  at: number;
+}
+
+/**
+ * Frozen for every PR in `repo` but the fixer's own, after re-reading the default branch at most every five minutes
+ * per repo and thawing when it is green after the red. The freeze guard and merge policy both decide through this, so
+ * a main fixed outside Shepherd thaws whichever reads it first.
+ */
+async function frozenAfterRecheck(read: FreezeRecheck, repo: RepoSlug, pr: number, baseRef: () => Promise<string>): Promise<boolean> {
+  const freeze = read.freezes.get(repo);
+  if (!freeze || isFixersPr(freeze, read.registrations.byPr(repo, pr))) return false;
+  return !(await thawedByRecheck(read, repo, freeze, baseRef));
+}
+
+/** Merge policy's freeze read: the PR's base branch is read only when a recheck is due. */
+export function recheckedFrozen(port: GitHubPort, freezes: () => FreezeStore, registrations: () => RegistrationTasks, now: () => number = Date.now) {
+  return (repo: RepoSlug, pr: number): Promise<boolean> =>
+    frozenAfterRecheck({ port, freezes: freezes(), registrations: registrations(), at: now() }, repo, pr, async () => (await port.getPr(repo, pr)).baseRef);
+}
+
 /** A failed read leaves the freeze in place, because the merge it guards is already blocked. */
-async function recheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string, lastRead: Map<string, number>, at: number): Promise<boolean> {
-  const key = repoKey(repo);
-  const previous = lastRead.get(key);
-  if (previous !== undefined && at - previous < FREEZE_RECHECK_MS) return false;
-  lastRead.set(key, at);
-  const freeze = freezes.get(repo);
-  if (!freeze) return true;
+async function thawedByRecheck({ port, freezes, at }: FreezeRecheck, repo: RepoSlug, red: Red, baseRef: () => Promise<string>): Promise<boolean> {
+  if (!freezes.claimRecheck(repo, at)) return false;
   try {
-    const green = await greenHead(port, repo, baseRef, freeze);
+    const green = await greenHead(port, repo, await baseRef(), red);
     return green !== undefined && freezes.unfreeze(repo, green);
   } catch {
     return false;
