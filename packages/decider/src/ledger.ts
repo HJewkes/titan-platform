@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { OUTCOMES, PICK_TYPES, classifyOutcome, stripRecommended } from "./outcome.js";
+import { bulkSignal } from "./bulk.js";
+import { OUTCOMES, PICK_TYPES, classifyOutcome, stripRecommended, type Outcome } from "./outcome.js";
 
 export const LEDGER_SOURCES = ["transcript", "note", "queue", "decided", "endorse", "morning"] as const;
 export const ANSWERED_BY = ["owner-terminal", "owner-remote", "decider", "overrule"] as const;
@@ -31,6 +32,11 @@ const OptionInputSchema = z.union([
   LedgerOptionSchema,
 ]);
 
+const CoversSchema = z.number().int().nonnegative().nullable();
+
+/** What a row said before the bulk rule demoted it, so a re-read applies the current rule again. */
+const BulkOriginSchema = z.object({ outcome: z.enum(["accept", "amend"]), covers: CoversSchema });
+
 /** Every v2 field, plus v1's `class`, `pick_type`, `free_text`, `session_id` and `tool_use_id`. */
 const LedgerRowInputSchema = z.object({
   key: z.string().min(1),
@@ -52,6 +58,8 @@ const LedgerRowInputSchema = z.object({
   pick_type: z.enum(PICK_TYPES).optional(),
   free_text: z.string().nullable().default(null),
   outcome: z.enum(OUTCOMES).nullable().optional(),
+  covers: CoversSchema.default(null),
+  bulk_from: BulkOriginSchema.nullable().default(null),
   answered_by: z.enum(ANSWERED_BY).default("owner-terminal"),
   route: z.enum(ROUTES).nullable().default(null),
   prediction: PredictionSchema.nullable().default(null),
@@ -60,21 +68,39 @@ const LedgerRowInputSchema = z.object({
 
 type LedgerRowInput = z.output<typeof LedgerRowInputSchema>;
 
+function deriveOutcome(row: LedgerRowInput): Outcome | null {
+  return classifyOutcome({
+    answer: row.answer,
+    options: row.options.map((o) => o.label),
+    recommended: row.recommended,
+    pickType: row.pick_type,
+  });
+}
+
+type Agreement = { outcome: Outcome | null; covers: number | null };
+
+/** A derived bulk is never stored as fact: the row falls back to what it said before demotion. */
+function undemoted(outcome: Outcome | null | undefined, row: LedgerRowInput): Agreement {
+  if (outcome === "bulk" && row.bulk_from !== null) return row.bulk_from;
+  return { outcome: outcome === undefined ? deriveOutcome(row) : outcome, covers: row.covers };
+}
+
+/** Only an agreeing outcome is demoted; a redirect on a batched question is still engagement. */
+function demoteBulk({ outcome, covers }: Agreement, recommended: string | null, answer: string | null) {
+  const kept = { outcome, covers, bulk_from: null };
+  if (outcome !== "accept" && outcome !== "amend") return kept;
+  const signal = bulkSignal({ recommended, answer, covers });
+  if (signal === null) return kept;
+  return { outcome: "bulk" as const, covers: signal.covers ?? covers, bulk_from: { outcome, covers } };
+}
+
 function upgrade({ class: v1Class, category, outcome, ...row }: LedgerRowInput) {
-  const derived =
-    outcome !== undefined
-      ? outcome
-      : classifyOutcome({
-          answer: row.answer,
-          options: row.options.map((o) => o.label),
-          recommended: row.recommended,
-          pickType: row.pick_type,
-        });
+  const recommended = row.recommended === null ? null : stripRecommended(row.recommended);
   return {
     ...row,
+    ...demoteBulk(undemoted(outcome, row), recommended, row.answer),
     category: category ?? v1Class ?? "other",
-    recommended: row.recommended === null ? null : stripRecommended(row.recommended),
-    outcome: derived,
+    recommended,
   };
 }
 
