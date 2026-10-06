@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, writeEpisodes, type EpisodeInput } from "./episodes.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
 const BASE_MS = Date.parse("2026-09-20T10:00:00Z");
@@ -215,6 +215,54 @@ describe("writeEpisodes", () => {
       { session_id: "human", heuristic: "coordinator-v1", heuristic_version: 1, opened_by: "session_start", first_status_offset: null },
       { session_id: "worker", heuristic: "worker-v1", heuristic_version: 1, opened_by: "brief", first_status_offset: expect.any(Number) },
     ]);
+  });
+});
+
+describe("staleEpisodeSessions", () => {
+  let fixture: FixtureGraph;
+  beforeEach(() => {
+    fixture = createFixtureGraph();
+  });
+  afterEach(() => fixture.close());
+
+  function addWorker(sessionId: string, ts: string) {
+    const db = fixture.graph.db;
+    insertSession(db, { sessionId, startType: "sdk-cli" });
+    insertOrigin(db, { sessionId, depth: 1, profile: "implementer" });
+    insertInbound(db, { sessionId, ts, cause: "human_typed" });
+    insertRequest(db, { sessionId, ts });
+  }
+
+  it("a session whose stored episodes end before its last main-thread request is stale", () => {
+    addWorker("worker", at(0));
+    writeEpisodes(fixture.graph, ["worker"]);
+    insertRequest(fixture.graph.db, { sessionId: "worker", ts: at(5) });
+
+    expect(staleEpisodeSessions(fixture.graph.db)).toEqual(["worker"]);
+  });
+
+  it("an up-to-date session is not stale, and a later sidechain request does not make it so", () => {
+    addWorker("worker", at(0));
+    writeEpisodes(fixture.graph, ["worker"]);
+    insertRequest(fixture.graph.db, { sessionId: "worker", ts: at(5), isSidechain: true });
+
+    expect(staleEpisodeSessions(fixture.graph.db)).toEqual([]);
+  });
+
+  it("a headless session is never stale", () => {
+    insertSession(fixture.graph.db, { sessionId: "miner", startType: "sdk-cli" });
+    insertRequest(fixture.graph.db, { sessionId: "miner", ts: at(0) });
+
+    expect(staleEpisodeSessions(fixture.graph.db)).toEqual([]);
+  });
+
+  it("lists sessions with no stored episodes, most recently active first, limited to the ids given", () => {
+    addWorker("worker", at(0));
+    insertSession(fixture.graph.db, { sessionId: "human" });
+    insertRequest(fixture.graph.db, { sessionId: "human", ts: at(3) });
+
+    expect(staleEpisodeSessions(fixture.graph.db)).toEqual(["human", "worker"]);
+    expect(staleEpisodeSessions(fixture.graph.db, ["worker", "absent"])).toEqual(["worker"]);
   });
 });
 

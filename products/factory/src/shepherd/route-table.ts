@@ -24,7 +24,8 @@ type Table = Readonly<Record<RunState, Readonly<Record<MergeableState, Row>>>>;
 
 /** A state GitHub will merge through; `blocked` is here because merge facts judge a review-only block. */
 const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review" };
-const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "update-branch" };
+/** A behind head whose reviewer never started still needs its review: `update-branch` would go on to the merge decision with no review at all. */
+const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review" };
 const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer" };
 const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle" };
 /** A draft is no merge candidate: the run ends without a gate, and registering the PR again restarts it. */

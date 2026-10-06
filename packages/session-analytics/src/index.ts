@@ -66,6 +66,7 @@ export {
   buildEpisodes,
   heuristicFor,
   readEpisodeInput,
+  staleEpisodeSessions,
   writeEpisodes,
 } from "./episodes.js";
 export type { WorkerFacts, WorkerRole } from "./roles.js";
