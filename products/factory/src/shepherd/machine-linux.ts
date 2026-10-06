@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 export type ReadFile = (path: string) => string;
 
-export const readProcFile: ReadFile = (path) => readFileSync(path, "utf8");
+const readProcFile: ReadFile = (path) => readFileSync(path, "utf8");
 
 const PROC_MEMINFO = "/proc/meminfo";
 const PROC_PRESSURE_MEMORY = "/proc/pressure/memory";
@@ -16,7 +16,7 @@ const PRESSURE_NORMAL = 1;
 const PRESSURE_WARN = 2;
 const PRESSURE_CRITICAL = 4;
 
-export interface LinuxMemoryReadings {
+interface LinuxMemoryReadings {
   pressureLevel?: number;
   freeMemoryPct?: number;
 }
@@ -27,7 +27,7 @@ function meminfoKib(text: string, field: string): number | undefined {
 }
 
 /** MemAvailable over MemTotal in whole percent rounded down; absent when either line is missing or implausible. */
-export function parseMeminfoFreePct(text: string): number | undefined {
+function parseMeminfoFreePct(text: string): number | undefined {
   const total = meminfoKib(text, "MemTotal");
   const available = meminfoKib(text, "MemAvailable");
   if (total === undefined || available === undefined || total <= 0 || available > total) return undefined;
@@ -35,7 +35,7 @@ export function parseMeminfoFreePct(text: string): number | undefined {
 }
 
 /** Maps the `some avg60` of /proc/pressure/memory onto darwin's 1 normal, 2 warn, 4 critical; absent when unparsed. */
-export function parsePsiPressureLevel(text: string): number | undefined {
+function parsePsiPressureLevel(text: string): number | undefined {
   const match = /^some avg10=[\d.]+ avg60=(\d+(?:\.\d+)?) /m.exec(text);
   const avg60 = match === null ? Number.NaN : Number(match[1]);
   if (!(avg60 >= 0 && avg60 <= 100)) return undefined;
