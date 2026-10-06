@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
+import type { FreezeStoreRef } from "./freeze.js";
 import {
   EffectivePolicySchema,
   OWNER_GATE_POLICY,
@@ -35,6 +36,8 @@ export interface ShepherdServices {
   seats: () => SeatBook;
   /** Absent means no row reports a run waiting for its repo's merge train. */
   train?: MergeTrainRef;
+  /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
+  freeze?: FreezeStoreRef;
 }
 
 export interface Registered {
