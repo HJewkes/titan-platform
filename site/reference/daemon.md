@@ -153,10 +153,12 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 
 ## The utilities, usable alone
 
-- `watchTree(root, onChange, { debounceMs, onError })` — portable recursive watcher. It
-  watches every subdirectory itself, because `fs.watch`'s `recursive` option is not reliable
-  on Linux, and debounces bursts into one callback. `whenWatching(dir)` resolves when a path
-  is covered, so tests never sleep.
+- `watchTree(root, onChange, { debounceMs, onError })` — recursive watcher that debounces
+  bursts into one callback. On macOS and Windows it holds one native recursive `fs.watch`
+  handle on `root`; elsewhere (Linux), where `recursive` is version-dependent, it walks
+  the tree and holds one handle per directory. `isWatching(dir)` is true for any existing
+  path under a recursive root even though it has no handle of its own. `whenWatching(dir)`
+  resolves when a path is covered, so tests never sleep.
 - `EventHub` — subscribe/broadcast fan-out that drops throwing subscribers rather than
   letting one dead connection wedge the rest.
 - `daemonPaths`, `writePidFile`, `readPidFile`, `removePidFile` — atomic (temp-file +
