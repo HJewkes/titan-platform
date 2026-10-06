@@ -16,7 +16,7 @@ Domain-free building blocks. No titan dependencies.
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
 | [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
-| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only | none |
+| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only | `fix-proof` |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | `eslint-plugin` | ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines and TODO comments that name a tracking task | none |
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |

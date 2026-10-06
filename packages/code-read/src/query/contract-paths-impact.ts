@@ -69,7 +69,7 @@ export const ImpactRollup = z.object({
   /** Best (lowest) hotspot rank over the indexed files; null when none ranks. */
   topRank: z.number().int().nullable(),
   openFindings: z.number().int(),
-  /** The rows' deltas summed; present and null exactly when every row's `delta` is. */
+  /** The rows' deltas summed, plus the resolved findings of not-indexed (deleted) files that the baseline held; present and null exactly when every row's `delta` is. */
   delta: z.object({ score: z.number(), findings: FindingDelta }).nullable().optional(),
 });
 
@@ -78,7 +78,7 @@ const pathsImpactArgs = z.object({
   baseline: SnapshotRef.optional(),
   /** Repo-relative paths; a leading `./` is dropped. An absolute path counts only when it lies under `root`. */
   paths: z.array(z.string()).max(PATHS_IMPACT_MAX),
-  /** The absolute directory the repo is checked out at, such as a worktree, so absolute paths under it can be read. */
+  /** The absolute directory the repo is checked out at, such as a worktree, so absolute paths under it can be read. A root above the index's repo root is rejected as invalid arguments. */
   root: z.string().optional(),
   window: ChurnWindow.default("30d"),
 });
@@ -98,7 +98,8 @@ export const PATHS_IMPACT = {
     "What a set of files weighs in the code graph, such as the files a change touches: per file its complexity, its " +
     "hotspot score and rank as `hotspots.list` ranks them at `window`, and its open findings, plus a rollup. A path the " +
     "snapshot does not hold answers status 'not-indexed', and one outside the repo 'outside-repo'; neither is an error. " +
-    "With `baseline`, each indexed row gets a score, complexity, and findings delta; without one, `delta` is absent.",
+    "With `baseline`, each indexed row gets a score, complexity, and findings delta, and the rollup delta also counts the " +
+    "resolved findings of a not-indexed path the baseline held (a deleted file); without one, `delta` is absent.",
   args: pathsImpactArgs,
   result: pathsImpactResult,
 } as const;
