@@ -41,6 +41,12 @@ source.
   `owner-now`, `owner-queue` or `decider`, a shadow flag and the reason, first match wins.
 - You judge whether a category may graduate: `score(predictions, ledger, { policy, now })` gives
   per-category agreement, whether to recommend `auto`, and whether 2 overrules in 7 days demote it.
+- You check the section about one PR before it reaches the owner: `lintPrSection(markdown)`
+  returns `AskFinding`s for rules PR1 (the PR URL), PR2 (a what-it-does paragraph of 2 or more
+  sentences), PR3 (a why-asked part naming a gate class and a rule id in backticks), PR4 (a pro
+  and a con) and PR5 (for a UI PR, a before and after image pair per changed story, or a stated
+  reason there is none). It finds the parts by their headings: What it does, Why it reaches you,
+  Pros, Cons, and Before and after.
 
 For the decaying principles condensed from these rows, use [`memory`](./memory). For raw
 transcript parsing, use [`session-read`](./session-read).
