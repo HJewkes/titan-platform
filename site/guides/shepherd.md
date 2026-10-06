@@ -198,6 +198,15 @@ its pull request is read, so a merge it records during that read keeps it too. A
 its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
 
+Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
+MRG-AU allow row must have had only transient conditions unmet, `merge-tree-clean`,
+`repo-not-frozen` or both, and the gate must still be at the pull request's head. The cancel
+reason starts `superseded: review again: ` and names the conditions, and the run asks the
+policy again at the same head. A row with any other unmet condition, such as
+`verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
+still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
+the same sweep at once for that repo's gates.
+
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
 head, the reviewer has exited, or 10 minutes pass. A reviewer held up by a permission prompt

@@ -88,7 +88,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze };
   return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
 }
 
