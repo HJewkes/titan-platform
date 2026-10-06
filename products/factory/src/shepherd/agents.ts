@@ -18,8 +18,8 @@ export interface SpawnRequest {
   profile: string;
   brief: string;
   cwd: string;
-  /** Reviews already running, which count against the build-capable load limit. */
-  runningReviews?: number;
+  /** Epoch-ms start of each review already running; those under five minutes old count against the build-capable load limit. */
+  runningReviews?: readonly number[];
 }
 
 /** Shepherd's one adapter over the `agent-chat` CLI; each caller picks its profile per spawn. */
@@ -27,7 +27,7 @@ export interface AgentChatAgents {
   roster(): Promise<readonly AgentRow[]>;
   spawn(request: SpawnRequest): Promise<void>;
   /** Resuming an exited agent starts a process like a spawn does, so it passes the same gate. */
-  resume(name: string, message: string, runningReviews?: number): Promise<void>;
+  resume(name: string, message: string, runningReviews?: readonly number[]): Promise<void>;
   /** Delivers `message` to a live agent as one chat message. */
   message(name: string, message: string): Promise<void>;
 }
