@@ -6,6 +6,7 @@ export { launchCommand, paneCommand, relaunchCommand, relaunchScript, shellQuote
 export { HEADLESS_STDIO, headlessSurface } from "./surfaces/headless.js";
 export type { ItermSurfaceName } from "./surfaces/iterm.js";
 export { itermSessionPresent, itermSurface } from "./surfaces/iterm.js";
+export { TMUX_SESSION, tmuxLiteral, tmuxSurface, tmuxWindowPresent } from "./surfaces/tmux.js";
 export type { LaunchCheckTiming, LaunchMarker, PaneReader, ProcessProbe } from "./surfaces/launch-check.js";
 export { LAUNCH_CHECK_TIMING, psProbe, watchLaunch } from "./surfaces/launch-check.js";
 export type { AppleScriptRunner, SpawnedChild, SpawnFn, SurfaceOptions } from "./surfaces/options.js";
