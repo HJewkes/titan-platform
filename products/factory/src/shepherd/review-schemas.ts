@@ -1,4 +1,4 @@
-import type { SourceTextLocator } from "@titan-design/session-read";
+import type { SourceTextLocator, VerdictBlockRefusal } from "@titan-design/session-read";
 import { z } from "zod";
 
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
@@ -125,3 +125,32 @@ const Awaited = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("none") }),
 ]);
 export { Awaited, Dispatched, Intended };
+
+/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+
+/** Keyed by the closed union, so a refusal the parser adds fails to compile here until it is listed. */
+export const MALFORMED_REFUSALS: Record<MalformedRefusal, true> = {
+  no_block: true,
+  multiple_blocks: true,
+  bad_verdict: true,
+  missing_pr_line: true,
+  bad_pr: true,
+  missing_head_line: true,
+  bad_head: true,
+  wrong_target: true,
+};
+
+const Refusal = z.string().refine((value): value is MalformedRefusal => Object.hasOwn(MALFORMED_REFUSALS, value), "a malformed refusal");
+const MalformedSchema = z.object({ refusal: Refusal, writtenAt: z.number().refine(Number.isFinite, "epoch milliseconds") });
+
+/** The record `acceptVerdict` leaves on a `none` whose final message was malformed; `writtenAt` is that message's time. */
+export type Malformed = z.infer<typeof MalformedSchema>;
+
+const WithMalformed = z.looseObject({ kind: z.literal("none"), malformed: MalformedSchema });
+
+/** The `malformed` record in a stored await output, or null for any output without a valid one. */
+export function readMalformed(output: unknown): Malformed | null {
+  const parsed = WithMalformed.safeParse(output);
+  return parsed.success ? parsed.data.malformed : null;
+}
