@@ -45,7 +45,7 @@ const recordedArgv = (): string[] => recorded("argv").split("\0").slice(0, -1);
 const wasRun = (): boolean => existsSync(join(dir, "argv"));
 
 const dispatchOver = (script?: string, over: Partial<AgentChatReviewerDispatchOptions> = {}) =>
-  agentChatReviewerDispatch({ agentChatBin: fakeAgentChat(script), profile: PROFILE, cwdFor: () => checkout, ...over });
+  agentChatReviewerDispatch({ agentChatBin: fakeAgentChat(script), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout, ...over });
 
 const failure = (attempt: Promise<unknown>): Promise<unknown> =>
   attempt.then(
@@ -148,8 +148,17 @@ describe("agentChatReviewerDispatch spawn", () => {
     expect(repos).toEqual(["octo/demo"]);
   });
 
+  it("spawns a security PR and a correctness PR under different profiles", async () => {
+    const dispatch = dispatchOver(undefined, { roles: { g10: "bd-reviewer", standard: "reviewer" } });
+
+    await dispatch.spawn("rv-demo-7", BRIEF, target, { kind: "security" });
+    expect(recordedArgv()[3]).toBe("bd-reviewer");
+    await dispatch.spawn("rv-demo-8", BRIEF, target, { kind: "correctness" });
+    expect(recordedArgv()[3]).toBe("reviewer");
+  });
+
   it("spawns with whichever profile was configured", async () => {
-    await dispatchOver(undefined, { profile: "rv-other" }).spawn("rv-demo-7", BRIEF, target);
+    await dispatchOver(undefined, { roles: { g10: "rv-other", standard: "rv-other" } }).spawn("rv-demo-7", BRIEF, target);
 
     expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", "rv-other", "--brief-stdin"]);
   });
@@ -270,7 +279,7 @@ describe("agentChatReviewerDispatch spawn", () => {
   });
 
   it("refuses when the agent-chat executable is missing", async () => {
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), profile: PROFILE, cwdFor: () => checkout });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout });
 
     expectRefusal(await failure(dispatch.spawn("rv-demo-7", BRIEF, target)), "not found");
   });
