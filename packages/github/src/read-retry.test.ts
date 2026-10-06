@@ -10,9 +10,10 @@ const H2 = fakeSha("head2");
 
 const pull = (sha: string) => ({ number: 7, state: "open", merged: false, merge_commit_sha: null, draft: false, mergeable_state: "clean", head: { ref: "topic", sha, repo: { full_name: REPO } }, base: { ref: "main" } });
 
-function answer(status: number, body: unknown, stderr = ""): GhResult {
+function answer(status: number, body: unknown, stderr = "", etag?: string): GhResult {
   const text = typeof body === "string" ? body : JSON.stringify(body);
-  return { code: status < 300 ? 0 : 1, stdout: `HTTP/2.0 ${status} X\r\n\r\n${text}`, stderr: status < 300 ? "" : stderr || `gh: HTTP ${status}\n` };
+  const head = etag === undefined ? "" : `\r\nETag: ${etag}`;
+  return { code: status < 300 ? 0 : 1, stdout: `HTTP/2.0 ${status} X${head}\r\n\r\n${text}`, stderr: status < 300 ? "" : stderr || `gh: HTTP ${status}\n` };
 }
 
 /** Each route answers its queued results in order, repeating the last one; every call is recorded. */
@@ -58,6 +59,13 @@ describe("gh read retry", () => {
     const gh = wireOf({ "repos/octo/demo": [answer(200, '{"default_br'), answer(200, { default_branch: "main" })] });
 
     expect(await gh.wire.getDefaultBranch(REPO)).toBe("main");
+  });
+
+  it("retries a body that does not parse unconditionally, though GitHub sent an ETag with it", async () => {
+    const gh = wireOf({ "If-None-Match": [answer(304, "")], "repos/octo/demo": [answer(200, '{"default_br', "", '"e1"'), answer(200, { default_branch: "main" })] });
+
+    expect(await gh.wire.getDefaultBranch(REPO)).toBe("main");
+    expect(gh.calls).toHaveLength(2);
   });
 
   it("does not retry a 4xx", async () => {

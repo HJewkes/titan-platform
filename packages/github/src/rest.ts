@@ -33,9 +33,15 @@ export interface Rest {
 
 const API_ORIGIN = "https://api.github.com/";
 
+/** A response whose JSON body has already parsed, so the cache never holds a body that does not. */
+interface Page {
+  headers: ReadonlyMap<string, string>;
+  data: unknown;
+}
+
 interface Cached {
   etag: string;
-  response: HttpResponse;
+  page: Page;
 }
 
 /** Waits before attempts 2 and 3 of a read, so a persistent failure surfaces after about four seconds. */
@@ -45,7 +51,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
   const run = runner(exec, budget);
   const conditional = conditionalGetter(run, cacheSize);
   const retried = <A extends unknown[], R>(read: (...args: A) => Promise<R>) => (...args: A): Promise<R> => retryRead(() => read(...args), sleep);
-  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => json<T>((await conditional(getArgs(path, fields))).body));
+  const get = retried(async <T>(path: string, fields: Fields = {}): Promise<T> => (await conditional(getArgs(path, fields))).data as T);
   return {
     get,
     getOrNull: async <T>(path: string, fields?: Fields) => {
@@ -123,17 +129,17 @@ function scrubbed({ code, stdout, stderr }: GhResult): GhResult {
   return { code, stdout: cleanOut, stderr: cleanErr };
 }
 
-async function followPages<P, T>(get: (args: readonly string[]) => Promise<HttpResponse>, start: string[], pick: (page: P) => T[], items: T[]): Promise<T[]> {
+async function followPages<P, T>(get: (args: readonly string[]) => Promise<Page>, start: string[], pick: (page: P) => T[], items: T[]): Promise<T[]> {
   for (let args: string[] | null = start; args; ) {
-    const response = await get(args);
-    items.push(...pick(json<P>(response.body)));
-    const next = nextPage(response.headers.get("link"));
+    const page = await get(args);
+    items.push(...pick(page.data as P));
+    const next = nextPage(page.headers.get("link"));
     args = next ? getArgs(next, {}) : null;
   }
   return items;
 }
 
-function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[]) => Promise<HttpResponse> {
+function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[]) => Promise<Page> {
   const cache = new Map<string, Cached>();
   return async (args) => {
     const key = args.join("\0");
@@ -143,12 +149,13 @@ function conditionalGetter(run: Run, cacheSize: number): (args: readonly string[
     if (response.status === 304) {
       if (!hit) throw new Error(`gh api ${args.join(" ")} answered 304 to an unconditional request`);
       cache.set(key, hit);
-      return hit.response;
+      return hit.page;
     }
+    const page = { headers: response.headers, data: json<unknown>(response.body) };
     const etag = response.headers.get("etag");
-    if (etag) cache.set(key, { etag, response });
+    if (etag) cache.set(key, { etag, page });
     if (cache.size > cacheSize) cache.delete(cache.keys().next().value!);
-    return response;
+    return page;
   };
 }
 
