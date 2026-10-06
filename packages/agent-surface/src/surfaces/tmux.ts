@@ -12,8 +12,12 @@ export const TMUX_TIMEOUT_MS = 10_000;
 
 const execFileAsync = promisify(execFile);
 
-/** Killing a session's last window can take the whole server with it, which is still "gone". */
-const NO_SERVER = /no server running|error connecting to/;
+/**
+ * Killing a session's last window can take the whole server with it, which is
+ * still "gone". A socket left behind, or none at all, says so; any other
+ * connect error (a permission, say) cannot.
+ */
+const NO_SERVER = /no server running|error connecting to .*\((No such file or directory|Connection refused)\)/;
 
 const socketArgs = (options: SurfaceOptions): string[] =>
   options.tmuxSocket === undefined ? [] : ["-L", options.tmuxSocket];
@@ -36,8 +40,8 @@ async function tmux(options: SurfaceOptions, args: string[]): Promise<string> {
 }
 
 /**
- * tmux expands a window name as a format, where `#(...)` runs a shell command.
- * Doubling every `#` makes the name literal.
+ * tmux expands a new window or session name as a format, where `#(...)` runs a
+ * shell command. Doubling every `#` makes the name literal.
  */
 const tmuxLiteral = (text: string): string => text.replaceAll("#", "##");
 
@@ -66,7 +70,7 @@ async function launchTmux(plan: LaunchPlan, launcher: Launcher, options: Surface
   if (!exists) options.onNotice?.(`tmux session '${session}' did not exist; starting it`);
   const args = exists
     ? ["new-window", ...detached, "-t", `=${session}:`, command]
-    : ["new-session", ...detached, "-s", session, command];
+    : ["new-session", ...detached, "-s", tmuxLiteral(session), command];
   return { surface: "tmux-window", paneRef: await tmux(options, args), ownsSurface: true };
 }
 

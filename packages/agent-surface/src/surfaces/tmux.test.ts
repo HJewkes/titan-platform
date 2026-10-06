@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { LaunchPlan } from '../types.js'
+import type { LaunchPlan, SurfaceName } from '../types.js'
 import type { Launcher } from './command.js'
 import { surfaceFor } from './index.js'
 import { SurfaceRefused, type SurfaceOptions } from './options.js'
@@ -32,6 +32,7 @@ case "$1" in
   list-windows)
     [ -f "$d/noserver" ] && { echo "no server running on /tmp/tmux-0/default" >&2; exit 1; }
     [ -f "$d/unreadable" ] && { echo "server wedged" >&2; exit 1; }
+    [ -f "$d/denied" ] && { echo "error connecting to /tmp/tmux-0/default (Permission denied)" >&2; exit 1; }
     cat "$d/windows" 2>/dev/null ;;
 esac
 `
@@ -107,6 +108,23 @@ describe('tmux-window routing', () => {
   })
 })
 
+describe('an unknown surface name', () => {
+  it('is refused rather than routed to AppleScript', () => {
+    const scripts: string[] = []
+    const runAppleScript = async (script: string): Promise<string> => {
+      scripts.push(script)
+      return ''
+    }
+
+    for (const name of ['bogus', 'tmux-pane']) {
+      expect(() => surfaceFor(name as SurfaceName, LAUNCHER, { platform: 'darwin', runAppleScript })).toThrow(
+        SurfaceRefused,
+      )
+    }
+    expect(scripts).toEqual([])
+  })
+})
+
 describe('launching into a tmux window', () => {
   it('opens a detached named window in fac running the fixed launcher line', async () => {
     const handle = await tmuxFor().launch(plan())
@@ -147,6 +165,15 @@ describe('launching into a tmux window', () => {
     expect(notices).toEqual(["tmux session 'fac' did not exist; starting it"])
   })
 
+  it('keeps a # in a new session name literal', async () => {
+    fs.rmSync(path.join(dir, 'session'))
+
+    await tmuxFor({ tmuxSession: 'a#(touch pwned)' }).launch(plan())
+
+    const argv = callsTo('new-session')[0] ?? []
+    expect(argv[argv.indexOf('-s') + 1]).toBe('a##(touch pwned)')
+  })
+
   it('names the window for the agent id when the plan has no title', async () => {
     await tmuxFor().launch(plan({ title: '' }))
 
@@ -156,18 +183,18 @@ describe('launching into a tmux window', () => {
   it('keeps hostile names and argv words literal for tmux and its shell', async () => {
     const out = path.join(dir, 'out dir')
     fs.mkdirSync(out)
-    const words = ['a b', `it's`, 'x"; touch pwned; "', '$(touch pwned)', '#(touch pwned)']
+    const words = ['a b', `it's`, 'x"; touch pwned; "', '$(touch pwned)', '`touch pwned`', 'two\nlines', '#(touch pwned)']
     const launcher: Launcher = {
       argv: () => ['/bin/sh', '-c', 'printf "%s\\n" "$@" > "$OUT/argv"', 'sh', ...words],
       env: { OUT: out },
       relaunchPath: () => '/unused',
     }
-    const title = `it's "x"; touch pwned #(touch pwned)`
+    const title = `it's "x"; \`touch pwned\` #(touch pwned)`
 
     await tmuxFor({}, launcher).launch(plan({ agentId: 'a b; c', title }))
 
     const argv = callsTo('new-window')[0] ?? []
-    expect(argv[argv.indexOf('-n') + 1]).toBe(`it's "x"; touch pwned ##(touch pwned)`)
+    expect(argv[argv.indexOf('-n') + 1]).toBe(`it's "x"; \`touch pwned\` ##(touch pwned)`)
     const ran = spawnSync('/bin/sh', ['-c', argv.at(-1) ?? ''], { cwd: dir })
     expect(ran.status).toBe(0)
     expect(fs.readFileSync(path.join(out, 'argv'), 'utf8')).toBe(`${words.join('\n')}\n`)
@@ -224,6 +251,18 @@ describe('closing a tmux window', () => {
     const handle = await surface.launch(plan())
     await surface.launch(plan({ agentId: 'ag000002' }))
     touch('unreadable')
+
+    await expect(surface.close(handle)).resolves.toEqual({
+      closed: false,
+      reason: 'could not re-read tmux to confirm window @7 is gone',
+    })
+  })
+
+  it('does not read a socket it may not open as a server that is gone', async () => {
+    const surface = tmuxFor()
+    const handle = await surface.launch(plan())
+    await surface.launch(plan({ agentId: 'ag000002' }))
+    touch('denied')
 
     await expect(surface.close(handle)).resolves.toEqual({
       closed: false,
