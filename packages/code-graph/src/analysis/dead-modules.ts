@@ -1,23 +1,16 @@
-import type { GraphEdge, GraphNode } from "../types.js";
+import type { GraphEdge, GraphNode, NodeRole } from "../types.js";
+import { UNIMPORTED_ROLES } from "../unimported-roles.js";
 import { keepNode, lookupMetric, type ReportContext } from "./graph-report-sections.js";
 import type { DeadModuleRow } from "./graph-report-types.js";
 
 /**
- * Roles that seed reachability (and are never themselves "dead"): executable
- * entries (shebang-prefixed, e.g. the CLI), package barrels (re-export hubs),
- * tests, scripts, configs, and fixtures. Everything a repo actually runs is
- * reachable from these — with dynamic `import()` edges now captured (C-65), the
- * CLI's lazily-loaded command surface is reachable too, so live commands aren't
- * falsely flagged.
+ * Roles that seed reachability (and are never themselves "dead"): every role
+ * nothing imports by design, plus package barrels (re-export hubs). Everything a
+ * repo actually runs is reachable from these — with dynamic `import()` edges now
+ * captured (C-65), the CLI's lazily-loaded command surface is reachable too, so
+ * live commands aren't falsely flagged.
  */
-const ENTRY_ROOT_ROLES = new Set([
-  "entry",
-  "barrel",
-  "test",
-  "script",
-  "config",
-  "fixture",
-]);
+const ENTRY_ROOT_ROLES: ReadonlySet<NodeRole> = new Set<NodeRole>([...UNIMPORTED_ROLES, "barrel"]);
 
 /**
  * A file that is conventionally a bundler entry point even though nothing imports

@@ -311,6 +311,40 @@ describe("the freeze store", () => {
   });
 });
 
+describe("thaw notice from the freeze store ref", () => {
+  function boundRef(): { ref: ReturnType<typeof freezeStoreRef>; thawed: string[]; unsubscribe: () => void } {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [freezeMigration(6)]);
+    const ref = freezeStoreRef(() => 0);
+    ref.bind(db);
+    const thawed: string[] = [];
+    const unsubscribe = ref.onThaw((repo) => thawed.push(repo));
+    return { ref, thawed, unsubscribe };
+  }
+
+  it("names the repo once for a green unfreeze and once for an owner release", () => {
+    const { ref, thawed } = boundRef();
+    ref.get().freeze(A, RED);
+    ref.get().unfreeze(A, GREEN);
+    const episode = ref.get().freeze(B, RED).episode;
+
+    ref.get().release(B, episode);
+    ref.get().release(B, episode);
+
+    expect(thawed).toEqual([A, B]);
+  });
+
+  it("stays quiet for a refused unfreeze, and after the listener unsubscribes", () => {
+    const { ref, thawed, unsubscribe } = boundRef();
+    ref.get().freeze(A, RED);
+    ref.get().unfreeze(A, RED);
+    unsubscribe();
+    ref.get().unfreeze(A, GREEN);
+
+    expect(thawed).toEqual([]);
+  });
+});
+
 describe("the freeze migration", () => {
   const dirs: string[] = [];
   afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
