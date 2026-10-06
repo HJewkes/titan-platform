@@ -6,6 +6,7 @@ import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/
 import { buildSha } from "./build-info.js";
 import type { CheckPorts } from "./service-check.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
+import type { TickStatusRead } from "./tick-status.js";
 
 const COMMAND_TIMEOUT_MS = 30_000;
 const NOT_FOUND = 127;
@@ -72,6 +73,12 @@ export function systemServicePorts(): ServicePorts {
   };
 }
 
+/** The file agent-chat's burndown tick writes; AGENT_CHAT_HOME decides where, as it does for agent-chat. */
+function tickStatusRead(): TickStatusRead {
+  const file = join(process.env.AGENT_CHAT_HOME || join(homedir(), ".agent-chat"), "burndown-status.json");
+  return { file, text: readIfPresent(file) };
+}
+
 export function systemCheckPorts(): CheckPorts {
-  return { ...systemServicePorts(), isAlive: isProcessAlive, processStartedAt: async (pid) => getProcessStartTime(pid), installedBuildSha: buildSha };
+  return { ...systemServicePorts(), isAlive: isProcessAlive, processStartedAt: async (pid) => getProcessStartTime(pid), installedBuildSha: buildSha, tickStatus: tickStatusRead };
 }

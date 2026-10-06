@@ -293,6 +293,9 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+export type { BucketableViolation, ViolationBuckets } from "./diff/violation-buckets.js";
+export { bucketViolations } from "./diff/violation-buckets.js";
+export type { ViolationIdentity } from "./check/violation-key.js";
 export type {
   FootprintGraph,
   FootprintOptions,

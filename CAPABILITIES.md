@@ -464,7 +464,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateBriefInvalid`, `GateCancelled`, `GateError`, `GateExpired`
-- +30 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
+- +32 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 
@@ -594,7 +594,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +383 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +387 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -611,8 +611,8 @@ Key exports:
 - `rule-text`: `describeRule`
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
-- `query`: `serializeContract`, `Finding`, `FindingStatus`, `SourceExcerpt`
-- +80 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
+- `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
+- +94 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
 
 <a id="cap-decider"></a>
 
@@ -721,7 +721,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +184 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +197 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

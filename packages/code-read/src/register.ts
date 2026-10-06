@@ -28,6 +28,8 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
       baseline: { long: "--baseline", description: "Snapshot id or ref to compute deltas against" },
       metrics: { long: "--metric", description: "Metric to report; repeatable (default: every one that applies)" },
+      lenses: { long: "--lens", description: "exports, score, centrality, coupling, or tests; repeatable" },
+      window: { long: "--window", description: "Churn window the score lens reads, such as 90d, or lifetime (default 30d)" },
     },
   },
   "node.resolve": {
@@ -86,6 +88,15 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       combined: { long: "--combined", description: "Also return 100 minus every signal's penalty" },
       reading_limit: { long: "--reading-limit", description: "Files in the reading order (default 6, max 50)" },
       look_limit: { long: "--look-limit", description: "Look-first rows (default 8, max 50)" },
+    },
+  },
+  "changes.get": {
+    positional: ["baseline"],
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+      cutoff: { long: "--cutoff", description: "Hotspot score a file is over the cutoff at (default 3000)" },
+      limit: { long: "--limit", description: "Rows per list (default 20, max 500; 0 for counts only)" },
     },
   },
   "node.neighbors": {

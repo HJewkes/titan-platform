@@ -9,9 +9,11 @@ export type {
 } from "./contract.js";
 export { AGENT_COMMANDS, CODE_READ_API_VERSION, COMMAND_NAMES, CONTRACT, serializeContract } from "./contract.js";
 export { HIERARCHY_ROW_CAP } from "./contract-nodes.js";
+export { Centrality, CoupledPartners, ExportRow, LinkedTests, NodeLens, NodeLenses, ScoreBreakdown } from "./contract-node-lenses.js";
 export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
 export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
 export { AttentionSignal, LookFirstRow, OVERVIEW_ROWS_MAX, ReadingOrderRow } from "./contract-overview.js";
+export { CHANGES_ROWS_MAX, CoChangePair, FindingChange, NewFile, Regression, ScoreChange } from "./contract-changes.js";
 export {
   Capabilities,
   MetricDescriptor,
@@ -50,6 +52,7 @@ export { resolveNode } from "./resolve.js";
 export { listFindings } from "./findings-list.js";
 export { listHotspots } from "./hotspots.js";
 export { getOverview } from "./overview.js";
+export { getChanges } from "./changes.js";
 export { RELATED_CAP, getFinding } from "./finding-get.js";
 export { getNeighbors } from "./neighbors.js";
 export { excessOf } from "./finding-rows.js";

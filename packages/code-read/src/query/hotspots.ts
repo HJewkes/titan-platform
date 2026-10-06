@@ -6,6 +6,7 @@ import {
   computeReportDrift,
   keepNode,
   topHotspots,
+  type ComputeDriftInput,
   type HotspotRow,
   type ReportContext,
   type ReportContextInput,
@@ -88,11 +89,16 @@ export function scoredRows(model: ReadModel, args: Pick<ListArgs, "grain" | "win
   return scored.sort(byScoreThenId);
 }
 
+/** A snapshot in the row shape code-graph's report drift records as its baseline. */
+export function driftBaseline(info: SnapshotInfo): ComputeDriftInput["baselineSnapshot"] {
+  const { commit, ...rest } = info;
+  return { ...rest, commitHash: commit, attrs: {} };
+}
+
 /** New and worsened as code-graph's report drift defines them, over every row rather than a top N. */
 function compare(current: readonly Scored[], before: readonly Scored[], baseline: SnapshotInfo): Comparison {
-  const { commit, ...rest } = baseline;
   const drift = computeReportDrift({
-    baselineSnapshot: { ...rest, commitHash: commit, attrs: {} },
+    baselineSnapshot: driftBaseline(baseline),
     currentHotspots: current,
     baselineHotspots: before,
     currentHotspotScore: () => 0,
