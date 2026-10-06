@@ -45,4 +45,5 @@ converges on the same templates and ids as one all-at-once run over the same inp
 `DrainTreeOptions`: `depth` (4), `simTh` (0.55, higher than Drain3's 0.4 because dev
 output is more heterogeneous than syslog), `maxChildren` (100), `maxClusters` (5000,
 evicting the least-supported cluster on overflow). `evicting` reports when a partition
-has hit the cap.
+has hit the cap. An evicted cluster's template binding is dropped with it, so a template
+whose cluster recurs after eviction comes back with the same id and `isNewTemplate: true`.
