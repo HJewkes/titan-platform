@@ -506,6 +506,39 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
   });
 
+  it("asks again for a review a busy broker never started on a behind head, and opens no approve-merge gate before it runs", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length === 1 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
+    Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.slice(0, 2).map((request) => request.headSha)).toEqual([H1, H1]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  describe.each(["not-started", "timeout", "no-verdict"] as const)("a %s review of a head behind a moved base in a non-strict repo", (cause) => {
+    it("reviews the head again before any merge decision, so no gate opens on a head with no verdict", async () => {
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length === 1 ? { kind: "none", cause } : merges(ctx, request)));
+      w.fake.rules.strict = false;
+      // A non-strict stale head reads clean to ci-wait; the observe read after the first review is the one that sees it behind.
+      const seen = w.fake.onGetPr;
+      let observed = false;
+      w.fake.onGetPr = (pr, reads) => (seen?.(pr, reads), asked.length > 0 && !observed && pr.headSha === H1 && ((observed = true), Object.assign(pr, { mergeableState: "behind" })));
+      Object.assign(w.fake.pr(1), { mergeableState: "clean", behind: true });
+      const tip = w.fake.refs.get("main")!;
+      w.fake.commits.set(tip, { sha: tip, parents: [], committedAt: "2099-01-01T00:00:00Z" });
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      // Unfixed, the first review's silence opens approve-merge at once, so the second review is never asked.
+      await Promise.race([w.host.runtime.wait(runId), gateOpened(w.host, gateId(runId, "approve-merge"))]);
+
+      expect(asked.length).toBeGreaterThan(1);
+    });
+  });
+
   it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
     const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
     const asked: ReviewRequest[] = [];

@@ -11,6 +11,7 @@ export type {
   NodeRole,
   SnapshotRow,
 } from "./types.js";
+export { NODE_KINDS, NODE_ROLES } from "./types.js";
 
 export type { SnapshotInsert } from "./store.js";
 export { CodeGraphStore, openCodeGraph } from "./store.js";
