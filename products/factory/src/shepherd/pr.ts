@@ -17,6 +17,7 @@ import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phase
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
+import { publishOutcome } from "./publish-review.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { expireStaleGates, supersedingGates } from "./stale-gates.js";
@@ -226,7 +227,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
     const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);
     const observed = await observePr(run.ctx, run.target, headSha);
-    const outcome = reviewOutcome(verdict, observed, headSha);
+    const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
     const routed: Routed = { headSha, verdict, observed, outcome, route: routeFor(observed.runState, observed.mergeableState, outcome) };
     if (await takeRoute(run, routed)) return;
   }
@@ -238,13 +239,6 @@ interface Routed {
   observed: ObservedPr;
   outcome: ReviewOutcome;
   route: Route;
-}
-
-function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string): ReviewOutcome {
-  if (observed.headSha !== headSha) return "head-moved";
-  if (verdict.kind === "MERGE") return "MERGE";
-  if (verdict.kind === "none") return verdict.cause ?? "no-verdict";
-  return "FIX_FIRST";
 }
 
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
@@ -283,7 +277,8 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       throw new LeaveLand(endedOutcome(routed));
     case "update-branch":
     case "new-cycle":
-      if (route === "update-branch" && behindAt(run.lastCi, headSha)) return true;
+      // A head behind a moved base lands as it stands, so only a MERGE verdict may take it to the merge decision.
+      if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
 }
