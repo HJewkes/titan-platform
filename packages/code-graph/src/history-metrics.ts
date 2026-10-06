@@ -23,6 +23,8 @@ export interface HistoryMetricsOptions {
   includeLifetime?: boolean;
   /** Epoch seconds that windows end at; defaults to the current time. */
   nowEpoch?: number;
+  /** Read history up to this rev instead of HEAD; pair it with the rev's commit time as `nowEpoch`. */
+  rev?: string;
 }
 
 /** Windows the dashboard switcher offers; churn is stored for each by default. */
@@ -69,7 +71,12 @@ export function loadHistoryMetrics(
   const primaryWindow = options.churnWindowDays ?? 30;
   const windows = resolveChurnWindows(options.churnWindows, primaryWindow, options.includeLifetime === true);
   // Load the widest window once and slice it per window; lifetime sorts widest.
-  const wide = loadChurnEntries({ repoRoot: idRoot, windowDays: windows[windows.length - 1]! });
+  const wide = loadChurnEntries({
+    repoRoot: idRoot,
+    windowDays: windows[windows.length - 1]!,
+    rev: options.rev,
+    untilEpoch: options.nowEpoch,
+  });
   if (wide === null) return null;
   const nowEpoch = options.nowEpoch ?? Math.floor(Date.now() / 1000);
   const churnByWindow = aggregateChurnWindows(wide, windows, nowEpoch, knownPaths);
@@ -77,7 +84,7 @@ export function loadHistoryMetrics(
   const metrics = [
     ...churnMetrics(churnByWindow),
     ...ownershipMetrics(primaryEntries, primaryWindow, knownPaths),
-    ...recencyMetrics(idRoot, churnByWindow, knownPaths, nowEpoch),
+    ...recencyMetrics({ idRoot, rev: options.rev, knownPaths, nowEpoch }, churnByWindow),
   ];
   // Lifetime ownership is the dominant owner over full history; `wide` is full history when lifetime is on.
   if (options.includeLifetime === true) metrics.push(...ownershipMetrics(wide, "lifetime", knownPaths));
@@ -182,16 +189,15 @@ function mergeAuthorChurn(
 
 /** Recency for files that churned in each window; an unknown first-seen date still yields recency 1. */
 function recencyMetrics(
-  idRoot: string,
+  at: { idRoot: string; rev: string | undefined; knownPaths: ReadonlySet<string>; nowEpoch: number },
   churnByWindow: ReadonlyMap<ChurnWindow, ReadonlyMap<string, PathChurn>>,
-  knownPaths: ReadonlySet<string>,
-  nowEpoch: number,
 ): GraphMetric[] {
   const churnedByWindow = new Map<ChurnWindow, ReadonlySet<string>>();
   for (const [window, byPath] of churnByWindow) {
     if (byPath.size > 0) churnedByWindow.set(window, new Set(byPath.keys()));
   }
   if (churnedByWindow.size === 0) return [];
-  const firstSeen = loadFileFirstSeen({ repoRoot: idRoot, knownPaths }) ?? new Map<string, number>();
-  return computeRecencyWindows(firstSeen, churnedByWindow, nowEpoch);
+  const firstSeen =
+    loadFileFirstSeen({ repoRoot: at.idRoot, knownPaths: at.knownPaths, rev: at.rev }) ?? new Map<string, number>();
+  return computeRecencyWindows(firstSeen, churnedByWindow, at.nowEpoch);
 }
