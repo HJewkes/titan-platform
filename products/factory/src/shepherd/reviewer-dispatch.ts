@@ -142,6 +142,6 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
     spawn: (name, brief, target) => askBroker(async () => agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews(roster) }) })),
-    resume: (name, brief) => askBroker(() => agents.resume(name, brief)),
+    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews(roster)))),
   };
 }

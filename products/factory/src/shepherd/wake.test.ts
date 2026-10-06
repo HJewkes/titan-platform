@@ -321,6 +321,18 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
     ]);
   });
 
+  it("polls again when the spawn gate defers the resume fallback, and resumes once it admits", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, turnSince: (agents) => agents.asked.length >= 2 });
+    const resume = scene.agents.resume;
+    let resumes = 0;
+    scene.agents.resume = async (...args) => (++resumes === 2 ? Promise.reject(new SpawnDeferred("load5 40 is past the limit 28")) : resume(...args));
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a", mode: "resume", fallback: "resume" });
+    expect(resumes).toBe(3);
+  });
+
   it("returns unhandled when neither the wake nor its fallback starts a turn", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
 

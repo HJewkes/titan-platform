@@ -26,7 +26,8 @@ export interface SpawnRequest {
 export interface AgentChatAgents {
   roster(): Promise<readonly AgentRow[]>;
   spawn(request: SpawnRequest): Promise<void>;
-  resume(name: string, message: string): Promise<void>;
+  /** Resuming an exited agent starts a process like a spawn does, so it passes the same gate. */
+  resume(name: string, message: string, runningReviews?: number): Promise<void>;
   /** Delivers `message` to a live agent as one chat message. */
   message(name: string, message: string): Promise<void>;
 }
@@ -41,7 +42,11 @@ export function agentChatAgents(agentChatBin: string, options: AgentChatOptions 
         gate?.admit(name, runningReviews);
         await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
       }),
-    resume: (name, message) => mutating(roster, async () => void resumeAgent(agentChatBin, name, message, timeoutMs)),
+    resume: (name, message, runningReviews) =>
+      mutating(roster, async () => {
+        gate?.admit(name, runningReviews);
+        await resumeAgent(agentChatBin, name, message, timeoutMs);
+      }),
     message: (name, message) => mutating(roster, async () => messageAgent(agentChatBin, name, message, timeoutMs)),
   };
 }

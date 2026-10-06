@@ -223,12 +223,24 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
   const at = deps.now();
   try {
-    await (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task)));
+    await whileDeferred(deps, signal, () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task))));
   } catch (error) {
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback };
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
+}
+
+/** A spawn gate that defers the resume is waited out on the poll, as a broker that is down is. */
+async function whileDeferred(deps: ShepherdDeps, signal: AbortSignal, ask: () => Promise<void>): Promise<void> {
+  for (;;) {
+    try {
+      return await ask();
+    } catch (error) {
+      if (!(error instanceof SpawnDeferred)) throw error;
+    }
+    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+  }
 }
 
 function turnWatch(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, name: string, signal: AbortSignal) {

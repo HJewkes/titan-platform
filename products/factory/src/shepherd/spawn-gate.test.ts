@@ -112,6 +112,16 @@ describe("every factory-started agent passes the one gate", () => {
     expect(ran()).toBe(false);
   });
 
+  it("defers the resume of an exited agent, for the standing reviewer as a busy refusal, and starts nobody", async () => {
+    mkdirSync(join(dir, "co"));
+    const gate = overloaded();
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), profile: "rv", cwdFor: () => join(dir, "co"), roster, gate });
+
+    await expect(agentChatAgents(bin(), { roster, gate }).resume("impl-a", "wake")).rejects.toBeInstanceOf(SpawnDeferred);
+    await expect(dispatch.resume("rv-standing", "brief")).rejects.toBeInstanceOf(ReviewerBrokerBusy);
+    expect(ran()).toBe(false);
+  });
+
   it("asks again on the step's next wait and starts the reviewer once load settles, leaving no record of the deferral", async () => {
     mkdirSync(join(dir, "co"));
     const state = { load5: 40, now: 0 };

@@ -159,7 +159,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const gate = spawnGate({ limits: shepherd?.spawnGate });
+  const gate = overrides.spawnGate ?? spawnGate({ limits: shepherd?.spawnGate });
   const review = configuredReview(shepherd, seats, roster, gate);
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
