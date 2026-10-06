@@ -248,6 +248,24 @@ describe("SqliteGateStore concurrent settle", () => {
     expect(new SqliteGateStore(open(dbPath), { migrate: false }).get("g1")).toMatchObject({ status: "resolved", payload: "from B" });
   });
 
+  it("returns the other store's row when it resolved with the same answer while authorize ran", () => {
+    const dbPath = tempDbPath();
+    const storeB = new SqliteGateStore(open(dbPath));
+    const storeA = new SqliteGateStore(open(dbPath), {
+      migrate: false,
+      authorize: (gate) => {
+        storeB.resolve(gate.id, { decision: "merge", headSha: "abc" }, REMOTE);
+        return { allowed: true };
+      },
+    });
+    storeA.create({ id: "g1", prompt: "ship it?" });
+
+    const returned = storeA.resolve("g1", { headSha: "abc", decision: "merge" }, OWNER);
+
+    expect(returned).toMatchObject({ status: "resolved", payload: { decision: "merge", headSha: "abc" }, resolvedBy: REMOTE });
+    expect(storeB.get("g1")).toEqual(returned);
+  });
+
   it("reports GateExpired when the other store's read expired the gate first", () => {
     const dbPath = tempDbPath();
     let millis = Date.parse(T_CREATED);

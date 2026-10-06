@@ -446,15 +446,7 @@ describe.each([
   });
 
   it("keeps a cancel that lands while authorize runs and refuses the resolve", () => {
-    const cancelDuringAuthorize: { store?: GateStore } = {};
-    const racing = scoped(
-      makeHarness((gate) => {
-        cancelDuringAuthorize.store?.cancel(gate.id, "withdrawn");
-        return { allowed: true };
-      }),
-    ).store;
-    cancelDuringAuthorize.store = racing;
-    racing.create({ id: "g1", prompt: "ship it?" });
+    const racing = racingStore((store, id) => store.cancel(id, "withdrawn"));
 
     const error = catchError(() => racing.resolve("g1", "ok", OWNER));
 
@@ -462,6 +454,41 @@ describe.each([
     expect(error).toMatchObject({ status: "cancelled" });
     expect(racing.get("g1")).toMatchObject({ status: "cancelled", reason: "withdrawn", payload: undefined, resolvedBy: undefined });
   });
+
+  it("returns the settled gate when the same answer lands while authorize runs", () => {
+    const racing = racingStore((store, id) => store.resolve(id, { approved: true, note: "ship" }, REMOTE));
+
+    const returned = racing.resolve("g1", { note: "ship", approved: true }, OWNER);
+
+    expect(returned).toMatchObject({ status: "resolved", payload: { approved: true, note: "ship" }, resolvedBy: REMOTE });
+    expect(racing.get("g1")).toEqual(returned);
+  });
+
+  it("refuses a different answer that lost the race and keeps the first one", () => {
+    const racing = racingStore((store, id) => store.resolve(id, { approved: true }, REMOTE));
+
+    const error = catchError(() => racing.resolve("g1", { approved: false }, OWNER));
+
+    expect(error).toBeInstanceOf(GateAlreadySettled);
+    expect(racing.get("g1")).toMatchObject({ status: "resolved", payload: { approved: true }, resolvedBy: REMOTE });
+  });
+
+  /** A store holding pending gate g1 whose first authorize call settles it through `settleFirst`, as a second writer would. */
+  function racingStore(settleFirst: (store: GateStore, id: string) => void): GateStore {
+    const racer: { store?: GateStore; done?: boolean } = {};
+    const store = scoped(
+      makeHarness((gate) => {
+        if (!racer.done && racer.store) {
+          racer.done = true;
+          settleFirst(racer.store, gate.id);
+        }
+        return { allowed: true };
+      }),
+    ).store;
+    racer.store = store;
+    store.create({ id: "g1", prompt: "ship it?" });
+    return store;
+  }
 
   function scoped(extra: Harness): Harness {
     extraHarnesses.push(extra);
