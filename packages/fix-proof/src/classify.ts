@@ -90,6 +90,9 @@ function outcomes(selected: string[], base: Map<string, FileRun>, head: Map<stri
   );
   const missingOn = (side: "base" | "head") => files.every((file) => file[side] === "not-collected");
   if (missingOn("head")) return { verdict: "error", tests, files, error: "no selected file in the head report" };
+  if (files.some((file) => file.head !== "ran")) {
+    return { verdict: "error", tests, files, error: "a selected file is missing or failed to load in the head report" };
+  }
   if (missingOn("base")) return { verdict: "error", tests, files, error: "no selected file in the base report" };
   return { verdict: verdictOf(tests), tests, files };
 }
