@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent-dispatch",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv",
   "type": "module",
   "main": "./dist/index.js",

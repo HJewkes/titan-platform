@@ -1,5 +1,12 @@
 # @titan-design/cluster
 
+## 0.1.3
+
+### Patch Changes
+
+- 1b83b86: `DrainTree.insert` now reports the clusters it evicted in `MatchResult.evicted`, and `Clusterer` drops their template bindings, so `templateCount` and the snapshot's `templateIds` stay bounded by `maxClusters`. Loading an older snapshot prunes bindings for clusters it no longer holds. `isNewTemplate` now means no live cluster was bound to the id: a template whose cluster was evicted and recurs is reported new again, as it already was after a restore.
+- fe76ae0: State the template-id contract as it is: ids are deterministic for a given input order and stable across restarts through snapshot and restore, and lines that Drain merges share the id of whichever line founded the cluster. No change to how ids are computed.
+
 ## 0.1.2
 
 ### Patch Changes

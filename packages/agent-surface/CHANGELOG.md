@@ -1,5 +1,11 @@
 # @titan-design/agent-surface
 
+## 0.2.1
+
+### Patch Changes
+
+- 3fe6707: Point the docs at `runAgent` with `harness: "claude-print"` instead of `runClaudePrint` for bounded `claude -p` runs.
+
 ## 0.2.0
 
 ### Minor Changes

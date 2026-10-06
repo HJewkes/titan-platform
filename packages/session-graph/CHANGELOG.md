@@ -1,5 +1,24 @@
 # @titan-design/session-graph
 
+## 0.13.1
+
+### Patch Changes
+
+- f886302: `SpanFtsTables.index` now re-inserts the FTS row of a span whose row `clearIndex` removed, so `clearIndex` followed by re-indexing every surviving span rebuilds the index instead of leaving it empty. session-graph documents why `resetIndex` still deletes the span table.
+- 790f304: Correct the docs that called the schema safe to drop and re-derive: migrations must preserve `fact` and `session` rows, and several tables are not derived from transcripts.
+- Updated dependencies [18e081a]
+- Updated dependencies [1b83b86]
+- Updated dependencies [ea96b66]
+- Updated dependencies [218cbac]
+- Updated dependencies [f886302]
+- Updated dependencies [fe76ae0]
+- Updated dependencies [411b4f0]
+- Updated dependencies [d10a591]
+  - @titan-design/session-read@0.9.0
+  - @titan-design/cluster@0.1.3
+  - @titan-design/store-sqlite@0.3.3
+  - @titan-design/agent-protocol@0.5.0
+
 ## 0.13.0
 
 ### Minor Changes
