@@ -208,7 +208,8 @@ export interface RowInput {
 
 const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
 
-function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
+/** How a finished run ended, from its sh-landed or sh-stopped step; null while neither is recorded. */
+export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
   const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
   const parsed = stopped && StoppedData.safeParse(stopped.data);
