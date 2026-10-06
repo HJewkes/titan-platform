@@ -18,35 +18,24 @@ function row(fields: Partial<LedgerRowWire>): LedgerRowWire {
   };
 }
 
+/** Every way an owner adopts a phrase: the label as written, the label with "ok", or typed after another label. */
+function adoptions(phrase: string) {
+  return [
+    { recommended: phrase, answer: phrase, covers: null },
+    { recommended: `${phrase} (Recommended)`, answer: "ok", covers: null },
+    { recommended: "Ship it", answer: `Ship it; ${phrase}`, covers: null },
+    { recommended: null, answer: phrase, covers: null },
+  ];
+}
+
 describe("bulkSignal on the worked examples", () => {
-  it("reads a bare 'ok' to a quoted 'ok <plan> defaults' reply as plural defaults", () => {
-    const signal = bulkSignal({
-      recommended: "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)",
-      answer: "ok",
-      covers: null,
-    });
-
-    expect(signal).toEqual({ covers: null, reason: "plural-defaults" });
-  });
-
-  it("reads 'accept all recommended answers' as plural defaults", () => {
-    const signal = bulkSignal({
-      recommended: null,
-      answer: "19 plan questions: accept all recommended answers (ZD-3 s7, ZD-1 D1-D4)",
-      covers: null,
-    });
-
-    expect(signal?.reason).toBe("plural-defaults");
-  });
-
-  it("reads 'accept the 9 defaults' as plural defaults covering nine", () => {
-    const signal = bulkSignal({
-      recommended: "accept the 9 defaults of the ZZ-695 decider plan",
-      answer: "All nine section 9 defaults accepted",
-      covers: null,
-    });
-
-    expect(signal).toEqual({ covers: 9, reason: "plural-defaults" });
+  it.each([
+    ["Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)", { covers: 6, reason: "plural-defaults" }],
+    ["19 plan questions: accept all recommended answers (ZD-3 s7, ZD-1 D1-D4)", { covers: null, reason: "plural-defaults" }],
+    ["accept the 9 defaults of the ZZ-695 decider plan", { covers: 9, reason: "plural-defaults" }],
+    ["All nine section 9 defaults accepted", { covers: 9, reason: "plural-defaults" }],
+  ])("reads %j as the same batch wherever the owner adopts it", (phrase, expected) => {
+    for (const input of adoptions(phrase)) expect(bulkSignal(input)).toEqual(expected);
   });
 });
 
@@ -63,7 +52,7 @@ describe("bulkSignal signals", () => {
     ["yes to Q1-Q5", 5],
     ["go with D2 to D7", 6],
     ["ok, questions 1-10 are fine", 10],
-    ["take the fourteen plans", 14],
+    ["ok, the fourteen plans", 14],
   ])("reads the range or count in %j", (answer, covers) => {
     const signal = bulkSignal({ recommended: null, answer, covers: null });
 
@@ -80,7 +69,13 @@ describe("bulkSignal signals", () => {
     expect(signal).toEqual({ covers: 4, reason: "plural-defaults" });
   });
 
-  it.each(["I don't accept all recommended answers", "not ok to take all defaults", "All nine defaults not accepted"])(
+  it.each([
+    "I don't accept all recommended answers",
+    "not ok to go with all defaults",
+    "All nine defaults not accepted",
+    "Approve all defaults? no",
+    "Accept all as written in the doc for Q2 only",
+  ])(
     "finds nothing in the negated %j",
     (answer) => {
       expect(bulkSignal({ recommended: null, answer, covers: null })).toBeNull();
@@ -105,12 +100,11 @@ describe("bulkSignal signals", () => {
     "Take 2 decisions per batch",
     "Keep all defaults",
     "Keep the UTF-8 defaults",
+    "accept UTF-8 defaults",
     "Approve PR-12 recommendations",
-    "Accept the 9 defaults",
-  ])("finds nothing in the single decision %j accepted as written", (label) => {
-    expect(bulkSignal({ recommended: label, answer: label, covers: null })).toBeNull();
-    expect(bulkSignal({ recommended: label, answer: "ok", covers: null })).toBeNull();
-    expect(bulkSignal({ recommended: `${label} (Recommended)`, answer: label, covers: null })).toBeNull();
+    "accept 10 questions per page",
+  ])("finds nothing in the single decision %j wherever the owner adopts it", (phrase) => {
+    for (const input of adoptions(phrase)) expect(bulkSignal(input)).toBeNull();
   });
 
   it("finds nothing in one value applied everywhere", () => {
@@ -129,20 +123,29 @@ describe("bulkSignal signals", () => {
 });
 
 describe("LedgerRowSchema applying the bulk rule", () => {
-  it("demotes a recommended pick that sends a quoted batch reply", () => {
+  it("demotes a recommended pick of a quoted batch reply with the count it read", () => {
     const label = "Recommend 'ok ZZ-343 defaults' (6 Qs in the ZZ-343 plan)";
     const parsed = LedgerRowSchema.parse(row({ recommended: label, answer: "ok", pick_type: "recommended" }));
 
-    expect(parsed).toMatchObject({ outcome: "bulk", covers: null, bulk_from: { outcome: "accept", covers: null } });
+    expect(parsed).toMatchObject({ outcome: "bulk", covers: 6, bulk_from: { outcome: "accept", covers: null } });
+  });
+
+  it("demotes a recommended pick of a plain defaults batch", () => {
+    const label = "accept the 9 defaults of the ZZ-695 decider plan";
+    const parsed = LedgerRowSchema.parse(row({ recommended: label, answer: "yes", pick_type: "recommended" }));
+
+    expect(parsed).toMatchObject({ outcome: "bulk", covers: 9 });
   });
 
   it.each(["Keep 10 questions per page", "Keep Q1-Q4 reporting", "Keep all defaults"])(
-    "keeps the recommended option %j accepted as written as accept",
-    (label) => {
-      const options = [{ label: `${label} (Recommended)` }, { label: "Hold" }];
-      const parsed = LedgerRowSchema.parse(row({ options, recommended: options[0]?.label ?? null, answer: label }));
+    "keeps %j as accept when picked and as amend when typed after another label",
+    (phrase) => {
+      const options = [{ label: `${phrase} (Recommended)` }, { label: "Hold" }];
+      const picked = LedgerRowSchema.parse(row({ options, recommended: options[0]?.label ?? null, answer: phrase }));
+      const typed = LedgerRowSchema.parse(row({ recommended: "Ship it", answer: `Ship it, and ${phrase.toLowerCase()}` }));
 
-      expect(parsed).toMatchObject({ outcome: "accept", covers: null });
+      expect(picked).toMatchObject({ outcome: "accept", covers: null });
+      expect(typed).toMatchObject({ outcome: "amend", covers: null });
     },
   );
 
