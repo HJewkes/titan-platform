@@ -100,9 +100,7 @@ function separateRedirects(words: readonly ShellWord[]): Redirected {
 
 /** The program followed by its subcommand words, or empty when the command has no program. */
 function headOf(words: readonly ShellWord[]): string[] {
-  let start = 0;
-  while (start < words.length && !words[start]!.quoted && isPrefix(words[start]!.text)) start++;
-  start = skipLookThrough(words, start);
+  const start = programStart(words);
   const program = words[start];
   if (!program || program.quoted) return [];
   const name = path.basename(program.text.replace(/^\(+/, '').replace(CLOSERS, ''));
@@ -110,6 +108,13 @@ function headOf(words: readonly ShellWord[]): string[] {
   if (OPERAND_ONLY.has(name) || CLOSERS.test(program.text)) return [name];
   const args = words.slice(start + 1);
   return specialHead(name, args) ?? [name, ...subcommands(args)];
+}
+
+/** The index of the word naming the program, past prefixes (`if`, `A=1`) and wrappers (`timeout 60`). */
+export function programStart(words: readonly ShellWord[]): number {
+  let start = 0;
+  while (start < words.length && !words[start]!.quoted && isPrefix(words[start]!.text)) start++;
+  return skipLookThrough(words, start);
 }
 
 function subcommands(args: readonly ShellWord[]): string[] {
