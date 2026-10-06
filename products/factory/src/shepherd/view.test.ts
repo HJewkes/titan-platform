@@ -56,12 +56,12 @@ describe("shepherd view phases", () => {
 
   it("names the wait a review step has noted in place of the plain review wait, and drops it once cleared", () => {
     const run = pausedAt("sh-review:abc1234");
-    noteReviewWait("acme/widgets", 1, "waiting for the broker to start reviewer rv-1: machine guard: full");
+    noteReviewWait("acme/widgets", 1, "waiting for reviewer admission (the broker has not started rv-1): machine guard: full");
 
     const noted = watchRow({ registration, run }).nextAction;
     clearReviewWait("acme/widgets", 1);
 
-    expect(noted).toBe("waiting for the broker to start reviewer rv-1: machine guard: full");
+    expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): machine guard: full");
     expect(watchRow({ registration, run }).nextAction).toBe("waiting for the review");
   });
 });

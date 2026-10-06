@@ -243,15 +243,16 @@ export class SqliteGateStore extends BaseGateStore {
     return row ? toRecord(row) : undefined;
   }
 
-  protected update(record: GateRecord): void {
+  protected update(record: GateRecord): boolean {
     const resolvedBy = record.resolvedBy ? JSON.stringify(record.resolvedBy) : null;
-    this.db
+    const result = this.db
       .prepare(
         `UPDATE ${quoteIdent(this.table)}
             SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
-          WHERE id = ?`,
+          WHERE id = ? AND status = 'pending'`,
       )
       .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
+    return result.changes > 0;
   }
 
   /** Only a present column is cached: a migration can add one while the store is open, never remove one. */

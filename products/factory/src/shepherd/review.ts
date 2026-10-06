@@ -216,7 +216,7 @@ async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, t
   const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target, facts));
   const note = (text: string) => {
     waits.push(text);
-    noteReviewWait(target.repo, target.pr, `waiting for the broker to start reviewer ${intent.reviewer}: ${text}`);
+    noteReviewWait(target.repo, target.pr, `waiting for reviewer admission (the broker has not started ${intent.reviewer}): ${text}`);
   };
   try {
     await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
