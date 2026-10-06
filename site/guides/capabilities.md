@@ -612,7 +612,7 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
-- +102 more in the [reference page](/reference/code-read)
+- +108 more in the [reference page](/reference/code-read)
 
 <a id="cap-decider"></a>
 
