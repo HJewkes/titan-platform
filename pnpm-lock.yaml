@@ -361,7 +361,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/egress-scan: {}
+  packages/egress-scan:
+    dependencies:
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
 
   packages/embed:
     dependencies:
