@@ -25,6 +25,7 @@ const PublishInputSchema = z.strictObject({
   outcome: z.enum(REVIEW_OUTCOMES),
   verdictHead: z.string().min(1).optional(),
   head: z.string().min(1),
+  carriedFrom: z.string().min(1).optional(),
   autoMergeArmed: z.boolean(),
   releaseBlockers: z.number().int().min(0).optional(),
 });
@@ -45,7 +46,7 @@ export async function publishReview(ctx: WorkflowContext, target: PrTarget, chec
 
 /**
  * What the review of `headSha` came to, read after the review ends. Every outcome but MERGE is published here, a moved
- * head at the head the PR moved to; a MERGE was published where it was taken, before its evidence step.
+ * head at the head the PR moved to; a MERGE was published by `mergeVerdict`, before its evidence step.
  */
 export async function publishOutcome(ctx: WorkflowContext, target: PrTarget, verdict: Verdict, observed: ObservedPr, headSha: string): Promise<ReviewOutcome> {
   const outcome = reviewOutcome(verdict, observed, headSha);

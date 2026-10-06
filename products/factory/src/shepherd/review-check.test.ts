@@ -23,6 +23,21 @@ describe("reviewCheck", () => {
     expect(reviewCheck(merge({ verdictHead: undefined })).conclusion).toBe("action_required");
   });
 
+  it("is success at the new head for a MERGE carried from the reviewed head, naming both heads", () => {
+    const check = reviewCheck(merge({ verdictHead: A, head: B, carriedFrom: A }));
+
+    expect(check).toMatchObject({ headSha: B, conclusion: "success" });
+    expect(check.title).toContain(A.slice(0, 12));
+  });
+
+  it("never gives success for a carry from a head other than the verdict's", () => {
+    expect(reviewCheck(merge({ verdictHead: A, head: B, carriedFrom: fakeSha("review-check-c") })).conclusion).toBe("action_required");
+  });
+
+  it("never gives success for a carried MERGE while auto-merge is armed", () => {
+    expect(reviewCheck(merge({ verdictHead: A, head: B, carriedFrom: A, autoMergeArmed: true })).conclusion).toBe("action_required");
+  });
+
   it("refuses success while GitHub auto-merge is armed", () => {
     expect(reviewCheck(merge({ autoMergeArmed: true })).conclusion).toBe("action_required");
   });

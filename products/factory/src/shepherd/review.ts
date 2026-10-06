@@ -345,8 +345,9 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
 }
 
-/** A MERGE verdict at one head, carrying the facts and record collected there once; a replay reuses the step's output. */
+/** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
+  await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead }) });
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId };
   const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
   return { kind: "MERGE", headSha: input.head, evidence };
@@ -383,6 +384,5 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
-  await publishReview(ctx, target, { outcome: "MERGE", verdictHead: awaited.head, head: target.head });
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
 }
