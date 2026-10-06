@@ -36,7 +36,7 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   allowUnauthenticatedNonLoopback?: boolean;
   /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
   toolPrefix?: string;
-  /** MCP handshake identity; defaults to the daemon `name` option or `titan-daemon`. */
+  /** MCP handshake identity; defaults to `titan-daemon`. */
   mcpName?: string;
   /** Directory to watch for live reload; each debounced change broadcasts `change` on the hub. */
   watchRoot?: string;
