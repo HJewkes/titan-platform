@@ -200,11 +200,15 @@ export class RunContext implements WorkflowContext {
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
     try {
-      openGate(this.deps.gates, { id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt });
-      this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt });
+      openGate(this.deps.gates, { id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt, ...options.brief });
+      this.emitGateOpened(stepId, gateId, prompt, options.brief?.summary);
     } catch (error) {
       if (!(error instanceof GateAlreadyExists)) throw error;
     }
+  }
+
+  private emitGateOpened(stepId: string, gateId: string, prompt: string, summary: string | undefined): void {
+    this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt, ...(summary === undefined ? {} : { summary }) });
   }
 
   authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
@@ -221,7 +225,7 @@ export class RunContext implements WorkflowContext {
       id: gateId,
       store: this.deps.gates,
       wait: { pollMs: this.deps.gatePollMs, signal: this.signal },
-      opened: (gateId, prompt) => this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt }),
+      opened: (gateId, prompt, summary) => this.emitGateOpened(stepId, gateId, prompt, summary),
       paused: () => this.setCurrent(stepId, "paused"),
     };
     const authority = requireAuthority(this.deps.authority, stepId);
