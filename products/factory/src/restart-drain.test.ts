@@ -1,6 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { busyRuns, drainForRestart, type BusyRun, type DrainOptions } from "./restart-drain.js";
+import { busyRuns, describeBusy, drainForRestart, heldSkipped, type BusyRun, type DrainOptions } from "./restart-drain.js";
 
 const MINUTE = 60_000;
 const REVIEW: BusyRun = { runId: "run-review", step: "sh-await-verdict:abc1234", phase: "review" };
@@ -58,6 +58,50 @@ describe("busy runs on /health", () => {
     const runs = [run("a", "sh-await-verdict:abc1234", "paused"), run("b", null)];
 
     expect(busyRuns(runs, parkPostMerge)).toEqual([]);
+  });
+});
+
+describe("held runs in the drain", () => {
+  const held = (...ids: string[]) => (candidate: WorkflowRun) => ids.includes(candidate.id);
+  const runs = [run("held", "merge:0"), run("free", "merge:0")];
+
+  it("skips a held run in merge:0 and still counts an unheld one", () => {
+    expect(busyRuns(runs, parkPostMerge, held("held"))).toEqual([{ runId: "free", step: "merge:0", phase: "merging" }]);
+  });
+
+  it("names the held run it skipped", () => {
+    const skipped = heldSkipped(runs, parkPostMerge, held("held"));
+
+    expect(skipped).toEqual([{ runId: "held", step: "merge:0", phase: "merging" }]);
+    expect(describeBusy([], skipped)).toContain("held merge:0 (held, not waited for)");
+  });
+
+  it("keeps a held run in a review step busy", () => {
+    expect(busyRuns([run("held", "sh-await-verdict:abc1234")], parkPostMerge, held("held"))).toHaveLength(1);
+  });
+
+  it("keeps a held run in a park-routed step busy", () => {
+    expect(busyRuns([run("held", "post-merge")], parkPostMerge, held("held"))).toEqual([{ runId: "held", step: "post-merge", phase: "park" }]);
+  });
+
+  it("counts a run busy when its hold cannot be read", () => {
+    const unreadable = () => {
+      throw new Error("the shepherd store is not bound");
+    };
+
+    expect(busyRuns(runs, parkPostMerge, unreadable)).toHaveLength(2);
+    expect(heldSkipped(runs, parkPostMerge, unreadable)).toEqual([]);
+  });
+
+  it("proceeds when only held runs remain and reports them", async () => {
+    const machine = fakeHealth([[]]);
+    const reports: string[] = [];
+    const health = async () => ({ ok: true, busy: [], heldSkipped: [{ runId: "held", step: "merge:0", phase: "merging" }] });
+
+    const outcome = await drainForRestart({ ...machine.ports, health }, (text) => void reports.push(text), { port: 7410, timeoutMs: 45 * MINUTE, force: false, wait: true });
+
+    expect(outcome).toEqual({ proceed: true });
+    expect(reports[0]).toContain("held merge:0");
   });
 });
 
