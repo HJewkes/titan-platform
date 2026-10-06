@@ -84,4 +84,12 @@ describe("allow globs", () => {
     const glob = "{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}/x.md";
     expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
   });
+
+  it.each([
+    ["2000 single-choice groups", "docs/" + "{a}".repeat(2000)],
+    ["a 2KB glob", "docs/" + "a".repeat(2048)],
+    ["deep nesting", "docs/" + "{a,".repeat(40000) + "b" + "}".repeat(40000)],
+  ])("turns %s into an AllowFileError, never a raw error", (_name, glob) => {
+    expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
+  });
 });

@@ -1,11 +1,22 @@
 const MAX_EXPANSIONS = 256;
+const MAX_GLOB_LENGTH = 1024;
+const MAX_BRACE_GROUPS = 32;
 const INNERMOST_BRACE = /\{([^{}]*)\}/;
 
-/** Every alternative of a brace glob, innermost group first; throws past 256 alternatives. */
+/** Every alternative of a brace glob, innermost group first; throws past 256 alternatives, 32 brace groups or 1024 characters. */
 export function expandBraces(glob: string): string[] {
+  assertBounded(glob);
   const out: string[] = [];
   collect(glob, out, glob);
   return out;
+}
+
+// Single-choice groups never grow the alternative count, so recursion depth and the copy of the
+// glob each frame keeps are bounded by rejecting oversized globs before any expansion.
+function assertBounded(glob: string): void {
+  if (glob.length > MAX_GLOB_LENGTH) throw new Error(`glob is longer than ${MAX_GLOB_LENGTH} characters`);
+  const groups = glob.split("{").length - 1;
+  if (groups > MAX_BRACE_GROUPS) throw new Error(`glob has more than ${MAX_BRACE_GROUPS} brace groups`);
 }
 
 // The cap is checked as alternatives are produced, so a glob that expands past it stops

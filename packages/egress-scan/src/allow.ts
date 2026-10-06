@@ -36,11 +36,16 @@ function hasLiteralSegment(glob: string): boolean {
 }
 
 // Every brace alternative must pass the guard: `{**,docs}/x.md` is fine, `{**,docs}/**` is not.
-function alternativesOf(glob: string, line: number): string[] {
+// Expansion and compilation share one try so no raw RangeError or Error escapes parseAllow.
+function compileEntry(glob: string, line: number): (path: string) => boolean {
   try {
-    return expandBraces(glob);
+    if (!expandBraces(glob).every(hasLiteralSegment)) {
+      throw new AllowFileError(line, "glob must name at least one literal path segment");
+    }
+    return compileGlobs([glob]);
   } catch (error) {
-    throw new AllowFileError(line, error instanceof Error ? error.message : "glob cannot be expanded");
+    if (error instanceof AllowFileError) throw error;
+    throw new AllowFileError(line, error instanceof Error ? error.message : "glob cannot be compiled");
   }
 }
 
@@ -51,8 +56,7 @@ function parseEntry(entry: string, line: number): AllowEntry {
   if (rule === "private-term") throw new AllowFileError(line, "private-term is never allowable");
   if (!ALLOWABLE.includes(rule)) throw new AllowFileError(line, "unknown rule id");
   if (!TASK_ID.test(reason)) throw new AllowFileError(line, "reason must name a task id");
-  if (!alternativesOf(glob, line).every(hasLiteralSegment)) throw new AllowFileError(line, "glob must name at least one literal path segment");
-  return { glob, rule: rule as AllowableRule, line, matches: compileGlobs([glob]) };
+  return { glob, rule: rule as AllowableRule, line, matches: compileEntry(glob, line) };
 }
 
 export function parseAllow(text: string): AllowList {
