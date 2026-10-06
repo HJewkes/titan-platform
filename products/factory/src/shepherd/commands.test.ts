@@ -361,6 +361,19 @@ describe("shepherd.register after a stopped run", () => {
     expect(shepherdRuns(w.host)).toHaveLength(2);
   });
 
+  it("the stopped run's authors move to the new run", async () => {
+    const w = world({ frozen: true });
+    const stoppedRunId = await endedAs(w, stoppedStep("not-mergeable"));
+    const store = w.routes.shepherd!.store.get();
+    store.recordAuthor(stoppedRunId, { agentId: "a-1", name: "impl-a", role: "implementer" });
+    store.recordAuthor(stoppedRunId, { agentId: "a-2", name: "impl-a-2", role: "successor", predecessor: "a-1" });
+
+    const again = await registered(w, pr1);
+
+    expect(store.authorsOf(again.runId).map((author) => author.name)).toEqual(["impl-a", "impl-a-2"]);
+    expect(store.authorsOf(stoppedRunId)).toEqual([]);
+  });
+
   it("a run stopped on a conflict gets a new run", async () => {
     const w = world({ frozen: true });
     const stoppedRunId = await endedAs(w, stoppedStep("conflict"));
