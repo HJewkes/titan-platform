@@ -94,6 +94,10 @@ sidechains. Pass `subagentId` when reading a sidechain: its lines carry the pare
 `sessionId`, and taking that at face value would file the child's work under the parent.
 The reader gives the child its own identity and emits the `spawned` edge instead.
 
+A missing projects or subagents directory, or a stray file beside the project
+directories, reads as no transcripts. Any other I/O error, such as `EACCES` on an
+unreadable directory, rejects the discovery call rather than returning a short corpus.
+
 ## Attribution
 
 Files and branches are attributed to the nearest `.git` ancestor of the path or the
@@ -127,7 +131,10 @@ Legacy refs stay opt-in. `sessionRef(id)` is unchanged, and
 ## Codex rollouts
 
 `discoverCodexSources({ codexHome, namespace })` scans both `sessions/` and
-`archived_sessions/`. It reads conversation identity from `session_meta`; a filename stem
+`archived_sessions/`. `codexHome` defaults to `codexHome()`: `$CODEX_HOME` when it is set
+and non-empty, as the Codex CLI resolves it, otherwise `~/.codex`. A missing directory
+reads as no sources and a file whose first line is not JSON is skipped; any other I/O
+error, such as an unreadable rollout directory, rejects. It reads conversation identity from `session_meta`; a filename stem
 never substitutes for the native thread ID. Source IDs include namespace, thread, and
 rollout filename, so moving an identical rollout between active and archived storage keeps
 its identity while distinct files for one thread remain separate. Divergent files that
@@ -142,7 +149,10 @@ usage is emitted as idempotent deltas, while turn/thread totals remain ordered s
 reset epochs.
 
 `readCodexText(locator, { sources })` resolves moved sources by stable source ID and checks
-the exact source-line hash before returning the selected value. `readSessionText({ path,
+the exact source-line hash before returning the selected value. It returns `null` only for
+a stale locator: the file is gone or shorter than the span, or the bytes there no longer
+match the hash, decode as UTF-8 or parse as JSON. Any other I/O error rejects, and
+`readSessionSourceText` behaves the same for Claude locators. `readSessionText({ path,
 byteOffset, byteLength, field })` provides the corresponding legacy Claude field projection
 for miner consumers.
 
