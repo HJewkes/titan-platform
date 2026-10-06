@@ -4,6 +4,7 @@ import type { GraphEdge, GraphMetric, GraphNode, NodeRole } from "../types.js";
 import {
   buildReportContext,
   busFactorOf,
+  hotspotComplexityOf,
   hotspotScoreOf,
   topBusFactorRisks,
   topCentralFiles,
@@ -122,6 +123,15 @@ describe("hotspots", () => {
 
     expect(topHotspots(ctx, 5)).toEqual([]);
     expect(hotspotScoreOf(ctx, "a.ts")).toBe(0);
+  });
+
+  it("reads a file's complexity factor with or without churn, and undefined when unmeasured", () => {
+    const ctx = context({
+      nodes: [file("a.ts"), file("b.ts"), file("c.ts")],
+      metrics: [metric("a.ts", "cyclomatic_max", 5), metric("a.ts", "cognitive_max", 30), metric("b.ts", "cognitive_max", 9)],
+    });
+
+    expect([hotspotComplexityOf(ctx, "a.ts"), hotspotComplexityOf(ctx, "b.ts"), hotspotComplexityOf(ctx, "c.ts")]).toEqual([30, 9, undefined]);
   });
 });
 
