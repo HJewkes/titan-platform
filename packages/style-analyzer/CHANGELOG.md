@@ -1,5 +1,15 @@
 # @titan-design/style-analyzer
 
+## 0.1.3
+
+### Patch Changes
+
+- 71e0d20: `AI_ENRICHED_FEATURES` now names the seven feature types the extractors emit (`documentation.comment-placement`, `documentation.inline-comment`, `documentation.jsdoc-tag`, `error-handling.catch-specificity`, `structure.export-style`, `reviewVoice.topicFrequency`, `reviewVoice.keyword`). Before, it named ten types nothing emitted, so `Enricher.enrich` built no jobs on real extractor output.
+- d4c2741: `mapSeverity` is now style-profile's `severityForConfidence`, so the analyzer and the exporters share one ladder.
+- Updated dependencies [bbb4821]
+- Updated dependencies [d4c2741]
+  - @titan-design/style-profile@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes

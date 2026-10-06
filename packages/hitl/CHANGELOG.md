@@ -1,5 +1,17 @@
 # @titan-design/hitl
 
+## 0.6.0
+
+### Minor Changes
+
+- 7fb6a9b: Add the `allowances` store option: a list of `{ resolverClass, stepId, payload }` answers that a non-owner class may give, each exact in class, gate step and payload, with a non-blank resolver id. It replaces the default class refusal for those gates only; the gate's rule and `authorize` still run after it, and a store with no allowances behaves as before.
+
+### Patch Changes
+
+- Updated dependencies [ea96b66]
+- Updated dependencies [f886302]
+  - @titan-design/store-sqlite@0.3.3
+
 ## 0.5.0
 
 ### Minor Changes
