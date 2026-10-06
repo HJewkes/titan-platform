@@ -10,7 +10,7 @@ import type {
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./types.js";
-import type { NodeKind, NodeRole } from "../types.js";
+import { NODE_KINDS, NODE_ROLES, type NodeKind, type NodeRole } from "../types.js";
 
 export interface ValidateRulesOptions {
   /** Called with a human-readable message when a deprecated alias is healed. */
@@ -185,7 +185,7 @@ function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule 
   };
 }
 
-const NODE_KINDS: ReadonlySet<NodeKind> = new Set(["package", "module", "file", "symbol", "external"]);
+const KIND_SET: ReadonlySet<string> = new Set(NODE_KINDS);
 
 function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutlierRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
@@ -230,7 +230,7 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
 }
 
 function isNodeKind(value: unknown): value is NodeKind {
-  return typeof value === "string" && NODE_KINDS.has(value as NodeKind);
+  return typeof value === "string" && KIND_SET.has(value);
 }
 
 function kindError(ruleId: unknown): Error {
@@ -265,17 +265,7 @@ function parseStringList(r: Record<string, unknown>, key: string): string[] | un
   return value;
 }
 
-const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([
-  "test",
-  "fixture",
-  "story",
-  "lab",
-  "barrel",
-  "types",
-  "config",
-  "entry",
-  "source",
-]);
+const ROLE_VALUES: ReadonlySet<string> = new Set(NODE_ROLES);
 
 function parseRoleArray(
   ruleId: string,
@@ -291,7 +281,7 @@ function parseRoleArray(
 
 /** Heal a deprecated role alias to canonical; throw only on genuinely-unknown. */
 function healRole(entry: unknown, ruleId: string, warn: Warn): NodeRole {
-  if (typeof entry === "string" && ROLE_VALUES.has(entry as NodeRole)) {
+  if (typeof entry === "string" && ROLE_VALUES.has(entry)) {
     return entry as NodeRole;
   }
   if (typeof entry === "string") {
