@@ -1,7 +1,7 @@
 # @titan-design/agent-protocol
 
 Dependency-free identity and usage contracts shared by agent execution and session
-readers (TP-44). The `./trace` subpath adds zod schemas and needs `zod` as an optional peer. This package neither launches a harness nor reads its logs.
+readers (TP-44). The `./trace` and `./worker-facts` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
 
 `ConversationIdentity` names a native thread by harness, corpus namespace and native
 ID. `conversationRef()` escapes each component into a `conversation:` reference;
@@ -121,3 +121,13 @@ Web Crypto. Correlation keys survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+## Worker facts
+
+The `@titan-design/agent-protocol/worker-facts` subpath (TP-1712) exports `WorkerFactsSchema` and
+the `WorkerFacts` type: what a spawned worker's completion carries. It holds the agent name,
+profile, spawner and exit facts (`code`, `signal`, `inferred`), plus, when known, the task id,
+the last Status or Verdict (`report`: message id, kind, text of at most 2,000 characters), the
+PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
+carries the exit facts only. The producer truncates the report; the schema rejects one over the
+cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
