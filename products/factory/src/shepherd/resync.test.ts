@@ -648,6 +648,50 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(reviewed).toEqual([REVIEWED]);
   });
 
+  it("cancels the gate a freeze caused on that freeze's own fix PR while the repo is still frozen, and the run merges the same head", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, "demo/1");
+    freezes.setFixer(REPO, episode, "impl-a");
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: REVIEWED, condition: "transient-only" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+    expect(freezes.isFrozen(REPO)).toBe(true);
+  });
+
+  it.each([
+    ["another task's fix", "demo/2", "impl-a"],
+    ["its task's fix spawned as another fixer", "demo/1", "impl-b"],
+  ])("leaves the gate a freeze caused on a PR that is not %s while the repo is still frozen", async (_name, fixTask, fixer) => {
+    const { host, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, fixTask);
+    freezes.setFixer(REPO, episode, fixer);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(reviewed).toEqual([REVIEWED]);
+  });
+
+  it("leaves the fix PR's gate when a lasting condition is unmet too", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true, verdict: { value: "MERGE", head: PUSHED } });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, "demo/1");
+    freezes.setFixer(REPO, episode, "impl-a");
+
+    expect((await resyncShepherd(host, services)).superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
   it("a thaw while serving supersedes the repo's gate a freeze caused, and the run merges the same head", async () => {
     const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { serve: true });
     const freezes = services.freeze!.get();
