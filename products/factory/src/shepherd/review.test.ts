@@ -75,7 +75,7 @@ describe("acceptVerdict", () => {
   it("accepts the final message of the dispatched agent and session, and keeps its locator, not its text", () => {
     const result = acceptVerdict(input, [message()]);
 
-    expect(result).toEqual({ kind: "verdict", verdict: "MERGE", head: HEAD, locator, reviewer: { agentId: "reviewer-1", sessionId: "session-1" } });
+    expect(result).toEqual({ kind: "verdict", verdict: "MERGE", head: HEAD, locator, reviewer: { agentId: "reviewer-1", sessionId: "session-1" }, ownerBrief: null });
     expect(JSON.stringify(result)).not.toContain("Looked at it");
   });
 
@@ -1163,6 +1163,24 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
+  });
+
+  it("asks the reviewer for an owner brief when the run's policy is owner-gate, and not when it is auto", async () => {
+    const gated = await review({ dispatch: fakeDispatch(), policy: OWNER_GATE_POLICY });
+    const auto = await review({ dispatch: fakeDispatch(), policy: AUTO });
+
+    expect(gated.inputs[`sh-review:${H1}`]).toMatchObject({ ownerBrief: true });
+    expect(auto.inputs[`sh-review:${H1}`]).not.toHaveProperty("ownerBrief");
+  });
+
+  it("hands the owner-brief request to the spawned reviewer's brief only under an owner-gate policy", async () => {
+    const gated = fakeDispatch();
+    const auto = fakeDispatch();
+    await review({ dispatch: gated, policy: OWNER_GATE_POLICY });
+    await review({ dispatch: auto, policy: AUTO });
+
+    expect(gated.spawns[0]?.brief).toContain("OWNER-BRIEF");
+    expect(auto.spawns[0]?.brief).not.toContain("OWNER-BRIEF");
   });
 
   it("waits out three machine-guard refusals of the spawn and takes the reviewer's MERGE, with no step that sends the PR to the owner", async () => {

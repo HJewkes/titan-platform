@@ -3,6 +3,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
+import { parseOwnerBrief } from "./review-schemas.js";
 import { namesTarget } from "./verdict-target.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
@@ -72,7 +73,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!("repo" in block)) return { kind: "none" };
   if (!namesTarget(block, input)) return { kind: "none" };
   if (!block.ok) return { kind: "none", reason: "wait" };
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId } };
+  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
 }
 
