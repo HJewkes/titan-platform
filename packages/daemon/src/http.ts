@@ -124,7 +124,7 @@ function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions
   });
 }
 
-/** Body is optional; an empty one means "no arguments". Reads text so no header is load-bearing. */
+/** Body is optional; an empty one means "no arguments". guards.ts already 415s a non-JSON POST. */
 async function readJsonBody(c: Context): Promise<unknown> {
   let raw: string;
   try {
