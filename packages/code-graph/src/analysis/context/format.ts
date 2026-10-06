@@ -71,7 +71,7 @@ function renderFile(f: FileDossier): string[] {
     out.push("");
   }
   if (f.blastRadius.length) {
-    out.push("### Blast radius (riskiest to touch)");
+    out.push("### Blast radius (look here first)");
     for (const b of f.blastRadius) out.push(`- \`${b.name}\` — score ${round(b.score)} (util ${b.utilization} × cog ${b.complexity} × churn ${b.churn})`);
     out.push("");
   }
