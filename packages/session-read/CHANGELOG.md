@@ -1,5 +1,27 @@
 # @titan-design/session-read
 
+## 0.9.1
+
+### Patch Changes
+
+- b241223: Read git and gh intents only from unquoted simple commands. `parseGitIntent` and the `pr_create` signal no longer match text inside quotes, `echo` arguments or heredoc bodies, so `echo "gh pr merge 42"` records no merge and a commit message mentioning `git push` records no push. `EXTRACT_VERSION` is now 6, so stored intents re-extract on the next backfill.
+
+## 0.9.0
+
+### Minor Changes
+
+- 18e081a: Read `Verdict: WAIT` (required checks unfinished at the reviewed head) as no verdict, never a MERGE. `parseVerdictBlock` returns `{ ok: false, reason: "wait" }` with the PR and head the block names; Shepherd's `acceptVerdict` returns `none` with reason `wait`, and a seat reviewer's WAIT at a head never reads clear for a carry or a MERGE.
+- 218cbac: A Claude usage observation now carries `cacheWriteSplit` (`{ ttl5m, ttl1h }`, the new exported `CacheWriteSplit` type) when the transcript's usage has a `cache_creation` object with `ephemeral_5m_input_tokens` or `ephemeral_1h_input_tokens`. The 1h rate is higher than the 5m rate, so a price needs the split rather than the `cacheWriteInput` total. A usage line with only `cache_creation_input_tokens` leaves the field absent.
+- d10a591: Add `recoverSession`, a facts-only extractor for a session that ended with no wrap. It reads one
+  transcript and returns the session span, the registered agent name, files written under a root,
+  active-work and git/gh command heads, chat_send and agent_spawn targets with first lines, the last
+  five owner messages and the last assistant message, all capped. No model call, network or write.
+
+### Patch Changes
+
+- Updated dependencies [411b4f0]
+  - @titan-design/agent-protocol@0.5.0
+
 ## 0.8.1
 
 ### Patch Changes

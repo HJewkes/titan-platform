@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [a20a6e3]
+- Updated dependencies [0e67551]
+  - @titan-design/daemon@0.4.0
+  - @titan-design/react-app@0.1.1
+  - @titan-design/rpc-client@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

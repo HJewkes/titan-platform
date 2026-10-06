@@ -40,9 +40,9 @@ afterAll(() => repo.cleanup());
 
 const PATHS = ["src/grade.ts", "./src/main.ts", "src/report.ts", "src/nope.ts", "../outside.ts"];
 
-async function live(args: object): Promise<Impact> {
+async function live(args: object, repoRoot?: string): Promise<Impact> {
   const registry = createRegistry();
-  registerCodeReadCommands(registry, { openStore: () => repo.store, rules: () => RULES });
+  registerCodeReadCommands(registry, { openStore: () => repo.store, rules: () => RULES, ...(repoRoot ? { repoRoot } : {}) });
   const { envelope } = await invokeCommand(registry.get("paths.impact")!, { paths: PATHS, ...args }, { warnings: [], format: "json" });
   if (!envelope.ok) throw new Error(`paths.impact failed: ${envelope.error}`);
   return CONTRACT["paths.impact"].result.parse(envelope.data);
@@ -87,6 +87,12 @@ describe("paths.impact live and static", () => {
     const result = await live({ root: repo.dir, paths: [`${repo.dir}/src/grade.ts`, "/elsewhere/src/grade.ts"] });
 
     expect(result.rows.map((r) => [r.status, "path" in r ? r.path : null])).toEqual([["indexed", "src/grade.ts"], ["outside-repo", null]]);
+  });
+
+  it("reject a root above the repo it was indexed from", async () => {
+    const parent = repo.dir.slice(0, repo.dir.lastIndexOf("/")) || "/";
+
+    await expect(live({ root: parent, paths: ["src/grade.ts"] }, repo.dir)).rejects.toThrow(/above the index's repo root/);
   });
 });
 
