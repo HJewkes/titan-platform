@@ -135,6 +135,20 @@ describe("computeSourceMetrics — arrow/expr functions bound to a name (C-58)",
     expect(metric(metrics, "f.ts", "cyclomatic_max")).toBe(2);
   });
 
+  it("counts generator declarations and generator expressions bound to a const (TP-1229)", async () => {
+    const file = await parseTs(
+      `export function* walk(x: number) { if (x > 0) yield x; }
+       export const pairs = function* (y: number) { if (y) yield y; };\n`,
+    );
+    const names = new Map([["f.ts", new Set(["walk", "pairs"])]]);
+    const metrics = computeSourceMetrics([file], idOf, names);
+    expect(metric(metrics, "f.ts", "function_count")).toBe(2);
+    expect(metric(metrics, "f.ts", "cyclomatic_max")).toBe(2);
+    expect(metric(metrics, "f.ts", "cognitive_sum")).toBe(2);
+    expect(metric(metrics, "f.ts#walk", "symbol_cyclomatic")).toBe(2);
+    expect(metric(metrics, "f.ts#pairs", "symbol_cognitive")).toBe(1);
+  });
+
   it("does NOT count anonymous inline callbacks as standalone functions", async () => {
     const file = await parseTs(
       `function run(xs: number[]) { return xs.map((x) => x + 1).filter((x) => x > 0); }\n`,
