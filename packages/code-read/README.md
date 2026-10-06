@@ -120,8 +120,9 @@ and `tool: "check"`. Stored findings, verdicts, and themes will arrive behind th
   clipped to the file and capped at `EXCERPT_LINE_CAP` (80) lines with `truncated: true`.
   Edges carry no line numbers, so an import finding's flagged line is the one that names
   the import's specifier in quotes; the live source finds it when it loads the snapshot. A
-  metric finding covers its whole file: no `range`, no highlight, and the excerpt starts at
-  line 1. The live source reads the working tree under `repoRoot` and serves a file only
+  whole-node finding, such as a metric finding, uses its node's span when the node has one:
+  a symbol finding gets the symbol's lines as `range` and highlight. A node with no span,
+  such as a file, gets no `range`, no highlight, and an excerpt that starts at line 1. The live source reads the working tree under `repoRoot` and serves a file only
   when its hash equals the snapshot's fingerprint. Otherwise `excerpt` is null and
   `excerptMissing` says `changed-since-snapshot`. A static source serves the windows it
   exported and says `not-in-export` for the rest.
