@@ -182,7 +182,9 @@ describe("linear time and two false positives (TP-1684)", () => {
     });
     return Math.min(...samples);
   };
-  const lintTime = (question: string) => elapsedMs(() => lintAsk({ question }));
+  // Best of three: a loaded CI runner can stall any single run past the bound (#577).
+  const lintTime = (question: string) =>
+    Math.min(...[1, 2, 3].map(() => elapsedMs(() => lintAsk({ question }))));
   const baseline = () => Math.max(lintTime("Recommend yes." + NOW), lintTime("Recommend yes." + NOW));
 
   it("lints a 50 kB token with no spaces in bounded time", () => {
