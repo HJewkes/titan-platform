@@ -111,6 +111,21 @@ pnpm build && pnpm dag:check
 what CI does. `scripts/dag-check.sh` remains for one release as a fallback that needs
 `CODEWATCH_CLI` pointed at a built codewatch checkout.
 
+## Checking for dead exports
+
+`pnpm dead:check` lists exports that no other module imports, and CI fails the pull
+request on a new one. That includes an export used only inside its own file: drop the
+`export` keyword. Like `dag:check`, it needs the built `@titan-design/code-graph`:
+
+```sh
+pnpm build && pnpm dead:check
+```
+
+Exports that predate the check sit in `.codewatch/dead-exports.json`. The baseline only
+shrinks: `pnpm dead:check --update` removes entries you have fixed and never adds one, and
+CI fails a pull request that adds an entry to the file. If an outside consumer needs an
+export, export it from the package entry so it has an importer.
+
 ## Conventions
 
 - ESM only, `verbatimModuleSyntax`, `import type` for type-only imports.
