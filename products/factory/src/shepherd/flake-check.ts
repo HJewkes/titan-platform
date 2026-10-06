@@ -7,12 +7,12 @@ import { rerun } from "../workflows/land-pr.js";
 import type { WakeRequest } from "./phases.js";
 import { sentBackGate, type GateRun } from "./gates.js";
 
-export const FLAKE_CHECK_STEP = "sh-flake-check";
+const FLAKE_CHECK_STEP = "sh-flake-check";
 export const FLAKE_CHECK_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }];
 
-export const FlakeCheckResult = z.looseObject({ outside: z.boolean(), detail: z.string() });
+const FlakeCheckResult = z.looseObject({ outside: z.boolean(), detail: z.string() });
 
-export interface FlakeCheckInput {
+interface FlakeCheckInput {
   repo: RepoSlug;
   pr: number;
   headSha: string;
