@@ -648,6 +648,34 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(reviewed).toEqual([REVIEWED]);
   });
 
+  it("thaws a freeze whose main went green outside Shepherd, then cancels the gate it caused, and the run merges the same head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    fake.refs.set("main", fakeSha("green-main"));
+    fake.setRuns(fakeSha("green-main"), [successRun("validate", 1), successRun("dag-check", 2)]);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(freezes.isFrozen(REPO)).toBe(false);
+    expect(report.superseded).toMatchObject([{ runId, condition: "transient-only" }]);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+  });
+
+  it("leaves a stale freeze and its gate in place on a dry run", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    fake.refs.set("main", fakeSha("green-main"));
+    fake.setRuns(fakeSha("green-main"), [successRun("validate", 1), successRun("dag-check", 2)]);
+
+    const report = await resyncShepherd(host, services, { dryRun: true });
+
+    expect(freezes.isFrozen(REPO)).toBe(true);
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
   it("cancels the gate a freeze caused on that freeze's own fix PR while the repo is still frozen, and the run merges the same head", async () => {
     const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
     const freezes = services.freeze!.get();
