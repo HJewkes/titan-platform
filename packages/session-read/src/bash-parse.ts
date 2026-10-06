@@ -75,10 +75,25 @@ export function gitCommands(raw: string): string[] {
     const args = words.slice(programStart(words));
     const program = args[0];
     if (program && !program.quoted && GIT_OR_GH.test(program.text.replace(/^\(+/, ''))) {
-      commands.push(args.map(rejoinWord).join(' ').replace(/^\(+/, ''));
+      const last = args.length - 1;
+      const bare = args.map((word, i) => (i === last && i > 0 ? withoutSubshellCloser(word) : word));
+      commands.push(bare.map(rejoinWord).join(' ').replace(/^\(+/, ''));
     }
   }
   return commands;
+}
+
+/** Drops `)` that closes an enclosing subshell, keeping those balanced inside the word (`$(…)`). */
+function withoutSubshellCloser(word: ShellWord): ShellWord {
+  if (word.quoted) return word;
+  let text = word.text;
+  const opens = [...text].filter((c) => c === '(').length;
+  let closes = [...text].filter((c) => c === ')').length;
+  while (closes > opens && text.endsWith(')')) {
+    text = text.slice(0, -1);
+    closes--;
+  }
+  return { text, quoted: false };
 }
 
 function rejoinWord(word: ShellWord): string {
