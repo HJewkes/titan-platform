@@ -1,5 +1,5 @@
 import { BaseGateStore } from "./base-store.js";
-import type { GateAuthorize, GateRecord } from "./types.js";
+import type { GateAnswerAllowance, GateAuthorize, GateRecord } from "./types.js";
 
 export interface MemoryGateStoreOptions {
   /** Epoch-millis clock, injectable so expiry is testable without waiting. */
@@ -8,6 +8,8 @@ export interface MemoryGateStoreOptions {
   authorize?: GateAuthorize;
   /** Refuse `create` without a `summary` and an `evidenceRef`. Off by default. */
   requireBrief?: boolean;
+  /** Answers a non-owner class may give, each exact in class, step and payload. Nothing else widens the default class check. */
+  allowances?: readonly GateAnswerAllowance[];
 }
 
 /**
@@ -19,7 +21,7 @@ export class MemoryGateStore extends BaseGateStore {
   private readonly rows = new Map<string, GateRecord>();
 
   constructor(options: MemoryGateStoreOptions = {}) {
-    super(options.now ?? Date.now, options.authorize, options.requireBrief);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances);
   }
 
   protected insert(record: GateRecord): void {
