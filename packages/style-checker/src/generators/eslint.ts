@@ -19,12 +19,6 @@ export interface EslintConfigResult {
   skippedRules: SkippedRule[];
 }
 
-// ESLint accepts only off, warn and error; style-profile's "info" tier becomes warn, as its own exporter does.
-function withEslintSeverity(value: unknown): unknown {
-  if (Array.isArray(value) && value[0] === "info") return ["warn", ...value.slice(1)];
-  return value === "info" ? "warn" : value;
-}
-
 function collectRules(profile: Profile, skippedRules: SkippedRule[]): Record<string, unknown> {
   const rules: Record<string, unknown> = {};
 
@@ -46,7 +40,6 @@ function collectRules(profile: Profile, skippedRules: SkippedRule[]): Record<str
     rules[name] = value;
   }
 
-  for (const name of Object.keys(rules)) rules[name] = withEslintSeverity(rules[name]);
   return rules;
 }
 

@@ -118,7 +118,7 @@ bare key holds no result.
 
 ## Authority steps
 
-`authorize(stepId, request, { prompt?, expiresAt? })` asks the authority table
+`authorize(stepId, request, { prompt?, expiresAt?, brief? })` asks the authority table
 before a governed action. The runtime needs `authority: { actor, table? }`; the
 actor is who this runtime acts as, and the table defaults to `DEFAULT_TABLE`
 from `@titan-design/authority`. A run without that option fails at its first
@@ -146,6 +146,13 @@ edit during the pause does not flip the decision. Replay returns or throws the
 recorded outcome without consulting the table. The resolver's taint is not yet
 known, so the read-side check passes `tainted: false`. On SQLite, a
 rule-bound gate needs both `gateResolverMigration` and `gateRuleMigration`.
+
+`assisted` and `authorize` both take an optional `brief`, a hitl `GateBrief`
+(`summary`, `evidenceRef`, `questions?`), and store it on the gate they open, so
+a store with `requireBrief` accepts the gate. The `gate_opened` event carries
+the brief's `summary`. A resumed run keeps the brief its gate was opened with,
+even when the workflow now passes a different one. On SQLite, a briefed gate
+needs `gateBriefMigration`.
 
 ## Fan-out
 

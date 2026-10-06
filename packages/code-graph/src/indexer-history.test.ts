@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as path from "node:path";
+import { gitTreeSource } from "./git-tree-source.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 import { daysAgo, makeTestRepo, type TestRepo } from "./history/test-repo.js";
@@ -139,5 +140,35 @@ describe("indexPaths with git-history metrics", () => {
     expect(byKey("src/young.ts", "recency_180d")).toBeCloseTo(0.25, 2);
     expect(byKey("src/young.ts", "recency_90d")).toBeCloseTo(0.5, 2);
     expect(byKey("src/young.ts", "file_age_days")).toBe(45);
+  });
+
+  describe("at a revision", () => {
+    // Both commits are years old, so a window ending at the wall clock would see neither.
+    beforeEach(async () => {
+      await repo.write("src/shared.ts", "export const s = 1;\n");
+      repo.commit("alice writes", { author: "alice", date: "2024-01-01T12:00:00Z" });
+      await repo.write("src/shared.ts", "export const s = 1;\nexport const t = 2;\nexport const u = 3;\n");
+      repo.commit("bob edits", { author: "bob", date: "2024-01-10T12:00:00Z" });
+    });
+
+    it("counts neither churn nor authorship from a commit after the indexed one", async () => {
+      // No lifetime window, so the widest log is bounded by a --since cutoff that git applies.
+      const { byKey } = await indexMetrics({ source: gitTreeSource(repo.dir, "HEAD~1") });
+
+      expect(byKey("src/shared.ts", "churn_30d")).toBe(1);
+      expect(byKey("src/shared.ts", "churn_30d_commits")).toBe(1);
+      expect(byKey("src/shared.ts", "churn_30d_authors")).toBe(1);
+      expect(byKey("src/shared.ts", "bus_factor_30d")).toBe(1);
+      expect(byKey("src/shared.ts", "top_author_share_30d")).toBe(1);
+      expect(byKey("src/shared.ts", "recency_30d")).toBeCloseTo(0, 2);
+    });
+
+    it("leaves a working-tree index reading HEAD in windows that end at the wall clock", async () => {
+      const { byKey } = await indexMetrics({ lifetime: true });
+
+      expect(byKey("src/shared.ts", "churn_30d")).toBeUndefined();
+      expect(byKey("src/shared.ts", "churn_lifetime_commits")).toBe(2);
+      expect(byKey("src/shared.ts", "churn_lifetime_authors")).toBe(2);
+    });
   });
 });
