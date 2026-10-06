@@ -26,7 +26,8 @@ them instead of rewriting them. It also holds the standing report built from the
 You have token counts, a model string and a timestamp and you want a cost. You have a
 session's origin row and entrypoint and you want its class. You have a context size in
 tokens or an idle gap in milliseconds and you want a band label. You have a session graph
-and want to know where a week's spend went.
+and want to know where a week's spend went. You have agent-chat's broker log, events rows,
+seat journals or transcripts and want to know why merges stall or which agents went dark.
 
 Reading sessions out of a transcript is `@titan-design/session-read`; storing them is
 `@titan-design/session-graph`. The graph stores facts and prices them in its `request_cost`
@@ -123,10 +124,59 @@ prompt size, output, cost and running totals, plus the compaction marks. `tools`
 Every `*Ms` field is epoch milliseconds and the model holds no time zone. A session that
 crosses midnight is one unbroken run of buckets, and the renderer picks the zone.
 
+## Operations reports
+
+Three reports read agent-chat's own records rather than the cost data. Each takes what the
+caller already read: the package opens no file, database or network connection for them.
+
+### blockedFlowReport
+
+`blockedFlowReport(input)` answers where merges and dispatches stall. It gives the wait from
+a reviewer's MERGE verdict to the merge per repo, the PRs still open with a MERGE verdict, the
+auto-mode classifier denials by reason, action and seat, and the minutes a seat sat with free
+implementer slots, with the reason its journal gave. Use it when work is done but not landing.
+
+| Input | Read by the caller from | Parser |
+|---|---|---|
+| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` |
+| `pulls` | `gh api repos/<owner>/<repo>/pulls/<n>` for each PR a verdict names | none |
+| `denials` | each seat's transcript JSONL | `parseDenials(lines, seat)` |
+| `journals` | each seat's dated journal file | `parseSeatJournal(text, seat, date, utcOffsetMin)` |
+
+`BLOCKED_FLOW_SOURCES` names the command and field behind each section, so any number can be
+checked by hand. `renderBlockedFlowText` prints the report; `blockedFlowSchema` is its shape.
+
+### livenessReport
+
+`livenessReport(input)` answers which agents went quiet without saying so: seats dark past
+`DARK_MIN` (5) minutes, routed messages that missed their recipient, agents that exited
+without reporting to their spawner, and agents stuck on a permission prompt past
+`PROMPT_STALE_MIN` (10) minutes. Use it when a seat or worker stops answering.
+
+| Input | Read by the caller from | Parser |
+|---|---|---|
+| `broker` | agent-chat's `broker.log` lines | `parseBrokerLog(lines)` |
+| `spawns` | `agent_spawned` rows of `events.db` | none; `SpawnRecord` |
+| `lastEvents` | each actor's newest `events.db` row before `asOf` | none; `LastEventRecord` |
+
+Broker findings cite broker.log line numbers. `LIVENESS_SOURCES` holds the commands that
+re-read each section. `parseTeleportEvents(lines)`, used by the handoff threshold, reads the
+teleport lines of the same log.
+
+### reviewFillReport
+
+`reviewFillReport(db, window)` answers whether a reviewer's verdicts get worse as its context
+fills. It reads the session graph's `pr_review`, `tool_call` and `request` tables, which the
+miner fills from transcripts, and places each chat verdict in the context band of the request
+that sent it, per model. An approve counts as an error when the same PR later got
+`changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
+It takes an open graph connection and never calls `gh`.
+
 ## What it deliberately does not do
 
-It does not read a transcript or the network, it never writes the graph, and it does not
-fetch live prices. The timeline takes observations a caller already read.
+It does not open a transcript, a log or the network, it never writes the graph, and it does
+not fetch live prices. The timeline takes observations a caller already read, and the
+operations reports take lines, rows and API results the caller read.
 `PRICE_TABLE` is a checked-in constant fitted against 392 `cost-state` rows, and
 `PRICE_TABLE_VERSION` exists so a report can say which fit produced its numbers.
 
@@ -176,6 +226,10 @@ life. `coordinator-v1` segments by work phase: idle gap, PR merge (one per 15 re
 spawn wave complete, wrap or task done, and a context drop over 20k, with no episode shorter
 than 8 requests. `writeEpisodes(graph, sessionIds)` picks the heuristic by session class
 (headless sessions get none) and writes through session-graph's `replaceEpisodes`.
+`staleEpisodeSessions(db, ids?)` lists the sessions it would change, newest last request
+first: their last main-thread request runs past the stored episodes of their heuristic, or none
+are stored. It picks the heuristic through the same step as `writeEpisodes`, so a refresh loop
+never segments a session it then still reports stale.
 
 **Episodes order by timestamp, transcript id, and byte offset.** `readEpisodeInput(db,
 sessionId, spawned)` returns main-thread requests with their `transcriptId`, because a
