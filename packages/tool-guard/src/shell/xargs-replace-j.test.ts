@@ -38,6 +38,36 @@ describe("BSD xargs -J puts every input item of a run at the insert argument", (
     expect(spellings(command)).toEqual(PUSH);
   });
 
+  it.each([
+    ["-J -i", "echo HEAD:main | xargs -J -i git push origin -i"],
+    ["-J --replace", "echo HEAD:main | xargs -J --replace git push origin --replace"],
+    ["-I -i", "printf 'push origin HEAD:main' | xargs -I -i git -i"],
+    ["-I --replace", "printf 'push origin HEAD:main' | xargs -I --replace git --replace"],
+  ])("takes the word after %s as its value, though it looks like an option", (_how, command) => {
+    expect(spellings(command)).toEqual(PUSH);
+  });
+
+  it("still reads a value word that looks like an option as one, as the guard did before", () => {
+    expect(spellings("printf 'push origin HEAD:main' | xargs -I -i git {}")).toEqual(PUSH);
+  });
+
+  it.each([
+    ["a quoted subcommand at -J", `echo '"push" origin HEAD:main' | xargs -J % git %`],
+    ["a quoted target at -J", `echo 'origin "HEAD:main"' | xargs -J % git push %`],
+    ["a quoted subcommand appended", `echo '"push" origin HEAD:main' | xargs git`],
+    ["a single-quoted target appended", `echo "'HEAD:main'" | xargs git push origin`],
+    ["a backslash in the subcommand", `echo 'pu\\sh origin HEAD:main' | xargs git`],
+  ])("drops input quotes and backslashes as xargs does: %s", (_how, command) => {
+    expect(spellings(command)).toEqual(PUSH);
+  });
+
+  it.each([
+    `echo '"status"' | xargs git`,
+    `printf '"push" origin HEAD:main' | xargs -0 git`,
+  ])("keeps quotes that xargs keeps, or that leave a read-only command: %s", (command) => {
+    expect(spellings(command)).toEqual([]);
+  });
+
   it("keeps main's -I reading when -J follows it", () => {
     expect(spellings("echo push origin HEAD:main | xargs -I{} -J % git {}")).toEqual(PUSH);
   });

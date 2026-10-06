@@ -10,6 +10,8 @@ import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { insertRuns, literalWord } from "./xargs-insert.js";
+import { quotedReadings } from "./xargs-quotes.js";
+import { replaceReadings } from "./xargs-replace.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
@@ -179,7 +181,7 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
     return;
   }
   const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
-  for (const cmd of xargsCommands(raw, stdin, (cmd) => xargsRuns(cmd, stdin))) runOnce(cmd, redirects, w, next, stdin);
+  for (const cmd of xargsCommands(raw, stdin, (cmd) => replaceReadings(cmd).flatMap((c) => xargsRuns(c, stdin)))) runOnce(cmd, redirects, w, next, stdin);
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
@@ -251,7 +253,7 @@ function batches(stdin: string, lines: string[][], batch: XargsBatch | null): st
  */
 function inputReadings(stdin: string, delimiters: string[] | null): string[][][] {
   const blanks = logicalLines(stdin).map(wordsOf).filter((l) => l.length > 0);
-  if (delimiters !== null && delimiters.length === 0) return [blanks];
+  if (delimiters !== null && delimiters.length === 0) return [blanks, ...quotedReadings(logicalLines(stdin))];
   if (delimiters !== null) return [delimitedRecords(stdin, delimiters)];
   return [blanks, ...[...new Set(stdin)].map((c) => delimitedRecords(stdin, [c]))];
 }

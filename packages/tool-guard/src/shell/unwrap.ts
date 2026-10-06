@@ -92,6 +92,8 @@ export interface Unwrapped {
   /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input record. */
   xargs?: {
     replace: string | null;
+    /** The replace string read when an option's value word is taken as an option, as in `-I -i`; its runs are read too. */
+    replaceAsOption: string | null;
     /** The BSD `-J` string all input items of a run replace, set only when `-J` comes after every `-I`. */
     insert: string | null;
     /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
@@ -173,8 +175,10 @@ function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): Omit<N
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
   const batch = xargsBatch(options) ?? earlier?.batch ?? null;
-  const { replace, insert } = replaceStrings(options, (word) => xargsCluster(word)?.end);
-  return { replace: replace ?? earlier?.replace ?? null, insert: insert ?? earlier?.insert ?? null, delimiters, batch };
+  const read = replaceStrings(options, { endOf: (word) => xargsCluster(word)?.end, takesValue: (word) => takesNextWord(word, WRAPPERS.xargs) });
+  const replace = read.replace ?? earlier?.replace ?? null;
+  const replaceAsOption = read.replaceAsOption ?? earlier?.replaceAsOption ?? null;
+  return { replace, replaceAsOption, insert: read.insert ?? earlier?.insert ?? null, delimiters, batch };
 }
 
 function batchSize(word: WordToken | undefined, text: string | undefined = word?.value): number | null {
