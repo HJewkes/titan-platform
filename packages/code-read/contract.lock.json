@@ -1,5 +1,5 @@
 {
-  "api": "0.1.5",
+  "api": "0.1.6",
   "commands": {
     "api.describe": {
       "args": {
@@ -2981,6 +2981,26 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "lenses": {
+            "default": [],
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "exports",
+                "score",
+                "centrality",
+                "coupling",
+                "tests"
+              ]
+            }
+          },
+          "window": {
+            "default": "30d",
+            "type": "string",
+            "pattern": "^(?:[1-9]\\d*d|lifetime)$"
           }
         },
         "required": [
@@ -3216,6 +3236,320 @@
               ],
               "additionalProperties": false
             }
+          },
+          "lenses": {
+            "type": "object",
+            "properties": {
+              "exports": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "utilization": {
+                          "type": "number"
+                        },
+                        "cognitive": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "consumers": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "exported": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "utilization",
+                        "cognitive",
+                        "consumers",
+                        "exported"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "score": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "grain": {
+                        "type": "string",
+                        "enum": [
+                          "file",
+                          "symbol"
+                        ]
+                      },
+                      "window": {
+                        "type": "string"
+                      },
+                      "score": {
+                        "type": "number"
+                      },
+                      "churn": {
+                        "type": "number"
+                      },
+                      "complexity": {
+                        "type": "number"
+                      },
+                      "recency": {
+                        "type": "number"
+                      },
+                      "utilization": {
+                        "type": "number"
+                      },
+                      "rank": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ranked": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "grain",
+                      "window",
+                      "score",
+                      "rank",
+                      "ranked"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "centrality": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "score": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "rank": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "of": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "score",
+                      "rank",
+                      "of"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "coupling": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "measured": {
+                        "type": "boolean"
+                      },
+                      "partners": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "node": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "span": {
+                                  "type": "object",
+                                  "properties": {
+                                    "startLine": {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "endLine": {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": [
+                                    "startLine",
+                                    "endLine"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind",
+                                "name",
+                                "path"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "count": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "count"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "measured",
+                      "partners"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tests": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "tests": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "span": {
+                              "type": "object",
+                              "properties": {
+                                "startLine": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "endLine": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "startLine",
+                                "endLine"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "path"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "indexedCount": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "coEditMeasured": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "tests",
+                      "indexedCount",
+                      "coEditMeasured"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

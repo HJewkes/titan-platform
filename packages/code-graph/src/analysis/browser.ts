@@ -64,3 +64,7 @@ export {
   packagesReferencedByEdges,
   toSortedEdges,
 } from "./graph-arch-compute.js";
+export type { SymbolConsumers } from "./symbol-coupling.js";
+export { computeSymbolConsumers } from "./symbol-coupling.js";
+export type { TestSourceLink } from "./test-linker.js";
+export { linkTestsToSources } from "./test-linker.js";
