@@ -353,9 +353,9 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
   awaitNewHeadRoute({ ...deps, agentExited: exitedOn(deps, wiring) }, AWAIT_NEW_HEAD_STEP),
-  flakeCheckRoute(deps.port, deps.now),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
+  flakeCheckRoute(deps.port, deps.now),
 ];
 
 const Woke = z.discriminatedUnion("kind", [
