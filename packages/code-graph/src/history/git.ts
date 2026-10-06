@@ -34,17 +34,51 @@ export function detectGitToplevel(cwd: string): string | null {
   return runGit(cwd, ["rev-parse", "--show-toplevel"]);
 }
 
-/** Run a git command whose output can be large; null when git is missing or fails. */
-export function runGitLarge(cwd: string, args: readonly string[], maxBuffer: number): string | null {
+export type GitLargeFailure = "not-git" | "overflow" | "git-error";
+
+export type GitLargeResult = { ok: true; out: string } | { ok: false; reason: GitLargeFailure; detail: string };
+
+/**
+ * Run a git command whose output can be large. `not-git` means no git binary; `overflow` means the
+ * output exceeded `maxBuffer` (so the answer is incomplete, not absent); `git-error` is any other failure.
+ */
+export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffer: number): GitLargeResult {
   try {
-    return execFileSync("git", [...args], {
+    const out = execFileSync("git", [...args], {
       cwd,
       encoding: "utf-8",
       maxBuffer,
       stdio: ["ignore", "pipe", "ignore"],
       env: discoveryEnv(),
     });
-  } catch {
-    return null;
+    return { ok: true, out };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    const detail = error instanceof Error ? error.message : String(error);
+    if (code === "ENOENT") return { ok: false, reason: "not-git", detail };
+    if (code === "ENOBUFS")
+      return {
+        ok: false,
+        reason: "overflow",
+        detail: `output exceeded ${maxBuffer} bytes`,
+      };
+    return { ok: false, reason: "git-error", detail };
   }
+}
+
+/** A history load that is neither a success nor a plain "not a git checkout". */
+export class GitHistoryError extends Error {
+  constructor(readonly reason: Exclude<GitLargeFailure, "not-git">, readonly detail: string) {
+    super(`git history unavailable (${reason}): ${detail}`);
+    this.name = "GitHistoryError";
+  }
+}
+
+export type HistoryLoad<T> = { ok: true; value: T } | { ok: false; reason: GitLargeFailure; detail: string };
+
+/** Collapse a {@link HistoryLoad} to its value: null for not-git (today's contract), a throw for overflow or git-error. */
+export function valueOrNull<T>(load: HistoryLoad<T>): T | null {
+  if (load.ok) return load.value;
+  if (load.reason === "not-git") return null;
+  throw new GitHistoryError(load.reason, load.detail);
 }
