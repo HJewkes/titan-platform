@@ -39,7 +39,7 @@ async function tmux(options: SurfaceOptions, args: string[]): Promise<string> {
  * tmux expands a window name as a format, where `#(...)` runs a shell command.
  * Doubling every `#` makes the name literal.
  */
-export const tmuxLiteral = (text: string): string => text.replaceAll("#", "##");
+const tmuxLiteral = (text: string): string => text.replaceAll("#", "##");
 
 async function hasSession(options: SurfaceOptions, session: string): Promise<boolean> {
   try {
