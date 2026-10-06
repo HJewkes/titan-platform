@@ -258,7 +258,11 @@ schema, expiresAt })` takes no polling knob; pass it where you wait:
 
 **Exactly one settle.** A gate is `pending`, then exactly one of `resolved`, `cancelled`, or
 `expired`. A second `resolve` or `cancel` throws `GateAlreadySettled` and leaves the first
-answer intact.
+answer intact. That holds across stores on one file: the settle write only lands on a row
+that is still pending, so a store that loses the race throws `GateAlreadySettled` (or
+`GateExpired`) instead of overwriting. When the winner wrote the same answer (same status,
+payload and reason), the loser gets the settled gate back instead, so a retry that raced its
+own first attempt succeeds.
 
 **Expiry is lazy.** Nothing sweeps the table; a *read* is what notices the deadline passed
 and flips the row to `expired`. The instant named by `expiresAt` counts as expired. Both

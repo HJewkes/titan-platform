@@ -127,6 +127,26 @@ describe("classifyReports", () => {
     expect(result.verdict).toBe("error");
   });
 
+  it("gives error when one selected file reproduces and another is not collected at head", () => {
+    const base = report(fileResult("a.test.ts", [failing("t")]), fileResult("b.test.ts", [failing("u")]));
+    const head = report(fileResult("a.test.ts", [passing("t")]));
+
+    const result = classifyReports(input(["a.test.ts", "b.test.ts"], base, head));
+
+    expect(result.verdict).toBe("error");
+    expect(result.files).toContainEqual({ file: "b.test.ts", base: "ran", head: "not-collected" });
+  });
+
+  it("gives error when one selected file reproduces and another fails to load at head", () => {
+    const base = report(fileResult("a.test.ts", [failing("t")]), fileResult("b.test.ts", [failing("u")]));
+    const head = report(fileResult("a.test.ts", [passing("t")]), loadError("b.test.ts", "SyntaxError: bad"));
+
+    const result = classifyReports(input(["a.test.ts", "b.test.ts"], base, head));
+
+    expect(result.verdict).toBe("error");
+    expect(result.files).toContainEqual({ file: "b.test.ts", base: "ran", head: "load-error" });
+  });
+
   it("marks a head test missing from base as not run", () => {
     const result = classifyReports(input(["a.test.ts"], report(fileResult("a.test.ts", [failing("other")])), report(fileResult("a.test.ts", [passing("t")]))));
 
