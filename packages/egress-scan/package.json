@@ -34,6 +34,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@titan-design/fix-proof": "workspace:^"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

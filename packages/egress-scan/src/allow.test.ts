@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AllowFileError, globToRegExp, isAllowed, parseAllow } from "./allow.js";
+import { AllowFileError, isAllowed, parseAllow } from "./allow.js";
 
 describe("parseAllow", () => {
   it("reads entries and skips comments and blank lines", () => {
@@ -45,7 +45,11 @@ describe("isAllowed", () => {
   });
 });
 
-describe("globToRegExp", () => {
+describe("allow globs", () => {
+  // The prefix satisfies the literal-segment guard so wildcard-only cases can be matched.
+  const matchesGlob = (glob: string, path: string): boolean =>
+    isAllowed(parseAllow(`keep/${glob} home-path TP-1 reason`), `keep/${path}`, "home-path");
+
   it.each([
     ["src/*.ts", "src/a.ts", true],
     ["src/*.ts", "src/deep/a.ts", false],
@@ -55,7 +59,37 @@ describe("globToRegExp", () => {
     ["a?.md", "ab.md", true],
     ["a?.md", "a/.md", false],
     ["a.md", "aXmd", false],
+    ["docs/{a,b}.md", "docs/a.md", true],
+    ["docs/{a,b}.md", "docs/b.md", true],
+    ["docs/{a,b}.md", "docs/c.md", false],
+    ["docs/{a,b}.md", "docs/{a,b}.md", false],
+    ["{**,docs}/x.md", "x.md", true],
+    ["{**,docs}/x.md", "docs/x.md", true],
+    ["{**,docs}/x.md", "other/y.md", false],
+    ["docs/{a,{b,c}}.md", "docs/c.md", true],
+    ["docs/a{,b}.md", "docs/a.md", true],
+    ["docs/a{,b}.md", "docs/ab.md", true],
   ])("%s against %s is %s", (glob, path, expected) => {
-    expect(globToRegExp(glob).test(path)).toBe(expected);
+    expect(matchesGlob(glob, path)).toBe(expected);
+  });
+
+  it.each(["{**,a}", "{*,docs}", "{**,docs}/**", "{,a}", "{a,{**,b}}", "{a,b}{*,c}"])(
+    "rejects %s because an alternative has no literal segment",
+    (glob) => {
+      expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
+    },
+  );
+
+  it("rejects a glob whose braces expand past the alternative limit", () => {
+    const glob = "{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}/x.md";
+    expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
+  });
+
+  it.each([
+    ["2000 single-choice groups", "docs/" + "{a}".repeat(2000)],
+    ["a 2KB glob", "docs/" + "a".repeat(2048)],
+    ["deep nesting", "docs/" + "{a,".repeat(40000) + "b" + "}".repeat(40000)],
+  ])("turns %s into an AllowFileError, never a raw error", (_name, glob) => {
+    expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
   });
 });

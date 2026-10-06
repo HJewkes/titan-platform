@@ -26,4 +26,40 @@ describe("compileGlobs", () => {
   it("refuses a brace glob with too many alternatives", () => {
     expect(() => expandBraces("{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}")).toThrow(/256/);
   });
+
+  it("rejects a huge brace product before building it", () => {
+    const alternatives = (count: number): string => `{${Array.from({ length: count }, (_, i) => `a${i}`).join(",")}}`;
+    const started = performance.now();
+    expect(() => expandBraces(`${alternatives(4096)}${alternatives(256)}`)).toThrow(Error);
+    expect(() => expandBraces(`${alternatives(30)}${alternatives(30)}`)).toThrow(/256/);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("rejects nested groups early", () => {
+    const inner = `{${Array.from({ length: 8 }, (_, i) => `b${i}`).join(",")}}`;
+    const glob = `{${Array.from({ length: 8 }, (_, i) => `a${i}${inner}`).join(",")}}${inner}`;
+    const started = performance.now();
+    expect(() => expandBraces(glob)).toThrow(/256/);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("expands nested and empty alternatives", () => {
+    expect(new Set(expandBraces("a{b,{c,d}}"))).toEqual(new Set(["ab", "ac", "ad"]));
+    expect(expandBraces("a{,b}")).toEqual(["a", "ab"]);
+  });
+
+  it.each([
+    ["2000 single-choice groups", "{a}".repeat(2000)],
+    ["20000 single-choice groups", "{a}".repeat(20000)],
+    ["a 2KB glob", "a".repeat(2048)],
+  ])("rejects %s before expanding", (_name, glob) => {
+    const started = performance.now();
+    expect(() => expandBraces(glob)).toThrow(Error);
+    expect(() => compileGlobs([glob])).toThrow(Error);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("accepts 32 brace groups", () => {
+    expect(expandBraces("{a}".repeat(32))).toEqual(["a".repeat(32)]);
+  });
 });
