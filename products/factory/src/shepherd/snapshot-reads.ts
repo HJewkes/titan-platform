@@ -1,5 +1,14 @@
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
+import type { TickPacing } from "../tick-pacing.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+
+/** What the sweeps and `/health` read beyond the port. */
+export interface SnapshotServices {
+  /** The per-repo PR snapshot the gone and release sweeps read; absent means they read the port. */
+  snapshot?: PrSnapshot;
+  /** How fast the snapshot ticks, for `/health`. */
+  pacing?: TickPacing;
+}
 
 /**
  * A PR for a wait or a sweep: its row on the repo's open list when it has one, else a read through the port, which is how a
