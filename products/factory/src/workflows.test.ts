@@ -277,7 +277,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(30_000);
     expect(elapsed).toBeLessThan(DEFAULT_EXIT_GRACE_MS);
   });
@@ -287,7 +287,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_EXIT_GRACE_MS);
     expect(elapsed).toBeLessThan(DEFAULT_VERDICT_TIMEOUT_MS);
   });
