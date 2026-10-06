@@ -9,7 +9,8 @@ export const PICK_TYPES = [
 ] as const;
 export type PickType = (typeof PICK_TYPES)[number];
 
-export const OUTCOMES = ["accept", "amend", "other", "redirect", "none"] as const;
+/** `bulk` is one answer that accepted several decisions at once; it is never per-item evidence. */
+export const OUTCOMES = ["accept", "amend", "other", "redirect", "none", "bulk"] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 
 export interface OutcomeInput {
