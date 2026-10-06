@@ -7,7 +7,7 @@ import { buildSha } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
-import { busyRuns } from "./restart-drain.js";
+import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
@@ -137,7 +137,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => ({
-      ...factoryHealth(host, routeFor),
+      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd)),
       github: github.status(),
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
@@ -154,10 +154,20 @@ function buildHealth(options: FactoryServerOptions): BehindMain & { sha: string 
 }
 
 /** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. */
-export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined): Record<string, unknown> {
+export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
   const runs = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<WorkflowStatus, number>;
   for (const run of host.runtime.list([...STATUSES])) runs[run.status] += 1;
-  return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(host.runtime.list(["running"]), routeFor) };
+  const running = host.runtime.list(["running"]);
+  const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
+  return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
+}
+
+/** A run held and not yet satisfied cannot merge until release; a satisfied one may merge at any moment, and an unreadable store throws, which counts it busy. */
+function heldRun(services: ShepherdServices | undefined): HoldPredicate | undefined {
+  return services && ((run) => {
+    const registration = services.store.get().byRun(run.id);
+    return registration !== undefined && registration.held && registration.holdSatisfied === null;
+  });
 }
 
 interface Sweep {
