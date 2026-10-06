@@ -22,9 +22,31 @@ function conflictAnswer(headSha: string) {
   return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
 }
 
-export async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
+async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
   await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
   return undefined;
+}
+
+/** A run that wakes agents. */
+export interface WakeRun extends GateRun {
+  /** Heads a wake's await-new-head saw replaced; replaying the run's wakes rebuilds it. */
+  wokenPast: Set<string>;
+}
+
+/**
+ * A wake at a head an earlier wake already saw replaced is a stale read of that head, so it waits for the head to
+ * differ again instead of spending a repair and resuming an agent with nothing to do. False means wake as usual.
+ */
+export async function awaitedPast(run: WakeRun, headSha: string): Promise<boolean> {
+  if (!run.wokenPast.has(headSha)) return false;
+  await awaitNewHead(run, headSha);
+  return true;
+}
+
+/** True when an agent took the wake; the run has then moved past `headSha`. */
+export function tookWake(run: WakeRun, headSha: string, outcome: { kind: string }): boolean {
+  if (outcome.kind === "woken") run.wokenPast.add(headSha);
+  return outcome.kind === "woken";
 }
 
 /** `merge` waits for a head that resolves the conflict and lands it through the normal rounds; it trusts no head. */
