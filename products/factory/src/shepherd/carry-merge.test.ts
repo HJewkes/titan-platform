@@ -1,6 +1,7 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { reviewCheck } from "./review-check.js";
 import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
 import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
@@ -31,6 +32,7 @@ function rig(scope: { kind: string | null; baseRef: string | null }, probe: Carr
     if (stepId.startsWith("sh-carry-scope")) return scope;
     if (stepId.startsWith("sh-carry:")) return probe;
     if (stepId.startsWith("sh-carry-seat:")) return seats;
+    if (stepId.startsWith("sh-publish-review:")) return { published: false };
     return { head: input.head, merge: {}, record: {} };
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
@@ -56,6 +58,18 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(evidence).toMatchObject({ head: NEW_HEAD, verdict: { value: "MERGE", head: REVIEWED }, resolver: AGENT, dispatchedReviewer: AGENT });
     expect(evidence.carry).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL });
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry:"))!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD });
+  });
+
+  it("publishes shepherd/review as success at the carried-to head, before the evidence step", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.indexOf(`sh-publish-review:${NEW_HEAD}`)).toBeLessThan(ids.indexOf(`sh-merge-evidence:${NEW_HEAD}`));
+    const publish = r.asked.find((step) => step.stepId === `sh-publish-review:${NEW_HEAD}`)!.input;
+    expect(publish).toMatchObject({ outcome: "MERGE", verdictHead: REVIEWED, head: NEW_HEAD, carriedFrom: REVIEWED });
+    expect(reviewCheck({ ...publish, autoMergeArmed: false } as Parameters<typeof reviewCheck>[0])).toMatchObject({ headSha: NEW_HEAD, conclusion: "success" });
   });
 
   it("records the seat check as a step over the reviewed head, every head the run saw, and the new head", async () => {
