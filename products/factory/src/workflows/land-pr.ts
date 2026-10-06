@@ -4,6 +4,7 @@ import { z } from "zod";
 import { defineWorkflow, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
+import { askAtHead } from "../shepherd/stale-gates.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
@@ -85,12 +86,17 @@ function ciFailedAnswer(headSha: string) {
   return z.object({ decision: z.enum(["rerun", "abandon", "await-fix"]), headSha: z.literal(headSha) });
 }
 
-/** The answer must name the red head shown, so a decision about one head never applies to another. */
+/**
+ * The answer must name the red head shown, so a decision about one head never applies to another. A gate the head
+ * sweep superseded because the PR moved past that head reads as await-fix, so the run lands the new head unanswered.
+ */
 async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead): Promise<"rerun" | "abandon" | "await-fix"> {
   const schema = ciFailedAnswer(red.headSha);
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"}) ${check.url}`).join("; ");
   const prompt = `CI failed on PR #${params.pr} in ${params.repo} at head ${red.headSha}: ${checks || "no failing check named"}. Rerun, abandon, or await a fix?`;
-  const answer = schema.safeParse((await ctx.assisted("ci-failed", prompt, { schema })).data);
+  const answered = await askAtHead(ctx, "ci-failed", prompt, { schema });
+  if (!answered) return "await-fix";
+  const answer = schema.safeParse(answered.data);
   if (!answer.success) throw new Error(`ci-failed answer does not name head ${red.headSha}: ${answer.error.message}`);
   return answer.data.decision;
 }
