@@ -1,5 +1,11 @@
 # @titan-design/agent-protocol
 
+## 0.5.0
+
+### Minor Changes
+
+- 411b4f0: Add the `@titan-design/agent-protocol/worker-facts` subpath with `WorkerFactsSchema` and the `WorkerFacts` type: the contract for what a spawned worker's completion carries (agent, profile, spawner, task id, last Status or Verdict capped at 2,000 characters, PR, tokens, cost, exit code, signal and inferred).
+
 ## 0.4.0
 
 ### Minor Changes
