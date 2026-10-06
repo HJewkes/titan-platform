@@ -937,7 +937,7 @@ describe("sh-review", () => {
       expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START + 7 * 60_000, busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
-      expect(seen).toEqual(waits.map((wait) => `waiting for the broker to start reviewer rv-octo-demo-7: ${wait}`));
+      expect(seen).toEqual(waits.map((wait) => `waiting for reviewer admission (the broker has not started rv-octo-demo-7): ${wait}`));
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
     });
 
