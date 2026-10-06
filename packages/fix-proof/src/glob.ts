@@ -3,14 +3,30 @@ const INNERMOST_BRACE = /\{([^{}]*)\}/;
 
 /** Every alternative of a brace glob, innermost group first; throws past 256 alternatives. */
 export function expandBraces(glob: string): string[] {
+  const out: string[] = [];
+  collect(glob, out, glob);
+  return out;
+}
+
+// The cap is checked as alternatives are produced, so a glob that expands past it stops
+// after 257 strings instead of building the whole product first.
+function collect(glob: string, out: string[], original: string): void {
   const match = INNERMOST_BRACE.exec(glob);
-  if (!match) return [glob];
+  if (!match) {
+    out.push(glob);
+    if (out.length > MAX_EXPANSIONS) throw tooMany(original);
+    return;
+  }
   const [group, body = ""] = match;
   const head = glob.slice(0, match.index);
   const tail = glob.slice(match.index + group.length);
-  const expanded = body.split(",").flatMap((choice) => expandBraces(head + choice + tail));
-  if (expanded.length > MAX_EXPANSIONS) throw new Error(`glob expands past ${MAX_EXPANSIONS} alternatives: ${glob}`);
-  return expanded;
+  const choices = body.split(",");
+  if (choices.length > MAX_EXPANSIONS) throw tooMany(original);
+  for (const choice of choices) collect(head + choice + tail, out, original);
+}
+
+function tooMany(glob: string): Error {
+  return new Error(`glob expands past ${MAX_EXPANSIONS} alternatives: ${glob.length > 80 ? `${glob.slice(0, 80)}...` : glob}`);
 }
 
 function escapeRegExp(char: string): string {
