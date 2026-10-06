@@ -20,8 +20,9 @@ export interface AskQuestion {
   recommended?: string | null;
 }
 
-export interface AskFinding {
-  rule: AskRule;
+/** One broken rule; other lints of owner-facing text (`lintPrSection`) reuse it with their own rule ids. */
+export interface AskFinding<Rule extends string = AskRule> {
+  rule: Rule;
   evidence: string;
 }
 
