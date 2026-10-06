@@ -1,6 +1,7 @@
 import { userInfo } from "node:os";
 import { isDeepStrictEqual } from "node:util";
-import type { GateResolver } from "@titan-design/hitl";
+import { matchesAllowance, type GateResolver } from "@titan-design/hitl";
+import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import type { FactoryHost } from "./host.js";
 import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
@@ -60,7 +61,8 @@ function repeatedResolution(host: FactoryHost, runId: string, stepId: string, pa
 
 /**
  * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is owner-terminal only with a presence proof, because the owner's
- * `!` commands inherit that marker; without one it is the coordinator named by AGENT_CHAT_NAME. Any other shell stays
+ * `!` commands inherit that marker; without one it is the coordinator named by AGENT_CHAT_NAME. An answer the factory
+ * allows a coordinator (a stuck-behind retry) skips the dialog, so it never reaches the owner's screen. Any other shell stays
  * owner-terminal without a dialog until owner question Q1 is answered. CLAUDECODE is ignored: `!` commands set it too.
  * Returns an error message when the gate's fields cannot be shown safely in the dialog.
  */
@@ -69,6 +71,7 @@ async function cliResolver(env: NodeJS.ProcessEnv, gateId: string | undefined, p
   if (!env.AGENT_CHAT_AGENT_ID) return owner;
   const coordinator: GateResolver = { class: "coordinator", id: env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID, channel: "factory-cli" };
   if (gateId === undefined) return coordinator;
+  if (matchesAllowance(FACTORY_ANSWER_ALLOWANCES, gateId, coordinator, payload)) return coordinator;
   const reason = presenceReason(gateId, payload);
   if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
   const proof = await presence(reason);

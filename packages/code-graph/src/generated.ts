@@ -50,25 +50,49 @@ export function loadGeneratedPatterns(
   }
 }
 
+interface GeneratedRule {
+  readonly rx: RegExp;
+  readonly generated: boolean;
+}
+
 /**
  * Parse `.gitattributes` text into regexes for every path pattern marked
- * `linguist-generated` (bare, or `=true`). A later `-linguist-generated` /
- * `=false` on the same line wins (git's last-attribute-wins rule), letting a
- * repo opt a path back out.
+ * `linguist-generated` (bare, or `=true`). Git applies the last matching line,
+ * so a later `-linguist-generated` / `=false` / `!linguist-generated` line opts
+ * a path back out: each returned regex excludes the opt-out patterns that
+ * follow its line. Within one line the last attribute token wins.
  */
 export function parseGeneratedPatterns(content: string): RegExp[] {
+  const rules = parseGeneratedRules(content);
   const out: RegExp[] = [];
+  rules.forEach((rule, i) => {
+    if (!rule.generated) return;
+    const optOuts = rules.slice(i + 1).filter((r) => !r.generated);
+    out.push(excluding(rule.rx, optOuts.map((r) => r.rx)));
+  });
+  return out;
+}
+
+function parseGeneratedRules(content: string): GeneratedRule[] {
+  const rules: GeneratedRule[] = [];
   for (const raw of content.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const parsed = /^("(?:[^"\\]|\\.)*"|\S+)\s*(.*)$/.exec(line);
     if (!parsed) continue;
-    const pattern = unquote(parsed[1]!);
-    if (generatedAttr(parsed[2]!.split(/\s+/).filter(Boolean)) === true) {
-      out.push(gitattributesPatternToRegex(pattern));
-    }
+    const generated = generatedAttr(parsed[2]!.split(/\s+/).filter(Boolean));
+    if (generated === undefined) continue;
+    rules.push({ rx: gitattributesPatternToRegex(unquote(parsed[1]!)), generated });
   }
-  return out;
+  return rules;
+}
+
+// Every pattern regex is anchored at both ends, so a lookahead over the
+// opt-out sources rejects exactly the ids a later line unsets.
+function excluding(rx: RegExp, optOuts: readonly RegExp[]): RegExp {
+  if (optOuts.length === 0) return rx;
+  const rejected = optOuts.map((o) => `(?:${o.source})`).join("|");
+  return new RegExp(`(?!${rejected})(?:${rx.source})`);
 }
 
 /** Resolve the effective linguist-generated value from a line's attribute tokens. */
@@ -76,10 +100,16 @@ function generatedAttr(attrs: readonly string[]): boolean | undefined {
   let value: boolean | undefined;
   for (const a of attrs) {
     if (a === "linguist-generated" || a === "linguist-generated=true") value = true;
-    else if (a === "-linguist-generated" || a === "linguist-generated=false") value = false;
+    else if (OPT_OUT_TOKENS.has(a)) value = false;
   }
   return value;
 }
+
+const OPT_OUT_TOKENS = new Set([
+  "-linguist-generated",
+  "linguist-generated=false",
+  "!linguist-generated",
+]);
 
 function unquote(token: string): string {
   return token.startsWith('"') && token.endsWith('"')
@@ -87,26 +117,43 @@ function unquote(token: string): string {
     : token;
 }
 
+const NEVER_MATCHES = /(?!)/;
+
 /**
  * Convert a gitignore-style `.gitattributes` path pattern to a regex matched
  * against a repo-relative posix id: a slash-free pattern matches at any depth
- * (`*.gen.ts`), a pattern with a slash anchors to the root, `**` crosses dirs,
- * `*`/`?` stay within a segment, and a trailing `/` matches a directory prefix.
+ * (`*.gen.ts`), a leading or inner slash anchors to the root, a non-final `**`
+ * segment matches zero or more directories, a final `**` segment matches
+ * everything inside, and `*`/`?` stay within a segment. A trailing `/` matches
+ * only a directory, never a path inside it (gitattributes(5)), so it matches
+ * no file id. The result is anchored at both ends.
  */
 export function gitattributesPatternToRegex(pattern: string): RegExp {
   let p = pattern;
-  const isDir = p.endsWith("/");
-  if (isDir) p = p.slice(0, -1);
-  let body = "";
-  for (let i = 0; i < p.length; i++) {
-    const c = p[i]!;
-    if (c === "*" && p[i + 1] === "*") {
-      body += ".*";
-      i++;
-    } else if (c === "*") body += "[^/]*";
-    else if (c === "?") body += "[^/]";
-    else body += c.replace(/[.+(){}|^$\\[\]]/, "\\$&");
+  if (p.endsWith("/")) return NEVER_MATCHES;
+  const anchored = p.includes("/");
+  if (p.startsWith("/")) p = p.slice(1);
+  const prefix = anchored ? "^" : "^(?:.*/)?";
+  return new RegExp(prefix + globBody(p) + "$");
+}
+
+function globBody(p: string): string {
+  const segments = p.split("/");
+  return segments
+    .map((seg, i) => {
+      const last = i === segments.length - 1;
+      if (seg === "**") return last ? ".+" : "(?:.*/)?";
+      return globSegment(seg) + (last ? "" : "/");
+    })
+    .join("");
+}
+
+function globSegment(seg: string): string {
+  let out = "";
+  for (const c of seg) {
+    if (c === "*") out += "[^/]*";
+    else if (c === "?") out += "[^/]";
+    else out += c.replace(/[.+(){}|^$\\[\]]/, "\\$&");
   }
-  const prefix = p.includes("/") ? "^" : "(?:^|/)";
-  return new RegExp(prefix + body + (isDir ? "(?:/|$)" : "$"));
+  return out;
 }
