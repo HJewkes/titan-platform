@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -261,6 +261,27 @@ describe("Claude locator readback and dispatcher", () => {
     };
     await expect(readClaudeText(forged, { sources: [movedSource] })).resolves.toBeNull();
     await expect(readClaudeText(locator, { sources: [movedSource] })).resolves.toBeNull();
+  });
+
+  it("returns null when the transcript was truncated or removed before the selected line", async () => {
+    const { observations } = await collect(source);
+    const message = observations.find((observation): observation is NormalizedMessageObservation => observation.kind === "message");
+    writeFileSync(filePath, render(records.slice(0, 1)), "utf8");
+    await expect(readClaudeText(message!.content[0]!.locator)).resolves.toBeNull();
+
+    rmSync(filePath);
+    await expect(readClaudeText(message!.content[0]!.locator)).resolves.toBeNull();
+  });
+
+  it.skipIf(process.getuid?.() === 0)("rejects instead of returning null when the transcript is unreadable", async () => {
+    const { observations } = await collect(source);
+    const message = observations.find((observation): observation is NormalizedMessageObservation => observation.kind === "message");
+    chmodSync(filePath, 0o000);
+    try {
+      await expect(readClaudeText(message!.content[0]!.locator)).rejects.toMatchObject({ code: "EACCES" });
+    } finally {
+      chmodSync(filePath, 0o600);
+    }
   });
 
   it("returns null for unsupported format locators", async () => {
