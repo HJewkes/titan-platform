@@ -4,6 +4,8 @@ export { mergeTemplate, tokenSimilarity } from "./drain/similarity.js";
 export type { DrainTreeOptions, DrainTreeSnapshot } from "./drain/tree.js";
 export { DrainTree } from "./drain/tree.js";
 export { DrainTreeRegistry } from "./registry.js";
+export type { AnchorConfig, AnchorConfigs } from "./anchors.js";
+export { DEFAULT_ANCHOR_CONFIGS } from "./anchors.js";
 export type { LineCountBucket, Signature } from "./signature.js";
 export { extractSignature, hasErrorSignal } from "./signature.js";
 export type { MaskConfigs, MaskResult, MaskRule } from "./masks.js";

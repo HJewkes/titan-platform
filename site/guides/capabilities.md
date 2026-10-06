@@ -175,15 +175,16 @@ Tier 0, `@titan-design/cluster@0.1.2`. Deterministic Drain template mining with 
 
 Key exports:
 
-- `drain/types`: `DrainCluster`, `WILDCARD`
+- `drain/types`: `WILDCARD`
 - `drain/similarity`: `mergeTemplate`, `tokenSimilarity`
 - `drain/tree`: `DrainTree`
 - `registry`: `DrainTreeRegistry`
+- `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
 - `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
 - `template-id`: `templateId`
 - `clusterer`: `Clusterer`
-- +13 more in the [reference page](/reference/cluster)
+- +16 more in the [reference page](/reference/cluster)
 
 <a id="cap-code-parser"></a>
 
