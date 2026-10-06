@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
+import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
@@ -73,7 +74,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const db = openDatabase(options.dbPath);
   const tenant = options.routes.database;
   runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), ...(tenant?.extraMigrations ?? [])]);
-  const gates = new SqliteGateStore(db, { migrate: false });
+  const gates = new SqliteGateStore(db, { migrate: false, allowances: FACTORY_ANSWER_ALLOWANCES });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);

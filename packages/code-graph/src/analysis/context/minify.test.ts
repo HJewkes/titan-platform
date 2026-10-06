@@ -138,6 +138,24 @@ describe("minifySource on TSX", () => {
 
     expect(result.text).toBe("const b = <b>one two</b>;\n");
   });
+
+  it("adds no space where a `{/* */}` sat between two elements", async () => {
+    const result = await minifySource("const b = <a><b>x</b>{/*c*/}<i>y</i></a>;\n", "tsx");
+
+    expect(result.text).toBe("const b = <a><b>x</b><i>y</i></a>;\n");
+  });
+
+  it("adds no space where a `{/* */}` was the only child of a fragment", async () => {
+    const result = await minifySource("const b = <>{/*c*/}</>;\n", "tsx");
+
+    expect(result.text).toBe("const b = <></>;\n");
+  });
+
+  it("still puts one space between two identifiers when a plain comment is cut", async () => {
+    const result = await minifySource("const x = typeof/*c*/y;\n", "typescript");
+
+    expect(result.text).toBe("const x = typeof y;\n");
+  });
 });
 
 describe("minifySource on Python", () => {

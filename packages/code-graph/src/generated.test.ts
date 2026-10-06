@@ -50,6 +50,51 @@ describe("parseGeneratedPatterns", () => {
     expect(isGeneratedFile("deep/nested/api.pb.ts", patterns)).toBe(true);
     expect(isGeneratedFile("api.pb.ts", patterns)).toBe(true);
   });
+
+  it("anchors a leading-slash pattern to the repo root", () => {
+    const patterns = parseGeneratedPatterns("/dist/x.js linguist-generated");
+    expect(isGeneratedFile("dist/x.js", patterns)).toBe(true);
+    expect(isGeneratedFile("pkg/dist/x.js", patterns)).toBe(false);
+  });
+
+  it("marks no file for a trailing-slash pattern, as git does", () => {
+    const patterns = parseGeneratedPatterns("vendor/ linguist-generated");
+    expect(isGeneratedFile("vendor", patterns)).toBe(false);
+    expect(isGeneratedFile("vendor/x.js", patterns)).toBe(false);
+    expect(isGeneratedFile("a/vendor/x.js", patterns)).toBe(false);
+  });
+
+  it("lets a leading **/ match a root-level file", () => {
+    const patterns = parseGeneratedPatterns("**/x.ts linguist-generated");
+    expect(isGeneratedFile("x.ts", patterns)).toBe(true);
+    expect(isGeneratedFile("a/b/x.ts", patterns)).toBe(true);
+  });
+
+  it("lets an inner /**/ match zero directories", () => {
+    const patterns = parseGeneratedPatterns("a/**/b.ts linguist-generated");
+    expect(isGeneratedFile("a/b.ts", patterns)).toBe(true);
+    expect(isGeneratedFile("a/x/y/b.ts", patterns)).toBe(true);
+    expect(isGeneratedFile("c/a/b.ts", patterns)).toBe(false);
+  });
+
+  it("lets a later line's -linguist-generated override an earlier match", () => {
+    const patterns = parseGeneratedPatterns(
+      ["vendor/** linguist-generated", "vendor/ours/** -linguist-generated"].join("\n"),
+    );
+    expect(isGeneratedFile("vendor/lib/a.ts", patterns)).toBe(true);
+    expect(isGeneratedFile("vendor/ours/a.ts", patterns)).toBe(false);
+  });
+
+  it("lets a later linguist-generated line re-mark an opted-out path", () => {
+    const patterns = parseGeneratedPatterns(
+      [
+        "vendor/** -linguist-generated",
+        "vendor/ours/** linguist-generated",
+      ].join("\n"),
+    );
+    expect(isGeneratedFile("vendor/ours/a.ts", patterns)).toBe(true);
+    expect(isGeneratedFile("vendor/lib/a.ts", patterns)).toBe(false);
+  });
 });
 
 describe("isGeneratedFile", () => {

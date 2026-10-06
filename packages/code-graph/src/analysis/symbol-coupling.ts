@@ -1,4 +1,4 @@
-import { parseSymbolId } from "../extractors/ids.js";
+import { parseSymbolId } from "../extractors/symbol-id.js";
 
 /**
  * Symbol-level change coupling (C-60). Decomposes a god-file the file-level
