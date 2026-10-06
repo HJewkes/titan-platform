@@ -30,7 +30,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
-| [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a credential read, a permission-config edit) with no actor attached; it decides nothing, and the decision and hook land in later TP-403 slices. |
+| [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
@@ -334,17 +334,20 @@ Key exports:
 
 Tier 0, private, `packages/tool-guard`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
-**Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a credential read, a permission-config edit) with no actor attached; it decides nothing, and the decision and hook land in later TP-403 slices.
+**Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand.
 
 Key exports:
 
 - `event`: `parseHookEvent`
-- `paths`: `GUARDED_PATHS`
-- `spellings`: `SPELLINGS`
 - `classify`: `classify`
-- `families/preference`: `checkPreferences`, `PREFERENCES`
-- `shell`: `ParseError`, `tokenize`, `extractCommands`, `parseGit`, `splitArgs`, `resolvePath`
-- +27 more in `packages/tool-guard/src/index.ts`
+- `families/preference`: `checkPreferences`
+- `actor`: `observeActor`
+- `decide`: `decide`
+- `log`: `formatDecisionLine`, `formatErrorLine`, `logPath`
+- `hook`: `handle`
+- `context`: `nodeContext`
+- `shell`: `ParseError`, `tokenize`
+- +47 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 
@@ -443,11 +446,11 @@ Tier 1, `@titan-design/github@0.4.0`. GitHub REST port over the gh CLI: validate
 Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
+- `force-pushes`: `ForcePushesTruncated`
 - `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `app-token`: `appInstallationToken`
-- +57 more in the [reference page](/reference/github)
+- +61 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -461,7 +464,7 @@ Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
 - `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateBriefInvalid`, `GateCancelled`, `GateError`, `GateExpired`
-- +30 more in the [reference page](/reference/hitl)
+- +32 more in the [reference page](/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 
@@ -591,7 +594,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +378 more in the [reference page](/reference/code-graph)
+- +387 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -608,8 +611,8 @@ Key exports:
 - `rule-text`: `describeRule`
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
-- `query`: `serializeContract`, `Finding`, `FindingStatus`, `SourceExcerpt`
-- +75 more in the [reference page](/reference/code-read)
+- `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
+- +94 more in the [reference page](/reference/code-read)
 
 <a id="cap-decider"></a>
 
@@ -718,7 +721,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +184 more in the [reference page](/reference/session-read)
+- +197 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

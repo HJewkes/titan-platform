@@ -184,8 +184,8 @@ export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";
 export type { ComputeDriftInput } from "./analysis/graph-report-drift.js";
 export { computeReportDrift } from "./analysis/graph-report-drift.js";
-export type { HealthComponent } from "./analysis/dashboard-health.js";
-export { computeHealth } from "./analysis/dashboard-health.js";
+export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./analysis/dashboard-health.js";
+export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./analysis/dashboard-health.js";
 export type {
   BlastRadiusEntry,
   HotExport,
@@ -293,6 +293,9 @@ export type { DiffSnapshotsOptions } from "./diff/diff.js";
 export { diffSnapshots } from "./diff/diff.js";
 export type { CheckDiff, DiffCheckResultsOptions, UnchangedViolation } from "./diff/check-diff.js";
 export { diffCheckResults } from "./diff/check-diff.js";
+export type { BucketableViolation, ViolationBuckets } from "./diff/violation-buckets.js";
+export { bucketViolations } from "./diff/violation-buckets.js";
+export type { ViolationIdentity } from "./check/violation-key.js";
 export type {
   FootprintGraph,
   FootprintOptions,

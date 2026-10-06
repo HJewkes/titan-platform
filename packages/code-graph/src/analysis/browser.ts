@@ -35,8 +35,8 @@ export { topGrowthRisks } from "./growth-risks.js";
 export { topUntestedRisks } from "./untested-risks.js";
 export type { ComputeDriftInput } from "./graph-report-drift.js";
 export { computeReportDrift } from "./graph-report-drift.js";
-export type { HealthComponent } from "./dashboard-health.js";
-export { computeHealth } from "./dashboard-health.js";
+export type { HealthComponent, HealthComponentKey, HealthInput, HealthWeights, PenaltyWeight } from "./dashboard-health.js";
+export { DEFAULT_HEALTH_WEIGHTS, computeHealth } from "./dashboard-health.js";
 export type { BlastRadiusEntry, HotExport, NodeMetrics, SymbolUtil } from "./dashboard-node-metrics.js";
 export {
   buildBlastRadius,
@@ -47,6 +47,8 @@ export {
   collectSymbolUtil,
   referencedNodes,
 } from "./dashboard-node-metrics.js";
+export type { BucketableViolation, UnchangedViolation, ViolationBuckets } from "../diff/violation-buckets.js";
+export { bucketViolations } from "../diff/violation-buckets.js";
 export type { CouplingClass, SnapshotContext } from "./dashboard-coupling.js";
 export { classifyCoupling, pairKey } from "./dashboard-coupling.js";
 export type { PackageRoot } from "./package-buckets.js";
@@ -62,3 +64,7 @@ export {
   packagesReferencedByEdges,
   toSortedEdges,
 } from "./graph-arch-compute.js";
+export type { SymbolConsumers } from "./symbol-coupling.js";
+export { computeSymbolConsumers } from "./symbol-coupling.js";
+export type { TestSourceLink } from "./test-linker.js";
+export { linkTestsToSources } from "./test-linker.js";
