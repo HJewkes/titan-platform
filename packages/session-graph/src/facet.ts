@@ -1,7 +1,8 @@
-import { EXTRACT_VERSION, TranscriptParseError, extractTranscript, type DiscoveredTranscript, type TranscriptDelta } from "@titan-design/session-read";
+import { EXTRACT_VERSION, extractTranscript, type DiscoveredTranscript, type TranscriptDelta } from "@titan-design/session-read";
 import type { Db, WatermarkRow } from "@titan-design/store-sqlite";
 import { applyAudit } from "./audit-apply.js";
 import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
+import { unreadableStatus } from "./unreadable.js";
 import type { SessionGraph } from "./graph.js";
 
 /** The one facet today: the eight audit tables, all written from the same extraction. */
@@ -86,12 +87,6 @@ async function backfillOne(graph: SessionGraph, { row, transcript }: Candidate, 
     writeFacet(graph.db, row.sourceId, version, delta.lastByteOffset);
   })();
   return delta.sessions.map((s) => s.sessionId);
-}
-
-function unreadableStatus(err: unknown): "missing" | "quarantined" | null {
-  if (err instanceof TranscriptParseError) return "quarantined";
-  if ((err as NodeJS.ErrnoException | null)?.code === "ENOENT") return "missing";
-  return null;
 }
 
 function writeFacet(db: Db, transcriptId: number, version: number, indexedTo: number): void {
