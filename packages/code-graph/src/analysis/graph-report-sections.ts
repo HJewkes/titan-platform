@@ -107,6 +107,11 @@ export function hotspotScoreOf(ctx: ReportContext, nodeId: string): number {
   return hotspotScore(ctx, nodeId, churn, complexity);
 }
 
+/** The complexity factor a file's hotspot score multiplies, read even when the file has no churn; undefined when unmeasured. */
+export function hotspotComplexityOf(ctx: ReportContext, nodeId: string): number | undefined {
+  return lookupMetric(ctx, pickComplexityMetric(ctx), nodeId);
+}
+
 /**
  * churn × complexity, discounted by the file's recency so a freshly-authored
  * file's initial churn burst doesn't read as decay (see recency_{window}d). The

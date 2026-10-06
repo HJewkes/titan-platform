@@ -21,7 +21,7 @@ Tier 2 of the titan-platform DAG (TP-184). Depends on `code-graph`, `registry`, 
 `.codewatch/check.json` (`code-read-query-*`) and `src/browser-safe.test.ts` enforce that.
 The test bundles the subpath with esbuild for `platform: "browser"` and expects no warnings.
 
-## Commands (contract 0.1.6)
+## Commands (contract 0.1.7)
 
 | Command | Args | Result |
 | --- | --- | --- |
@@ -36,6 +36,7 @@ The test bundles the subpath with esbuild for `platform: "browser"` and expects 
 | `hotspots.list` | `snapshot?`, `baseline?`, `grain` (`file` default, `symbol`), `window` (`30d` default, any `<n>d`, or `lifetime`), `cutoff?`, `offset`, `limit` (0 to 500, default 20) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (`node`, `churn`, `complexity`, `recency`, `score`, `utilization?`, `baselineScore?`, `mark?`), `total` |
 | `overview.get` | `snapshot?`, `baseline?`, `window` (`30d` default), `cutoff` (default 3000), `weights` (per signal, defaults from code-graph's `DEFAULT_HEALTH_WEIGHTS`), `exclude_rules`, `combined` (default false), `reading_limit` (default 6), `look_limit` (default 8; both 0 to 50) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `kpis`, `signals` (`key`, `label`, `penalty`, `cap`, `measured`, `detail`), `combined?`, `readingOrder` (`node`, `centrality`), `lookFirst` (`node`, `score`, `churn`, `complexity`, `recency`, `reasons`) |
 | `changes.get` | `baseline` (required), `snapshot?`, `window` (`30d` default), `cutoff` (default 3000), `limit` (rows per list, 0 to 500, default 20) | `snapshotId`, `baselineSnapshotId`, `comparable`, `files` (`crossedCutoff`, `added`), `findings` (`new`, `worsened`, `improved`, `resolved`), `coupling` (`measured`, `added`), `regressions` (`node`, `before`, `after`, `delta`, `findings`), `counts` |
+| `paths.impact` | `paths` (up to 500), `snapshot?`, `baseline?`, `root?` (absolute checkout directory), `window` (`30d` default) | `snapshotId`, `baselineSnapshotId?`, `comparable?`, `rows` (by `status`: `indexed` with `node`, `complexity`, `hotspot` (`score`, `rank`), `findings`, `delta?`; `not-indexed` with `path`; `outside-repo`), `ranked`, `rollup` |
 
 Arguments are snake_case and results are camelCase. `snapshot` and `baseline` take an id, a
 digit string, or a ref name (that ref's newest snapshot). The rest of the design's 14
@@ -198,6 +199,27 @@ already derives:
 - **Coupling** is unmeasured (`measured: false`) until co-change pairs are stored.
 - **Regressions** are files whose score rose that carry an open finding now.
 - Across index versions `comparable` is false and every list is empty.
+
+## Path impact
+
+`paths.impact` answers "what do these files weigh", for a set such as the files a change
+touches. It ranks nothing a second way:
+
+- **Complexity** is the factor the file hotspot score multiplies (`hotspotComplexityOf`:
+  max cognitive, else max cyclomatic), read even for a file with no churn.
+- **Hotspot** is the file's row in `hotspots.list` at `window`: `rank` is its row number
+  there and `ranked` the list's total. A file scoring 0 has rank null.
+- **Findings** are the open findings on the file or a symbol in it, worst first.
+- **Delta**, only with `baseline`: score, complexity, and findings counts against the
+  baseline, findings bucketed by `bucketViolations` as `changes.get` buckets them, and each
+  open finding gets a `status`. Without a baseline `delta` is absent; across index versions
+  it is null.
+- **Paths** are repo-relative. A leading `./`, `.` and `..` segments, and doubled slashes are
+  normalized; an absolute path counts only under `root`. A path the snapshot holds no file
+  for is a `not-indexed` row and one outside the repo an `outside-repo` row, never an error.
+- The **rollup** counts each status, sums scores and open findings, and takes the top
+  complexity and best rank; with a comparable baseline it sums the deltas, a new file adding
+  its whole score.
 
 ## Serving the commands
 

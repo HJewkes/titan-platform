@@ -6,6 +6,7 @@ import {
   type BucketableViolation,
   type ReportContext,
   type UnchangedViolation,
+  type ViolationBuckets,
 } from "@titan-design/code-graph/analysis";
 import type { CommandArgs, CommandResult } from "./contract.js";
 import type { FindingChange, NewFile, Regression, ScoreChange } from "./contract-changes.js";
@@ -27,7 +28,7 @@ interface Side {
 }
 
 /** A finding as code-graph's bucketing reads it, carrying its contract row along. */
-interface Keyed extends BucketableViolation {
+export interface Keyed extends BucketableViolation {
   row: Finding;
 }
 
@@ -71,8 +72,13 @@ function keyed(model: ReadModel): Keyed[] {
 }
 
 // Matched by id only, as findings.list matches: following renames through the alias chain is TP-187's identity work.
+/** Two snapshots' findings as code-graph buckets them: new, resolved, and unchanged, worsened or improved by value. */
+export function bucketFindings(baseline: ReadModel, current: ReadModel): ViolationBuckets<Keyed> {
+  return bucketViolations(keyed(baseline), keyed(current));
+}
+
 function findingChanges(current: ReadModel, baseline: ReadModel): Lists["findings"] {
-  const buckets = bucketViolations(keyed(baseline), keyed(current));
+  const buckets = bucketFindings(baseline, current);
   const change = (u: UnchangedViolation<Keyed>): FindingChange => ({ finding: u.to.row, before: u.from.value!, delta: u.delta! });
   return {
     new: buckets.newViolations.map((v) => v.row),
