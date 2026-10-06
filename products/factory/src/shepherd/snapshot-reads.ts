@@ -19,9 +19,9 @@ export async function openOrRead(port: GitHubPort, snapshot: PrSnapshot | undefi
   return row ?? port.getPr(repo, number);
 }
 
-/** The open PR on `headBranch`, or null; with a snapshot a closed one is not looked for, since no caller acts on it. */
+/** The open PR on `headBranch` of the repo itself, or null: `findPr` asks GitHub for same-repo heads only, so a fork's branch of that name is no match. With a snapshot a closed one is not looked for, since no caller acts on it. */
 export async function openOnBranch(port: GitHubPort, snapshot: PrSnapshot | undefined, repo: RepoSlug, headBranch: string): Promise<PullRequest | null> {
   if (!snapshot) return port.findPr(repo, headBranch);
   const rows = await snapshot.openPrs(repo);
-  return rows.filter((pr) => pr.headRef === headBranch).sort((a, b) => b.number - a.number)[0] ?? null;
+  return rows.filter((pr) => pr.headRef === headBranch && pr.headRepo?.toLowerCase() === repo.toLowerCase()).sort((a, b) => b.number - a.number)[0] ?? null;
 }

@@ -70,6 +70,19 @@ describe("snapshot reads in the release sweep", () => {
   });
 });
 
+describe("snapshot reads in the release sweep, forks", () => {
+  it("ignores a fork's PR on a branch named like the release branch", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: fakeSha("fork"), headRef: VERSION_PACKAGES_BRANCH, headRepo: "fork/x" });
+    const real = fake.addPr({ headSha: fakeSha("real"), headRef: VERSION_PACKAGES_BRANCH });
+    const port = githubPort(fake.wire);
+
+    const found = await openOnBranch(port, prSnapshot(port), REPO, VERSION_PACKAGES_BRANCH);
+
+    expect(found?.number).toBe(real.number);
+  });
+});
+
 describe("tick pacing", () => {
   it("keeps the 60 s tick until the rate limit read lands, and while calls are plentiful", async () => {
     const pacing = tickPacing({ exec: rateLimit(4_000) });
