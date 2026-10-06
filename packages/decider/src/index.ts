@@ -93,11 +93,21 @@ export {
   verdict,
 } from "./shadow.js";
 export type { CategoryScore, ScoreOptions, Verdict } from "./shadow.js";
-export { MORNING_SOURCE, joinMorning, morningSource, parseMorningList, parseOwnerAnswers } from "./morning.js";
+export {
+  MORNING_SOURCE,
+  initiativesOfTaskIds,
+  joinMorning,
+  morningSource,
+  parseMorningList,
+  parseOwnerAnswers,
+  taskIdsIn,
+} from "./morning.js";
 export type {
   MorningAnswer,
   MorningCounts,
+  MorningDayCounts,
   MorningFileSystem,
+  MorningInitiativeResolver,
   MorningItem,
   MorningJoin,
   MorningSourceOptions,

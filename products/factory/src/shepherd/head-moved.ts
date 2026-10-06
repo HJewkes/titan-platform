@@ -6,6 +6,7 @@ import { SUPERSEDED, gateHead } from "./stale-gates.js";
 
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
 const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
+const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
 
 export interface SupersededGate {
   runId: string;
@@ -83,16 +84,21 @@ export function approveMergeRun(host: FactoryHost, { runId, stepId, gate }: Pend
   return run;
 }
 
-/** A conflict, escalation, guard or release gate shares the approve-merge step id but stays with the owner; a send-back only ever waits for a new head. */
+/** Gates whose every answer but abandon waits for a new head, so a head that already moved answers them. */
+function waitsForNewHead({ stepId, gate }: PendingGate): boolean {
+  return (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) || (stepId === "ci-failed" && CI_FAILED_GATE.test(gate.id));
+}
+
+/** A conflict, escalation, guard or release gate shares the approve-merge step id but stays with the owner; a send-back or red head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
-  const { runId, stepId, gate } = pending;
-  if (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
+  const { runId, gate } = pending;
+  if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
   const run = approveMergeRun(host, pending);
   return run && (seatPolicyHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head);
 }
 
 /**
- * Cancels each shepherd-pr seat-policy or authority MRG-AU approve-merge gate, or sh-sent-back gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy or authority MRG-AU approve-merge gate, sh-sent-back or ci-failed gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
