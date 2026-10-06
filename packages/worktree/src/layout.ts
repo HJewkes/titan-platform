@@ -2,16 +2,32 @@ import { cpSync, existsSync, lstatSync, type Stats } from "node:fs";
 import path from "node:path";
 import { gitOrNull, gitText } from "./git.js";
 
+interface ListedWorktree {
+  worktree: string;
+  /** Absent for a detached HEAD or a bare entry. */
+  branch?: string;
+  locked: boolean;
+}
+
+/** One reading of `git worktree list --porcelain`, so every caller compares branch names the same way. */
+export function parseWorktreeList(out: string): ListedWorktree[] {
+  return out.split("\n\n").flatMap((block) => {
+    const worktree = block.match(/^worktree (.+)$/m)?.[1]?.trim();
+    if (worktree === undefined) return [];
+    const branch = block.match(/^branch refs\/heads\/(.+)$/m)?.[1]?.trim();
+    const locked = /^locked/m.test(block);
+    return [{ worktree: path.resolve(worktree), ...(branch === undefined ? {} : { branch }), locked }];
+  });
+}
+
+async function listWorktrees(gitRoot: string): Promise<ListedWorktree[]> {
+  return parseWorktreeList((await gitOrNull(["worktree", "list", "--porcelain"], gitRoot)) ?? "");
+}
+
 /** Live worktrees under basePath, from git itself rather than a parallel table. */
 export async function allocatedPaths(gitRoot: string, basePath: string): Promise<string[]> {
-  const out = await gitOrNull(["worktree", "list", "--porcelain"], gitRoot);
-  if (out === null) return [];
   const base = path.resolve(gitRoot, basePath) + path.sep;
-  return out
-    .split("\n")
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => path.resolve(line.slice("worktree ".length).trim()))
-    .filter((dir) => dir.startsWith(base));
+  return (await listWorktrees(gitRoot)).map((e) => e.worktree).filter((dir) => dir.startsWith(base));
 }
 
 /**
@@ -24,10 +40,7 @@ export async function pruneStaleWorktrees(gitRoot: string): Promise<void> {
 
 /** The worktree currently holding `branch`, or null. Prune first, or this lies. */
 export async function checkoutOf(gitRoot: string, branch: string): Promise<string | null> {
-  const out = (await gitOrNull(["worktree", "list", "--porcelain"], gitRoot)) ?? "";
-  const holder = out.split("\n\n").find((block) => block.includes(`branch refs/heads/${branch}`));
-  const line = holder?.split("\n").find((l) => l.startsWith("worktree "));
-  return line ? path.resolve(line.slice("worktree ".length).trim()) : null;
+  return (await listWorktrees(gitRoot)).find((e) => e.branch === branch)?.worktree ?? null;
 }
 
 function lstatOrNull(target: string): Stats | null {
