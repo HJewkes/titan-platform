@@ -1,18 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { diffCheckResults, runChecks, violationKey, type CheckRule, type CheckViolation } from "@titan-design/code-graph";
+import { diffCheckResults, violationKey, type CheckRule, type CheckViolation } from "@titan-design/code-graph";
 import { createRegistry, invokeCommand } from "@titan-design/registry";
-import { toModelRules } from "./findings-live.js";
-import { toSnapshotInfo } from "./live-source.js";
+import { loadReadModel } from "./live-source.js";
 import { answer, memorySource, type MemorySnapshot } from "./memory-source.js";
 import { CONTRACT, type CommandResult } from "./query/contract.js";
-import type { ModelFinding, ModelNode } from "./query/model.js";
 import { createQueryResolver } from "./query/resolver.js";
 import { registerCodeReadCommands } from "./register.js";
 import { makeFixtureRepo, type FixtureRepo } from "./test-fixtures.js";
 
 type Changes = CommandResult<"changes.get">;
 
-const RULES: CheckRule[] = [{ id: "max-loc", type: "metric-max", metric: "loc", kind: "file", max: 3, severity: "warning" }];
+const RULES: CheckRule[] = [
+  { id: "max-loc", type: "metric-max", metric: "loc", kind: "file", max: 3, severity: "warning" },
+  { id: "no-grade-import", type: "forbid-import", from: "src/main.ts", to: "src/grade.ts" },
+];
 
 const GRADE = "export function grade(n: number): string {\n  if (n > 90) return 'a';\n  return n > 70 ? 'c' : 'd';\n}\n";
 const MAIN = 'import { grade } from "./grade.js";\n\nexport const out = grade(2);\nexport const two = grade(3);\nexport const six = grade(6);\n';
@@ -48,19 +49,12 @@ async function live(args: object): Promise<Changes> {
   return CONTRACT["changes.get"].result.parse(envelope.data);
 }
 
-// The export drops undefined fields when it is serialized, as a static export's JSON does.
-function toFinding(v: CheckViolation): ModelFinding {
-  const { ruleId: rule, severity, nodeId, metric, value, threshold, message } = v;
-  return { id: violationKey(v), rule, severity, nodeId, message, metric, value, threshold } as ModelFinding;
-}
-
-/** One snapshot as an export holds it, read straight from the store, with findings from code-graph's own checker. */
+/** One snapshot as a static export holds it: plain JSON, findings already derived. */
 function exported(snapshotId: number): MemorySnapshot {
-  const nodes: ModelNode[] = repo.store.listNodes(snapshotId, { includeSymbols: true }).map((n) => ({ ...n, parentId: n.parentId ?? null, attrs: n.attrs ?? {} }));
-  const findings = runChecks(repo.store, { snapshotId, rules: RULES }).violations.map(toFinding);
-  const info = toSnapshotInfo(repo.store.getSnapshot(snapshotId)!);
-  const snapshot = { info, nodes, metrics: repo.store.listMetrics(snapshotId), findings, rules: toModelRules(RULES) };
-  return JSON.parse(JSON.stringify(snapshot)) as MemorySnapshot;
+  const model = loadReadModel(repo.store, snapshotId, { rules: RULES });
+  const { snapshot: info, nodes, edges, findings, rules } = model;
+  const metrics = repo.store.listMetrics(snapshotId);
+  return JSON.parse(JSON.stringify({ info, nodes, edges, metrics, findings, rules })) as MemorySnapshot;
 }
 
 function staticChanges(args: object): Changes {
@@ -92,7 +86,7 @@ describe("changes.get live and static", () => {
     const grade = result.regressions.find((r) => r.node.id === "src/grade.ts")!;
 
     expect(result.files.added.map((f) => f.node.id)).toEqual(["src/main.ts"]);
-    expect(result.findings.new.map((f) => f.id)).toEqual(["max-loc|src/main.ts"]);
+    expect(result.findings.new.map((f) => f.id)).toEqual(["max-loc|src/main.ts", "no-grade-import|src/main.ts|src/grade.ts"]);
     expect(result.findings.worsened.map((c) => c.finding.id)).toEqual(["max-loc|src/grade.ts"]);
     expect(result.findings.improved.map((c) => c.finding.id)).toEqual(["max-loc|src/shrink.ts"]);
     expect(result.findings.resolved.map((f) => f.id)).toEqual(["max-loc|src/old.ts"]);

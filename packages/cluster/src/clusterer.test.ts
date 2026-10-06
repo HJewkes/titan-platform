@@ -78,6 +78,35 @@ describe("Clusterer", () => {
     for (const shape of ["one", "two", "three"]) clusterer.cluster(bash(`Error${shape}: x`));
     expect(clusterer.evicting).toBe(true);
   });
+
+  it("drops the template binding of a cluster the tree evicts", () => {
+    const clusterer = new Clusterer({ drain: { maxClusters: 2, simTh: 0.99 } });
+    for (const shape of ["one", "two", "three"]) clusterer.cluster(bash(`Error${shape}: x`));
+    expect(clusterer.snapshot().partitions[0]!.templateIds).toHaveLength(2);
+    expect(clusterer.templateCount).toBe(2);
+  });
+
+  it("reports a template as new again when its evicted cluster recurs, under the same id", () => {
+    const clusterer = new Clusterer({ drain: { maxClusters: 2, simTh: 0.99 } });
+    const first = clusterer.cluster(bash("Errorone: x"));
+    for (const shape of ["two", "three"]) clusterer.cluster(bash(`Error${shape}: x`));
+    const recurred = clusterer.cluster(bash("Errorone: x"));
+    expect(recurred.isNewTemplate).toBe(true);
+    expect(recurred.templateId).toBe(first.templateId);
+    expect(clusterer.templateCount).toBe(2);
+  });
+
+  it("prunes bindings for evicted clusters when loading an older snapshot", () => {
+    const options = { drain: { maxClusters: 2, simTh: 0.99 } };
+    const source = new Clusterer(options);
+    for (const shape of ["one", "two"]) source.cluster(bash(`Error${shape}: x`));
+    const snapshot = source.snapshot();
+    snapshot.partitions[0]!.templateIds.push([99, "dead-template"]);
+
+    const restored = Clusterer.fromSnapshot(snapshot, options);
+    expect(restored.templateCount).toBe(2);
+    expect(restored.snapshot().partitions[0]!.templateIds.map(([clusterId]) => clusterId)).toEqual([1, 2]);
+  });
 });
 
 describe("DrainTreeRegistry", () => {
