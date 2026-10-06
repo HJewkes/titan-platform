@@ -99,6 +99,13 @@ describe("paths.impact rollup", () => {
     expect(rollup).toEqual({ indexed: 3, notIndexed: 1, outsideRepo: 1, score: 450, maxComplexity: 30, topRank: 1, openFindings: 2 });
   });
 
+  it("counts the resolved findings of a deleted file in the rollup delta", () => {
+    const result = impact(["src/gone.ts", "src/c.ts"], { baseline: 1 });
+
+    expect(result.rows[0]).toEqual({ status: "not-indexed", input: "src/gone.ts", path: "src/gone.ts" });
+    expect(result.rollup.delta!.findings).toEqual({ new: 0, worsened: 0, improved: 1, resolved: 1 });
+  });
+
   it("sums the deltas against a baseline, counting a new file's whole score as its rise", () => {
     expect(impact(["src/a.ts", "src/c.ts", "src/new.ts"], { baseline: 1 }).rollup.delta).toEqual({
       score: 102,
@@ -159,5 +166,20 @@ describe("paths.impact without a comparable baseline", () => {
     const result = impact(["src/a.ts"], { baseline: 3 });
 
     expect([result.comparable, indexed(result)["src/a.ts"]!.delta, result.rollup.delta]).toEqual([false, null, null]);
+  });
+});
+
+describe("paths.impact root against the index's repo root", () => {
+  const located = { ...memorySource([CURRENT]), repoRoot: "/work/repo" };
+  const rooted = (paths: string[], root: string): Impact => answer(createQueryResolver(located))<Impact>("paths.impact", { snapshot: 2, paths, root });
+
+  it.each(["/", "/work", "/work/"])("rejects root %s, above the repo, even when a path under it collides with an indexed file", (root) => {
+    expect(() => rooted([`${root.replace(/\/$/, "")}/src/a.ts`, "src/a.ts"], root)).toThrow(/above the index's repo root/);
+  });
+
+  it("accepts the repo root, a checkout elsewhere, and a root when the index does not know its repo root", () => {
+    const statuses = [rooted(["/work/repo/src/a.ts"], "/work/repo/"), rooted(["/work/tree/src/a.ts"], "/work/tree"), impact(["/src/a.ts"], { root: "/" })];
+
+    expect(statuses.map((r) => r.rows[0]!.status)).toEqual(["indexed", "indexed", "indexed"]);
   });
 });

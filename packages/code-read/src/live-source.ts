@@ -132,6 +132,7 @@ export function createLiveSource(deps: CodeReadDeps): LiveSource {
       return models.getOrLoad(snapshotId, () => loadReadModel(openOnce(), snapshotId, { rules: current, read }));
     },
     ...(read ? { readSource: read } : {}),
+    repoRoot: root,
     cachedSnapshots: () => models.keys(),
   };
 }
