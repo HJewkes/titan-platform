@@ -79,7 +79,7 @@ export function readBusy(health: Record<string, unknown> | null): BusyRun[] {
 }
 
 /** Held runs the restart does not wait for follow the busy ones. */
-export function readHeldSkipped(health: Record<string, unknown> | null): BusyRun[] {
+function readHeldSkipped(health: Record<string, unknown> | null): BusyRun[] {
   return Array.isArray(health?.heldSkipped) ? (health.heldSkipped as BusyRun[]) : [];
 }
 
