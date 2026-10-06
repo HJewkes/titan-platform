@@ -134,7 +134,8 @@ contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTE
    minutes.
 3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
    grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
-   fixer is an agent-chat agent on the `implementer` profile, named
+   fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
+   watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
    register its fix pull request with the fix task and with itself as `--implementer`. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
