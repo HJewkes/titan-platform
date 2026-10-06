@@ -37,4 +37,16 @@ describe("computeHealth", () => {
     expect(healthBreakdown.map((c) => c.penalty)).toEqual([30, 20, 15, 10]);
     expect(health).toBe(25); // 100 - 75
   });
+
+  it("weighs each component by the caller's weights and caps, and reports the cap", () => {
+    const { health, healthBreakdown } = computeHealth(
+      { scary: 1, newViolations: 1, carryViolations: 2, maxComplexity: 25, hiddenCoupling: 1, scaryCutoff: 500 },
+      { hotspots: { each: 5, cap: 50 }, findings: { eachNew: 1, eachCarry: 4, cap: 6 }, complexity: { each: 2, budget: 20, cap: 8 }, hiddenCoupling: { each: 0, cap: 0 } },
+    );
+    expect(healthBreakdown.map((c) => [c.key, c.penalty, c.cap])).toEqual([
+      ["hotspots", 5, 50], ["findings", 6, 6], ["complexity", 8, 8], ["hidden-coupling", 0, 0],
+    ]);
+    expect(healthBreakdown[0]!.detail).toBe("1 file(s) ≥ 500");
+    expect(health).toBe(81);
+  });
 });

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { probeHealth } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
@@ -11,13 +11,24 @@ const PNPM_TIMEOUT_MS = 15 * 60_000;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const NOT_FOUND = 127;
 
-/** Resolves with the exit code instead of rejecting; a missing binary exits 127 as a shell would. */
-function run(file: string, args: readonly string[], cwd: string, timeout: number, env: NodeJS.ProcessEnv): Promise<CommandResult> {
+/** A child with no exit code was ended from outside, so say what ended it. */
+function endedBy(error: ExecFileException, timeout: number): string | undefined {
+  if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return `output passed ${MAX_OUTPUT_BYTES} bytes`;
+  if (error.signal) return `killed by ${error.signal}${error.killed ? ` after the ${timeout / 1000} s timeout` : ""}`;
+  return typeof error.code === "number" ? undefined : error.message;
+}
+
+/**
+ * Resolves with the exit code instead of rejecting; a missing binary exits 127 as a shell would.
+ * Both streams are kept: pnpm prints a failing script's output on stdout, leaving stderr empty.
+ */
+export function runCommand(file: string, args: readonly string[], cwd: string, timeout: number, env: NodeJS.ProcessEnv): Promise<CommandResult> {
   return new Promise((resolve) => {
     execFile(file, [...args], { cwd, env, encoding: "utf8", timeout, maxBuffer: MAX_OUTPUT_BYTES }, (error, stdout, stderr) => {
       if (error?.code === "ENOENT") return resolve({ code: NOT_FOUND, stdout: "", stderr: `${file} not found` });
-      const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-      resolve({ code, stdout, stderr: stderr || error?.message || "" });
+      if (!error) return resolve({ code: 0, stdout, stderr });
+      const ended = endedBy(error, timeout);
+      resolve({ code: typeof error.code === "number" ? error.code : 1, stdout, stderr: ended === undefined ? stderr : `${stderr}\n${file} ${ended}` });
     });
   });
 }
@@ -64,25 +75,28 @@ function isAlive(pid: number): boolean {
  * The service checkout only ever holds a reviewed main commit, so its packageManager pin is
  * trusted: without the switch a global pnpm 10 installs a layout every pinned pnpm then purges.
  * With no TTY pnpm's purge prompt exits 0 without installing; pnpm 9 skips that prompt only under CI.
+ * Install keeps setupEnv's ignore_scripts, so no dependency lifecycle script runs. Any other step lifts
+ * it: pnpm 9 still runs a named script under it but leaves node_modules/.bin off the script's PATH, so
+ * the build's `tsup` is not found.
  */
-export function deployPnpmEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return {
+export function deployPnpmEnv(env: NodeJS.ProcessEnv, args: readonly string[]): NodeJS.ProcessEnv {
+  const pinned = {
     ...setupEnv(env),
     npm_config_manage_package_manager_versions: "true",
     NPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS: "true",
     CI: "true",
   };
+  return args[0] === "install" ? pinned : { ...pinned, npm_config_ignore_scripts: "false", NPM_CONFIG_IGNORE_SCRIPTS: "false" };
 }
 
 export function systemDeployPorts(checkout: string): DeployPorts {
-  const pnpmEnv = deployPnpmEnv(process.env);
   const gitEnv = gitChildEnv(process.env);
   return {
     ...systemServicePorts(),
     pid: process.pid,
     healthWithin: (port, timeoutMs) => probeHealth(port, { timeoutMs }),
-    git: (args) => run("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
-    pnpm: (args) => run("pnpm", args, checkout, PNPM_TIMEOUT_MS, pnpmEnv),
+    git: (args) => runCommand("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
+    pnpm: (args) => runCommand("pnpm", args, checkout, PNPM_TIMEOUT_MS, deployPnpmEnv(process.env, args)),
     listDirs,
     copyTree: (from, to) => cpSync(from, to, { recursive: true }),
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
