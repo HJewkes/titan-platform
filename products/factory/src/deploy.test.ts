@@ -124,6 +124,10 @@ function fakeMachine(init: MachineInit = {}) {
       if (args[0] === "kickstart") return kickstart();
       return ok(`${TARGET} = {\n\tpid = ${job.pid}\n}\n`);
     },
+    systemctl: async (args) => {
+      calls.push(`systemctl ${args.join(" ")}`);
+      return failed(127, "systemctl not found");
+    },
     git: async (args) => {
       calls.push(`git ${args.join(" ")}`);
       return git(args);
@@ -468,9 +472,9 @@ describe("titan-factory service deploy verb", () => {
     expect(machine.calls).toEqual([]);
   });
 
-  it("refuses off macOS before touching git", async () => {
+  it("refuses off macOS and Linux before touching git", async () => {
     const machine = fakeMachine();
-    machine.ports.platform = "linux";
+    machine.ports.platform = "win32";
 
     const { code, err } = await cli([], machine);
 

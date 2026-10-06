@@ -79,6 +79,10 @@ function fakeMachine(init: MachineInit = {}) {
     uid: UID,
     home: HOME,
     launchctl,
+    systemctl: async (args) => {
+      calls.push(`systemctl ${args.join(" ")}`);
+      return failed(127, "systemctl not found");
+    },
     claude: async (args, env) => {
       calls.push(`${env?.CLAUDE_CONFIG_DIR ? `CLAUDE_CONFIG_DIR=${env.CLAUDE_CONFIG_DIR} ` : ""}claude ${args.join(" ")}`);
       return init.claude;
@@ -512,21 +516,21 @@ describe("titan-factory service restart", () => {
   });
 });
 
-describe("titan-factory service off macOS", () => {
+describe("titan-factory service off macOS and Linux", () => {
   it.each(["install", "uninstall", "status", "restart"])("%s fails with one line and touches nothing", async (verb) => {
-    const machine = fakeMachine({ platform: "linux", loaded: true });
+    const machine = fakeMachine({ platform: "win32", loaded: true });
 
     const { code, out, err } = await service([verb], machine);
 
     expect(code).toBe(EXIT.FAILURE);
     expect(out).toBe("");
-    expect(err).toBe(`error: titan-factory service ${verb} needs launchd, which only macOS has (this is linux)\n`);
+    expect(err).toBe(`error: titan-factory service ${verb} needs launchd (macOS) or systemd (Linux) (this is win32)\n`);
     expect(machine.calls).toEqual([]);
     expect(machine.files.size).toBe(0);
   });
 
   it("plist still prints", async () => {
-    const { code, out } = await service(["plist"], fakeMachine({ platform: "linux" }));
+    const { code, out } = await service(["plist"], fakeMachine({ platform: "win32" }));
 
     expect(code).toBe(EXIT.OK);
     expect(out).toContain(`<string>${SERVICE_LABEL}</string>`);
