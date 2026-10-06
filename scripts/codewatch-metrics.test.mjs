@@ -63,10 +63,9 @@ describe("collectMetrics", () => {
     expect(report.notes.private_symbols).toMatch(/functions, methods and classes only.*methods of exported classes.*consts, types and interfaces/);
   });
 
-  it("names the Python leading-underscore rule and the same-name method skip as undercount sources", () => {
+  it("names the Python leading-underscore rule as an undercount source", () => {
     const note = collectMetrics(fakeStore(), SNAPSHOT).notes.private_symbols;
 
-    expect(note).toMatch(/same name|sharing its name/);
     expect(note).toMatch(/leading-underscore.*isPublicName/);
   });
 
@@ -108,6 +107,23 @@ describe("runCli", () => {
     expect(report.files.find((f) => f.path === "src/shapes.ts")).toMatchObject({ importers: 1, public_symbols: 1, private_symbols: 1 });
     expect(report.symbols.find((s) => s.symbol === "area")).toMatchObject({ path: "src/shapes.ts", exported: true, cyclomatic_max: 2, importers: 1 });
     expect(report.symbols.find((s) => s.symbol === "half")).toMatchObject({ exported: false, importers: 0 });
+  });
+
+  it("counts a static and an instance method of the same name as one private symbol, as the note says", async () => {
+    const tree = syntheticTree({
+      "src/job.ts": "export function run(): number {\n  return 1;\n}\n\nclass Job {\n  static make(): Job {\n    return new Job();\n  }\n  make(): number {\n    return 2;\n  }\n  run(): number {\n    return 3;\n  }\n}\n",
+    });
+    const out = join(tree, "..", `${tree.split("/").pop()}.json`);
+    roots.push(out);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runCli(["full", "--tree", tree, "--out", out]);
+
+    const report = JSON.parse(readFileSync(out, "utf8"));
+    const privateNames = report.symbols.filter((s) => s.path === "src/job.ts" && !s.exported).map((s) => s.symbol).sort();
+    expect(privateNames).toEqual(["Job", "Job.make", "Job.run"]);
+    expect(report.files.find((f) => f.path === "src/job.ts")).toMatchObject({ public_symbols: 1, private_symbols: 3 });
+    expect(report.notes.private_symbols).toMatch(/static and an instance method of the same name.*collectDeclaredSpans/);
   });
 
   it.each([[["full"]], [["pr", "--tree", "x"]], [[]]])("prints usage and exits 2 for %j", async (argv) => {

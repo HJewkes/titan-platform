@@ -3,10 +3,12 @@
 // The symbol counts are asymmetric: every top-level exported declaration (functions, classes, types, interfaces,
 // consts) gets a symbol node, but code-graph gives non-exported ones a node only for functions, methods and classes
 // (C-64). So public_symbols counts exported consts and types, while private_symbols misses private consts, types and
-// interfaces. A method is never an export itself, so methods of an exported class count as private.
+// interfaces. A TypeScript method is never an export itself, so methods of an exported class count as private; Python
+// marks Cls.run public by name, so a public Python method counts as public.
 // It can also undercount private_symbols: Python marks a name private by its leading underscore (python-extractor.ts
 // isPublicName), so an underscore-named top-level function counts as private while a public name never does, and
-// symbol-nodes.ts skips a non-exported method whose name an exported symbol already uses (exported.has(name)).
+// collectDeclaredSpans (declared-names.ts) keys declarations by qualified name, so a static and an instance method
+// of the same name collapse into one symbol node.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,7 +24,7 @@ const SYMBOL_METRIC = { loc: "symbol_loc", cyclomatic_max: "symbol_cyclomatic", 
 export const SYMBOL_COUNT_NOTES = {
   public_symbols: "Top-level exported declarations of every kind: functions, classes, types, interfaces and consts.",
   private_symbols:
-    "Non-exported functions, methods and classes only, including methods of exported classes; code-graph gives private consts, types and interfaces no symbol node (C-64). A non-exported method sharing its name with an exported symbol is skipped, so the count can be low; Python counts a leading-underscore name as private (isPublicName).",
+    "Non-exported functions, methods and classes only, including TypeScript methods of exported classes (a public Python method counts as public); code-graph gives private consts, types and interfaces no symbol node (C-64). A static and an instance method of the same name share one qualified name and so one node (collectDeclaredSpans), so the count can be low; Python counts a leading-underscore name as private (isPublicName).",
 };
 
 /** Indexes `tree` into a throwaway store and returns the rows; the store never outlives the call. */
