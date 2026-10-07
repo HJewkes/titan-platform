@@ -40,7 +40,10 @@ function rig(scope: { kind: string | null; baseRef: string | null }, probe: Carr
     asked.push({ stepId, input });
     return { data: { result: answer(stepId, input) } };
   };
-  return { ctx: { runId: "run-1", dispatch, param: () => undefined } as unknown as WorkflowContext, asked };
+  return {
+    ctx: { runId: "run-1", dispatch, historyNext: () => undefined, param: () => undefined } as unknown as WorkflowContext,
+    asked,
+  };
 }
 
 const reviews = (...entries: [string, Verdict][]): Map<string, Verdict> => new Map(entries);

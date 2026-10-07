@@ -225,6 +225,15 @@ absence permits a replacement attempt. Unknown state, ownership loss, timeout, o
 failed persistence keeps the active step intact. A later `hydrate()` may reconcile
 new evidence, but never blindly resubmits an uncertain execution.
 
+`runtime.completeStep(runId, stepId, output)` records `output` as the answer of an active
+dispatch step of a run no runtime holds, so the next `hydrate()` replays that answer
+instead of dispatching the step again. It returns false for a run a live runtime drives.
+
+A replay runs the workflow function again, so code that changed since the run was recorded
+can take a different path through old results. `ctx.historyNext()` names the step recorded
+right after the call just answered from the record, and is undefined once the run is live;
+a workflow reads it to follow the path the run already took.
+
 Existing databases must apply `workflowOwnershipMigration(version)` with a new
 migration version. Fresh workflow DDL already includes ownership columns; the
 additive migration also tolerates that case. Saves and renewals require the captured

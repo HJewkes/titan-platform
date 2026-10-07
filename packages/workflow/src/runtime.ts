@@ -251,6 +251,27 @@ export class WorkflowRuntime {
     else this.release(run);
   }
 
+  /**
+   * Records `output` as the answer of a run's active dispatch step, so the run's replay reads it instead of dispatching
+   * the step again. Only a run no runtime holds can be answered this way; false when the run is held or has no such step.
+   */
+  completeStep(runId: string, stepId: string, output: string): boolean {
+    if (this.live.has(runId)) return false;
+    const run = this.claim(runId);
+    if (!run) return false;
+    try {
+      const step = run.activeSteps[stepId];
+      if (!step) return false;
+      const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), output };
+      delete run.activeSteps[stepId];
+      this.save(run);
+      return true;
+    } finally {
+      this.release(run);
+    }
+  }
+
   private cancelGates(runId: string, reason: string): void {
     for (const gate of this.options.gates.listPending()) {
       if (gate.id.startsWith(`${runId}/`)) cancelGate(this.options.gates, gate.id, reason);
