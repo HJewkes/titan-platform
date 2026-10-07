@@ -26,9 +26,19 @@ export function runReadings(stdin: string | null, isShell: (name: string | null)
   return { main: (cmd: Unwrapped) => of(cmd).main, added: (cmd: Unwrapped) => of(cmd).added };
 }
 
+/** The runs of the value-skipping reading, beside those of the one that reads a value word as an option, which keeps the main runs. */
 function xargsRuns(cmd: Unwrapped, stdin: string | null, shell: boolean): XargsRuns {
-  if (!cmd.xargs) return { main: [cmd.args], added: [] };
-  const { replace, replaceAsOption, insert, delimiters, batch } = cmd.xargs;
+  const alt = cmd.xargs?.asOption;
+  const runs = readRuns(cmd, stdin, shell, cmd.xargs);
+  if (!cmd.xargs || !alt) return runs;
+  const old = readRuns(cmd, stdin, shell, { ...cmd.xargs, ...alt });
+  const added = [...runs.main, ...runs.added, ...old.added];
+  return { main: old.main, added: added.length > MAX_ADDED_RUNS ? failClosed(cmd) : added };
+}
+
+function readRuns(cmd: Unwrapped, stdin: string | null, shell: boolean, xargs: Unwrapped["xargs"]): XargsRuns {
+  if (!xargs) return { main: [cmd.args], added: [] };
+  const { replace, replaceAsOption, insert, delimiters, batch } = xargs;
   if (stdin === null) return { main: unknownRuns(cmd, replaceAsOption), added: failClosed(cmd) };
   const plainGroups = once(() => inputReadings(stdin, delimiters).flatMap((lines) => batches(stdin, lines, batch)));
   const quoted = once(() => (delimiters?.length === 0 ? quotedReadings(logicalLines(stdin)).flatMap((lines) => batches(stdin, lines, batch)) : []));
