@@ -91,7 +91,7 @@ describe("sh-redeploy after main CI", () => {
     const w = world(null, deployer);
     const runId = await mergeIn(w, OWN_REPO);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     expect(redeploySteps(w, runId)).toEqual([]);
     expect(deployer.spawned).toEqual([]);
