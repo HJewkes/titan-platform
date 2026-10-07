@@ -16,7 +16,7 @@ const SNAP = {
 };
 
 function hot(id: string, score: number): HotspotRow {
-  return { nodeId: id, churn: 0, complexity: 0, recency: 1, score };
+  return { nodeId: id, churn: 0, complexity: 0, loc: 0, recency: 1, score };
 }
 
 function silo(id: string, churn = 0): BusFactorRow {
@@ -44,6 +44,7 @@ describe("computeReportDrift — hotspots", () => {
       baselineCoupling: [],
     });
     expect(drift.newHotspots.map((r) => r.nodeId)).toEqual(["d"]);
+    expect(drift.newHotspots.map((r) => r.loc)).toEqual([0]);
     expect(drift.resolvedHotspots.map((r) => r.nodeId)).toEqual(["c"]);
     expect(drift.resolvedHotspots[0]!).toMatchObject({ before: 60, after: 10, delta: -50 });
     expect(drift.displacedHotspots).toEqual([]);

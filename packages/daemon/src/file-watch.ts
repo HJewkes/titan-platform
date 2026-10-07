@@ -1,11 +1,11 @@
 /**
  * Recursive filesystem watcher.
  *
- * Node's `fs.watch(dir, { recursive: true })` is only reliable on macOS and Windows; on
- * Linux recursive support is version-dependent. To stay portable we build the recursion
- * ourselves: watch the root plus every current subdirectory, and re-scan (adding watchers
- * for freshly-created dirs) whenever a change lands. Change events are debounced into a
- * single callback so a burst of atomic writes (temp file + rename) collapses into one.
+ * On macOS and Windows one native recursive `fs.watch` handle on the root covers the tree.
+ * Elsewhere (Linux) recursive support is version-dependent, so we watch the root plus every
+ * subdirectory ourselves and re-scan to attach to freshly-created dirs whenever a change
+ * lands. Change events are debounced into a single callback so a burst of atomic writes
+ * (temp file + rename) collapses into one.
  */
 import { watch, existsSync, readdirSync, promises as fs, type FSWatcher } from "node:fs";
 import path from "node:path";
