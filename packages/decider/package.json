@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/decider",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source",
   "type": "module",
   "main": "./dist/index.js",
