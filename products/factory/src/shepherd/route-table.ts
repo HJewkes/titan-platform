@@ -54,6 +54,8 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 export const MAX_FAILED_ROUNDS = 3;
 /** FIX_FIRST reviews at one task before the owner is asked; below it each one is progress, so only a runaway stops. */
 export const MAX_FIX_FIRSTS = 6;
+/** Consecutive FIX_FIRST reviews whose Closer line said no before the owner is asked; a review with no Closer line never counts. */
+export const MAX_NO_CLOSER_STREAK = 2;
 /** Fixer wakes of every kind at one run, counted across heads, before the owner is asked; FIX_FIRST keeps its own tighter cap too. */
 export const MAX_REPAIRS = 10;
 
@@ -64,6 +66,7 @@ export const ESCALATIONS = {
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,
   "fix-first-runaway": `${MAX_FIX_FIRSTS} FIX_FIRST reviews at this task`,
+  "no-progress": `${MAX_NO_CLOSER_STREAK} FIX_FIRST reviews in a row said the head is no closer to MERGE`,
   "repair-budget": `${MAX_REPAIRS} fixer wakes at this run`,
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;

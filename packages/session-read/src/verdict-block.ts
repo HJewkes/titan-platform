@@ -12,11 +12,16 @@
  *   no `<!--` after its last `-->`.
  * - `Verdict: WAIT` (required checks unfinished at the head) is read as a block too, but never as `ok`: it
  *   returns `{ ok: false, reason: "wait" }` with the PR and head it names, so no MERGE path can take it.
+ * - An optional fourth line `Closer: yes|no` (is this head closer to MERGE than the last reviewed one) is read
+ *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
+ *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
 
 export type VerdictBlockVerdict = "MERGE" | "FIX_FIRST";
+
+export type VerdictBlockCloser = "yes" | "no";
 
 export type VerdictBlockRefusal =
   | "no_block"
@@ -28,12 +33,13 @@ export type VerdictBlockRefusal =
   | "bad_head";
 
 export type VerdictBlockResult =
-  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number }
+  | { ok: true; verdict: VerdictBlockVerdict; repo: string; pr: number; head: string; lineOffset: number; closer?: VerdictBlockCloser }
   | { ok: false; reason: "wait"; repo: string; pr: number; head: string; lineOffset: number }
   | { ok: false; reason: VerdictBlockRefusal };
 
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
+const CLOSER_LINE = /^Closer: (yes|no)$/;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
 const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
@@ -112,7 +118,17 @@ function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   if (!head) return { ok: false, reason: "bad_head" };
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
-  return { ok: true, verdict: verdict === "Verdict: MERGE" ? "MERGE" : "FIX_FIRST", ...named };
+  if (verdict === "Verdict: MERGE") return { ok: true, verdict: "MERGE", ...named };
+  const closer = readCloser(lines, at + 3);
+  return { ok: true, verdict: "FIX_FIRST", ...named, ...(closer && { closer }) };
+}
+
+/** Any second visible Closer line voids the answer: a duplicate is never read. */
+function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | undefined {
+  const match = CLOSER_LINE.exec(lines[at] ?? "");
+  const duplicated = lines.some((line, index) => index !== at && line?.startsWith("Closer:"));
+  if (!match || duplicated) return undefined;
+  return match[1] as VerdictBlockCloser;
 }
 
 function isDotName(name: string): boolean {
