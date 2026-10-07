@@ -65,6 +65,11 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Deepest JSX element tree in the file: the max of symbol_jsx_depth over its functions and module-scope JSX. Written only when > 0.",
   },
   {
+    name: "logic_cognitive_max", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Highest symbol_logic_cognitive over the file's JSX-rendering functions. Written only when one of them renders JSX.",
+  },
+  {
     name: "symbol_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
     description: "Cognitive complexity (comprehension friction) of the function a symbol names; the max when several functions share the name.",
@@ -88,6 +93,16 @@ const SOURCE: readonly MetricDescriptor[] = [
     name: "symbol_jsx_depth", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
     description: "Most JSX elements on one ancestor chain in the function, fragments not counted. Walks into {…} and inline callbacks, stops at a nested named function; attribute JSX sits one below its owner. Written only when > 0.",
+  },
+  {
+    name: "symbol_markup_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Share of symbol_cognitive, nesting bonus included, charged inside JSX {…} expressions: conditional rendering and callbacks inline in JSX. Hook callbacks such as useMemo or useEffect stay logic, a deliberate departure from excluding every nested callback. Written only when symbol_jsx_depth > 0.",
+  },
+  {
+    name: "symbol_logic_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "symbol_cognitive minus symbol_markup_cognitive: the component's own logic, hook callbacks included. Written only when symbol_jsx_depth > 0.",
   },
   {
     name: "symbol_comment_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
