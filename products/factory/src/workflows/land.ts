@@ -3,6 +3,7 @@ import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
+import { approveMergeDecision, stuckBehindDecision } from "../gate-brief.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
@@ -60,6 +61,8 @@ export interface LandOptions {
   policy: GatePolicy;
   /** Evidence the allowing caller vouches for, stored beside the policy trace in the `merge-policy` step. */
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
+  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
+  reviewedMerge?: (headSha: string) => boolean;
 }
 
 export type LandOutcome =
@@ -153,8 +156,9 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   const refresh = ci.baseMoved === true;
   if (!refresh && budgetSpent(state.bound, ci.readAt)) {
     const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
-    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
-    if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
+    const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
+    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
+    if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
     resetBound(state.bound);
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
@@ -178,20 +182,15 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   return undefined;
 }
 
-function approveMergeAnswer(headSha: string) {
-  return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
-}
-
-const StuckBehindAnswer = z.object({ decision: z.enum(["retry", "abandon"]) });
-
 /** The payload must name the head shown, so an approval can never carry over to a head the human did not see. */
 async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
   const decision = await decideMerge(ctx, input, ci, state, options);
   if (decision.outcome === "deny") return stopped("merge-denied", ci.headSha, decision.reason);
   if (decision.outcome === "allow") return void trust(state, ci.headSha, "policy");
-  const schema = approveMergeAnswer(ci.headSha);
+  const reviewedMerge = options.reviewedMerge?.(ci.headSha) ?? false;
+  const { schema, brief } = approveMergeDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, reason: decision.reason, reviewedMerge });
   const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
-  const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema })).data);
+  const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
   if (!answer.success) throw new Error(`approve-merge answer does not approve head ${ci.headSha}: ${answer.error.message}`);
   if (answer.data.decision === "abandon") return stopped("abandoned", ci.headSha, "a human declined the merge");
   trust(state, ci.headSha, "human");
