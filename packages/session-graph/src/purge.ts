@@ -1,8 +1,8 @@
 import { sessionRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
-import { EPISODE_TABLE } from "./audit-schema-v5.js";
-import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { EPISODE_TABLE } from "./origin-schema.js";
+import { REVIEW_TABLE } from "./review-schema.js";
 import { KIT } from "./schema.js";
 
 /** Derived tables keyed by `session_id`, reachable from a transcript through `session`. */

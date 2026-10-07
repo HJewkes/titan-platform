@@ -1,5 +1,5 @@
 import { RELATIONS } from "@titan-design/session-read";
-import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { REVIEW_TABLE } from "./review-schema.js";
 import type { SessionGraph } from "./graph.js";
 import { KIT } from "./schema.js";
 import type { Db } from "@titan-design/store-sqlite";
