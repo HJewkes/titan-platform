@@ -173,9 +173,22 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const runs = caseNamed(words);
   const cut = cutReading(words);
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
-  const unsure = runs[0]?.unsure;
-  if (unsure) addedReading(w, (copy) => caseNamed(unsure).forEach((cmd) => run(cmd, redirects, copy, next)));
+  runUnsure(runs[0], redirects, w, next, 0);
   return runs[0] ?? null;
+}
+
+/**
+ * Reads a command's `unsure` words as an added reading, then theirs in turn, since each wrapper may hide its own
+ * dynamic word (`sudo $a timeout $O 5 git push`). Every step drops a word, and MAX_DEPTH bounds the steps.
+ */
+function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null, depth: number): void {
+  const unsure = cmd?.unsure;
+  if (!unsure || depth >= MAX_DEPTH) return;
+  addedReading(w, (copy) => {
+    const runs = caseNamed(unsure);
+    for (const reading of runs) run(reading, redirects, copy, next);
+    runUnsure(runs[0], redirects, copy, next, depth + 1);
+  });
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {

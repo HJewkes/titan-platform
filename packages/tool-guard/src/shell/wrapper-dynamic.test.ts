@@ -52,6 +52,30 @@ describe("a dynamic command word behind a wrapper", () => {
   });
 });
 
+describe("dynamic words behind several wrappers", () => {
+  const shapes = [
+    ["two timeouts", "timeout $O 5 timeout $P 5"],
+    ["sudo then timeout", "sudo $a timeout $O 5"],
+    ["sudo, timeout and nice", "sudo $a timeout $O 5 nice -n $N"],
+  ];
+  const guarded = [
+    ["git push", "git push origin HEAD:main", MAIN_PUSH],
+    ["npm publish", "npm publish", ["bash.release.npm-publish", { tool: "npm" }]],
+    ["gh pr merge", "gh pr merge 5", ["bash.merge.gh-pr-merge", { pr: "5" }]],
+  ] as const;
+
+  it.each(shapes.flatMap(([how, prefix]) => guarded.map(([what, tail, verdict]) => [`${what} after ${how}`, `${prefix} ${tail}`, verdict])))(
+    "reads every wrapper's dynamic word as possibly absent: %s",
+    (_how, command, verdict) => {
+      expect(verdicts(command as string)).toContainEqual(verdict);
+    },
+  );
+
+  it("passes a push to an unprotected branch", () => {
+    expect(verdicts("timeout $O 5 timeout $P 5 git push origin feat/y")).toEqual([]);
+  });
+});
+
 describe("a wrapper or xargs that runs nothing guarded", () => {
   it.each([
     ["xargs echo of a dynamic replace string", "xargs -I $R echo $R"],
