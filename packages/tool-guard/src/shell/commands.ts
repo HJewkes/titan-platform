@@ -64,9 +64,9 @@ export interface ExtractOptions {
   /** Reads every command word lower-cased, as a filesystem that finds `GIT` as git runs it; arguments stay as written. */
   foldCase?: boolean;
   /**
-   * Command names classify reads as more than their arguments: guarded programs, credential verbs, interpreters and
-   * `source`. A reading of dynamic wrapper words run as any other name is skipped, since its arguments are a suffix of
-   * the command's as written, which is always read; only a name in this set reads them differently. Omitted: every name.
+   * Command names classify reads other than by their arguments' default treatment: guarded programs, the names a
+   * family adds a verdict for or exempts, interpreters and `source`. A reading of dynamic wrapper words is skipped only
+   * when neither its name nor the command's as written is one. Omitted: every name.
    */
   guarded?: ReadonlySet<string>;
 }

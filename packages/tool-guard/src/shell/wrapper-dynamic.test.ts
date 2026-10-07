@@ -201,3 +201,13 @@ describe("a script runner behind a dynamic wrapper word", () => {
     expect(scripted(command)).toContain(spelling);
   });
 });
+
+describe("a reading under a plain name after a command that exempts its arguments", () => {
+  it.each([
+    ["sort after ls", "flock $F ls sort ~/.ssh/id_rsa", "bash.secret.mention"],
+    ["tac after ls", "flock $F ls tac ~/.ssh/id_rsa", "bash.secret.mention"],
+    ["sort after a config read", "flock $F cat sort ~/.claude/settings.json", "bash.config.mention"],
+  ])("is walked: %s", (_how, command, spelling) => {
+    expect(spellings(command)).toContain(spelling);
+  });
+});
