@@ -1,0 +1,17 @@
+{
+  "src/allocator.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/reattach.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/setup.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  }
+}

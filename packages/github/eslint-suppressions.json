@@ -1,0 +1,22 @@
+{
+  "src/fake.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/gh-cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/port.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/rest.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}
