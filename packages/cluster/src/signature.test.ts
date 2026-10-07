@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ANCHOR_CONFIGS } from "./anchors.js";
 import { applyMasks } from "./masks.js";
 import { extractSignature, hasErrorSignal } from "./signature.js";
 
@@ -26,6 +27,28 @@ describe("extractSignature", () => {
     expect(extractSignature("Bash", Array(8).fill("x").join("\n")).lineCountBucket).toBe("6+");
     expect(extractSignature("Bash", "TypeError: boom").anchored).toBe(true);
     expect(extractSignature("Bash", "total 48\ndrwxr-xr-x").anchored).toBe(false);
+  });
+});
+
+describe("anchor configs", () => {
+  const tscBlob = "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.\nFound 1 error.";
+
+  it("gives a consumer-chosen partition the test-runner rules when mapped to them", () => {
+    const anchors = { ...DEFAULT_ANCHOR_CONFIGS, Bash: DEFAULT_ANCHOR_CONFIGS.test! };
+
+    const signature = extractSignature("Bash", tscBlob, anchors);
+
+    expect(signature.anchorLine).toBe("src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.");
+    expect(signature.errorClass).toBe("TS2322");
+    expect(hasErrorSignal("Bash", tscBlob, anchors)).toBe(true);
+  });
+
+  it("treats Bash with the shell rules under the default config", () => {
+    const signature = extractSignature("Bash", tscBlob);
+
+    expect(signature.anchorLine).toBe("Found 1 error.");
+    expect(signature.anchored).toBe(false);
+    expect(hasErrorSignal("Bash", tscBlob)).toBe(false);
   });
 });
 

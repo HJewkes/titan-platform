@@ -1,0 +1,15 @@
+{
+  "rules": [
+    {
+      "id": "package-layers",
+      "type": "layered-deps",
+      "$tiers": { "0": ["packages/a"], "product": ["products/x", "products/y", "products/z"] },
+      "layers": [["packages/a"], ["products/x", "products/y", "products/z"]]
+    },
+    { "id": "x-not-y", "type": "forbid-import", "from": "products/x/**", "to": "products/y/**" },
+    { "id": "y-not-x", "type": "forbid-import", "from": "products/y/**", "to": "products/x/**" },
+    { "id": "y-not-z", "type": "forbid-import", "from": "products/y/**", "to": "products/z/**" },
+    { "id": "z-not-x", "type": "forbid-import", "from": "products/z/**", "to": "products/x/**" },
+    { "id": "z-not-y", "type": "forbid-import", "from": "products/z/**", "to": "products/y/**" }
+  ]
+}

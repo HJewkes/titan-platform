@@ -9,6 +9,19 @@ const GENERIC_CATCH_TYPES = new Set([
   "Error", "Exception", "unknown",
 ]);
 
+function isErrorClassName(name: string | null): boolean {
+  return name !== null && (name.endsWith("Error") || name.endsWith("Exception"));
+}
+
+// `errors.NotFoundError` and `pkg.CustomException` name the class by their
+// last segment; calls and other expressions name nothing.
+function trailingName(node: Node): string | null {
+  if (node.type === "identifier" || node.type === "type_identifier") return node.text;
+  if (node.type === "member_expression") return node.childForFieldName("property")?.text ?? null;
+  if (node.type === "attribute") return node.childForFieldName("attribute")?.text ?? null;
+  return null;
+}
+
 export class ErrorHandlingExtractor implements StyleExtractor {
   readonly name = "error-handling";
 
@@ -122,25 +135,27 @@ export class ErrorHandlingExtractor implements StyleExtractor {
     file: ParsedFile,
     observations: Observation[],
   ): void {
-    if (file.language === "python") {
-      const superclasses = node.childForFieldName("superclasses");
-      if (!superclasses) return;
+    const bases = file.language === "python"
+      ? this.pythonBaseNodes(node)
+      : this.extendsNodes(node);
 
-      const bases = superclasses.text;
-      if (bases.includes("Error") || bases.includes("Exception")) {
-        this.emit(observations, "error-handling.custom-error-class", true, file, node);
-      }
-      return;
-    }
-
-    const heritage = node.children.find(
-      (c) => c.type === "class_heritage",
-    );
-    if (!heritage) return;
-
-    if (heritage.text.includes("Error")) {
+    if (bases.some((base) => isErrorClassName(trailingName(base)))) {
       this.emit(observations, "error-handling.custom-error-class", true, file, node);
     }
+  }
+
+  private pythonBaseNodes(node: Node): Node[] {
+    return node.childForFieldName("superclasses")?.namedChildren ?? [];
+  }
+
+  // TS wraps the base in `extends_clause`; JS puts it straight under
+  // `class_heritage`. `implements` names an interface, not a base class.
+  private extendsNodes(node: Node): Node[] {
+    const heritage = node.children.find((c) => c.type === "class_heritage");
+    if (!heritage) return [];
+    const clause = heritage.namedChildren.find((c) => c.type === "extends_clause");
+    if (!clause) return heritage.namedChildren.slice(0, 1);
+    return clause.childrenForFieldName("value");
   }
 
   private detectResultType(
@@ -164,12 +179,11 @@ export class ErrorHandlingExtractor implements StyleExtractor {
     const returnType = node.childForFieldName("return_type");
     if (!returnType) return;
 
-    const text = returnType.text;
-    for (const name of RESULT_TYPE_NAMES) {
-      if (text.includes(name)) {
-        this.emit(observations, "error-handling.result-type", name, file, node);
-        break;
-      }
+    const resultName = returnType
+      .descendantsOfType("type_identifier")
+      .find((id) => RESULT_TYPE_NAMES.has(id.text));
+    if (resultName) {
+      this.emit(observations, "error-handling.result-type", resultName.text, file, node);
     }
   }
 

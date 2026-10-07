@@ -76,7 +76,12 @@ and resets after progress.
   Then it applies each tail event.
 - *Sync.* Reads `/sync` filtered to the room (`syncFilter`). For each batch it folds every
   owner reaction, reply or `io.titan.resolution` that targets an open approvable item,
-  and only then commits `since`.
+  and only then commits `since`. When a batch is `limited` and carries `prev_batch`, the
+  mirror first pages backwards through the room's `/messages` from that token and applies
+  the missed events oldest first, ahead of the batch's own events. Paging stops at the
+  first event already applied, at the end of history, or after `MAX_BACKFILL_PAGES` (10)
+  pages per batch. If it stops at the bound, the mirror logs a `backfill gap: page cap
+  reached` warning with the page count and the `resumeToken`, and does not chase the rest.
 - *Sweep.* Every `sweepIntervalMs` it closes items past `expiresAt`, or past
   `at + approvalTtlMs` for approvals, and edits them "expired".
 
@@ -135,9 +140,6 @@ transaction, so a failure partway leaves no partial rows. By default the constru
   to previews and endorsements.
 - It does not keep durable state on its own. `MemoryMirrorState` is lost with the
   process; the `/sqlite` subpath is the durable one.
-- It does not backfill a limited `/sync` timeline yet. matrix-bus now reports `limited`
-  and `prev_batch` on each `SyncBatch`, but the mirror ignores them, so after a long sleep
-  reactions older than the timeline limit are not folded (design R13).
 - It does not create the room or register the appservice. That is `matrix-bus`.
 
 ## Gotchas

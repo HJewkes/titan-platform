@@ -1,9 +1,8 @@
 import { contentHash, prefixHash } from "@titan-design/locator";
 import type { UsageMeasurement } from "@titan-design/agent-protocol";
-import { readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
+import { expandHome, readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
 import { hasTable } from "@titan-design/store-sqlite";
 import os from "node:os";
-import { expandHome } from "./expand-home.js";
 import type { SessionGraph } from "./graph.js";
 import { stripInjected } from "./injected-text.js";
 
