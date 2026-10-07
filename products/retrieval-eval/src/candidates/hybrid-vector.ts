@@ -3,6 +3,7 @@ import path from "node:path";
 import { HashEmbedder, type Embedder } from "@titan-design/embed";
 import { BruteForceVectorIndex, fuseByRRF, vectorRetriever } from "@titan-design/retrieval";
 import type { ScoredHit } from "../metrics.js";
+import { initiativeDirs, LAYOUT, type InitiativeDir } from "../workspace-layout.js";
 import { noteAliases, type Candidate } from "./candidate.js";
 
 /**
@@ -34,24 +35,10 @@ export function loadNotes(activeRoot: string): NoteDocument[] {
   return documents;
 }
 
-function noteDirs(activeRoot: string): { slug: string; dir: string }[] {
-  const dirs: { slug: string; dir: string }[] = [];
-  const push = (slug: string, base: string) => {
-    const dir = path.join(base, "sources", "notes");
-    if (existsSync(dir)) dirs.push({ slug, dir });
-  };
-  for (const entry of readdirSync(activeRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    if (entry.name === "archive") {
-      const archive = path.join(activeRoot, "archive");
-      for (const old of readdirSync(archive, { withFileTypes: true })) {
-        if (old.isDirectory()) push(old.name, path.join(archive, old.name));
-      }
-      continue;
-    }
-    push(entry.name, path.join(activeRoot, entry.name));
-  }
-  return dirs;
+function noteDirs(activeRoot: string): InitiativeDir[] {
+  return initiativeDirs(activeRoot)
+    .map(({ slug, dir }) => ({ slug, dir: path.join(dir, ...LAYOUT.notes) }))
+    .filter(({ dir }) => existsSync(dir));
 }
 
 export async function buildIndex(documents: NoteDocument[], embedder: Embedder): Promise<BruteForceVectorIndex> {
