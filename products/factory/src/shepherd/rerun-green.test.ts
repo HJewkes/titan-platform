@@ -5,7 +5,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import type { ShepherdPhases, WakeRequest } from "./phases.js";
+import type { ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
@@ -16,14 +16,14 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** `validate` is red until the fixer acts; the fixer's action and the real post-wake wait stand in for the wake phase. */
-function scenario(fix: (fake: FakeGitHub) => void) {
+function scenario(fix: (fake: FakeGitHub, request: WakeRequest) => void, review: (headSha: string) => Verdict = () => ({ kind: "none" })) {
   const fake = fakeGitHub();
   let fixed = false;
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, fixed ? "success" : "failure"), successRun("dag-check", 2)]);
   const wakes: WakeRequest[] = [];
   const phases: ShepherdPhases = {
-    wake: async (ctx, request) => (wakes.push(request), (fixed = true), fix(fake), awaitFixerHead(ctx, request, { agent: "impl-a" })),
-    review: async () => ({ kind: "none" }),
+    wake: async (ctx, request) => (wakes.push(request), (fixed = true), fix(fake, request), awaitFixerHead(ctx, request, { agent: "impl-a" })),
+    review: async (_ctx, request) => review(request.headSha),
   };
   let clock = 0;
   const store = shepherdStoreRef();
@@ -58,6 +58,17 @@ describe("a ci-red wake the fixer answers with a rerun", () => {
     expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
     expect(result(host, runId, "sh-await-new-head:0")).toMatchObject({ result: { headSha: H1, green: true } });
     expect(result(host, runId, "ci-wait:r1:0")).toMatchObject({ result: { headSha: H1, verdict: "green" } });
+    expect(fake.effects.merge).toBe(1);
+  });
+
+  it("still wakes the fixer for a FIX_FIRST review at the head the rerun turned green", async () => {
+    const pushOnReview = (github: FakeGitHub, request: WakeRequest) => void (request.kind === "review" && github.pushHead(1, H2));
+    const fixFirstAtH1 = (headSha: string): Verdict => (headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "missing test" } : { kind: "none" });
+    const { fake, host, runId, wakes } = scenario(pushOnReview, fixFirstAtH1);
+
+    await approveAt(host, runId, H2);
+
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1], ["review", H1]]);
     expect(fake.effects.merge).toBe(1);
   });
 

@@ -43,9 +43,9 @@ export async function awaitedPast(run: WakeRun, headSha: string): Promise<boolea
   return true;
 }
 
-/** True when an agent took the wake; the run has then moved past `headSha`. */
-export function tookWake(run: WakeRun, headSha: string, outcome: { kind: string }): boolean {
-  if (outcome.kind === "woken") run.wokenPast.add(headSha);
+/** True when an agent took the wake; the run has then moved past `headSha`, unless that same head turned green. */
+export function tookWake(run: WakeRun, headSha: string, outcome: { kind: string; sameHead?: true }): boolean {
+  if (outcome.kind === "woken" && outcome.sameHead !== true) run.wokenPast.add(headSha);
   return outcome.kind === "woken";
 }
 
