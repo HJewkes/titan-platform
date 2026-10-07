@@ -349,12 +349,12 @@ describe("worktree branch base", () => {
     fs.writeFileSync(hang, HANG_UNTIL_GIT_DIES, { mode: 0o755 });
     git(["config", "protocol.ext.allow", "always"], local);
     git(["remote", "add", "origin", `ext::${hang}`], local);
-    const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_500 });
+    const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_000 });
 
     const started = Date.now();
     const alloc = await strategy.allocate(ctxFor(local));
 
-    expect(Date.now() - started).toBeLessThan(2_900);
+    expect(Date.now() - started).toBeLessThan(1_950);
     expect(alloc.warnings?.[0]).toContain("failed or timed out");
   });
 
