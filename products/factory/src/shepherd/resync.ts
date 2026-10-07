@@ -7,6 +7,7 @@ import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { REREVIEW } from "./stale-gates.js";
+import { supersedeStaleReviews, type SupersededReview } from "./stale-reviews.js";
 
 export const ORPHANED = "orphaned: the run already ended";
 
@@ -27,6 +28,8 @@ export interface ResyncReport {
   orphanGates: string[];
   /** Gates cancelled because their head moved or their MRG-AU gate failed only on transient conditions; each run starts a new cycle. */
   superseded: SupersededGate[];
+  /** Active review steps of runs no runtime holds, answered because the PR moved past their head. */
+  supersededReviews: SupersededReview[];
   /** Why superseding moved gates failed; the rest of the report still stands. */
   supersedeError?: string;
 }
@@ -129,10 +132,11 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   const ended = await endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed });
   const orphans = orphanGates(host);
   if (!dryRun) for (const gateId of orphans) host.gates.cancel(gateId, ORPHANED);
-  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [] };
+  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [], supersededReviews: [] };
   try {
     report.superseded = await supersedeMovedGates(host, services, { dryRun });
     report.superseded.push(...(await supersedeTransientGates(host, services, { dryRun })));
+    report.supersededReviews = await supersedeStaleReviews(host, services, { dryRun });
   } catch (err) {
     report.supersedeError = failureOf(err);
   }

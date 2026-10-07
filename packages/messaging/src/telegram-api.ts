@@ -1,5 +1,5 @@
 import type { SendError } from "./contract.js";
-import { attemptFetch, unreadableSuccess } from "./send-failure.js";
+import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 
 export interface TelegramConfig {
   /** Bot token from BotFather. It sits in the URL path, so it is redacted everywhere. */
@@ -25,20 +25,12 @@ export const TELEGRAM_MAX_CALLBACK_DATA_BYTES = 64;
 
 /** Every string that leaves this module passes through here. */
 export function redactToken(value: string, token: string): string {
-  if (!token) return value;
-  const encoded = encodeURIComponent(token);
-  const once = value.split(token).join("***");
-  return encoded === token ? once : once.split(encoded).join("***");
+  return redactSecret(value, token);
 }
 
 export function methodUrl(config: TelegramConfig, method: string): string {
   const origin = (config.baseUrl ?? TELEGRAM_BASE_URL).replace(/\/+$/, "");
   return `${origin}/bot${config.token}/${method}`;
-}
-
-export function describeCause(cause: unknown): string {
-  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
-  return String(cause);
 }
 
 /** The Bot API envelope: `{ ok, result }`, or `{ ok: false, description }`. */
@@ -152,9 +144,10 @@ function methodRequest(
 }
 
 /**
- * The one path from this package to the Bot API: attempt, envelope, typed error,
- * redaction. Every method goes through it, so the token cannot reach a string by
- * a new route. `handle` only shapes the `no-chat` case.
+ * The path for the send-shaped Bot API methods: attempt, envelope, typed error,
+ * redaction. `getUpdates` (telegram-updates.ts) and `getMe` (telegram-liveness.ts)
+ * bypass it; `getUpdates` redacts its own errors and `getMe` surfaces only a
+ * reason, never a string. `handle` only shapes the `no-chat` case.
  */
 export async function callBotApi(
   config: TelegramConfig,
