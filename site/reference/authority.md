@@ -61,8 +61,8 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-41 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the conditional
-row MRG-AU-RV described below. Each rule also carries an optional `condition` that
+42 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the two conditional
+allow rows MRG-AU-RV and MRG-AU-RC described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 

@@ -100,6 +100,25 @@ describe("execution lifecycle transitions", () => {
     expect(record).toMatchObject({ phase: "running", recovery: undefined });
   });
 
+  it("keeps a requested cancellation across a recovery and a later observed run", () => {
+    let record = running();
+    record = apply(record, event("request_cancellation", 3, T3, { fence, reason: "operator stop" }));
+    record = apply(record, event("require_recovery", 4, T4, { fence, evidence: "supervisor restarted after cancel" }));
+    expect(record).toMatchObject({ phase: "recovery_required", cancellation: { reason: "operator stop" } });
+
+    record = apply(record, event("observe_running", 5, T4, {
+      fence,
+      runnerRef: "ledger:execution-1",
+      adapterExecution: { executionId: "adapter-run-1" },
+      evidence: "transport found exact invocation",
+    }));
+    expect(record).toMatchObject({
+      phase: "cancel_requested",
+      recovery: undefined,
+      cancellation: { requestedAt: T3, reason: "operator stop" },
+    });
+  });
+
   it("treats cancellation unknown as an absorbing terminal outcome", () => {
     let record = running();
     record = apply(record, event("request_cancellation", 3, T3, { fence, reason: "deadline" }));
