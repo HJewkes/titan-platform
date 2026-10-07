@@ -18,12 +18,19 @@ const EXACT = new Set([
  * turn. Arguments stay as written.
  */
 export function foldCommandWords(words: WordToken[]): WordToken[] {
+  const done = new Set<number>();
   for (;;) {
     const cmd = unwrap(words);
     const at = cmd ? words.findIndex((w) => !w.dynamic && w.value === cmd.path && !cmd.args.includes(w)) : -1;
     const word = words[at];
-    const lower = word?.value.toLowerCase();
-    if (!word || lower === undefined || lower === word.value || EXACT.has(lower)) return words;
+    const lower = word === undefined ? undefined : foldCase(word.value);
+    if (!word || lower === undefined || lower === word.value || done.has(at) || EXACT.has(lower)) return words;
+    done.add(at);
     words = words.map((w, i) => (i === at ? { ...w, value: lower } : w));
   }
+}
+
+/** Upper then lower, so the long s and ligatures APFS folds (`baſh`, `ﬆdbuf`) reach `bash` and `stdbuf` too. */
+function foldCase(value: string): string {
+  return value.toUpperCase().toLowerCase();
 }

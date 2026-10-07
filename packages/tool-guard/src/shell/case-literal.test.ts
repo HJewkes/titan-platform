@@ -48,6 +48,14 @@ const FOLDED_ROWS = [
   ["( ECHO 'git push origin HEAD:main' ) | CAT | sh", "( echo 'git push origin HEAD:main' ) | cat | sh"],
   ["ECHO 'git push origin HEAD:main' | XARGS -0 sh -c", "echo 'git push origin HEAD:main' | xargs -0 sh -c"],
   ["FIND . -exec GIT push origin HEAD:main \\;", "find . -exec git push origin HEAD:main \\;"],
+  ["baſh -c 'git push origin HEAD:main'", "bash -c 'git push origin HEAD:main'"],
+  ["ſh -c 'git push origin HEAD:main'", "sh -c 'git push origin HEAD:main'"],
+  ["ſudo git push origin HEAD:main", "sudo git push origin HEAD:main"],
+  ["echo x | xargſ git push origin HEAD:main", "echo x | xargs git push origin HEAD:main"],
+  ["echo 'git push origin HEAD:main' | baſh", "echo 'git push origin HEAD:main' | bash"],
+  ["ﬆdbuf -o0 git push origin HEAD:main", "stdbuf -o0 git push origin HEAD:main"],
+  ["echo 'git push origin HEAD:main' | ſh", "echo 'git push origin HEAD:main' | sh"],
+  ["{ ECHO 'git push origin HEAD:main'; } | baſh", "{ echo 'git push origin HEAD:main'; } | bash"],
 ];
 
 describe("a command word a case-insensitive filesystem runs whatever its case (TP-1623)", () => {
@@ -97,6 +105,13 @@ describe("words a fold leaves as written (TP-1623)", () => {
   it("keeps a variable a folded EXPORT would set, as bash matches the builtin exactly", () => {
     expect(verdicts("G=git; EXPORT G=echo; $G push origin HEAD:main")).toEqual([PROTECTED_MAIN]);
     expect(verdicts("G=echo; EXPORT G=git; $G push origin HEAD:main")).toEqual([]);
+  });
+
+  it.each([
+    ["a dotted capital I", "GİT push origin HEAD:main"],
+    ["a caron", "ǦIT push origin HEAD:main"],
+  ])("keeps a word with %s, which APFS does not fold to git, as written", (_, command) => {
+    expect(verdicts(command)).toEqual([]);
   });
 
   it("keeps TP-1531's reading of a declare -l name", () => {
