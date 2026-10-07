@@ -91,6 +91,8 @@ interface Walk {
   foldCase: boolean;
   /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
   walked: Set<string> | null;
+  /** Words the whole line's `unsure` readings may still walk, shared by every walk of the line. */
+  unsureBudget: { left: number };
 }
 
 /**
@@ -102,7 +104,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsureBudget: { left: MAX_UNSURE_WORDS } });
   return out;
 }
 
@@ -184,19 +186,21 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
 
 /**
  * Reads a command's `unsure` words as an added reading, then theirs in turn, since each wrapper may hide its own
- * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, so past MAX_DEPTH
- * steps or MAX_UNSURE_WORDS words only two more readings are walked: the last whose command word is still dynamic,
- * and the last, with every such word dropped. A deep chain still reaches its command, and nothing else on the line is lost.
+ * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, and ten times that
+ * for a dynamic command word, so the line shares one budget of MAX_UNSURE_WORDS. Past MAX_DEPTH steps or the budget
+ * only two more readings are walked: the last whose command word is still dynamic, and the last, with every such
+ * word dropped. Each costs no more than the command as written, a deep chain still reaches its command, and nothing else is lost.
  */
 function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null): void {
   const late = new Map<"dynamic" | "last", Unwrapped[]>();
+  const budget = w.unsureBudget;
   let unsure = cmd?.unsure;
-  let words = 0;
   for (let depth = 0; unsure; depth++) {
     const runs = caseNamed(unsure);
-    words += unsure.length;
-    if (depth < MAX_DEPTH && words <= MAX_UNSURE_WORDS) walkAdded(runs, redirects, w, next);
-    else {
+    if (depth < MAX_DEPTH && unsure.length <= budget.left) {
+      budget.left -= unsure.length;
+      walkAdded(runs, redirects, w, next);
+    } else {
       if (runs[0]?.name === null) late.set("dynamic", runs);
       late.set("last", runs);
     }

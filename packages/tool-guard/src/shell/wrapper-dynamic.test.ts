@@ -130,6 +130,25 @@ describe("a script that every reading of a dynamic wrapper runs", () => {
   });
 });
 
+describe("a line of many dynamic command words", () => {
+  const PUSH = "; git push origin HEAD:main";
+  const segments = (segment: string, count: number) => `${Array(count).fill(segment).join("; ")}${PUSH}`;
+  const repeat = (unit: string, n: number) => Array(n).fill(unit).join(" ");
+  const lines = [
+    ["$b $c segments", segments(repeat("$b $c", 45), 30), 31],
+    ["$b segments", segments(repeat("$b", 45), 60), 61],
+    ["xargs sudo $b segments", segments(repeat("xargs sudo $b", 14), 40), 41],
+  ] as const;
+
+  it.each(lines)("reads each statement a bounded number of times: %s", (_how, line, statements) => {
+    expect(extractCommands(line, { cwd: REPO, home: "/home/you" }).length).toBeLessThanOrEqual(8 * statements);
+  });
+
+  it.each(lines)("still reads the push at its end: %s", (_how, line) => {
+    expect(verdicts(line)).toContainEqual(MAIN_PUSH);
+  });
+});
+
 describe("a wrapper or xargs that runs nothing guarded", () => {
   it.each([
     ["xargs echo of a dynamic replace string", "xargs -I $R echo $R"],
