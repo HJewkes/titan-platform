@@ -198,8 +198,16 @@ async function withReviewComments(port: GitHubPort, input: WakeFacts, wake: { re
   return { ...wake, payload: `${wake.payload}\n\n${COMMENTS_INTRO}\n${dataFence("review comments", section)}` };
 }
 
+/** A full suite on the Mac starves every other agent on it; basement-suite runs it on a box with slots for it. */
+const TEST_RULE = "Run only targeted tests on the Mac (the files your fix touches, with `pnpm exec vitest run <paths>`); run typecheck, lint, build checks and the full suite with `ssh basement basement-suite`. Never run a full `pnpm test` on the Mac.";
+
 /** Why the agent is woken, and the data that shows it, fenced. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
+  const wake = await wakeBody(port, input, pr);
+  return { ...wake, reason: `${wake.reason}\n\n${TEST_RULE}` };
+}
+
+async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
   const head = input.headSha;
   switch (input.kind) {
     case "ci-red":
