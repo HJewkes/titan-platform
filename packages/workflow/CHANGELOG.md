@@ -1,5 +1,12 @@
 # @titan-design/workflow
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [f2e4abf]
+  - @titan-design/hitl@0.7.0
+
 ## 0.9.0
 
 ### Minor Changes
