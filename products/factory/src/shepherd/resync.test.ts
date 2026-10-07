@@ -25,6 +25,7 @@ import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditi
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const SEED_LEASE_MS = 3_000;
@@ -222,7 +223,7 @@ function mergedThenRed(): WorkflowDefinition {
     ],
     run: async (ctx) => {
       await step(ctx, "merge:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -238,10 +239,10 @@ function approveThenMerge(): WorkflowDefinition {
       { id: "main-red", kind: "assisted" },
     ],
     run: async (ctx) => {
-      await ctx.assisted("approve-merge", "merge this head?");
+      await ctx.assisted("approve-merge", "merge this head?", { brief: TEST_BRIEF });
       await step(ctx, "merge:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
       await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -355,7 +356,7 @@ describe("resyncShepherd", () => {
     w.fake.addPr({ headSha: HEAD });
     const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(runId);
-    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head" });
+    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!);
 
@@ -372,7 +373,7 @@ describe("resyncShepherd", () => {
     merge(w.fake, 1);
     const failed = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "9", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(failed);
-    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back" });
+    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!, { dryRun: true });
 

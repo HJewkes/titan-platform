@@ -23,6 +23,7 @@ import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
 import { OWNER } from "../test-support/resolver.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -965,9 +966,9 @@ describe("a new cycle at a new head", () => {
     fake.onGetPr = (pr, reads) => {
       seedGates(pr, reads);
       if (reads !== 1) return;
-      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST` });
+      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST`, ...TEST_BRIEF });
     };
     runId = shepherdPr1(w);
 
