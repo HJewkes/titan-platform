@@ -34,8 +34,8 @@ export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
   }
 }
 
-/** Verdict messages from agent-chat's events table, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive. */
-export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }): { verdicts: VerdictRecord[]; unparsed: number } {
+/** Verdict messages from agent-chat's events table, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive, and `seats` limits the refused count to verdicts sent to those seats. */
+export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }, seats?: readonly string[]): { verdicts: VerdictRecord[]; unparsed: number } {
   return withEventsDb(eventsDb, (db) => {
     const sql = `SELECT id, ts, actor, target, body FROM events WHERE kind = 'message' AND body LIKE 'Verdict:%' AND ts >= ? AND ts < ? ORDER BY id`;
     const rows = db.prepare(sql).all(window.since ? Date.parse(window.since) : 0, window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER) as EventRow[];
@@ -43,7 +43,9 @@ export function readVerdicts(eventsDb: string, window: { since?: string; until?:
       const parsed = parseVerdict(row.body);
       return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
     });
-    return { verdicts, unparsed: rows.length - verdicts.length };
+    const inSeats = (row: EventRow) => !seats || seats.includes(row.target ?? "");
+    const unparsed = rows.filter((row) => !parseVerdict(row.body) && inSeats(row)).length;
+    return { verdicts, unparsed };
   });
 }
 
