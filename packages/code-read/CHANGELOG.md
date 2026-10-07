@@ -1,5 +1,18 @@
 # @titan-design/code-read
 
+## 0.2.1
+
+### Patch Changes
+
+- 58813f1: `finding.get` on a whole-node finding whose node is a symbol, such as a function-length
+  metric finding, now returns the symbol's span as `finding.range` and excerpts and
+  highlights those lines with `context_lines` either side, instead of the first 80 lines of
+  the declaring file.
+- 14c4299: Fill the new `loc` field on symbol-grain hotspot rows from `symbol_loc`, so `code-read` keeps typechecking against `@titan-design/code-graph` rows that now carry `loc`.
+- Updated dependencies [14c4299]
+- Updated dependencies [2c0fff9]
+  - @titan-design/code-graph@0.14.0
+
 ## 0.2.0
 
 ### Minor Changes

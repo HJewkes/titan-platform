@@ -5,6 +5,8 @@ export interface HotspotRow {
   nodeId: string;
   churn: number;
   complexity: number;
+  /** Shown beside complexity: complexity alone mostly restates file size. */
+  loc: number;
   score: number;
   /** Age-recency factor applied to the score (1 = no discount); see recency_{window}d. */
   recency: number;
@@ -46,6 +48,8 @@ export interface UnusedExportRow {
   fileId: string;
   /** The export's own cognitive complexity (C-58); 0 for a class/type/re-export. */
   cognitive: number;
+  /** The export's own LOC, shown beside its cognitive complexity; 0 when unmeasured. */
+  loc: number;
   /**
    * The declaring file is re-exported by a `barrel` — so this export is part of a
    * package's public surface and may be consumed *externally* (lower confidence
