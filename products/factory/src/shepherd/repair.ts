@@ -2,8 +2,9 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { step } from "../workflows/land.js";
 import type { LandOutcome } from "../workflows/land.js";
-import { sentBackGate, type GateRun, type PrTarget } from "./gates.js";
-import type { WakeRequest } from "./phases.js";
+import { afterFixerExit } from "./flake-check.js";
+import { sentBackGate, tookWake, type GateRun, type PrTarget, type WakeRun } from "./gates.js";
+import type { WakeOutcome, WakeRequest } from "./phases.js";
 import { MAX_REPAIRS, escalationReason } from "./route-table.js";
 import { REPAIR_STEP } from "./wake-brief.js";
 
@@ -32,4 +33,10 @@ export function repairGate(run: GateRun, kind: WakeRequest["kind"], headSha: str
   const reason = escalationReason("repair-budget", repairDetail(kind, headSha, payload));
   const prompt = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha} has used its repair budget: ${reason}. Await a new head or abandon?`;
   return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the repair budget ran out at a ${kind} wake`);
+}
+
+/** Whether an agent took the wake; a fixer that exited with no push is rerun or sent back by `afterFixerExit` instead. */
+export async function afterWake(run: WakeRun & { state: { round: number; reruns: number } }, kind: WakeRequest["kind"], headSha: string, payload: unknown, outcome: WakeOutcome, leave: (outcome?: LandOutcome) => Error): Promise<boolean> {
+  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome.reason, leave);
+  return tookWake(run, headSha, outcome);
 }

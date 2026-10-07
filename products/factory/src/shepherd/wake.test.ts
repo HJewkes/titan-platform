@@ -623,14 +623,14 @@ describe("wakePhase", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub) {
+  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1)) {
     const store = shepherdStoreRef();
     let clock = T0;
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => warmAt(1), checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");
@@ -651,6 +651,19 @@ describe("wakePhase", () => {
 
     expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
+  });
+
+  it("is unhandled with the exit named when the woken agent exits and the head is unchanged", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    const resume = agents.resume;
+    agents.resume = async (...args) => (await resume(...args), void (agents.rows[0]!.presence = "live"));
+    fake.onGetPr = () => void (agents.asked.length > 0 && (agents.rows[0]!.presence = "exited"));
+
+    const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }));
+
+    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}` });
   });
 
   it("is unhandled when the PR closes at the same head", async () => {
