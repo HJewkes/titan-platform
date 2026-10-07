@@ -6,6 +6,7 @@ import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { presenceReason, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
+import { TEST_BRIEF } from "./test-support/brief.js";
 
 const HEAD = "a".repeat(40);
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -15,7 +16,7 @@ const merge = defineWorkflow({
   name: "merge",
   steps: [{ id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
-    await ctx.assisted("approve-merge", "Merge?", { schema: z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.string() }) });
+    await ctx.assisted("approve-merge", "Merge?", { schema: z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.string() }), brief: TEST_BRIEF });
   },
 });
 
@@ -155,7 +156,7 @@ describe("gate resolve by a coordinator", () => {
       name: "gated",
       steps: [{ id: step, kind: "assisted" }],
       run: async (ctx) => {
-        await ctx.assisted(step, "Go?", { schema: z.object({ decision: z.string() }).strict() });
+        await ctx.assisted(step, "Go?", { schema: z.object({ decision: z.string() }).strict(), brief: TEST_BRIEF });
       },
     });
 

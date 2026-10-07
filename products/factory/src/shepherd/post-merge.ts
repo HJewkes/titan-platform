@@ -2,6 +2,7 @@ import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPor
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
+import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
@@ -75,8 +76,8 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail);
-  else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, target.mergeSha);
-  if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, target.mergeSha);
+  else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
+  if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, { ...target, headline: `PR #${target.pr} in ${target.repo} merged with after stages`, detail: `Do by hand: ${result.after.join(", ")}.` });
   await step(ctx, "sh-cleanup", { repo: target.repo, pr: target.pr, runId: ctx.runId }, CleanupResult);
   return result;
 }
@@ -87,7 +88,7 @@ async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, de
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
   const episode = { ...red, episode: frozen.episode };
   if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
-  if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, red.mergeSha);
+  if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, { ...red, headline: `Main CI on ${red.repo} is red`, detail: `${detail}. No freeze store is wired.` });
   const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
   if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
@@ -105,18 +106,17 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
-const FrozenAnswer = z.object({ decision: z.enum(["stay-frozen", "unfreeze"]), mergeSha: z.string() });
-
 /** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
 async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
-  const answer = FrozenAnswer.parse((await ctx.assisted(gate, prompt, { schema: FrozenAnswer })).data);
+  const { schema, brief } = frozenDecision({ repo: red.repo, mergeSha: red.mergeSha, situation: prompt });
+  const answer = schema.parse((await ctx.assisted(gate, prompt, { schema, brief })).data);
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }
 
-async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, mergeSha: string): Promise<void> {
-  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck });
-  if (OwnerAck.parse(answer.data).mergeSha !== mergeSha) throw new Error(`${stepId} answer names a different merge sha than ${mergeSha}`);
+async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, about: { repo: string; mergeSha: string; headline: string; detail: string }): Promise<void> {
+  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about) });
+  if (OwnerAck.parse(answer.data).mergeSha !== about.mergeSha) throw new Error(`${stepId} answer names a different merge sha than ${about.mergeSha}`);
 }
 
 export interface MainCiInput {
