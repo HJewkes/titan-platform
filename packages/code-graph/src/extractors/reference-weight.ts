@@ -21,7 +21,8 @@ import type { EdgeKind, GraphEdge } from "../types.js";
 /**
  * Fold a specifier into the aggregate, summing weights so parallel imports of
  * one module (e.g. a value import plus a type import) collapse to a single
- * edge whose weight is their combined reference count.
+ * edge whose weight is their combined reference count. The merged edge keeps
+ * `typeOnly` only while every folded specifier is type-only.
  */
 export function addWeightedEdge(
   agg: Map<string, GraphEdge>,
@@ -30,14 +31,17 @@ export function addWeightedEdge(
   kind: EdgeKind,
   specifier: string,
   weight: number,
+  typeOnly = false,
 ): void {
   const key = JSON.stringify([kind, dstId]);
   const existing = agg.get(key);
   if (existing) {
-    (existing.attrs as { weight: number }).weight += weight;
+    const attrs = existing.attrs as { weight: number; typeOnly?: true };
+    attrs.weight += weight;
+    if (!typeOnly) delete attrs.typeOnly;
     return;
   }
-  agg.set(key, { srcId, dstId, kind, attrs: { specifier, weight } });
+  agg.set(key, { srcId, dstId, kind, attrs: typeOnly ? { specifier, weight, typeOnly } : { specifier, weight } });
 }
 
 /**
@@ -113,6 +117,21 @@ function importBindingNames(decl: ImportDeclaration): string[] {
 export function reExportWeight(decl: ExportDeclaration): number {
   if (decl.isNamespaceExport()) return 1;
   return Math.max(decl.getNamedExports().length, 1);
+}
+
+/** `import type` or an import whose every binding is an inline `type` specifier; a side-effect import is a value import. */
+export function isTypeOnlyImport(decl: ImportDeclaration): boolean {
+  if (decl.isTypeOnly()) return true;
+  if (decl.getDefaultImport() || decl.getNamespaceImport()) return false;
+  const named = decl.getNamedImports();
+  return named.length > 0 && named.every((spec) => spec.isTypeOnly());
+}
+
+/** `export type { … } from` or a re-export whose every specifier is an inline `type` specifier. */
+export function isTypeOnlyReExport(decl: ExportDeclaration): boolean {
+  if (decl.isTypeOnly()) return true;
+  const named = decl.getNamedExports();
+  return named.length > 0 && named.every((spec) => spec.isTypeOnly());
 }
 
 /**
