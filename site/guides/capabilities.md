@@ -319,7 +319,7 @@ Key exports:
 
 ### [`store-sqlite`](/reference/store-sqlite)
 
-Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations
+Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
 
 **Use this when:** You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself.
 
@@ -596,7 +596,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +394 more in the [reference page](/reference/code-graph)
+- +395 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
