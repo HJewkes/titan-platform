@@ -1,6 +1,6 @@
 {
   "name": "codewatch",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "private": true,
   "description": "codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read",
   "type": "module",

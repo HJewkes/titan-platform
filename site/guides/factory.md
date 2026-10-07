@@ -22,8 +22,9 @@ when `shepherd.review` is configured. Relay and agent-chat keep every other disp
   `gh api` on your login and reads no token itself (`packages/github`).
 - A base branch that requires at least one status check. `land` waits on required checks
   only, so it refuses a branch that requires none.
-- macOS, only for `service install`, `status`, `restart` and `uninstall`, which drive
-  launchd. Every other command, `service plist` included, runs anywhere Node does.
+- macOS or Linux, only for `service install`, `status`, `restart`, `uninstall` and `deploy`,
+  which drive launchd or a systemd --user unit, and macOS for `service check`. Every other
+  command, `service plist` included, runs anywhere Node does.
 
 ## Build
 
@@ -57,7 +58,7 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 | Database | `--db <path>`, else `TITAN_FACTORY_DB`, else `dbPath` in the config file, else `$XDG_STATE_HOME/titan-factory/factory.sqlite3` |
 | Config file | `$XDG_CONFIG_HOME/titan-factory/config.json` |
 | Server lock | `daemon.pid` and `daemon.meta.json` in the database's directory, while `serve` runs |
-| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd |
+| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd or systemd |
 
 `XDG_STATE_HOME` defaults to `~/.local/state` and `XDG_CONFIG_HOME` to `~/.config`
 (`products/factory/src/config.ts`). The database holds runs, gates and Shepherd
@@ -291,6 +292,14 @@ titan-factory service install --port 7411 --mcp
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
+
+On Linux the same verbs manage the systemd --user unit `titan-factory.service` in
+`$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`. The unit runs the plist's
+argv with `Restart=always`, the plist's `PATH` and its two log files, and is enabled under
+`default.target`. Install runs `daemon-reload` and `enable --now` (plus `restart` when the unit
+was already running), then the same `/health` wait. `service install --dry-run` prints the file
+and the calls it would make, and changes nothing. Run `loginctl enable-linger "$USER"` once so
+the unit runs without a login session. The package README maps each plist key to its unit line.
 
 `service check` defines each cause precisely and reports the first that holds, in this order:
 
