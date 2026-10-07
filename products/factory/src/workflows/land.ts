@@ -9,13 +9,13 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
+import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
-import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -25,6 +25,8 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "land-rules", kind: "dispatch" },
   { id: "ci-wait", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
+  { id: "update-backoff", kind: "dispatch" },
+  { id: "update-retry", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
   { id: "approve-merge", kind: "assisted" },
@@ -106,6 +108,7 @@ interface LandState {
   round: number;
   cycle: number;
   updates: number;
+  retries: number;
   bound: UpdateBound;
   merges: number;
   decisions: number;
@@ -125,10 +128,11 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
+  const state: LandState = { round, cycle: 0, updates: 0, retries: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
+    if (ci.verdict !== "behind" && retryLanded(state.bound)) restartUpdates(state.bound);
     const settled = landsAsIs(ci, state) ? { ...ci, verdict: "green" as const } : ci;
     const next = settled.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, settled, state, options);
     if (next) return next;
@@ -157,6 +161,7 @@ function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
   const refresh = ci.baseMoved === true;
   if (!refresh && budgetSpent(state.bound, ci.readAt)) {
+    if (retriesLeft(state.bound) && !recordedPastRetries(ctx)) return retryUpdate(ctx, input, ci, state);
     const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
     const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
     const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
@@ -165,10 +170,31 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
-  if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
-  if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
+  const failed = afterUpdate(ci, update);
+  if (failed) return failed;
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   if (update.own && refresh) state.refreshed.add(update.headSha);
+  return undefined;
+}
+
+/** A run recorded before retries went from the spent budget straight to the gate; a replay keeps that path. */
+function recordedPastRetries(ctx: WorkflowContext): boolean {
+  const next = ctx.historyNext();
+  return next !== undefined && !next.startsWith("update-backoff") && !next.startsWith("update-retry");
+}
+
+/** Waits a growing, recorded interval, then updates once more; the retry count and head go on the bound, so status can show them. */
+async function retryUpdate(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
+  const n = state.retries++;
+  await step(ctx, roundId("update-backoff", state.round, n), { waitMs: retryBackoffMs(state.bound.retries ?? 0), retry: (state.bound.retries ?? 0) + 1 }, BackoffResult);
+  const update = await step(ctx, roundId("update-retry", state.round, n), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
+  recordRetry(state.bound, ci.headSha);
+  return afterUpdate(ci, update);
+}
+
+function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>): LandOutcome | undefined {
+  if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
+  if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
   return undefined;
 }
 
@@ -234,10 +260,16 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
-    codeRoute("update-branch", now, async (input: UpdateInput, signal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() })),
+    codeRoute("update-branch", now, updateRun(deps, timing, now)),
+    codeRoute("update-retry", now, updateRun(deps, timing, now)),
+    codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
   ];
+}
+
+function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () => number) {
+  return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() });
 }
 
 export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {

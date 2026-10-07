@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { MAX_UPDATE_CYCLES, sleep } from "../workflows/land.js";
+import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, sleep } from "../workflows/land.js";
 import { UPDATE_GAP_MS, spaceUpdates } from "../test-support/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { freezeStoreRef } from "./freeze.js";
@@ -288,16 +288,17 @@ describe("a base that moves on every read", () => {
   });
 
   it(`stops at ${MAX_UPDATE_CYCLES} updates with a stuck-behind gate naming the count and every head`, async () => {
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, behindCarry, behindCarry, behindCarry];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 3 + MAX_UPDATE_RETRIES }, () => behindCarry)];
     const { host, replay } = startReplay({ ...BUSY, heads });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
     expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
-    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates over 120 min (budget 120 min), heads ${short(replay)}`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates and ${MAX_UPDATE_RETRIES} automatic retries with backoff over`);
+    expect(gate?.gate.prompt).toContain(`heads ${short(replay)}`);
   });
 
   it("does not spend a round on a behind head while GitHub's mergeable_state is unknown", async () => {
@@ -313,15 +314,15 @@ describe("a base that moves on every read", () => {
 
   it("counts updates across rounds for a kind that never carries a MERGE, and stops at the bound", async () => {
     const reviewedThenBehind: HeadScript = { reviews: ["MERGE"], goesBehind: true };
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 }, () => reviewedThenBehind)];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 + MAX_UPDATE_RETRIES }, () => reviewedThenBehind)];
     const { host, replay } = startReplay({ ...BUSY, heads }, { kind: "security" });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
-    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates and ${MAX_UPDATE_RETRIES} automatic retries`);
   });
 
   it("keeps updating past the minimum while main outpaces CI inside the time budget, and merges once the base holds", async () => {
@@ -336,15 +337,16 @@ describe("a base that moves on every read", () => {
   });
 
   it("opens stuck-behind once the time budget is spent, naming the elapsed time, the budget and every head", async () => {
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 8 }, () => behindCarry)];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 8 + MAX_UPDATE_RETRIES }, () => behindCarry)];
     const { host, replay } = startReplay({ ...BUSY, heads }, { updateGapMs: 30 * 60_000 });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
-    expect(replay.fake.effects).toMatchObject({ updateBranch: 5, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 5 + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after 5 updates over 120 min (budget 120 min), heads ${short(replay)}`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after 5 updates and ${MAX_UPDATE_RETRIES} automatic retries with backoff over`);
+    expect(gate?.gate.prompt).toContain(`(budget 120 min), heads ${short(replay)}`);
   });
 });
 
