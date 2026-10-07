@@ -262,6 +262,11 @@ function patternNames(node: Node, out: string[]): void {
     out.push(node.text);
     return;
   }
+  if (PARAM_TYPES.has(node.type)) {
+    const pattern = node.childForFieldName("pattern");
+    if (pattern) patternNames(pattern, out);
+    return;
+  }
   const inner =
     node.type === "pair_pattern" ? node.childForFieldName("value")
     : node.type === "assignment_pattern" || node.type === "object_assignment_pattern" ? node.childForFieldName("left")

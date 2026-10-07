@@ -149,4 +149,13 @@ describe("component prop metrics (C-97 S3)", () => {
     expect(propsOf(metrics, "Wrapped").count).toBeUndefined();
     expect(propsOf(metrics, "Typed").count).toBeUndefined();
   });
+
+  it("counts a prop read in a nested function's default parameter value as a read", async () => {
+    const metrics = await metricsOf(
+      "export function A({ label, x }: { label: string; x: number }) {\n" +
+        "  const f = (y: string = label) => y;\n  return <i>{f()}{x}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "A").unread).toBe(0);
+  });
 });
