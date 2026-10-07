@@ -34,6 +34,15 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
+  program.hook("preAction", () => {
+    try {
+      resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      io.stderr(`error: ${message}\n`);
+      throw new CommanderError(EXIT.USAGE, "miner.invalidConfig", message);
+    }
+  });
   let exitCode: number = EXIT.OK;
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));
