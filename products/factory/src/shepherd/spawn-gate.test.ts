@@ -136,11 +136,11 @@ describe("spawnGate review priority", () => {
     state.readings = idle;
 
     state.now += REVIEW_STALE_MS;
-    const blocked = ask("rv-a-1", ordinary);
+    const admittedAtInterval = ask("rv-a-1", ordinary);
     state.now += 1;
-    const admitted = ask("rv-a-1", ordinary);
+    const admittedAfterInterval = ask("rv-a-1", ordinary);
 
-    expect({ blocked, admitted }).toEqual({ blocked: false, admitted: true });
+    expect({ admittedAtInterval, admittedAfterInterval }).toEqual({ admittedAtInterval: false, admittedAfterInterval: true });
   });
 
   it("never holds back a spawn that is no review", () => {
