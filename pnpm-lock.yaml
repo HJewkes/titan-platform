@@ -317,6 +317,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/coordinator:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/daemon:
     dependencies:
       '@hono/node-server':
@@ -701,6 +707,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
