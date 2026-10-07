@@ -88,6 +88,8 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a null repoFrozen", (f) => { setFact(f, "repoFrozen", null); }, "repo-not-frozen"],
   ["a repoFrozen of 0", (f) => { setFact(f, "repoFrozen", 0); }, "repo-not-frozen"],
   ["no changed paths", (f) => { f.changedPaths = []; }, "no-protected-path-change"],
+  ["a change to .github/CODEOWNERS", (f) => { f.changedPaths.push(".github/CODEOWNERS"); }, "no-protected-path-change"],
+  ["a change to .GitHub/codeowners", (f) => { f.changedPaths.push(".GitHub/codeowners"); }, "no-protected-path-change"],
   ["a change to CODEOWNERS", (f) => { f.changedPaths.push("CODEOWNERS"); }, "no-protected-path-change"],
   ["a change to docs/CODEOWNERS", (f) => { f.changedPaths.push("docs/CODEOWNERS"); }, "no-protected-path-change"],
   ["a change to .gitmodules", (f) => { f.changedPaths.push(".gitmodules"); }, "no-protected-path-change"],
@@ -132,7 +134,7 @@ const UNREADABLE: [string, () => AuthorityRequest][] = [
   ["a cycle in the facts", () => { const facts = greenFacts(); setFact(facts, "self", facts); return mergeBy("automation", facts); }],
   ["a BigInt fact", () => mergeBy("automation", patched((f) => { setFact(f, "extra", 1n); }))],
   ["a changed path getter that throws", () => mergeBy("automation", patched((f) => { Object.defineProperty(f.changedPaths, 0, { get: () => { throw new Error("boom"); } }); }))],
-  ["changed paths whose toJSON hides a .github change", () => mergeBy("automation", patched((f) => { f.changedPaths = ["CODEOWNERS"]; setFact(f.changedPaths, "toJSON", () => ["src/x.ts"]); }))],
+  ["changed paths whose toJSON hides a CODEOWNERS change", () => mergeBy("automation", patched((f) => { f.changedPaths = ["CODEOWNERS"]; setFact(f.changedPaths, "toJSON", () => ["src/x.ts"]); }))],
   ["a FIX_FIRST verdict whose toJSON claims MERGE", () => mergeBy("automation", patched((f) => { f.verdict.value = "FIX_FIRST"; setFact(f.verdict, "toJSON", () => ({ value: "MERGE", head: HEAD })); }))],
   ["seat grants whose toJSON adds merge-on-green-approve", () => mergeBy("automation", patched((f) => { f.seatGrants = []; setFact(f.seatGrants, "toJSON", () => ["merge-on-green-approve"]); }))],
   ["a failed run whose toJSON claims success", () => mergeBy("automation", patched((f) => { const run = { name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }; setFact(run, "toJSON", () => ({ ...run, conclusion: "success" })); f.checkRuns.push(run); }))],
@@ -258,7 +260,7 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     });
   });
 
-  it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md", ".github/workflows/release.yml", ".github/CODEOWNERS", ".GITHUB/x", ".github"])("allows a change to the unprotected path %s", (path) => {
+  it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md", ".github/workflows/release.yml", ".GITHUB/x", ".github"])("allows a change to the unprotected path %s", (path) => {
     const facts = patched((f) => { f.changedPaths.push(path); });
     expect(evaluate(DEFAULT_TABLE, mergeBy("automation", facts))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RV" });
   });
