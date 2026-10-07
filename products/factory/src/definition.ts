@@ -61,6 +61,7 @@ export function guardedContext(ctx: WorkflowContext, definition: WorkflowDefinit
     signal: ctx.signal,
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
+    historyNext: () => ctx.historyNext(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     dispatch: async (stepId, template, options) => (check(stepId, "dispatch"), ctx.dispatch(stepId, template, options)),
     seed: async (stepId, fn) => (check(stepId, "seed"), ctx.seed(stepId, fn)),
