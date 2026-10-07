@@ -1,0 +1,32 @@
+{
+  "src/cli-service.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/serve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/service.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/shepherd/reviewer-brief.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/shepherd/roster.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

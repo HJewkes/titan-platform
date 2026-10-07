@@ -304,20 +304,10 @@ describe("stale pid file", () => {
 });
 
 describe("startDaemon port conflicts", () => {
-  async function freePort(): Promise<number> {
-    const probe = createServer();
-    probe.listen(0, "127.0.0.1");
-    await once(probe, "listening");
-    const { port } = probe.address() as AddressInfo;
-    probe.close();
-    await once(probe, "close");
-    return port;
-  }
-
   it("rejects the second daemon on a taken port while the first keeps serving", async () => {
-    const port = await freePort();
+    handle = await startDaemon(options({ port: 0 }));
+    const { port } = handle;
     const otherStateDir = await mkdtemp(path.join(tmpdir(), "titan-daemon-other-"));
-    handle = await startDaemon(options({ port }));
     try {
       const failure = await startDaemon(options({ port, stateDir: otherStateDir })).catch((err: unknown) => err);
       expect(failure).toBeInstanceOf(DaemonPortInUseError);
