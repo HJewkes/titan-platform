@@ -36,9 +36,10 @@ export function collectTypeDecls(root: Node): TypeDecls {
  * Prop counts of the component function `fn`, whose props are its first parameter. The
  * props type resolves syntactically within the file only, so these stay a pure function of
  * one parse: null when the annotation is missing or names a type this file does not
- * declare. Inherited types this file does not declare (`HTMLAttributes<…>`) add nothing.
+ * declare; `FC<P>` and `Readonly<P>` are never unwrapped, so they stay absent. Inherited types this file does not declare (`HTMLAttributes<…>`) add nothing.
  */
 export function propStatsOf(fn: Node, types: TypeDecls): PropStats | null {
+  if (fn.type === "method_definition") return null;
   const params = fn.childForFieldName("parameters");
   if (!params) return null;
   const first = params.namedChildren.find((p) => p !== null && PARAM_TYPES.has(p.type));
@@ -89,13 +90,18 @@ function collectNamed(type: Node, types: TypeDecls, seen: Set<string>, out: Memb
   }
   const body = decl.childForFieldName("body");
   if (body) addMembers(body, out);
+  let resolved = out.size > 0;
   for (const clause of decl.namedChildren) {
     if (clause?.type !== "extends_type_clause") continue;
     for (const base of clause.namedChildren) {
-      if (base) collectMembers(base, types, seen, out);
+      if (base && collectMembers(base, types, seen, out)) resolved = true;
     }
   }
-  return true;
+  return resolved || !hasExtends(decl);
+}
+
+function hasExtends(decl: Node): boolean {
+  return decl.namedChildren.some((c) => c?.type === "extends_type_clause");
 }
 
 /** Own members first, so a redeclared inherited member keeps its own annotation. */
@@ -115,6 +121,7 @@ function keyText(name: Node): string {
 
 /** `boolean`, or a union of `true`/`false`/`boolean`, optionally with `undefined`. */
 function isBooleanType(type: Node | null): boolean {
+  while (type?.type === "parenthesized_type") type = type.namedChild(0);
   if (!type) return false;
   if (type.type !== "union_type") return type.text === "boolean";
   const leaves = unionLeaves(type);
@@ -122,6 +129,10 @@ function isBooleanType(type: Node | null): boolean {
 }
 
 function unionLeaves(type: Node): string[] {
+  if (type.type === "parenthesized_type") {
+    const inner = type.namedChild(0);
+    return inner ? unionLeaves(inner) : [];
+  }
   if (type.type !== "union_type") return [type.text];
   return type.namedChildren.flatMap((part) => (part ? unionLeaves(part) : []));
 }
@@ -208,17 +219,57 @@ function pairBinding(pair: Node): Node | null {
   return value?.type === "identifier" ? value : null;
 }
 
-/** Value references by name (identifier or object shorthand), minus the binding declarations. */
+/** Value references by name (identifier or object shorthand), minus declarations and shadowed names. */
 function countReferences(fn: Node, declIds: ReadonlySet<number>): Map<string, number> {
   const out = new Map<string, number>();
-  const walk = (node: Node): void => {
-    if ((node.type === "identifier" || node.type === "shorthand_property_identifier") && !declIds.has(node.id)) {
+  const walk = (node: Node, shadowed: ReadonlySet<string>): void => {
+    const isRef = node.type === "identifier" || node.type === "shorthand_property_identifier";
+    if (isRef && !declIds.has(node.id) && !shadowed.has(node.text)) {
       out.set(node.text, (out.get(node.text) ?? 0) + 1);
     }
+    const inner = node === fn ? shadowed : withScopeBindings(node, shadowed);
     for (const child of node.namedChildren) {
-      if (child) walk(child);
+      if (child) walk(child, inner);
     }
   };
-  walk(fn);
+  walk(fn, new Set());
   return out;
+}
+
+const SCOPE_FUNCTIONS = new Set(["arrow_function", "function_expression", "function_declaration", "method_definition"]);
+
+/** `shadowed` plus the names a nested function's parameters or a block's declarations bind. */
+function withScopeBindings(node: Node, shadowed: ReadonlySet<string>): ReadonlySet<string> {
+  const names: string[] = [];
+  if (SCOPE_FUNCTIONS.has(node.type)) {
+    const params = node.childForFieldName("parameters") ?? node.childForFieldName("parameter");
+    if (params) patternNames(params, names);
+  } else if (node.type === "statement_block") {
+    for (const stmt of node.namedChildren) {
+      if (stmt?.type !== "lexical_declaration" && stmt?.type !== "variable_declaration") continue;
+      for (const decl of stmt.namedChildren) {
+        const target = decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null;
+        if (target) patternNames(target, names);
+      }
+    }
+  }
+  return names.length === 0 ? shadowed : new Set([...shadowed, ...names]);
+}
+
+/** Identifiers a binding pattern or parameter list introduces; skips keys and default values. */
+function patternNames(node: Node, out: string[]): void {
+  if (node.type === "identifier" || node.type === "shorthand_property_identifier_pattern") {
+    out.push(node.text);
+    return;
+  }
+  const inner =
+    node.type === "pair_pattern" ? node.childForFieldName("value")
+    : node.type === "assignment_pattern" || node.type === "object_assignment_pattern" ? node.childForFieldName("left")
+    : null;
+  if (inner) patternNames(inner, out);
+  else if (node.type !== "pair_pattern" && node.type !== "assignment_pattern" && node.type !== "object_assignment_pattern") {
+    for (const child of node.namedChildren) {
+      if (child && child.type !== "type_annotation") patternNames(child, out);
+    }
+  }
 }

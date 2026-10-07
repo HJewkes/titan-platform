@@ -98,4 +98,55 @@ describe("component prop metrics (C-97 S3)", () => {
 
     expect(metrics.some((m) => m.name.includes("prop"))).toBe(false);
   });
+
+  it("does not count an inner binding that shadows a prop name as a read of that prop", async () => {
+    const metrics = await metricsOf(
+      "export function Item({ label, count }: { label: string; count: number }) {\n" +
+        "  const total = [1].map((count) => count + 1);\n  return <i>{label}{total}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(1);
+  });
+
+  it("counts a parenthesized boolean | undefined member as bool", async () => {
+    const metrics = await metricsOf(
+      "type P = { on?: (boolean | undefined); name: string };\n" +
+        "export function Sw({ on, name }: P) {\n  return <b>{on}{name}</b>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Sw")).toEqual({ count: 2, bool: 1, unread: 0 });
+  });
+
+  it("gives the same absent answer for an interface extending only imported types and an all-imported intersection", async () => {
+    const metrics = await metricsOf(
+      'import type { A, B } from "./types";\n' +
+        "interface Ext extends A, B {}\n" +
+        "type Inter = A & B;\n" +
+        "export function One({ x }: Ext) {\n  return <i>{x}</i>;\n}\n" +
+        "export function Two({ x }: Inter) {\n  return <i>{x}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "One")).toEqual({ count: undefined, bool: undefined, unread: undefined });
+    expect(propsOf(metrics, "Two")).toEqual({ count: undefined, bool: undefined, unread: undefined });
+  });
+
+  it("does not score PascalCase class methods or getters as components", async () => {
+    const metrics = await metricsOf(
+      "export class View {\n  Render({ a }: { a: string }) {\n    return <b>{a}</b>;\n  }\n" +
+        "  get Body() {\n    return <b />;\n  }\n}\n",
+    );
+
+    expect(metrics.some((m) => m.name.includes("prop"))).toBe(false);
+  });
+
+  it("leaves props absent for FC<P> and Readonly<P> annotations, whether or not P is declared here", async () => {
+    const metrics = await metricsOf(
+      "type P = { a: string };\n" +
+        "export function Wrapped({ a }: Readonly<P>) {\n  return <i>{a}</i>;\n}\n" +
+        "export const Typed: FC<P> = ({ a }) => <i>{a}</i>;\n",
+    );
+
+    expect(propsOf(metrics, "Wrapped").count).toBeUndefined();
+    expect(propsOf(metrics, "Typed").count).toBeUndefined();
+  });
 });
