@@ -12,10 +12,12 @@ import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings } from "./unsure-readings.js";
+import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
-const MAX_UNSURE_WORDS = 512;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+const RUNNERS = new Set([...SHELLS, "eval", "find"]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
 /**
@@ -61,6 +63,11 @@ export interface ExtractOptions {
   home?: string | null;
   /** Reads every command word lower-cased, as a filesystem that finds `GIT` as git runs it; arguments stay as written. */
   foldCase?: boolean;
+  /**
+   * Command names classify reads as more than their arguments. A reading of dynamic wrapper words run as any other name is
+   * skipped: its arguments are a suffix of the command's as written, which is always read. Omitted: every name.
+   */
+  guarded?: ReadonlySet<string>;
 }
 
 interface Scope {
@@ -91,8 +98,8 @@ interface Walk {
   foldCase: boolean;
   /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
   walked: Set<string> | null;
-  /** Words the whole line's `unsure` readings may still walk, shared by every walk of the line. */
-  unsureBudget: { left: number };
+  /** The line's budget of `unsure` reading words, shared by every walk of it. */
+  unsure: UnsureBudget;
 }
 
 /**
@@ -104,7 +111,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsureBudget: { left: MAX_UNSURE_WORDS } });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded) } });
   return out;
 }
 
@@ -179,38 +186,18 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const cut = cutReading(words);
   w.walked = new Set();
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
-  runUnsure(runs[0], redirects, w, next);
+  for (const reading of unsureReadings(runs[0], w.unsure)) walkAdded(reading, redirects, w, next);
   w.walked = null;
   return runs[0] ?? null;
 }
 
-/**
- * Reads a command's `unsure` words as an added reading, then theirs in turn, since each wrapper may hide its own
- * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, and ten times that
- * for a dynamic command word, so the line shares one budget of MAX_UNSURE_WORDS. Past MAX_DEPTH steps or the budget
- * only two more readings are walked: the last whose command word is still dynamic, and the last, with every such
- * word dropped. Each costs no more than the command as written, a deep chain still reaches its command, and nothing else is lost.
- */
-function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null): void {
-  const late = new Map<"dynamic" | "last", Unwrapped[]>();
-  const budget = w.unsureBudget;
-  let unsure = cmd?.unsure;
-  for (let depth = 0; unsure; depth++) {
-    const runs = caseNamed(unsure);
-    if (depth < MAX_DEPTH && unsure.length <= budget.left) {
-      budget.left -= unsure.length;
-      walkAdded(runs, redirects, w, next);
-    } else {
-      if (runs[0]?.name === null) late.set("dynamic", runs);
-      late.set("last", runs);
-    }
-    unsure = runs[0]?.unsure;
-  }
-  for (const runs of new Set(late.values())) walkAdded(runs, redirects, w, next);
-}
-
 function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
+}
+
+/** A dynamic or guarded command word, or one that runs more commands: shell text, `xargs` or `find -exec`. */
+function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
+  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -241,8 +228,9 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
     read({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
-  } catch {
-    // Main's runs of the same command still decide; this reading is dropped.
+  } catch (error) {
+    // Main's runs of the same command still decide; this reading is dropped, unless the line is past checking.
+    if (error instanceof ReadingLimitError) throw error;
   } finally {
     for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true };
   }

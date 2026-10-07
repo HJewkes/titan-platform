@@ -8,6 +8,7 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
+import { ReadingLimitError } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
 export type DecideFn = (actions: readonly ClassifiedAction[], actor: ActorObservation) => GuardDecision;
@@ -36,6 +37,8 @@ const UNPARSED_REASON =
   "authority-guard could not parse this command and it names a guarded action or path; split it into simpler commands.";
 const OVERSIZE_REASON =
   "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
+const READINGS_REASON =
+  "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -71,8 +74,9 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
   const actor = observeActor(env, event.sessionId);
-  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, port);
+  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);
   const result = classifyEvent(event, port.context);
+  if (!result.ok && result.cls === "oversize") return oversized(event, actor, READINGS_REASON, port);
   if (!result.ok) return failed(event, actor, result.cls, port);
   if (result.actions.length === 0) return PASS;
   return decided(event, actor, result.actions, port);
@@ -90,6 +94,7 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   try {
     return { ok: true, actions: classify(event, ctx) };
   } catch (error) {
+    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize" };
     return { ok: false, cls: error instanceof ParseError ? "parse" : "exception" };
   }
 }
@@ -101,9 +106,10 @@ function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: Ho
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
 }
 
-function oversized(event: Event, actor: ActorObservation, port: HookPort): HookResult {
+/** Too large to check: an 8 KiB command, or one with more dynamic wrapper readings than classify walks. */
+function oversized(event: Event, actor: ActorObservation, reason: string, port: HookPort): HookResult {
   if (actor.bypass) return logged(formatErrorLine({ ts: port.now(), cls: "oversize", tool: event.toolName, session: event.sessionId }));
-  return unclassified(event, actor, "oversize", OVERSIZE_REASON, port);
+  return unclassified(event, actor, "oversize", reason, port);
 }
 
 function unclassified(event: Event, actor: ActorObservation, action: string, reason: string, port: HookPort): HookResult {

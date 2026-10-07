@@ -30,6 +30,8 @@ export interface ClassifiedAction {
 export interface Family {
   /** Command names `bash` sees; omitted means every command, including ones with no static name. */
   names?: ReadonlySet<string>;
+  /** For a family that sees every command, the names it reads differently from the rest. */
+  verbs?: ReadonlySet<string>;
   bash?(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[];
   read?(event: ReadEvent, ctx: ClassifyContext): ClassifiedAction[];
   write?(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[];

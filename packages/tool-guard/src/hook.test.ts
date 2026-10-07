@@ -129,10 +129,24 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   });
 
-  it("denies a protected push behind a chain of dynamic wrapper words past the reading limits", async () => {
+  it("denies a protected push behind a chain of dynamic wrapper words", async () => {
     const result = await handle(bash(`${"sudo $a ".repeat(9)}git push origin HEAD:main`), {}, port());
 
     expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  it("denies a command with more dynamic wrapper readings than it checks, and says to split it", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(400)}git push origin HEAD:feat/x`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toMatch(/variables in wrapper positions/);
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  });
+
+  it("passes a command past the reading budget under the bypass and logs it", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
+
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
   });
 
   it("denies a credential read padded past the size cap without classifying it", async () => {

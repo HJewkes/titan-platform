@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
+import { ReadingLimitError } from "./unsure-readings.js";
 
 const REPO = "/home/you/projects/app";
 const ctx: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: () => "feat/x", readScript: () => null };
@@ -77,7 +78,7 @@ describe("dynamic words behind several wrappers", () => {
   });
 });
 
-describe("a chain of dynamic wrapper words past the reading limits", () => {
+describe("a long chain of dynamic wrapper words", () => {
   const tails = [
     ["git push origin HEAD:main", MAIN_PUSH],
     ["npm publish", ["bash.release.npm-publish", { tool: "npm" }]],
@@ -108,8 +109,31 @@ describe("a chain of dynamic wrapper words past the reading limits", () => {
     expect(verdicts(`${Array(9).fill("sudo $a").join(" ")} sudo $b push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
   });
 
-  it("reads a padded line to its command", () => {
-    expect(verdicts(`${Array(1000).fill("sudo $a").join(" ")} git push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
+  it("refuses a padded line whose readings the budget cannot cover", () => {
+    expect(() => verdicts(`${Array(1000).fill("sudo $a").join(" ")} git push origin HEAD:main`)).toThrow(ReadingLimitError);
+  });
+});
+
+describe("a reading only a dynamic word's value slot gives", () => {
+  const harmless = Array(150).fill("timeout $O 5 echo hi; ").join("");
+  const pushes = [
+    ["past nine wrappers", `${Array(9).fill("timeout $O 5").join(" ")} timeout $P git push origin HEAD:main`, MAIN_PUSH],
+    ["of npm past nine wrappers", `${Array(9).fill("timeout $O 5").join(" ")} timeout $P npm publish`, ["bash.release.npm-publish", { tool: "npm" }]],
+    ["after a long harmless prefix", `${harmless}timeout $O 5 timeout $P git push origin HEAD:main`, MAIN_PUSH],
+    ["behind sudo after a long harmless prefix", `${harmless}sudo $a sudo $b timeout $O 5 timeout $P git push origin HEAD:main`, MAIN_PUSH],
+    ["as a dynamic command word between two others", `${Array(9).fill("timeout $O 5").join(" ")} timeout $P $G push $x HEAD:main`, MAIN_PUSH],
+  ] as const;
+
+  it.each(pushes)("is still walked: %s", (_how, command, verdict) => {
+    expect(verdicts(command)).toContainEqual(verdict);
+  });
+
+  it("is walked for a name only the credential families read differently", () => {
+    expect(spellings("timeout $O ls cat ~/.ssh/id_rsa")).toContain("bash.secret.cat");
+  });
+
+  it("costs nothing when it runs nothing guarded, however long the line", () => {
+    expect(verdicts(Array(300).fill("timeout $O 5 echo hi").join("; "))).toEqual([]);
   });
 });
 
@@ -130,22 +154,18 @@ describe("a script that every reading of a dynamic wrapper runs", () => {
   });
 });
 
-describe("a line of many dynamic command words", () => {
+describe("a line of more dynamic command words than the reading budget", () => {
   const PUSH = "; git push origin HEAD:main";
   const segments = (segment: string, count: number) => `${Array(count).fill(segment).join("; ")}${PUSH}`;
   const repeat = (unit: string, n: number) => Array(n).fill(unit).join(" ");
   const lines = [
-    ["$b $c segments", segments(repeat("$b $c", 45), 30), 31],
-    ["$b segments", segments(repeat("$b", 45), 60), 61],
-    ["xargs sudo $b segments", segments(repeat("xargs sudo $b", 14), 40), 41],
+    ["$b $c segments", segments(repeat("$b $c", 45), 30)],
+    ["$b segments", segments(repeat("$b", 45), 60)],
+    ["xargs sudo $b segments", segments(repeat("xargs sudo $b", 14), 40)],
   ] as const;
 
-  it.each(lines)("reads each statement a bounded number of times: %s", (_how, line, statements) => {
-    expect(extractCommands(line, { cwd: REPO, home: "/home/you" }).length).toBeLessThanOrEqual(8 * statements);
-  });
-
-  it.each(lines)("still reads the push at its end: %s", (_how, line) => {
-    expect(verdicts(line)).toContainEqual(MAIN_PUSH);
+  it.each(lines)("is refused rather than read statement by statement: %s", (_how, line) => {
+    expect(() => verdicts(line)).toThrow(ReadingLimitError);
   });
 });
 

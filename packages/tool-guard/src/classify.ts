@@ -10,15 +10,18 @@ import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
+import { ReadingLimitError } from "./shell/unsure-readings.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
 const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
+const GUARDED = new Set(FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.verbs ?? [])]));
 
 /**
  * What an event would do. Pure: the filesystem is reached only through `ctx`. Throws the
- * shell's `ParseError` for a Bash command it cannot parse; the hook owns that failure policy.
+ * shell's `ParseError` for a Bash command it cannot parse and `ReadingLimitError` for one with more
+ * dynamic wrapper readings than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
   if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, true);
@@ -28,19 +31,21 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
-  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home }), ctx, followScripts);
+  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home, guarded: GUARDED }), ctx, followScripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, followScripts)]) : asWritten;
 }
 
 /**
  * Where the filesystem finds a program whatever its case, `GIT` runs git, so the whole line is read again with every
  * command word lower-cased. That reading has its own pipes, groups and head, and only adds actions; the as-written
- * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops.
+ * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops,
+ * except the reading limit, which a folded command word can reach first.
  */
 function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   try {
-    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true }), ctx, followScripts);
-  } catch {
+    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true, guarded: GUARDED }), ctx, followScripts);
+  } catch (error) {
+    if (error instanceof ReadingLimitError) throw error;
     return [];
   }
 }
