@@ -39,6 +39,10 @@ jobs:
   deploy:
     if: github.event_name == 'push'
     needs: build
+    # Pages takes one deployment at a time; a concurrent one fails rather than queues.
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
