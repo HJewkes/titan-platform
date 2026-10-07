@@ -2,7 +2,7 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
-import { cognitiveComplexityOf } from "./cognitive-complexity.js";
+import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
@@ -63,6 +63,7 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "cognitive_sum",
   "max_nesting_depth",
   "jsx_depth_max",
+  "logic_cognitive_max",
   "class_count",
   "lcom4_max",
   ...EXCEPTION_METRIC_NAMES,
@@ -146,10 +147,19 @@ function metricsForFile(
   }
   const jsxDepthMax = Math.max(jsxDepthIn(file, file.tree.rootNode), ...stats.map((s) => s.jsxDepth));
   if (jsxDepthMax > 0) out.push({ nodeId, name: "jsx_depth_max", value: jsxDepthMax, unit: "count" });
+  out.push(...logicCognitiveMax(nodeId, stats));
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
   out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
   return out;
+}
+
+/** Max logic cognitive over the file's JSX-rendering functions; nothing when none renders JSX. */
+function logicCognitiveMax(nodeId: string, stats: readonly FunctionStats[]): GraphMetric[] {
+  const rendering = stats.filter((s) => s.jsxDepth > 0);
+  if (rendering.length === 0) return [];
+  const value = Math.max(...rendering.map((s) => s.logicCognitive));
+  return [{ nodeId, name: "logic_cognitive_max", value, unit: "count" }];
 }
 
 function countLoc(content: string): number {
@@ -164,10 +174,13 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
     if (!fn) return;
+    const cognitive = cognitiveSplitOf(fn.body, file.language);
     stats.push({
       name: fn.name === null ? null : qualify(scope, fn.name),
       cyclomatic: cyclomaticOf(fn.body, file.language),
-      cognitive: cognitiveComplexityOf(fn.body, file.language),
+      cognitive: cognitive.total,
+      markupCognitive: cognitive.markup,
+      logicCognitive: cognitive.total - cognitive.markup,
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
       jsxDepth: jsxDepthIn(file, fn.body),
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
