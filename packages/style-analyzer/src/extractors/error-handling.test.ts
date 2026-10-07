@@ -124,4 +124,50 @@ describe("ErrorHandlingExtractor", () => {
       expect(customErrors.length).toBe(2);
     });
   });
+
+  describe("identifier matching", () => {
+    async function observe(source: string, language = "typescript"): Promise<Observation[]> {
+      const ext = language === "python" ? "py" : "ts";
+      return extractor.extract(await parseFile(source, `inline.${ext}`, language));
+    }
+
+    function ofType(observations: Observation[], type: string): Observation[] {
+      return observations.filter((o) => o.type === type);
+    }
+
+    it("ignores a base class that only contains Error in its name", async () => {
+      const observations = await observe("class B extends ErrorBoundary {}");
+      expect(ofType(observations, "error-handling.custom-error-class")).toEqual([]);
+    });
+
+    it("counts a namespaced base class ending in Error", async () => {
+      const observations = await observe("class B extends errors.NotFoundError {}");
+      expect(ofType(observations, "error-handling.custom-error-class")).toHaveLength(1);
+    });
+
+    it("ignores an implemented interface ending in Error", async () => {
+      const observations = await observe("class B extends Base implements HasError {}");
+      expect(ofType(observations, "error-handling.custom-error-class")).toEqual([]);
+    });
+
+    it("ignores a Python base that only contains Error in its name", async () => {
+      const observations = await observe("class B(ErrorBoundary):\n    pass\n", "python");
+      expect(ofType(observations, "error-handling.custom-error-class")).toEqual([]);
+    });
+
+    it("ignores a return type whose name only contains Result", async () => {
+      const observations = await observe(
+        "function search(): Promise<SearchResult> { return run(); }",
+      );
+      expect(ofType(observations, "error-handling.result-type")).toEqual([]);
+    });
+
+    it("names the Result type nested in a return type", async () => {
+      const observations = await observe(
+        "function load(): Promise<Result<User, Error>> { return run(); }",
+      );
+      const results = ofType(observations, "error-handling.result-type");
+      expect(results.map((o) => o.value)).toEqual(["Result"]);
+    });
+  });
 });

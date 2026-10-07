@@ -1,5 +1,6 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION, TS_FUNCTION_TYPES } from "../node-kinds.js";
 import type { GraphMetric } from "../types.js";
 import { pythonDeadCode, type DeadCodeCounts } from "./dead-code-python.js";
 
@@ -16,15 +17,6 @@ export const DEAD_CODE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "unreachable_statements",
   "unused_locals",
   "unused_params",
-]);
-
-const FUNCTION_TYPES = new Set([
-  "function_declaration",
-  "function_expression",
-  "arrow_function",
-  "method_definition",
-  "generator_function_declaration",
-  "generator_function",
 ]);
 
 const PARAM_TYPES = new Set(["required_parameter", "optional_parameter"]);
@@ -105,7 +97,7 @@ function unreachableInBlock(block: Node): number {
     if (
       seenTerminal &&
       child.type !== "comment" &&
-      child.type !== "function_declaration"
+      child.type !== TS_FUNCTION_DECLARATION
     ) {
       count++;
     }
@@ -134,7 +126,7 @@ function countUnusedBindings(root: Node): { locals: number; params: number } {
   let locals = 0;
   let params = 0;
   const visit = (node: Node): void => {
-    if (FUNCTION_TYPES.has(node.type)) {
+    if (TS_FUNCTION_TYPES.has(node.type)) {
       const r = analyzeFunction(node);
       locals += r.locals;
       params += r.params;
@@ -206,7 +198,7 @@ function ownLocalNames(fn: Node): string[] {
   if (!body) return [];
   const out: string[] = [];
   const walk = (node: Node): void => {
-    if (FUNCTION_TYPES.has(node.type)) return;
+    if (TS_FUNCTION_TYPES.has(node.type)) return;
     if (node.type === "variable_declarator") {
       const name = node.childForFieldName("name");
       if (name?.type === "identifier") out.push(name.text);
