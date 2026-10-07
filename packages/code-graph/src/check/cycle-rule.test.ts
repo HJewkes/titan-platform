@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { openCodeGraph } from "../store.js";
-import type { GraphEdge, GraphNode, NodeRole } from "../types.js";
+import type { GraphEdge, GraphNode, IdAlias, NodeRole } from "../types.js";
 import { runChecks, snapshotViolations, violationKey } from "./check.js";
 import type { RuleStore } from "./context.js";
-import type { NoImportCyclesRule } from "./types.js";
+import type { CheckResult, NoImportCyclesRule } from "./types.js";
+import { toFindings } from "./findings.js";
 import { validateRules } from "./validate.js";
 
 const RULE: NoImportCyclesRule = { type: "no-import-cycles", id: "no-cycles" };
@@ -79,6 +80,18 @@ describe("no-import-cycles", () => {
     expect(cycles(edges, { ...RULE, excludeRoles: ["test"] }, nodes)).toEqual([]);
   });
 
+  it("gives a grown cycle a different finding id", () => {
+    const findingId = (edges: GraphEdge[]): string[] => {
+      const store: RuleStore = { listNodes: () => filesOf(edges), listEdges: () => edges, listMetrics: () => [] };
+      const violations = snapshotViolations(store, 1, [RULE]);
+      return toFindings({ violations } as CheckResult).map((f) => f.id);
+    };
+    const pair = [imports("a.ts", "b.ts"), imports("b.ts", "a.ts")];
+
+    expect(findingId(pair)).toEqual(["code-graph:no-cycles:a.ts+b.ts"]);
+    expect(findingId([...pair, imports("b.ts", "c.ts"), imports("c.ts", "a.ts")])).toEqual(["code-graph:no-cycles:a.ts+b.ts+c.ts"]);
+  });
+
   it("validates includeTypeOnly as a boolean", () => {
     const load = (includeTypeOnly: unknown): unknown =>
       validateRules({ rules: [{ type: "no-import-cycles", id: "c", includeTypeOnly }] });
@@ -89,36 +102,55 @@ describe("no-import-cycles", () => {
 });
 
 describe("no-import-cycles against a baseline", () => {
-  function check(baseline: GraphEdge[], head: GraphEdge[]): { carryover: boolean; members: string[] }[] {
+  interface Outcome {
+    passed: boolean;
+    cycles: { carryover: boolean; members: string[] }[];
+  }
+
+  function check(baseline: GraphEdge[], head: GraphEdge[], aliases: IdAlias[] = []): Outcome {
     const store = openCodeGraph(":memory:");
     try {
-      const ids = [baseline, head].map((edges) => {
+      const [baseId, headId] = [baseline, head].map((edges) => {
         const id = store.createSnapshot({ ref: "main", indexVersion: "0.1.0" });
-        store.insertNodes(id, filesOf([...baseline, ...head]));
+        store.insertNodes(id, filesOf(edges));
         store.insertEdges(id, edges);
         return id;
       });
-      const result = runChecks(store, { snapshotId: ids[1]!, baselineSnapshotId: ids[0]!, rules: [RULE] });
-      return result.violations.map((v) => ({ carryover: v.isCarryover === true, members: v.members! }));
+      store.insertAliases(headId!, aliases);
+      const result = runChecks(store, { snapshotId: headId!, baselineSnapshotId: baseId!, rules: [RULE] });
+      const cycles = result.violations.map((v) => ({ carryover: v.isCarryover === true, members: v.members! }));
+      return { passed: result.passed, cycles };
     } finally {
       store.close();
     }
   }
   const pair = [imports("a.ts", "b.ts"), imports("b.ts", "a.ts")];
+  const triple = [imports("a.ts", "b.ts"), imports("b.ts", "c.ts"), imports("c.ts", "a.ts"), imports("b.ts", "a.ts")];
 
   it("carries an unchanged cycle over", () => {
-    expect(check(pair, pair)).toEqual([{ carryover: true, members: ["a.ts", "b.ts"] }]);
+    expect(check(pair, pair)).toEqual({ passed: true, cycles: [{ carryover: true, members: ["a.ts", "b.ts"] }] });
   });
 
-  it("reports a known cycle that gains a member as new", () => {
-    const grown = [imports("a.ts", "b.ts"), imports("b.ts", "c.ts"), imports("c.ts", "a.ts"), imports("b.ts", "a.ts")];
-
-    expect(check(pair, grown)).toEqual([{ carryover: false, members: ["a.ts", "b.ts", "c.ts"] }]);
+  it("fails on a known cycle that gains a member", () => {
+    expect(check(pair, triple)).toEqual({ passed: false, cycles: [{ carryover: false, members: ["a.ts", "b.ts", "c.ts"] }] });
   });
 
   it("carries over a cycle that shrank inside a known one", () => {
-    const triple = [imports("a.ts", "b.ts"), imports("b.ts", "c.ts"), imports("c.ts", "a.ts"), imports("b.ts", "a.ts")];
+    expect(check(triple, pair)).toEqual({ passed: true, cycles: [{ carryover: true, members: ["a.ts", "b.ts"] }] });
+  });
 
-    expect(check(triple, pair)).toEqual([{ carryover: true, members: ["a.ts", "b.ts"] }]);
+  it("fails when two known cycles merge into one", () => {
+    const two = [...pair, imports("c.ts", "d.ts"), imports("d.ts", "c.ts")];
+    const merged = [...two, imports("b.ts", "c.ts"), imports("d.ts", "a.ts")];
+
+    expect(check(two, merged)).toEqual({ passed: false, cycles: [{ carryover: false, members: ["a.ts", "b.ts", "c.ts", "d.ts"] }] });
+  });
+
+  it("carries over a known cycle after one member is renamed and another deleted", () => {
+    const renamed = [imports("z.ts", "b.ts"), imports("b.ts", "z.ts")];
+    const aliases: IdAlias[] = [{ oldId: "a.ts", newId: "z.ts", reason: "rename" }];
+
+    expect(check(triple, renamed, aliases)).toEqual({ passed: true, cycles: [{ carryover: true, members: ["b.ts", "z.ts"] }] });
+    expect(check(triple, renamed).passed).toBe(false);
   });
 });

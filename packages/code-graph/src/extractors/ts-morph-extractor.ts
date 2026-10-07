@@ -17,8 +17,6 @@ import {
   bindingWeight,
   buildLocalUsageCounts,
   importWeight,
-  isTypeOnlyImport,
-  isTypeOnlyReExport,
   namedImportBindings,
   reExportWeight,
 } from "./reference-weight.js";
@@ -175,7 +173,7 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
     const specifier = decl.getModuleSpecifierValue();
     const dstId = this.resolveTarget(c, specifier, decl);
     if (dstId) {
-      addWeightedEdge(c.agg, c.srcFileId, dstId, "imports", specifier, importWeight(decl, c.usage), isTypeOnlyImport(decl));
+      addWeightedEdge(c.agg, c.srcFileId, dstId, "imports", specifier, importWeight(decl, c.usage), decl.isTypeOnly());
     }
     this.recordSymbolReferences(c, decl);
   }
@@ -246,7 +244,7 @@ export class TsMorphGraphExtractor implements Extractor<GraphFragment> {
     if (!specifier) return;
     const dstId = this.resolveTarget(c, specifier, decl);
     if (dstId) {
-      addWeightedEdge(c.agg, c.srcFileId, dstId, "re-exports", specifier, reExportWeight(decl), isTypeOnlyReExport(decl));
+      addWeightedEdge(c.agg, c.srcFileId, dstId, "re-exports", specifier, reExportWeight(decl), decl.isTypeOnly());
     }
   }
 

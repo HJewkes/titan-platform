@@ -13,6 +13,8 @@ const FILES: Record<string, string> = {
   "/repo/src/side.ts": `import "./t.js";\n`,
   "/repo/src/re-type.ts": `export type { T } from "./t.js";\n`,
   "/repo/src/re-value.ts": `export { v } from "./t.js";\n`,
+  "/repo/src/re-inline.ts": `export { type T } from "./t.js";\n`,
+  "/repo/src/one-line-mixed.ts": `import { type T, v } from "./t.js";\nexport const o: T = v;\n`,
 };
 
 async function edgesOf(file: string): Promise<GraphEdge[]> {
@@ -30,16 +32,18 @@ async function edgesOf(file: string): Promise<GraphEdge[]> {
 describe("type-only import and re-export edges", () => {
   it.each([
     ["/repo/src/decl.ts", true],
-    ["/repo/src/inline.ts", true],
     ["/repo/src/re-type.ts", true],
-    ["/repo/src/value.ts", undefined],
-    ["/repo/src/mixed.ts", undefined],
-    ["/repo/src/side.ts", undefined],
-    ["/repo/src/re-value.ts", undefined],
+    ["/repo/src/value.ts", false],
+    ["/repo/src/inline.ts", false],
+    ["/repo/src/re-inline.ts", false],
+    ["/repo/src/one-line-mixed.ts", false],
+    ["/repo/src/mixed.ts", false],
+    ["/repo/src/side.ts", false],
+    ["/repo/src/re-value.ts", false],
   ])("%s marks typeOnly as %s", async (file, expected) => {
     const edges = await edgesOf(file);
 
     expect(edges).toHaveLength(1);
-    expect(edges[0]!.attrs?.typeOnly).toBe(expected);
+    expect(edges[0]!.attrs?.typeOnly === true).toBe(expected);
   });
 });

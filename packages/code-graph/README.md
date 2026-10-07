@@ -264,8 +264,10 @@ that `to` matches but the rule allows, such as one sanctioned entry file.
 
 `no-import-cycles` reports each strongly connected component of the file import graph once,
 as one violation whose `members` are the cycle's files, sorted; a file importing itself is a
-cycle of one. Type-only imports (`import type`, or every specifier an inline `type`) are left
-out unless `includeTypeOnly: true`; `exclude` and `excludeRoles` take files out of the graph.
+cycle of one. `import type` and `export type … from` edges are left out unless
+`includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
+`verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
+`excludeRoles` take files out of the graph.
 The baseline key is the rule id plus every member, so it does not depend on edge order. Against
 a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
 split cycle passes, while a cycle that gains a file or merges two known cycles is new.
