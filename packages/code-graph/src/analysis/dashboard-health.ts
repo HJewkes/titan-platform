@@ -49,7 +49,7 @@ export interface HealthInput {
 function healthComponents(x: HealthInput, w: HealthWeights): HealthComponent[] {
   const over = Math.max(0, x.maxComplexity - w.complexity.budget);
   return [
-    { key: "hotspots", label: "scary hotspots", penalty: Math.min(w.hotspots.cap, x.scary * w.hotspots.each), cap: w.hotspots.cap, detail: `${x.scary} file(s) ≥ ${x.scaryCutoff ?? 3000}` },
+    { key: "hotspots", label: "high-score hotspots", penalty: Math.min(w.hotspots.cap, x.scary * w.hotspots.each), cap: w.hotspots.cap, detail: `${x.scary} file(s) ≥ ${x.scaryCutoff ?? 3000}` },
     {
       key: "findings",
       label: "fitness violations",
@@ -66,7 +66,7 @@ function healthComponents(x: HealthInput, w: HealthWeights): HealthComponent[] {
  * Composite health as a transparent sum of independent penalty components, so
  * the UI can show *why* the score is what it is instead of a black-box number.
  * Each component is capped and drawn from a distinct dimension — the hotspots
- * component owns scary files, so the violations component excludes the
+ * component owns the files over the hotspot cutoff, so the violations component excludes the
  * scary-hotspots rule (no double-count). Ownership (knowledge-silo / bus-factor)
  * signal is deliberately NOT a health component: it saturates on single-author
  * repos and lives on the Ownership tab, not in the cross-cutting score.
