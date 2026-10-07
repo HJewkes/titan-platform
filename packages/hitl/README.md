@@ -98,7 +98,7 @@ both pass the same behaviour suite.
 `runMigrations` on construction. Pass `migrate: false` and put `gateMigration(n)`,
 `gateResolverMigration(m)` and `gateRuleMigration(r)` in the product's own migration list when hitl shares a database
 with domain tables. Add `gateBriefMigration(b)` too if you set `requireBrief` or create gates with a `summary`,
-`evidenceRef` or `questions`. A store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so one database can host several gate spaces.
+`evidenceRef` or `questions`, and `gateEvidenceMigration(e)` if any resolve passes evidence. A store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so one database can host several gate spaces.
 Timestamps are ISO-8601 strings, the shape store-sqlite writes and any surface
 can send on as-is.
 
