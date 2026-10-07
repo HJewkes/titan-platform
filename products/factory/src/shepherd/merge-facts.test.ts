@@ -473,6 +473,32 @@ describe("the sh-merge-evidence route reads the registered kind", () => {
 });
 
 describe("a fact that cannot be read", () => {
+  it("gates a PR whose changed-file read fails, names the failure, and does not fail the step", async () => {
+    const fake = world();
+    const port = { ...githubPort(fake.wire), listPrFiles: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
+
+    const evidence = await mergeEvidence(port, { ...input, visualPaths: ["packages/ui/**"] }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the read failed: HTTP 502`);
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" }, reason: expect.stringContaining("so the PR counts as visual") });
+    expect(evidence.record.decision.reason).not.toContain("/internal");
+  });
+
+  it("names a truncated changed-file list in the gate reason", async () => {
+    const fake = world();
+    fake.prChangedFiles.set(1, 5);
+
+    const evidence = await collect(fake, { visualPaths: ["packages/ui/**"] });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" }, reason: expect.stringContaining("the list is truncated") });
+  });
+
+  it("records the visual-path gate in the evidence comment, as decide reaches it", async () => {
+    const evidence = await collect(world([{ path: "packages/ui/src/components/Button.tsx", status: "modified" }]), { visualPaths: ["packages/ui/src/components/**"] });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining("packages/ui/src/components/Button.tsx") });
+  });
+
   it("gates a blocked PR whose review ruleset read throws, and names the HTTP status in the reason", async () => {
     const fake = world();
     fake.pr(1).mergeableState = "blocked";

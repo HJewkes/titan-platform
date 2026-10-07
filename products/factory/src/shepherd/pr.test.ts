@@ -23,6 +23,7 @@ import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
 import { OWNER } from "../test-support/resolver.js";
+import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -657,6 +658,69 @@ describe("the route table in a run", () => {
   });
 });
 
+describe("gate briefs", () => {
+  const PR_URL = /^https:\/\/github\.com\/octo\/demo\/pull\/1$/;
+  const recommended = (gate: ReturnType<FactoryHost["gates"]["get"]>) => gate?.questions?.[0]?.options.filter((option) => option.recommended).map((option) => option.id);
+
+  it("opens approve-merge on a conflict with a summary naming the head and an evidence link", async () => {
+    const fake = fakeGitHub();
+    const { phases } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1, mergeableState: "dirty" });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+    expectBrief(gate, H2, PR_URL);
+    expect(gate?.summary).toContain("Conflict");
+    expect(recommended(gate)).toEqual([]);
+  });
+
+  it("opens sh-sent-back with a summary naming the head and an evidence link", async () => {
+    const { phases } = fakePhases({ review: () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    const gate = w.host.gates.get(gateId(runId, "sh-sent-back"));
+    expectBrief(gate, H1, PR_URL);
+    expect(recommended(gate)).toEqual(["await-new-head"]);
+  });
+
+  it("recommends merge only on the head the reviewer's MERGE names", async () => {
+    const fake = fakeGitHub();
+    const { phases } = fakePhases({
+      review: (request) => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "rename" } : { kind: "MERGE", headSha: H2, evidence: {} }),
+      wake: pushes(fake, H2),
+    });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const atMerge = w.host.gates.get(gateId(runId, "approve-merge"));
+
+    expectBrief(atMerge, H2, PR_URL);
+    expect(recommended(atMerge)).toEqual(["merge"]);
+  });
+
+  it("recommends nothing when the review at the head said anything but MERGE", async () => {
+    const { phases } = fakePhases({ review: () => ({ kind: "none" }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+    expectBrief(gate, H1, PR_URL);
+    expect(recommended(gate)).toEqual([]);
+  });
+});
+
 describe("the Version Packages PR", () => {
   const RELEASE_FILES = [
     { path: "packages/widget/package.json", status: "modified" },
@@ -965,9 +1029,9 @@ describe("a new cycle at a new head", () => {
     fake.onGetPr = (pr, reads) => {
       seedGates(pr, reads);
       if (reads !== 1) return;
-      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST` });
+      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST`, ...TEST_BRIEF });
     };
     runId = shepherdPr1(w);
 
@@ -1077,6 +1141,15 @@ describe("the repair budget", () => {
     expect(prompt).toContain("ci-red");
     expect(prompt).toContain("validate");
     expect(prompt).toContain(`${MAX_REPAIRS} fixer wakes at this run`);
+  });
+
+  it("opens the repair-budget sh-sent-back with a summary naming the head and an evidence link", async () => {
+    const { w } = alwaysRed();
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expectBrief(w.host.gates.get(gateId(runId, "sh-sent-back")), w.fake.pr(1).headSha, /^https:\/\/github\.com\/octo\/demo\/pull\/1$/);
   });
 
   it("does not reset the count at the next round or head when the owner awaits a new head", async () => {
