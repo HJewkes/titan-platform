@@ -204,6 +204,9 @@ describe("validateRules", () => {
 
     expect(validateRules({ rules: [{ ...rule, except: ["b/ok.ts"] }] })[0]).toMatchObject({ except: ["b/ok.ts"] });
     expect(() => validateRules({ rules: [{ ...rule, except: "b/ok.ts" }] })).toThrow("r: except must be an array of strings");
+    expect(() => validateRules({ rules: [{ ...rule, except: ["b/ok.ts", ""] }] })).toThrow(
+      "r: each except entry must be a non-empty string",
+    );
   });
 
   it("rejects a metric rule kind outside NodeKind", () => {

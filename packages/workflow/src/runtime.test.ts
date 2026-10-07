@@ -1110,3 +1110,68 @@ describe("RunContext.expireGates", () => {
     expect(gates.get("run-b/old")?.status).toBe("pending");
   });
 });
+
+describe("RunContext.historyNext", () => {
+  const recorded = (stepId: string) => ({ stepId, iteration: 0, operation: "dispatch" as const, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00.000Z", output: stepId });
+
+  function replaying(...stepIds: string[]): RunContext {
+    const run = newRun("run-a", "replay", {});
+    for (const stepId of stepIds) run.stepResults[`${stepId}:0`] = recorded(stepId);
+    return new RunContext(run, replayDeps(new SqliteGateStore(makeDb(), { migrate: false })), new AbortController());
+  }
+
+  it("names the step recorded right after the one just replayed, whatever order the replay asks in", async () => {
+    const ctx = replaying("a", "b", "c");
+
+    await ctx.dispatch("b", "b");
+    const afterB = ctx.historyNext();
+    await ctx.dispatch("a", "a");
+
+    expect([afterB, ctx.historyNext()]).toEqual(["c", "b"]);
+  });
+
+  it("names nothing past the end of the record, or once a step ran live", async () => {
+    const ctx = replaying("a");
+
+    await ctx.dispatch("a", "a");
+    const atEnd = ctx.historyNext();
+    await ctx.dispatch("live", "live");
+
+    expect([atEnd, ctx.historyNext()]).toEqual([undefined, undefined]);
+  });
+});
+
+describe("WorkflowRuntime.completeStep", () => {
+  const hanging: StepRunner = { run: () => new Promise<StepRunOutcome>(() => undefined) };
+  const planned: WorkflowFn = async (ctx) => void (await ctx.dispatch("plan", "Plan"));
+
+  it("answers an active step of a run no runtime holds, and the resumed run reads that answer", async () => {
+    const db = makeDb();
+    const first = runtime(db, hanging);
+    first.register("planned", planned);
+    const runId = first.start("planned");
+    await vi.waitFor(() => expect(Object.keys(first.status(runId)!.activeSteps)).toEqual(["plan"]));
+    first.shutdown();
+    const second = runtime(db, inlineRunner(() => "dispatched again"));
+    second.register("planned", planned);
+
+    const answered = second.completeStep(runId, "plan", "superseded");
+    await second.hydrate();
+    const run = await second.wait(runId);
+
+    expect(answered).toBe(true);
+    expect(run.status).toBe("completed");
+    expect(run.stepResults["plan:0"]?.output).toBe("superseded");
+  });
+
+  it("leaves a step of a run this runtime is driving alone", async () => {
+    const rt = runtime(makeDb(), hanging);
+    rt.register("planned", planned);
+    const runId = rt.start("planned");
+    await vi.waitFor(() => expect(Object.keys(rt.status(runId)!.activeSteps)).toEqual(["plan"]));
+
+    expect(rt.completeStep(runId, "plan", "superseded")).toBe(false);
+    expect(Object.keys(rt.status(runId)!.activeSteps)).toEqual(["plan"]);
+    rt.shutdown();
+  });
+});

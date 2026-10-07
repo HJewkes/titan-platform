@@ -9,9 +9,12 @@ export type ToolRun =
   | { ok: true; stdout: string; stderr: string; exitCode: number }
   | { ok: false; failure: ToolFailure; exitCode: number | null };
 
-function excerpt(text: string): string {
+export const EXCERPT_MAX_CHARS = 500;
+
+/** Trimmed text cut to EXCERPT_MAX_CHARS with an ellipsis, so a tool's raw output never floods a failure message. */
+export function excerpt(text: string): string {
   const trimmed = text.trim();
-  return trimmed.length > 500 ? `${trimmed.slice(0, 500)}…` : trimmed;
+  return trimmed.length > EXCERPT_MAX_CHARS ? `${trimmed.slice(0, EXCERPT_MAX_CHARS)}…` : trimmed;
 }
 
 function withStderr(message: string, stderr: string): string {
