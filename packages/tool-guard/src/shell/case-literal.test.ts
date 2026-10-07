@@ -35,6 +35,13 @@ const FOLDED_ROWS = [
   ["BASH -c 'git push origin HEAD:main'", "bash -c 'git push origin HEAD:main'"],
   ["echo 'GIT push origin HEAD:main' | sh", "echo 'git push origin HEAD:main' | sh"],
   ["G=GIT; $G push origin HEAD:main", "G=git; $G push origin HEAD:main"],
+  ["GIT checkout main && git push", "git checkout main && git push"],
+  ["GIT switch main; git push", "git switch main; git push"],
+  ["ECHO 'git push origin HEAD:main' | sh", "echo 'git push origin HEAD:main' | sh"],
+  ["echo 'git push origin HEAD:main' | CAT | sh", "echo 'git push origin HEAD:main' | cat | sh"],
+  ["ECHO 'git push origin HEAD:main' | cat | sh", "echo 'git push origin HEAD:main' | cat | sh"],
+  ["ECHO 'git push origin HEAD:main' | SH", "echo 'git push origin HEAD:main' | sh"],
+  ["ECHO 'git checkout main' | sh; git push", "echo 'git checkout main' | sh; git push"],
 ];
 
 describe("a command word a case-insensitive filesystem runs whatever its case (TP-1623)", () => {
@@ -69,6 +76,16 @@ describe("words a fold leaves as written (TP-1623)", () => {
     expect(asWritten).not.toEqual([]);
     expect(verdicts(command, { ...darwin, readHead })).toEqual(asWritten);
   });
+
+  it.each(["GIT checkout feat/y && git push", "ECHO 'git switch feat/y' | sh; git push"])(
+    "keeps the as-written head's verdict beside a folded switch in %s",
+    (command) => {
+      const onMain = (ctx: ClassifyContext) => ({ ...ctx, readHead: (dir: string) => (dir === REPO ? "main" : null) });
+      const asWritten = verdicts(command, onMain(linux));
+      expect(asWritten).not.toEqual([]);
+      expect(verdicts(command, onMain(darwin))).toEqual(expect.arrayContaining(asWritten));
+    },
+  );
 
   it("keeps a variable a folded EXPORT would set, as bash matches the builtin exactly", () => {
     expect(verdicts("G=git; EXPORT G=echo; $G push origin HEAD:main")).toEqual([PROTECTED_MAIN]);

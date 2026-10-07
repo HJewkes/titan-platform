@@ -52,6 +52,8 @@ export interface SimpleCommand {
   chain: Chain;
   /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
   added?: true;
+  /** Set on an added command only a case-folded reading runs; the filesystem may run it, so a branch switch in it makes the head unknown. */
+  folded?: true;
 }
 
 export interface ExtractOptions {
@@ -82,6 +84,8 @@ interface Walk {
   depth: number;
   /** Literal text piped into the command being emitted, as `echo 'git push' | bash` does. */
   stdin: string | null;
+  /** Text a case-folded reading pipes into the command being emitted (`ECHO 'git push' | sh`), null when it pipes what `stdin` holds. */
+  foldedStdin: string | null;
   /** The operator before the command being emitted. */
   prev: string | null;
   chain: Chain;
@@ -99,7 +103,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, foldedStdin: null, prev: null, chain: { start: null }, negated: false, foldCase });
   return out;
 }
 
@@ -109,8 +113,11 @@ function walk(tokens: Token[], w: Walk): void {
   let redirects: RedirectToken[] = [];
   for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
-      const cmd = emit(words, redirects, w, token.value);
-      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
+      const { cmd, folds } = emit(words, redirects, w, token.value);
+      const empty = words.length + redirects.length === 0;
+      const folding = w.foldedStdin ?? w.stdin;
+      w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, empty, w.stdin));
+      w.foldedStdin = foldedPipe(token.value, [cmd, ...folds], empty, folding, w.stdin);
       words = [];
       redirects = [];
       w.prev = token.value;
@@ -134,6 +141,12 @@ function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: str
   return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
 }
 
+/** Text the folded readings pipe on, as `ECHO x |` and `| CAT |` do, where it differs from what the as-written reading pipes. */
+function foldedPipe(op: string, cmds: Array<Unwrapped | null>, empty: boolean, stdin: string | null, piped: string | null): string | null {
+  const text = cmds.map((cmd) => nextStdin(op, cmd, empty, stdin)).find((t) => t !== null) ?? null;
+  return text === piped ? null : text;
+}
+
 function passesThrough(cmd: Unwrapped): boolean {
   if (cmd.name === "tee") return true;
   if (cmd.name !== "cat") return false;
@@ -155,7 +168,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
+  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, foldedStdin: null, prev: null, chain: { start: null }, negated: false };
 }
 
 function scope(op: string, w: Walk): void {
@@ -166,23 +179,30 @@ function scope(op: string, w: Walk): void {
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
 
-function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
+/** The command as written, and its case-folded readings, which the caller reads for the text they pipe on. */
+interface Emitted {
+  cmd: Unwrapped | null;
+  folds: Unwrapped[];
+}
+
+function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Emitted {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
   const words = rawWords.map(expand);
   const runs = caseNamed(words);
   const cut = cutReading(words);
   const cutRuns = cut ? caseNamed(cut) : [];
+  const folds = [...foldsOf(words, runs[0], w), ...(cut ? foldsOf(cut, cutRuns[0], w) : [])];
   for (const cmd of [...runs, ...cutRuns]) run(cmd, redirects, w, next);
-  runFolds(words, runs[0] ?? null, w, (cmd, copy) => run(cmd, redirects, copy, next));
-  if (cut) runFolds(cut, cutRuns[0] ?? null, w, (cmd, copy) => run(cmd, redirects, copy, next));
-  return runs[0] ?? null;
+  for (const cmd of folds) runAdded(w, (copy) => run(cmd, redirects, copy, next), true);
+  const stdin = w.foldedStdin;
+  if (stdin !== null) runAdded(w, (copy) => [...runs, ...cutRuns, ...folds].forEach((cmd) => run(cmd, redirects, { ...copy, stdin }, next)), true);
+  return { cmd: runs[0] ?? null, folds };
 }
 
-/** The lower-cased readings of a command word a case-insensitive filesystem runs, each walked as an added reading. */
-function runFolds(words: WordToken[], cmd: Unwrapped | null, w: Walk, reading: (cmd: Unwrapped, copy: Walk) => void): void {
-  if (!w.foldCase) return;
-  for (const folded of literalFolds(words, cmd)) runAdded(w, (copy) => reading(folded, copy));
+/** The lower-cased readings of a command word a case-insensitive filesystem runs. */
+function foldsOf(words: WordToken[], cmd: Unwrapped | undefined, w: Walk): Unwrapped[] {
+  return w.foldCase ? literalFolds(words, cmd ?? null) : [];
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -204,16 +224,16 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
 /**
  * A reading added beside main's, by xargs or a case fold, may only add commands: it walks a copy of the scope, so it cannot
  * rebind a variable or move the directory main's reading set, an error drops what is left of it, and every command it emits
- * is marked `added` for the classifier to drop on error.
+ * is marked `added` for the classifier to drop on error, and `folded` when a case fold reached it.
  */
-function runAdded(w: Walk, reading: (copy: Walk) => void): void {
+function runAdded(w: Walk, reading: (copy: Walk) => void, folded = false): void {
   const start = w.out.length;
   try {
     reading({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
   } catch {
     // Main's runs of the same command still decide; this reading is dropped.
   } finally {
-    for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true };
+    for (let i = start; i < w.out.length; i++) w.out[i] = { ...(w.out[i] as SimpleCommand), added: true, ...(folded ? { folded: true as const } : {}) };
   }
 }
 
@@ -230,7 +250,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   for (const words of findExecs(cmd.args)) {
     const execs = caseNamed(words);
     for (const exec of execs) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
-    runFolds(words, execs[0] ?? null, w, (exec, copy) => run(exec, [], child(copy, [...wrapping, "find-exec"]), null));
+    for (const exec of foldsOf(words, execs[0], w)) runAdded(w, (copy) => run(exec, [], child(copy, [...wrapping, "find-exec"]), null), true);
   }
 }
 

@@ -27,19 +27,37 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
   return [];
 }
 
+/**
+ * The line's state as main's reading leaves it, and beside it, once a case-folded command switched branch, the state
+ * that switch may have left. Each later command is judged under both, so the fold only adds actions.
+ */
+interface Lines {
+  line: ClassifyContext;
+  unsure: ClassifyContext | null;
+}
+
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
-  let line = ctx;
+  let lines: Lines = { line: ctx, unsure: null };
   for (const cmd of extractCommands(src, { cwd, home: ctx.home, foldCase: ctx.foldCase })) {
+    const each = lines.unsure ? [lines.line, lines.unsure] : [lines.line];
     if (cmd.added) {
-      out.push(...addedActions(cmd, line, followScripts));
+      out.push(...each.flatMap((line) => addedActions(cmd, line, followScripts)));
+      if (cmd.folded) lines = afterFolded(cmd, lines);
       continue;
     }
-    out.push(...classifySimple(cmd, line));
-    if (followScripts) out.push(...scriptActions(cmd, line));
-    line = afterDynamic(cmd, afterAll(cmd, line));
+    out.push(...each.flatMap((line) => [...classifySimple(cmd, line), ...(followScripts ? scriptActions(cmd, line) : [])]));
+    const advance = (line: ClassifyContext) => afterDynamic(cmd, afterAll(cmd, line));
+    lines = { line: advance(lines.line), unsure: lines.unsure && advance(lines.unsure) };
   }
   return unique(out);
+}
+
+/** A case-folded command runs only where the filesystem folds, so its branch switch moves the unsure state, never main's. */
+function afterFolded(cmd: SimpleCommand, lines: Lines): Lines {
+  const from = lines.unsure ?? lines.line;
+  const moved = afterUnsure([cmd], from);
+  return moved === from ? lines : { ...lines, unsure: moved };
 }
 
 /** A command only an added xargs reading runs adds its actions, but an error drops it and it never moves the line's state. */
@@ -70,9 +88,16 @@ function afterAll(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
   return FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
 }
 
-/** A switch read from a dynamic word may never have happened, so it only makes the head unknown and never trusts a new branch. */
 function afterDynamic(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
-  return dynamicReadings(cmd).reduce((l, reading) => {
+  return afterUnsure(dynamicReadings(cmd), line);
+}
+
+/**
+ * A switch read from a dynamic word or a case-folded command word may never have happened, so it only makes the head
+ * unknown and never trusts a new branch.
+ */
+function afterUnsure(readings: SimpleCommand[], line: ClassifyContext): ClassifyContext {
+  return readings.reduce((l, reading) => {
     const next = afterAll(reading, l);
     return next === l ? l : { ...next, readHead: () => "unknown" };
   }, line);
