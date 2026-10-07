@@ -3,6 +3,7 @@ import path from "node:path";
 import { readHead, transcriptId } from "../corpus/transcripts.js";
 import { sessionDirs } from "../mine/bootstrap-arm.js";
 import { readFrontmatter, scalarField } from "../mine/frontmatter.js";
+import { initiativeDir, LAYOUT, markdownIn } from "../workspace-layout.js";
 import type { RefClass, ServedRef } from "./blocks.js";
 import type { ServedBlock } from "./session.js";
 
@@ -39,17 +40,18 @@ export function labelRef(ref: ServedRef, block: ServedBlock, wrapRecord?: string
 export const BASE_RATE_CLASSES = ["source", "note"] as const satisfies readonly RefClass[];
 export type BaseRateClass = (typeof BASE_RATE_CLASSES)[number];
 
-const CLASS_DIR: Record<BaseRateClass, string[]> = { source: ["sources"], note: ["sources", "notes"] };
+const CLASS_DIR: Record<BaseRateClass, readonly string[]> = { source: LAYOUT.sources, note: LAYOUT.notes };
 
-/** Same-class `.md` filenames on disk for an initiative; memoised because every block asks again. */
+/** Same-class `.md` filenames on disk for a live or archived initiative; memoised because every block asks again. */
 export function corpusLister(activeRoot: string): (initiative: string, refClass: BaseRateClass) => string[] {
   const cache = new Map<string, string[]>();
   return (initiative, refClass) => {
-    const dir = path.join(activeRoot, initiative, ...CLASS_DIR[refClass]);
-    let names = cache.get(dir);
+    const key = `${initiative}/${refClass}`;
+    let names = cache.get(key);
     if (names === undefined) {
-      names = existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith(".md")) : [];
-      cache.set(dir, names);
+      const base = initiativeDir(activeRoot, initiative);
+      names = base === undefined ? [] : markdownIn(path.join(base, ...CLASS_DIR[refClass]));
+      cache.set(key, names);
     }
     return names;
   };
