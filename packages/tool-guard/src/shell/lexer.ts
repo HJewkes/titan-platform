@@ -302,6 +302,18 @@ function readSubstitution(s: LexState, start: number): Token[] {
   return inner.tokens;
 }
 
+/**
+ * A heredoc still pending when a process substitution closes takes its body from the lines after
+ * the current one in bash 5 and not at all in bash 3.2. No reading is safe for both, so it fails closed.
+ */
+function readProcessSubstitution(s: LexState, start: number): Token[] {
+  const inner = newState(s.src, start, true, s.trials);
+  lex(inner);
+  if (inner.heredocs.length > 0) throw new ParseError("heredoc body outside its process substitution");
+  s.i = inner.i + 1;
+  return inner.tokens;
+}
+
 function pushSubstitution(s: LexState, w: WordToken, start: number): void {
   markComputed(w);
   w.subs.push(readSubstitution(s, start));
@@ -375,7 +387,7 @@ function readRedirect(s: LexState): void {
   const op = (REDIRECT_RE.exec(s.src) as RegExpExecArray)[0];
   s.i += op.length;
   if ((op === "<" || op === ">") && s.src[s.i] === "(") {
-    s.tokens.push({ type: "subs", subs: [readSubstitution(s, s.i + 1)] });
+    s.tokens.push({ type: "subs", subs: [readProcessSubstitution(s, s.i + 1)] });
     return;
   }
   const heredoc = op === "<<" || op === "<<-";
