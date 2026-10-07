@@ -543,7 +543,7 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head, or any changed path under `.github/` sends the merge to the owner. A file list
+another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
