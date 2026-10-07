@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { layersFromTiers, productIsolationRules } from "./new-package.mjs";
+import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
@@ -44,7 +44,7 @@ export function checkNoFileDependencies(root) {
 }
 
 function tiersRule(root) {
-  return readJson(join(root, ".codewatch", "check.json")).rules.find((r) => r.type === "layered-deps" && r.$tiers);
+  return findTiersRule(readJson(join(root, ".codewatch", "check.json")));
 }
 
 /** R41: `layers` is `$tiers` with empty tiers dropped. */

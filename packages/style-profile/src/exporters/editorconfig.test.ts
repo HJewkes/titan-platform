@@ -73,6 +73,18 @@ describe("generateEditorConfigExport", () => {
     expect(file.content).toContain("max_line_length = 100");
   });
 
+  it("leaves out formatting rules below the info threshold", () => {
+    const profile = makeProfile({
+      formatting: {
+        indentSize: { convention: 4, confidence: 0.2, stability: "low" },
+        lineLength: { convention: 100, confidence: 0.85, stability: "medium" },
+      },
+    });
+    const file = generateEditorConfigExport(profile);
+    expect(file.content).not.toContain("indent_size");
+    expect(file.content).toContain("max_line_length = 100");
+  });
+
   it("handles empty formatting section gracefully", () => {
     const file = generateEditorConfigExport(makeProfile());
     expect(file.content).toContain("root = true");
