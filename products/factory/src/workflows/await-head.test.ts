@@ -1,7 +1,7 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { H1, REPO } from "../test-support/land.js";
-import { AWAIT_HEAD_POLL_MS, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
+import { AWAIT_HEAD_POLL_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
 
 const H2 = fakeSha("head2");
 
@@ -13,6 +13,40 @@ function world(): { fake: FakeGitHub; sleeps: number[]; sleep: (ms: number) => P
 }
 
 const target = { repo: REPO, pr: 1, headSha: H1 };
+
+describe("awaitHeadOrExit", () => {
+  const woken = { ...target, agent: "impl-a" };
+
+  it("ends with exited set once the fixer has exited and the head is still unchanged", async () => {
+    const { fake, sleep } = world();
+    let polls = 0;
+
+    const { pr, exited } = await awaitHeadOrExit(githubPort(fake.wire), woken, new AbortController().signal, { sleep, agentExited: async () => ++polls >= 2 });
+
+    expect(pr.headSha).toBe(H1);
+    expect(exited).toBe(true);
+  });
+
+  it("does not report an exit when the fixer pushed a head just before it exited", async () => {
+    const { fake, sleep } = world();
+    const exitedAfterPush = async () => (fake.pushHead(1, H2), true);
+
+    const { pr, exited } = await awaitHeadOrExit(githubPort(fake.wire), woken, new AbortController().signal, { sleep, agentExited: exitedAfterPush });
+
+    expect(pr.headSha).toBe(H2);
+    expect(exited).toBe(false);
+  });
+
+  it("keeps waiting while the fixer has not exited", async () => {
+    const { fake, sleeps, sleep } = world();
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.headSha = H2));
+
+    const { exited } = await awaitHeadOrExit(githubPort(fake.wire), woken, new AbortController().signal, { sleep, agentExited: async () => false });
+
+    expect(exited).toBe(false);
+    expect(sleeps).toHaveLength(2);
+  });
+});
 
 describe("awaitNewHead", () => {
   it("keeps polling every 30 s while the head is unchanged and returns the first read that shows a new head", async () => {

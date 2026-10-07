@@ -1,5 +1,15 @@
 # codewatch
 
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies [58813f1]
+- Updated dependencies [14c4299]
+  - @titan-design/code-read@0.2.1
+  - @titan-design/react-app@0.1.1
+  - @titan-design/rpc-client@0.2.0
+
 ## 0.0.14
 
 ### Patch Changes

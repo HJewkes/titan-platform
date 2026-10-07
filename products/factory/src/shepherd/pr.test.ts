@@ -1000,6 +1000,54 @@ describe("a restarted run", () => {
   });
 });
 
+describe("a fixer that exits without pushing a new head", () => {
+  const FLAKE_FILE = "packages/decider/src/ask-lint.test.ts";
+  const EXITED: WakeOutcome = { kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head past the red head" };
+
+  /** The red head fails on one test file; the PR changes `changed`, and the failure goes once its jobs are rerun. */
+  function redOnFlake(changed: string[], healsOnRerun: boolean) {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => EXITED });
+    const w = world(phases, () => (healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), fake);
+    fake.addPr({ headSha: H1 });
+    fake.jobLogs.set(1, `RUN  v3\n FAIL  ${FLAKE_FILE} > lints 7k distinct ids in bounded time\nAssertionError: expected 202.30 to be less than 200`);
+    fake.prFiles.set(1, changed.map((path) => ({ path, status: "modified" })));
+    fake.prChangedFiles.set(1, changed.length);
+    return { w, wakes };
+  }
+
+  it("reruns the failed jobs once at the same head when the failing test file is outside the PR's diff, with no second wake", async () => {
+    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
+    const runId = shepherdPr1(w);
+
+    await approve(w.host, runId, H1);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(stepIds(w.host, runId)).not.toContain("sh-sent-back");
+  });
+
+  it("opens the sent-back gate naming the fixer's exit, with no rerun, when the failing test file is in the PR's diff", async () => {
+    const { w } = redOnFlake([FLAKE_FILE], true);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(0);
+    expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("impl-a exited without pushing a new head");
+  });
+
+  it("reruns once per head: a head still red after the rerun and a second exit opens the gate", async () => {
+    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], false);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toHaveLength(2);
+  });
+});
+
 describe("the repair budget", () => {
   const redHead = (n: number) => fakeSha(`red${n}`);
 

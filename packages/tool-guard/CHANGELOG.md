@@ -1,5 +1,15 @@
 # @titan-design/tool-guard
 
+## 0.2.1
+
+### Patch Changes
+
+- e84b324: Read BSD `xargs -J replstr` as an insert string: each run's input items are spliced in at the argument equal to it, so a push or merge target piped through `-J` is classified, and unreadable stdin fails closed as it does for `-I`. A separate `-I` or `-J` value that looks like an option (`-J -i`) is read as the value, and input quotes and backslashes are also read as xargs drops them when it splits on blanks. These added readings walk a copy of the variables, are dropped when the script they build cannot parse or when classifying them throws, never move the line's tracked state, and past 256 runs they fail closed to the worst case, so a long input cannot hold the hook past its timeout.
+- 426ac3c: The xargs option readers no longer read a word an option takes as its value as an option of its
+  own: `xargs --max-args -0 git push origin` is not read as NUL-separated input, and `-E -n2` is not
+  a batch size. The reading the guard had before is kept beside the new one, so no verdict loosens.
+- aab5e8e: A command word with an odd bracket, such as `[]*+]`, no longer makes the glob compiler throw and the hook allow the whole line; bracket classes follow bash rules, and an uncompilable pattern fails closed (TP-1780).
+
 ## 0.2.0
 
 ### Minor Changes

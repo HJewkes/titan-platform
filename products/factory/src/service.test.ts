@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, SERVICE_LABEL, servicePath, stableNodePath, type NodeProbe } from "./service.js";
+import { renderPlist, renderUnit, SERVICE_LABEL, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -12,6 +12,8 @@ const options = { nodePath: "/opt/node/bin/node", binPath: "/srv/factory/dist/bi
 const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
 const whichWithout = (...absent: string[]) => (binary: string): string | undefined => (absent.includes(binary) ? undefined : TOOLS[binary]);
 const pathOf = (plist: string): string[] => keyValue(plist, "PATH").split(":");
+/** The plist verb prints a unit on Linux, so these pin the platform; CI runs on Linux. */
+const darwin = { workflows: [], routes: [], service: { ...systemServicePorts(), platform: "darwin" as const } };
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -73,7 +75,7 @@ describe("titan-factory service plist", () => {
     let out = "";
     const io = { stdout: (t: string) => void (out += t), stderr: () => undefined, env: { XDG_STATE_HOME: "/xdg/state" } };
 
-    const code = await runCli(["service", "plist"], io);
+    const code = await runCli(["service", "plist"], io, darwin);
 
     expect(code).toBe(0);
     expect(keyValue(out, "ProcessType")).toBe("Interactive");
@@ -86,7 +88,7 @@ describe("titan-factory service plist", () => {
     let out = "";
     let err = "";
     const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
-    const service = { ...systemServicePorts(), which: whichWithout("claude") };
+    const service = { ...darwin.service, which: whichWithout("claude") };
 
     const code = await runCli(["service", "plist", "--node", "/opt/node/bin/node"], io, { workflows: [], routes: [], service });
 
@@ -99,7 +101,7 @@ describe("titan-factory service plist", () => {
     let out = "";
     const io = { stdout: (t: string) => void (out += t), stderr: () => undefined, env: {} };
 
-    expect(await runCli(["service", "plist", "--node", "/custom/bin/node"], io)).toBe(0);
+    expect(await runCli(["service", "plist", "--node", "/custom/bin/node"], io, darwin)).toBe(0);
 
     expect(out).toContain("<string>/custom/bin/node</string>");
     expect(out).not.toContain(`<string>${stableNodePath(process.execPath)}</string>`);
@@ -130,6 +132,57 @@ describe("titan-factory service plist", () => {
     expect(await runCli(["service", "plist", "--node", "bin/node"], io)).toBe(2);
 
     expect(err).toContain("absolute");
+  });
+});
+
+const directive = (unit: string, key: string): string[] => [...unit.matchAll(new RegExp(`^${key}=(.*)$`, "gm"))].map((m) => m[1]!);
+
+describe("titan-factory service unit", () => {
+  it("is named after the launchd label without its owner prefix", () => {
+    expect(UNIT_NAME).toBe("titan-factory.service");
+  });
+
+  it("keeps serve running from boot, as KeepAlive and RunAtLoad do", () => {
+    const unit = renderUnit(options);
+
+    expect(directive(unit, "Type")).toEqual(["simple"]);
+    expect(directive(unit, "Restart")).toEqual(["always"]);
+    expect(directive(unit, "RestartSec")).toEqual(["5"]);
+    expect(directive(unit, "WantedBy")).toEqual(["default.target"]);
+  });
+
+  it("runs the plist's argv, with the port when given", () => {
+    expect(directive(renderUnit(options), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve`]);
+    expect(directive(renderUnit({ ...options, port: 7411 }), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve --port 7411`]);
+  });
+
+  it("sets the plist's PATH and no other variable", () => {
+    expect(directive(renderUnit(options), "Environment")).toEqual([`PATH=${options.path}`]);
+  });
+
+  it("appends stdout and stderr to the plist's log files", () => {
+    const unit = renderUnit(options);
+
+    expect(directive(unit, "StandardOutput")).toEqual([`append:${join(options.logDir, "serve.out.log")}`]);
+    expect(directive(unit, "StandardError")).toEqual([`append:${join(options.logDir, "serve.err.log")}`]);
+  });
+
+  it("quotes an argument or PATH with a space, and keeps % and $ literal", () => {
+    const unit = renderUnit({ ...options, binPath: "/srv/my factory/dist/bin.js", nodePath: "/opt/n$de/bin/node", path: "/opt/100%/bin:/opt/a b/bin", logDir: "/var/log dir/50%" });
+
+    expect(directive(unit, "ExecStart")).toEqual(['/opt/n$$de/bin/node "/srv/my factory/dist/bin.js" serve']);
+    expect(directive(unit, "Environment")).toEqual(['"PATH=/opt/100%%/bin:/opt/a b/bin"']);
+    expect(directive(unit, "StandardOutput")).toEqual(["append:/var/log dir/50%%/serve.out.log"]);
+  });
+
+  it("escapes a backslash or double quote inside a quoted argument", () => {
+    expect(directive(renderUnit({ ...options, binPath: '/srv/a"b\\c/bin.js' }), "ExecStart")).toEqual([`${options.nodePath} "/srv/a\\"b\\\\c/bin.js" serve`]);
+  });
+
+  it("lives under XDG_CONFIG_HOME when it is absolute, else under ~/.config", () => {
+    expect(unitPath("/srv/tester")).toBe("/srv/tester/.config/systemd/user/titan-factory.service");
+    expect(unitPath("/srv/tester", "/xdg/config")).toBe("/xdg/config/systemd/user/titan-factory.service");
+    expect(unitPath("/srv/tester", "relative/config")).toBe("/srv/tester/.config/systemd/user/titan-factory.service");
   });
 });
 

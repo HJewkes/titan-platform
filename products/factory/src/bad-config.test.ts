@@ -31,11 +31,11 @@ describe.skipIf(!existsSync(bin))("titan-factory with a malformed config file", 
     expect(result.stdout).toContain("Usage: titan-factory");
   });
 
-  it("prints the service plist", () => {
+  it("prints the service plist, or the systemd unit on Linux", () => {
     const result = run("service", "plist");
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("<plist");
+    expect(result.stdout).toContain(process.platform === "linux" ? "[Service]" : "<plist");
   });
 
   it("fails a database-opening command naming the config file", () => {

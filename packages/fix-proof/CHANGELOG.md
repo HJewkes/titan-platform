@@ -1,5 +1,11 @@
 # @titan-design/fix-proof
 
+## 0.3.0
+
+### Minor Changes
+
+- 63c2836: `classifyReports` now gives `error` instead of `reproduced` when any selected file is missing from the head report or fails to load there, matching the documented rule that ambiguous input never classifies as `reproduced`.
+
 ## 0.2.0
 
 ### Minor Changes
