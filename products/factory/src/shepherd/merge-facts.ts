@@ -168,15 +168,18 @@ function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly str
   return { outcome: "gate", rule: guardRule("visual-path"), reason: `the owner decides visual changes: ${shown}` };
 }
 
-/** A glob list that cannot compile matches every path, so a bad policy gates instead of throwing or allowing. */
+/**
+ * Case is folded on both sides, as a case-insensitive checkout writes `Packages/UI/x` into `packages/ui/`. A glob list
+ * that cannot compile matches every path, so a bad policy gates instead of throwing or allowing.
+ */
 function visualMatches(paths: readonly string[], visualPaths: readonly string[]): string[] {
   let isVisual: (path: string) => boolean;
   try {
-    isVisual = compileGlobs(visualPaths);
+    isVisual = compileGlobs(visualPaths.map((glob) => glob.toLowerCase()));
   } catch {
     isVisual = () => true;
   }
-  return paths.filter(isVisual);
+  return paths.filter((path) => isVisual(path.toLowerCase()));
 }
 
 /** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */

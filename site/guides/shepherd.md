@@ -346,7 +346,7 @@ visual_paths:
 
 - **`repos`** lists the remotes the seat owns. A remote that several seats list gets only
   the grants they all share.
-- **`visual_paths`** lists repo-relative globs (`**`, `*`, `?`, `{a,b}`) for files the owner
+- **`visual_paths`** lists repo-relative globs (`**`, `*`, `?`, `{a,b}`, matched without case) for files the owner
   reviews by eye. An empty list or a glob that cannot compile makes the seat file invalid.
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a

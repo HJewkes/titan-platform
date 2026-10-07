@@ -212,6 +212,14 @@ describe("a seat with visual paths", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
+  it("gates a visual path spelled in another case", () => {
+    expect(decideAt(HEAD, ["Packages/UI/src/Components/Button.tsx"])).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+  });
+
+  it("gates a rename that moves a file out of a visual path", () => {
+    expect(decideAt(HEAD, ["src/Button.tsx", "packages/ui/src/components/Button.tsx"])).toMatchObject({ outcome: "gate", reason: expect.stringContaining("packages/ui/src/components/Button.tsx") });
+  });
+
   it("gates the head a later push added a visual file at, on the policy resolved at registration", () => {
     const reviews = new Map([HEAD, NEXT_HEAD].map((head, i) => [head, evidenceAt(head, i === 0 ? ["scripts/a.ts"] : ["scripts/a.ts", "packages/ui/src/components/Modal.tsx"])]));
     const options = shepherdLandOptions(() => effective("acme/design"), (head) => ({ kind: "MERGE", headSha: head, evidence: reviews.get(head) }));
