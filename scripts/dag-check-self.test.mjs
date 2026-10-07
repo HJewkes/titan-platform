@@ -73,7 +73,8 @@ describe("seeding the graph from a CI cache", () => {
   it("gives the same check result as a cold index when a file with a violation was renamed", async () => {
     const cold = await checkHeadAgainstBaseline({ seeded: false });
     expect(await checkHeadAgainstBaseline({ seeded: true })).toEqual(cold);
-  });
+    // Four indexes plus git worktrees; a loaded CI runner needs more than vitest's 5 s default.
+  }, 60_000);
 
   it("reads --seed-db as an absolute path and refuses a missing value", () => {
     expect(seedDbPath(["--db", "/tmp/g.db", "--seed-db", "/tmp/s.db"])).toBe("/tmp/s.db");
