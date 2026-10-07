@@ -1,10 +1,19 @@
 import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 import {
   makeFormattingObs,
   parseEditorConfig,
   parsePrettierConfig,
 } from "./formatting-config.js";
+
+// `prettier.config.*` and `.prettierrc.{js,cjs,mjs,ts,yaml,yml,toml}` need a
+// module loader or another parser; only JSON is read here.
+const JSON_PRETTIERRC = new Set([".prettierrc", ".prettierrc.json"]);
+
+function isJsonPrettierrc(configPath: string): boolean {
+  return JSON_PRETTIERRC.has(basename(configPath));
+}
 
 export class FormattingExtractor implements StyleExtractor {
   readonly name = "formatting";
@@ -21,10 +30,7 @@ export class FormattingExtractor implements StyleExtractor {
         return parseEditorConfig(raw, configPath);
       }
 
-      if (
-        configPath.includes(".prettierrc") ||
-        configPath.includes("prettier.config")
-      ) {
+      if (isJsonPrettierrc(configPath)) {
         return parsePrettierConfig(raw, configPath);
       }
 

@@ -2,6 +2,7 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
+import { collectTypeDecls, propStatsOf } from "./analysis/prop-metrics.js";
 import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
@@ -171,10 +172,12 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   const fnTypes =
     file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_DECL_TYPES;
   const lines = file.content.split("\n");
+  const types = file.language === "python" ? new Map<string, Node>() : collectTypeDecls(file.tree.rootNode);
   walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
     if (!fn) return;
     const cognitive = cognitiveSplitOf(fn.body, file.language);
+    const jsxDepth = jsxDepthIn(file, fn.body);
     stats.push({
       name: fn.name === null ? null : qualify(scope, fn.name),
       cyclomatic: cyclomaticOf(fn.body, file.language),
@@ -182,12 +185,18 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       markupCognitive: cognitive.markup,
       logicCognitive: cognitive.total - cognitive.markup,
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
-      jsxDepth: jsxDepthIn(file, fn.body),
+      jsxDepth,
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
+      props: isComponent(fn.name, jsxDepth) ? propStatsOf(fn.node, types) : null,
       ...functionShapeStats(fn.node, fn.body, lines),
     });
   });
   return stats;
+}
+
+/** A component (C-97 S3) is a PascalCase function that renders JSX. */
+function isComponent(name: string | null, jsxDepth: number): boolean {
+  return jsxDepth > 0 && name !== null && /^[A-Z]/.test(name);
 }
 
 /**
