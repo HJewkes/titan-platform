@@ -85,6 +85,26 @@ describe("pollUpdates", () => {
     ]);
   });
 
+  it("advances past a highest update whose shape fails the schema", async () => {
+    const scripted = scriptedFetch([
+      [textUpdate(301, "one"), { update_id: 302, message: { message_id: "not-a-number" } }],
+      [textUpdate(400, "two")],
+    ]);
+
+    await collect(
+      pollUpdates(configWith(scripted.fetch), {
+        timeoutSeconds: 30,
+        allowedChatIds: [CHAT],
+      }),
+      2,
+    );
+
+    expect(scripted.bodies).toEqual([
+      { timeout: 30 },
+      { offset: 303, timeout: 30 },
+    ]);
+  });
+
   it("yields the whole shape of a text message", async () => {
     const scripted = scriptedFetch([[textUpdate(7, "ready")]]);
 
