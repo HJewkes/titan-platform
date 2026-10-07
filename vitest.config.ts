@@ -1,11 +1,14 @@
 import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 
-// These stub HOME (os.homedir() ignores that in a worker thread) or call process.chdir (unsupported in one).
+// These stub HOME (os.homedir() ignores that in a worker thread), call process.chdir (unsupported in one) or set TZ
+// (a worker thread keeps the host zone).
 const needsProcess = [
   "packages/code-graph/src/extractors/ts-morph-extractor-type-roots.test.ts",
   "packages/session-read/src/discover-roots.test.ts",
   "products/factory/src/shepherd/reviewer-dispatch.test.ts",
+  "products/session-miner/src/insights/blocked-flow.test.ts",
+  "products/session-miner/src/insights/define.test.ts",
 ];
 
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with 4 threads and
