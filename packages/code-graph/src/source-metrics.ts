@@ -4,11 +4,10 @@ import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-h
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
 import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
-import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
+import { PY_FUNCTION_TYPES, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } from "./node-kinds.js";
+import { qualify, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
-
-const PY_FUNCTION_TYPES = new Set(["function_definition"]);
 
 const TS_NESTING_TYPES = new Set([
   "if_statement",
