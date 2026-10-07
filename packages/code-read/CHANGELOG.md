@@ -1,5 +1,62 @@
 # @titan-design/code-read
 
+## 0.2.1
+
+### Patch Changes
+
+- 58813f1: `finding.get` on a whole-node finding whose node is a symbol, such as a function-length
+  metric finding, now returns the symbol's span as `finding.range` and excerpts and
+  highlights those lines with `context_lines` either side, instead of the first 80 lines of
+  the declaring file.
+- 14c4299: Fill the new `loc` field on symbol-grain hotspot rows from `symbol_loc`, so `code-read` keeps typechecking against `@titan-design/code-graph` rows that now carry `loc`.
+- Updated dependencies [14c4299]
+- Updated dependencies [2c0fff9]
+  - @titan-design/code-graph@0.14.0
+
+## 0.2.0
+
+### Minor Changes
+
+- 1743211: Add the `changes.get` command (contract 0.1.5): against a required `baseline`, the files that crossed the hotspot `cutoff`, files the baseline does not hold, findings new, worsened, improved, and resolved, new co-change coupling (reported `measured: false` until pairs are stored), and regressions, files whose score rose that carry an open finding. Across index versions it returns `comparable: false` and empty lists. It reuses code-graph's `computeReportDrift` and `bucketViolations` through `@titan-design/code-graph/analysis`, so the live handler and the static resolver return the same result.
+- b4f9472: Add the `hotspots.list` command (contract 0.1.3): files or symbols ranked by hotspot score over a churn window, with a caller-supplied cutoff, offset paging, and new or worsened marks against a baseline. Both grains reuse code-graph's report derivations through `@titan-design/code-graph/analysis`, so the live handler and the static resolver return the same rows.
+- 689c518: Add optional `lenses` to `node.get` (contract 0.1.6, additive). `exports` lists a file's declared symbols with utilization, consumer count, and own cognitive complexity; `score` breaks the hotspot score at the node's grain into churn, complexity, recency, and utilization, with its rank, for a `window`; `centrality` gives every file in the reading order a PageRank score and a rank; `coupling` reports co-changed partners as `measured: false` until pairs are stored; `tests` lists path-linked tests beside the indexer's `linked_test_count`. A call with no lenses returns the same result as before. The reading order in `overview.get` and the centrality lens share one ranking.
+- 7682bd6: Add the `overview.get` command (contract 0.1.4): KPIs, named attention signals weighted and capped by caller-supplied weights, a reading order by PageRank centrality, and the top look-first files with their reasons. An optional `combined` number is secondary to the signals. It reuses code-graph's derivations through `@titan-design/code-graph/analysis`, so the live handler and the static resolver return the same result.
+- d7fa488: Add the `packages.stats` command (contract 0.1.8): code-graph's `computePartitionQuality` over a snapshot's package roots, either the `packages` given or every root the product's `layered-deps` rules declare. Per package it returns the file count, internal, outgoing, and incoming edges, cohesion, instability, abstractness, the instability band, and flags, plus its declared tier as `layer`, or `layer: { status: "undeclared" }` for a root no tier names. It also returns the package-to-package edges, the snapshot's modularity, and the count of files under no root. A `ModelRule` now carries a `layered-deps` rule's `layers`; `finding.get` still returns the rule without them. The live handler and the static resolver return the same result.
+- 3a2dfcc: Add the `paths.impact` command (contract 0.1.7): given repo-relative `paths` and an optional `baseline`, each file's hotspot complexity, its score and rank as `hotspots.list` ranks it at `window`, and its open findings, plus a rollup. With a comparable baseline each row gets a score, complexity, and findings delta, findings bucketed by code-graph's `bucketViolations` as `changes.get` buckets them; without one `delta` is absent, and across index versions it is null. A path the snapshot holds no file for answers a `not-indexed` row and one outside the repo an `outside-repo` row, never an error; a leading `./` is dropped and absolute paths are read under the optional `root`. The live handler and the static resolver return the same result.
+
+### Patch Changes
+
+- 425a4b8: `paths.impact` counts the resolved findings of a deleted file in the rollup delta, and rejects a `root` above the index's repo root instead of reading paths against it.
+- 6fd00e8: Doc comment and test only: correct the `scoredRows` comment and build the `changes.get` static side through `loadReadModel`, with a destination-keyed finding.
+- Updated dependencies [b4f9472]
+- Updated dependencies [689c518]
+- Updated dependencies [1743211]
+- Updated dependencies [445c85c]
+- Updated dependencies [4722ea7]
+- Updated dependencies [9327cb0]
+- Updated dependencies [ab1b1c0]
+- Updated dependencies [4c8013a]
+- Updated dependencies [f8f49ee]
+- Updated dependencies [7682bd6]
+- Updated dependencies [1dc1a3b]
+- Updated dependencies [3a2dfcc]
+- Updated dependencies [c32abb7]
+- Updated dependencies [c0420d2]
+- Updated dependencies [887982d]
+- Updated dependencies [d7fa488]
+- Updated dependencies [c65fce1]
+- Updated dependencies [326a235]
+- Updated dependencies [402654f]
+- Updated dependencies [bece4b2]
+- Updated dependencies [1d1b6fa]
+- Updated dependencies [add80d0]
+- Updated dependencies [f38088f]
+- Updated dependencies [2b1f4d3]
+- Updated dependencies [1805bce]
+- Updated dependencies [e6dd995]
+- Updated dependencies [4662078]
+  - @titan-design/code-graph@0.13.0
+
 ## 0.1.10
 
 ### Patch Changes

@@ -131,7 +131,7 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 5) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 6) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -231,6 +231,13 @@ or resume validated checkpoints. Usage distinguishes response deltas from snapsh
 protect readback; prefix replay preserves model, usage and projection state across
 chunks. The existing Claude reader remains available. See the
 [contract decision](/guides/multi-harness-contracts) for compatibility and migration.
+
+`codexHome()` honors `$CODEX_HOME` and falls back to `~/.codex`. Discovery and readback
+separate absence from failure. A missing directory yields no sources, and a stale locator
+(file gone or truncated, or a line that no longer matches its hash or parses) reads back
+as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
+`discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
+`readSessionSourceText`.
 
 ## Graph-free consumer views
 

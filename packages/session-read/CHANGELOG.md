@@ -1,5 +1,39 @@
 # @titan-design/session-read
 
+## 0.10.0
+
+### Minor Changes
+
+- 6a2c0f8: Discovery and readback now separate absence from failure. These calls can now reject on an I/O error other than a missing path (for example `EACCES` or `EMFILE`) where they used to return an empty or null result:
+
+  - `discoverTranscripts`, `discoverAllTranscripts` and `discoverCodexSources` reject instead of returning `[]` or skipping the directory. A missing directory, or a stray file beside the project directories, still reads as no transcripts.
+  - `claudeTranscriptRoots` throws when `~/.claude-profiles` or a profile's `projects` path cannot be inspected; a missing one is still skipped.
+  - `readClaudeText`, `readCodexText` and `readSessionSourceText` reject instead of returning `null`. They still return `null` for a stale locator: the file is gone or shorter than the span, or the line no longer matches its hash, decodes as UTF-8 or parses as JSON.
+
+  `codexHome()` now honors `CODEX_HOME` when it is set and non-empty, as the Codex CLI does, so `discoverCodexSources({ namespace })` without an explicit `codexHome` scans the same directory Codex writes to.
+
+## 0.9.1
+
+### Patch Changes
+
+- b241223: Read git and gh intents only from unquoted simple commands. `parseGitIntent` and the `pr_create` signal no longer match text inside quotes, `echo` arguments or heredoc bodies, so `echo "gh pr merge 42"` records no merge and a commit message mentioning `git push` records no push. `EXTRACT_VERSION` is now 6, so stored intents re-extract on the next backfill.
+
+## 0.9.0
+
+### Minor Changes
+
+- 18e081a: Read `Verdict: WAIT` (required checks unfinished at the reviewed head) as no verdict, never a MERGE. `parseVerdictBlock` returns `{ ok: false, reason: "wait" }` with the PR and head the block names; Shepherd's `acceptVerdict` returns `none` with reason `wait`, and a seat reviewer's WAIT at a head never reads clear for a carry or a MERGE.
+- 218cbac: A Claude usage observation now carries `cacheWriteSplit` (`{ ttl5m, ttl1h }`, the new exported `CacheWriteSplit` type) when the transcript's usage has a `cache_creation` object with `ephemeral_5m_input_tokens` or `ephemeral_1h_input_tokens`. The 1h rate is higher than the 5m rate, so a price needs the split rather than the `cacheWriteInput` total. A usage line with only `cache_creation_input_tokens` leaves the field absent.
+- d10a591: Add `recoverSession`, a facts-only extractor for a session that ended with no wrap. It reads one
+  transcript and returns the session span, the registered agent name, files written under a root,
+  active-work and git/gh command heads, chat_send and agent_spawn targets with first lines, the last
+  five owner messages and the last assistant message, all capped. No model call, network or write.
+
+### Patch Changes
+
+- Updated dependencies [411b4f0]
+  - @titan-design/agent-protocol@0.5.0
+
 ## 0.8.1
 
 ### Patch Changes

@@ -1,5 +1,30 @@
 # @titan-design/github
 
+## 0.5.1
+
+### Patch Changes
+
+- 9891e0d: Retry a gh read that fails with HTTP 5xx, a connection error or an unparseable body, up to three attempts with a short backoff. A 200 is cached for ETag revalidation only once its body parses, so the retry of an unparseable body is unconditional. Writes are never repeated; update-branch re-reads the PR when its answer cannot be parsed.
+
+## 0.5.0
+
+### Minor Changes
+
+- c8ab11b: Add `listReviewComments` to the GitHub port: every inline review comment on a PR with its reviewer, path, line, body and resolved state. The `gh` adapter reads it from GraphQL review threads, the only place GitHub reports resolution; `fakeGitHub` serves it from `reviewComments`.
+- 92e76c5: Add `revalidateOpenPrs`, a conditional open-PR list sent with the caller's ETag. A 304 answers `notModified`, which GitHub charges no rate-limit point. The fake answers 304 the same way and counts each one in `notModified`.
+- 113cac1: Shepherd's seat check on a carried MERGE now reads seat reviewers at every commit the PR passed through since the reviewed head, not only the heads the run reviewed, so a FIX_FIRST at an unreviewed update refuses the carry. An unreadable or short commit list, or more than 50 heads, refuses too. `@titan-design/github` adds `listPrCommits` and `PR_COMMITS_CAP` to the port, wire and fake.
+- 4ed86e8: Add `listForcePushes` to the GitHub port: a PR's head force-pushes with the head each replaced and the new head, read through GraphQL on the port's `gh` login, capped at one page of 100 with `ForcePushesTruncated` past it. `fakeGitHub()` seeds them through `fake.forcePushes`. The factory's carry seat check now reads force-pushes through the port, and its product-side reader is deleted.
+
+### Patch Changes
+
+- 041125d: The token exchange and `createCheckRun` error paths now scrub anything shaped like a GitHub token or a JWT, including a token split across stdout and stderr and one quoted by a rejecting `appToken`, instead of relying on a closed `"token":"x"` pair.
+- 6385c70: Scrub token shapes from every `gh api` error and GraphQL error message, not only the exchange and check-run paths. The JWT shape no longer matches dotted names such as `eyJson.config.js`; a classic 40-hex token after a token keyword and a URL-encoded `ghs%5F` token are now redacted; a whole token at the end of stdout no longer eats the first word of stderr; and a token split by a trailing newline on stdout is cut from both streams.
+- f0db7a9: Close the remaining token-redaction gaps: a 40-hex token after `GH_TOKEN=`, `"access_token":` or as URL userinfo, a JWT right after an underscore, a split across stdout and stderr past any whitespace or a trailing keyword, and the Link next URL in a refused-page error. A dotted file name that only opens like a JWT is no longer redacted.
+- 170ed76: Token redaction now covers `https://<hex>:x-oauth-basic@host`, a keyword and hex run split across stdout and stderr at any offset, percent-encoded separators (`%26token=`, `access_token%3D`, `Bearer%20<JWT>`), long gaps after `token:`, and JWTs with a short payload segment, and the keyword lookbehind is linear so a megabyte of whitespace no longer stalls it.
+- 13e505a: Close three token redaction gaps. A JWT is now found from the dot behind its header, so a long run of JWT-shaped words such as `-eyJaaa-eyJaaa...` is scanned in linear time. `redactStreams` now cuts URL userinfo that only stderr completes (`https://HEX` then `:x-oauth-basic@h`, or `https://u:HEX` then `@h`). It also cuts the tail of a token split after its prefix even when stdout already ends in a whole token's worth, so the first word of stderr after a token that ends stdout is now cut with it.
+- 6b19eac: `redactStreams` redacts an exact secret whose bytes straddle the stdout/stderr seam. The early return that keeps each stream on its own looked only at token-shaped spans, so a secret split across the streams reached neither half whole and showed in both.
+- 10a66c3: `redactStreams` deduplicates the secret list before its exact-secret scans, so repeated secrets no longer multiply the spans, and its doc names the whitespace-secret-cut-at-the-seam limit.
+
 ## 0.4.0
 
 ### Minor Changes

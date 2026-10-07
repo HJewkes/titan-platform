@@ -1,5 +1,5 @@
 {
-  "api": "0.1.6",
+  "api": "0.1.8",
   "commands": {
     "api.describe": {
       "args": {
@@ -4404,6 +4404,840 @@
           "signals",
           "readingOrder",
           "lookFirst"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packages.stats": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "packages": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "result": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "packagesFrom": {
+            "type": "string",
+            "enum": [
+              "args",
+              "tiers",
+              "none"
+            ]
+          },
+          "modularity": {
+            "type": "number"
+          },
+          "totalEdges": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unassignedFiles": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "fileCount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "internalEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "outgoingEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "incomingEdges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "cohesion": {
+                  "type": "number"
+                },
+                "instability": {
+                  "type": "number"
+                },
+                "abstractness": {
+                  "type": "number"
+                },
+                "band": {
+                  "type": "string",
+                  "enum": [
+                    "foundation",
+                    "middle",
+                    "top"
+                  ]
+                },
+                "flags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "layer": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "declared"
+                        },
+                        "tier": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "rule": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "tier",
+                        "rule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "undeclared"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "fileCount",
+                "internalEdges",
+                "outgoingEdges",
+                "incomingEdges",
+                "cohesion",
+                "instability",
+                "abstractness",
+                "band",
+                "flags",
+                "layer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "crossEdges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "edges": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "intensity": {
+                  "type": "number"
+                },
+                "flag": {
+                  "type": "string",
+                  "enum": [
+                    "tight",
+                    "moderate",
+                    "none"
+                  ]
+                }
+              },
+              "required": [
+                "from",
+                "to",
+                "edges",
+                "intensity",
+                "flag"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "snapshotId",
+          "packagesFrom",
+          "modularity",
+          "totalEdges",
+          "unassignedFiles",
+          "packages",
+          "crossEdges"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "paths.impact": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "paths": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "root": {
+            "type": "string"
+          },
+          "window": {
+            "default": "30d",
+            "type": "string",
+            "pattern": "^(?:[1-9]\\d*d|lifetime)$"
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "result": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "baselineSnapshotId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "comparable": {
+            "type": "boolean"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "indexed"
+                    },
+                    "input": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "node": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "span": {
+                          "type": "object",
+                          "properties": {
+                            "startLine": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "endLine": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "startLine",
+                            "endLine"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "path"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "complexity": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "hotspot": {
+                      "type": "object",
+                      "properties": {
+                        "score": {
+                          "type": "number"
+                        },
+                        "rank": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "score",
+                        "rank"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "findings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "snapshotId": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "rule": {
+                            "type": "string"
+                          },
+                          "tool": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "node": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "span": {
+                                "type": "object",
+                                "properties": {
+                                  "startLine": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "endLine": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "startLine",
+                                  "endLine"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind",
+                              "name",
+                              "path"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "destination": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "span": {
+                                "type": "object",
+                                "properties": {
+                                  "startLine": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "endLine": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "startLine",
+                                  "endLine"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind",
+                              "name",
+                              "path"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "range": {
+                            "type": "object",
+                            "properties": {
+                              "startLine": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "endLine": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "startLine",
+                              "endLine"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "metric": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "number"
+                          },
+                          "threshold": {
+                            "type": "number"
+                          },
+                          "excess": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "new",
+                              "carryover",
+                              "resolved",
+                              "worsened",
+                              "improved"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "measured",
+                                  "derived",
+                                  "model"
+                                ]
+                              },
+                              "source": {
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "snapshotId",
+                          "rule",
+                          "tool",
+                          "severity",
+                          "node",
+                          "excess",
+                          "message",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "delta": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "inBaseline": {
+                              "type": "boolean"
+                            },
+                            "scoreBefore": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "score": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "complexityBefore": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "complexity": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "findings": {
+                              "type": "object",
+                              "properties": {
+                                "new": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "worsened": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "improved": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "resolved": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "new",
+                                "worsened",
+                                "improved",
+                                "resolved"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "inBaseline",
+                            "scoreBefore",
+                            "score",
+                            "complexityBefore",
+                            "complexity",
+                            "findings"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "input",
+                    "path",
+                    "node",
+                    "complexity",
+                    "hotspot",
+                    "findings"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "not-indexed"
+                    },
+                    "input": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "input",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "outside-repo"
+                    },
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "ranked": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "rollup": {
+            "type": "object",
+            "properties": {
+              "indexed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "notIndexed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "outsideRepo": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "score": {
+                "type": "number"
+              },
+              "maxComplexity": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "topRank": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "openFindings": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "delta": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "score": {
+                        "type": "number"
+                      },
+                      "findings": {
+                        "type": "object",
+                        "properties": {
+                          "new": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "worsened": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "improved": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "resolved": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "new",
+                          "worsened",
+                          "improved",
+                          "resolved"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "score",
+                      "findings"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "indexed",
+              "notIndexed",
+              "outsideRepo",
+              "score",
+              "maxComplexity",
+              "topRank",
+              "openFindings"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "snapshotId",
+          "rows",
+          "ranked",
+          "rollup"
         ],
         "additionalProperties": false
       }

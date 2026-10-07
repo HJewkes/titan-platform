@@ -42,6 +42,7 @@ import {
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
+import type { ReviewerFacts } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 
@@ -84,7 +85,7 @@ describe("acceptVerdict", () => {
   });
 
   it("reads a WAIT block for another head as plain none", () => {
-    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ verdict: "WAIT", head: OTHER_HEAD }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("carries a FIX_FIRST verdict with the reviewer's words, which the implementer has to read", () => {
@@ -122,7 +123,7 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a block whose head differs from the requested head", () => {
-    expect(acceptVerdict(input, [message({ text: block({ head: OTHER_HEAD }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ head: OTHER_HEAD }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a message written before dispatch", () => {
@@ -150,17 +151,17 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses a block for another PR number", () => {
-    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/demo#8" }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/demo#8" }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a block for another repository", () => {
-    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/other#7" }) })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: block({ pr: "octo/other#7" }) })])).toMatchObject({ kind: "none", malformed: { refusal: "wrong_target" } });
   });
 
   it("refuses a valid block that is not the final message", () => {
     const later = message({ writtenAt: 3_000, text: "One more thought, no verdict here." });
 
-    expect(acceptVerdict(input, [message(), later])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message(), later])).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
   });
 
   it("lets a later MERGE decide over an earlier FIX_FIRST for the same head in one read", () => {
@@ -182,7 +183,7 @@ describe("acceptVerdict", () => {
   });
 
   it("refuses when the final message has no parseable block", () => {
-    expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toEqual({ kind: "none" });
+    expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toMatchObject({ kind: "none", malformed: { refusal: "bad_verdict" } });
   });
 
   it("refuses when there are no messages", () => {
@@ -392,7 +393,7 @@ const standing = (overrides: Partial<ReviewerAgent> = {}) => agent("rv-standing"
 
 interface FakeDispatch extends ReviewerDispatch {
   agents: ReviewerAgent[];
-  spawns: { name: string; brief: string; target: ReviewTarget }[];
+  spawns: { name: string; brief: string; target: ReviewTarget; facts?: ReviewerFacts }[];
   resumes: { name: string; brief: string }[];
 }
 
@@ -403,8 +404,8 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
     spawns: [],
     resumes: [],
     roster: async () => [...fake.agents],
-    spawn: async (name, brief, target) => {
-      fake.spawns.push({ name, brief, target });
+    spawn: async (name, brief, target, facts) => {
+      fake.spawns.push({ name, brief, target, facts });
       if (hooks.onSpawn) return hooks.onSpawn(name);
       fake.agents.push(agent(name, { presence: "live" }));
     },
@@ -466,7 +467,7 @@ describe("sh-review", () => {
     return {
       clock,
       intent: () => run<ReviewIntentResult>("sh-review-intent", { ...target, runId: "run-1" }, 0),
-      review: (intent: unknown, attempt = 0) => run<ReviewDispatchResult>("sh-review", { ...target, intent }, attempt),
+      review: (intent: unknown, attempt = 0, runId?: string) => run<ReviewDispatchResult>("sh-review", { ...target, intent, ...(runId && { runId }) }, attempt),
     };
   }
 
@@ -479,6 +480,22 @@ describe("sh-review", () => {
   }
 
   const spawnIntent: ReviewIntent = { head: HEAD, reviewer: "rv-octo-demo-7", at: START, mode: "spawn" };
+
+  it("sh-review passes the kind registered for the run through to the spawn", async () => {
+    const dispatch = fakeDispatch();
+
+    await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
+
+    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security" });
+  });
+
+  it("sh-review gives the spawn the strict facts when the step carries no run id", async () => {
+    const dispatch = fakeDispatch();
+
+    await reviewSteps(dispatch).review(spawnIntent);
+
+    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true });
+  });
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
     const dispatch = fakeDispatch();
@@ -920,7 +937,7 @@ describe("sh-review", () => {
       expect(result).toEqual({ kind: "dispatched", ...spawnIntent, agentId: "agent-rv-octo-demo-7", sessionId: "session-rv-octo-demo-7", startedAt: START + 7 * 60_000, busyWaits: waits });
       expect(dispatch.asks()).toBe(4);
       expect(steps.clock.now - START).toBe(7 * 60_000);
-      expect(seen).toEqual(waits.map((wait) => `waiting for the broker to start reviewer rv-octo-demo-7: ${wait}`));
+      expect(seen).toEqual(waits.map((wait) => `waiting for reviewer admission (the broker has not started rv-octo-demo-7): ${wait}`));
       expect(reviewWait("octo/demo", 7)).toBeUndefined();
     });
 
@@ -1160,9 +1177,9 @@ describe("reviewPhase", () => {
     const { stepIds, resultOf, inputs } = await review({ dispatch: fakeDispatch(), policy: AUTO });
     const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
 
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
-    expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent });
+    expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
   });
 
   it("asks the reviewer for an owner brief when the run's policy is owner-gate, and not when it is auto", async () => {
@@ -1192,7 +1209,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "dispatched", busyWaits: [expect.any(String), expect.any(String), expect.any(String)] });
     expect(dispatch.spawns).toHaveLength(1);
   });
@@ -1212,7 +1229,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
   });
 
   it("answers not-started, not no-verdict, when the machine guard outlasts the busy wait, and starts nobody", async () => {
@@ -1438,7 +1455,7 @@ describe("reviewPhase", () => {
 
       const { verdicts, stepIds } = await review({ dispatch, read: lateReader(18_000), policy: AUTO });
 
-      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(dispatch.spawns).toHaveLength(1);
     });
@@ -1449,7 +1466,7 @@ describe("reviewPhase", () => {
       const { verdicts, resultOf } = await review({ dispatch, read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO });
 
       expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
-      expect(resultOf(`sh-late-verdict:${H1}`)).toEqual({ kind: "none" });
+      expect(resultOf(`sh-late-verdict:${H1}`)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     });
   });
 

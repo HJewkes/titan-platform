@@ -1,10 +1,10 @@
 # @titan-design/agent-surface
 
 Where a spawned agent is presented, and the launcher that starts it there. A surface is
-headless (a detached child with discarded streams) or an iTerm2 pane, tab or window placed
-beside an anchor session by UUID, never by focus. Every surface launches one fixed command
-supplied by the host; that command reads a launch plan from disk, so a model-authored brief
-never reaches a command line or an AppleScript string.
+headless (a detached child with discarded streams), an iTerm2 pane, tab or window placed
+beside an anchor session by UUID, never by focus, or a window in a tmux session. Every
+surface launches one fixed command supplied by the host; that command reads a launch plan
+from disk, so a model-authored brief never reaches a command line or an AppleScript string.
 
 Tier 1 of the titan-platform DAG, with no dependencies. Extracted from agent-chat's
 `agents/surfaces/`, `run-agent.ts`, `launch-output.ts` and `pane-identity.ts` (TP-639).
@@ -27,6 +27,15 @@ side of the anchor a pane's stack starts on. `maxInTab` turns a pane into a tab 
 anchor's window once the tab holds that many sessions. `tabWindow` (an iTerm2 window id)
 opens a tab in that window with no anchor. An anchored launch reports `inTab`, the session
 count of the anchor's tab, on its handle. `iterm-window` ignores all of them.
+
+`tmux-window` is for a host with no iTerm2, such as a Linux factory server. It runs
+`tmux new-window -d -t =fac: -n <title> '<launcher line>'` and records the window id (`@N`)
+as `paneRef`; a missing session is started with `new-session`, with a notice. `tmuxSession`
+overrides `fac` (a name with `:` or `.` is refused, as tmux would rename it) and `tmuxSocket` adds `-L <name>`. The window closes when the agent exits,
+so the host infers that exit with `tmuxWindowPresent`. `close()` runs `kill-window` and then
+re-lists the server's windows before it reports `closed: true`. A failed `kill-window` also counts as closed when that re-list shows the window gone (or no server running). Resume is an ordinary launch
+into a new window. The line runs through the tmux server's `default-shell`, which must be a
+POSIX shell, and tmux's own `remain-on-exit` must stay off.
 
 `AppleScriptRunner`, `SpawnFn` and `ProcessProbe` are injectable, so the suites run on Linux.
 

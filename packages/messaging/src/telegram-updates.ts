@@ -209,11 +209,17 @@ export function readInbound(raw: unknown): InboundReadResult {
   return inbound ? { ok: true, inbound } : { ok: false, reason: "not-text" };
 }
 
-/** The next offset acknowledges everything in the batch, read or skipped. */
+const updateIdOnly = z.object({ update_id: z.number().int() });
+
+/**
+ * The next offset acknowledges everything in the batch, read or skipped. It reads
+ * only `update_id`, so a shape the full schema rejects still advances the offset
+ * instead of being served again on every poll.
+ */
 function nextOffset(batch: readonly unknown[], current: number | undefined): number | undefined {
   let highest: number | undefined;
   for (const raw of batch) {
-    const parsed = telegramUpdateEvent.safeParse(raw);
+    const parsed = updateIdOnly.safeParse(raw);
     if (!parsed.success) continue;
     if (highest === undefined || parsed.data.update_id > highest) {
       highest = parsed.data.update_id;

@@ -93,7 +93,8 @@ export function topHotspots(
     const complexity = lookupMetric(ctx, complexityName, node.id) ?? 0;
     if (churn === 0 || complexity === 0) continue;
     const recency = lookupMetric(ctx, `recency_${ctx.windowSuffix}`, node.id) ?? 1;
-    rows.push({ nodeId: node.id, churn, complexity, recency, score: Math.round(churn * complexity * recency) });
+    const loc = lookupMetric(ctx, "loc", node.id) ?? 0;
+    rows.push({ nodeId: node.id, churn, complexity, loc, recency, score: Math.round(churn * complexity * recency) });
   }
   rows.sort((a, b) => b.score - a.score);
   return rows.slice(0, limit);
@@ -105,6 +106,11 @@ export function hotspotScoreOf(ctx: ReportContext, nodeId: string): number {
   const complexity = lookupMetric(ctx, pickComplexityMetric(ctx), nodeId) ?? 0;
   if (churn === 0 || complexity === 0) return 0;
   return hotspotScore(ctx, nodeId, churn, complexity);
+}
+
+/** The complexity factor a file's hotspot score multiplies, read even when the file has no churn; undefined when unmeasured. */
+export function hotspotComplexityOf(ctx: ReportContext, nodeId: string): number | undefined {
+  return lookupMetric(ctx, pickComplexityMetric(ctx), nodeId);
 }
 
 /**

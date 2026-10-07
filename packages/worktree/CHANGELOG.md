@@ -1,5 +1,17 @@
 # @titan-design/worktree
 
+## 0.1.4
+
+### Patch Changes
+
+- 816d492: Match branch names exactly when finding the worktree that holds a branch, so allocating `scout` no longer fails while `scout-2` holds its tree. `check` and `allocate` now share one preflight: `check` reports no budget refusal for an assigned worktree, and reports a refusal when the branch is checked out elsewhere, its directory is in the way, or an assigned worktree is gone with no record to re-create it.
+
+## 0.1.3
+
+### Patch Changes
+
+- 2dbbb38: Release and sweep now refuse a worktree whose files git cannot vouch for. They share park's unsaved-work check: `git status --porcelain -uall`, so `status.showUntrackedFiles=no` cannot hide an untracked file; a status git cannot read (a broken gitdir) counts as dirty; and an ignored file outside node_modules, dist, coverage, .turbo and a top-level .claude refuses. Removal no longer retries with `--force` when git's own remove refuses, unless the caller forced; release and `reclaimWorktree` report that refusal instead of claiming success.
+
 ## 0.1.2
 
 ### Patch Changes

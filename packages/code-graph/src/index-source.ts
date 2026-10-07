@@ -8,7 +8,10 @@ import { walkSourceFiles } from "./file-walk.js";
  * keeps ids byte-identical by answering for the same absolute paths.
  */
 export interface IndexSource {
-  /** Source files under `rootDirs` that pass the ingest filter for `languages`, deduped, in walk order. */
+  /**
+   * Source files under `rootDirs` that pass the ingest filter for `languages`,
+   * deduped and sorted, so float metrics summed in file order match across sources.
+   */
   listFiles(rootDirs: readonly string[], languages: readonly string[]): Promise<string[]>;
   /** UTF-8 content of a file; throws when it does not exist. */
   readFile(abs: string): string;
@@ -36,7 +39,7 @@ function realFileSystemHost(): FileSystemHost {
 /** The checked-out working tree, read through `node:fs`. The default source. */
 export function workingTreeSource(): IndexSource {
   return {
-    listFiles: walkSourceFiles,
+    listFiles: async (rootDirs, languages) => (await walkSourceFiles(rootDirs, languages)).sort(),
     readFile: (abs) => readFileSync(abs, "utf-8"),
     fileExists: existsSync,
     get fileSystem() {

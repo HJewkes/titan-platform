@@ -36,6 +36,10 @@ function fakePorts(init: Machine) {
       calls.push(args.join(" "));
       return init.print === undefined ? { code: 113, stdout: "", stderr: "Could not find service" } : { code: 0, stdout: init.print, stderr: "" };
     },
+    systemctl: async (args) => {
+      calls.push(`systemctl ${args.join(" ")}`);
+      return { code: 127, stdout: "", stderr: "systemctl not found" };
+    },
     claude: async () => undefined,
     isDirectory: () => false,
     which: () => undefined,

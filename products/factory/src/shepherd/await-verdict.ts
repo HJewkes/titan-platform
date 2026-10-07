@@ -3,7 +3,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
-import { parseOwnerBrief } from "./review-schemas.js";
+import { parseOwnerBrief, type Malformed } from "./review-schemas.js";
 import { namesTarget } from "./verdict-target.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
@@ -57,10 +57,15 @@ function boundedFindings(text: string): string {
 
 export const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
 
+type MalformedNone = { kind: "none"; malformed: Malformed };
+const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): MalformedNone => ({ kind: "none", malformed: { refusal, writtenAt } });
+
 /**
  * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
  * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
  * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
+ * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
+ * `malformed` record; silence, a foreign or earlier message and `WAIT` carry none.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
@@ -70,8 +75,8 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   const block = parseVerdictBlock(final.text);
-  if (!("repo" in block)) return { kind: "none" };
-  if (!namesTarget(block, input)) return { kind: "none" };
+  if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
+  if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
   if (!block.ok) return { kind: "none", reason: "wait" };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };

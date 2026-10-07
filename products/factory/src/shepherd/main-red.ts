@@ -8,6 +8,7 @@ import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
 import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
@@ -191,7 +192,7 @@ function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[
   ].join("\n\n");
 }
 
-const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
+const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError || error instanceof SpawnDeferred;
 
 const THAWED = "the episode thawed while the step ran";
 

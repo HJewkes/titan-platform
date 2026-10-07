@@ -65,6 +65,10 @@ export interface SurfaceOptions {
    * live pane.
    */
   reuseAnchor?: boolean;
+  /** The tmux session a `tmux-window` surface opens its window in; default `fac`. */
+  tmuxSession?: string;
+  /** A tmux socket name (`tmux -L`); absent means tmux's own default, which honours `$TMUX`. */
+  tmuxSocket?: string;
   /** Told when a surface silently downgrades, e.g. the anchor pane has closed. */
   onNotice?: (message: string) => void;
   runAppleScript?: AppleScriptRunner;

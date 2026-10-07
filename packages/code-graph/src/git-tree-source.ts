@@ -1,9 +1,10 @@
-import { readlinkSync, realpathSync } from "node:fs";
+import { readlinkSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
 import { Project, type FileSystemHost, type RuntimeDirEntry } from "ts-morph";
 import { detectGitToplevel } from "./history/git.js";
 import { listTreeBlobs, readBlobs, resolveCommit } from "./history/git-tree.js";
+import { overlayHost, type TreeAnswers } from "./git-tree-host.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
 
 // Everything the indexer, ts-morph or generated.ts may read in the repo; batched into one cat-file.
@@ -102,7 +103,10 @@ class CommitTree {
 
   /** The one place an answer's origin is decided; every file, dir and realpath answer goes through it. */
   locate(abs: string, kind: "file" | "dir"): Location {
-    const canonical = this.resolve(path.resolve(abs), 0);
+    return this.classify(this.resolve(path.resolve(abs), 0), kind);
+  }
+
+  private classify(canonical: string, kind: "file" | "dir"): Location {
     const rel = relativeInside(this.root, canonical);
     if (rel === null) return { origin: "disk", canonical, rel: null };
     const tracked = kind === "file" ? this.oids.has(rel) : this.dirs.has(rel);
@@ -113,7 +117,7 @@ class CommitTree {
   /**
    * Untracked build output a checkout would see on disk: under an excluded dir
    * whose parent the commit tracks, so `untracked/dist` is as absent as `untracked`.
-   * A tracked symlink only lands here when its chain loops, and is then absent.
+   * A tracked symlink only lands here when its chain loops or dangles, and is then absent.
    */
   private ownsBuildOutput(rel: string, includeSelf: boolean): boolean {
     const at = firstExcluded(rel, includeSelf);
@@ -149,26 +153,58 @@ class CommitTree {
     return rel !== null && (this.oids.has(rel) || this.dirs.has(rel));
   }
 
-  /** Memoized per path, so each dir's components are resolved once. */
   private resolve(abs: string, hops: number): string {
-    let resolved = this.canonical.get(abs);
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
+  }
+
+  /**
+   * Every component of every path and link target passes through here, memoized
+   * per path and hop budget: a link named many times in nested targets is followed
+   * once per budget, and a chain cut short by the budget never answers for a shorter one.
+   */
+  private step(dir: string, name: string, hops: number): string {
+    const key = `${hops}:${path.join(dir, name)}`;
+    let resolved = this.canonical.get(key);
     if (resolved === undefined) {
-      const parent = path.dirname(abs);
-      resolved = parent === abs ? abs : this.step(this.resolve(parent, hops), path.basename(abs), hops);
-      this.canonical.set(abs, resolved);
+      resolved = this.stepOnce(dir, name, hops);
+      this.canonical.set(key, resolved);
     }
     return resolved;
   }
 
   /** Disk is never consulted for a component the commit tracks, a symlink included. */
-  private step(dir: string, name: string, hops: number): string {
+  private stepOnce(dir: string, name: string, hops: number): string {
     const next = path.join(dir, name);
     const rel = relativeInside(this.root, next);
     if (this.tracks(rel)) return next;
     if (hops >= MAX_LINK_HOPS) return next;
     const linkOid = rel === null ? undefined : this.links.get(rel);
-    const target = linkOid === undefined ? linkTarget(next) : path.resolve(dir, this.blob(linkOid));
+    if (linkOid !== undefined) return this.follow(dir, this.blob(linkOid), hops + 1) ?? next;
+    const target = linkTarget(next);
     return target === null ? next : this.resolve(target, hops + 1);
+  }
+
+  /**
+   * A tracked link's target walked one component at a time from `dir`, as a
+   * checkout walks it: `..` leaves the dir actually reached, so `gone/..` dangles
+   * (null) when `gone` is absent, where lexical normalisation would drop it.
+   */
+  private follow(dir: string, target: string, hops: number): string | null {
+    let at = path.isAbsolute(target) ? path.parse(path.resolve(target)).root : dir;
+    for (const name of target.split("/")) {
+      if (name === "" || name === ".") continue;
+      if (name !== "..") at = this.step(at, name, hops);
+      else if (this.isDir(at)) at = path.dirname(at);
+      else return null;
+    }
+    return at;
+  }
+
+  private isDir(canonical: string): boolean {
+    const { origin } = this.classify(canonical, "dir");
+    if (origin !== "disk") return origin === "tree";
+    return statSync(canonical, { throwIfNoEntry: false })?.isDirectory() ?? false;
   }
 
   private addEntry(rel: string, kind: EntryKind): void {
@@ -201,20 +237,7 @@ function listTreeFiles(tree: CommitTree, rootDirs: readonly string[], languages:
   for (const rootDir of rootDirs) {
     for (const abs of ingestedUnder(tree, rootDir, languages)) seen.add(abs);
   }
-  return [...seen];
-}
-
-function readOnly(): never {
-  throw new Error("a git tree source is read-only");
-}
-
-/** One answer per path, shared by the IndexSource methods and the ts-morph host so they always agree. */
-interface TreeAnswers {
-  fileExists(abs: string): boolean;
-  readFile(abs: string): string;
-  directoryExists(abs: string): boolean;
-  readDir(abs: string): RuntimeDirEntry[];
-  realpath(abs: string): string;
+  return [...seen].sort();
 }
 
 /** Untracked build-output dirs on disk under a tracked dir, so a listing agrees with directoryExists. */
@@ -272,33 +295,6 @@ function treeAnswers(tree: CommitTree, real: FileSystemHost): TreeAnswers {
     // Like the real host, realpath of an absent path throws.
     realpath: (abs) =>
       fileExists(abs) || directoryExists(abs) ? tree.locate(abs, "file").canonical : missing(abs, "file"),
-  };
-}
-
-function overlayHost(answers: TreeAnswers, real: FileSystemHost): FileSystemHost {
-  return {
-    isCaseSensitive: () => real.isCaseSensitive(),
-    readDirSync: answers.readDir,
-    readFileSync: (p) => answers.readFile(p),
-    readFile: async (p) => answers.readFile(p),
-    fileExistsSync: answers.fileExists,
-    fileExists: async (p) => answers.fileExists(p),
-    directoryExistsSync: answers.directoryExists,
-    directoryExists: async (p) => answers.directoryExists(p),
-    realpathSync: answers.realpath,
-    getCurrentDirectory: () => real.getCurrentDirectory(),
-    glob: () => Promise.reject(new Error("glob is not supported on a git tree source")),
-    globSync: () => readOnly(),
-    delete: async () => readOnly(),
-    deleteSync: readOnly,
-    writeFile: async () => readOnly(),
-    writeFileSync: readOnly,
-    mkdir: async () => readOnly(),
-    mkdirSync: readOnly,
-    move: async () => readOnly(),
-    moveSync: readOnly,
-    copy: async () => readOnly(),
-    copySync: readOnly,
   };
 }
 

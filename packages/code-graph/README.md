@@ -484,7 +484,8 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 
 - `topUnusedExports(symbolNodes, publicApi, ctx, limit)` lists exported symbols whose
   `utilization` is 0 or absent, ranked internal first, then by `symbol_cognitive`
-  descending. `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
+  descending, each row carrying the export's own `loc` (`symbol_loc`, 0 when unmeasured).
+  `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
   node re-exports one hop away, whose exports may still have npm consumers.
 - `topDeadModules(nodes, edges, ctx, limit)` lists files that a forward walk over `imports`
   and `re-exports` edges never reaches, ranked by `loc`. The walk starts from files with the

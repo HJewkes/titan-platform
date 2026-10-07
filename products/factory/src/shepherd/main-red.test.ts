@@ -9,6 +9,7 @@ import { bindAll } from "../workflows.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
 import { FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -238,6 +239,19 @@ describe("sh-spawn-fixer", () => {
 
     expect(result).toMatchObject({ fixer: fixerName(REPO, RED), thawed: true });
     expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixer: null });
+  });
+
+  it("retries a fixer spawn the spawn gate defers, and starts the fixer once the gate admits", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    let deferrals = 1;
+    const gated: FixerAgents = { ...fixers, spawn: async (...args) => (deferrals-- > 0 ? Promise.reject(new SpawnDeferred("load5 40 is past the limit 28")) : fixers.spawn(...args)) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: gated }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), detail: "spawned" });
+    expect(r.spawned).toHaveLength(1);
   });
 
   it("spawns nothing when the policy grants no fixer", async () => {
