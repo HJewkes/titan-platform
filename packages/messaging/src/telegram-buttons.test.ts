@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SendInput } from "./contract.js";
-import { TelegramTransport } from "./telegram.js";
+import { TELEGRAM_MAX_TEXT_LENGTH, TelegramTransport } from "./telegram.js";
 
 const TOKEN = "123456789:AAH-fake-bot-token_for-tests";
 
@@ -108,5 +108,40 @@ describe("TelegramTransport.send with buttons", () => {
       error: { kind: "bad-buttons", message: "Every button needs a non-empty label" },
     });
     expect(bodies).toHaveLength(0);
+  });
+});
+
+describe("TelegramTransport.edit validation", () => {
+  const ref = { channel: "telegram" as const, chat: "4242", messageId: "5" };
+
+  function countingTransport(): { transport: TelegramTransport; calls: () => number } {
+    let calls = 0;
+    const transport = new TelegramTransport({
+      token: TOKEN,
+      chatIdFor: () => 4242,
+      fetch: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ ok: true, result: true }));
+      },
+    });
+    return { transport, calls: () => calls };
+  }
+
+  it("returns too-long for text over the limit without calling fetch", async () => {
+    const { transport, calls } = countingTransport();
+
+    const result = await transport.edit({ ref, text: "x".repeat(TELEGRAM_MAX_TEXT_LENGTH + 1) });
+
+    expect(result).toMatchObject({ ok: false, error: { kind: "too-long", limit: TELEGRAM_MAX_TEXT_LENGTH } });
+    expect(calls()).toBe(0);
+  });
+
+  it("returns bad-buttons for button data over 64 bytes without calling fetch", async () => {
+    const { transport, calls } = countingTransport();
+
+    const result = await transport.edit({ ref, buttons: [[{ label: "Go", data: "d".repeat(65) }]] });
+
+    expect(result).toMatchObject({ ok: false, error: { kind: "bad-buttons" } });
+    expect(calls()).toBe(0);
   });
 });
