@@ -331,6 +331,14 @@ only when every one that exists is empty, so a graph that holds Codex evidence k
 three. It then creates `session_state` (`session_id`, `key`, `value`, primary key
 `(session_id, key)`) if missing.
 
+Migration 10, `request_cost model-id boundary`, runs DDL only and rewrites no row: it drops
+and recreates the `request_cost` view with the same columns. Only the price join changes. A
+`price` row now matches a request only at a model-id boundary: the model equals the prefix, or
+the prefix is followed by `[..]`, or by `-YYYYMMDD` with an optional `[..]`. Longest prefix,
+then latest `effective_from`, still wins. A model the prices do not list, such as an
+`claude-opus-5-9` against a `claude-opus-5` row, no longer takes the shorter prefix's rate; it
+reads `priced = 0` and shows under the cost report's `unpricedModels`.
+
 The normalized tables are now opt-in. `openSessionGraph(path, { normalized: true })` creates
 them when absent; without it a graph holds none unless migration 3 left rows in them.
 `normalized` is ignored with `readonly: true`. Open with it before calling `indexCodexSource`.
