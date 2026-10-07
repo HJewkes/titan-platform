@@ -4,7 +4,7 @@ Define a command once with zod, then project it onto every surface: a CLI, an MC
 list, or an HTTP RPC route. One definition, no parallel schema maintenance.
 
 Tier 1 of the titan-platform DAG. Extracted from active-work's `src/registry/` (TP-2).
-Depends only on `zod` (peer, v4).
+Depends on `@titan-design/rpc-protocol` and `zod` (peer, v4).
 
 ## Define and register
 
