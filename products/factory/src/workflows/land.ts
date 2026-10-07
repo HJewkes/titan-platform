@@ -160,11 +160,7 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
-  const failed = afterUpdate(ci, update);
-  if (failed) return failed;
-  if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
-  if (update.own && refresh) state.refreshed.add(update.headSha);
-  return undefined;
+  return afterUpdate(ci, update, state, refresh);
 }
 
 /** A run recorded before retries went from the spent budget straight to the gate; a replay keeps that path. */
@@ -179,12 +175,15 @@ async function retryUpdate(ctx: WorkflowContext, input: LandInput, ci: CiSnapsho
   await step(ctx, roundId("update-backoff", state.round, n), { waitMs: retryBackoffMs(state.bound.retries ?? 0), retry: (state.bound.retries ?? 0) + 1 }, BackoffResult);
   const update = await step(ctx, roundId("update-retry", state.round, n), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   recordRetry(state.bound, ci.headSha);
-  return afterUpdate(ci, update);
+  return afterUpdate(ci, update, state, false);
 }
 
-function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>): LandOutcome | undefined {
+/** What follows any update, a retry included: the stops, and the trust a head built on an approved one inherits. */
+function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>, state: LandState, refresh: boolean): LandOutcome | undefined {
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
+  if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
+  if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
 }
 

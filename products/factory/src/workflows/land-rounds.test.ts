@@ -261,6 +261,26 @@ describe("land merge policy", () => {
     expect(world.fake.effects.merge).toBe(0);
   });
 
+  it("keeps a human's merge approval across a retry that lands, so nobody is asked again", async () => {
+    let racing = false;
+    const world: { fake: FakeGitHub; host: FactoryHost; outcomes: LandOutcome[] } = roundsHost(once(gateEverything));
+    const green = world.fake.onGetPr!;
+    world.fake.onGetPr = (pr, reads) => (green(pr, reads), (pr.behind = racing && world.fake.effects.updateBranch < 1 + MAX_UPDATE_CYCLES + 1));
+    world.fake.pr(1).behind = true;
+    const runId = world.host.runtime.start("land-rounds");
+
+    await gateOpened(world.host, gateId(runId, "approve-merge"));
+    racing = true;
+    world.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: world.fake.pr(1).headSha }, OWNER);
+    const run = await world.host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(stepIds(world.host, runId)).toContain("update-retry:0");
+    expect(world.host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
+    expect(world.fake.effects.merge).toBe(1);
+    expect(world.outcomes.at(-1)).toMatchObject({ kind: "merged" });
+  });
+
   it("fails the run when the recorded decision names a head other than the one CI reported", async () => {
     const otherHead = (routes: StepRoute[]) =>
       routes.map((route) => (route.match !== "merge-policy" ? route : { ...route, runner: { run: (input: RoutedStepInput) => route.runner.run({ ...input, prompt: input.prompt.replace(H1, H2) }) } }));
