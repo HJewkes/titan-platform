@@ -224,7 +224,7 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
     id: r.id as string,
     from: r.from,
     to: r.to,
-    except: parseStringList(r, "except"),
+    except: parseExcept(r),
     severity: parseSeverity(r),
   };
 }
@@ -254,6 +254,15 @@ function parseSeverity(r: Record<string, unknown>): Severity | undefined {
 
 function parseExclude(r: Record<string, unknown>): string[] | undefined {
   return parseStringList(r, "exclude");
+}
+
+/** An empty entry would match every destination and silently disable the rule. */
+function parseExcept(r: Record<string, unknown>): string[] | undefined {
+  const list = parseStringList(r, "except");
+  if (list?.some((e) => e === "")) {
+    throw new Error(`${r.id}: each except entry must be a non-empty string`);
+  }
+  return list;
 }
 
 function parseStringList(r: Record<string, unknown>, key: string): string[] | undefined {
