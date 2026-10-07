@@ -1,5 +1,15 @@
 # @titan-design/code-graph
 
+## 0.14.0
+
+### Minor Changes
+
+- 14c4299: Add `loc` to `HotspotRow` and `UnusedExportRow`, matching codewatch's graph report. `topHotspots` reads the file `loc` metric and `topUnusedExports` reads `symbol_loc`; both give 0 when unmeasured, and drift's `newHotspots` carry it through. No index contents change, so `INDEX_VERSION` stays.
+
+### Patch Changes
+
+- 2c0fff9: Derive `NodeRole` and `NodeKind` from exported `NODE_ROLES` and `NODE_KINDS` arrays, so `excludeRoles` accepts every role (including `generated` and `script`).
+
 ## 0.13.0
 
 ### Minor Changes

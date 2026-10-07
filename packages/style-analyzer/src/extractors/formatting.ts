@@ -109,7 +109,9 @@ export class FormattingExtractor implements StyleExtractor {
     filePath: string,
   ): Observation[] {
     const trailingCommaPattern = /,\s*[\n\r]\s*[}\]]/g;
-    const noTrailingPattern = /[^,\s]\s*[\n\r]\s*[}\]]/g;
+    // `;`, `{` and `}` before a closer end a block body, not a list, so they
+    // say nothing about trailing-comma style.
+    const noTrailingPattern = /[^,;{}\s]\s*[\n\r]\s*[}\]]/g;
 
     const trailing = (source.match(trailingCommaPattern) || []).length;
     const noTrailing = (source.match(noTrailingPattern) || []).length;
@@ -177,7 +179,10 @@ export class FormattingExtractor implements StyleExtractor {
     const spaceSizes: number[] = [];
 
     for (const line of lines) {
-      if (!line || line.trim() === "") continue;
+      const trimmed = line.trim();
+      // JSDoc continuation lines (` * text`) carry a 1-space offset that is
+      // alignment, not indentation, and would drive the GCD to 1.
+      if (!trimmed || this.isComment(trimmed)) continue;
 
       const leadingWhitespace = line.match(/^(\s+)/);
       if (!leadingWhitespace) continue;

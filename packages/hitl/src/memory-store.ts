@@ -33,8 +33,10 @@ export class MemoryGateStore extends BaseGateStore {
     return row ? copy(row) : undefined;
   }
 
-  protected update(record: GateRecord): void {
+  protected update(record: GateRecord): boolean {
+    if (this.rows.get(record.id)?.status !== "pending") return false;
     this.rows.set(record.id, copy(record));
+    return true;
   }
 
   protected readByStatus(status: GateRecord["status"]): GateRecord[] {

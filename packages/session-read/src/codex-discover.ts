@@ -2,6 +2,7 @@ import { promises as fs, type Dirent } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { contentHash, readJsonLines } from "@titan-design/locator";
+import { isMissing } from "./absent.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
 import { asObject, str } from "./text.js";
 
@@ -19,8 +20,9 @@ export class CodexSourceCollisionError extends Error {
   }
 }
 
-export function codexHome(): string {
-  return path.join(os.homedir(), ".codex");
+/** The Codex CLI's home: CODEX_HOME when set, as the CLI itself resolves it, else ~/.codex. */
+export function codexHome(env: NodeJS.ProcessEnv = process.env): string {
+  return env.CODEX_HOME ? env.CODEX_HOME : path.join(os.homedir(), ".codex");
 }
 
 /** Discover persisted active and archived rollouts without requiring private state databases. */
@@ -76,8 +78,10 @@ async function firstMetadata(filePath: string): Promise<Record<string, unknown> 
       if (str(record, "type") !== "session_meta") return null;
       return asObject(record?.payload);
     }
-  } catch {
-    return null;
+  } catch (error) {
+    // A malformed first line means the file is not a rollout, not that discovery failed.
+    if (isMissing(error) || error instanceof SyntaxError) return null;
+    throw error;
   }
   return null;
 }
@@ -86,8 +90,9 @@ async function rolloutPaths(root: string): Promise<string[]> {
   let entries: Dirent[];
   try {
     entries = await fs.readdir(root, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
   }
   const nested = await Promise.all(entries.map((entry) => pathsForEntry(root, entry)));
   return nested.flat().sort();
