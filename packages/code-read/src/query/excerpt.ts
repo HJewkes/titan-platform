@@ -1,10 +1,10 @@
 import { EXCERPT_LINE_CAP, type SourceExcerpt } from "./contract-findings.js";
 import type { Span } from "./schemas.js";
-import type { SourceRead, SourceWindow } from "./source.js";
+import type { ExcerptMissing, SourceRead, SourceWindow } from "./source.js";
 
 export interface ExcerptResult {
   excerpt: SourceExcerpt | null;
-  missing?: string;
+  missing?: ExcerptMissing;
 }
 
 interface Window {

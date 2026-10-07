@@ -25,8 +25,11 @@ export interface SourceWindow {
   lineCount: number;
 }
 
-/** Open string: "no-source" | "changed-since-snapshot" | "not-in-export" | "unreadable" today. */
-export type SourceRead = SourceWindow | { unavailable: string };
+/** Why a finding has no excerpt; the wire carries an open string, so an older reader survives a new reason. */
+export const EXCERPT_MISSING = ["no-source", "not-a-source-file", "unreadable", "changed-since-snapshot", "not-in-export"] as const;
+export type ExcerptMissing = (typeof EXCERPT_MISSING)[number];
+
+export type SourceRead = SourceWindow | { unavailable: ExcerptMissing };
 
 /**
  * The seam every query function reads through. The daemon implements it over SQLite with an
