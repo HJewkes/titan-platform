@@ -21,6 +21,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { REREVIEW } from "./stale-gates.js";
 import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditions } from "./resync.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -610,6 +611,38 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
     expect(reviewed).toEqual([REVIEWED, PUSHED, PUSHED]);
     expect(host.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
+  it("a restart between the review-again cancel of approve-merge:1 and the run's reaction replays it back to review at that head", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp1752-")), "factory.db");
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const reviewed: string[] = [];
+    const phases: ShepherdPhases = {
+      wake: async () => ({ kind: "unhandled", reason: "test" }),
+      review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= 2 ? { mergeTreeClean: false } : {}) }),
+    };
+    const store = shepherdStoreRef();
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+    const open = () => openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+    const first = open();
+    fake.addPr({ headSha: REVIEWED });
+    const runId = first.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
+    await gateOpened(first, gateId(runId, "approve-merge"));
+    fake.pushHead(1, PUSHED);
+    await resyncShepherd(first, routes.shepherd!);
+    await gateOpened(first, gateId(runId, "approve-merge:1"));
+    first.gates.cancel(gateId(runId, "approve-merge:1"), `${REREVIEW}merge-tree-clean was the only unmet condition at head ${PUSHED}`);
+    first.close();
+
+    const second = open();
+    cleanups.push(() => second.close());
+    await second.adopt();
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
+    expect(reviewed.filter((head) => head === PUSHED)).toHaveLength(3);
+    expect(second.runtime.status(runId)?.status).not.toBe("failed");
   });
 
   it("cancels a gate whose only unmet condition was merge-tree-clean, and the run reviews the same head again and merges it", async () => {
