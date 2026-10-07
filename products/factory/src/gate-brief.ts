@@ -5,20 +5,20 @@ import type { FailingCheck } from "./workflows/land-ci.js";
 
 const MAX_SUMMARY = 280;
 
-export interface DecisionOption<Id extends string> {
+interface DecisionOption<Id extends string> {
   id: Id;
   label: string;
   recommended?: boolean;
 }
 
-export interface DecisionGate<Id extends string, Shape extends z.ZodRawShape> {
+interface DecisionGate<Id extends string, Shape extends z.ZodRawShape> {
   /** Validates the answer: `decision` is one of the option ids, plus whatever `shape` pins. */
   schema: z.ZodObject<{ decision: z.ZodEnum<{ [K in Id]: K }> } & Shape>;
   questions: GateQuestion[];
 }
 
 /** One option list builds the question the owner reads and the enum the answer is checked against, so the two cannot drift. */
-export function decisionGate<const Id extends string, Shape extends z.ZodRawShape = Record<never, never>>(spec: {
+function decisionGate<const Id extends string, Shape extends z.ZodRawShape = Record<never, never>>(spec: {
   question: string;
   options: readonly [DecisionOption<Id>, ...DecisionOption<Id>[]];
   shape?: Shape;
@@ -57,7 +57,7 @@ export const mainEvidence = (repo: string, mergeSha: string): string => `$ gh ru
 /** A reviewer's MERGE vouches for the head it names and no other. */
 export const verdictIsMergeAt = (verdict: Verdict | undefined, headSha: string): boolean => verdict?.kind === "MERGE" && verdict.headSha === headSha;
 
-export interface PrHead {
+interface PrHead {
   repo: string;
   pr: number;
   headSha: string;

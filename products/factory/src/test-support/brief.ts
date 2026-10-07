@@ -5,7 +5,7 @@ import { expect } from "vitest";
 export const TEST_BRIEF = { summary: "A test gate waits for an answer.", evidenceRef: "$ git status" };
 
 /** The ids a gate's stored answer schema accepts for `decision`. */
-export function schemaDecisions(gate: GateRecord): unknown {
+function schemaDecisions(gate: GateRecord): unknown {
   const properties = gate.schema?.properties as Record<string, { enum?: unknown; const?: unknown }> | undefined;
   return properties?.decision?.enum ?? [properties?.decision?.const];
 }
