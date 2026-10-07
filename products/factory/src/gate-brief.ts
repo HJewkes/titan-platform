@@ -38,8 +38,9 @@ export function oneLine(text: string, max: number): string {
 
 /** The fixed words are never cut; only `detail` shrinks to leave the summary within the field's bound. */
 function summarize(lead: string, detail: string, tail = ""): string {
-  const room = MAX_SUMMARY - lead.length - tail.length - 2;
-  const middle = detail === "" || room < 8 ? "" : ` ${oneLine(detail, room)}`;
+  const room = MAX_SUMMARY - lead.length - tail.length - 3;
+  const cut = detail === "" || room < 8 ? "" : oneLine(detail, room);
+  const middle = cut === "" ? "" : ` ${/[.?!…]$/.test(cut) ? cut : `${cut}.`}`;
   return `${lead}${middle}${tail === "" ? "" : ` ${tail}`}`;
 }
 

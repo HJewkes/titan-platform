@@ -5,6 +5,7 @@ import { FakeHttpError, fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, 
 import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { expectBrief } from "../test-support/brief.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
 import { MAX_UPDATE_CYCLES, landRoutes, readCi } from "./land.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -100,6 +101,27 @@ describe("land core", () => {
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "merge-denied" });
     expect(host.gates.listPending()).toEqual([]);
     expect(scenario.fake.calls).not.toContain("merge");
+  });
+
+  it("opens approve-merge with a summary naming the head and an evidence link", async () => {
+    const scenario = landScenario();
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    expectBrief(host.gates.get(gateId(runId, "approve-merge")), H1, /^https:\/\/github\.com\/octo\/demo\/pull\/1$/);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.questions?.[0]?.options).not.toContainEqual(expect.objectContaining({ recommended: true }));
+  });
+
+  it("opens stuck-behind with a summary naming the head and an evidence link", async () => {
+    const scenario = landScenario();
+    const keepGreen = scenario.fake.onGetPr!;
+    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "stuck-behind"));
+
+    expectBrief(host.gates.get(gateId(runId, "stuck-behind")), scenario.fake.pr(1).headSha, /^https:\/\/github\.com\/octo\/demo\/pull\/1$/);
   });
 
   it(`opens stuck-behind instead of a ${MAX_UPDATE_CYCLES + 1}th update when the base keeps moving, and never merges`, async () => {

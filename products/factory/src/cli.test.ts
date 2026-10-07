@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
@@ -137,5 +137,31 @@ describe("titan-factory serve", () => {
     expect(landed.out).toContain(`on titan-factory serve (port ${port})`);
     expect((await serving).code).toBe(EXIT.OK);
     expect(await probeHealth(port)).toBeNull();
+  });
+});
+
+describe("gates in the resume report", () => {
+  const record = { id: "run-1/approve-merge", prompt: "Merge PR #1 in octo/demo at head abc?", schema: undefined, status: "pending", createdAt: "2026-10-06T00:00:00.000Z" };
+  const report = (gate: object): Parameters<typeof formatResume>[0] => ({ resumed: [], held: [], gates: [{ runId: "run-1", stepId: "approve-merge", gate: gate as never }] });
+
+  it("gates lists summary, evidence and the recommended option; a pre-migration gate falls back to its prompt", () => {
+    const briefed = {
+      ...record,
+      summary: "Merge octo/demo#1 at abc? Recommend merge.",
+      evidenceRef: "https://github.com/octo/demo/pull/1",
+      questions: [{ id: "decision", question: "Land abc?", options: [{ id: "merge", label: "Merge at this head", recommended: true }, { id: "abandon", label: "Abandon the PR" }] }],
+    };
+
+    const withBrief = formatResume(report(briefed));
+    const before = formatResume(report(record));
+
+    expect(withBrief).toContain("gate run-1/approve-merge: Merge octo/demo#1 at abc? Recommend merge.");
+    expect(withBrief).not.toContain("Merge PR #1 in octo/demo at head abc?");
+    expect(withBrief).toContain("evidence: https://github.com/octo/demo/pull/1");
+    expect(withBrief).toContain("Land abc?");
+    expect(withBrief).toContain("- merge: Merge at this head (recommended)");
+    expect(withBrief).toContain("- abandon: Abandon the PR\n");
+    expect(before).toContain("gate run-1/approve-merge: Merge PR #1 in octo/demo at head abc?");
+    expect(before).not.toContain("evidence:");
   });
 });

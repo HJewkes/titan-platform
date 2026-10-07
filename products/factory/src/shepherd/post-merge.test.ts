@@ -13,6 +13,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
+import { expectBrief } from "../test-support/brief.js";
 import { OWNER } from "../test-support/resolver.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 
@@ -508,5 +509,54 @@ describe("shepherd-pr on a red main", () => {
     await w.host.runtime.wait(runId);
 
     expect(stepIds(w, runId)).not.toContain("main-frozen");
+  });
+});
+
+describe("post-merge gate briefs", () => {
+  const MAIN_RUNS = (sha: string) => new RegExp(`^\\$ gh run list -R ${REPO} -c ${sha}$`);
+
+  it("opens main-red with a summary naming the merge sha and an evidence command", async () => {
+    const w = shepherdWorld(() => []);
+    const runId = await runToMerge(w);
+
+    await gateOpened(w.host, gateId(runId, "main-red"));
+
+    const sha = w.fake.pr(1).mergeSha;
+    expectBrief(w.host.gates.get(gateId(runId, "main-red")), sha, MAIN_RUNS(sha));
+  });
+
+  it("opens after-stages with a summary naming the merge sha and an evidence command", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5)]);
+    const runId = await runToMerge(w, { after: JSON.stringify(["deploy", "release"]) });
+
+    await gateOpened(w.host, gateId(runId, "after-stages"));
+
+    const sha = w.fake.pr(1).mergeSha;
+    const gate = w.host.gates.get(gateId(runId, "after-stages"));
+    expectBrief(gate, sha, MAIN_RUNS(sha));
+    expect(gate?.summary).toContain("deploy, release");
+  });
+
+  it("opens main-frozen with a summary naming the merge sha and an evidence command", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")]);
+    const runId = await runToMerge(w);
+
+    await gateOpened(w.host, gateId(runId, "main-frozen"));
+
+    const sha = w.fake.pr(1).mergeSha;
+    const gate = w.host.gates.get(gateId(runId, "main-frozen"));
+    expectBrief(gate, sha, MAIN_RUNS(sha));
+    expect(gate?.questions?.[0]?.options.find((option) => option.recommended)?.id).toBe("stay-frozen");
+  });
+
+  it("opens main-red-again with a summary naming the merge sha and an evidence command", async () => {
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, mainRedPorts().mainRed);
+    frozenWithFixer(w);
+    const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
+
+    await gateOpened(w.host, gateId(runId, "main-red-again"));
+
+    const sha = w.fake.pr(1).mergeSha;
+    expectBrief(w.host.gates.get(gateId(runId, "main-red-again")), sha, MAIN_RUNS(sha));
   });
 });
