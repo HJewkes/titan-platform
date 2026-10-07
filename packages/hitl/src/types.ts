@@ -227,6 +227,15 @@ export class GateBriefInvalid extends GateError {
   }
 }
 
+export class GateExpiryInvalid extends GateError {
+  constructor(
+    gateId: string,
+    readonly value: string,
+  ) {
+    super(`gate ${gateId} has an expiresAt that is not a date: ${value}`, gateId);
+  }
+}
+
 export class GateAuthorizeInvalid extends GateError {
   constructor(gateId: string) {
     super(`authorize for gate ${gateId} must return a decision { allowed: boolean } synchronously`, gateId);
