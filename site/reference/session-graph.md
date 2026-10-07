@@ -1,7 +1,7 @@
 # session-graph
 
 **Tier 2 · domain.** Depends on [`session-read`](/reference/session-read),
-[`store-sqlite`](/reference/store-sqlite), [`cluster`](/reference/cluster),
+[`store-sqlite`](/reference/store-sqlite),
 [`locator`](/reference/locator), and [`agent-protocol`](/reference/agent-protocol).
 
 ```sh
@@ -25,7 +25,7 @@ want to parse one transcript, use [`session-read`](/reference/session-read) dire
 
 ## Example
 
-Verified against 0.2.0.
+Verified against 0.13.2.
 
 ```ts
 import os from "node:os";
@@ -41,6 +41,9 @@ const summary = await refreshCorpus(graph, await discoverTranscripts());
 //   facts: 1899, turnsRolledUp: 10,
 //   reconciled: { prCreates: 0, prMerges: 0, subagents: 0 },
 //   tasks: { requested: 0, applied: 0, failed: false },
+//   origins: { requested: 0, applied: 0, events: 0, failed: false },
+//   prs: { requested: 0, applied: 0, failed: false },
+//   reviews: { resolved: 0, unresolved: 0, invalidTimes: 0 },
 //   markedMissing: 0, facetsBackfilled: 0, facetBacklog: 0
 // }
 
@@ -250,7 +253,9 @@ watermark key.
 looks `unchanged`.
 
 **No transcript text is stored.** The FTS index is contentless: hits carry a locator and you
-read the original bytes back with [`locator`](/reference/locator).
+read the text back with `readIndexedText(graph, span)`, which resolves Codex sources and
+strips injected text from prompt spans. Reading raw bytes by [`locator`](/reference/locator)
+returns the injected text too.
 
 **`schemaVersion` is the caller's version, not this package's.** `openSessionGraph` accepts
 one and refuses a database stamped past it, before any migration runs. Pass the top of the
@@ -261,6 +266,9 @@ from 2000 and passes 2002, clear of active-work's band at 1001.
 **`readonly: true` reads a graph someone else owns.** No migrations run and nothing is
 written. The open throws `SessionGraphNotMigratedError` when the graph lacks any migration
 this package declares.
+
+**`normalized: true` opts in to the `normalized_*` tables.** A graph holds none unless it was
+opened with it (ignored with `readonly`). See migration 9.
 
 ## Where it came from
 
@@ -328,3 +336,21 @@ re-resolution drops an id, only that origin-made edge expires. A transcript's `r
 carries no `via`, and when a transcript claims an edge the origin made first, the edge is
 superseded without `via`, so origin expiry never removes a transcript's claim.
 session-graph stores and projects the ids a resolver hands it; it does not compute them.
+
+Migration 8, `review verdicts`, adds the `pr_review` table, one row per review verdict from
+either surface (`chat` or `gh`). Only parsed fields are kept, never message text.
+`source_key` is the primary key, `chat:<tool_use_id>:<n>` or `gh:<pr_ref>:<submitted_at>`,
+and `pr_ref` is filled in later. It also adds `review_rounds_gh`, `review_rounds_chat` and
+`commit_times` columns to `pr`, copies each PR's existing `review_rounds` into
+`review_rounds_gh`, and clears `outcome_checked_at` so the next pass re-queues every PR for
+its outcome. `resetIndex` and `purgeTranscript` clear `pr_review` too.
+
+Migration 9, `stop storing bulk classes`, runs DDL only and deletes no row it keeps. It drops
+the `artifact` table. It drops `normalized_span`, `normalized_event` and `normalized_source`
+only when every one that exists is empty, so a graph that holds Codex evidence keeps all
+three. It then creates `session_state` (`session_id`, `key`, `value`, primary key
+`(session_id, key)`) if missing.
+
+The normalized tables are now opt-in. `openSessionGraph(path, { normalized: true })` creates
+them when absent; without it a graph holds none unless migration 3 left rows in them.
+`normalized` is ignored with `readonly: true`. Open with it before calling `indexCodexSource`.
