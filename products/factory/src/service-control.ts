@@ -73,7 +73,7 @@ function fail(io: ServiceIo, message: string): number {
   return FAILURE;
 }
 
-/** The verbs that manage the job itself; `check` reads launchd's run counters and stays macOS-only. */
+/** The platforms whose service manager the service verbs drive: launchd on macOS, a systemd --user unit on Linux. */
 export const MANAGED_PLATFORMS: readonly NodeJS.Platform[] = ["darwin", "linux"];
 
 /** launchd exists only on macOS and systemd only on Linux, so a verb stops here on any platform it does not drive. */
