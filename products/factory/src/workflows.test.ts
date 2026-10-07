@@ -96,6 +96,8 @@ interface ReviewSceneOptions {
   starts?: boolean;
   /** What the reviewer's transcript ends with; the default is a MERGE for `repo` at H1. */
   lastWords?: string;
+  /** What a resume appends to the transcript as the reviewer's reply; absent makes `agent resume` fail. */
+  reply?: string;
   repo?: string;
 }
 
@@ -108,25 +110,29 @@ interface ReviewScene {
   calls: () => string[];
 }
 
-/** A fake `agent-chat`: `agent ls` prints the roster file, `agent spawn` records its cwd and puts the reviewer on the roster as exited. */
-function fakeAgentChat(dir: string, starts: boolean): string {
+/**
+ * A fake `agent-chat`: `agent ls` prints the roster file, `agent spawn` records its cwd and puts the reviewer on the roster as exited,
+ * and `agent resume` appends the scene's reply record to the transcript, or fails when there is none.
+ */
+function fakeAgentChat(dir: string, starts: boolean, transcript: string): string {
   const bin = join(dir, "agent-chat");
   const joinRoster = starts ? `sed "s/@NAME@/$3/" "${dir}/roster.template" >"${dir}/roster.json"` : ":";
-  const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" 2>/dev/null || printf '[]' ;;`, `  spawn) pwd -P >"${dir}/spawn-cwd"; cat >/dev/null; ${joinRoster} ;;`, "esac"];
+  const resume = `  resume) [ -f "${dir}/reply.jsonl" ] || exit 1; cat "${dir}/reply.jsonl" >>"${transcript}" ;;`;
+  const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" 2>/dev/null || printf '[]' ;;`, `  spawn) pwd -P >"${dir}/spawn-cwd"; cat >/dev/null; ${joinRoster} ;;`, resume, "esac"];
   writeFileSync(bin, `${lines.join("\n")}\n`);
   chmodSync(bin, 0o755);
   return bin;
 }
 
+const assistantSaid = (n: number, timestamp: string, text: string) => ({ type: "assistant", sessionId: REVIEWER.sessionId, uuid: `assistant-${n}`, timestamp, message: { id: `response-${n}`, role: "assistant", model: "claude-test", content: [{ type: "text", text }] } });
+const jsonl = (records: readonly object[]) => records.map((record) => `${JSON.stringify(record)}\n`).join("");
+
 /** A finished Claude Code transcript of the reviewer's session whose last assistant text is `lastWords`. */
 function writeTranscript(dir: string, lastWords: string): string {
   const path = join(dir, "transcripts", `${REVIEWER.sessionId}.jsonl`);
-  const records = [
-    { type: "user", sessionId: REVIEWER.sessionId, uuid: "user-1", timestamp: "2026-09-30T10:00:00Z", message: { role: "user", content: "review it" } },
-    { type: "assistant", sessionId: REVIEWER.sessionId, uuid: "assistant-1", timestamp: "2026-09-30T10:05:00Z", message: { id: "response-1", role: "assistant", model: "claude-test", content: [{ type: "text", text: lastWords }] } },
-  ];
+  const records = [{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-1", timestamp: "2026-09-30T10:00:00Z", message: { role: "user", content: "review it" } }, assistantSaid(1, "2026-09-30T10:05:00Z", lastWords)];
   mkdirSync(join(dir, "transcripts"));
-  writeFileSync(path, records.map((record) => `${JSON.stringify(record)}\n`).join(""));
+  writeFileSync(path, jsonl(records));
   return path;
 }
 
@@ -145,7 +151,8 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const row = { name: "@NAME@", ...REVIEWER, state: "exited", presence: "exited", status: "finished", profile: PROFILE, cwd: checkout, transcriptPath: transcript, transcriptExists: true };
   writeFileSync(join(dir, "roster.template"), JSON.stringify([row]));
   const review = options.review === undefined ? { profile: PROFILE } : options.review;
-  const shepherd = { seatsDir: join(dir, "seats"), agentChatBin: fakeAgentChat(dir, options.starts ?? true), ...(review !== null && { review }) };
+  if (options.reply !== undefined) writeFileSync(join(dir, "reply.jsonl"), jsonl([{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-2", timestamp: "2026-09-30T10:06:00Z", message: { role: "user", content: "correct it" } }, assistantSaid(2, "2026-09-30T10:07:00Z", options.reply)]));
+  const shepherd = { seatsDir: join(dir, "seats"), agentChatBin: fakeAgentChat(dir, options.starts ?? true, transcript), ...(review !== null && { review }) };
   mkdirSync(join(dir, "titan-factory"));
   writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ shepherd }));
   const calls = (): string[] => (existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trimEnd().split("\n") : []);
@@ -290,6 +297,17 @@ describe("configuredRoutes with shepherd.review", () => {
     expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_EXIT_GRACE_MS);
     expect(elapsed).toBeLessThan(DEFAULT_VERDICT_TIMEOUT_MS);
+  });
+
+  it("resumes a reviewer whose final message has no verdict through agent resume, and takes the MERGE it writes to the same transcript", async () => {
+    const scene = reviewScene({ lastWords: "Looks fine to me.", reply: `Read it all.\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H1}\n` });
+
+    const { result } = await reviewWith(scene);
+
+    expect(result(`sh-correct-verdict:${H1}`)).toMatchObject({ kind: "asked" });
+    expect(scene.calls().filter((call) => call.startsWith("agent resume"))).toEqual([expect.stringMatching(/^agent resume rv-octo-demo-1 --message Your last message did not end with a verdict/)]);
+    expect(result(`${AWAIT_VERDICT}:corrected`)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: H1, reviewer: REVIEWER });
+    expect(result(MERGE_EVIDENCE)).toMatchObject({ head: H1, merge: { resolver: REVIEWER, dispatchedReviewer: REVIEWER } });
   });
 
   it("hands the freeze check it is given to the merge evidence", async () => {
