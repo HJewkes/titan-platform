@@ -6,6 +6,10 @@ export interface Ask {
   command?: string;
   source: string;
   keys: string[];
+  /** A URL or command that shows the facts behind the ask. */
+  evidence?: string;
+  /** ISO time the ask was already open before this window started. */
+  since?: string;
 }
 
 export interface Merged {
