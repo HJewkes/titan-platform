@@ -132,6 +132,10 @@
         "link": "/reference/memory"
       },
       {
+        "text": "owner-queue",
+        "link": "/reference/owner-queue"
+      },
+      {
         "text": "queue-mirror",
         "link": "/reference/queue-mirror"
       },

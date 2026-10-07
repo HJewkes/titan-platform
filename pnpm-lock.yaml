@@ -427,6 +427,12 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/owner-queue:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/queue-mirror:
     dependencies:
       '@titan-design/hitl':
