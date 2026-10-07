@@ -44,7 +44,8 @@ async function runOne(retriever: Retriever, query: string, options: GatherOption
   const started = Date.now();
   const controller = new AbortController();
   const onAbort = () => controller.abort();
-  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", onAbort, { once: true });
   const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => controller.abort(), options.timeoutMs);
   try {
     const hits = await withAbort(retriever.retrieve(query, { limit: options.limit, signal: controller.signal }), controller.signal);
@@ -61,7 +62,10 @@ async function runOne(retriever: Retriever, query: string, options: GatherOption
 
 /** Resolve or reject with the promise, or reject as soon as the signal aborts, whichever is first. */
 function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(new Error("aborted"));
+  if (signal.aborted) {
+    promise.catch(() => {});
+    return Promise.reject(new Error("aborted"));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(new Error("aborted"));
     signal.addEventListener("abort", onAbort, { once: true });
