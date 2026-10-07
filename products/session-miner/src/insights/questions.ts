@@ -134,13 +134,13 @@ export const blockedFlow = defineInsight<BlockedFlowOptions, BlockedFlowReport>(
   async answer(_db, report, options, config) {
     refuseSessionScope("blocked-flow", report.scope);
     const window = { since: report.since, until: report.until };
-    const verdicts = readVerdicts(config.eventsDb, window);
+    const { verdicts, unparsed } = readVerdicts(config.eventsDb, window, options.seat);
     const merges = verdicts.filter((v) => v.verdict === "MERGE");
     const pulls = options.pulls ? readPullSnapshot(options.pulls) : await fetchPulls(merges);
     const denials = (options.transcript ?? []).flatMap(readDenials);
     const journals = (options.journal ?? []).map(readJournal);
     const asOf = report.until ?? new Date().toISOString();
-    const data = blockedFlowReport({ verdicts, pulls, denials, journals, asOf, window, splitAt: options.splitAt && new Date(options.splitAt).toISOString(), seats: options.seat });
+    const data = blockedFlowReport({ verdicts, unparsedVerdicts: unparsed, pulls, denials, journals, asOf, window, splitAt: options.splitAt && new Date(options.splitAt).toISOString(), seats: options.seat });
     return { data, text: renderBlockedFlowText(data) };
   },
 });
