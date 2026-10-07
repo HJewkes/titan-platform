@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
 import { renderSummary, summarizeFile } from "./codewatch-summary.mjs";
 
 const fixturePath = (name) => new URL(`../.codewatch/fixtures/${name}`, import.meta.url);
@@ -34,6 +36,14 @@ describe("renderSummary", () => {
     expect(summary).toContain(fixture.questions.map((q) => `- ${q}`).join("\n"));
   });
 
+  it("renders the questions the report carries instead of re-deriving them", () => {
+    const questions = ["a/b.ts:3 carries a question the rules would not derive", "c/d.ts:1 carries another"];
+
+    const summary = renderSummary({ ...readFixture("pr-report-worsened.json"), questions });
+
+    expect(summary).toContain("### Questions\n\n- a/b.ts:3 carries a question the rules would not derive\n- c/d.ts:1 carries another\n");
+  });
+
   it("says when the report has no baseline", () => {
     const summary = renderSummary({ ...readFixture("pr-report-clean.json"), base: null });
 
@@ -55,5 +65,16 @@ describe("summarizeFile", () => {
     writeFileSync(file, "{not json");
 
     expect(summarizeFile(file)).toContain("The report could not be read");
+  });
+});
+
+describe("summary CLI", () => {
+  it("exits 0 on a report with failing rules", () => {
+    const script = fileURLToPath(new URL("./codewatch-summary.mjs", import.meta.url));
+
+    const run = spawnSync(process.execPath, [script, fileURLToPath(fixturePath("pr-report-worsened.json"))], { encoding: "utf8" });
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("Check failed");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
+import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, nextCloserStreak, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
 
 const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review" };
 
@@ -80,5 +80,30 @@ describe("MAIN_CI_ROUTES", () => {
 
   it("routes every read it names", () => {
     expect(Object.keys(MAIN_CI_ROUTES).sort()).toEqual([...MAIN_CI_READS].sort());
+  });
+});
+
+describe("nextCloserStreak", () => {
+  const no = { kind: "FIX_FIRST", closer: "no" };
+
+  it("counts a head once when its cached verdict is routed again", () => {
+    const first = nextCloserStreak({ streak: 0 }, "fix-first", no, "a");
+    const replayed = nextCloserStreak(first, "fix-first", no, "a");
+
+    expect(replayed.streak).toBe(1);
+  });
+
+  it("counts a second head that said no", () => {
+    const first = nextCloserStreak({ streak: 0 }, "fix-first", no, "a");
+
+    expect(nextCloserStreak(first, "fix-first", no, "b").streak).toBe(2);
+  });
+
+  it.each([
+    ["a yes", "fix-first", { kind: "FIX_FIRST", closer: "yes" }],
+    ["no closer field", "fix-first", { kind: "FIX_FIRST" }],
+    ["a stuck round", "stuck", { kind: "none" }],
+  ] as const)("resets on %s", (_name, kind, verdict) => {
+    expect(nextCloserStreak({ streak: 1, head: "a" }, kind, verdict, "b")).toEqual({ streak: 0 });
   });
 });
