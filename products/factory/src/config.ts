@@ -53,6 +53,8 @@ function isTimeZone(zone: string): boolean {
 /** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
 export const DigestConfigSchema = z.strictObject({
   outDir: absolutePath.optional(),
+  copyDirs: z.array(absolutePath).optional(),
+  /** Legacy alias: the Mac's live config still names its one copy destination this way. */
   icloudDir: absolutePath.optional(),
   timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
