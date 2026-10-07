@@ -1,5 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
+import { arithmeticWordTexts } from "./value-subscripts.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
@@ -102,7 +103,8 @@ function integerValues(words: string[]): string[] {
 export function arithmeticTexts(op: Token | null, words: WordToken[]): string[] {
   const span = (op ? (compounds.get(op) ?? []) : []).flatMap((t) => (t.type === "word" ? [t.value] : []));
   const operands = words[0]?.value === "let" || words[0]?.value === "[[" ? words.slice(1).map((w) => w.value) : [];
-  return [...(op ? (expansions.get(op) ?? []) : []), ...words.flatMap((w) => expansionBodies(w.value)), span.join(" "), ...operands];
+  const values = words.map((w) => w.value);
+  return [...(op ? (expansions.get(op) ?? []) : []), ...values.flatMap(expansionBodies), ...arithmeticWordTexts(values), span.join(" "), ...operands];
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */

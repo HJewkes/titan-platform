@@ -39,7 +39,7 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
   it.each([
     ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
     ["an expansion that reads $X", `${VALUE}; echo $(( $X ))`],
-    ["an expansion that reads \${X}", `${VALUE}; echo $(( \${X} + 1 ))`],
+    ["an expansion that reads the braced name", `${VALUE}; echo $(( \${X} + 1 ))`],
     ["a legacy $[ ] that reads the name", `${VALUE}; echo $[ X ]`],
     ["an array-subscript write", `${VALUE}; a[X]=1`],
     ["an array element read", `${VALUE}; echo \${a[X]}`],
@@ -48,6 +48,13 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
     ["a trailing declare -i", `${VALUE}; declare -i X`],
   ])("classifies the push for %s", (_, command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a plain echo of the name", `${VALUE}; echo X`],
+    ["a default expansion", `${VALUE}; s=hello; echo \${s:-X}`],
+  ])("does not run the value for %s", (_, command) => {
+    expect(spellings(command)).not.toContain("bash.merge.git-push-protected");
   });
 
   it("keeps the verdict of the direct form", () => {
