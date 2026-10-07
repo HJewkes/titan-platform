@@ -566,12 +566,12 @@ interface AuthorityRun {
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1 } = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false } = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
   const phases: ShepherdPhases = {
-    wake: async () => ({ kind: "unhandled", reason: "test" }),
+    wake: async () => (wokenAgent ? { kind: "woken", agent: "impl-a" } : { kind: "unhandled", reason: "test" }),
     review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
   };
   const store = shepherdStoreRef();
@@ -643,6 +643,20 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
     expect(reviewed.filter((head) => head === PUSHED)).toHaveLength(3);
     expect(second.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
+  it("leaves the conflict gate the run opens at the same head after a review-again cancel with the owner, and the run does not fail", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { wokenAgent: true });
+    Object.assign(fake.pr(1), { mergeableState: "dirty" });
+    await resyncShepherd(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge:1"));
+    expect(host.gates.get(gateId(runId, "approve-merge:1"))?.prompt).toContain(`at head ${REVIEWED}? Policy shepherd-route/conflict`);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge:1"))?.status).toBe("pending");
+    expect(host.runtime.status(runId)?.status).not.toBe("failed");
   });
 
   it("cancels a gate whose only unmet condition was merge-tree-clean, and the run reviews the same head again and merges it", async () => {
@@ -820,7 +834,7 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
 });
 
 describe("which recorded gate decisions are authority/MRG-AU gates", () => {
-  const PROMPT = `Merge PR #1 in ${REPO} at head ${REVIEWED}? CI is green.`;
+  const PROMPT = `Merge PR #1 in ${REPO} at head ${REVIEWED}? CI is green. Policy authority/MRG-AU: gated`;
   const MERGE_TREE_ONLY = "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: merge-tree-clean";
 
   function runDeciding(result: object): WorkflowRun {
