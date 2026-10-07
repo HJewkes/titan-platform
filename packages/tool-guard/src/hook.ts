@@ -8,7 +8,7 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ReadingLimitError } from "./shell/unsure-readings.js";
+import { ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
 export type DecideFn = (actions: readonly ClassifiedAction[], actor: ActorObservation) => GuardDecision;
@@ -30,7 +30,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 type Event = Exclude<HookEvent, { kind: "other" }>;
 /** A decision's logged fields; an unclassified command logs action `unparsed` or `oversize` and spelling `<kind>.<action>`. */
 type Logged = Omit<Matched, "action" | "spelling"> & { action: string; spelling: string };
-type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass };
+/** A failure past one of classify's limits carries the reason the deny gives. */
+type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass; limit?: string };
 
 const PASS: HookResult = { stdout: "", log: [] };
 const UNPARSED_REASON =
@@ -39,6 +40,8 @@ const OVERSIZE_REASON =
   "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const READINGS_REASON =
   "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
+const SCRIPTS_REASON =
+  "authority-guard does not check a Bash command whose scripts hold over 64 KiB of text in all, so it refuses every one; run each script in its own command.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -76,7 +79,7 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   const actor = observeActor(env, event.sessionId);
   if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);
   const result = classifyEvent(event, port.context);
-  if (!result.ok && result.cls === "oversize") return oversized(event, actor, READINGS_REASON, port);
+  if (!result.ok && result.limit) return oversized(event, actor, result.limit, port);
   if (!result.ok) return failed(event, actor, result.cls, port);
   if (result.actions.length === 0) return PASS;
   return decided(event, actor, result.actions, port);
@@ -94,7 +97,7 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   try {
     return { ok: true, actions: classify(event, ctx) };
   } catch (error) {
-    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize" };
+    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize", limit: error instanceof ScriptBudgetError ? SCRIPTS_REASON : READINGS_REASON };
     return { ok: false, cls: error instanceof ParseError ? "parse" : "exception" };
   }
 }

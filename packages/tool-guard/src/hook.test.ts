@@ -172,7 +172,10 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   }, 30_000);
 
-  const pads = (...names: string[]) => ({ ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => (names.some((n) => p === `${REPO}/${n}`) ? PAD : null) });
+  const pads = (...names: string[]) => {
+    const readScript = (p: string) => (names.some((n) => p === `${REPO}/${n}`) ? PAD : null);
+    return { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript };
+  };
   const MAIN = "git push origin HEAD:main";
   it.each([
     `sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh; ${MAIN}`,
@@ -186,10 +189,11 @@ describe("handle: failure policy", () => {
     const result = await handle(bash(line), {}, port({ context: pads("a1.sh", "a2.sh", "a3.sh", "a4.sh") }));
 
     expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.oversize"]);
   }, 30_000);
 
   it("reads four distinct scripts behind dynamic wrappers when together they are small", async () => {
-    const small: Record<string, string> = { a1: "echo hi; ".repeat(1000), a2: "echo hi; ".repeat(1000), a3: "echo hi; ".repeat(1000), a4: MAIN };
+    const small: Record<string, string> = { a1: "echo hi; ".repeat(200), a2: "echo hi; ".repeat(200), a3: "echo hi; ".repeat(200), a4: MAIN };
     const context = { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => small[path.basename(p, ".sh")] ?? null };
 
     const result = await handle(bash("sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh"), {}, port({ context }));
@@ -197,6 +201,26 @@ describe("handle: failure policy", () => {
     expect(decisionOf(result.stdout)).toBe("deny");
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   });
+
+  it("denies a line whose scripts together pass the budget, and says to run each in its own command", async () => {
+    const result = await handle(bash("bash a1.sh; bash a2.sh"), {}, port({ context: pads("a1.sh", "a2.sh") }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toMatch(/run each script in its own command/);
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  }, 30_000);
+
+  it("reads a 63 KB script run twice with no switch between once, and denies the push after it", async () => {
+    const result = await handle(bash(`. a1.sh; . a1.sh; ${MAIN}`), {}, port({ context: pads("a1.sh") }));
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  }, 30_000);
+
+  it("denies a 63 KB script run again after a branch switch as past the budget", async () => {
+    const result = await handle(bash(`. a1.sh; git checkout feat/y && . a1.sh; ${MAIN}`), {}, port({ context: pads("a1.sh") }));
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.oversize"]);
+  }, 30_000);
 
   it("passes a command past the reading budget under the bypass and logs it", async () => {
     const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());

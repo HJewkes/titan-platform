@@ -12,6 +12,27 @@ export class ReadingLimitError extends Error {
   }
 }
 
+/**
+ * Bytes of shell script one line may classify, across every reading of it. A 64 KiB script costs about 1.6 s with case
+ * folding on, so distinct scripts behind dynamic wrapper words would otherwise pass the 5 s hook timeout.
+ */
+export const MAX_SCRIPT_BYTES = 64 * 1024;
+
+/**
+ * What a byte of script costs when only an added reading runs it. Classifying the costliest text (`eval $b x`) takes about
+ * 80 ms per KiB, so 8 KiB of it stays under 1 s, where main reads none of it.
+ */
+export const ADDED_SCRIPT_WEIGHT = 8;
+
+/** A line whose scripts hold more text than `MAX_SCRIPT_BYTES`; the hook denies it unchecked, as past the reading budget. */
+export class ScriptBudgetError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "too much script text to check";
+    this.name = "ScriptBudgetError";
+  }
+}
+
 export interface UnsureBudget {
   left: number;
   /** Whether classify reads this command other than by its arguments' default treatment: a dynamic, guarded or exempting name. */

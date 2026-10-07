@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
-import { ReadingLimitError } from "./unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./unsure-readings.js";
 
 const REPO = "/home/you/projects/app";
 const ctx: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: () => "feat/x", readScript: () => null };
@@ -248,5 +248,29 @@ describe("a script that more than one reading of a line runs", () => {
 
     expect(run(". c.sh")).toEqual([]);
     expect(run(". c.sh; git checkout main && timeout $P . c.sh")).toContain(PROTECTED_PUSH);
+  });
+});
+
+describe("the line's budget of script text", () => {
+  const PUSH_LAST = (bytes: number) => `${"#".repeat(bytes - 27)}\ngit push origin HEAD:main\n`;
+  const run = (command: string, text: string) =>
+    classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, { ...ctx, readScript: () => text }).map(
+      (a) => a.spelling,
+    );
+
+  it("reads a 64 KiB script that the line runs as written", () => {
+    expect(run(". a.sh", PUSH_LAST(MAX_SCRIPT_BYTES))).toContain(PROTECTED_PUSH);
+  });
+
+  it("reads a script only a dynamic wrapper's reading runs up to its share of the budget", () => {
+    expect(run("sudo $a a.sh", PUSH_LAST(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT))).toContain(PROTECTED_PUSH);
+  });
+
+  it("refuses a script only a dynamic wrapper's reading runs past its share of the budget", () => {
+    expect(() => run("sudo $a a.sh", PUSH_LAST(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT + 1))).toThrow(ScriptBudgetError);
+  });
+
+  it("charges nothing for an interpreter's script, which only gets the mention rule", () => {
+    expect(run("python3 a.py; python3 b.py", `${"#".repeat(MAX_SCRIPT_BYTES)} ~/.ssh/id_rsa`)).toContain("bash.secret.script-by-path");
   });
 });
