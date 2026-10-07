@@ -232,6 +232,13 @@ protect readback; prefix replay preserves model, usage and projection state acro
 chunks. The existing Claude reader remains available. See the
 [contract decision](/guides/multi-harness-contracts) for compatibility and migration.
 
+`codexHome()` honors `$CODEX_HOME` and falls back to `~/.codex`. Discovery and readback
+separate absence from failure. A missing directory yields no sources, and a stale locator
+(file gone or truncated, or a line that no longer matches its hash or parses) reads back
+as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
+`discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
+`readSessionSourceText`.
+
 ## Graph-free consumer views
 
 The normalized reader dispatches both Claude and Codex source descriptors through

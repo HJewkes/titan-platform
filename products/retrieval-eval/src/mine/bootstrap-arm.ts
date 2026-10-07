@@ -3,6 +3,7 @@ import path from "node:path";
 import type { TranscriptHead } from "../corpus/transcripts.js";
 import { transcriptId } from "../corpus/transcripts.js";
 import type { EvalPair, LinkMethod } from "../pairs.js";
+import { initiativeDirs, LAYOUT } from "../workspace-layout.js";
 import { listOfMaps, readFrontmatter, scalarField } from "./frontmatter.js";
 import { labelsFrom } from "./spawn-arm.js";
 
@@ -42,22 +43,9 @@ export function readSessionRecord(file: string, initiative: string): SessionReco
 
 /** Every `<root>/<slug>/sessions` plus every archived initiative's, which is real data too. */
 export function sessionDirs(activeRoot: string): { initiative: string; dir: string }[] {
-  const dirs: { initiative: string; dir: string }[] = [];
-  const push = (initiative: string, dir: string) => {
-    if (existsSync(dir)) dirs.push({ initiative, dir });
-  };
-  for (const entry of readdirSync(activeRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    if (entry.name === "archive") {
-      const archive = path.join(activeRoot, "archive");
-      for (const old of readdirSync(archive, { withFileTypes: true })) {
-        if (old.isDirectory()) push(old.name, path.join(archive, old.name, "sessions"));
-      }
-      continue;
-    }
-    push(entry.name, path.join(activeRoot, entry.name, "sessions"));
-  }
-  return dirs;
+  return initiativeDirs(activeRoot)
+    .map(({ slug, dir }) => ({ initiative: slug, dir: path.join(dir, ...LAYOUT.sessions) }))
+    .filter(({ dir }) => existsSync(dir));
 }
 
 /** Filenames lead with `YYYY-MM-DD-HHMM`, so lexical order is chronological order. */
