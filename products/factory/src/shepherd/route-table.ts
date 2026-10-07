@@ -53,16 +53,20 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 /** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
 /** FIX_FIRST reviews at one task before the owner is asked; below it each one is progress, so only a runaway stops. */
-export const MAX_FIX_FIRSTS = 6;
+const MAX_FIX_FIRSTS = 6;
+/** Consecutive FIX_FIRST reviews whose Closer line said no before the owner is asked; a review with no Closer line never counts. */
+const MAX_NO_CLOSER_STREAK = 2;
 /** Fixer wakes of every kind at one run, counted across heads, before the owner is asked; FIX_FIRST keeps its own tighter cap too. */
 export const MAX_REPAIRS = 10;
 
 /** The only reasons Shepherd opens approve-merge; the gate's prompt names one. */
 export const ESCALATIONS = {
+  /** The fixer already had the conflict files and its head still conflicts, so a second wake would likely repeat it; by design (TP-1753). */
   conflict: "a merge conflict survived one fixer attempt",
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,
   "fix-first-runaway": `${MAX_FIX_FIRSTS} FIX_FIRST reviews at this task`,
+  "no-progress": `${MAX_NO_CLOSER_STREAK} FIX_FIRST reviews in a row said the head is no closer to MERGE`,
   "repair-budget": `${MAX_REPAIRS} fixer wakes at this run`,
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
@@ -94,6 +98,25 @@ export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
   if (RETRIES.has(route)) return "stuck";
   if (route !== "wake-fixer") return "progress";
   return outcome === "FIX_FIRST" ? "fix-first" : "stuck";
+}
+
+/** Consecutive FIX_FIRST rounds that said Closer: no, and the head the last one counted at. */
+export interface CloserStreak {
+  streak: number;
+  head?: string;
+}
+
+/** Any other round, or a missing or yes answer, resets it; a head already counted never counts twice, so a replayed verdict cannot escalate alone. */
+export function nextCloserStreak(state: CloserStreak, kind: RoundKind, verdict: { kind: string; closer?: string }, headSha: string): CloserStreak {
+  if (kind !== "fix-first" || verdict.kind !== "FIX_FIRST" || verdict.closer !== "no") return { streak: 0 };
+  return state.head === headSha ? state : { streak: state.streak + 1, head: headSha };
+}
+
+/** The owner is asked once the streak reaches its cap, ahead of the runaway cap; `fixFirsts` includes this round. */
+export function fixFirstEscalation(fixFirsts: number, streak: number, headSha: string): Escalated | undefined {
+  const detail = `the last at ${headSha}`;
+  if (streak >= MAX_NO_CLOSER_STREAK) return { escalation: "no-progress", detail };
+  return fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail } : undefined;
 }
 
 /** The gate reason: which escalation, then the detail. */

@@ -179,6 +179,21 @@ describe("task resolver (TP-22)", () => {
     expect(taskRows()).toEqual([{ task_ref: "task:AW-23", task_id: "AW-23", initiative: null, title: null, status: "done" }]);
   });
 
+  it("propagates a task-row write error after the resolver answers instead of reporting a resolver failure", async () => {
+    const failTaskWrites = () =>
+      graph.db.exec(`
+        CREATE TEMP TRIGGER fail_task_insert BEFORE INSERT ON task BEGIN SELECT RAISE(ABORT, 'task write failed'); END;
+        CREATE TEMP TRIGGER fail_task_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'task write failed'); END;`);
+    const resolveTasks = () => {
+      failTaskWrites();
+      return new Map([["AW-23", { title: "Ship the seam" }]]);
+    };
+
+    const pass = refreshCorpus(graph, [transcript], { resolveTasks });
+
+    await expect(pass).rejects.toThrow("task write failed");
+  });
+
   it("honours the resolver from indexTranscript as well as refreshCorpus", async () => {
     const outcome = await indexTranscript(graph, transcript, {
       resolveTasks: () => new Map([["AW-23", { title: "Ship the seam" }]]),

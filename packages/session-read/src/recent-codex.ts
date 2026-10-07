@@ -1,4 +1,5 @@
 import { CALL_TYPES, RESULT_TYPES, booleanOrNull, readCanonicalMessage, selectedValue } from "./codex-values.js";
+import { SessionIdentityError } from "./recent-claude.js";
 import { asObject } from "./text.js";
 import type { Json } from "./text.js";
 import type { RecentFormatResult, RecentObservedValue, RecentSessionTurn } from "./recent-types.js";
@@ -53,7 +54,7 @@ class RecentCodexCollector {
     const sessionMeta = record.type === "session_meta" ? text(payload?.id) : null;
     for (const observedId of [explicit, sessionMeta]) {
       if (observedId && observedId !== this.expectedThreadId) {
-        throw new TypeError(`Codex rollout record belongs to native thread ${observedId}, expected ${this.expectedThreadId}`);
+        throw new SessionIdentityError(`Codex rollout record belongs to native thread ${observedId}, expected ${this.expectedThreadId}`, "foreign_native_session");
       }
     }
   }

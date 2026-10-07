@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { latencyStats, latencyStatsSchema, mergeOutcomes, round, type LatencyStats, type MergeOutcome, type PullState, type VerdictRecord } from "./blocked-flow-merge.js";
+import { hasRefusedHead, latencyStats, latencyStatsSchema, mergeOutcomes, round, type LatencyStats, type MergeOutcome, type PullState, type VerdictRecord } from "./blocked-flow-merge.js";
 import { dedupeDenials, type DenialRecord } from "./blocked-flow-denials.js";
 import { TICK_HOLD_MAX_MIN, idleSlotMinutes, type SeatJournal } from "./blocked-flow-idle.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
@@ -22,6 +22,8 @@ export type BlockedFlowSource = keyof typeof BLOCKED_FLOW_SOURCES;
 
 export interface BlockedFlowInput {
   verdicts: readonly VerdictRecord[];
+  /** Verdict messages the caller could not read with `parseVerdict`, already scoped to the window and seats. */
+  unparsedVerdicts?: number;
   pulls: readonly PullState[];
   denials: readonly DenialRecord[];
   journals: readonly SeatJournal[];
@@ -64,6 +66,7 @@ export const blockedFlowSchema = z.object({
   splitAt: z.string().optional(),
   sources: z.record(source, z.object({ command: z.string(), field: z.string() })),
   verdictToMerge: z.object({ cites: z.array(source), rows: z.array(latencyRowSchema) }),
+  refusedVerdicts: z.object({ cites: z.array(source), count }),
   openHoldingMerge: z.object({ cites: z.array(source), prMinutes: z.number(), rows: z.array(openRowSchema) }),
   denials: z.object({
     cites: z.array(source),
@@ -87,7 +90,9 @@ export const ALL_REPOS = "all";
 export function blockedFlowReport(input: BlockedFlowInput): BlockedFlowReport {
   const window = input.window ?? {};
   const inScope = scopeTest(input.seats, window);
-  const outcomes = mergeOutcomes(input.verdicts.filter((v) => inScope(v.seat, v.at)), input.pulls, input.asOf);
+  const scoped = input.verdicts.filter((v) => inScope(v.seat, v.at));
+  const refused = scoped.filter(hasRefusedHead).length + (input.unparsedVerdicts ?? 0);
+  const outcomes = mergeOutcomes(scoped.filter((v) => !hasRefusedHead(v)), input.pulls, input.asOf);
   const open = openRows(outcomes);
   const journals = input.journals.map((j) => ({ ...j, ticks: j.ticks.filter((t) => inScope(t.seat)) }));
   const idle = idleSlotMinutes(journals, window);
@@ -97,6 +102,7 @@ export function blockedFlowReport(input: BlockedFlowInput): BlockedFlowReport {
     ...(input.splitAt ? { splitAt: input.splitAt } : {}),
     sources: BLOCKED_FLOW_SOURCES,
     verdictToMerge: { cites: ["verdicts", "pulls"], rows: latencyRows(outcomes, input.splitAt) },
+    refusedVerdicts: { cites: ["verdicts"], count: refused },
     openHoldingMerge: { cites: ["verdicts", "pulls"], prMinutes: round(open.reduce((sum, r) => sum + r.ageMin, 0)), rows: open },
     denials: denialSection(dedupeDenials(input.denials).filter((d) => inScope(d.seat, d.at))),
     idleSlots: { cites: ["journals"], holdMaxMin: TICK_HOLD_MAX_MIN, total: idle.reduce((sum, r) => sum + r.slotMinutes, 0), rows: idle },
@@ -146,7 +152,7 @@ export function renderBlockedFlowText(report: BlockedFlowReport): string {
   const scope = `Blocked flow as of ${report.asOf}${report.window.since ? `, since ${report.window.since}` : ""}${report.window.until ? `, until ${report.window.until}` : ""}`;
   const latency = [latencyTable("Verdict to merge, minutes from the first MERGE at the final head [verdictToMerge.rows[].all]", report.verdictToMerge.rows, "all")];
   if (report.splitAt) latency.push(...(["before", "after"] as const).map((part) => latencyTable(`Verdict to merge, verdicts ${part} ${report.splitAt} [verdictToMerge.rows[].${part}]`, report.verdictToMerge.rows, part)));
-  return [scope, ...latency, openTable(report), denialTable(report), idleTable(report), sourceLines(report), LIST_PRICE_CAVEAT].join("\n\n") + "\n";
+  return [scope, ...latency, openTable(report), refusedLine(report), denialTable(report), idleTable(report), sourceLines(report), LIST_PRICE_CAVEAT].join("\n\n") + "\n";
 }
 
 function latencyTable(title: string, rows: readonly LatencyRow[], part: "all" | "before" | "after"): string {
@@ -163,6 +169,10 @@ function openTable(report: BlockedFlowReport): string {
   const rows = report.openHoldingMerge.rows.map((r) => [r.repo, `#${r.pr}`, r.head.slice(0, 7), r.seat, r.verdictAt, r.ageMin, `events#${r.eventId}`]);
   const title = `Open PRs holding MERGE at their current head, ${report.openHoldingMerge.prMinutes} PR-minutes [openHoldingMerge.rows[].ageMin]`;
   return table(title, ["repo", "pr", "head", "seat", "verdict at", "age min", "verdict"], rows);
+}
+
+function refusedLine(report: BlockedFlowReport): string {
+  return `Verdicts the merge gate would refuse (short or prefix head, URL-form PR, malformed block), counted in neither table above: ${report.refusedVerdicts.count} [refusedVerdicts.count]`;
 }
 
 function denialTable(report: BlockedFlowReport): string {

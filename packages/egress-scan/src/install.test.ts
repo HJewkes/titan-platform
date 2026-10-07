@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -124,7 +124,16 @@ describe("installHook", () => {
 describe.skipIf(process.platform === "win32")("the installed hook", () => {
   function fakeScanner(file: string, exitCode: number): void {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `#!/bin/sh\necho "args:$*"\ncat\nexit ${exitCode}\n`, { mode: 0o755 });
+    installExecutable(file, `#!/bin/sh\necho "args:$*"\ncat\nexit ${exitCode}\n`);
+  }
+
+  // cp writes in a process that has exited before the first exec, so a concurrent fork never holds the target open for writing (ETXTBSY).
+  function installExecutable(file: string, contents: string): void {
+    const staging = `${file}.staging`;
+    fs.writeFileSync(staging, contents);
+    fs.chmodSync(staging, 0o755);
+    execFileSync("cp", ["-p", staging, file]);
+    fs.rmSync(staging);
   }
 
   /** Runs the hook with a PATH holding only the tools it needs, so a global scanner never leaks in. */
@@ -146,7 +155,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const { hookPath = "" } = installHook(worktree, LOCAL);
     const fakeBin = path.join(worktree, "node_modules", ".bin", "titan-egress-scan");
     fs.mkdirSync(path.dirname(fakeBin), { recursive: true });
-    fs.writeFileSync(fakeBin, '#!/bin/sh\necho "args:$*"\ncat\nexit 3\n', { mode: 0o755 });
+    installExecutable(fakeBin, '#!/bin/sh\necho "args:$*"\ncat\nexit 3\n');
 
     const result = runHook(worktree, hookPath);
 

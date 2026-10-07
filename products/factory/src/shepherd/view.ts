@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 import type { WakeInput, WakeStepResult } from "./wake.js";
@@ -126,6 +127,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-main-ci": "post-merge",
   "sh-redeploy": "post-merge",
   "main-red": "post-merge",
+  "main-ci-timeout": "post-merge",
   "main-red-again": "post-merge",
   "main-frozen": "post-merge",
   "sh-unfreeze": "post-merge",
@@ -186,7 +188,14 @@ function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | und
   if (gate) return `owner: resolve ${gateStep}`;
   if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
-  return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
+  return (phase === "review" && admissionWait(registration)) || WAITING[phase];
+}
+
+/** A review the spawn gate keeps waiting also says where it stands in the gate's queue. */
+function admissionWait({ repo, pr }: Registration): string | undefined {
+  const wait = reviewWait(repo, pr);
+  const position = spawnQueuePosition(repo, pr);
+  return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
 }
 
 /**

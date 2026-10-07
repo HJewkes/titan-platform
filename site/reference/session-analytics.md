@@ -192,7 +192,7 @@ reads at a tenth of input. Reading fable the same way is what cost the audit $1,
 
 **An unknown model returns `priced: false` and zero cost.** There is no default price row.
 A default silently bills a new model at an old model's rate, which is worse than a visible
-hole; callers are expected to surface `unpriced_models`.
+hole; callers are expected to surface `unpricedModels`.
 
 **The origin row beats `startType`.** Agent-chat workers run `claude -p`, so they report
 `start_type = "sdk-cli"` exactly like a headless miner. Only the origin row separates them.

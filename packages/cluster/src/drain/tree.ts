@@ -106,7 +106,7 @@ export class DrainTree {
    * Rebuild a tree from `toSnapshot()` output, re-linking each cluster into
    * its leaf without routing it through `insert()`.
    *
-   * Going through `insert()` — what a warm start did with a naive warm start — is lossy
+   * Replaying persisted clusters through `insert()` is lossy
    * twice over: two persisted templates similar enough to match would collapse
    * into one cluster, and every restored cluster would get a fresh id, so the
    * `clusterId -> templateId` map could not survive a restart.

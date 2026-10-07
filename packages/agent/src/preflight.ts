@@ -49,7 +49,8 @@ function invalidIdentity(request: BoundedRunBase): HarnessRunFailure | undefined
   }
 }
 
-const CLAUDE_ONLY = ["allowedTools", "disallowedTools", "permissionMode", "agents", "mcpServers", "hooks", "settingSources", "allowApiKeyBilling"];
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const CLAUDE_ONLY =["allowedTools", "disallowedTools", "permissionMode", "agents", "mcpServers", "hooks", "settingSources", "allowApiKeyBilling"];
 const CODEX_ONLY = ["reasoningEffort", "sandbox", "approvalPolicy"];
 const CLAUDE_PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"];
 const CLAUDE_SETTING_SOURCES = ["user", "project", "local"];
@@ -124,6 +125,7 @@ export async function dispatchHarnessRun<H extends Harness, T>(
 
 function invalidNumbers(request: BoundedRunBase): HarnessRunFailure | undefined {
   if (!positiveFinite(request.wallTimeMs)) return invalid("wallTimeMs must be a positive finite number");
+  if (request.wallTimeMs > MAX_TIMER_DELAY_MS) return invalid("wallTimeMs exceeds the local timer range");
   for (const limit of request.limits ?? []) {
     if (!positiveFinite(limit.value)) return invalid(`${limit.unit} limit must be a positive finite number`);
     if (limit.unit !== "usd" && !Number.isInteger(limit.value)) {

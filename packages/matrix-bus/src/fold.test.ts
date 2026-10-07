@@ -106,6 +106,11 @@ describe("foldResolution rejects", () => {
     expect(foldResolution(decision("$appr", { decision: "answer", text: "x" }), ctx)).toBeNull();
   });
 
+  it("an allow decision on a question, which only an answer decision with text resolves", () => {
+    expect(foldResolution(decision("$question", { decision: "allow" }), ctx)).toBeNull();
+    expect(foldResolution(decision("$question", { decision: "answer" }), ctx)).toBeNull();
+  });
+
   it("a message that relates to an item without replying to it", () => {
     const edit: MatrixEvent = { type: "m.room.message", event_id: "$e", sender: OWNER, content: { body: "allow", "m.relates_to": { rel_type: "m.replace", event_id: "$appr" } } };
 

@@ -142,6 +142,138 @@ describe("readMainCi", () => {
     });
   });
 
+  describe("a run still queued at the wait limit", () => {
+    const TIP = fakeSha("descendant-tip");
+    const queued = { ...successRun("validate", 1), status: "queued", conclusion: null };
+
+    function backlog(tipRuns: ReturnType<typeof successRun>[], mergeBase = MERGE): FakeGitHub {
+      const fake = fakeGitHub();
+      fake.addPr({ headSha: H1, baseRef: "main" });
+      fake.setRuns(MERGE, [queued]);
+      fake.refs.set("main", TIP);
+      fake.compares.set(`${MERGE}...${TIP}`, { mergeBaseSha: mergeBase, files: [] });
+      fake.setRuns(TIP, tipRuns);
+      return fake;
+    }
+
+    it("records the green verdict of the newest completed run on a descendant that contains the merge sha", async () => {
+      const result = await read(backlog([successRun("validate", 2)]), clockedTiming(), { ...input, pr: 1 });
+
+      expect(result).toMatchObject({ verdict: "green", readSha: TIP });
+    });
+
+    it("answers red from a red descendant run, not none", async () => {
+      expect(await read(backlog([successRun("validate", 2, undefined, "failure")]), clockedTiming(), { ...input, pr: 1 })).toMatchObject({ verdict: "red", readSha: TIP });
+    });
+
+    it("never reads a descendant that does not contain the merge sha", async () => {
+      const fake = backlog([successRun("validate", 2)], fakeSha("elsewhere"));
+
+      expect((await read(fake, clockedTiming(), { ...input, pr: 1 })).verdict).toBe("none");
+    });
+
+    it("waits another window and answers green when the queued run finishes in it", async () => {
+      const fake = backlog([]);
+      let clock = 0;
+      const timing = { ...clockedTiming(), now: () => clock, sleep: async (ms: number) => void ((clock += ms), clock > SH_MAIN_CI_TIMEOUT_MS + 60_000 && fake.setRuns(MERGE, [successRun("validate", 1)])) };
+
+      expect(await read(fake, timing, { ...input, pr: 1 })).toMatchObject({ verdict: "green" });
+    });
+
+    it("answers none naming the missing completed run once the re-checks are spent", async () => {
+      const timing = clockedTiming();
+
+      const result = await read(backlog([]), timing, { ...input, pr: 1 });
+
+      expect(result).toMatchObject({ verdict: "none", detail: expect.stringContaining(`no completed main run containing ${MERGE} within 240 min`) });
+      expect(timing.now()).toBeGreaterThanOrEqual(4 * SH_MAIN_CI_TIMEOUT_MS);
+    });
+  });
+
+  describe("a red, cancelled or missing merge sha with a later main commit containing it", () => {
+    const TIP = fakeSha("green-descendant");
+    const failing = (name: string) => successRun(name, 3, undefined, "failure");
+    const requiredGreen = [successRun("validate", 4), successRun("dag-check", 5)];
+
+    /** Main sits at the merge sha until `movesAtMs`, then at TIP, which contains the merge and carries `tipRuns`. */
+    function laterMain(mergeRuns: ReturnType<typeof successRun>[], tipRuns: ReturnType<typeof successRun>[], movesAtMs = 10 * 60_000, mergeBase = MERGE) {
+      const fake = fakeGitHub();
+      fake.addPr({ headSha: H1, baseRef: "main" });
+      fake.setRuns(MERGE, mergeRuns);
+      fake.refs.set("main", MERGE);
+      fake.compares.set(`${MERGE}...${TIP}`, { mergeBaseSha: mergeBase, files: [] });
+      fake.setRuns(TIP, tipRuns);
+      const timing = clockedTiming();
+      const sleep = timing.sleep;
+      timing.sleep = async (ms: number) => {
+        await sleep(ms);
+        if (timing.now() >= movesAtMs) fake.refs.set("main", TIP);
+      };
+      return { fake, timing };
+    }
+
+    const readLater = ({ fake, timing }: ReturnType<typeof laterMain>) => read(fake, timing, { ...input, pr: 1 });
+
+    it("acknowledges a red merge sha on a later main commit green on every required context, recording that sha", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+
+      const result = await readLater(world);
+
+      expect(result).toMatchObject({ verdict: "green", mergeSha: MERGE, readSha: TIP, acknowledgedSha: TIP, detail: expect.stringContaining("failed: validate") });
+      expect(world.timing.now()).toBeLessThan(SH_MAIN_CI_TIMEOUT_MS);
+    });
+
+    it("acknowledges a cancelled merge sha when the later commit is green on every required context though another check failed", async () => {
+      const world = laterMain([successRun("validate", 3, undefined, "cancelled")], [...requiredGreen, failing("lint")]);
+
+      expect(await readLater(world)).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    });
+
+    it("acknowledges a merge sha with no run yet on a later commit green on every required context", async () => {
+      expect(await readLater(laterMain([], [...requiredGreen, failing("lint")]))).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    });
+
+    it("acknowledges the merge sha itself when it is red only on a check that is not required", async () => {
+      const world = laterMain([...requiredGreen, failing("lint")], [], Number.POSITIVE_INFINITY);
+
+      expect(await readLater(world)).toMatchObject({ verdict: "green", acknowledgedSha: MERGE });
+    });
+
+    it("answers red after a fresh full wait when the later commit stays red", async () => {
+      const world = laterMain([failing("validate")], [failing("validate"), successRun("dag-check", 5)]);
+
+      const result = await readLater(world);
+
+      expect(result).toMatchObject({ verdict: "red", detail: "failed: validate" });
+      expect(result.acknowledgedSha).toBeUndefined();
+      expect(world.timing.now()).toBeGreaterThanOrEqual(SH_MAIN_CI_TIMEOUT_MS);
+    });
+
+    it("never acknowledges a later commit missing a required context", async () => {
+      expect(await readLater(laterMain([failing("validate")], [successRun("validate", 4)]))).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges a green commit that does not contain the merge sha", async () => {
+      expect(await readLater(laterMain([failing("validate")], requiredGreen, 0, fakeSha("elsewhere")))).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges when the required contexts cannot be read", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+      world.fake.wire.getBranchRules = async () => {
+        throw new Error("boom");
+      };
+
+      expect(await readLater(world)).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges when the repo requires no context", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+      world.fake.rules.contexts = [];
+
+      expect(await readLater(world)).toMatchObject({ verdict: "red" });
+    });
+  });
+
   describe("a run cancelled and re-run at the same sha", () => {
     const CANCELLED_AT = "2026-10-05T00:29:38Z";
     const RERUN_AT = "2026-10-05T00:31:31Z";
@@ -295,6 +427,25 @@ describe("shepherd-pr after land", () => {
     expect(w.freezes().get(REPO)?.redSha).toBe(w.fake.pr(1).mergeSha);
   });
 
+  it("opens no gate and freezes nothing when a later main commit containing a red merge is green on every required context", async () => {
+    const TIP = fakeSha("green-descendant");
+    const w = shepherdWorld(() => {
+      const mergeSha = w.fake.pr(1).mergeSha!;
+      w.fake.refs.set("main", TIP);
+      w.fake.compares.set(`${mergeSha}...${TIP}`, { mergeBaseSha: mergeSha, files: [] });
+      w.fake.setRuns(TIP, [successRun("validate", 6), successRun("dag-check", 7)]);
+      return [successRun("validate", 5, undefined, "failure")];
+    });
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
+    expect(main?.data).toMatchObject({ result: { verdict: "green", mergeSha: w.fake.pr(1).mergeSha, acknowledgedSha: TIP } });
+    expect(stepIds(w, runId)).not.toContain("sh-freeze");
+    expect(w.host.gates.listPending()).toEqual([]);
+  });
+
   it("opens no freeze when each check's cancelled run at the merge sha was re-run green", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 6, "2026-10-05T00:31:31Z")]);
     const runId = await runToMerge(w);
@@ -320,14 +471,25 @@ describe("shepherd-pr after land", () => {
     expect(main?.data).toMatchObject({ result: { after: ["deploy", "release"] } });
   });
 
-  it("opens the main-red gate when no run appears at the merge sha", async () => {
+  it("opens the main-ci-timeout gate when no run appears at the merge sha", async () => {
     const w = shepherdWorld(() => []);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
     expect(main?.data).toMatchObject({ result: { verdict: "none" } });
+  });
+
+  it("asks once with main-ci-timeout, never main-red, and says no completed run contains the merge, when a run stays queued", async () => {
+    const w = shepherdWorld(() => [{ ...successRun("validate", 1), status: "queued", conclusion: null }]);
+    const runId = await runToMerge(w);
+
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
+
+    const sha = w.fake.pr(1).mergeSha!;
+    expect(JSON.stringify(w.host.gates.get(gateId(runId, "main-ci-timeout")))).toContain(`no completed main run containing ${sha} within 240 min`);
+    expect(w.host.gates.get(gateId(runId, "main-red"))).toBeUndefined();
   });
 
   it("fails a malformed after list before any merge, not after it", async () => {
@@ -436,7 +598,7 @@ describe("shepherd-pr on a red main", () => {
     frozenWithFixer(w);
     const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     expect(w.freezes().get(REPO)).toMatchObject({ redSha: EARLIER_RED, redCount: 1 });
     expect(stepIds(w, runId)).not.toContain("sh-freeze");
@@ -515,14 +677,14 @@ describe("shepherd-pr on a red main", () => {
 describe("post-merge gate briefs", () => {
   const MAIN_RUNS = (sha: string) => new RegExp(`^\\$ gh run list -R ${REPO} -c ${sha}$`);
 
-  it("opens main-red with a summary naming the merge sha and an evidence command", async () => {
+  it("opens main-ci-timeout with a summary naming the merge sha and an evidence command", async () => {
     const w = shepherdWorld(() => []);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     const sha = w.fake.pr(1).mergeSha!;
-    expectBrief(w.host.gates.get(gateId(runId, "main-red")), sha, MAIN_RUNS(sha));
+    expectBrief(w.host.gates.get(gateId(runId, "main-ci-timeout")), sha, MAIN_RUNS(sha));
   });
 
   it("opens after-stages with a summary naming the merge sha and an evidence command", async () => {

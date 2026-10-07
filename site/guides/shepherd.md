@@ -219,7 +219,7 @@ resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own.
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
 implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
 
-`approve-merge` opens for four reasons only, and its prompt names the reason:
+`approve-merge` opens for five reasons only, and its prompt names the reason:
 
 - `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
   have Shepherd land the next resolved head, or `abandon`.
@@ -227,6 +227,9 @@ implementer. Shepherd never reads a reviewer's name out of the hold's reason tex
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
 - `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
+  the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
+  Closer line, and any other round, resets the count. It is checked before the runaway cap.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 
@@ -347,7 +350,10 @@ visual_paths:
 - **`repos`** lists the remotes the seat owns. A remote that several seats list gets only
   the grants they all share.
 - **`visual_paths`** lists repo-relative globs (`**`, `*`, `?`, `{a,b}`, matched without case) for files the owner
-  reviews by eye. An empty list or a glob that cannot compile makes the seat file invalid.
+  reviews by eye. An empty list or a glob that cannot compile makes the seat file invalid, as
+  does a glob no repo-relative path can match: leading or trailing whitespace, a backslash, an
+  empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment, in the glob or
+  in any of its `{a,b}` alternatives, or a fullwidth slash or invisible format character.
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
@@ -537,7 +543,7 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head, or any changed path under `.github/` sends the merge to the owner. A file list
+another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.

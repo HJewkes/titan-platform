@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { GhExec } from "@titan-design/github";
 import type { BlockedFlowReport } from "@titan-design/session-analytics";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { startMiner } from "../serve.js";
@@ -92,6 +92,23 @@ describe("insights blocked-flow", () => {
     expect(answer.openHoldingMerge.rows).toMatchObject([{ repo: "acme/gadgets", pr: 3, seat: "seat-a", ageMin: 60 }]);
   });
 
+  describe("a zone-less --split-at", () => {
+    const originalTz = process.env.TZ;
+    afterEach(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+
+    it.each(["UTC", "America/New_York"])("splits at the UTC instant under TZ=%s", async (zone) => {
+      const expected = await ask([...WINDOW, "--seat", "seat-a", "--split-at", "2026-09-12T10:00:00Z"]);
+      process.env.TZ = zone;
+
+      const answer = await ask([...WINDOW, "--seat", "seat-a", "--split-at", "2026-09-12T10:00"]);
+
+      expect(answer.verdictToMerge).toEqual(expected.verdictToMerge);
+    });
+  });
+
   it("never counts a WAIT verdict as a MERGE: its PR has no wait, no row and no open hold", async () => {
     const answer = await ask([...WINDOW, "--seat", "seat-a"]);
     const prs = answer.verdictToMerge.rows.filter((row) => row.repo === "acme/widgets").map((row) => row.prs);
@@ -145,6 +162,40 @@ describe("insights blocked-flow", () => {
     } finally {
       await handle.close();
     }
+  });
+});
+
+async function askRefused(refusedEnv: NodeJS.ProcessEnv, flags: string[]): Promise<{ code: number; answer: BlockedFlowReport }> {
+  let stdout = "";
+  const io = { stdout: (t: string) => void (stdout += t), stderr: () => undefined, env: refusedEnv };
+  const code = await runCli(["--state", path.join(dir, "state"), "--corpus", path.join(dir, "corpus"), "--json", "insights", "blocked-flow", "--pulls", files.pulls, ...WINDOW, ...flags], io);
+  return { code, answer: (JSON.parse(stdout) as { data: { answer: BlockedFlowReport } }).data.answer };
+}
+
+describe("insights blocked-flow refused verdicts", () => {
+  it("counts verdict messages parseVerdict refuses, short heads and URL-form PRs, in refusedVerdicts", async () => {
+    const refused = [
+      message("2026-09-12T08:00:00Z", "seat-a", verdict("MERGE", "acme/widgets#1", HEAD_A)),
+      message("2026-09-12T09:00:00Z", "seat-a", verdict("MERGE", "acme/widgets#2", "abc1234")),
+      message("2026-09-12T10:00:00Z", "seat-a", verdict("MERGE", "https://github.com/acme/widgets/pull/3", HEAD_A)),
+    ];
+    const refusedEnv = { TITAN_MINER_EVENTS_DB: seedEventsDb(path.join(dir, "refused-events.db"), refused) };
+    const { code, answer } = await askRefused(refusedEnv, []);
+
+    expect(code).toBe(0);
+    expect(answer.refusedVerdicts.count).toBe(2);
+  });
+
+  it("counts only refused verdicts sent to the seats selected with --seat", async () => {
+    const refused = [
+      message("2026-09-12T09:00:00Z", "seat-a", verdict("MERGE", "acme/widgets#2", "abc1234")),
+      message("2026-09-12T10:00:00Z", "seat-b", verdict("MERGE", "https://github.com/acme/widgets/pull/3", HEAD_A)),
+    ];
+    const refusedEnv = { TITAN_MINER_EVENTS_DB: seedEventsDb(path.join(dir, "refused-seat-events.db"), refused) };
+
+    const { answer } = await askRefused(refusedEnv, ["--seat", "seat-a"]);
+
+    expect(answer.refusedVerdicts.count).toBe(1);
   });
 });
 

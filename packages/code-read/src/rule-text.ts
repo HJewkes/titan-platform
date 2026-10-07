@@ -23,5 +23,7 @@ export function describeRule(rule: CheckRule): string {
       return `An import may point only to its own layer or a lower one, across ${rule.layers.length} layers.`;
     case "no-internal-only-barrels":
       return "A barrel file must be imported from outside its own package, or it should not exist.";
+    case "no-import-cycles":
+      return `No file may import itself, directly or through other files${rule.includeTypeOnly ? "" : ", counting value imports only"}.`;
   }
 }

@@ -17,7 +17,7 @@ describe("computeHealth", () => {
       scary: 2, newViolations: 0, carryViolations: 0, maxComplexity: 10, hiddenCoupling: 0,
     });
     expect(scaryOnly.health).toBe(80); // 100 - min(30, 2*10)
-    const hotspots = scaryOnly.healthBreakdown.find((c) => c.label === "scary hotspots");
+    const hotspots = scaryOnly.healthBreakdown.find((c) => c.label === "high-score hotspots");
     const violations = scaryOnly.healthBreakdown.find((c) => c.label === "fitness violations");
     expect(hotspots!.penalty).toBe(20);
     expect(violations!.penalty).toBe(0);
