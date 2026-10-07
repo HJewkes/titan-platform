@@ -19,19 +19,41 @@ export interface FunctionStats extends FunctionShapeStats {
   nestingDepth: number;
   /** Deepest chain of rendered JSX elements in the body; 0 when it renders none. */
   jsxDepth: number;
+  /** The cognitive score's share charged inside JSX expressions, and the rest (C-97 S2). */
+  markupCognitive: number;
+  logicCognitive: number;
   /** Lines spanned by the whole function node, signature included. */
   loc: number;
 }
 
-type NumericStat = "cyclomatic" | "cognitive" | "nestingDepth" | "jsxDepth" | "loc" | keyof FunctionShapeStats;
+type NumericStat =
+  | "cyclomatic"
+  | "cognitive"
+  | "nestingDepth"
+  | "jsxDepth"
+  | "markupCognitive"
+  | "logicCognitive"
+  | "loc"
+  | keyof FunctionShapeStats;
 
-/** Per-symbol metric name, the unit and function stat it reports, and whether a zero is left unwritten. */
-const SYMBOL_METRICS: readonly { name: string; stat: NumericStat; unit: string; omitZero?: boolean }[] = [
+/**
+ * Per-symbol metric name, the unit and function stat it reports, whether a zero is
+ * left unwritten, and whether it is written only for a function that renders JSX.
+ */
+const SYMBOL_METRICS: readonly {
+  name: string;
+  stat: NumericStat;
+  unit: string;
+  omitZero?: boolean;
+  jsxOnly?: boolean;
+}[] = [
   { name: "symbol_cognitive", stat: "cognitive", unit: "count" },
   { name: "symbol_cyclomatic", stat: "cyclomatic", unit: "count" },
   { name: "symbol_loc", stat: "loc", unit: "lines" },
   { name: "symbol_max_nesting", stat: "nestingDepth", unit: "count" },
   { name: "symbol_jsx_depth", stat: "jsxDepth", unit: "count", omitZero: true },
+  { name: "symbol_markup_cognitive", stat: "markupCognitive", unit: "count", jsxOnly: true },
+  { name: "symbol_logic_cognitive", stat: "logicCognitive", unit: "count", jsxOnly: true },
   { name: "symbol_comment_lines", stat: "commentLines", unit: "lines" },
   { name: "symbol_docstring_lines", stat: "docstringLines", unit: "lines" },
   { name: "symbol_body_lines", stat: "bodyLines", unit: "lines" },
@@ -45,7 +67,8 @@ export const SYMBOL_METRIC_NAMES: readonly string[] = SYMBOL_METRICS.map((m) => 
 /**
  * Per-symbol metrics (C-58, C-64, TP-317): for each named function whose qualified
  * name has a `symbol` node on this file, emit every SYMBOL_METRICS entry on that
- * node (`<fileId>#<qualifiedName>`), skipping an `omitZero` entry whose value is 0. Model B (C-64) gives non-exported helpers a
+ * node (`<fileId>#<qualifiedName>`), skipping an `omitZero` entry whose value is 0 and a
+ * `jsxOnly` entry where the symbol renders no JSX. Model B (C-64) gives non-exported helpers a
  * node too, so internal functions get their own values here, not just exports. A
  * qualified name shared by several functions (a getter/setter pair) takes the max
  * of each stat independently; a declared name with no function (a bare class) emits nothing.
@@ -71,6 +94,7 @@ export function symbolMetrics(
     const nodeId = symbolId(fileId, name);
     for (const m of SYMBOL_METRICS) {
       if (m.omitZero && values[m.stat] === 0) continue;
+      if (m.jsxOnly && values.jsxDepth === 0) continue;
       out.push({ nodeId, name: m.name, value: values[m.stat], unit: m.unit });
     }
   }
