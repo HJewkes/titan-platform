@@ -47,4 +47,21 @@ describe("WatermarkTable", () => {
     expect(wm.get("b")).toMatchObject({ lastOffset: 0, prefixHash: null });
     expect(wm.list().map((r) => r.sourceKey)).toEqual(["b", "a"]);
   });
+
+  it("reports false and writes nothing when the source key was never ensured", () => {
+    const wm = setup();
+    expect(wm.advance("unknown", { lastOffset: 10 })).toBe(false);
+    expect(wm.rewind("unknown")).toBe(false);
+    expect(wm.markStatus("unknown", "quarantined", "gone")).toBe(false);
+    expect(wm.get("unknown")).toBeUndefined();
+    expect(wm.list()).toEqual([]);
+  });
+
+  it("reports true when the source key was ensured", () => {
+    const wm = setup();
+    wm.ensure("s");
+    expect(wm.advance("s", { lastOffset: 10 })).toBe(true);
+    expect(wm.rewind("s")).toBe(true);
+    expect(wm.markStatus("s", "quarantined", "gone")).toBe(true);
+  });
 });
