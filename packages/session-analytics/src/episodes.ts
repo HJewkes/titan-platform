@@ -314,9 +314,9 @@ export function writeEpisodes(graph: SessionGraph, sessionIds: readonly string[]
   });
 }
 
-// Deduped, not raw request: a copied request belongs only to the session request_dedup keeps it for.
 const LAST_MAIN_REQUESTS_ORDER = "GROUP BY session_id ORDER BY lastRequestAt DESC, session_id";
 
+// Both read deduped requests, not raw ones: a copied request belongs only to the session request_dedup keeps it for.
 const ALL_LAST_MAIN_REQUESTS = `
   SELECT session_id AS sessionId, MAX(ts) AS lastRequestAt FROM request_dedup
   WHERE is_sidechain = 0 ${LAST_MAIN_REQUESTS_ORDER}`;

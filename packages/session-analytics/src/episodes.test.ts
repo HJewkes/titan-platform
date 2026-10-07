@@ -339,6 +339,15 @@ describe("scoped request dedup", () => {
     expect(sql.filter((text) => text.includes("request_dedup"))).toEqual([]);
   });
 
+  it("reading session contexts prepares no request_dedup statement", () => {
+    copiesAcrossSessions();
+
+    const sql = preparedSql(() => readSessionContexts(fixture.graph.db, ["original", "resumed"]));
+
+    expect(sql.some((text) => /\bFROM request r\b/.test(text))).toBe(true);
+    expect(sql.filter((text) => text.includes("request_dedup"))).toEqual([]);
+  });
+
   it("a scoped staleness check matches the full sweep when request copies span sessions", () => {
     copiesAcrossSessions();
 
