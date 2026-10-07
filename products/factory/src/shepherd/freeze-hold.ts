@@ -16,7 +16,7 @@ export const FREEZE_HOLD_STEPS: readonly StepDeclaration[] = [
 ];
 const DEFAULT_POLL_MS = 30_000;
 /** How long one wait holds the run before the run reads CI and decides again; a hold that still applies waits again. */
-export const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
+const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
 
 const HoldResult = z.looseObject({ hold: z.boolean(), reason: z.string(), episode: z.number().nullable(), baseRef: z.string().optional() });
 type Hold = z.infer<typeof HoldResult>;
