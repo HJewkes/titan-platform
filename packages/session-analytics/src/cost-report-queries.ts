@@ -241,8 +241,19 @@ function addTaskInitiatives(db: Db, ids: string, contexts: Map<string, SessionCo
   }
 }
 
+/**
+ * `request_dedup`'s filter for a request `r`, without the view: SQLite cannot push a session filter
+ * through the view's window, so a scoped read through it ranks every request. The earliest
+ * `(ts, transcript_id)` copy wins as in the view; `ts` is NOT NULL and `(transcript_id, request_id)`
+ * is the key, so no two copies tie. The lookup rides `idx_request_id`.
+ */
+export const FIRST_COPY = `NOT EXISTS (
+    SELECT 1 FROM request e WHERE e.request_id = r.request_id
+      AND (e.ts < r.ts OR (e.ts = r.ts AND e.transcript_id < r.transcript_id)))`;
+
 function addLifetimes(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
-  const sql = `SELECT session_id AS sessionId, MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE ${IN_SESSIONS} AND is_sidechain = 0 GROUP BY session_id`;
+  const sql = `SELECT r.session_id AS sessionId, MIN(r.ts) AS first, MAX(r.ts) AS last FROM request r
+    WHERE r.${IN_SESSIONS} AND r.is_sidechain = 0 AND ${FIRST_COPY} GROUP BY r.session_id`;
   for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; first: string; last: string }[]) {
     contexts.get(row.sessionId)!.lifetimeMs = Date.parse(row.last) - Date.parse(row.first);
   }
