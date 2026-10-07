@@ -368,3 +368,53 @@ describe("a remote bound to checkout paths by several seats", () => {
     expect(book.seats.map((s) => s.paths["acme/widgets"])).toEqual(["~/src/widgets", "$HOME/src/widgets", "/opt/tester/src/widgets"]);
   });
 });
+
+describe("visual_paths", () => {
+  const remote = "repos:\n  - {path: ~/src/design, remote: acme/design}\n";
+  const lookupDesign = (files: Record<string, string>) => lookupSeat(loadSeatBook({ seatsDir: writeSeats(files) }), "acme/design");
+
+  it("reads a seat's visual paths and resolves it to merge:auto with them", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**"]\n`) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["packages/ui/**"] } });
+    expect(resolveEffectivePolicy(lookup)).toMatchObject({ merge: "auto", visualPaths: ["packages/ui/**"] });
+  });
+
+  it("leaves a seat without visual paths and without the grant at owner-gate", () => {
+    const lookup = lookupDesign({ "a.md": seat("plain-seat", remote) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { name: "plain-seat" } });
+    expect(lookup.kind === "seat" && "visualPaths" in lookup.seat).toBe(false);
+    expect(resolveEffectivePolicy(lookup)).toEqual({ merge: "owner-gate", mergeMethod: "squash", fixer: true, seat: "plain-seat" });
+  });
+
+  it("gives a remote two opted-in seats share the union of their visual paths", () => {
+    const lookup = lookupDesign({
+      "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**", "**/*.stories.tsx"]\n`),
+      "b.md": seat("app-seat", `${remote}visual_paths: ["**/*.stories.tsx", "baselines/**"]\n`),
+    });
+
+    expect(resolveEffectivePolicy(lookup)).toMatchObject({ merge: "auto", seat: "design-seat+app-seat", visualPaths: ["packages/ui/**", "**/*.stories.tsx", "baselines/**"] });
+  });
+
+  it("keeps a shared remote at owner-gate when one seat neither opted in nor holds the grant", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**"]\n`), "b.md": seat("plain-seat", remote) });
+
+    expect(resolveEffectivePolicy(lookup)).toMatchObject({ merge: "owner-gate" });
+    expect(resolveEffectivePolicy(lookup)).not.toHaveProperty("visualPaths");
+  });
+
+  it("applies the opted-in seat's visual paths when the other seat holds the merge grant", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**"]\n`), "b.md": seat("trusted-seat", `${remote}grants_extra: [merge-on-green-approve]\n`) });
+
+    expect(resolveEffectivePolicy(lookup)).toMatchObject({ merge: "auto", visualPaths: ["packages/ui/**"] });
+  });
+
+  it.each([
+    ["an empty list", "visual_paths: []\n"],
+    ["a glob that cannot compile", `visual_paths: ["${"{a,b}".repeat(40)}"]\n`],
+    ["an empty glob", 'visual_paths: [""]\n'],
+  ])("refuses a seat file with %s", (_case, field) => {
+    expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}${field}`) }) })).toThrow(/visual_paths/);
+  });
+});
