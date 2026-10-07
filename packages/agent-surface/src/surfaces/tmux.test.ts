@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -52,11 +52,20 @@ const calls = (): string[][] =>
 const callsTo = (verb: string): string[][] => calls().filter(argv => argv.includes(verb))
 const touch = (name: string): void => fs.writeFileSync(path.join(dir, name), '')
 
+// Why: a write fd held open here can leak into a sibling thread's fork and make the exec fail with ETXTBSY, so cp -p installs it with no fd of ours open.
+const installExecutable = (target: string, contents: string): void => {
+  const staging = `${target}.staging`
+  fs.writeFileSync(staging, contents)
+  fs.chmodSync(staging, 0o755)
+  execFileSync('cp', ['-p', staging, target])
+  fs.rmSync(staging)
+}
+
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-tmux-'))
   const bin = path.join(dir, 'bin')
   fs.mkdirSync(bin)
-  fs.writeFileSync(path.join(bin, 'tmux'), FAKE_TMUX, { mode: 0o755 })
+  installExecutable(path.join(bin, 'tmux'), FAKE_TMUX)
   fs.writeFileSync(path.join(dir, 'calls'), '')
   touch('session')
   process.env.PATH = `${bin}${path.delimiter}${savedPath ?? ''}`
