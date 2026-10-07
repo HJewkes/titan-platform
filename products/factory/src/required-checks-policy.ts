@@ -2,16 +2,16 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { statusOf } from "./required-checks.js";
 
-export const CHECKS_POLICY_PATH = ".github/required-checks.json";
+const CHECKS_POLICY_PATH = ".github/required-checks.json";
 
 const policyFile = z.strictObject({
   version: z.literal(1),
   branches: z.record(z.string(), z.strictObject({ contexts: z.array(z.string()) })),
 });
 
-export type ChecksPolicyRead = { readable: true; contexts: string[] } | { readable: false; reason: string };
+type ChecksPolicyRead = { readable: true; contexts: string[] } | { readable: false; reason: string };
 
-export interface ChecksDrift {
+interface ChecksDrift {
   missing: string[];
   extra: string[];
 }
