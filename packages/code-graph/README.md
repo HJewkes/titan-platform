@@ -467,7 +467,9 @@ three are deterministic projections of rows the caller has already read; no LLM 
 - `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
   churn, centrality, ownership, consumers split into source and test files, coupling
   partners, and blast radius. A file target lists its symbols, exports first, each with an
-  `importance` that splits the file's centrality by utilization share. The record carries
+  `importance` that splits the file's centrality by utilization share. Symbol lines, the
+  symbol target and blast-radius entries carry an optional `loc` read from the `symbol_loc`
+  metric, which `collectNodeMetrics` folds onto the symbol's `loc`. The record carries
   `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
 - `renderContextMarkdown(dossier)` renders the same facts as markdown.
 - `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
