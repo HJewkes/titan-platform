@@ -21,6 +21,11 @@ listNodes(store, snapshotId); // file / module / external nodes, symbols on requ
 listEdges(store, snapshotId); // imports / re-exports, references and calls on request
 ```
 
+`IndexResult.warnings` is present only when git was found but its history log overflowed or
+failed, so the snapshot has no (or partial) history metrics. It is absent when history loaded
+and outside git. `assembleIndexerMetrics` returns `{ metrics, warnings }`;
+`buildIndexerMetrics` keeps returning the metrics alone.
+
 ## What was extracted, and what was not
 
 In: the parser (tree-sitter WASM for TypeScript, TSX and Python, since moved to

@@ -147,6 +147,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:*
         version: link:../../packages/rpc-client
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -428,6 +431,12 @@ importers:
         version: 4.5.4
 
   packages/messaging:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/owner-queue:
     devDependencies:
       zod:
         specifier: ^4.4.3

@@ -19,11 +19,20 @@ export type Route =
   | { page: "finding"; id: string }
   | { page: "compare" };
 
+/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
   const [path = "", search = ""] = hash.replace(/^#/, "").split("?");
   const [, page = "", ...rest] = path.split("/");
-  const tail = decodeURIComponent(rest.join("/"));
+  const tail = safeDecode(rest.join("/"));
   if (page === "priorities") return { page, query: parsePriorities(new URLSearchParams(search)) };
   if (page === "node") return { page, id: tail };
   if (page === "finding" && tail) return { page, id: tail };
