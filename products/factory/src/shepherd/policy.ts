@@ -5,7 +5,7 @@ import type { LandOptions } from "../workflows/land.js";
 import { decideAutoMerge, type MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import type { SeatLookup } from "./seats.js";
+import { MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -30,6 +30,8 @@ export interface EffectivePolicy {
   fixer: boolean;
   /** The seat that set the ceiling, or `none` for a repo no seat lists. */
   seat: string;
+  /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
+  visualPaths?: string[];
 }
 
 /** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
@@ -40,6 +42,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   priority: z.number().int().optional(),
   fixer: z.boolean(),
   seat: z.string(),
+  visualPaths: z.array(z.string()).optional(),
 });
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
@@ -49,19 +52,22 @@ export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }
 
-export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
+export { MERGE_ON_GREEN_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
   return MERGE_ORDER.indexOf(a) <= MERGE_ORDER.indexOf(b) ? a : b;
 }
 
-/** The seat default narrowed by the per-PR request; a registration never widens its seat. */
+/**
+ * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
+ * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one.
+ */
 export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}): EffectivePolicy {
   if (lookup.kind === "denied") throw new RegistrationRefused(lookup.reason);
   const requested = parseRequest(request);
   const seat = lookup.kind === "seat" ? lookup.seat : undefined;
-  const ceiling: MergeMode = seat?.grants.includes(MERGE_ON_GREEN_GRANT) ? "auto" : "owner-gate";
+  const ceiling: MergeMode = seat?.grants.includes(MERGE_ON_GREEN_GRANT) || seat?.visualPaths !== undefined ? "auto" : "owner-gate";
   return {
     merge: narrower(ceiling, requested.merge ?? ceiling),
     mergeMethod: requested.mergeMethod ?? "squash",
@@ -69,13 +75,15 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.priority !== undefined && { priority: requested.priority }),
     fixer: seat !== undefined && requested.fixer !== false,
     seat: seat?.name ?? "none",
+    ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, never loosen it. */
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode or add visual paths, never loosen either. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
-  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat };
+  const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
+  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
 }
 
 function parseRequest(request: unknown): RequestedPolicy {
@@ -86,15 +94,15 @@ function parseRequest(request: unknown): RequestedPolicy {
 
 /**
  * `never` denies and `owner-gate` gates. `auto` allows a merge only when authority's MRG-AU-RV holds on the merge facts
- * the MERGE review collected at the exact head being decided; anything else gates. `verdictFor` is the review taken at
- * that head.
+ * the MERGE review collected at the exact head being decided, and none of those facts' changed files is visual; anything
+ * else gates. `verdictFor` is the review taken at that head.
  */
 export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): GatePolicy {
   const rule: PolicyRule = { table: SHEPHERD_POLICY_TABLE, rowId: effective.seat, version: 1 };
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
-      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor));
+      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
     },
   };
@@ -126,7 +134,14 @@ function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdi
   const verdict = verdictFor(headSha);
   if (verdict?.kind !== "MERGE") return undefined;
   const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
-  const wellFormed = typeof evidence?.head === "string" && typeof evidence.merge === "object" && evidence.merge !== null && typeof evidence.record === "object" && evidence.record !== null;
+  const wellFormed =
+    typeof evidence?.head === "string" &&
+    typeof evidence.merge === "object" &&
+    evidence.merge !== null &&
+    Array.isArray(evidence.merge.changedPaths) &&
+    typeof evidence.record === "object" &&
+    evidence.record !== null &&
+    (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
   return wellFormed ? (evidence as MergeEvidence) : undefined;
 }
 
