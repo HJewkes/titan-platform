@@ -253,19 +253,26 @@ function scopeBindings(node: Node): string[] {
   const bind = (target: Node | null): void => {
     if (target) patternNames(target, names);
   };
-  if (SCOPE_FUNCTIONS.has(node.type)) {
-    bind(node.childForFieldName("parameters") ?? node.childForFieldName("parameter"));
-    if (node.type === "function_expression") bind(node.childForFieldName("name"));
-  } else if (node.type === "statement_block") {
-    declaredIn(node.namedChildren, names);
-  } else if (node.type === "switch_body") {
-    declaredIn(node.namedChildren.flatMap((clause) => clause?.namedChildren ?? []), names);
-  } else if (node.type === "for_statement") {
-    declaredIn([node.childForFieldName("initializer")], names);
-  } else if (node.type === "for_in_statement") {
-    if (node.childForFieldName("kind")) bind(node.childForFieldName("left"));
-  } else if (node.type === "catch_clause") {
-    bind(node.childForFieldName("parameter"));
+  switch (node.type) {
+    case "statement_block":
+      declaredIn(node.namedChildren, names);
+      break;
+    case "switch_body":
+      declaredIn(node.namedChildren.flatMap((clause) => clause?.namedChildren ?? []), names);
+      break;
+    case "for_statement":
+      declaredIn([node.childForFieldName("initializer")], names);
+      break;
+    case "for_in_statement":
+      if (node.childForFieldName("kind")) bind(node.childForFieldName("left"));
+      break;
+    case "catch_clause":
+      bind(node.childForFieldName("parameter"));
+      break;
+    default:
+      if (!SCOPE_FUNCTIONS.has(node.type)) break;
+      bind(node.childForFieldName("parameters") ?? node.childForFieldName("parameter"));
+      if (node.type === "function_expression") bind(node.childForFieldName("name"));
   }
   return names;
 }
