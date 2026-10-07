@@ -20,9 +20,9 @@ export function runChecks(store: CodeGraphStore, options: RunChecksOptions): Che
     violations.push(...runRule(rule, ctx));
   }
   if (options.baselineSnapshotId) {
-    const baselineKeys = collectBaselineKeys(store, options.baselineSnapshotId, options.snapshotId, options.rules);
+    const baseline = collectBaseline(store, options.baselineSnapshotId, options.snapshotId, options.rules);
     for (const v of violations) {
-      if (baselineKeys.has(violationKey(v))) v.isCarryover = true;
+      if (isKnown(v, baseline)) v.isCarryover = true;
     }
   }
   const counts = countByOriginAndSeverity(violations);
@@ -43,20 +43,43 @@ export function snapshotViolations(store: RuleStore, snapshotId: number, rules: 
   return rules.flatMap((rule) => runRule(rule, ctx));
 }
 
-/** Baseline violation keys in the checked snapshot's id space, so a moved file's violations carry over. */
-function collectBaselineKeys(
+interface Baseline {
+  keys: Set<string>;
+  /** Per rule, each baseline cycle's member ids in the checked snapshot's id space. */
+  cycles: Map<string, Set<string>[]>;
+}
+
+/** A cycle is known when one baseline cycle of its rule holds every member, so a shrunk or split cycle carries over. */
+function isKnown(v: CheckViolation, baseline: Baseline): boolean {
+  if (baseline.keys.has(violationKey(v))) return true;
+  const members = v.members;
+  if (!members) return false;
+  return (baseline.cycles.get(v.ruleId) ?? []).some((known) => members.every((m) => known.has(m)));
+}
+
+/** Baseline violations in the checked snapshot's id space, so a moved file's violations carry over. */
+function collectBaseline(
   store: CodeGraphStore,
   baselineSnapshotId: number,
   snapshotId: number,
   rules: readonly CheckRule[],
-): Set<string> {
+): Baseline {
   const ctx = buildRuleContext(store, baselineSnapshotId);
   const chain = aliasChain(store, baselineSnapshotId, snapshotId);
-  const keys = new Set<string>();
+  const baseline: Baseline = { keys: new Set(), cycles: new Map() };
   for (const rule of rules) {
-    for (const v of runRule(rule, ctx)) keys.add(rebasedViolationKey(v, chain.resolve));
+    for (const v of runRule(rule, ctx)) {
+      baseline.keys.add(rebasedViolationKey(v, chain.resolve));
+      if (v.members) addCycle(baseline.cycles, v.ruleId, new Set(v.members.map(chain.resolve)));
+    }
   }
-  return keys;
+  return baseline;
+}
+
+function addCycle(cycles: Map<string, Set<string>[]>, ruleId: string, members: Set<string>): void {
+  const list = cycles.get(ruleId);
+  if (list) list.push(members);
+  else cycles.set(ruleId, [members]);
 }
 
 interface Counts {
