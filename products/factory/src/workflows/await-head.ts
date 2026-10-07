@@ -2,8 +2,10 @@ import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
+import { readRequiredChecks } from "../required-checks.js";
 import { codeRoute, sleep } from "./land.js";
-import type { PrSnapshot } from "./pr-snapshot.js";
+import { requiredChecksPass } from "./land-ci.js";
+import { portReads, type PrSnapshot } from "./pr-snapshot.js";
 
 export const AWAIT_HEAD_POLL_MS = 30_000;
 
@@ -14,6 +16,15 @@ export interface AwaitHeadTarget {
   headSha: string;
   /** The woken fixer; once it has exited with the head unchanged, the wait ends instead of running on. */
   agent?: string;
+  /** Set after a red ci-wait: every required check passing at the unchanged head, as after a rerun of the failed jobs, also ends the wait. */
+  untilGreen?: boolean;
+}
+
+/** How the wait ended: `exited` when the fixer ended with the head unchanged and the PR open, `green` when the unchanged head's required checks all passed. */
+export interface AwaitHeadOutcome {
+  pr: PullRequest;
+  exited: boolean;
+  green?: true;
 }
 
 export interface AwaitHeadTiming {
@@ -42,8 +53,19 @@ export async function awaitNewHead(port: GitHubPort, target: AwaitHeadTarget, si
   return (await awaitHeadOrExit(port, target, signal, timing)).pr;
 }
 
-/** Like `awaitNewHead`, but `exited` is set when the fixer ended with the head unchanged and the PR open. */
-export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<{ pr: PullRequest; exited: boolean }> {
+/** A failed read is not green; the next poll reads again. */
+async function greenAtHead(port: GitHubPort, target: AwaitHeadTarget, pr: PullRequest, timing: AwaitHeadTiming): Promise<boolean> {
+  const rules = await readRequiredChecks(port, target.repo, pr.baseRef);
+  if (!rules.readable) return (timing.onReadError?.(rules.reason), false);
+  const contexts = rules.checks.contexts;
+  return contexts.length > 0 && (await requiredChecksPass({ repo: target.repo, contexts }, pr.headSha, portReads(port)).catch((error: unknown) => {
+    timing.onReadError?.(`${target.repo}#${target.pr} checks at ${pr.headSha}: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }));
+}
+
+/** Like `awaitNewHead`, but also ends when the fixer exits with the head unchanged, or, with `untilGreen`, when that head turns green. */
+export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<AwaitHeadOutcome> {
   const pause = timing.sleep ?? sleep;
   for (;;) {
     signal.throwIfAborted();
@@ -55,6 +77,7 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
       return undefined;
     });
     if (pr && (pr.headSha !== target.headSha || pr.state !== "open")) return { pr, exited: false };
+    if (pr && target.untilGreen === true && (await greenAtHead(port, target, pr, timing))) return { pr, exited: false, green: true };
     if (pr && target.agent !== undefined && (await timing.agentExited?.(target.agent, signal))) {
       // Re-read after the exit is seen, so a push made just before it is not mistaken for no push.
       const last = await port.getPr(target.repo, target.pr).catch(() => undefined);
@@ -66,7 +89,7 @@ export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget,
 
 export const AWAIT_HEAD_STEPS: readonly StepDeclaration[] = [{ id: "await-new-head", kind: "dispatch" }];
 
-export const AwaitHeadResult = z.looseObject({ headSha: z.string(), state: z.enum(["open", "closed"]), exited: z.boolean().optional() });
+export const AwaitHeadResult = z.looseObject({ headSha: z.string(), state: z.enum(["open", "closed"]), exited: z.boolean().optional(), green: z.boolean().optional() });
 
 export interface AwaitHeadDeps extends AwaitHeadTiming {
   port: GitHubPort;
@@ -82,8 +105,8 @@ export interface AwaitHeadDeps extends AwaitHeadTiming {
  */
 export function awaitNewHeadRoute(deps: AwaitHeadDeps, match = "await-new-head"): StepRoute {
   return codeRoute(match, deps.now ?? Date.now, async (target: AwaitHeadTarget, signal) => {
-    const { pr, exited } = await awaitHeadOrExit(deps.port, target, signal, deps);
+    const { pr, exited, green } = await awaitHeadOrExit(deps.port, target, signal, deps);
     deps.snapshot?.invalidate(target.repo);
-    return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...(exited && { exited }) };
+    return { headSha: pr.headSha, state: pr.state, merged: pr.merged, ...(exited && { exited }), ...(green && { green }) };
   });
 }

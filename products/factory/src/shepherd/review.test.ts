@@ -1465,8 +1465,156 @@ describe("reviewPhase", () => {
 
       const { verdicts, resultOf } = await review({ dispatch, read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO });
 
-      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (no_block)" }]);
       expect(resultOf(`sh-late-verdict:${H1}`)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
+    });
+  });
+
+  describe("a dispatched reviewer whose final message is no verdict Shepherd can read", () => {
+    const MALFORMED = "Looks fine to me, merging is safe.";
+    /** The reviewer ends each turn at once: its first message is `first`, and once resumed it answers with `reply`, or with nothing more. Its transcript outlives its roster row. */
+    const correcting = (first: string, reply?: (head: string) => string): Scene["read"] => {
+      let who: ReviewerAgent | undefined;
+      let firstAt: number | undefined;
+      let replyAt: number | undefined;
+      return (input, dispatch, now) => {
+        who ??= dispatch.agents.find((candidate) => candidate.agentId === input.reviewerAgentId);
+        if (!who) return [];
+        who.presence = "exited";
+        firstAt ??= now + 1;
+        if (dispatch.resumes.length > 0 && reply) replyAt ??= now + 1;
+        return [said(who, first, firstAt), ...(replyAt === undefined ? [] : [said(who, reply!(input.head), replyAt)])];
+      };
+    };
+    const corrections = (stepIds: string[]) => stepIds.filter((id) => id.startsWith("sh-correct-verdict"));
+
+    it("resumes the same reviewer once and takes its corrected MERGE, resolved by the dispatched reviewer", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read: correcting(MALFORMED, (head) => verdictAt(head)), policy: AUTO });
+      const identity = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
+
+      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-correct-verdict:${H1}`, `sh-await-verdict:${H1}:corrected`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("it had no Verdict line") }]);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+      expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });
+    });
+
+    it("sends the head back with the corrected reply's text on a corrected FIX_FIRST", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts } = await review({ dispatch, read: correcting(MALFORMED, (head) => `Unbounded retry.\n\n${verdictAt(head, "FIX_FIRST")}`), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "FIX_FIRST", headSha: H1, text: expect.stringContaining("Unbounded retry.") }]);
+      expect(verdicts[0]).not.toMatchObject({ text: expect.stringContaining(MALFORMED) });
+    });
+
+    it("gives a reviewer malformed twice no second correction and ends in a timeout none that names the refusal", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds } = await review({ dispatch, read: correcting(MALFORMED, () => "Still fine, merge it."), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (no_block)" }]);
+      expect(dispatch.resumes).toHaveLength(1);
+      expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
+    });
+
+    it("ends in a timeout none when the resumed reviewer writes nothing after its malformed message", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts } = await review({ dispatch, read: correcting(MALFORMED), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer wrote no verdict after its correction" }]);
+      expect(dispatch.resumes).toHaveLength(1);
+    });
+
+    it("takes no verdict from a corrected reply that names another head", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds } = await review({ dispatch, read: correcting(MALFORMED, () => verdictAt(H2)), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (wrong_target)" }]);
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
+    it.each<[string, Scene["read"]]>([
+      ["says nothing", () => []],
+      ["says WAIT", correcting(`Checks still running.\n\nVerdict: WAIT\nPR: ${REPO}#1\nHead: ${H1}\n`)],
+    ])("asks no correction of a reviewer that %s", async (_name, read) => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds } = await review({ dispatch, read, policy: AUTO });
+
+      expect(verdicts).toMatchObject([{ kind: "none", cause: "timeout" }]);
+      expect(corrections(stepIds)).toEqual([]);
+      expect(dispatch.resumes).toEqual([]);
+    });
+
+    it("asks no correction of an external reviewer, whom Shepherd did not start", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+      const dispatch = fakeDispatch(crew(external));
+      const awaited = (): AwaitVerdictResult => ({ kind: "none", malformed: { refusal: "no_block", writtenAt: 5_000 } }) as AwaitVerdictResult;
+
+      const { verdicts, stepIds } = await review({ dispatch, awaited, hold: "security: awaiting the audit", holdReviewer: external.name });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "external-hold" }]);
+      expect(corrections(stepIds)).toEqual([]);
+      expect(dispatch.resumes).toEqual([]);
+    });
+
+    /** One host dies in sh-correct-verdict and a second replays the run a minute later; `meanwhile` is what the roster shows by then. */
+    async function correctionReplay(when: "before" | "after", meanwhile: (now: number) => Partial<ReviewerAgent> = () => ({})) {
+      let clock = 10_000;
+      const dispatch = fakeDispatch();
+      const read = correcting(MALFORMED, (head) => `Unbounded retry.\n\n${verdictAt(head, "FIX_FIRST")}`)!;
+      const deps = { store: boundStore(), now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000 } as unknown as ShepherdDeps;
+      const routes = reviewRoutes(deps, { reader: { read: async (input) => read(input, dispatch, clock) }, dispatch, timeoutMs: 5_000 });
+      const verdicts: Verdict[] = [];
+      const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1 })) });
+      const dir = mkdtempSync(join(tmpdir(), "factory-review-"));
+      dirs.push(dir);
+      let died!: () => void;
+      const dead = new Promise<void>((resolve) => (died = resolve));
+      const crash = crashAt({ dbPath: join(dir, "factory.sqlite3"), workflows: [workflow], routes: dyingAt(routes, "sh-correct-verdict", when, died), hangAt: "" });
+      crash.crashed.runtime.start("review-test");
+      await dead;
+      dispatch.agents.forEach((who) => Object.assign(who, meanwhile(clock)));
+      clock += 60_000;
+      await crash.takeOver(routes).resume();
+      crash.dispose();
+      return { verdicts, dispatch };
+    }
+
+    it.each<[string, "before" | "after", (now: number) => Partial<ReviewerAgent>]>([
+      ["before it resumed the reviewer", "before", () => ({})],
+      ["after the resume landed, with the reviewer still running", "after", () => ({ presence: "live" })],
+      ["after the resume landed and the reviewer exited again", "after", (now) => ({ presence: "exited", lastWrittenAt: now })],
+    ])("resumes the reviewer once and takes its corrected verdict when the host dies in sh-correct-verdict %s", async (_name, when, meanwhile) => {
+      const { verdicts, dispatch } = await correctionReplay(when, meanwhile);
+
+      expect(dispatch.resumes.map((resume) => resume.name)).toEqual(["rv-octo-demo-1"]);
+      expect(verdicts).toEqual([{ kind: "FIX_FIRST", headSha: H1, text: expect.stringContaining("Unbounded retry.") }]);
+    });
+
+    it.each<[string, (dispatch: FakeDispatch) => void, string]>([
+      ["is still running", (dispatch) => (dispatch.agents.forEach((who) => (who.presence = "live")), undefined), "the reviewer had not exited, so it was not resumed"],
+      ["has left the roster", (dispatch) => void dispatch.agents.splice(0), "the reviewer is not on the roster exactly once"],
+      ["is refused a resume", (dispatch) => void (dispatch.resume = async () => Promise.reject(new DispatchError("not resumable"))), "the reviewer dispatch was refused: DispatchError"],
+    ])("goes to a fresh reviewer without a correction when the reviewer %s", async (_name, unresumable, reason) => {
+      const dispatch = fakeDispatch();
+      const malformedOnce = correcting(MALFORMED);
+      const read: Scene["read"] = (input, held, now) => {
+        const messages = malformedOnce!(input, held, now);
+        unresumable(held);
+        return messages;
+      };
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, read, policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason }]);
+      expect(resultOf(`sh-correct-verdict:${H1}`)).toEqual({ kind: "none", reason });
+      expect(stepIds).not.toContain(`sh-await-verdict:${H1}:corrected`);
+      expect(dispatch.resumes).toEqual([]);
     });
   });
 

@@ -1,0 +1,64 @@
+{
+  "schema": "autonomy-seat/v1",
+  "name": "seat-e",
+  "prefix": "pe",
+  "role": "product",
+  "attended": false,
+  "profile": "profile-a",
+  "surface": "surface-a",
+  "host": "host-a",
+  "model": "model-a",
+  "effort": "high",
+  "pool": "pool-d",
+  "config_dir": "/home/user/cfg/pool-d",
+  "cwd": "/home/user/work/dir-e",
+  "heartbeat_cron": "7,37 * * * *",
+  "initiatives": {
+    "init-a": 1.0
+  },
+  "unclaimed_engineering": false,
+  "task_sources": [
+    "source-a"
+  ],
+  "repos": [
+    {
+      "path": "~/work/repo-17",
+      "remote": "org-a/repo-17",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ]
+    }
+  ],
+  "deny_repos": [],
+  "kind_weights": {},
+  "share_caps": {},
+  "spend": {
+    "per_run_points": 45,
+    "per_day_points": 45
+  },
+  "concurrency": {
+    "implementers": 2,
+    "reviewers": 2,
+    "planners": 1
+  },
+  "excluded_tags": [
+    "tag-a",
+    "tag-b",
+    "tag-c",
+    "tag-d"
+  ],
+  "extra_hard_stops": [
+    "stop-a",
+    "stop-b",
+    "stop-c"
+  ],
+  "grants_extra": [
+    "grant-a",
+    "grant-b"
+  ],
+  "log": "logs/seat-e/",
+  "queue": "queues/seat-e.md",
+  "dispatch_log": "logs/seat-e/dispatch.jsonl",
+  "digest_to": "digest-a"
+}

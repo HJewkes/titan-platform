@@ -14,6 +14,7 @@ function fakeContext(): WorkflowContext {
     signal: new AbortController().signal,
     param: () => undefined,
     iteration: () => 0,
+    historyNext: () => undefined,
     expireGates: () => [],
     dispatch: unused,
     seed: unused,

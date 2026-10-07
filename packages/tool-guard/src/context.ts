@@ -7,6 +7,8 @@ export interface ReadFs {
   realpath(p: string): string;
   readHead(p: string, max: number): string;
   isFile(p: string): boolean;
+  /** Whether a lookup finds a file whatever the case of its name. */
+  foldsCase?: boolean;
 }
 
 const SCRIPT_CAP = 64 * 1024;
@@ -29,7 +31,16 @@ export const NODE_FS: ReadFs = {
     }
   },
   isFile: (p) => fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false,
+  foldsCase: foldsCaseOn(process.platform),
 };
+
+/**
+ * Darwin's default APFS volume and Windows' NTFS find `GIT` as git. Linux's filesystems do not: a `GIT` there is a
+ * different program, so reading it as git would add a false verdict.
+ */
+export function foldsCaseOn(platform: string): boolean {
+  return platform === "darwin" || platform === "win32";
+}
 
 /** The classifier's context over a read-only filesystem. Every port returns null rather than throwing. */
 export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContext {
@@ -40,6 +51,7 @@ export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContex
     readHead: (dir) => attempt(() => branchOf(dir, rfs)),
     // A regular file only: opening a FIFO such as `/dev/stdin` would block the hook.
     readScript: (p) => attempt(() => (rfs.isFile(p) ? rfs.readHead(p, SCRIPT_CAP) : null)),
+    ...(rfs.foldsCase ? { foldCase: true } : {}),
   };
 }
 
