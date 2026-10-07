@@ -103,7 +103,7 @@ export function ruffCheckArgs(configPath: string, files: string[], fix?: boolean
 
 /** Writes `config` to a temporary ruff.toml for the length of `run`. */
 export async function withRuffConfig<T>(config: RuffConfig, run: (configPath: string) => Promise<T>): Promise<T> {
-  const tempDir = mkdtempSync(join(tmpdir(), "codewatch-ruff-"));
+  const tempDir = mkdtempSync(join(tmpdir(), "style-checker-ruff-"));
   const configPath = join(tempDir, "ruff.toml");
   try {
     writeFileSync(configPath, toToml(config), "utf-8");
