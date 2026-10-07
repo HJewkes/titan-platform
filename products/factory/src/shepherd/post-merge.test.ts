@@ -205,7 +205,10 @@ describe("readMainCi", () => {
       fake.setRuns(TIP, tipRuns);
       const timing = clockedTiming();
       const sleep = timing.sleep;
-      timing.sleep = async (ms: number) => (await sleep(ms), timing.now() >= movesAtMs && void fake.refs.set("main", TIP));
+      timing.sleep = async (ms: number) => {
+        await sleep(ms);
+        if (timing.now() >= movesAtMs) fake.refs.set("main", TIP);
+      };
       return { fake, timing };
     }
 

@@ -153,7 +153,7 @@ export interface Timing {
 
 type Read = { verdict: "green" | "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
 
-type Settled = Omit<MainCi, "mergeSha" | "after">;
+type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha">;
 
 interface Watch {
   sha: string;
