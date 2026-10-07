@@ -30,6 +30,7 @@ import type {
   SourceTextLocator,
 } from "./normalized.js";
 import { TranscriptParseError } from "./read.js";
+import { SessionIdentityError } from "./recent-claude.js";
 import { asObject, str, type Json } from "./text.js";
 
 export const CLAUDE_DECODER_ID = "claude-code-transcript";
@@ -270,10 +271,10 @@ class ClaudeContext {
     const nativeId = str(this.record, "sessionId");
     if (!nativeId || nativeId === this.source.conversation.nativeId) return;
     if (!isSubagentSource(this.source)) {
-      throw new TypeError(`Claude transcript ${this.source.sourceId} contains session ${nativeId}`);
+      throw new SessionIdentityError(`Claude transcript ${this.source.sourceId} contains session ${nativeId}`, "foreign_native_session");
     }
     if (this.parentConversation?.nativeId === nativeId) return;
-    if (this.parentConversation) throw new TypeError(`Claude sidechain ${this.source.sourceId} names multiple parent sessions`);
+    if (this.parentConversation) throw new SessionIdentityError(`Claude sidechain ${this.source.sourceId} names multiple parent sessions`, "multiple_parent_sessions");
     this.parentConversation = { harness: "claude-code", namespace: this.source.namespace, nativeId };
     this.observe({
       ...this.base(["sessionId"]),

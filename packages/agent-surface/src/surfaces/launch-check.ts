@@ -10,9 +10,11 @@ import { promisify } from "node:util";
  * pane's tty is the one handle that reaches its processes, and `ps -t` answers
  * from it.
  *
- * Only a positive answer of absence fails a launch. A tty that never appears, a
- * `ps` that errors, or a pane that has closed all mean "cannot say", and the
- * host's ordinary attach window keeps deciding those.
+ * Only a positive answer of absence fails a launch. A `ps` that errors, a tty
+ * this check does not recognise, or a pane that has closed all mean "cannot
+ * say", and the host's ordinary attach window keeps deciding those. A pane
+ * whose tty stays `''` until the deadline counts as absent: a pane with no tty
+ * has no process on it, so the launcher is not running there.
  */
 
 /** Command lines of the processes on a tty. Rejects when it cannot tell. */

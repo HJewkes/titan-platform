@@ -27,9 +27,13 @@ estimated thinking share), `phase`, `human_edit`, `file_checkpoint`, `pr`, `pr_m
 `pr_create`, `branch`, `file`, `task`, `subagent`, `subagent_transcript`, `artifact`, and
 `edge` (`session:… touched file:…` and friends; vocabulary in `RELATIONS`).
 
-Every rule in `LineReader` is stateless across lines. That is what makes reading
-incrementally from a watermark and rebuilding the whole file produce the same events, so
-an index can resume without ever re-deriving history.
+Every rule in `LineReader` is stateless across lines except the last-seen timestamp: a
+record such as `cost-state` carries none of its own and takes the enclosing line's. A
+caller resuming mid-file with `LineReader` directly must pass `initialTs`, the last
+timestamp before its start offset. `readTranscriptEvents` does this for you, recovering it
+with a backward lookback from the start offset. With that, reading incrementally from a
+watermark and rebuilding the whole file produce the same events, so an index can resume
+without ever re-deriving history.
 
 ## Verdict block
 
@@ -39,11 +43,19 @@ an index can resume without ever re-deriving history.
 any short, upper-case or over-long head are refused. Rules and reasons are in
 `site/reference/session-read.md`.
 
+## Review verdicts and assigned tasks
+
+`parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
+verdicts. `assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned
+session was given, and `orientationEnd(brief)` returns where the assignment starts in the
+brief. Signatures and examples are in the
+[reference page](https://hjewkes.github.io/titan-platform/reference/session-read.html).
+
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 6) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -61,11 +73,13 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 
 - `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
 - `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
-- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `commit`, `push` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result.
 - `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
-- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+- `agent_spawn` is an `Agent` or `Task` call, or an agent-chat `agent_spawn`.
+- `file_read` is a `Read` call and `file_write` is a write-tool call (including notebook edits). Both carry the repo-relative path as `detail`; build trees matched by `IGNORED_PATH` emit nothing.
 - `command_heads` is the program and up to two subcommand words of each simple command in a Bash call, joined with `;` (`gh pr checks;git log`), plus `>dir/name` (the last parent directory and the basename) for each file it writes; a bare filename stays `>name`. `cd` is dropped, and `builtin`, `command`, `timeout N`, `nice`, `nohup` and `env A=1` are looked through to the program they run.
   Two program shapes keep a path operand's signal:
   - `gh api` gives the HTTP method (from `-X`/`--method`; otherwise POST when `-f`, `-F` or `--input` adds a body, else GET) and the endpoint's resource words, with owner, repo and item ids dropped: `gh api -X PUT repos/o/r/pulls/5/merge` gives `gh api PUT pulls/merge`. Flag values such as `-f`, `-H` and `--jq` never enter the head.

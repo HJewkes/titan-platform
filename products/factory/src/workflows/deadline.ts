@@ -20,6 +20,7 @@ export interface Deadline {
 
 /** A wall-clock step deadline that a suspended host or a stepped clock cannot spuriously expire. */
 export function deadline(timing: DeadlineTiming): Deadline {
+  if (!Number.isFinite(timing.timeoutMs)) throw new RangeError(`deadline needs a finite timeoutMs, got ${timing.timeoutMs}`);
   const slack = timing.jumpSlackMs ?? DEFAULT_JUMP_SLACK_MS;
   const grace = timing.jumpGraceMs ?? DEFAULT_JUMP_GRACE_MS;
   const end = timing.now() + timing.timeoutMs;

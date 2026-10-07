@@ -125,7 +125,7 @@ export function classifyOutcome(prs: SessionDiary["prs"], tasks: SessionDiary["t
   return { status, prsMerged, prsAbandoned, tasksDone, tasksOpen, errorCount, distinctErrors: errors.length };
 }
 
-/** The diary as the prose a reflector reads. Deterministic, so it is also a fine `--dry-run` output. */
+/** The diary as the prose a reflector reads. Deterministic, so it is also the output when no reflector is supplied. */
 export function renderDiary(diary: SessionDiary): string {
   const lines = [
     `# Session ${diary.sessionRef}`,

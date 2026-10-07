@@ -180,3 +180,40 @@ describe("playbook.reflect", () => {
     expect(countRows()).toEqual(before);
   });
 });
+
+describe("CLI option clarity", () => {
+  const cli = async (args: string[], env: NodeJS.ProcessEnv = {}) => {
+    let stderr = "";
+    const io = { stdout: () => undefined, stderr: (t: string) => void (stderr += t), env };
+    const code = await runCli(["--state", config.stateDir, "--corpus", config.corpusRoot, ...args], io);
+    return { code, stderr };
+  };
+
+  it("rejects --namespace without --codex-home as a usage error naming --codex-home", async () => {
+    const { code, stderr } = await cli(["--namespace", "host", "playbook", "status"]);
+    expect(code).toBe(64);
+    expect(stderr).toContain("--codex-home");
+  });
+
+  it("accepts --namespace alongside --codex-home", async () => {
+    const codexHome = path.join(dir, "codex");
+    mkdirSync(codexHome, { recursive: true });
+    expect((await cli(["--codex-home", codexHome, "--namespace", "host", "playbook", "status"])).code).toBe(0);
+  });
+
+  it("accepts --namespace when the Codex home comes from TITAN_MINER_CODEX_HOME", async () => {
+    const codexHome = path.join(dir, "codex");
+    mkdirSync(codexHome, { recursive: true });
+    expect((await cli(["--namespace", "host", "playbook", "status"], { TITAN_MINER_CODEX_HOME: codexHome })).code).toBe(0);
+  });
+
+  it("rejects TITAN_MINER_NAMESPACE without any Codex home", async () => {
+    const { code, stderr } = await cli(["playbook", "status"], { TITAN_MINER_NAMESPACE: "host" });
+    expect(code).toBe(64);
+    expect(stderr).toContain("TITAN_MINER_CODEX_HOME");
+  });
+
+  it("no longer offers a --dry-run flag on playbook reflect", async () => {
+    expect((await cli(["playbook", "reflect", "s1", "--dry-run"])).code).toBe(64);
+  });
+});

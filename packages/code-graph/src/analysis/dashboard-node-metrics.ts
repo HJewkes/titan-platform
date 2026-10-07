@@ -36,6 +36,7 @@ const METRIC_FIELD: Record<string, NumericMetricField> = {
   // `symbol_*` names, so there's no collision on a shared field).
   symbol_cognitive: "cognitiveMax",
   symbol_cyclomatic: "cyclomaticMax",
+  symbol_loc: "loc",
 };
 
 /** Fold the flat metric rows into a per-node structural-metrics map. */
@@ -211,14 +212,16 @@ export interface BlastRadiusEntry {
   fileId: string;
   utilization: number;
   complexity: number;
+  /** The export's own LOC, shown beside complexity; absent when unmeasured. */
+  loc?: number;
   churn: number;
   score: number;
 }
 
 /**
  * Rank exports by blast radius = utilization × cognitive complexity × file
- * churn (C-53, "idea d"). Surfaces the single riskiest thing to touch: a
- * heavily-used export that is both hard to reason about and actively changing.
+ * churn (C-53, "idea d"). An attention director, not a defect predictor: it
+ * surfaces a heavily-used export that is both slow to read and actively changing.
  * Complexity is the export's OWN cognitive complexity (C-58, per-symbol) when
  * known, falling back to the file's max for exports without a computed symbol
  * complexity (e.g. class or re-exported symbols). This is what lets two exports
@@ -241,7 +244,8 @@ export function buildBlastRadius(
     const churn = churnByFile.get(s.fileId) ?? 0;
     const score = s.utilization * complexity * churn;
     if (score <= 0) continue;
-    out.push({ symbolId: s.symbolId, name: s.name, fileId: s.fileId, utilization: s.utilization, complexity, churn, score });
+    const loc = metrics.get(s.symbolId)?.loc;
+    out.push({ symbolId: s.symbolId, name: s.name, fileId: s.fileId, utilization: s.utilization, complexity, loc, churn, score });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, limit);
 }

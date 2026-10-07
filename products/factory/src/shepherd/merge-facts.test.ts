@@ -221,14 +221,56 @@ describe("mergeEvidence", () => {
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 
+  describe("a push between the PR read and the changed-files read", () => {
+    /** The push lands as the file list is read, so GitHub answers with the new head's files. */
+    function pushedDuringRead(fake: FakeGitHub, nextFiles: PrFile[]): GitHubPort {
+      const port = githubPort(fake.wire);
+      return {
+        ...port,
+        listPrFiles: async (repo, number) => {
+          fake.pushHead(1, OTHER_HEAD);
+          fake.prFiles.set(1, nextFiles);
+          return port.listPrFiles(repo, number);
+        },
+      };
+    }
+
+    it.each([
+      ["a visual change", [{ path: "packages/ui/src/Button.tsx", status: "modified" }], { visualPaths: ["packages/ui/**"] }],
+      ["a .github change", [{ path: ".github/workflows/ci.yml", status: "modified" }], {}],
+    ])("gates %s at the reviewed head instead of judging the pushed head's files", async (_case, headFiles: PrFile[], overrides: Partial<MergeEvidenceInput>) => {
+      const fake = world(headFiles);
+      const port = pushedDuringRead(fake, [{ path: "src/a.ts", status: "modified" }]);
+
+      const evidence = await mergeEvidence(port, { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+      expect(evidence.merge.changedPaths).toEqual([]);
+      expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the head moved to ${OTHER_HEAD} during the read`);
+      expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
+    });
+
+    it("reads no file list when the PR is already at another head", async () => {
+      const fake = world();
+      fake.pushHead(1, OTHER_HEAD);
+
+      const evidence = await collect(fake);
+
+      expect(fake.calls).not.toContain("listPrFiles");
+      expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the PR is at ${OTHER_HEAD}, not ${HEAD}`);
+    });
+  });
+
   describe("an unknown mergeable_state", () => {
     function scripted(states: string[]): { port: GitHubPort; reads: () => number; sleeps: number[] } {
       const fake = world();
       fake.reviewBypass = true;
       const real = githubPort(fake.wire);
       let reads = 0;
+      let settleReads: number | undefined;
       const getPr: GitHubPort["getPr"] = async (repo, number) => ({ ...(await real.getPr(repo, number)), mergeableState: states[Math.min(reads++, states.length - 1)]! });
-      return { port: { ...real, getPr }, reads: () => reads, sleeps: [] };
+      // The changed-files read re-reads the head afterwards; that read is not part of settling.
+      const listPrFiles: GitHubPort["listPrFiles"] = async (repo, number) => ((settleReads ??= reads), real.listPrFiles(repo, number));
+      return { port: { ...real, getPr, listPrFiles }, reads: () => settleReads ?? reads, sleeps: [] };
     }
     const settle = (rig: ReturnType<typeof scripted>) => mergeEvidence(rig.port, input, noFreezeStoreUntilTp523, { kind: "correctness" }, { sleep: async (ms) => void rig.sleeps.push(ms) });
 

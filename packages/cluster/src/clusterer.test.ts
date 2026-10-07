@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ANCHOR_CONFIGS } from "./anchors.js";
 import { Clusterer } from "./clusterer.js";
 import { DrainTreeRegistry } from "./registry.js";
 import { templateId } from "./template-id.js";
@@ -106,6 +107,17 @@ describe("Clusterer", () => {
     const restored = Clusterer.fromSnapshot(snapshot, options);
     expect(restored.templateCount).toBe(2);
     expect(restored.snapshot().partitions[0]!.templateIds.map(([clusterId]) => clusterId)).toEqual([1, 2]);
+  });
+});
+
+describe("Clusterer anchors option", () => {
+  it("threads a partition's anchor config into signature extraction", () => {
+    const clusterer = new Clusterer({ anchors: { ...DEFAULT_ANCHOR_CONFIGS, Bash: DEFAULT_ANCHOR_CONFIGS.test! } });
+
+    const result = clusterer.cluster({ partition: "Bash", text: "src/a.ts(3,5): error TS2322: bad type\nFound 1 error." });
+
+    expect(result.signature.errorClass).toBe("TS2322");
+    expect(result.signature.anchored).toBe(true);
   });
 });
 

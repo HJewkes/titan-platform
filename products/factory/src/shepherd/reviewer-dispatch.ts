@@ -4,11 +4,11 @@ import { isAbsolute, join } from "node:path";
 import { BrokerUnavailableError, DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatAgents } from "./agents.js";
 import { agentChatRoster, type RosterReader } from "./roster.js";
-import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch } from "./review.js";
+import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { ReviewerMachineHold } from "./review-wait.js";
-import { SpawnDeferred, type SpawnGate } from "./spawn-gate.js";
+import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
@@ -35,6 +35,8 @@ export interface AgentChatReviewerDispatchOptions {
   roster?: RosterReader;
   /** Admits each spawn; a deferral is a busy refusal, asked again on the step's next wait. */
   gate?: SpawnGate;
+  /** True for the PR that fixes its repo's red main, whose review the gate admits ahead of the others; absent means none is. */
+  isFixer?: (target: ReviewTarget) => boolean;
 }
 
 export interface AgentChatReviewerDispatch extends ReviewerDispatch {
@@ -149,6 +151,11 @@ export function runningReviewStarts(rows: readonly ReviewerRosterRow[], firstSee
   return running.map((row) => firstSeen.get(row.name) ?? (firstSeen.set(row.name, now), now));
 }
 
+/** A resume names only the reviewer, so its PR is known only when this process spawned it. */
+function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"]): ReviewAsk {
+  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr } };
+}
+
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, roles, cwdFor, configDir } = options;
@@ -157,9 +164,14 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const runningReviews = async () => runningReviewStarts((await roster.rows()).map(rosterRow), firstSeen, Date.now());
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
+  const targets = new Map<string, ReviewTarget>();
+  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string) => {
+    targets.set(name, target);
+    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer), ...(options.gate && { runningReviews: await runningReviews() }) });
+  };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(async () => agents.spawn({ name, profile: reviewerRoleFor(facts, roles), brief, cwd: checkoutDir(target.repo, cwdFor), ...(options.gate && { runningReviews: await runningReviews() }) })),
-    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()))),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles))),
+    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer))),
   };
 }

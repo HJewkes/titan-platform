@@ -42,6 +42,9 @@ function buildTemplate(files: SeedFiles): Template {
   git(["config", "user.email", "test@example.com"], repo);
   git(["config", "user.name", "Test"], repo);
   git(["config", "commit.gpgsign", "false"], repo);
+  // Newer git detaches auto-maintenance after a commit; its lock files come and go under .git/objects while cpSync walks it.
+  git(["config", "maintenance.auto", "false"], repo);
+  git(["config", "gc.auto", "0"], repo);
   for (const [file, content] of Object.entries(files)) {
     fs.mkdirSync(path.join(repo, path.dirname(file)), { recursive: true });
     fs.writeFileSync(path.join(repo, file), content);
