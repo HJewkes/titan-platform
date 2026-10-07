@@ -1,5 +1,5 @@
 import { applyAudit } from "./audit-apply.js";
-import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { REVIEW_TABLE } from "./review-schema.js";
 import { isUntypedPrompt, stripInjected } from "./injected-text.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
 import { RELATIONS, sessionRef, type TranscriptDelta } from "@titan-design/session-read";

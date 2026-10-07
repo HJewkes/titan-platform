@@ -196,7 +196,7 @@ function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void 
 }
 
 /** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
-const LINK_CONFIDENCE: Record<string, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
+const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
 const LOWEST_CONFIDENCE = 0.6;
 
 interface TaskLinkRow { session_id: string; task_ids: string | null; task_source: string | null; spawned_at: string | null; resolved_at: string }
@@ -216,7 +216,7 @@ function projectTaskLinks(graph: SessionGraph, resolved: readonly string[]): voi
     const taskIds: string[] = o.task_ids ? (JSON.parse(o.task_ids) as string[]) : [];
     const source = sessionRef(o.session_id);
     const attrs = { via: "origin", source: o.task_source };
-    const confidence = LINK_CONFIDENCE[o.task_source ?? ""] ?? LOWEST_CONFIDENCE;
+    const confidence = LINK_CONFIDENCE[o.task_source as keyof typeof LINK_CONFIDENCE] ?? LOWEST_CONFIDENCE;
     for (const taskId of taskIds) {
       insertTask.run(taskRef(taskId), taskId);
       graph.edges.assert({ sourceRef: source, relation: RELATIONS.RAN, targetRef: taskRef(taskId), tValid: o.spawned_at ?? o.resolved_at, attrs, confidence });
