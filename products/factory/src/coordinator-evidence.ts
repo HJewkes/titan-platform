@@ -138,7 +138,7 @@ export function offersAbandon(gate: Pick<GateRecord, "questions">): boolean {
  * Only an authority rule is decided after every Shepherd guard (visual paths, `.github/`, unread facts), so no visual
  * change can hide behind it; a seat owner-gate, a route escalation, a release or any guard rule stays the owner's.
  */
-export function runEligible(run: RunFacts, land: LandGate): boolean {
+function runEligible(run: RunFacts, land: LandGate): boolean {
   return (
     run.workflow === "shepherd-pr" &&
     run.repo === land.repo &&
