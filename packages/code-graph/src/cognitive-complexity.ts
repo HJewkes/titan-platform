@@ -1,5 +1,5 @@
 import type { Node } from "web-tree-sitter";
-import { TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } from "./scope-path.js";
+import { PY_FUNCTION_TYPES, TS_FUNCTION_TYPES } from "./node-kinds.js";
 
 /**
  * Cognitive complexity per Sonarsource ("Cognitive Complexity: A new way of
@@ -67,8 +67,7 @@ const TS_NESTING = new Set([
   "do_statement",
   "switch_statement",
   "catch_clause",
-  ...TS_FUNCTION_DECL_TYPES,
-  ...TS_BOUND_FUNCTION_TYPES,
+  ...TS_FUNCTION_TYPES,
 ]);
 
 const PY_NESTING = new Set([
@@ -76,7 +75,7 @@ const PY_NESTING = new Set([
   "for_statement",
   "while_statement",
   "except_clause",
-  "function_definition",
+  ...PY_FUNCTION_TYPES,
   "lambda",
 ]);
 

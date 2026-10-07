@@ -1,5 +1,6 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
+import { NAMED_FUNCTION_TYPES } from "../node-kinds.js";
 import type { GraphMetric } from "../types.js";
 
 /**
@@ -24,13 +25,6 @@ const TS_LOOP_TYPES = new Set([
 ]);
 
 const PY_LOOP_TYPES = new Set(["for_statement", "while_statement"]);
-
-const NAMED_FN_TYPES = new Set([
-  "function_declaration",
-  "generator_function_declaration",
-  "method_definition",
-  "function_definition",
-]);
 
 /**
  * Array/collection methods that scan linearly — inside a loop they turn an O(n)
@@ -93,7 +87,7 @@ export function computeGrowthRiskMetrics(
 function countDirectRecursion(root: Node): number {
   let count = 0;
   const visit = (node: Node): void => {
-    if (NAMED_FN_TYPES.has(node.type)) {
+    if (NAMED_FUNCTION_TYPES.has(node.type)) {
       const name = node.childForFieldName("name")?.text;
       const body = node.childForFieldName("body");
       if (name && body && callsName(body, name)) count++;

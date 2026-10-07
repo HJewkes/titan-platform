@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FormattingExtractor } from "./formatting.js";
+import { parseEditorConfig } from "./formatting-config.js";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,6 +63,13 @@ describe("FormattingExtractor", () => {
       );
       expect(sizeObs).toBeDefined();
       expect(sizeObs!.value).toBe(2);
+    });
+
+    it("does not read a non-JSON prettier config even when its text is JSON", async () => {
+      const observations = await extractor.extractFromConfig(
+        path.resolve(CONFIGS, ".prettierrc.yaml"),
+      );
+      expect(observations).toEqual([]);
     });
 
     it("returns empty array when no config file exists", async () => {
@@ -338,6 +346,33 @@ describe("FormattingExtractor", () => {
       observations.forEach((o) => {
         expect(o.category).toBe("formatting");
       });
+    });
+  });
+
+  describe("editorconfig sections", () => {
+    function valueOf(raw: string, type: string): unknown {
+      return parseEditorConfig(raw, ".editorconfig").find((o) => o.type === type)?.value;
+    }
+
+    it("keeps the [*] indent style when a later section overrides it", () => {
+      const raw = "[*]\nindent_style = space\n\n[Makefile]\nindent_style = tab\n";
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("space");
+    });
+
+    it("ignores properties outside the [*] section", () => {
+      const raw = "root = true\nindent_size = 8\n[*.md]\nindent_size = 4\n";
+      expect(parseEditorConfig(raw, ".editorconfig")).toEqual([]);
+    });
+
+    it("skips semicolon comments", () => {
+      const raw = "[*]\n; indent_style = tab\nindent_style = space\n";
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("space");
+    });
+
+    it("drops a non-numeric indent_size instead of emitting NaN", () => {
+      const raw = "[*]\nindent_style = tab\nindent_size = tab\n";
+      expect(valueOf(raw, "formatting.indentSize")).toBeUndefined();
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("tab");
     });
   });
 });
