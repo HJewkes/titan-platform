@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { expectBrief } from "../test-support/brief.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { landPrRoutes, landPrWorkflow } from "./land-pr.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -60,6 +61,16 @@ describe("land-pr", () => {
     expect(rerunsBeforeAnswer).toBe(1);
     expect(fake.effects).toMatchObject({ rerunFailedJobs: 2, merge: 1 });
     expect(stepIds(host, runId)).toEqual(expect.arrayContaining(["rerun:0", "ci-failed", "rerun:1", "merge:r2:0"]));
+  });
+
+  it("opens ci-failed with a summary naming the head and an evidence link", async () => {
+    const { host, runId } = landPrWorld((_sha, reruns) => (reruns < 2 ? run(1 + 2 * reruns, "cancelled") : run(5, "success")));
+
+    await gateOpened(host, gateId(runId, "ci-failed"));
+
+    const gate = host.gates.get(gateId(runId, "ci-failed"));
+    expectBrief(gate, H1, /^https:\/\//);
+    expect(gate?.summary).toContain("validate");
   });
 
   it("on await-fix, waits through unchanged heads until someone pushes a new one, then lands it", async () => {
