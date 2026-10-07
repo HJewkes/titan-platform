@@ -468,8 +468,8 @@ Tier 1, `@titan-design/hitl@0.7.0`. Human-in-the-loop gate()/resolve() primitive
 Key exports:
 
 - `gate`: `cancelGate`, `openGate`, `resolveGate`, `waitForGate`
-- `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateBriefInvalid`, `GateCancelled`, `GateError`, `GateExpired`
-- +32 more in the [reference page](/reference/hitl)
+- `types`: `GateAborted`, `GateAlreadyExists`, `GateAlreadySettled`, `GateAuthorizeInvalid`, `GateBriefInvalid`, `GateCancelled`, `GateError`, `GateEvidenceInvalid`
+- +35 more in the [reference page](/reference/hitl)
 
 <a id="cap-matrix-bus"></a>
 
