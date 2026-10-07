@@ -2,8 +2,7 @@
 
 **UI tier.** Published from a **different repository** —
 [HJewkes/titan-design](https://github.com/HJewkes/titan-design), not this monorepo. It is
-the fifteenth published `@titan-design/*` package and the only one whose source is not
-under `packages/` here.
+a published `@titan-design/*` package whose source is not in this repo.
 
 ```sh
 npm install @titan-design/react-ui
