@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveEffectivePolicy } from "./policy.js";
-import { loadSeatBook, lookupSeat } from "./seats.js";
+import { SeatBookInvalid, loadSeatBook, lookupSeat } from "./seats.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -416,5 +416,18 @@ describe("visual_paths", () => {
     ["an empty glob", 'visual_paths: [""]\n'],
   ])("refuses a seat file with %s", (_case, field) => {
     expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}${field}`) }) })).toThrow(/visual_paths/);
+  });
+
+  it.each(["./site/**", "/site/**"])("refuses %s, naming the seat and the glob, since no repo-relative path starts that way", (glob) => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**", "${glob}"]\n`) }) });
+
+    expect(load).toThrow(SeatBookInvalid);
+    expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} must be repo-relative, with no leading ./ or /`);
+  });
+
+  it("still reads repo-relative globs", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["site/**", "docs/**/*.png"]\n`) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["site/**", "docs/**/*.png"] } });
   });
 });

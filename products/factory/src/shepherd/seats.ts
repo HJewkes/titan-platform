@@ -132,6 +132,7 @@ export function loadSeatBook(sources: SeatSources): SeatBook {
   const files = readSeatFiles(sources.seatsDir, checkedHome(sources.home ?? homedir()));
   const index = pathIndex(files);
   checkRemotePaths(files);
+  checkVisualPathsRelative(files);
   const seats = files.map(({ data }) => toSeat(data));
   const denied = files.flatMap(({ file, data }) => data.deny_repos.map((path) => resolveDeny(path, file, index)));
   const stops = charterHardStops(sources.charterPath);
@@ -209,6 +210,17 @@ function checkRemotePaths(files: NamedSeatFile[]): void {
       if (prior && prior.path.key !== path.key) throw new SeatBookInvalid(`remote ${remote} is bound to ${prior.path.written} in ${prior.file} and to ${path.written} in ${file}`);
       if (!prior) seen.set(remote, { path, file });
     }
+  }
+}
+
+/**
+ * Changed files are repo-relative, so a glob anchored at `./` or `/` matches none of them and its visual paths would never
+ * gate. It is refused rather than normalised, so the seat owner sees what they wrote did nothing.
+ */
+function checkVisualPathsRelative(files: NamedSeatFile[]): void {
+  for (const { file, data } of files) {
+    const anchored = data.visual_paths?.find((glob) => glob.startsWith("./") || glob.startsWith("/"));
+    if (anchored !== undefined) throw new SeatBookInvalid(`seat ${data.name} visual_paths glob ${JSON.stringify(anchored)} must be repo-relative, with no leading ./ or / (${file})`);
   }
 }
 
