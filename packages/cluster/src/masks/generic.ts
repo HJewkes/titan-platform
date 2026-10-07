@@ -13,7 +13,12 @@ const genericMaskConfig: MaskRule[] = [
     pattern: '\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b',
     flags: 'gi',
   },
-  { name: 'SHA', pattern: '\\b[0-9a-f]{7,40}\\b', flags: 'gi' },
+  // Lookaheads demand a hex letter and a digit, so epoch seconds and words like "defaced" fall through.
+  {
+    name: 'SHA',
+    pattern: '\\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\\d)[0-9a-f]{7,40}\\b',
+    flags: 'gi',
+  },
   { name: 'PATH', pattern: '(?:\\.{0,2}/)?(?:[\\w.-]+/)+[\\w.-]+', flags: 'g' },
   {
     name: 'DURATION',
