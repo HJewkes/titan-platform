@@ -30,7 +30,7 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
   let line = ctx;
-  for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
+  for (const cmd of extractCommands(src, { cwd, home: ctx.home, foldCase: ctx.foldCase })) {
     if (cmd.added) {
       out.push(...addedActions(cmd, line, followScripts));
       continue;

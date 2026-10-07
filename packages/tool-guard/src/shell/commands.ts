@@ -4,6 +4,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
+import { literalFolds } from "./case-literal.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
@@ -57,6 +58,8 @@ export interface ExtractOptions {
   cwd?: string | null;
   /** Expands `~`, `$HOME` and a bare `cd`; null leaves them unknown. */
   home?: string | null;
+  /** Whether a command word also reads lower-cased, as a case-insensitive filesystem runs `GIT` as git. */
+  foldCase?: boolean;
 }
 
 interface Scope {
@@ -84,6 +87,7 @@ interface Walk {
   chain: Chain;
   /** Whether `!` negates the pipeline the command being emitted belongs to. */
   negated: boolean;
+  foldCase: boolean;
 }
 
 /**
@@ -94,7 +98,8 @@ interface Walk {
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false });
+  const foldCase = options.foldCase === true;
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase });
   return out;
 }
 
@@ -167,8 +172,17 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const words = rawWords.map(expand);
   const runs = caseNamed(words);
   const cut = cutReading(words);
-  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
+  const cutRuns = cut ? caseNamed(cut) : [];
+  for (const cmd of [...runs, ...cutRuns]) run(cmd, redirects, w, next);
+  runFolds(words, runs[0] ?? null, w, (cmd, copy) => run(cmd, redirects, copy, next));
+  if (cut) runFolds(cut, cutRuns[0] ?? null, w, (cmd, copy) => run(cmd, redirects, copy, next));
   return runs[0] ?? null;
+}
+
+/** The lower-cased readings of a command word a case-insensitive filesystem runs, each walked as an added reading. */
+function runFolds(words: WordToken[], cmd: Unwrapped | null, w: Walk, reading: (cmd: Unwrapped, copy: Walk) => void): void {
+  if (!w.foldCase) return;
+  for (const folded of literalFolds(words, cmd)) runAdded(w, (copy) => reading(folded, copy));
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -183,17 +197,19 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   const stdin = raw.xargs ? xargsStdin(redirects, w.stdin) : w.stdin;
   const runs = runReadings(stdin, (name) => name !== null && SHELLS.has(name));
   for (const cmd of xargsCommands(raw, stdin, runs.main)) runOnce(cmd, redirects, w, next, stdin);
-  if (raw.xargs) for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(cmd, redirects, w, next, stdin);
+  if (!raw.xargs) return;
+  for (const cmd of xargsCommands(raw, stdin, runs.added)) runAdded(w, (copy) => runOnce(cmd, redirects, copy, next, stdin));
 }
 
 /**
- * A reading xargs added beside main's may only add commands: it walks a copy of the variables, so it cannot rebind one main's
- * reading set, an error drops what is left of it, and every command it emits is marked `added` for the classifier to drop on error.
+ * A reading added beside main's, by xargs or a case fold, may only add commands: it walks a copy of the scope, so it cannot
+ * rebind a variable or move the directory main's reading set, an error drops what is left of it, and every command it emits
+ * is marked `added` for the classifier to drop on error.
  */
-function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
+function runAdded(w: Walk, reading: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    runOnce(cmd, redirects, { ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }, next, stdin);
+    reading({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
   } catch {
     // Main's runs of the same command still decide; this reading is dropped.
   } finally {
@@ -211,7 +227,11 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+  for (const words of findExecs(cmd.args)) {
+    const execs = caseNamed(words);
+    for (const exec of execs) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+    runFolds(words, execs[0] ?? null, w, (exec, copy) => run(exec, [], child(copy, [...wrapping, "find-exec"]), null));
+  }
 }
 
 /** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
