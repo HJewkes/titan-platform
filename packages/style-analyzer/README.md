@@ -38,8 +38,11 @@ features.get("formatting.quoteStyle"); // { convention: "double", confidence: 1,
   `StructureExtractor`, `ControlFlowExtractor`, `DocumentationExtractor`,
   `ErrorHandlingExtractor`, `FormattingExtractor`, `ComplexityExtractor`, `IdiomsExtractor`,
   `ReviewVoiceExtractor`.
-- `FormattingExtractor.extractFromConfig(path)` reads a `.prettierrc` or `.editorconfig`
-  from disk. `extractFromSource(text, path)` works on raw text.
+- `FormattingExtractor.extractFromConfig(path)` reads a JSON `.prettierrc` (or
+  `.prettierrc.json`) or an `.editorconfig` from disk. It reads only JSON `.prettierrc`:
+  `prettier.config.*` and JS, TS, YAML or TOML `.prettierrc.*` files return `[]`. From
+  `.editorconfig` it reads only the `[*]` section. `extractFromSource(text, path)` works
+  on raw text.
 - `IdiomsExtractor.extractFromSources([{ path, content, language }])` finds repeated code
   across files with jscpd.
 - `ReviewVoiceExtractor.extractFromComments([{ body }])` classifies review comments by
