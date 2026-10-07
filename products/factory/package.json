@@ -36,6 +36,7 @@
     "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/registry": "workspace:^",
