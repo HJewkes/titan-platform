@@ -48,7 +48,7 @@ export async function runEslint(
   const { skippedRules } = built;
   if (built.ruleCount === 0) return { diagnostics: [], exitCode: null, failures: [], skippedRules };
 
-  const tempDir = mkdtempSync(join(tmpdir(), "codewatch-eslint-"));
+  const tempDir = mkdtempSync(join(tmpdir(), "style-checker-eslint-"));
   const configPath = join(tempDir, "eslint.config.mjs");
   try {
     writeFileSync(configPath, built.source, "utf-8");
