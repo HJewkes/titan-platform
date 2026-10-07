@@ -22,6 +22,12 @@ const util = (nodeId: string, value: number): GraphMetric => ({
   value,
   unit: "count",
 });
+const symLoc = (nodeId: string, value: number): GraphMetric => ({
+  nodeId,
+  name: "symbol_loc",
+  value,
+  unit: "count",
+});
 const cx = (nodeId: string, value: number): GraphMetric => ({
   nodeId,
   name: "symbol_cognitive",
@@ -88,6 +94,13 @@ describe("topUnusedExports (C-65)", () => {
     const rows = topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
     // `dead` (internal) leads `apiExport` (public API) despite complexity order.
     expect(rows[0]!.name).toBe("dead");
+  });
+
+  it("reads the export's own loc, and 0 when unmeasured", () => {
+    const ctx = ctxOf(nodes, [...metrics, symLoc("src/a.ts#dead", 14)]);
+    const rows = topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
+    expect(rows.find((r) => r.name === "dead")?.loc).toBe(14);
+    expect(rows.find((r) => r.name === "apiExport")?.loc).toBe(0);
   });
 
   it("respects excluded files via keepNode", () => {
