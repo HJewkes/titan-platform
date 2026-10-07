@@ -38,8 +38,13 @@ const PublishedResult = z.looseObject({ published: z.boolean() });
 
 type PrTarget = { repo: RepoSlug; pr: number };
 
-/** Posts at `check.head`, so a moved head is published at the new head; the step never fails the run. */
+/**
+ * Posts at `check.head`, so a moved head is published at the new head; the step never fails the run. A replay whose record
+ * went on without this publish skips it: the record is older than the step, and the run has since left that review.
+ */
 export async function publishReview(ctx: WorkflowContext, target: PrTarget, check: Omit<ReviewCheckInput, "autoMergeArmed">): Promise<void> {
+  const next = ctx.historyNext();
+  if (next !== undefined && !next.startsWith(`${PUBLISH_REVIEW_STEP}:`)) return;
   const input = { repo: target.repo, pr: target.pr, runId: ctx.runId, ...check, autoMergeArmed: AUTO_MERGE_UNREAD };
   await step(ctx, `${PUBLISH_REVIEW_STEP}:${check.head}`, input, PublishedResult);
 }

@@ -28,9 +28,27 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home }), ctx, followScripts);
+  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, followScripts)]) : asWritten;
+}
+
+/**
+ * Where the filesystem finds a program whatever its case, `GIT` runs git, so the whole line is read again with every
+ * command word lower-cased. That reading has its own pipes, groups and head, and only adds actions; the as-written
+ * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops.
+ */
+function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+  try {
+    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true }), ctx, followScripts);
+  } catch {
+    return [];
+  }
+}
+
+function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
   let line = ctx;
-  for (const cmd of extractCommands(src, { cwd, home: ctx.home })) {
+  for (const cmd of commands) {
     if (cmd.added) {
       out.push(...addedActions(cmd, line, followScripts));
       continue;
