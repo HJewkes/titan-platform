@@ -4,9 +4,9 @@
  * (AW-22 → AW-23).
  */
 
-import os from 'node:os';
 import path from 'node:path';
 import { programStart } from './command-heads.js';
+import { expandHome } from './expand-home.js';
 import { splitCommands, type ShellWord } from './shell-split.js';
 export { commandHeads } from './command-heads.js';
 
@@ -134,7 +134,7 @@ export function commandCwd(raw: string, sessionCwd: string | null): string | nul
   const cd = raw.trim().match(/^cd\s+([^&;|]+?)\s*(?:&&|;|$)/)?.[1];
   const target = (dashC ?? cd)?.trim().replace(/^['"]|['"]$/g, '');
   if (!target) return sessionCwd;
-  const expanded = target.startsWith('~/') ? path.join(os.homedir(), target.slice(2)) : target;
+  const expanded = expandHome(target);
   if (path.isAbsolute(expanded)) return expanded;
   return sessionCwd ? path.resolve(sessionCwd, expanded) : null;
 }
