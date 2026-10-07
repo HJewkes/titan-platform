@@ -27,7 +27,7 @@ a restart. [`workflow`](/reference/workflow) builds its `assisted()` step on thi
 
 ## Example
 
-Verified against 0.2.0.
+Verified against 0.7.0.
 
 ```ts
 import os from "node:os";
@@ -65,7 +65,10 @@ resolveGate(store, "deploy-approval", { approved: true, note: "green CI" }, {
 After a restart, re-attach by id instead of re-opening:
 
 ```ts
+import { z } from "zod";
 import { waitForGate } from "@titan-design/hitl";
+
+const approvalSchema = z.object({ approved: z.boolean(), note: z.string().optional() });
 
 for (const pending of store.listPending()) {
   void waitForGate(store, pending.id, { schema: approvalSchema });
@@ -104,9 +107,11 @@ suite.
 | `SqliteGateStore` | anything that must survive a restart or be answered by another process |
 
 `SqliteGateStore` installs a `hitl_gate` table through `runMigrations` on construction. Pass
-`migrate: false` and put `gateMigration(n)` and `gateResolverMigration(m)` in your own migration list when hitl shares a
-database with domain tables — which is what [`workflow`](/reference/workflow) does. `table`
-renames the table so one database can host several gate spaces.
+`migrate: false` and put `gateMigration(n)`, `gateResolverMigration(m)` and `gateRuleMigration(r)` in your own migration list when hitl
+shares a database with domain tables — which is what [`workflow`](/reference/workflow) does. Add `gateBriefMigration(b)`
+too if you set `requireBrief` or create gates with a `summary`, `evidenceRef` or `questions`. The first two are always
+required; a store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so
+one database can host several gate spaces.
 
 `SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
 not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare

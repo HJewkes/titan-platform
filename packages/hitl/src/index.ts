@@ -27,6 +27,7 @@ export {
   GateError,
   GateEvidenceInvalid,
   GateExpired,
+  GateExpiryInvalid,
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,

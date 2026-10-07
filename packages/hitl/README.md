@@ -95,9 +95,10 @@ both pass the same behaviour suite.
 | `SqliteGateStore` | anything that must survive a restart or be answered by another process |
 
 `SqliteGateStore` installs a `hitl_gate` table through store-sqlite's
-`runMigrations` on construction. Pass `migrate: false` and put `gateMigration(n)`
-and `gateResolverMigration(m)` in the product's own migration list when hitl shares a database with domain
-tables. `table` renames the table so one database can host several gate spaces.
+`runMigrations` on construction. Pass `migrate: false` and put `gateMigration(n)`,
+`gateResolverMigration(m)` and `gateRuleMigration(r)` in the product's own migration list when hitl shares a database
+with domain tables. Add `gateBriefMigration(b)` too if you set `requireBrief` or create gates with a `summary`,
+`evidenceRef` or `questions`. A store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so one database can host several gate spaces.
 Timestamps are ISO-8601 strings, the shape store-sqlite writes and any surface
 can send on as-is.
 
