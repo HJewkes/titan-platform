@@ -2,9 +2,8 @@ import type { MaskRule } from '../masks.js';
 
 /**
  * Generic fallback mask config, used for any tool type without a dedicated
- * frozen config. A per-tool config (`Bash.ts`, `test.ts`, …) is produced by
- * the DeepParse mask-bootstrap script (§C1) — a one-time, reviewed action,
- * not yet built. Order matters: earlier rules run first, so their
+ * frozen config. Callers can supply a dedicated per-partition config through
+ * `ClustererOptions.masks`. Order matters: earlier rules run first, so their
  * replacement placeholders (`<UUID>`) never get re-matched by a later,
  * looser rule (`<NUM>`).
  */
