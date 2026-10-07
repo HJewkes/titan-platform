@@ -57,7 +57,7 @@ export interface ReviewAsk {
 }
 
 /** A review spawn the gate has refused and that is still asking. */
-export interface WaitingReview extends ReviewAsk {
+interface WaitingReview extends ReviewAsk {
   name: string;
   firstAsk: number;
   lastAsk: number;
@@ -67,12 +67,12 @@ export interface WaitingReview extends ReviewAsk {
 export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
 
 /** Pure: the reviews that asked within `staleMs`, fixers first, then by first ask. */
-export function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
+function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
   return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || a.firstAsk - b.firstAsk);
 }
 
 /** Pure: a review that is no fixer waits while a fixer's review is queued, so a red main's fix takes the next slot; any other spawn is untouched. */
-export function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
+function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
   if (!verdict.admit || review === undefined || review.fixer) return verdict;
   const fixer = queue.find((waiting) => waiting.fixer && waiting.name !== name);
   return fixer ? { admit: false, reason: `the review ${fixer.name} of a red main's fix waits ahead` } : verdict;
