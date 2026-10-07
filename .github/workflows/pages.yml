@@ -1,16 +1,13 @@
 name: Deploy docs site
 
-# Builds site/ on every PR that touches it, and deploys to GitHub Pages on main.
+# Builds and deploys to GitHub Pages on push to main only. No pull_request trigger:
+# ci.yml's validate job already runs `pnpm docs:build` on every PR (ci.yml:32-34).
 # Requires Pages to be enabled on the repo with source "GitHub Actions".
 
 on:
   push:
     branches: [main]
-  pull_request:
-    paths:
-      - 'site/**'
-      - 'scripts/gen-docs-reference.mjs'
-      - '.github/workflows/pages.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
