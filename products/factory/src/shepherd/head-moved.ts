@@ -52,11 +52,12 @@ function lastMergeDecision(run: WorkflowRun): RecordedDecision["result"] {
   }
 }
 
-/** The run's last decision when it gated the very head the prompt asks about; any other last decision reads as none. */
+/** The run's last decision when it gated the very head the prompt asks about and the prompt names its rule; any other last decision reads as none. A route gate at the same head, a conflict after the decision, names another rule. */
 function gatingDecision(run: WorkflowRun, prompt: string): RecordedDecision["result"] {
   const asked = gateHead(prompt);
   const decision = lastMergeDecision(run);
-  return asked !== undefined && decision?.outcome === "gate" && decision.headSha === asked ? decision : undefined;
+  const named = decision?.rule !== undefined && prompt.includes(`Policy ${decision.rule.table}/`);
+  return asked !== undefined && decision?.outcome === "gate" && decision.headSha === asked && named ? decision : undefined;
 }
 
 /** The head a seat-policy gate asks about: the run's last decision gated that same head under the seat table. */
