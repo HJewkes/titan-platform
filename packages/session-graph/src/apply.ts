@@ -1,4 +1,4 @@
-import { applyAudit } from "./audit-apply.js";
+import { applyAudit, namedBinder } from "./audit-apply.js";
 import { REVIEW_TABLE } from "./review-schema.js";
 import { isUntypedPrompt, stripInjected } from "./injected-text.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
@@ -97,14 +97,9 @@ const ASSET_UPSERTS = {
 function applyAssets(db: Db, delta: TranscriptDelta): void {
   for (const [kind, sql] of Object.entries(ASSET_UPSERTS) as [keyof typeof ASSET_UPSERTS, string][]) {
     const statement = db.prepare(sql);
-    for (const row of delta[kind] as unknown as Record<string, unknown>[]) statement.run(pick(row, sql));
+    const bind = namedBinder(sql);
+    for (const row of delta[kind] as unknown as Record<string, unknown>[]) statement.run(bind(row));
   }
-}
-
-/** better-sqlite3 rejects unused named parameters, so pass only the ones the statement binds. */
-function pick(row: Record<string, unknown>, sql: string): Record<string, unknown> {
-  const names = new Set([...sql.matchAll(/@(\w+)/g)].map((m) => m[1]!));
-  return Object.fromEntries([...names].map((name) => [name, row[name] ?? null]));
 }
 
 /** A re-read refreshes the parsed fields and keeps a resolved `pr_ref`. */
