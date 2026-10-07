@@ -1,0 +1,7 @@
+{
+  "src/components/DataTable.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

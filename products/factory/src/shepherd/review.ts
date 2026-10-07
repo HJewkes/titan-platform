@@ -130,7 +130,7 @@ export interface AcceptedVerdict {
 }
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string }) | { kind: "none"; reason?: string };
+export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string };
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
@@ -240,6 +240,8 @@ export interface ReviewWiring {
   exitGraceMs?: number;
   detachGraceMs?: number;
   isFrozen?: IsFrozen;
+  /** The App `shepherd/review` is posted as; merge facts count that check only from it. Absent means no app can satisfy it. */
+  reviewAppId?: number;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
   carry?: Omit<CarryOptions, "signal">;
 }
@@ -324,7 +326,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run)),
     codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal))),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
-    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) })),
+    codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
   ];
@@ -382,7 +384,7 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? dispatchedNoVerdictCause(awaited.reason) : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
-  if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
+  if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
 }

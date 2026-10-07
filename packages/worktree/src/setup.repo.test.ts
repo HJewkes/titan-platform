@@ -538,15 +538,20 @@ function packageWithGitDependency(npmrc: string): Record<string, string> {
   };
 }
 
+// cp writes in a process that has exited before the first exec, so a concurrent fork never holds the target open for writing (ETXTBSY).
+function installExecutable(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  fs.writeFileSync(staging, contents);
+  fs.chmodSync(staging, 0o755);
+  execFileSync("cp", ["-p", staging, file]);
+  fs.rmSync(staging);
+}
+
 /** Each .npmrc names a program that writes `<key>-ran` into `markers` when npm runs it. */
 const HOSTILE_NPMRC: Record<string, (markers: string) => string> = {
   git: (markers) => {
     const script = path.join(markers, "git.sh");
-    fs.writeFileSync(
-      script,
-      `#!/bin/sh\ntouch ${markers}/git-ran\nexec git "$@"\n`,
-      { mode: 0o755 }
-    );
+    installExecutable(script, `#!/bin/sh\ntouch ${markers}/git-ran\nexec git "$@"\n`);
     return `git=${script}\n`;
   },
   "node-options": (markers) => {

@@ -61,8 +61,8 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-41 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the conditional
-row MRG-AU-RV described below. Each rule also carries an optional `condition` that
+42 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the two conditional
+allow rows MRG-AU-RV and MRG-AU-RC described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
@@ -101,8 +101,9 @@ MRG-AU-RV (owner decision D-A, all seats) allows an automation merge when:
 - no check run at that head from an allowed app is failed, cancelled or still running, and
   every check run is well formed (a name, an integer app id, a head sha and a conclusion);
 - the merge-tree is clean and the repo is not frozen;
-- no changed path is `.github` or under it, or is `CODEOWNERS`, `docs/CODEOWNERS` or
-  `.gitmodules`, compared case-insensitively. A path that is not canonical (a backslash,
+- no changed path is `CODEOWNERS`, `docs/CODEOWNERS`, `.github/CODEOWNERS` or `.gitmodules`, compared
+  case-insensitively. Paths under `.github/` are not protected, by the owner decision of
+  2026-10-07 (TP-1886). A path that is not canonical (a backslash,
   a leading, trailing or doubled `/`, a `.` or `..` segment, a segment ending in a space
   or a dot, or any character outside printable ASCII) counts as protected, and an empty `changedPaths` fails;
 - the seat grants `merge-on-green-approve`.

@@ -251,7 +251,7 @@ describe("retryingRegistry", () => {
 describe("blockedOnlyByNpm", () => {
   const unpublished: ReleasePreflight = { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"], unpublished: ["@demo/widget"] };
   const results = (result: object) => ({ [`dispatch:sh-release-preflight:${HEAD}#0`]: { stepId: `sh-release-preflight:${HEAD}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00Z", data: { result } } });
-  const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green.`;
+  const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy shepherd-release/preflight-blocked: the release cannot land yet`;
 
   it("finds the preflight a gate at its head asks about when unpublished packages are its only blockers", () => {
     expect(blockedOnlyByNpm(results(unpublished), prompt)).toEqual(unpublished);
@@ -262,6 +262,7 @@ describe("blockedOnlyByNpm", () => {
     ["a malformed manifest and nothing unpublished", { ...unpublished, blockers: ["packages/widget/package.json is not a readable package manifest"], unpublished: [] }, prompt],
     ["a result stored before unpublished was recorded", { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"] }, prompt],
     ["a gate about another head", unpublished, `Merge PR #1 in ${REPO} at head ${fakeSha("other")}?`],
+    ["a conflict gate at the same head", unpublished, `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy shepherd-route/conflict: the branch conflicts`],
   ])("finds nothing for %s", (_name, result, gatePrompt) => {
     expect(blockedOnlyByNpm(results(result), gatePrompt)).toBeUndefined();
   });

@@ -859,6 +859,22 @@ describe('a pane the broker opens', () => {
     await expect(never(noTty.launchFailed)).resolves.toBe('still pending')
   })
 
+  it('fails the launch when the pane’s tty stays empty past the deadline, since nothing runs on a pane with no tty', async () => {
+    const { options } = paneIterm()
+    const runAppleScript = async (script: string): Promise<string> =>
+      script.includes('return tty of s') ? '' : (options.runAppleScript as (s: string) => Promise<string>)(script)
+    const probed: string[] = []
+    const handle = await surfaceFor('iterm-pane', {
+      ...options,
+      runAppleScript,
+      anchor: ANCHOR,
+      probeProcesses: async tty => (probed.push(tty), ['-zsh']),
+    }).launch(plan())
+
+    await expect(never(handle.launchFailed, 1000)).resolves.toMatch(/run-agent ag000001 was not running/)
+    expect(probed).toEqual([])
+  })
+
   it('arms the check for a reused pane too, since that command is still typed', async () => {
     const { options } = paneIterm('zsh: command not found: sa/relaunch')
     const handle = await surfaceFor('iterm-tab', {

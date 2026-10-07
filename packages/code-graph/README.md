@@ -180,7 +180,7 @@ successor, only where exactly one declaration in the file carries that name.
 A file-membership delta (a file added or removed) forces the files whose imports it
 re-resolves back to full extraction even when they are byte-identical. Degree metrics are
 always recomputed over the whole assembled graph, so a heavily-reused run and a
-`incremental: false` run produce the same snapshot; `indexer.test.ts` asserts that.
+`incremental: false` run produce the same snapshot; `incremental-index.test.ts` asserts that.
 
 ## Store layout
 
@@ -409,6 +409,10 @@ Python, and are written on every function or file, zeros included:
   above or trail), and `symbol_pass_through` (1 when the body is one call that forwards every
   parameter, in order, as a bare argument, skipping a `self` or `cls` receiver; a function
   with no parameters is never one).
+- Per component (a PascalCase function that renders JSX; props resolve within the file only,
+  absent when the props type is imported or untyped): `symbol_prop_count` (own-declared
+  props), `symbol_bool_prop_count` (those typed `boolean`) and `symbol_unread_props` (those
+  the body never reads; 0 when `...rest` or the whole props object is forwarded).
 - Per file: `except_count` (Python `except` and TypeScript `catch` clauses), `except_density`
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
@@ -455,18 +459,20 @@ The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 derivations below without the root's ts-morph, tree-sitter, and SQLite, so a browser bundle
 can import it. `analysis/graph-report-browser-safe.test.ts` keeps its whole import closure
 free of packages and Node builtins, and fails if the barrel re-exports a module it does not
-check. Symbol coupling is not on it: `symbol-coupling.ts` still reaches `node:path`.
+check. `computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so it needs the
+root export and Node.
 
 ### Dashboard derivations
 
 Ported with TP-918 from codewatch's `graph dashboard`, unchanged apart from import paths. All
-are pure functions over rows the caller has already read, so they run in a browser:
+are pure functions over rows the caller has already read, so they run in a browser, except
+`buildSymbolCouplingPayload`:
 
 - `collectNodeMetrics` folds metric rows into per-node `NodeMetrics`; `collectSymbolUtil`
   pairs symbol nodes with their utilization; `buildNodeMetrics`, `buildCentralFiles`,
   `buildHotExports`, and `buildBlastRadius` shape them for the files a `GraphReportResult`
   references (`referencedNodes`).
-- `buildSymbolCouplingPayload` caps `computeSymbolCoupling` and `computeSymbolConsumers`
+- `buildSymbolCouplingPayload` (root export only, so it needs Node) caps `computeSymbolCoupling` and `computeSymbolConsumers`
   into co-imported pairs and per-file consumer groups.
 - `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.

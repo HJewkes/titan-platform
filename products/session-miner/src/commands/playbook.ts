@@ -1,5 +1,6 @@
 import { curate, recall, reflectSession, scorePlaybook, type PlaybookDelta, type PlaybookStore, type ScoredBullet } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
+import { sessionRef } from "@titan-design/session-read";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { DIARY_TABLES, PLAYBOOK_TABLES, requireMinerTables } from "../miner-tables.js";
@@ -92,7 +93,7 @@ export const playbookReflect = defineCommand<z.infer<typeof ReflectArgs>, Reflec
   description: "Build a session's diary from its subgraph, with graph-derived outcome labels",
   args: ReflectArgs,
   result: z.custom<ReflectResponse>(),
-  cli: { positional: ["session"], options: { dryRun: { long: "--dry-run", description: "render only (default)" } } },
+  cli: { positional: ["session"] },
   async run(args, ctx) {
     requireMinerTables(ctx, "playbook.reflect", DIARY_TABLES);
     const diary = buildDiary(ctx.graph(), args.session);
@@ -128,7 +129,7 @@ function provenanceFor(ctx: MinerContext, sessionId: string | undefined): { sess
   if (sessionId === undefined) return undefined;
   requireMinerTables(ctx, "playbook.add --session", DIARY_TABLES);
   const diary = buildDiary(ctx.graph(), sessionId);
-  return diary ? { sessionRef: diary.sessionRef, byteOffset: diary.byteOffset } : { sessionRef: `session:${sessionId}` };
+  return diary ? { sessionRef: diary.sessionRef, byteOffset: diary.byteOffset } : { sessionRef: sessionRef(sessionId) };
 }
 
 function playbookFor(ctx: MinerContext, command: string): PlaybookStore {

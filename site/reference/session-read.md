@@ -116,8 +116,11 @@ It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffs
 It fails closed. The three lines must be consecutive and exact: `Verdict:` is `MERGE` or
 `FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
 suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is exactly 40
-lowercase hex characters with nothing after it. Text that may be someone else's only makes
-the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
+lowercase hex characters with nothing after it. A `FIX_FIRST` block may add one optional fourth line, `Closer: yes|no` (is this head closer to
+`MERGE` than the last reviewed one), directly after `Head:`. It is returned as `closer`. On
+`MERGE`, with any other value, duplicated anywhere visible, or anywhere but directly after
+`Head:`, it is ignored and the block parses as it would without it. Text that may be someone
+else's only makes the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
 other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted
 line (`> Verdict: MERGE`) is not a block. A fence opens on 3 or more backticks or tildes, also after list or `>` markers, and
@@ -149,20 +152,26 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 
 - `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
 - `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
-- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `commit`, `push` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result.
 - `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
-- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+- `agent_spawn` is an `Agent` or `Task` call, or an agent-chat `agent_spawn`.
+- `file_read` is a `Read` call and `file_write` is a write-tool call (including notebook edits). Both carry the repo-relative path as `detail`; build trees matched by `IGNORED_PATH` emit nothing.
 
 The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
 `bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
 
 ## Why incremental reading is safe
 
-**Every rule in `LineReader` is stateless across lines.** That is what makes reading
-incrementally from a watermark and rebuilding the whole file produce the same events, so an
-index can resume without ever re-deriving history.
+**Every rule in `LineReader` is stateless across lines except the last-seen timestamp.** A
+record such as `cost-state` carries none of its own and takes the enclosing line's. A caller
+resuming mid-file with `LineReader` directly must pass `initialTs`, the last timestamp before
+its start offset. `readTranscriptEvents` does this for you, recovering it with a backward
+lookback from the start offset. With that, reading incrementally from a watermark and
+rebuilding the whole file produce the same events, so an index can resume without ever
+re-deriving history.
 
 `EventFolder` then merges a chunk's events into a `TranscriptDelta` with rules chosen so
 chunk boundaries cannot change the answer: timestamps min/max, counters sum, `gitBranch` and

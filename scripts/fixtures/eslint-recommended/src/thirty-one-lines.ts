@@ -1,0 +1,31 @@
+export function thirtyOneLines(): number[] {
+  const values: number[] = [];
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  values.push(4);
+  values.push(5);
+  values.push(6);
+  values.push(7);
+  values.push(8);
+  values.push(9);
+  values.push(10);
+  values.push(11);
+  values.push(12);
+  values.push(13);
+  values.push(14);
+  values.push(15);
+  values.push(16);
+  values.push(17);
+  values.push(18);
+  values.push(19);
+  values.push(20);
+  values.push(21);
+  values.push(22);
+  values.push(23);
+  values.push(24);
+  values.push(25);
+  values.push(26);
+  values.push(27);
+  return values;
+}

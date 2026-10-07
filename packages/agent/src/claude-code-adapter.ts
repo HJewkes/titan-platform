@@ -26,7 +26,6 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Harn
     async run<T>(request: ClaudeCodeRunRequest<T>): Promise<HarnessRunResult<T, "claude-code">> {
       const failure = preflightHarnessRun(request, descriptor);
       if (failure) return { ok: false, harness: "claude-code", failure, usage: [] };
-      if (request.wallTimeMs > 2_147_483_647) return { ok: false, harness: "claude-code", failure: { kind: "invalid_request", reason: "wallTimeMs exceeds the local timer range" }, usage: [] };
       return new ClaudeInvocation(request, options).run();
     },
   };

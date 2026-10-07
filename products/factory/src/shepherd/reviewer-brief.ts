@@ -35,6 +35,7 @@ function recurringLines(fixFirsts: number): string[] {
     `If your verdict is FIX_FIRST, your review must include a section that starts with a line \`${DEFECT_CLASS_HEADING}\`.`,
     "In it, name the defect class that recurs across this PR's rounds, and the one boundary where a single fix covers every instance.",
     "List every blocking item outside that section.",
+    "If your verdict is FIX_FIRST, add a fourth line directly after the Head line: `Closer: yes` if this head is closer to MERGE than the previous head you or an earlier reviewer saw, otherwise `Closer: no`. Never add it to a MERGE.",
   ];
 }
 
@@ -83,7 +84,7 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
     "",
     input.ownerBrief
       ? "End your final message with these three lines, the verdict filled in, followed only by the owner block described below:"
-      : "End your final message with exactly these three lines, the verdict filled in and nothing after them:",
+      : "End your final message with exactly these three lines, the verdict filled in and nothing after them" + ((input.fixFirsts ?? 0) >= 1 ? " but the Closer line a FIX_FIRST adds:" : ":"),
     "",
     "Verdict: <MERGE or FIX_FIRST>",
     `PR: ${repo}#${pr}`,
