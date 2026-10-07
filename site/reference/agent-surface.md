@@ -73,7 +73,9 @@ const { code } = await handle.exited!;
 - `launch` never resolves `exited` for an iTerm surface: the host does not own a pane's
   process. Infer a visible agent's exit from presence instead.
 - `launchFailed` resolves only on positive evidence that the launcher is absent from the
-  pane's tty. It never resolves otherwise, so race it against your own attach timeout.
+  pane's tty. A pane whose tty stays `''` until the deadline counts as absent, so it
+  resolves. A `ps` error, an unrecognised tty or a closed pane never resolves it, so race
+  it against your own attach timeout.
 - The launch check matches the last two words of `launcher.argv(id)`. Make those unique
   per agent, for example a verb and the id, or a plan path.
 - A launcher env value or argv word with a double quote or backslash is refused for a
