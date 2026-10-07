@@ -1,5 +1,11 @@
 # @titan-design/style-analyzer
 
+## 0.1.4
+
+### Patch Changes
+
+- 9e66a85: Fix two source formatting heuristics. Statements and blocks closing a block body no longer count as missing trailing commas, so ordinary trailing-comma code reports `trailingCommas: true`. Comment lines no longer feed the indent-size estimate, so a file with a top-level JSDoc block no longer reports `indentSize: 1`.
+
 ## 0.1.3
 
 ### Patch Changes
