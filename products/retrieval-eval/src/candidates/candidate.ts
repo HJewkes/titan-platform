@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { ScoredHit } from "../metrics.js";
 import type { Arm } from "../pairs.js";
+import { refToPath } from "../workspace-layout.js";
 
 /**
  * What a candidate knows about the pair beyond its query text.
@@ -42,9 +43,6 @@ export function defaultGraphPath(home = homedir()): string {
  * candidates would score zero against path labels.
  */
 export function noteAliases(ref: string, activeRoot: string): string[] {
-  if (!ref.startsWith("note:")) return [];
-  const [slug, file] = ref.slice("note:".length).split("/");
-  if (!slug || !file) return [];
-  const relative = path.join(slug, "sources", "notes", file);
-  return [relative, path.join(activeRoot, relative)];
+  const relative = ref.startsWith("note:") ? refToPath(ref, activeRoot) : undefined;
+  return relative === undefined ? [] : [relative, path.join(activeRoot, relative)];
 }

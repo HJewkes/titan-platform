@@ -36,6 +36,21 @@ describe("newestNotes", () => {
     expect(newestNotes(path.join(root, "live"), 2)).toHaveLength(2);
   });
 
+  it("ranks newer sources/notes files above an older legacy note", () => {
+    note("mixed", "notes", "2026-08-01-legacy.md");
+    note("mixed", "sources/notes", "2026-09-01-a.md");
+    note("mixed", "sources/notes", "2026-09-02-b.md");
+    const names = newestNotes(path.join(root, "mixed"), 3).map((file) => path.basename(file));
+    expect(names).toEqual(["2026-09-02-b.md", "2026-09-01-a.md", "2026-08-01-legacy.md"]);
+  });
+
+  it("still returns newer sources/notes files when the legacy dir alone fills the limit", () => {
+    for (const day of ["01", "02", "03"]) note("crowded", "notes", `2026-07-${day}-legacy.md`);
+    note("crowded", "sources/notes", "2026-09-10-new.md");
+    const names = newestNotes(path.join(root, "crowded"), 3).map((file) => path.basename(file));
+    expect(names).toEqual(["2026-09-10-new.md", "2026-07-03-legacy.md", "2026-07-02-legacy.md"]);
+  });
+
   it("returns nothing for an initiative with no notes", () => {
     expect(newestNotes(path.join(root, "absent"), 5)).toEqual([]);
   });
