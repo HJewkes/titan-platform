@@ -19,6 +19,7 @@ import {
   type SetupResult,
   type SetupRunner,
 } from "./setup.js";
+import { seedRepo, seedRepoWithOrigin, type SeedFiles } from "./git-fixture.js";
 import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
@@ -60,26 +61,21 @@ const commitDeclaration = (dir: string, command: string[]): void => {
 /** A synthetic repository with one commit, whose declaration file holds `content` when given. */
 function makeLocalRepo(content?: string): string {
   const dir = tmpdir("wt-setup-");
-  git(["init", "-b", "main"], dir);
-  git(["config", "user.email", "test@example.com"], dir);
-  git(["config", "user.name", "Test"], dir);
-  git(["config", "commit.gpgsign", "false"], dir);
-  fs.writeFileSync(path.join(dir, "README.md"), "seed\n");
-  if (content !== undefined) declare(dir, content);
-  git(["add", "."], dir);
-  git(["commit", "-m", "seed"], dir);
+  seedRepo(dir, seedFiles(content));
   return dir;
 }
 
 /** The same, pushed to a bare origin, so its default branch is the one a declaration is trusted from. */
 function makeRepoHolding(content?: string): string {
-  const repo = makeLocalRepo(content);
-  const origin = tmpdir("wt-origin-");
-  git(["init", "--bare", "-b", "main"], origin);
-  git(["remote", "add", "origin", origin], repo);
-  git(["push", "-q", "origin", "main"], repo);
+  const repo = tmpdir("wt-setup-");
+  seedRepoWithOrigin(repo, tmpdir("wt-origin-"), seedFiles(content));
   return repo;
 }
+
+const seedFiles = (content?: string): SeedFiles => ({
+  "README.md": "seed\n",
+  ...(content === undefined ? {} : { [SETUP_FILE]: content }),
+});
 
 const makeRepo = (setup?: object): string =>
   makeRepoHolding(setup === undefined ? undefined : JSON.stringify({ setup }));
