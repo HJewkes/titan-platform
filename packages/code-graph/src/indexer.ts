@@ -85,8 +85,9 @@ export interface IndexResult {
 function canonicalizePath(p: string): string {
   try {
     return realpathSync(p);
-  } catch {
-    return p;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return p;
+    throw err;
   }
 }
 
