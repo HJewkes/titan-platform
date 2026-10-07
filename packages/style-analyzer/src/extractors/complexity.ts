@@ -1,5 +1,9 @@
 import type { Node } from "web-tree-sitter";
-import { PY_FUNCTION_TYPES, TS_FUNCTION_AND_METHOD_DECL_TYPES } from "@titan-design/code-graph/analysis";
+import {
+  PY_FUNCTION_TYPES,
+  TS_FUNCTION_DECLARATION,
+  TS_METHOD_DEFINITION,
+} from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 interface FunctionInfo {
@@ -9,6 +13,9 @@ interface FunctionInfo {
   cyclomaticComplexity: number;
   line: number;
 }
+
+// Generators are left out on purpose: the complexity metric has always counted only these two.
+const TS_FUNCTION_TYPES: ReadonlySet<string> = new Set([TS_FUNCTION_DECLARATION, TS_METHOD_DEFINITION]);
 
 const TS_NESTING_TYPES = new Set([
   "if_statement",
@@ -94,7 +101,7 @@ export class ComplexityExtractor implements StyleExtractor {
   }
 
   private getFunctionTypes(language: string): ReadonlySet<string> {
-    return language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_AND_METHOD_DECL_TYPES;
+    return language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
   }
 
   private findFunctions(

@@ -595,9 +595,6 @@ importers:
       '@jscpd/tokenizer':
         specifier: 3.5.4
         version: 3.5.4
-      '@titan-design/code-graph':
-        specifier: workspace:^
-        version: link:../code-graph
       '@titan-design/code-parser':
         specifier: workspace:^
         version: link:../code-parser

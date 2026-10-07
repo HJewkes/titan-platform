@@ -71,4 +71,3 @@ export type { SymbolConsumers } from "./symbol-coupling.js";
 export { computeSymbolConsumers } from "./symbol-coupling.js";
 export type { TestSourceLink } from "./test-linker.js";
 export { linkTestsToSources } from "./test-linker.js";
-export { PY_FUNCTION_TYPES, TS_FUNCTION_AND_METHOD_DECL_TYPES } from "../node-kinds.js";

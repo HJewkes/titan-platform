@@ -26,7 +26,6 @@ const ENTRIES = [
   "symbol-coupling.ts",
   "test-linker.ts",
   "../diff/violation-buckets.ts",
-  "../node-kinds.ts",
 ];
 // The "./analysis" subpath's entry; it may re-export only the modules listed above.
 const SUBPATH_ENTRY = "browser.ts";
