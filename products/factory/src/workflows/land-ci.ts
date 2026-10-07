@@ -55,8 +55,14 @@ export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, 
 }
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
-function findingsAt(input: CiInput, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+}
+
+/** True when every required check at `headSha` has passed, as ci-wait judges them; mergeability is not read. */
+export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, headSha: string, reads: PrReads): Promise<boolean> {
+  const runs = await reads.checkRuns(input.repo, headSha, () => true);
+  return findingsAt(input, headSha, runs).length === 0;
 }
 
 async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
