@@ -12,6 +12,8 @@ import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
+import { arithmeticTexts } from "./writers.js";
+import { valueSubstitutions } from "./value-subscripts.js";
 
 const MAX_DEPTH = 8;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
@@ -109,6 +111,7 @@ function walk(tokens: Token[], w: Walk): void {
   let redirects: RedirectToken[] = [];
   for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
+      walkValues(token, words, w);
       const cmd = emit(words, redirects, w, token.value);
       w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
       words = [];
@@ -124,7 +127,13 @@ function walk(tokens: Token[], w: Walk): void {
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
+  walkValues(null, words, w);
   emit(words, redirects, w, null);
+}
+
+/** Runs the substitutions that arithmetic over the values of known names would run. */
+function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
+  for (const text of valueSubstitutions(arithmeticTexts(op, words), w.scope.vars)) walk(tokenize(text), child(w, [...w.scope.wrapping, "subshell"]));
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
