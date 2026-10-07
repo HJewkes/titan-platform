@@ -19,6 +19,7 @@ ruleTester.run("no-commented-code", noCommentedCode, {
     { name: "jsdoc: one line holding code", code: "/** const x = 1; */" },
     { name: "jsdoc: before a function", code: "/** foo(bar); */\nfunction f() {}" },
     { name: "jsdoc: an import in an example", code: '/**\n * @example\n * import { y } from "z";\n */' },
+    { name: "jsdoc: a one-line type cast", code: "const a = /** @type {Foo} */ (b);" },
     { name: "directive: eslint-disable-next-line", code: "// eslint-disable-next-line no-console\nconsole.log(1);" },
     { name: "directive: eslint-disable block", code: "/* eslint-disable no-console */" },
     { name: "directive: eslint-enable", code: "/* eslint-enable */" },
