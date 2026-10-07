@@ -206,7 +206,7 @@ describe("handle: failure policy", () => {
     const result = await handle(bash("bash a1.sh; bash a2.sh"), {}, port({ context: pads("a1.sh", "a2.sh") }));
 
     expect(decisionOf(result.stdout)).toBe("deny");
-    expect(result.stdout).toMatch(/run each script in its own command/);
+    expect(result.stdout).toMatch(/run a2\.sh in its own command/);
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
   }, 30_000);
 

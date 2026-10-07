@@ -19,14 +19,27 @@ export class ReadingLimitError extends Error {
 export const MAX_SCRIPT_BYTES = 64 * 1024;
 
 /**
- * What a byte of script costs when only an added reading runs it. Classifying the costliest text (`eval $b x`) takes about
- * 80 ms per KiB, so 8 KiB of it stays under 1 s, where main reads none of it.
+ * What a byte of script or interpreter text costs when only an added reading runs it, where main reads none of it. Through
+ * the hook on a real filesystem with case folding on, the costliest text (`$b x`, `eval $b x`) takes about 31 ms per KiB,
+ * so the 16 KiB this leaves one script stays near 0.5 s.
  */
-export const ADDED_SCRIPT_WEIGHT = 8;
+export const ADDED_SCRIPT_WEIGHT = 4;
+
+/** The script whose text would take a line past `MAX_SCRIPT_BYTES`. */
+export interface ScriptOverrun {
+  /** The script's file name. */
+  script: string;
+  /** Its text, before any weight. */
+  bytes: number;
+  /** Whether only an added reading runs it, so its text costs `ADDED_SCRIPT_WEIGHT` per byte. */
+  added: boolean;
+  /** What the line's scripts would cost with it. */
+  total: number;
+}
 
 /** A line whose scripts hold more text than `MAX_SCRIPT_BYTES`; the hook denies it unchecked, as past the reading budget. */
 export class ScriptBudgetError extends ReadingLimitError {
-  constructor() {
+  constructor(readonly overrun: ScriptOverrun) {
     super();
     this.message = "too much script text to check";
     this.name = "ScriptBudgetError";

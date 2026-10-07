@@ -12,6 +12,7 @@ import { extractCommands } from "./shell/commands.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
@@ -32,7 +33,7 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
   return [];
 }
 
-/** The shell scripts one line runs; null inside a script, which follows no script of its own. */
+/** The scripts one line runs; null inside a script, which follows no script of its own. */
 interface ScriptMemo {
   /** Verdicts by the line state they were read in, then by `scriptKey`. */
   verdicts: Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
@@ -127,35 +128,38 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   const target = scriptTarget(cmd, ctx.home);
   if (!target) return [];
-  const budget = target.kind === "shell" ? scripts : null;
-  const verdicts = () => scriptVerdicts(cmd, target, ctx, budget);
-  const actions = budget ? memoized(budget, ctx, scriptKey(cmd, target, ctx), verdicts) : verdicts();
+  const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
   return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
 }
 
 /**
- * A shell script's text is charged to the line's budget, more for a script only an added reading runs, which main never
- * reads. Any other script only gets the mention rule, which is cheap.
+ * Text an added reading reads is charged to the line's budget at `ADDED_SCRIPT_WEIGHT` a byte, since main never reads it,
+ * an interpreter's as much as a shell script's. A shell script the line runs as written is charged a byte a byte; an
+ * interpreter's script it runs as written is not, as main reads that one unbudgeted.
  */
-function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo | null): ClassifiedAction[] {
+function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const text = readScript(ctx, target.path);
   if (text === null) return [];
-  if (budget) charge(budget, Buffer.byteLength(text) * (cmd.added ? ADDED_SCRIPT_WEIGHT : 1));
+  const added = cmd.added === true;
+  if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
   return scriptText(cmd, target, text, ctx);
 }
 
-function charge(budget: ScriptMemo, bytes: number): void {
-  if (bytes > budget.bytesLeft) throw new ScriptBudgetError();
-  budget.bytesLeft -= bytes;
+function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
+  const cost = script.bytes * (script.added ? ADDED_SCRIPT_WEIGHT : 1);
+  if (cost > budget.bytesLeft) throw new ScriptBudgetError({ ...script, total: MAX_SCRIPT_BYTES - budget.bytesLeft + cost });
+  budget.bytesLeft -= cost;
 }
 
 /**
  * Readings of one command often run the same script (`timeout $P . a.sh` also runs `a.sh` under timeout), and the
- * case-folded reading runs it again; classifying a 64 KiB script each time passes the hook's timeout. A shell script's
- * verdicts depend only on its text, its directory and the line state, and a state change makes a new context object.
+ * case-folded reading runs it again; classifying a 64 KiB script each time passes the hook's timeout. A script's
+ * verdicts depend only on its text, its directory, the line state and, for an interpreter's, the program that runs it;
+ * a state change makes a new context object.
  */
 function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path]);
+  const program = target.kind === "interpreter" ? cmd.path : null;
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program]);
 }
 
 function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {

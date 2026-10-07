@@ -270,7 +270,23 @@ describe("the line's budget of script text", () => {
     expect(() => run("sudo $a a.sh", PUSH_LAST(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT + 1))).toThrow(ScriptBudgetError);
   });
 
-  it("charges nothing for an interpreter's script, which only gets the mention rule", () => {
+  it("charges nothing for an interpreter's script the line runs as written, as main reads it", () => {
     expect(run("python3 a.py; python3 b.py", `${"#".repeat(MAX_SCRIPT_BYTES)} ~/.ssh/id_rsa`)).toContain("bash.secret.script-by-path");
+  });
+
+  it("reads an interpreter's script only a dynamic wrapper's reading runs up to its share of the budget", () => {
+    const text = `${"#".repeat(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT - 14)} ~/.ssh/id_rsa`;
+
+    expect(run("sudo $a python3 a.py", text)).toContain("bash.secret.script-by-path");
+  });
+
+  it("refuses an interpreter's script only a dynamic wrapper's reading runs past its share of the budget", () => {
+    expect(() => run("sudo $a node a.js", "#".repeat(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT + 1))).toThrow(ScriptBudgetError);
+  });
+
+  it("charges an interpreter's script once, however many readings run it", () => {
+    const text = "#".repeat(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT);
+
+    expect(run("sudo $a python3 a.py; sudo $b python3 a.py", text)).toEqual([]);
   });
 });
