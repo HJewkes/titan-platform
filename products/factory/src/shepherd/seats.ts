@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { compileGlobs } from "@titan-design/fix-proof";
+import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
 
@@ -223,6 +223,30 @@ function unmatchableReason(glob: string): string | undefined {
   return undefined;
 }
 
+const FORMAT_CHARACTER = /\p{Cf}/u;
+
+function codePoint(char: string): string {
+  return `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
+/** Characters that look like path syntax or nothing at all, so the glob reads right but no changed path spells it. */
+function lookAlikeReason(glob: string): string | undefined {
+  if (glob.includes("\uFF0F")) return "has a fullwidth slash (U+FF0F)";
+  const format = FORMAT_CHARACTER.exec(glob)?.[0];
+  return format === undefined ? undefined : `has a format character (${codePoint(format)})`;
+}
+
+/** Matching expands braces first, so each alternative must be matchable on its own; the seat book already refused a glob that cannot expand. */
+function globReason(glob: string): string | undefined {
+  const lookAlike = lookAlikeReason(glob);
+  if (lookAlike !== undefined) return lookAlike;
+  for (const alternative of expandBraces(glob)) {
+    const reason = unmatchableReason(alternative);
+    if (reason !== undefined) return alternative === glob ? reason : `has the alternative ${JSON.stringify(alternative)}, which ${reason}`;
+  }
+  return undefined;
+}
+
 /**
  * Changed files are repo-relative paths in one spelling, so a glob outside it matches none of them and its visual paths
  * would never gate. It is refused rather than normalised, so the seat owner sees what they wrote did nothing.
@@ -230,7 +254,7 @@ function unmatchableReason(glob: string): string | undefined {
 function checkVisualPathsRelative(files: NamedSeatFile[]): void {
   for (const { file, data } of files) {
     for (const glob of data.visual_paths ?? []) {
-      const reason = unmatchableReason(glob);
+      const reason = globReason(glob);
       if (reason !== undefined) throw new SeatBookInvalid(`seat ${data.name} visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path (${file})`);
     }
   }

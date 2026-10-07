@@ -349,7 +349,8 @@ visual_paths:
 - **`visual_paths`** lists repo-relative globs (`**`, `*`, `?`, `{a,b}`, matched without case) for files the owner
   reviews by eye. An empty list or a glob that cannot compile makes the seat file invalid, as
   does a glob no repo-relative path can match: leading or trailing whitespace, a backslash, an
-  empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment.
+  empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment, in the glob or
+  in any of its `{a,b}` alternatives, or a fullwidth slash or invisible format character.
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
