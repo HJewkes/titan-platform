@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { walkReferences } from "./scope-references.js";
 
 /** Own-declared prop counts of one component (C-97 S3). */
 export interface PropStats {
@@ -36,9 +37,11 @@ export function collectTypeDecls(root: Node): TypeDecls {
  * Prop counts of the component function `fn`, whose props are its first parameter. The
  * props type resolves syntactically within the file only, so these stay a pure function of
  * one parse: null when the annotation is missing or names a type this file does not
- * declare. Inherited types this file does not declare (`HTMLAttributes<…>`) add nothing.
+ * declare. `FC<P>` and `Readonly<P>` are never unwrapped, so they stay absent. Inherited
+ * types this file does not declare (`HTMLAttributes<…>`) add nothing.
  */
 export function propStatsOf(fn: Node, types: TypeDecls): PropStats | null {
+  if (fn.type === "method_definition") return null;
   const params = fn.childForFieldName("parameters");
   if (!params) return null;
   const first = params.namedChildren.find((p) => p !== null && PARAM_TYPES.has(p.type));
@@ -89,13 +92,18 @@ function collectNamed(type: Node, types: TypeDecls, seen: Set<string>, out: Memb
   }
   const body = decl.childForFieldName("body");
   if (body) addMembers(body, out);
+  let resolved = out.size > 0;
   for (const clause of decl.namedChildren) {
     if (clause?.type !== "extends_type_clause") continue;
     for (const base of clause.namedChildren) {
-      if (base) collectMembers(base, types, seen, out);
+      if (base && collectMembers(base, types, seen, out)) resolved = true;
     }
   }
-  return true;
+  return resolved || !hasExtends(decl);
+}
+
+function hasExtends(decl: Node): boolean {
+  return decl.namedChildren.some((c) => c?.type === "extends_type_clause");
 }
 
 /** Own members first, so a redeclared inherited member keeps its own annotation. */
@@ -115,6 +123,7 @@ function keyText(name: Node): string {
 
 /** `boolean`, or a union of `true`/`false`/`boolean`, optionally with `undefined`. */
 function isBooleanType(type: Node | null): boolean {
+  while (type?.type === "parenthesized_type") type = type.namedChild(0);
   if (!type) return false;
   if (type.type !== "union_type") return type.text === "boolean";
   const leaves = unionLeaves(type);
@@ -122,6 +131,10 @@ function isBooleanType(type: Node | null): boolean {
 }
 
 function unionLeaves(type: Node): string[] {
+  if (type.type === "parenthesized_type") {
+    const inner = type.namedChild(0);
+    return inner ? unionLeaves(inner) : [];
+  }
   if (type.type !== "union_type") return [type.text];
   return type.namedChildren.flatMap((part) => (part ? unionLeaves(part) : []));
 }
@@ -144,17 +157,12 @@ function countUnread(pattern: Node, fn: Node, names: readonly string[]): number 
 function propertyReads(param: Node, fn: Node): Set<string> | null {
   const reads = new Set<string>();
   let escapes = false;
-  const walk = (node: Node): void => {
-    if (node.type === "identifier" && node.text === param.text && node.id !== param.id) {
-      const keys = keysReadAt(node);
-      if (keys) keys.forEach((key) => reads.add(key));
-      else escapes = true;
-    }
-    for (const child of node.namedChildren) {
-      if (child) walk(child);
-    }
-  };
-  walk(fn);
+  walkReferences(fn, (ref, shadowed) => {
+    if (ref.type !== "identifier" || ref.text !== param.text || ref.id === param.id || shadowed.has(ref.text)) return;
+    const keys = keysReadAt(ref);
+    if (keys) keys.forEach((key) => reads.add(key));
+    else escapes = true;
+  });
   return escapes ? null : reads;
 }
 
@@ -208,17 +216,12 @@ function pairBinding(pair: Node): Node | null {
   return value?.type === "identifier" ? value : null;
 }
 
-/** Value references by name (identifier or object shorthand), minus the binding declarations. */
+/** Value references by name (identifier or object shorthand), minus declarations and shadowed names. */
 function countReferences(fn: Node, declIds: ReadonlySet<number>): Map<string, number> {
   const out = new Map<string, number>();
-  const walk = (node: Node): void => {
-    if ((node.type === "identifier" || node.type === "shorthand_property_identifier") && !declIds.has(node.id)) {
-      out.set(node.text, (out.get(node.text) ?? 0) + 1);
-    }
-    for (const child of node.namedChildren) {
-      if (child) walk(child);
-    }
-  };
-  walk(fn);
+  walkReferences(fn, (ref, shadowed) => {
+    if (declIds.has(ref.id) || shadowed.has(ref.text)) return;
+    out.set(ref.text, (out.get(ref.text) ?? 0) + 1);
+  });
   return out;
 }
