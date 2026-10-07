@@ -7,9 +7,10 @@
  * `site/reference/index.md` and `site/.vitepress/reference-sidebar.json`, and
  * fails when a package has no hand-written page under `site/reference/`.
  */
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { TIERS, findTiersRule } from "./new-package.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -37,14 +38,17 @@ export const EXTERNAL = [
 ];
 
 function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`cannot read ${path}: ${error.message}`, { cause: error });
+  }
 }
 
 /** `{ "packages/registry": "1", ... }` from the DAG rule that CI enforces. */
-function tiersByDir() {
-  const check = readJson(join(root, ".codewatch", "check.json"));
-  const rule = check.rules.find((r) => r.id === "package-layers");
-  if (!rule) throw new Error("check.json has no package-layers rule");
+function tiersByDir(base) {
+  const rule = findTiersRule(readJson(join(base, ".codewatch", "check.json")));
+  if (!rule) throw new Error("check.json has no layered-deps rule with $tiers");
   const out = new Map();
   for (const [tier, dirs] of Object.entries(rule.$tiers)) {
     for (const dir of dirs) out.set(dir, tier);
@@ -53,18 +57,14 @@ function tiersByDir() {
 }
 
 /** Every workspace package, product and app, plus the published packages that live elsewhere. */
-export function collect() {
-  const tiers = tiersByDir();
+export function collect(base = root) {
+  const tiers = tiersByDir(base);
   const entries = [];
   for (const group of ["packages", "products", "apps"]) {
-    for (const dir of readdirSync(join(root, group)).sort()) {
-      const manifest = join(root, group, dir, "package.json");
-      let pkg;
-      try {
-        pkg = readJson(manifest);
-      } catch {
-        continue;
-      }
+    for (const dir of readdirSync(join(base, group)).sort()) {
+      const manifest = join(base, group, dir, "package.json");
+      if (!existsSync(manifest)) continue;
+      const pkg = readJson(manifest);
       const tier = tiers.get(`${group}/${dir}`);
       if (tier === undefined) throw new Error(`${group}/${dir} is not in check.json $tiers`);
       entries.push({
@@ -92,7 +92,8 @@ function assertPagesExist(entries) {
 
 function sidebar(entries) {
   const groups = [];
-  for (const [tier, label] of Object.entries(TIER_LABELS)) {
+  for (const tier of TIERS) {
+    const label = TIER_LABELS[tier];
     const items = entries
       .filter((e) => String(e.tier) === tier && !e.private)
       .map((e) => ({ text: e.name.replace("@titan-design/", ""), link: `/reference/${e.dir}` }));
@@ -111,7 +112,8 @@ function indexPage(entries) {
     "compositions; the design system is published from a separate repository.",
     "",
   ];
-  for (const [tier, label] of Object.entries(TIER_LABELS)) {
+  for (const tier of TIERS) {
+    const label = TIER_LABELS[tier];
     const rows = entries.filter((e) => String(e.tier) === tier);
     if (rows.length === 0) continue;
     lines.push(`## ${label.title}`, "", label.blurb, "", "| Package | What it does | Titan dependencies |", "| --- | --- | --- |");

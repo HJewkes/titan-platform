@@ -41,7 +41,9 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
+import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
+import { routeFor } from "./route-table.js";
 import type { ReviewerFacts } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
@@ -184,6 +186,11 @@ describe("acceptVerdict", () => {
 
   it("refuses when the final message has no parseable block", () => {
     expect(acceptVerdict(input, [message({ text: "Verdict: maybe" })])).toMatchObject({ kind: "none", malformed: { refusal: "bad_verdict" } });
+  });
+
+  it("judges a message the reader could not count as before, so an uncounted MERGE stays a MERGE", () => {
+    expect(acceptVerdict(input, [message()])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    expect(acceptVerdict(input, [message({ investigativeCalls: 0 })])).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
   });
 
   it("refuses when there are no messages", () => {
@@ -1388,6 +1395,31 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "FIX_FIRST", headSha: H1, text: expect.stringContaining("The retry loop never ends.") }]);
     expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+  });
+
+  describe("a verdict below the review depth floor", () => {
+    const counted = (verdict: string, investigativeCalls: number): Scene["read"] => (input, dispatch) => [{ ...said(dispatch.agents[0]!, verdictAt(input.head, verdict), 20_000), investigativeCalls }];
+
+    it("routes a MERGE from a reviewer that made no investigative call to a fresh reviewer, and collects no merge evidence", async () => {
+      const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), read: counted("MERGE", 0), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: DEPTH_FLOOR_REASON }]);
+      expect(routeFor("open", "clean", "no-verdict")).toBe("fresh-reviewer");
+      expect(stepIds.filter((id) => id.startsWith("sh-merge-evidence"))).toEqual([]);
+    });
+
+    it("routes a FIX_FIRST from a reviewer that made no investigative call to a fresh reviewer, and wakes no fixer", async () => {
+      const { verdicts } = await review({ dispatch: fakeDispatch(), read: counted("FIX_FIRST", 0), policy: AUTO });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: DEPTH_FLOOR_REASON }]);
+      expect(routeFor("open", "clean", "no-verdict")).toBe("fresh-reviewer");
+    });
+
+    it("takes the MERGE of a reviewer that made one investigative call", async () => {
+      const { verdicts } = await review({ dispatch: fakeDispatch(), read: counted("MERGE", 1), policy: AUTO });
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
   });
 
   const bothInOnePoll = (first: string, second: string): Scene["read"] => (input, dispatch) => {

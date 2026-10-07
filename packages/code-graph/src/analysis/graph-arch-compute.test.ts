@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphEdge, GraphNode, SnapshotRow } from "../types.js";
-import { computeArch, type ComputeArchInput } from "./graph-arch-compute.js";
+import { computeArch, filteredFileIds, type ComputeArchInput } from "./graph-arch-compute.js";
 
 // Ported from codewatch's graph-arch.test.ts, which drives these scenarios through
 // runGraphArchCommand over a temp store and a detected package tree. Here the same nodes,
@@ -126,6 +126,16 @@ describe("computeArch", () => {
       { excludeRole: ["test"] },
     );
     expect(result.edges).toEqual([{ from: "packages/cli", to: "packages/graph", count: 1 }]);
+  });
+
+  it("drops test and fixture roles by default without an excludeRole option", () => {
+    const nodes: GraphNode[] = [
+      fileNode("packages/cli/src/a.ts"),
+      { id: "packages/cli/src/a.test.ts", kind: "file", name: "a.test.ts", role: "test" },
+      { id: "packages/cli/fixtures/sample.ts", kind: "file", name: "sample.ts", role: "fixture" },
+    ];
+
+    expect(filteredFileIds(nodes, {})).toEqual(["packages/cli/src/a.ts"]);
   });
 
   it("omits packages with zero indexed files and no edges", () => {

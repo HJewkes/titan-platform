@@ -1,7 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, it, expect } from "vitest";
 import {
   isGeneratedByHeuristic,
   isGeneratedFile,
+  loadGeneratedPatterns,
   parseGeneratedPatterns,
 } from "./generated.js";
 
@@ -103,5 +107,33 @@ describe("isGeneratedFile", () => {
     expect(isGeneratedFile("vendor/lib.ts", patterns)).toBe(true); // gitattributes
     expect(isGeneratedFile("src/api.gen.ts", patterns)).toBe(true); // heuristic
     expect(isGeneratedFile("src/api.ts", patterns)).toBe(false); // neither
+  });
+});
+
+describe("loadGeneratedPatterns", () => {
+  const dirs: string[] = [];
+  const makeRoot = () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "generated-patterns-"));
+    dirs.push(dir);
+    return dir;
+  };
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns no patterns when .gitattributes is absent", () => {
+    expect(loadGeneratedPatterns(makeRoot())).toEqual([]);
+  });
+
+  it("compiles the patterns of a readable .gitattributes", () => {
+    const root = makeRoot();
+    writeFileSync(path.join(root, ".gitattributes"), "vendor/lib.ts linguist-generated\n");
+    expect(isGeneratedFile("vendor/lib.ts", loadGeneratedPatterns(root))).toBe(true);
+  });
+
+  it("surfaces an error when .gitattributes is unreadable (a directory)", () => {
+    const root = makeRoot();
+    mkdirSync(path.join(root, ".gitattributes"));
+    expect(() => loadGeneratedPatterns(root)).toThrow(/EISDIR/);
   });
 });

@@ -57,3 +57,51 @@ describe("liveSource event stream framing", () => {
     expect(statuses.slice(0, 2)).toEqual(["connecting", "open"]);
   });
 });
+
+describe("liveSource when the dial is refused", () => {
+  it("reports a 403 Host refusal to onDialFailure", async () => {
+    const reasons: string[] = [];
+    const source = liveSource({ fetch: answering('{"ok":false}', 403), reconnectDelayMs: 60_000 });
+    const sub = source.subscribe({ onEvent: () => {}, onDialFailure: (reason) => reasons.push(reason) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    sub.close();
+    expect(reasons).toEqual(["HTTP 403"]);
+  });
+
+  it("reports a fetch error's message but not the caller's own abort", async () => {
+    const reasons: string[] = [];
+    const refused: typeof fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
+    const hangUntilAborted: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    const failing = liveSource({ fetch: refused, reconnectDelayMs: 60_000 }).subscribe({ onEvent: () => {}, onDialFailure: (r) => reasons.push(r) });
+    const closed = liveSource({ fetch: hangUntilAborted, reconnectDelayMs: 60_000 }).subscribe({ onEvent: () => {}, onDialFailure: (r) => reasons.push(r) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    failing.close();
+    closed.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(reasons).toEqual(["fetch failed"]);
+  });
+
+  it("keeps redialling, one report per dial, when onDialFailure throws", async () => {
+    const reasons: string[] = [];
+    const uncaught: unknown[] = [];
+    const onUncaught = (err: unknown): void => void uncaught.push(err);
+    process.on("uncaughtException", onUncaught);
+    const source = liveSource({ fetch: answering("no", 403), reconnectDelayMs: 1, maxReconnectDelayMs: 2 });
+    const sub = source.subscribe({
+      onEvent: () => {},
+      onDialFailure: (reason) => {
+        reasons.push(reason);
+        throw new Error("handler broke");
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    sub.close();
+    process.off("uncaughtException", onUncaught);
+    expect(reasons.length).toBeGreaterThan(1);
+    expect(new Set(reasons)).toEqual(new Set(["HTTP 403"]));
+    expect(uncaught).toHaveLength(reasons.length);
+  });
+});

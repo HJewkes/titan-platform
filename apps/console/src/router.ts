@@ -9,11 +9,20 @@ export interface Route {
   slug?: string;
 }
 
+/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
   const [, segment = "", detail = ""] = hash.replace(/^#/, "").split("?")[0]!.split("/");
   const view = VIEW_KEYS.find((key) => key === segment) ?? "status";
-  return view === "initiatives" && detail ? { view, slug: decodeURIComponent(detail) } : { view };
+  return view === "initiatives" && detail ? { view, slug: safeDecode(detail) } : { view };
 }
 
 export function href(route: Route): string {
