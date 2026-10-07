@@ -55,6 +55,7 @@ export const MergeEvidenceSchema = z.looseObject({
   record: EvidenceRecordSchema,
   requiredChecksUnknown: z.string().optional(),
   unreadFacts: z.array(z.string()).optional(),
+  changedFilesUnread: z.string().optional(),
 });
 
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
