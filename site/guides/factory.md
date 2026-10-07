@@ -22,8 +22,8 @@ when `shepherd.review` is configured. Relay and agent-chat keep every other disp
   `gh api` on your login and reads no token itself (`packages/github`).
 - A base branch that requires at least one status check. `land` waits on required checks
   only, so it refuses a branch that requires none.
-- macOS or Linux, only for `service install`, `status`, `restart`, `uninstall` and `deploy`,
-  which drive launchd or a systemd --user unit, and macOS for `service check`. Every other
+- macOS or Linux, only for `service install`, `status`, `restart`, `uninstall`, `deploy` and
+  `check`, which drive or read launchd or a systemd --user unit. Every other
   command, `service plist` included, runs anywhere Node does.
 
 ## Build
@@ -288,7 +288,7 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd pid with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok` |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -303,7 +303,11 @@ the unit runs without a login session. The package README maps each plist key to
 
 `service check` defines each cause precisely and reports the first that holds, in this order:
 
-- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job.
+On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPID` is the pid
+(none unless `ActiveState` is `active`), `NRestarts` stands in for the run count and
+`ExecMainStatus` for the last exit code.
+
+- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded`.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no `/health` answer (and it is not crash-looping).
 - **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
 - **stale build**: the build sha in `/health` differs from the sha baked into the installed dist; an `unknown` sha on either side never counts.
@@ -315,8 +319,8 @@ It never starts, stops or restarts the job.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | `/health` answers from the launchd pid with `github` `ok`, and the build is not stale |
-| `1` | One of the causes above holds, or the platform is not macOS |
+| `0` | `/health` answers from the launchd or systemd pid with `github` `ok`, and the build is not stale |
+| `1` | One of the causes above holds, or the platform is neither macOS nor Linux |
 | `2` | Usage error, such as an invalid `--port` |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
