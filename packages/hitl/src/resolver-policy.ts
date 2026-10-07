@@ -1,10 +1,13 @@
 import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass, type ResolverClass } from "@titan-design/authority";
 import {
   GateAuthorizeInvalid,
+  GateEvidenceInvalid,
   GateResolverRefused,
   GateRuleInvalid,
   type GateAnswerAllowance,
   type GateAuthorization,
+  type GateEvidence,
+  type GateEvidencePolicy,
   type GateRecord,
   type GateResolver,
   type GateRule,
@@ -28,20 +31,58 @@ export function snapshotAllowances(raw: readonly GateAnswerAllowance[] | undefin
   );
 }
 
+/** What may widen the default refusal for one resolve: the store's allowances, and its evidence policy over the given evidence. */
+export interface Admission {
+  allowances: readonly GateAnswerAllowance[];
+  evidence: Readonly<GateEvidence> | undefined;
+  evidencePolicy: GateEvidencePolicy | undefined;
+}
+
 /**
- * Like `defaultResolverRefusal`, but a listed (class, step, payload) triple is admitted. Anything not
- * listed gets the default refusal unchanged.
+ * Like `defaultResolverRefusal`, but a listed (class, step, payload) triple is admitted, and so is a resolve the
+ * evidence policy admits on the evidence given. Anything else gets the default refusal unchanged.
  */
-export function resolverRefusal(
-  gateId: string,
-  resolver: GateResolver,
-  payload: unknown,
-  allowances: readonly GateAnswerAllowance[],
-): string | undefined {
+export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): string | undefined {
   const refusal = defaultResolverRefusal(resolver);
   if (refusal === undefined) return undefined;
-  if (!matchesAllowance(allowances, gateId, resolver, payload)) return refusal;
+  if (!matchesAllowance(admission.allowances, gate.id, resolver, payload) && !evidenceAdmits(gate, resolver, payload, admission)) return refusal;
   return resolver.id.trim() === "" ? `actor class ${resolver.class} must name itself to resolve this gate` : undefined;
+}
+
+/** A policy that throws or answers anything but `true` admits nothing, so a bug in it fails closed. */
+function evidenceAdmits(gate: GateRecord, resolver: GateResolver, payload: unknown, { evidence, evidencePolicy }: Admission): boolean {
+  if (evidence === undefined || evidencePolicy === undefined) return false;
+  try {
+    return evidencePolicy(Object.freeze({ ...gate }), resolver, payload, evidence) === true;
+  } catch {
+    return false;
+  }
+}
+
+const MAX_EVIDENCE_BYTES = 16_384;
+
+/** A frozen JSON copy, so the policy and the stored row see the same facts and a caller cannot change them after the check. */
+export function snapshotEvidence(gateId: string, raw: unknown): Readonly<GateEvidence> {
+  const text = serialized(gateId, raw);
+  const copy: unknown = JSON.parse(text);
+  if (typeof copy !== "object" || copy === null || Array.isArray(copy)) throw new GateEvidenceInvalid(gateId, "it is not a JSON object");
+  if (text.length > MAX_EVIDENCE_BYTES) throw new GateEvidenceInvalid(gateId, `it is over ${MAX_EVIDENCE_BYTES} characters`);
+  return deepFreeze(copy as GateEvidence);
+}
+
+function serialized(gateId: string, raw: unknown): string {
+  try {
+    const text = JSON.stringify(raw) as string | undefined;
+    if (text !== undefined) return text;
+  } catch {
+    // A cycle or a BigInt lands here; either way the evidence cannot be stored.
+  }
+  throw new GateEvidenceInvalid(gateId, "it does not serialize as JSON");
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) Object.values(value).forEach(deepFreeze);
+  return Object.freeze(value);
 }
 
 /** True when an allowance names this resolver's class, the gate's step and exactly this payload. The store and its callers share this test. */

@@ -98,7 +98,7 @@ both pass the same behaviour suite.
 `runMigrations` on construction. Pass `migrate: false` and put `gateMigration(n)`,
 `gateResolverMigration(m)` and `gateRuleMigration(r)` in the product's own migration list when hitl shares a database
 with domain tables. Add `gateBriefMigration(b)` too if you set `requireBrief` or create gates with a `summary`,
-`evidenceRef` or `questions`. A store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so one database can host several gate spaces.
+`evidenceRef` or `questions`, and `gateEvidenceMigration(e)` if any resolve passes evidence. A store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so one database can host several gate spaces.
 Timestamps are ISO-8601 strings, the shape store-sqlite writes and any surface
 can send on as-is.
 
@@ -139,6 +139,33 @@ later, and the gate's rule and `authorize` still run after it.
 ```ts
 new MemoryGateStore({ allowances: [{ resolverClass: "coordinator", stepId: "stuck-behind", payload: { decision: "retry" } }] });
 ```
+
+### Evidence policy
+
+A product may also admit a non-owner class on evidence, by passing `evidencePolicy` to the store. A
+resolve then takes a fourth argument, `evidence`: a JSON object of at most 16 KB, the facts the
+resolver read when it answered. When the default refusal and every allowance refuse, the store calls
+`evidencePolicy(gate, resolver, payload, evidence)` with the pending gate. Only an answer of exactly
+`true` admits; `false`, any other value or a throw gets the default refusal. The resolver's `id` must
+not be blank, and the gate's rule and `authorize` still run after it. hitl never reads the evidence
+itself. It copies it once, checks the copy and stores the copy on the row as `resolvedEvidence`, so
+an audit can re-run the same policy over the stored row later. Evidence an owner class gives is stored
+too, without consulting the policy. Evidence that is not a JSON object, or is too large, throws
+`GateEvidenceInvalid`. The policy must be pure and synchronous: read anything it needs before the
+resolve and put it in the evidence.
+
+```ts
+new SqliteGateStore(db, { evidencePolicy: (gate, resolver, payload, evidence) => resolver.class === "coordinator" && evidence.gateId === gate.id });
+store.resolve(gateId, { decision: "abandon" }, coordinator, { gateId, prState: "merged" });
+```
+
+On SQLite the evidence lives in a `resolved_evidence` column that `gateEvidenceMigration(n)` adds.
+`migrate: true` runs it as version 5. It is idempotent and does not backfill. A store on a table
+without the column still settles every resolve that carries no evidence, and throws
+`GateStoreSchemaOutdated` naming `gateEvidenceMigration` for one that does, writing nothing.
+
+The factory uses this for the three gate classes the owner let a coordinator resolve without a
+presence dialog (TP-1904, owner decision 2026-10-07).
 
 hitl records a claim about the resolver; it cannot prove one. Any process that can write
 the database can claim any class.

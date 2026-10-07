@@ -54,6 +54,24 @@ agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` doe
 the owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof
 or a helper path.
 
+Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
+coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
+gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
+
+| Gate and answer | Evidence the command reads |
+|---|---|
+| `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
+| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every Actions run on it passing |
+| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
+
+The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
+is stored on the gate as `resolvedEvidence`, and the gate store re-checks it against the gate's own
+prompt, schema and brief before it admits the coordinator, so an audit can re-run the same check later.
+Any read that fails or comes back partial, a pending or red check, an unknown mergeable, a payload or PR
+head other than the gate's, or a missing verdict reads no evidence, and the command falls back to the
+dialog above. A visual-path, seat owner-gate, route-escalation or release gate, a round
+pick, and every other gate still need the owner's presence.
+
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
 to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
