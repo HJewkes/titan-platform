@@ -8,7 +8,7 @@ export interface PropStats {
 }
 
 /** Same-file `interface` and `type` declarations by name; the first of a name wins. */
-export type TypeDecls = ReadonlyMap<string, Node>;
+type TypeDecls =ReadonlyMap<string, Node>;
 
 /** A member's name and its annotated type, or null for a method signature. */
 type Members = Map<string, Node | null>;
