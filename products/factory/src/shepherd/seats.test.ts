@@ -434,6 +434,35 @@ describe("visual_paths", () => {
     expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path`);
   });
 
+  it.each([
+    ["{./site/**,/site/**}", "./site/**", "has a . or .. segment"],
+    ["site/{..,.}/**", "site/../**", "has a . or .. segment"],
+    ["{,}", "", "has an empty segment (a leading, doubled or trailing /)"],
+    ["{/site,/docs}/**", "/site/**", "has an empty segment (a leading, doubled or trailing /)"],
+    ["{./site}/**", "./site/**", "has a . or .. segment"],
+  ])("refuses %j, naming the brace alternative that matches no repo-relative path", (glob, alternative, reason) => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**", ${JSON.stringify(glob)}]\n`) }) });
+
+    expect(load).toThrow(SeatBookInvalid);
+    expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} has the alternative ${JSON.stringify(alternative)}, which ${reason}, so it matches no repo-relative path`);
+  });
+
+  it.each([
+    ["site／**", "has a fullwidth slash (U+FF0F)"],
+    ["site/**​", "has a format character (U+200B)"],
+  ])("refuses %j, whose look-alike or invisible character no changed path spells", (glob, reason) => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}visual_paths: [${JSON.stringify(glob)}]\n`) }) });
+
+    expect(load).toThrow(SeatBookInvalid);
+    expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path`);
+  });
+
+  it("still reads brace globs whose every alternative is repo-relative", () => {
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["{site,docs}/**", "**/*.tsx"]\n`) });
+
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["{site,docs}/**", "**/*.tsx"] } });
+  });
+
   it("still reads repo-relative globs", () => {
     const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["site/**", "docs/**/*.png", ".storybook/**", "a..b/**"]\n`) });
 
