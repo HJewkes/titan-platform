@@ -4,6 +4,7 @@ import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
+import { foldCommandWords } from "./case-literal.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
@@ -57,6 +58,8 @@ export interface ExtractOptions {
   cwd?: string | null;
   /** Expands `~`, `$HOME` and a bare `cd`; null leaves them unknown. */
   home?: string | null;
+  /** Reads every command word lower-cased, as a filesystem that finds `GIT` as git runs it; arguments stay as written. */
+  foldCase?: boolean;
 }
 
 interface Scope {
@@ -84,6 +87,7 @@ interface Walk {
   chain: Chain;
   /** Whether `!` negates the pipeline the command being emitted belongs to. */
   negated: boolean;
+  foldCase: boolean;
 }
 
 /**
@@ -94,7 +98,8 @@ interface Walk {
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false });
+  const foldCase = options.foldCase === true;
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase });
   return out;
 }
 
@@ -164,7 +169,7 @@ function scope(op: string, w: Walk): void {
 function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, next: string | null): Unwrapped | null {
   const expand = (word: WordToken) => expandWord(word, (name) => lookup(w.scope.vars, w.home, name));
   const redirects = rawRedirects.map((r) => (r.target ? { ...r, target: expand(r.target) } : r));
-  const words = rawWords.map(expand);
+  const words = folded(rawWords.map(expand), w);
   const runs = caseNamed(words);
   const cut = cutReading(words);
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
@@ -211,7 +216,11 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const script = inlineScript(cmd, redirects, stdin);
   if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(words))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+}
+
+function folded(words: WordToken[], w: Walk): WordToken[] {
+  return w.foldCase ? foldCommandWords(words) : words;
 }
 
 /** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */

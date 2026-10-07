@@ -43,7 +43,7 @@
       "path": "agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`)",
       "package": "agent-dispatch",
       "credential": "No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd.",
-      "smoke": "`AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' | agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: \"exited\"`, a non-empty `sessionId` and `transcriptExists: true`. Resume is not yet smoke-tested: compare `sessionId` before and after."
+      "smoke": "`AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' | agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: \"exited\"`, a non-empty `sessionId` and `transcriptExists: true`. Resume, smoke-tested 2026-10-06: once that row has exited, `agent-chat agent resume <name> --message <text>` runs a new turn in the same session; `sessionId` is the same before and after, and both replies are in one transcript."
     }
   ],
   "knownGaps": [
