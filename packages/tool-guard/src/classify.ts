@@ -125,7 +125,8 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   const target = scriptTarget(cmd, ctx.home);
   if (!target) return [];
-  const actions = target.kind === "shell" ? memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx)) : scriptVerdicts(cmd, target, ctx);
+  const verdicts = () => scriptVerdicts(cmd, target, ctx);
+  const actions = target.kind === "shell" ? memoized(scripts, ctx, scriptKey(cmd, target, ctx), verdicts) : verdicts();
   return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
 }
 

@@ -213,17 +213,26 @@ describe("a reading under a plain name after a command that exempts its argument
 });
 
 describe("a script that more than one reading of a line runs", () => {
-  const scripts: Record<string, string> = { [`${REPO}/a.sh`]: "echo hi", [`${REPO}/b.sh`]: "git push origin HEAD:main", [`${REPO}/c.sh`]: "git push origin HEAD" };
+  const scripts: Record<string, string> = {
+    [`${REPO}/a.sh`]: "echo hi",
+    [`${REPO}/b.sh`]: "git push origin HEAD:main",
+    [`${REPO}/c.sh`]: "git push origin HEAD",
+  };
   const reading = (readHead: ClassifyContext["readHead"]) => {
     const reads: string[] = [];
     const context: ClassifyContext = { ...ctx, foldCase: true, readHead, readScript: (path) => (reads.push(path), scripts[path] ?? null) };
-    return { reads, run: (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, context).map((a) => a.spelling) };
+    const run = (command: string) =>
+      classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, context).map((a) => a.spelling);
+    return { reads, run };
   };
 
-  it("is read and classified once, though the as-written, unsure and folded readings all run it", () => {
+  it.each([
+    ["the as-written, unsure and folded readings", "timeout $P . a.sh"],
+    ["commands that run it again with no switch between", ". a.sh; bash a.sh; ./a.sh; git push origin feat/y"],
+  ])("is read and classified once, though %s all run it", (_how, command) => {
     const { reads, run } = reading(() => "feat/x");
 
-    run("timeout $P . a.sh");
+    run(command);
 
     expect(reads).toEqual([`${REPO}/a.sh`]);
   });
