@@ -204,7 +204,7 @@ describe("every factory-started agent passes the one gate", () => {
   it("spawns the reviewer of a frozen repo's fix PR before two reviewers that asked earlier", async () => {
     mkdirSync(join(dir, "co"));
     const state = { load5: 21, now: 0, admitted: [] as string[] };
-    const log = (line: string) => void (line.includes(" admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
+    const log = (line: string) => void (line.startsWith("shepherd: spawn_gate admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
     const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
     const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate, isFixer: ({ pr }) => pr === 9 });
     const prs = [7, 8, 9];
