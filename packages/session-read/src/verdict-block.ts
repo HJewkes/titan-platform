@@ -21,7 +21,7 @@
 
 export type VerdictBlockVerdict = "MERGE" | "FIX_FIRST";
 
-export type VerdictBlockCloser = "yes" | "no";
+type VerdictBlockCloser = "yes" | "no";
 
 export type VerdictBlockRefusal =
   | "no_block"

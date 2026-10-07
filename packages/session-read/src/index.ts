@@ -9,7 +9,7 @@ export type { Relation, RepoRelativePath } from "./refs.js";
 export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, taskRef, toRepoRelative } from "./refs.js";
 export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
-export type { VerdictBlockCloser, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
+export type { VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
 export { parseVerdictBlock } from "./verdict-block.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
