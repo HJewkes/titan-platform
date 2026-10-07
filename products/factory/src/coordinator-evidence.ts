@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { GateEvidencePolicy, GateRecord } from "@titan-design/hitl";
+import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
 
 /**
@@ -157,12 +157,17 @@ function runEligible(run: RunFacts, land: LandGate): boolean {
  */
 export const coordinatorEvidencePolicy: GateEvidencePolicy = (gate, resolver, payload, raw) => {
   const parsed = CoordinatorEvidence.safeParse(raw);
-  if (resolver.class !== "coordinator" || !parsed.success || parsed.data.gateId !== gate.id) return false;
+  if (resolver.class !== "coordinator" || !parsed.success || parsed.data.gateId !== gate.id || !fitsSchema(gate, payload)) return false;
   const evidence = parsed.data;
   if (evidence.kind === "approve-merge") return mergeAdmits(gate, payload, evidence);
   if (evidence.kind === "main-green") return mainGreenAdmits(gate, payload, evidence);
   return prGoneAdmits(gate, payload, evidence);
 };
+
+/** The store checks the schema after this policy; refusing here first sends a misfit answer to the dialog rather than to an error. */
+function fitsSchema(gate: GateRecord, payload: unknown): boolean {
+  return gate.schema !== undefined && checkAgainstJsonSchema(gate.schema, payload).length === 0;
+}
 
 type Of<K extends CoordinatorEvidence["kind"]> = Extract<CoordinatorEvidence, { kind: K }>;
 
@@ -189,10 +194,16 @@ function mainGreenAdmits(gate: GateRecord, payload: unknown, evidence: Of<"main-
   return evidence.runs.length > 0 && evidence.runs.every((run) => run.headSha === evidence.greenSha && PASSING.has(run.conclusion));
 }
 
+/** The abandon a gate's schema accepts: one that pins `headSha` gets that head, as its owner answer would. */
+function abandonOf(gate: GateRecord): Record<string, unknown> {
+  const head = pinnedHead(gate.schema);
+  return head === undefined ? { decision: "abandon" } : { decision: "abandon", headSha: head };
+}
+
 function prGoneAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-gone">): boolean {
   const target = gatePr(gate);
   if (!PR_GATES.has(stepOf(gate.id)) || !offersAbandon(gate) || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
-  if (stepOf(gate.id) !== MERGE_GATE) return isDeepStrictEqual(payload, { decision: "abandon" });
+  if (stepOf(gate.id) !== MERGE_GATE) return isDeepStrictEqual(payload, abandonOf(gate));
   const land = landGate(gate);
   if (!land || land.repo !== target.repo || land.pr !== target.pr || !evidence.run || !runEligible(evidence.run, land)) return false;
   return isDeepStrictEqual(payload, { decision: "abandon", headSha: land.head });

@@ -1,7 +1,7 @@
 import { fakeSha } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
-import { toJSONSchema } from "zod";
+import { toJSONSchema, z } from "zod";
 import { coordinatorEvidencePolicy, gatePr, landGate, mainGate, mergeableOf, type CoordinatorEvidence } from "./coordinator-evidence.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision } from "./gate-brief.js";
 
@@ -86,7 +86,8 @@ describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
 });
 
 describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
-  const mainRed = gate({ id: "run-1/main-red", prompt: `Main CI on o/r at merge ${MERGE_SHA} (PR #1) is red: failed. Acknowledge.`, ...acknowledgeBrief({ repo: "o/r", mergeSha: MERGE_SHA, headline: "red", detail: "failed" }) });
+  const ackSchema = toJSONSchema(z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() })) as Record<string, unknown>;
+  const mainRed = gate({ id: "run-1/main-red", prompt: `Main CI on o/r at merge ${MERGE_SHA} (PR #1) is red: failed. Acknowledge.`, schema: ackSchema, ...acknowledgeBrief({ repo: "o/r", mergeSha: MERGE_SHA, headline: "red", detail: "failed" }) });
   const green = { kind: "main-green", gateId: "run-1/main-red", repo: "o/r", pr: 1, mergeSha: MERGE_SHA, base: "main", greenSha: TIP, mergeBaseSha: MERGE_SHA, runs: [{ id: 21, name: "validate", conclusion: "success", headSha: TIP }], readAt: "x" };
   const ack = { decision: "acknowledged", mergeSha: MERGE_SHA };
 
@@ -97,19 +98,24 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
     expect(admits(mainRed, ack, { ...green, runs: [] })).toBe(false);
     expect(admits(mainRed, ack, { ...green, runs: [{ ...green.runs[0], conclusion: "failure" }] })).toBe(false);
     expect(admits(mainRed, { ...ack, mergeSha: TIP }, green)).toBe(false);
+    expect(admits({ ...mainRed, schema: undefined }, ack, green)).toBe(false);
   });
 
-  it("admits an abandon of a merged PR's red-CI gate named by its summary, never one still open", () => {
+  it("admits an abandon of a merged PR's red-CI gate only with the head its schema pins, never one still open", () => {
     const failing = [{ name: "validate", url: "https://example.test/job/1" }] as never;
-    const { brief } = ciFailedDecision({ repo: "o/r", pr: 1, headSha: HEAD, failing });
-    const ciFailed = gate({ id: "run-1/ci-failed:2", prompt: "red", ...brief });
+    const { schema, brief } = ciFailedDecision({ repo: "o/r", pr: 1, headSha: HEAD, failing });
+    const ciFailed = gate({ id: "run-1/ci-failed:2", prompt: "red", schema: toJSONSchema(schema) as Record<string, unknown>, ...brief });
     const gone = { kind: "pr-gone", gateId: "run-1/ci-failed:2", repo: "o/r", pr: 1, state: "merged", readAt: "x" };
+    const abandon = { decision: "abandon", headSha: HEAD };
 
     expect(gatePr(ciFailed)).toEqual({ repo: "o/r", pr: 1 });
-    expect(admits(ciFailed, { decision: "abandon" }, gone)).toBe(true);
-    expect(admits(ciFailed, { decision: "abandon" }, { ...gone, state: "open" })).toBe(false);
-    expect(admits(ciFailed, { decision: "abandon" }, { ...gone, pr: 2 })).toBe(false);
-    expect(admits(ciFailed, { decision: "rerun" }, gone)).toBe(false);
+    expect(admits(ciFailed, abandon, gone)).toBe(true);
+    expect(admits(ciFailed, { decision: "abandon" }, gone)).toBe(false);
+    expect(admits(ciFailed, { ...abandon, headSha: fakeSha("other") }, gone)).toBe(false);
+    expect(admits(ciFailed, abandon, { ...gone, state: "open" })).toBe(false);
+    expect(admits(ciFailed, abandon, { ...gone, pr: 2 })).toBe(false);
+    expect(admits(ciFailed, { ...abandon, decision: "rerun" }, gone)).toBe(false);
+    expect(admits({ ...ciFailed, schema: undefined }, abandon, gone)).toBe(false);
   });
 });
 

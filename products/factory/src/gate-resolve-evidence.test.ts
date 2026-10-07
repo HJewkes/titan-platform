@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { EvidenceSources } from "./coordinator-evidence-read.js";
 import { defineWorkflow } from "./definition.js";
-import { acknowledgeBrief, approveMergeDecision, frozenDecision, sentBackDecision } from "./gate-brief.js";
+import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision } from "./gate-brief.js";
 import { resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
@@ -22,7 +22,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
 const NOW = Date.parse("2026-10-07T18:00:00Z");
 
 interface Scenario {
-  gate: "merge" | "sent-back" | "main-red" | "main-frozen";
+  gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen";
   rule?: string;
   verdict?: string;
   policy?: EffectivePolicy;
@@ -39,6 +39,7 @@ const shepherdPr = defineWorkflow({
     { id: "merge-policy", kind: "dispatch" },
     { id: "approve-merge", kind: "assisted" },
     { id: "sh-sent-back", kind: "assisted" },
+    { id: "ci-failed", kind: "assisted" },
     { id: "main-red", kind: "assisted" },
     { id: "main-frozen", kind: "assisted" },
   ],
@@ -49,6 +50,7 @@ const shepherdPr = defineWorkflow({
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. The repo is frozen. Stay frozen, or unfreeze?`;
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
     }
+    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table, rowId] = (scenario.rule ?? "authority/MRG-AU").split("/");
@@ -113,7 +115,7 @@ function presenceStub(): { presence: OwnerPresence; reasons: string[] } {
   return { reasons, presence: async (reason) => (reasons.push(reason), undefined) };
 }
 
-const STEPS: Record<Scenario["gate"], string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "main-red": "main-red", "main-frozen": "main-frozen" };
+const STEPS: Record<Scenario["gate"], string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen" };
 
 async function resolveAs(world: World, gate: Scenario["gate"], payload: object) {
   const { presence, reasons } = presenceStub();
@@ -253,6 +255,27 @@ describe("coordinator abandon of a gate whose PR is gone", () => {
     const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
 
     expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "closed", run: { rule: "authority/MRG-AU" } } });
+  });
+
+  it("abandons a red-CI gate once the PR merged, with the head its schema pins", async () => {
+    const world = await paused({ gate: "ci-failed" });
+    mergedPr(world.gh);
+
+    const result = await resolveAs(world, "ci-failed", { decision: "abandon", headSha: HEAD });
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.gate).toMatchObject({ status: "resolved", payload: { decision: "abandon", headSha: HEAD }, resolvedEvidence: { kind: "pr-gone", repo: REPO, pr: 1, state: "merged" } });
+  });
+
+  it("falls back on a red-CI abandon whose payload omits or changes the pinned head", async () => {
+    const bare = await paused({ gate: "ci-failed" });
+    mergedPr(bare.gh);
+    const other = await paused({ gate: "ci-failed" });
+    mergedPr(other.gh);
+
+    expectFellBack(await resolveAs(bare, "ci-failed", { decision: "abandon" }));
+    expectFellBack(await resolveAs(other, "ci-failed", { decision: "abandon", headSha: fakeSha("other") }));
   });
 
   it("falls back on an abandon while the PR is still open", async () => {
