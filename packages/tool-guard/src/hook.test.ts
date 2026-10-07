@@ -154,6 +154,24 @@ describe("handle: failure policy", () => {
     expect(decisionOf(result.stdout)).toBe("deny");
   });
 
+  const PUSH = "git push origin HEAD:main\n";
+  const PAD = "echo hi; ".repeat(7000);
+  it.each([
+    ["timeout $P . a.sh", "first", PUSH + PAD],
+    ["timeout $P . a.sh", "last", PAD + PUSH],
+    ["timeout $P source a.sh", "first", PUSH + PAD],
+    ["timeout $P source a.sh", "last", PAD + PUSH],
+    ["timeout $P bash a.sh", "first", PUSH + PAD],
+    ["timeout $P bash a.sh", "last", PAD + PUSH],
+  ])("denies `%s` running a 63 KB script with the push %s, case folding on", async (line, _where, script) => {
+    const context = { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
+
+    const result = await handle(bash(line), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  }, 30_000);
+
   it("passes a command past the reading budget under the bypass and logs it", async () => {
     const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
 
