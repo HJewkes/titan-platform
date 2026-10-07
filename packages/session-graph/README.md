@@ -6,7 +6,7 @@ them, all in one SQLite file built from `@titan-design/store-sqlite` kit tables 
 current incrementally.
 
 Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`,
-`cluster`, `locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
+`locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
 
 ```ts
 import os from "node:os";

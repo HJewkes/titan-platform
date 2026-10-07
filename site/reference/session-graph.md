@@ -1,7 +1,7 @@
 # session-graph
 
 **Tier 2 · domain.** Depends on [`session-read`](/reference/session-read),
-[`store-sqlite`](/reference/store-sqlite), [`cluster`](/reference/cluster),
+[`store-sqlite`](/reference/store-sqlite),
 [`locator`](/reference/locator), and [`agent-protocol`](/reference/agent-protocol).
 
 ```sh
