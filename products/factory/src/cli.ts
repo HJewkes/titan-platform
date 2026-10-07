@@ -18,7 +18,9 @@ import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import type { ShepherdCommandName } from "./shepherd/commands.js";
+import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
+import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
 export { EXIT };
@@ -47,6 +49,8 @@ export interface CliDeps {
   deploy?: DeployPorts;
   /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
   presence?: OwnerPresence;
+  /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
+  fetch?: typeof fetch;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
@@ -146,7 +150,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
-    .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts), opts));
+    .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
   verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
   verb("list", "the watch list")
@@ -178,17 +182,18 @@ function parseTarget(target: string): { repo: string; pr?: number } {
   return { repo: target };
 }
 
-function registerArgs(target: string, opts: RegisterOpts): Record<string, unknown> {
+async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, task, implementer, reviewer, kind, slice } = opts;
+  const { branch, implementer, reviewer, kind, slice } = opts;
+  const task = await qualifyTask(opts.task, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
-async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object, opts: ShepherdOpts): Promise<void> {
+async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
   let args: object;
   try {
-    args = argsOf();
+    args = await argsOf();
   } catch (err) {
     verbs.io.stderr(`error: ${(err as Error).message}\n`);
     return verbs.setExit(EXIT.USAGE);
