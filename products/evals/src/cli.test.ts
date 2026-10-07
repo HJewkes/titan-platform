@@ -17,7 +17,6 @@ describe("titan-evals", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    process.exitCode = undefined;
     if (scratch) rmSync(scratch, { recursive: true, force: true });
   });
 
@@ -54,6 +53,33 @@ describe("titan-evals", () => {
 
     expect(code).toBe(1);
     expect(errors).toEqual([expect.stringMatching(/missing\.json: .*ENOENT/), expect.stringMatching(/bad\.json: /)]);
+  });
+
+  it("returns 1 then 0 for a failing then a passing run in one process without touching process.exitCode", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    captureStdout();
+
+    const failing = await runCli(["validate", join(scratch, "missing.json")]);
+    const passing = await runCli(["validate", `${FIXTURE_ROOT}unit.json`]);
+
+    expect([failing, passing]).toEqual([1, 0]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("returns the usage code 2 for an unknown command and for a missing argument", async () => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    expect(await runCli(["bogus"])).toBe(2);
+    expect(await runCli(["validate"])).toBe(2);
+  });
+
+  it("returns 0 for the help subcommand and the --help flag", async () => {
+    captureStdout();
+
+    expect(await runCli(["help"])).toBe(0);
+    expect(await runCli(["help", "validate"])).toBe(0);
+    expect(await runCli(["validate", "--help"])).toBe(0);
   });
 
   it("exits 1 and marks the spec stale when a prompt file was edited", async () => {
