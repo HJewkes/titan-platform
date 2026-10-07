@@ -12,9 +12,9 @@ import type {
 } from "./contract.js";
 import { emptyEditError, sendFailed } from "./contract.js";
 import type { TelegramConfig } from "./telegram-api.js";
+import { describeCause } from "./send-failure.js";
 import {
   callBotApi,
-  describeCause,
   redactToken,
   TELEGRAM_MAX_CALLBACK_DATA_BYTES,
   TELEGRAM_MAX_TEXT_LENGTH,
@@ -40,7 +40,7 @@ function buttonsError(rows: readonly ButtonRow[]): SendError | undefined {
   };
 }
 
-function sendError({ text, buttons }: SendInput): SendError | undefined {
+function textError(text: string): SendError | undefined {
   if (text.length > TELEGRAM_MAX_TEXT_LENGTH) {
     return {
       kind: "too-long",
@@ -49,7 +49,16 @@ function sendError({ text, buttons }: SendInput): SendError | undefined {
       message: `Text is ${text.length} characters; the limit is ${TELEGRAM_MAX_TEXT_LENGTH}`,
     };
   }
-  return buttons ? buttonsError(buttons) : undefined;
+  return undefined;
+}
+
+function sendError({ text, buttons }: SendInput): SendError | undefined {
+  return textError(text) ?? (buttons ? buttonsError(buttons) : undefined);
+}
+
+function editError({ text, buttons }: EditInput): SendError | undefined {
+  const rows = Array.isArray(buttons) ? buttons : undefined;
+  return textError(text ?? "") ?? (rows ? buttonsError(rows) : undefined);
 }
 
 /**
@@ -177,7 +186,7 @@ export class TelegramTransport implements InteractiveTransport {
   }
 
   async edit(input: EditInput): Promise<InteractionResult> {
-    const invalid = emptyEditError(input);
+    const invalid = emptyEditError(input) ?? editError(input);
     if (invalid) return { ok: false, error: invalid };
 
     const { method, body } = editBody(input, this.capabilities.buttonStates);
