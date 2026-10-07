@@ -32,6 +32,8 @@ export interface MergeFacts {
   requiredContexts: string[];
   /** Check-run app ids the caller trusts; the package pins none. */
   allowedApps: number[];
+  /** Per-context override of `allowedApps`: a run of a listed context counts only from these apps. Absent means `allowedApps` for every context. */
+  contextApps?: Record<string, number[]>;
   checkRuns: CheckRunFact[];
   mergeTreeClean: boolean;
   repoFrozen: boolean;
@@ -101,13 +103,27 @@ function isWellFormedRun(run: CheckRunFact): boolean {
     (run.conclusion === null || typeof run.conclusion === "string");
 }
 
+function isAppList(apps: unknown): boolean {
+  return Array.isArray(apps) && apps.every((app) => Number.isInteger(app));
+}
+
+function hasContextApps(facts: MergeFacts): boolean {
+  const { contextApps } = facts;
+  return contextApps === undefined || (isRecord(contextApps) && Object.values(contextApps).every(isAppList));
+}
+
 function hasRunFacts(facts: MergeFacts): boolean {
-  return Array.isArray(facts.checkRuns) && Array.isArray(facts.allowedApps) &&
-    facts.allowedApps.every((app) => Number.isInteger(app));
+  return Array.isArray(facts.checkRuns) && isAppList(facts.allowedApps) && hasContextApps(facts);
+}
+
+// An own key only, so a context named like an Object.prototype member never picks up an inherited list.
+function appsFor(facts: MergeFacts, context: string): number[] {
+  const { contextApps } = facts;
+  return contextApps !== undefined && Object.hasOwn(contextApps, context) ? contextApps[context]! : facts.allowedApps;
 }
 
 function countedRuns(facts: MergeFacts): CheckRunFact[] {
-  return facts.checkRuns.filter((run) => isWellFormedRun(run) && run.headSha === facts.head && facts.allowedApps.includes(run.appId));
+  return facts.checkRuns.filter((run) => isWellFormedRun(run) && run.headSha === facts.head && appsFor(facts, run.name).includes(run.appId));
 }
 
 function requiredContextsGreen(facts: MergeFacts): boolean {

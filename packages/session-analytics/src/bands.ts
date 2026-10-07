@@ -1,3 +1,4 @@
+// SQL twin: the context_band and gap_band CASE in session-graph audit-schema-v10.ts (request_cost view); bands-parity.test.ts keeps them equal.
 /** Half-open [lo, hi) in the band's own unit. */
 export interface Band {
   lo: number;

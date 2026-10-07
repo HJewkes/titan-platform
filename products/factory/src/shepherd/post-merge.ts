@@ -15,6 +15,8 @@ import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
+/** Extra full waits granted, one at a time, while a run at the merge sha is still queued or in progress: at most 4 hours in all. */
+const SH_MAIN_CI_RECHECKS = 3;
 
 /** Stages a merge may be followed by. This slice runs none of them; a non-empty list goes to the owner. */
 export const AFTER_STAGES = ["deploy", "release", "activation"] as const;
@@ -30,6 +32,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   { id: "sh-spawn-fixer", kind: "dispatch" },
   { id: "sh-thaw", kind: "dispatch" },
   { id: "main-red", kind: "assisted" },
+  { id: "main-ci-timeout", kind: "assisted" },
   { id: "main-red-again", kind: "assisted" },
   { id: "main-frozen", kind: "assisted" },
   { id: "after-stages", kind: "assisted" },
@@ -76,6 +79,7 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail);
+  else if (target.mergeSha !== "") await askOwner(ctx, "main-ci-timeout", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is not red, but unread: ${result.detail}. Acknowledge.`, { ...target, headline: `No completed main CI run on ${target.repo} contains the merge`, detail: result.detail });
   else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, { ...target, headline: `PR #${target.pr} in ${target.repo} merged with after stages`, detail: `Do by hand: ${result.after.join(", ")}.` });
   await step(ctx, "sh-cleanup", { repo: target.repo, pr: target.pr, runId: ctx.runId }, CleanupResult);
@@ -144,33 +148,55 @@ export interface Timing {
   timeoutMs: number;
 }
 
-type Read = { verdict: "green" | "red" | "pending"; detail: string } | { verdict: "newer"; sha: string; detail: string };
+type Read = { verdict: "green" | "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
 
-/** Polls until every run at the merge sha, or at the newer push that superseded it, has finished. A read error or the deadline is `none`, never green. */
+/**
+ * Polls until every run at the merge sha, or at the newer push that superseded it, has finished. At the limit it reads the
+ * newest main push containing the merge sha once, and while a run is still queued or in progress it waits again, at most
+ * SH_MAIN_CI_RECHECKS times. A read error or the final limit is `none`, never green.
+ */
 export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: Timing, signal: AbortSignal): Promise<MainCi> {
   const base = { mergeSha: input.mergeSha, after: input.after };
   if (input.mergeSha === "") return { ...base, verdict: "none", detail: "land returned no merge sha" };
-  const clock = deadline(timing);
+  let clock = deadline(timing);
+  let rechecks = 0;
   let sha = input.mergeSha;
   let last = "no read yet";
+  let queued = false;
   for (;;) {
     try {
       const read = await readAt(port, input, sha);
+      queued = read.verdict === "pending" && read.queued === true;
       if (read.verdict === "newer") sha = read.sha;
       else if (read.verdict !== "pending") return { ...base, ...(sha !== input.mergeSha && { readSha: sha }), verdict: read.verdict, detail: read.detail };
       last = read.detail;
     } catch (error) {
       last = failureOf(error);
+      queued = false;
     }
-    if (clock.expired()) return { ...base, verdict: "none", detail: `no verdict after ${timing.timeoutMs} ms: ${last}` };
+    if (clock.expired()) {
+      const settled = await newestSettled(port, input, sha).catch(() => undefined);
+      if (settled !== undefined) return { ...base, readSha: settled.sha, verdict: settled.verdict, detail: settled.detail };
+      if (!queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${last}` };
+      rechecks += 1;
+      clock = deadline(timing);
+    }
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+/** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
+async function newestSettled(port: GitHubPort, input: MainCiInput, sha: string): Promise<{ verdict: "green" | "red"; sha: string; detail: string } | undefined> {
+  const tip = await newerMainPush(port, input, sha);
+  if (tip === undefined) return undefined;
+  const read = evaluate(tip, await port.checkRuns(input.repo, tip));
+  return read.verdict === "green" || read.verdict === "red" ? { verdict: read.verdict, sha: tip, detail: read.detail } : undefined;
 }
 
 /** One read at `sha`, routed by MAIN_CI_ROUTES once it has finished. */
 async function readAt(port: GitHubPort, input: MainCiInput, sha: string): Promise<Read> {
   const read = evaluate(sha, await port.checkRuns(input.repo, sha));
-  if (read.verdict === "pending") return { verdict: "pending", detail: read.detail };
+  if (read.verdict === "pending") return { verdict: "pending", detail: read.detail, ...(read.queued && { queued: true as const }) };
   const newer = read.verdict === "cancelled" ? await newerMainPush(port, input, sha) : undefined;
   const classified: Classified = newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer };
   const routed = routeOf(classified);
@@ -215,7 +241,7 @@ async function newerMainPush(port: GitHubPort, input: MainCiInput, sha: string):
   return (await port.compareFiles(input.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
 }
 
-type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded"> | "pending"; detail: string };
+type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded">; detail: string } | { verdict: "pending"; detail: string; queued?: true };
 
 /**
  * Only allowed-app runs at the merge sha count, and each counts but a cancel a newer run of its name superseded, so an
@@ -229,6 +255,6 @@ function evaluate(mergeSha: string, runs: readonly CheckRun[]): Evaluated {
   const names = failed.map((run) => run.name).join(", ");
   if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
   if (failed.length > 0) return { verdict: "red", detail: `failed: ${names}` };
-  if (findings.length > 0) return { verdict: "pending", detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
+  if (findings.length > 0) return { verdict: "pending", queued: true, detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
   return { verdict: "green", detail: `${counted.length} runs passed` };
 }

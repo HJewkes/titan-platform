@@ -153,7 +153,6 @@ function initiativeRows({ observations, baseRates }: ServedInputs): InitiativeRo
   }));
 }
 
-/** Observations grouped by a composite key, each group reduced to its first member and its tally. */
 const CLASS_ORDER: RefClass[] = ["source", "note", "task", "session"];
 
 /** Rows in §1.2's order: trigger, then class, then the grouping key. */
@@ -165,6 +164,7 @@ function byRow(a: [Observation, string[]], b: [Observation, string[]]): number {
   );
 }
 
+/** Observations grouped by a composite key, each group reduced to its first member and its tally. */
 function group(observations: Observation[], keyOf: (o: Observation) => string[]): [Observation, Tally][] {
   const groups = new Map<string, [Observation, Tally, string[]]>();
   for (const o of observations) {

@@ -56,6 +56,7 @@ export function priceRequest(
  * Older transcripts carry a cache_creation total with no ttl breakdown. Charging the
  * 5m rate there under-reads rather than over-reads, and 5m is the harness default.
  */
+// SQL twin: the cache_write_5m_cost_usd CASE in session-graph audit-schema-v10.ts (request_cost view); bands-parity.test.ts keeps them equal.
 function splitCacheCreation(tokens: RequestTokens): { write5m: number; write1h: number } {
   const write5m = tokens.cacheCreation5mTokens ?? 0;
   const write1h = tokens.cacheCreation1hTokens ?? 0;

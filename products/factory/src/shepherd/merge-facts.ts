@@ -6,6 +6,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
+import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -18,6 +19,11 @@ const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CA
 
 /** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */
 export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
+
+/** The check only the Shepherd App may satisfy; no App configured leaves it with no counting app, so a required one gates. */
+function reviewContextApps(reviewAppId: number | undefined): Record<string, number[]> {
+  return { [REVIEW_CHECK_NAME]: reviewAppId === undefined ? [] : [reviewAppId] };
+}
 
 const AUTHORITY_ACTOR = { class: "automation", id: "titan-factory" } as const;
 const AUTHORITY_VERSION = Number.parseInt(DEFAULT_TABLE.version, 10);
@@ -279,7 +285,7 @@ function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact 
 }
 
 /** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
-export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}, clock: SettleClock = REAL_CLOCK): Promise<Observed> {
+export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, { kind, unread }: KindRead = {}, clock: SettleClock = REAL_CLOCK, reviewAppId?: number): Promise<Observed> {
   const pr = await settledPr(port, input.repo, input.pr, clock);
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
@@ -295,6 +301,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     verdict: { value: input.verdict.value, head: input.verdict.head },
     requiredContexts: required.readable ? required.checks.contexts : [],
     allowedApps: [...ALLOWED_CHECK_APPS],
+    contextApps: reviewContextApps(reviewAppId),
     checkRuns: runs.map(runFact),
     mergeTreeClean: mergeTreeClean(pr, input.head, bypassable.bypassable),
     repoFrozen: frozen,
@@ -353,8 +360,8 @@ export function evidenceComment(record: EvidenceRecord): string {
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock);
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown }, input.visualPaths);
