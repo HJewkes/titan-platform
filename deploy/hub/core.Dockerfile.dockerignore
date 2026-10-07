@@ -5,6 +5,7 @@
 !tsconfig.base.json
 !packages/matrix-bus
 !packages/egress-scan
+!packages/eslint-plugin
 !packages/fix-proof
 !deploy/hub/package.json
 !deploy/hub/src
