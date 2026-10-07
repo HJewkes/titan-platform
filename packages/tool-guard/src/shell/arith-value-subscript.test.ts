@@ -28,6 +28,28 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
+  it.each([
+    ["a backslash-escaped )", `X='a[$(echo \\); ${PUSH})]'; (( X ))`],
+    ["a single-quoted )", `X="a[\\$(echo ')'; ${PUSH})]"; (( X ))`],
+    ["a double-quoted )", `X='a[$(echo ")"; ${PUSH})]'; (( X ))`],
+  ])("classifies the push behind %s in the value", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a (( )) that reads $X", `${VALUE}; (( $X ))`],
+    ["an expansion that reads $X", `${VALUE}; echo $(( $X ))`],
+    ["an expansion that reads \${X}", `${VALUE}; echo $(( \${X} + 1 ))`],
+    ["a legacy $[ ] that reads the name", `${VALUE}; echo $[ X ]`],
+    ["an array-subscript write", `${VALUE}; a[X]=1`],
+    ["an array element read", `${VALUE}; echo \${a[X]}`],
+    ["a substring offset", `${VALUE}; s=hello; echo \${s:X}`],
+    ["a substring length", `${VALUE}; s=hello; echo \${s:0:X}`],
+    ["a trailing declare -i", `${VALUE}; declare -i X`],
+  ])("classifies the push for %s", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
   it("keeps the verdict of the direct form", () => {
     expect(spellings(`(( a[$(${PUSH})] ))`)).toContain("bash.merge.git-push-protected");
   });
