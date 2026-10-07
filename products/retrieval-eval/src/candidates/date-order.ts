@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import path from "node:path";
 import type { ScoredHit } from "../metrics.js";
 import type { Arm } from "../pairs.js";
+import { initiativeDir, LAYOUT, markdownIn } from "../workspace-layout.js";
 import type { Candidate, SearchContext } from "./candidate.js";
 
 /**
@@ -25,20 +26,22 @@ import type { Candidate, SearchContext } from "./candidate.js";
  */
 export const INJECTED_TODAY: Record<Arm, number> = { spawn: 5, bootstrap: 12 };
 
-/** Note filenames lead with `YYYY-MM-DD`, so reverse lexical order is newest-first. */
-export function newestNotes(initiativeDir: string, limit: number): string[] {
-  const dirs = [path.join(initiativeDir, "notes"), path.join(initiativeDir, "sources", "notes")];
-  const files = dirs.flatMap((dir) =>
-    existsSync(dir)
-      ? readdirSync(dir)
-          .filter((name) => name.endsWith(".md"))
-          .sort()
-          .reverse()
-          .slice(0, limit)
-          .map((name) => path.join(dir, name))
-      : [],
-  );
-  return files.slice(0, limit);
+/**
+ * Note filenames lead with `YYYY-MM-DD`, so reverse lexical order of the
+ * filename is newest-first. Both dirs are merged before sorting, so a legacy
+ * note never outranks a newer one just for the dir it sits in.
+ */
+export function newestNotes(dir: string, limit: number): string[] {
+  const files = [LAYOUT.legacyNotes, LAYOUT.notes].flatMap((parts) => {
+    const notes = path.join(dir, ...parts);
+    return markdownIn(notes).map((name) => path.join(notes, name));
+  });
+  return files.sort(byFilenameDescending).slice(0, limit);
+}
+
+function byFilenameDescending(a: string, b: string): number {
+  const [left, right] = [path.basename(a), path.basename(b)];
+  return left < right ? 1 : left > right ? -1 : 0;
 }
 
 export interface DateOrderOptions {
@@ -66,14 +69,6 @@ export function dateOrderNotes(options: DateOrderOptions): Candidate {
     },
     close() {},
   };
-}
-
-/** Live initiatives first, then the archive, since a retired one is still real data. */
-function initiativeDir(activeRoot: string, slug: string): string | undefined {
-  for (const dir of [path.join(activeRoot, slug), path.join(activeRoot, "archive", slug)]) {
-    if (existsSync(dir)) return dir;
-  }
-  return undefined;
 }
 
 /**
