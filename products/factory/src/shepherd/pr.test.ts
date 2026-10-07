@@ -1177,6 +1177,7 @@ describe("the round after a wake's await-new-head", () => {
         return { ...pr, headSha: RUN_HEAD, mergeableState: "behind", behind: true };
       },
       checkRuns: (repo, sha) => port.checkRuns(repo, sha),
+      openPrs: (repo) => prSnapshot(port, { now: () => 0 }).openPrs(repo),
       invalidate: () => undefined,
     });
     const { w, wakes } = sentBackBehind(lagging);
