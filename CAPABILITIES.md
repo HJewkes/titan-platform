@@ -414,8 +414,8 @@ Key exports:
 - `surfaces/command`: `launchCommand`, `paneCommand`, `relaunchCommand`, `relaunchScript`, `shellQuote`
 - `surfaces/headless`: `headlessSurface`
 - `surfaces/iterm`: `itermSessionPresent`, `itermSurface`
-- `surfaces/launch-check`: `psProbe`, `watchLaunch`
-- +50 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-surface)
+- `surfaces/tmux`: `tmuxSurface`, `tmuxWindowPresent`
+- +53 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-surface)
 
 <a id="cap-daemon"></a>
 

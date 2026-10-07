@@ -21,10 +21,12 @@ export interface GhCliOptions {
    * check run, so a cached provider should refresh itself; without it `createCheckRun` refuses.
    */
   appToken?: () => Promise<string>;
+  /** Waits between attempts of a failed read; tests inject one so they do not sleep. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): GitHubWire {
-  const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500);
+  const api = restCaller(exec, options.budget ?? sharedRateBudget, options.etagCacheSize ?? 500, options.sleep);
   return {
     getRef: async (repo, branch) => (await api.getOrNull<{ object: { sha: string } }>(`repos/${repo}/git/ref/heads/${branch}`))?.object.sha ?? null,
     createRef: async (repo, branch, sha) => void (await api.send("POST", `repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })),
