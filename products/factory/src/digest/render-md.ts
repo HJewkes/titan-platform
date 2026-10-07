@@ -1,4 +1,4 @@
-import type { PoolLine } from "./model.js";
+import type { Ask, PoolLine } from "./model.js";
 import type { RankedDigest } from "./rank.js";
 
 export const WORD_LIMIT = 400;
@@ -37,8 +37,13 @@ function section(title: string, lines: string[], empty: string): string[] {
   return ["", `## ${title}`, ...(lines.length > 0 ? lines : [empty])];
 }
 
+function askLine(ask: Ask, i: number): string {
+  const parts = [clip(ask.text, ASK_WORDS), ...(ask.evidence ? [`evidence: ${ask.evidence}`] : []), ...(ask.command ? [`\`${ask.command}\``] : [])];
+  return `${i + 1}. ${parts.join(" | ")}${ask.since ? ` | waiting since ${ask.since}` : ""} (${ask.source})`;
+}
+
 function needsYou(d: RankedDigest): string[] {
-  const lines = d.needsYou.flatMap((ask, i) => [`${i + 1}. ${clip(ask.text, ASK_WORDS)} (${ask.source})`, ...(ask.command ? [`   \`${ask.command}\``] : [])]);
+  const lines = d.needsYou.map(askLine);
   return section(`Needs you (${d.totals.needsYou})`, lines, "Nothing.");
 }
 

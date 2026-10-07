@@ -40,4 +40,14 @@ describe("renderMarkdown", () => {
     expect(markdown).toContain("## Stuck (0)\nNothing stuck.");
     expect(markdown).not.toContain("more:");
   });
+
+  it("renders a gate ask on one line with its evidence, resolve command and waiting since", () => {
+    const ask: Ask = { text: "acme/widgets#4 approve-merge: Merge it", evidence: "https://ci.example/run/4", command: "titan-factory gate resolve r approve-merge", since: "2026-03-10T08:00:00Z", source: "factory", keys: ["gate:g-4"] };
+
+    const markdown = renderMarkdown(rankDigest(emptyModel({ needsYou: [ask] })));
+
+    expect(markdown).toContain(
+      "1. acme/widgets#4 approve-merge: Merge it | evidence: https://ci.example/run/4 | `titan-factory gate resolve r approve-merge` | waiting since 2026-03-10T08:00:00Z (factory)",
+    );
+  });
 });
