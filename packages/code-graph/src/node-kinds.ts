@@ -28,7 +28,7 @@ export const TS_FUNCTION_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Class declarations that carry their own name: plain and abstract. */
-export const TS_CLASS_DECL_TYPES: ReadonlySet<string> = new Set([
+const TS_CLASS_DECL_TYPES: ReadonlySet<string> = new Set([
   "class_declaration",
   "abstract_class_declaration",
 ]);
