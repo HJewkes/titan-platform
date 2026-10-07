@@ -1,5 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -7,6 +8,7 @@ import { sleep } from "../workflows/land.js";
 import type { ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { acceptVerdict } from "./await-verdict.js";
 import { shepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
@@ -72,5 +74,16 @@ describe("the no-progress escalation", () => {
     const gate = await runUntilGate(Array<Answer>(6).fill("absent"));
 
     expect(gate.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task`);
+  });
+});
+
+describe("a reviewer's Closer line", () => {
+  const input = { repo: REPO, pr: 1, head: H1, reviewerAgentId: "a", reviewerSessionId: "s", dispatchedAt: 0 };
+  const said = (text: string) => ({ agentId: "a", sessionId: "s", writtenAt: 1, text, locator: { source: { conversation: { nativeId: "s" } } } as unknown as SourceTextLocator });
+
+  it("reaches the accepted FIX_FIRST verdict", () => {
+    const result = acceptVerdict(input as never, [said(`Read all.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\nCloser: no\n`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", closer: "no" });
   });
 });

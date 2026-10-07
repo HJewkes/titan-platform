@@ -116,8 +116,11 @@ It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffs
 It fails closed. The three lines must be consecutive and exact: `Verdict:` is `MERGE` or
 `FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
 suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is exactly 40
-lowercase hex characters with nothing after it. Text that may be someone else's only makes
-the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
+lowercase hex characters with nothing after it. A `FIX_FIRST` block may add one optional fourth line, `Closer: yes|no` (is this head closer to
+`MERGE` than the last reviewed one), directly after `Head:`. It is returned as `closer`. On
+`MERGE`, with any other value, duplicated anywhere visible, or anywhere but directly after
+`Head:`, it is ignored and the block parses as it would without it. Text that may be someone
+else's only makes the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
 other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted
 line (`> Verdict: MERGE`) is not a block. A fence opens on 3 or more backticks or tildes, also after list or `>` markers, and
