@@ -2,6 +2,7 @@ export type { ChurnWindow } from "./window.js";
 export {
   entriesWithin,
   loadChurnEntries,
+  loadChurnResult,
   parseChurnLog,
   resolveRenamedPath,
   type ChurnEntry,
@@ -14,7 +15,8 @@ export {
   type ResolvedCommit,
   type TreeBlob,
 } from "./git-tree.js";
-export { loadFileFirstSeen, type FirstSeenOptions } from "./first-seen.js";
+export { loadFileFirstSeen, loadFirstSeenResult, type FirstSeenOptions } from "./first-seen.js";
+export { GitHistoryError, type GitLargeFailure, type HistoryLoad } from "./git.js";
 export { aggregateChurn, aggregateChurnWindows, type PathChurn } from "./churn.js";
 export {
   authorLinesByPath,

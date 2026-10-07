@@ -5,7 +5,7 @@ import {
   type ContextBuildInput,
 } from "./dossier.js";
 import { renderContextMarkdown } from "./format.js";
-import type { NodeMetrics } from "../dashboard-node-metrics.js";
+import { collectNodeMetrics, type NodeMetrics } from "../dashboard-node-metrics.js";
 
 function node(id: string, kind: GraphNode["kind"], extra: Partial<GraphNode> = {}): GraphNode {
   return { id, kind, name: extra.name ?? id.split(/[/#]/).pop()!, ...extra };
@@ -41,7 +41,7 @@ const REF_EDGES = [
 
 const METRICS = new Map<string, NodeMetrics>([
   ["src/a.ts", { loc: 100, cognitiveMax: 12, cyclomaticMax: 5, fanIn: 3, fanOut: 0, role: "source" }],
-  ["src/a.ts#foo", { cognitiveMax: 10, cyclomaticMax: 4, utilization: 3 }],
+  ["src/a.ts#foo", { cognitiveMax: 10, cyclomaticMax: 4, utilization: 3, loc: 18 }],
   ["src/a.ts#helper", { cognitiveMax: 6, utilization: 0 }],
   ["src/b.ts#bar", { cognitiveMax: 2, utilization: 2 }],
 ]);
@@ -150,5 +150,30 @@ describe("renderContextMarkdown", () => {
     expect(md).toContain("# src/a.ts");
     expect(md).toContain("Blast radius");
     expect(md).toContain("foo");
+  });
+
+  it("shows a symbol's LOC wherever its complexity appears", () => {
+    const fileMd = renderContextMarkdown(buildContextDossier(input("src/a.ts", "file")));
+    const symbolMd = renderContextMarkdown(buildContextDossier(input("src/a.ts#foo", "symbol")));
+
+    expect(fileMd).toContain("cog 10, loc 18");
+    expect(fileMd).toContain("× churn 5; loc 18)");
+    expect(fileMd).toContain("### Blast radius (look here first)");
+    expect(fileMd).not.toMatch(/riskiest/);
+    expect(symbolMd).toContain("cyclomatic 4 · **loc** 18");
+  });
+
+  it("renders a dash where a symbol's LOC is unmeasured", () => {
+    const md = renderContextMarkdown(buildContextDossier(input("src/a.ts#helper", "symbol")));
+
+    expect(md).toContain("cyclomatic — · **loc** —");
+  });
+});
+
+describe("collectNodeMetrics", () => {
+  it("reads a symbol's own LOC from symbol_loc", () => {
+    const metrics = collectNodeMetrics([{ nodeId: "src/a.ts#foo", name: "symbol_loc", value: 18 }]);
+
+    expect(metrics.get("src/a.ts#foo")?.loc).toBe(18);
   });
 });

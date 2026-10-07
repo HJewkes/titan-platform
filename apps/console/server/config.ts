@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
@@ -65,6 +66,3 @@ function activeWorkRoot(env: NodeJS.ProcessEnv, home: string): string {
   return path.join(env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "active-work");
 }
 
-function expandHome(file: string, home: string): string {
-  return file.startsWith("~/") ? path.join(home, file.slice(2)) : file;
-}

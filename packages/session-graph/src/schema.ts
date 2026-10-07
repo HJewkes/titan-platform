@@ -1,8 +1,8 @@
 import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } from "./audit-schema.js";
-import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./audit-schema-v5.js";
-import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./audit-schema-v6.js";
-import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./audit-schema-v7.js";
-import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./audit-schema-v8.js";
+import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./origin-schema.js";
+import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./episode-transcript-schema.js";
+import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./origin-task-link-schema.js";
+import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./review-schema.js";
 import { REQUEST_COST_BOUNDARY_MIGRATION_NAME, applyRequestCostBoundary } from "./audit-schema-v10.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";

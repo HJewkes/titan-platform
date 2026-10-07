@@ -11,10 +11,11 @@ import { failureOf } from "./error-class.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
+import { GITHUB_READ_GIVE_UP_MS } from "./timeouts.js";
 import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
-export const SH_MAIN_RED_GIVE_UP_MS = 60 * 60_000;
+export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
 /** Where a fix task goes when the merged PR's registration names no `<initiative>/<id>` task. */
 export const DEFAULT_FIX_INITIATIVE = "titan-platform";

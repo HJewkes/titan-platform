@@ -69,13 +69,14 @@ export function applyAudit(db: Db, transcriptId: number, delta: TranscriptDelta)
 function run(db: Db, sql: string, transcriptId: number, events: readonly object[]): void {
   if (events.length === 0) return;
   const statement = db.prepare(sql);
-  const names = [...new Set([...sql.matchAll(/@(\w+)/g)].map((m) => m[1]!))];
-  for (const event of events) statement.run(bind(names, { ...(event as Row), transcriptId }));
+  const bind = namedBinder(sql);
+  for (const event of events) statement.run(bind({ ...(event as Row), transcriptId }));
 }
 
 /** better-sqlite3 rejects unused named parameters and cannot bind booleans. */
-function bind(names: readonly string[], row: Row): Row {
-  return Object.fromEntries(names.map((name) => {
+export function namedBinder(sql: string): (row: Row) => Row {
+  const names = new Set([...sql.matchAll(/@(\w+)/g)].map((m) => m[1]!));
+  return (row) => Object.fromEntries([...names].map((name) => {
     const value = row[name] ?? null;
     return [name, typeof value === "boolean" ? Number(value) : value];
   }));

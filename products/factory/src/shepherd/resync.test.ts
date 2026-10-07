@@ -25,6 +25,7 @@ import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditi
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const SEED_LEASE_MS = 3_000;
@@ -222,7 +223,7 @@ function mergedThenRed(): WorkflowDefinition {
     ],
     run: async (ctx) => {
       await step(ctx, "merge:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -238,10 +239,10 @@ function approveThenMerge(): WorkflowDefinition {
       { id: "main-red", kind: "assisted" },
     ],
     run: async (ctx) => {
-      await ctx.assisted("approve-merge", "merge this head?");
+      await ctx.assisted("approve-merge", "merge this head?", { brief: TEST_BRIEF });
       await step(ctx, "merge:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
       await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -355,7 +356,7 @@ describe("resyncShepherd", () => {
     w.fake.addPr({ headSha: HEAD });
     const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(runId);
-    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head" });
+    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!);
 
@@ -372,7 +373,7 @@ describe("resyncShepherd", () => {
     merge(w.fake, 1);
     const failed = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "9", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(failed);
-    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back" });
+    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!, { dryRun: true });
 
@@ -814,5 +815,52 @@ describe("transientOnlyConditions", () => {
     ["the request was tainted", `${GATES}; MRG-AU-RV skipped: tainted is not false; MRG-AU-RC skipped: tainted is not false`, []],
   ])("when %s: %s", (_case, reason, expected) => {
     expect(transientOnlyConditions(reason)).toEqual(expected);
+  });
+});
+
+describe("resyncShepherd on an active review step", () => {
+  const MOVED = fakeSha("resync-moved-head");
+  /** The review starts a reviewer through `sh-review` at the head, the step a reboot leaves active. */
+  const REVIEWING = { ...PHASES, review: async (ctx: Parameters<typeof step>[0], request: { headSha: string }) => (await step(ctx, `sh-review:${request.headSha}`, {}, z.unknown()), PHASES.review(ctx, request)) };
+
+  async function twoReviews(): Promise<{ w: World; moved: string; current: string }> {
+    const w = world({ hangAt: "sh-review", workflows: [shepherdPrWorkflow(REVIEWING)] });
+    const moved = await stuckRun(w, 1, "sh-review");
+    const current = await stuckRun(w, 2, "sh-review");
+    w.fake.pushHead(1, MOVED);
+    return { w, moved, current };
+  }
+
+  function restarted(w: World, routes = w.freshRoutes()): FactoryHost {
+    const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
+    cleanups.push(() => host.close());
+    return host;
+  }
+
+  const activeIn = (host: FactoryHost, runId: string) => Object.keys(host.runtime.status(runId)!.activeSteps);
+
+  it("supersedes the review at a head its PR moved past, and keeps the review at the PR's current head", async () => {
+    const { w, moved, current } = await twoReviews();
+    const routes = w.freshRoutes();
+    const host = restarted(w, routes);
+
+    const report = await resyncShepherd(host, routes.shepherd!);
+
+    expect(report.supersededReviews).toEqual([{ runId: moved, stepId: `sh-review:${HEAD}`, from: HEAD, to: MOVED }]);
+    expect(activeIn(host, moved)).toEqual([]);
+    expect(host.runtime.status(moved)!.stepResults[`sh-review:${HEAD}:0`]?.output).toContain(`superseded: the pull request moved from head ${HEAD} to ${MOVED}`);
+    expect(activeIn(host, current)).toEqual([`sh-review:${HEAD}`]);
+  });
+
+  it("supersedes nothing when the PR head cannot be read", async () => {
+    const { w, moved } = await twoReviews();
+    const fresh = w.freshRoutes();
+    const shepherd = { ...fresh.shepherd!, port: { ...fresh.shepherd!.port, getPr: async () => Promise.reject(new Error("rate limited")) } };
+    const host = restarted(w, Object.assign([...fresh], { database: fresh.database, shepherd }));
+
+    const report = await resyncShepherd(host, shepherd);
+
+    expect(report.supersededReviews).toEqual([]);
+    expect(activeIn(host, moved)).toEqual([`sh-review:${HEAD}`]);
   });
 });

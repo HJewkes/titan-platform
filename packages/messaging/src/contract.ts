@@ -80,7 +80,7 @@ export function sendFailed(error: SendError): SendResult {
   return { ok: false, error };
 }
 
-/** Neither a new text nor new buttons names anything to change: a caller mistake, not a request. */
+/** Reuses `bad-buttons` rather than a new kind, which would widen the error union for every consumer. Neither a new text nor new buttons names anything to change: a caller mistake, not a request. */
 export function emptyEditError(input: Pick<EditInput, "text" | "buttons">): SendError | undefined {
   if (input.text !== undefined || input.buttons !== undefined) return undefined;
   return { kind: "bad-buttons", message: "An edit needs text or buttons to change; this one had neither" };

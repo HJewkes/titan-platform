@@ -3,6 +3,7 @@ import { assertDistinctStepIds, defineWorkflow, dispatchStepIds, type WorkflowDe
 import { openFactoryHost } from "./host.js";
 import { routedRunner, type StepRoute } from "@titan-design/workflow";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
+import { TEST_BRIEF } from "./test-support/brief.js";
 
 const route: StepRoute = { match: "draft", onRestart: "repeat", runner: { run: async () => ({ ok: true, output: "{}" }) } };
 
@@ -15,7 +16,7 @@ function docShaped(approveId: string, callApproveAs = approveId): WorkflowDefini
     ],
     run: async (ctx) => {
       await ctx.dispatch("draft", "draft");
-      await ctx.assisted(callApproveAs, "Publish?");
+      await ctx.assisted(callApproveAs, "Publish?", { brief: TEST_BRIEF });
     },
   });
 }

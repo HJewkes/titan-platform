@@ -18,8 +18,6 @@ const STORED_METRIC = { loc: "loc", cyclomatic_max: "cyclomatic_max", cognitive:
 const REPORT_METRIC = new Map(Object.entries(STORED_METRIC).map(([report, stored]) => [stored, report]));
 // Budgets in check.json exclude these roles, so their metrics would only add noise.
 const SKIPPED_ROLES = new Set(["test", "fixture"]);
-// The indexer only gives a fixtures/ directory the fixture role; a *.fixture.ts file beside its test is one too.
-const FIXTURE_FILE = /\.fixture\.[cm]?[jt]sx?$/;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Best effort: a failure logs to stderr and never reaches the caller, so dag-check's exit code holds. */
@@ -91,12 +89,9 @@ function collectDeltas(graph, store, headId, baseId, budgetByMetric) {
     .sort(byBudgetShare);
 }
 
+// The role is the indexer's classifyRole answer, which covers *.fixture.* files as well as fixtures/ directories.
 function isSourceFile(node) {
-  return node.kind === "file" && !SKIPPED_ROLES.has(fileRole(node));
-}
-
-function fileRole(node) {
-  return FIXTURE_FILE.test(node.id) ? "fixture" : node.role;
+  return node.kind === "file" && !SKIPPED_ROLES.has(node.role);
 }
 
 function classify(change, budget) {
