@@ -1,4 +1,5 @@
 import { isRepo } from "@titan-design/github";
+import type { GateQuestion } from "@titan-design/hitl";
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
@@ -49,6 +50,11 @@ export interface GateSummary {
   prompt: string;
   schema: unknown;
   resolve: string;
+  /** Absent on a gate opened before the brief migration; surfaces fall back to `prompt`. */
+  summary?: string;
+  evidenceRef?: string;
+  questions?: GateQuestion[];
+  createdAt: string;
 }
 
 const PR_NUMBER = /^[1-9][0-9]*$/;
@@ -129,6 +135,10 @@ const gates = defineCommand<Record<string, never>, { gates: GateSummary[] }, Fac
       prompt: gate.prompt,
       schema: gate.schema ?? null,
       resolve: resolveCommand(runId, stepId),
+      ...(gate.summary !== undefined && { summary: gate.summary }),
+      ...(gate.evidenceRef !== undefined && { evidenceRef: gate.evidenceRef }),
+      ...(gate.questions !== undefined && { questions: gate.questions }),
+      createdAt: gate.createdAt,
     })),
   }),
 });
