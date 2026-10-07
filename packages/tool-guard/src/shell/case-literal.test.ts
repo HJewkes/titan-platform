@@ -42,6 +42,12 @@ const FOLDED_ROWS = [
   ["ECHO 'git push origin HEAD:main' | cat | sh", "echo 'git push origin HEAD:main' | cat | sh"],
   ["ECHO 'git push origin HEAD:main' | SH", "echo 'git push origin HEAD:main' | sh"],
   ["ECHO 'git checkout main' | sh; git push", "echo 'git checkout main' | sh; git push"],
+  ["{ ECHO 'git push origin HEAD:main'; } | sh", "{ echo 'git push origin HEAD:main'; } | sh"],
+  ["( ECHO 'git push origin HEAD:main' ) | sh", "( echo 'git push origin HEAD:main' ) | sh"],
+  ["{ ECHO 'git push origin HEAD:main'; } | SH", "{ echo 'git push origin HEAD:main'; } | sh"],
+  ["( ECHO 'git push origin HEAD:main' ) | CAT | sh", "( echo 'git push origin HEAD:main' ) | cat | sh"],
+  ["ECHO 'git push origin HEAD:main' | XARGS -0 sh -c", "echo 'git push origin HEAD:main' | xargs -0 sh -c"],
+  ["FIND . -exec GIT push origin HEAD:main \\;", "find . -exec git push origin HEAD:main \\;"],
 ];
 
 describe("a command word a case-insensitive filesystem runs whatever its case (TP-1623)", () => {
@@ -69,12 +75,13 @@ describe("words a fold leaves as written (TP-1623)", () => {
     expect(verdicts(command)).toEqual(verdicts(command, linux));
   });
 
-  it("keeps the directory a folded CD would change, as bash runs CD from PATH in a child", () => {
-    const readHead = (dir: string) => (dir === REPO ? "main" : dir === "/elsewhere" ? "feat/x" : null);
+  it.each([
+    ["the head before CD /elsewhere", "main", "feat/x"],
+    ["no head where CD /elsewhere would go", "feat/x", "main"],
+  ])("keeps %s, as bash runs CD from PATH in a child", (_, here, there) => {
+    const readHead = (dir: string) => (dir === REPO ? here : dir === "/elsewhere" ? there : null);
     const command = "CD /elsewhere && git push";
-    const asWritten = verdicts(command, { ...linux, readHead });
-    expect(asWritten).not.toEqual([]);
-    expect(verdicts(command, { ...darwin, readHead })).toEqual(asWritten);
+    expect(verdicts(command, { ...darwin, readHead })).toEqual(verdicts(command, { ...linux, readHead }));
   });
 
   it.each(["GIT checkout feat/y && git push", "ECHO 'git switch feat/y' | sh; git push"])(
@@ -89,6 +96,7 @@ describe("words a fold leaves as written (TP-1623)", () => {
 
   it("keeps a variable a folded EXPORT would set, as bash matches the builtin exactly", () => {
     expect(verdicts("G=git; EXPORT G=echo; $G push origin HEAD:main")).toEqual([PROTECTED_MAIN]);
+    expect(verdicts("G=echo; EXPORT G=git; $G push origin HEAD:main")).toEqual([]);
   });
 
   it("keeps TP-1531's reading of a declare -l name", () => {

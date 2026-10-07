@@ -27,37 +27,37 @@ export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedActi
   return [];
 }
 
-/**
- * The line's state as main's reading leaves it, and beside it, once a case-folded command switched branch, the state
- * that switch may have left. Each later command is judged under both, so the fold only adds actions.
- */
-interface Lines {
-  line: ClassifyContext;
-  unsure: ClassifyContext | null;
+function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home }), ctx, followScripts);
+  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, followScripts)]) : asWritten;
 }
 
-function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+/**
+ * Where the filesystem finds a program whatever its case, `GIT` runs git, so the whole line is read again with every
+ * command word lower-cased. That reading has its own pipes, groups and head, and only adds actions; the as-written
+ * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops.
+ */
+function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+  try {
+    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true }), ctx, followScripts);
+  } catch {
+    return [];
+  }
+}
+
+function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
-  let lines: Lines = { line: ctx, unsure: null };
-  for (const cmd of extractCommands(src, { cwd, home: ctx.home, foldCase: ctx.foldCase })) {
-    const each = lines.unsure ? [lines.line, lines.unsure] : [lines.line];
+  let line = ctx;
+  for (const cmd of commands) {
     if (cmd.added) {
-      out.push(...each.flatMap((line) => addedActions(cmd, line, followScripts)));
-      if (cmd.folded) lines = afterFolded(cmd, lines);
+      out.push(...addedActions(cmd, line, followScripts));
       continue;
     }
-    out.push(...each.flatMap((line) => [...classifySimple(cmd, line), ...(followScripts ? scriptActions(cmd, line) : [])]));
-    const advance = (line: ClassifyContext) => afterDynamic(cmd, afterAll(cmd, line));
-    lines = { line: advance(lines.line), unsure: lines.unsure && advance(lines.unsure) };
+    out.push(...classifySimple(cmd, line));
+    if (followScripts) out.push(...scriptActions(cmd, line));
+    line = afterDynamic(cmd, afterAll(cmd, line));
   }
   return unique(out);
-}
-
-/** A case-folded command runs only where the filesystem folds, so its branch switch moves the unsure state, never main's. */
-function afterFolded(cmd: SimpleCommand, lines: Lines): Lines {
-  const from = lines.unsure ?? lines.line;
-  const moved = afterUnsure([cmd], from);
-  return moved === from ? lines : { ...lines, unsure: moved };
 }
 
 /** A command only an added xargs reading runs adds its actions, but an error drops it and it never moves the line's state. */
@@ -88,16 +88,9 @@ function afterAll(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
   return FAMILIES.reduce((c, f) => f.after?.(cmd, c) ?? c, line);
 }
 
+/** A switch read from a dynamic word may never have happened, so it only makes the head unknown and never trusts a new branch. */
 function afterDynamic(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
-  return afterUnsure(dynamicReadings(cmd), line);
-}
-
-/**
- * A switch read from a dynamic word or a case-folded command word may never have happened, so it only makes the head
- * unknown and never trusts a new branch.
- */
-function afterUnsure(readings: SimpleCommand[], line: ClassifyContext): ClassifyContext {
-  return readings.reduce((l, reading) => {
+  return dynamicReadings(cmd).reduce((l, reading) => {
     const next = afterAll(reading, l);
     return next === l ? l : { ...next, readHead: () => "unknown" };
   }, line);
