@@ -131,7 +131,7 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 6) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -258,9 +258,12 @@ selects measurements with agent-protocol's `foldUsage`, then groups them by mode
 null token count in a group makes that group's sum null.
 
 **Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
-that belongs to a different native session, or a sidechain window that names more than one
-parent session, throws `SessionIdentityError` — a `TypeError` subclass with a stable
+or Codex rollout record that belongs to a different native session, or a sidechain that
+names more than one parent session, throws `SessionIdentityError` from both the decoders
+and the recent-turn readers — a `TypeError` subclass with a stable
 `code` field (`"foreign_native_session"` or `"multiple_parent_sessions"`). Existing
 `instanceof TypeError` catches and message-prefix matches keep working; a consumer that
 wants to tell this apart from option-validation `TypeError`s (which stay plain) can now
-check `instanceof SessionIdentityError` and read `.code`.
+check `instanceof SessionIdentityError` and read `.code`. session-graph quarantines a
+source on this error, as it does on `TranscriptParseError`, because both describe the
+file's contents rather than a fault in the caller.

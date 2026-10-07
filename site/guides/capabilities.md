@@ -177,15 +177,16 @@ Tier 0, `@titan-design/cluster@0.1.3`. Deterministic Drain template mining with 
 
 Key exports:
 
-- `drain/types`: `DrainCluster`, `WILDCARD`
+- `drain/types`: `WILDCARD`
 - `drain/similarity`: `mergeTemplate`, `tokenSimilarity`
 - `drain/tree`: `DrainTree`
 - `registry`: `DrainTreeRegistry`
+- `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
 - `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
 - `template-id`: `templateId`
 - `clusterer`: `Clusterer`
-- +13 more in the [reference page](/reference/cluster)
+- +16 more in the [reference page](/reference/cluster)
 
 <a id="cap-code-parser"></a>
 
@@ -319,7 +320,7 @@ Key exports:
 
 ### [`store-sqlite`](/reference/store-sqlite)
 
-Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations
+Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
 
 **Use this when:** You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself.
 
@@ -596,7 +597,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +394 more in the [reference page](/reference/code-graph)
+- +395 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -614,7 +615,7 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
-- +108 more in the [reference page](/reference/code-read)
+- +114 more in the [reference page](/reference/code-read)
 
 <a id="cap-coordinator"></a>
 
@@ -750,7 +751,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +197 more in the [reference page](/reference/session-read)
+- +198 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

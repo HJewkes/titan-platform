@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { transcriptsRoot } from "@titan-design/session-read";
+import { expandHome, transcriptsRoot } from "@titan-design/session-read";
 
 export interface MinerConfig {
   /** Holds the index database, the daemon pid file, and the clusterer snapshot. */
@@ -41,6 +41,3 @@ export function resolveConfig(overrides: ConfigOverrides = {}, env: NodeJS.Proce
     ...(codexHome ? { codexHome: expandHome(codexHome), namespace: overrides.namespace ?? env.TITAN_MINER_NAMESPACE ?? os.hostname() } : {}) };
 }
 
-function expandHome(p: string): string {
-  return p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
-}

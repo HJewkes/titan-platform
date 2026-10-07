@@ -444,6 +444,31 @@ describe("runChecks — forbid-import", () => {
       db.close();
     }
   });
+
+  it("matches a non-glob except entry by exact path, not substring", async () => {
+    fixture = await createFixture((db, snapshotId) => {
+      db.insertNodes(snapshotId, [
+        { id: "render/foo.ts", kind: "file", name: "" },
+        { id: "cli/browser.ts", kind: "file", name: "" },
+        { id: "cli/browser.tsx", kind: "file", name: "" },
+        { id: "cli/old/browser.ts", kind: "file", name: "" },
+      ]);
+      db.insertEdges(snapshotId, [
+        { srcId: "render/foo.ts", dstId: "cli/browser.ts", kind: "imports" },
+        { srcId: "render/foo.ts", dstId: "cli/browser.tsx", kind: "imports" },
+        { srcId: "render/foo.ts", dstId: "cli/old/browser.ts", kind: "imports" },
+      ]);
+    });
+
+    const db = openCodeGraph(fixture.dbPath);
+    try {
+      const rule = { type: "forbid-import" as const, id: "r", from: "render/**", to: "cli/**", except: ["cli/browser.ts"] };
+      const result = runChecks(db, { snapshotId: fixture.snapshotId, rules: [rule] });
+      expect(result.violations.map((v) => v.destinationId).sort()).toEqual(["cli/browser.tsx", "cli/old/browser.ts"]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("runChecks — layered-deps", () => {

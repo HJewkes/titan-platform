@@ -1,18 +1,13 @@
 import type { CodeReadCommandMap, MetricDescriptor } from "@titan-design/code-read/query";
 import { PAGE_SIZE } from "./page-size.js";
 
+export { isStoredKind } from "@titan-design/code-read/query";
+
 type Args<K extends keyof CodeReadCommandMap> = CodeReadCommandMap[K]["args"];
 
 /** A node page shows a short list, not a page of one; the search box shows a few candidates. */
 export const NODE_LIST_LIMIT = 10;
 export const SEARCH_LIMIT = 8;
-
-/** Kinds code-graph stores; a directory and the repo are synthesized, and have no edges of their own. */
-const STORED_KINDS = new Set(["file", "symbol", "module", "external"]);
-
-export function isStoredKind(kind: string): boolean {
-  return STORED_KINDS.has(kind);
-}
 
 /** Children of a file or symbol are symbols, so the columns are symbol metrics. */
 export function childMetrics(kind: string): string[] {

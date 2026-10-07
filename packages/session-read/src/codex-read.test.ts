@@ -22,6 +22,7 @@ import type {
   SessionSourceDescriptor,
 } from "./normalized.js";
 import { TranscriptParseError } from "./read.js";
+import { SessionIdentityError } from "./recent-claude.js";
 import { normalizedSearchText, SPAN_TEXT_CAP } from "./text.js";
 
 let dir: string;
@@ -190,6 +191,12 @@ describe("readCodexObservations", () => {
   it("rejects malformed completed records with byte provenance", async () => {
     appendFileSync(filePath, "not-json\n", "utf8");
     await expect(collect(source)).rejects.toBeInstanceOf(TranscriptParseError);
+  });
+
+  it("rejects a rollout whose session_meta names another conversation as a session identity error", async () => {
+    appendFileSync(filePath, JSON.stringify({ type: "session_meta", payload: { id: "other-thread" } }) + "\n", "utf8");
+    await expect(collect(source)).rejects.toMatchObject({ name: "SessionIdentityError", code: "foreign_native_session" });
+    await expect(collect(source)).rejects.toBeInstanceOf(SessionIdentityError);
   });
 
   it("stops decoding when a consumer returns before requesting the next line", async () => {

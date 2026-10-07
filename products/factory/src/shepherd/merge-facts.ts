@@ -193,13 +193,20 @@ interface PathsRead {
   unread?: string;
 }
 
-/** A truncated or failed list is no list: empty paths fail authority's path condition, and the unread reason gates first. */
-async function prPaths(port: GitHubPort, repo: RepoSlug, pr: number): Promise<PathsRead> {
+/**
+ * A truncated or failed list is no list: empty paths fail authority's path condition, and the unread reason gates first.
+ * GitHub lists a PR's files at whatever head it has now, so the list counts only when the PR sits at `head` both before
+ * and after it is read. The compare endpoint would pin the sha itself, but it drops rename sources and stops at 300 files.
+ */
+async function pinnedPaths(port: GitHubPort, { repo, pr, head }: MergeEvidenceInput, readHead: string): Promise<PathsRead> {
+  const unread = (why: string): PathsRead => ({ paths: [], unread: `the changed files of ${repo}#${pr} are unknown: ${why}` });
+  if (readHead !== head) return unread(`the PR is at ${readHead}, not ${head}`);
   try {
-    return { paths: changedPaths(await port.listPrFiles(repo, pr)) };
+    const files = await port.listPrFiles(repo, pr);
+    const after = (await port.getPr(repo, pr)).headSha;
+    return after === head ? { paths: changedPaths(files) } : unread(`the head moved to ${after} during the read`);
   } catch (error) {
-    const why = error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`;
-    return { paths: [], unread: `the changed files of ${repo}#${pr} are unknown: ${why}` };
+    return unread(error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`);
   }
 }
 
@@ -277,7 +284,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
-    prPaths(port, input.repo, input.pr),
+    pinnedPaths(port, input, pr.headSha),
     isFrozen(input.repo, input.pr),
     reviewBypassable(port, input.repo, pr),
   ]);
