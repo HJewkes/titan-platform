@@ -34,15 +34,16 @@ export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
   }
 }
 
-/** Verdict messages from agent-chat's events table; window bounds are ISO and inclusive-exclusive. */
-export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }): VerdictRecord[] {
+/** Verdict messages from agent-chat's events table, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive. */
+export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }): { verdicts: VerdictRecord[]; unparsed: number } {
   return withEventsDb(eventsDb, (db) => {
     const sql = `SELECT id, ts, actor, target, body FROM events WHERE kind = 'message' AND body LIKE 'Verdict:%' AND ts >= ? AND ts < ? ORDER BY id`;
     const rows = db.prepare(sql).all(window.since ? Date.parse(window.since) : 0, window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER) as EventRow[];
-    return rows.flatMap((row) => {
+    const verdicts = rows.flatMap((row) => {
       const parsed = parseVerdict(row.body);
       return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
     });
+    return { verdicts, unparsed: rows.length - verdicts.length };
   });
 }
 
