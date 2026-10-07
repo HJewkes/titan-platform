@@ -18,7 +18,7 @@ const DEFAULT_POLL_MS = 30_000;
 /** How long one wait holds the run before the run reads CI and decides again; a hold that still applies waits again. */
 export const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
 
-const HoldResult = z.looseObject({ hold: z.boolean(), reason: z.string(), episode: z.number().nullable() });
+const HoldResult = z.looseObject({ hold: z.boolean(), reason: z.string(), episode: z.number().nullable(), baseRef: z.string().optional() });
 type Hold = z.infer<typeof HoldResult>;
 const WaitResult = z.looseObject({ thawed: z.boolean(), headSha: z.string(), expired: z.boolean().optional() });
 type Waited = z.infer<typeof WaitResult>;
@@ -31,6 +31,8 @@ interface HoldInput extends PrTarget {
 interface WaitInput extends PrTarget {
   headSha: string;
   episode: number;
+  /** The PR's base when the hold was decided, so main is rechecked even if no read of the PR succeeds during the wait. */
+  baseRef?: string;
 }
 
 /**
@@ -41,7 +43,7 @@ export async function heldByFrozenMain(ctx: WorkflowContext, target: PrTarget, r
   const input: HoldInput = { ...target, headSha: red.headSha, failing: red.failing.map((check) => check.name) };
   const held = await step(ctx, `${FREEZE_HOLD_STEP}:${n}`, input, HoldResult);
   if (!held.hold || held.episode === null) return false;
-  const waited = await step(ctx, `${FREEZE_WAIT_STEP}:${n}`, { ...target, headSha: red.headSha, episode: held.episode } satisfies WaitInput, WaitResult);
+  const waited = await step(ctx, `${FREEZE_WAIT_STEP}:${n}`, { ...target, headSha: red.headSha, episode: held.episode, baseRef: held.baseRef } satisfies WaitInput, WaitResult);
   if (waited.thawed && waited.headSha === red.headSha) await refreshRedHead(ctx, target, red, n);
   return true;
 }
@@ -76,26 +78,26 @@ async function decideHold(deps: ShepherdDeps, freezes: FreezeStore, input: HoldI
   const own = input.failing.filter((name) => !onMain.has(name));
   const red = freeze.redSha.slice(0, 7);
   if (input.failing.length === 0 || own.length > 0) return pass(`failing here but not on frozen main at ${red}: ${own.join(", ") || "no check named"}`);
-  return { hold: true, reason: `waiting for the thaw: main is frozen red at ${red}, and every failing check (${input.failing.join(", ")}) fails there too`, episode: freeze.episode };
+  const baseRef = await deps.port.getPr(input.repo, input.pr).then((pr) => pr.baseRef, () => undefined);
+  return { hold: true, reason: `waiting for the thaw: main is frozen red at ${red}, and every failing check (${input.failing.join(", ")}) fails there too`, episode: freeze.episode, baseRef };
 }
 
 /** Thaws through the same green-after-red test the merge guard uses, so a main fixed outside Shepherd still releases its held PRs. */
-async function thawIfGreen(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string | undefined, red: Red): Promise<void> {
-  const base = baseRef === undefined ? port.getDefaultBranch(repo) : Promise.resolve(baseRef);
-  const green = await base.then((ref) => greenHead(port, repo, ref, red)).catch(() => undefined);
+async function thawIfGreen(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, baseRef: string, red: Red): Promise<void> {
+  const green = await greenHead(port, repo, baseRef, red).catch(() => undefined);
   if (green !== undefined) freezes.unfreeze(repo, green);
 }
 
 /**
- * Re-reads main at most every `FREEZE_RECHECK_MS`, whether or not the PR read: from the last base the PR named, or the
- * repo's default branch while no read of the PR has succeeded. True when this call re-read main.
+ * Re-reads main at most every `FREEZE_RECHECK_MS` whether or not this poll's PR read succeeded, from the last base the
+ * PR named. True when this call re-read main.
  */
-function mainRecheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug) {
+function mainRecheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, heldBase: string | undefined) {
   let last = -Infinity;
-  let base: string | undefined;
+  let base = heldBase;
   return async (at: number, baseRef: string | undefined, red: Red): Promise<boolean> => {
     base = baseRef ?? base;
-    if (at - last < FREEZE_RECHECK_MS) return false;
+    if (base === undefined || at - last < FREEZE_RECHECK_MS) return false;
     last = at;
     await thawIfGreen(port, freezes, repo, base, red);
     return true;
@@ -105,7 +107,7 @@ function mainRecheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug) {
 /** Polls until the hold's episode is no longer live, the PR moves off the held head, or the wait reaches its limit; a failed read is polled again. */
 async function awaitThaw(deps: ShepherdDeps, freezes: FreezeStore, input: WaitInput, signal: AbortSignal): Promise<Waited> {
   const startedAt = deps.now();
-  const recheck = mainRecheck(deps.port, freezes, input.repo);
+  const recheck = mainRecheck(deps.port, freezes, input.repo, input.baseRef);
   for (;;) {
     signal.throwIfAborted();
     const live = freezes.live(input.repo, input.episode);
