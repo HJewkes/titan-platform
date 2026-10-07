@@ -132,7 +132,7 @@ describe("mechanicalAuthorityReason", () => {
     ["CODEOWNERS", { changedPaths: ["CODEOWNERS"] }],
     ["docs/CODEOWNERS", { changedPaths: ["docs/CODEOWNERS"] }],
     [".gitmodules", { changedPaths: [".gitmodules"] }],
-    [".github/", { changedPaths: [".github/workflows/ci.yml"] }],
+    [".github/CODEOWNERS", { changedPaths: [".github/CODEOWNERS"] }],
     ["a non-canonical path", { changedPaths: ["src/./a.ts"] }],
     ["a missing seat grant", { seatGrants: [] }],
     ["a frozen repo", { repoFrozen: true }],
