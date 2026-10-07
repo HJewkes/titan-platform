@@ -199,6 +199,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
+    resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
@@ -206,7 +207,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
       if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
-      if (stepIdMatches("update-branch", stepId) || stepIdMatches("update-retry", stepId)) inheritEscalation(run.escalations, run.lastCi, done.data?.result);
+      if (stepIdMatches("update-branch", stepId)) inheritEscalation(run.escalations, run.lastCi, done.data?.result);
       return done;
     },
   };

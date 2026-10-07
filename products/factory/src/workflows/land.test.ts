@@ -2,12 +2,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeHttpError, fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type GhExec } from "@titan-design/github";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { expectBrief } from "../test-support/brief.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, swallowUpdates, type LandScenario } from "../test-support/land.js";
-import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, landRoutes, readCi } from "./land.js";
+import { defineWorkflow } from "../definition.js";
+import { gateEverything } from "../gate-policy.js";
+import { LAND_STEPS, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, land, landRoutes, newUpdateBound, readCi } from "./land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -187,7 +189,7 @@ describe("land core", () => {
     expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
     expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + 1, merge: 0 });
     expect(Object.keys(host.runtime.status(runId)!.stepResults).filter((id) => id.startsWith("update-"))).toEqual(
-      expect.arrayContaining(["update-backoff:0:0", "update-retry:0:0"]),
+      expect.arrayContaining(["update-backoff:0:0", "update-branch:3:0"]),
     );
   });
 
@@ -203,6 +205,34 @@ describe("land core", () => {
     expect(run.status).toBe("completed");
     expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "conflict" });
+  });
+
+  it("keeps a run recorded before retries on its pending stuck-behind gate across a restart, without a live retry", async () => {
+    const scenario = landScenario();
+    const keepGreen = scenario.fake.onGetPr!;
+    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
+    const exhausted = { ...newUpdateBound(), retries: MAX_UPDATE_RETRIES };
+    const variant = (updateBound?: ReturnType<typeof newUpdateBound>) =>
+      defineWorkflow({ name: "land-test", steps: LAND_STEPS, run: async (ctx) => void scenario.outcomes.push(await land(ctx, { repo: "octo/demo", pr: 1, updateBound }, { policy: gateEverything })) });
+    const dbPath = dbFile();
+    const before = openFactoryHost({ dbPath, workflows: [variant(exhausted)], routes: scenario.routes, gatePollMs: 5 });
+    hosts.push(before);
+    const runId = before.runtime.start("land-test");
+    await gateOpened(before, gateId(runId, "stuck-behind"));
+    before.close();
+    const updatesBefore = scenario.fake.effects.updateBranch;
+
+    const after = openFactoryHost({ dbPath, workflows: [variant()], routes: scenario.routes, gatePollMs: 5 });
+    hosts.push(after);
+    await after.runtime.hydrate();
+    await gateOpened(after, gateId(runId, "stuck-behind"));
+    after.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
+    await vi.waitFor(() => expect(after.runtime.status(runId)?.status).toBe("completed"));
+
+    const run = after.runtime.status(runId)!;
+    expect(Object.keys(run.stepResults).filter((id) => id.startsWith("update-backoff"))).toEqual([]);
+    expect(scenario.fake.effects.updateBranch).toBe(updatesBefore);
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
   });
 
   it("updates the branch and merges again when GitHub refuses a merge because the base moved", async () => {

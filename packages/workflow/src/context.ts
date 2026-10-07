@@ -195,6 +195,8 @@ export class RunContext implements WorkflowContext {
 
   historyNext(): string | undefined { return recordedAfter(this.run.stepResults, this.answeredFrom); }
 
+  resumedGate(): string | undefined { return this.resumedGateStep ?? undefined; }
+
   /** A paused run already opened this gate, so a missing row is lost history: reopening it would ask the step again. */
   private requireResumedGate(stepId: string, gateId: string): void {
     if (this.resumedGateStep !== stepId) return;

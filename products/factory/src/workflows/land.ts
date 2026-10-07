@@ -27,7 +27,6 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "ci-wait", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
-  { id: "update-retry", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
   { id: "approve-merge", kind: "assisted" },
@@ -150,32 +149,42 @@ function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
  */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
   const refresh = ci.baseMoved === true;
-  if (!refresh && budgetSpent(state.bound, ci.readAt)) {
-    if (retriesLeft(state.bound) && !recordedPastRetries(ctx)) return retryUpdate(ctx, input, ci, state);
-    const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
-    const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
-    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
-    if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
-    resetBound(state.bound);
+  const spent = !refresh && budgetSpent(state.bound, ci.readAt);
+  const retrying = spent && retryBeforeGate(ctx, state.bound);
+  if (retrying) await backoff(ctx, state);
+  else if (spent) {
+    const stopped = await askStuckBehind(ctx, input, ci, state);
+    if (stopped) return stopped;
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
+  if (retrying) recordRetry(state.bound, ci.headSha);
+  else if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
   return afterUpdate(ci, update, state, refresh);
 }
 
-/** A run recorded before retries went from the spent budget straight to the gate; a replay keeps that path. */
-function recordedPastRetries(ctx: WorkflowContext): boolean {
-  const next = ctx.historyNext();
-  return next !== undefined && !next.startsWith("update-backoff") && !next.startsWith("update-retry");
+async function askStuckBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
+  const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
+  const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
+  const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
+  if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
+  resetBound(state.bound);
+  return undefined;
 }
 
-/** Waits a growing, recorded interval, then updates once more; the retry count and head go on the bound, so status can show them. */
-async function retryUpdate(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
-  const n = state.retries++;
-  await step(ctx, roundId("update-backoff", state.round, n), { waitMs: retryBackoffMs(state.bound.retries ?? 0), retry: (state.bound.retries ?? 0) + 1 }, BackoffResult);
-  const update = await step(ctx, roundId("update-retry", state.round, n), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  recordRetry(state.bound, ci.headSha);
-  return afterUpdate(ci, update, state, false);
+/**
+ * Retry before the gate, unless the record already holds the gate: a replay of a run recorded before retries either
+ * answered `stuck-behind` (the next row is not a backoff) or is still paused on it (the gate is pending, with no row).
+ */
+function retryBeforeGate(ctx: WorkflowContext, bound: UpdateBound): boolean {
+  if (!retriesLeft(bound) || ctx.resumedGate() === "stuck-behind") return false;
+  const next = ctx.historyNext();
+  return next === undefined || next.startsWith("update-backoff");
+}
+
+/** The recorded wait before a retry; the retry itself is an ordinary `update-branch` step, so every consumer of that step covers it. */
+async function backoff(ctx: WorkflowContext, state: LandState): Promise<void> {
+  const retry = (state.bound.retries ?? 0) + 1;
+  await step(ctx, roundId("update-backoff", state.round, state.retries++), { waitMs: retryBackoffMs(retry - 1), retry }, BackoffResult);
 }
 
 /** What follows any update, a retry included: the stops, and the trust a head built on an approved one inherits. */
@@ -250,7 +259,6 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
-    codeRoute("update-retry", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),

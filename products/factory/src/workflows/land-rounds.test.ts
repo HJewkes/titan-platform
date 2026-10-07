@@ -237,7 +237,7 @@ describe("land merge policy", () => {
 
     expect(run.status).toBe("completed");
     expect(world.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + 1, merge: 1 });
-    expect(stepIds(world.host, runId)).toContain("update-retry:0");
+    expect(stepIds(world.host, runId)).toContain("update-backoff:0");
     expect(world.host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
     expect(world.outcomes.at(-1)).toMatchObject({ kind: "merged" });
   });
@@ -275,7 +275,7 @@ describe("land merge policy", () => {
     const run = await world.host.runtime.wait(runId);
 
     expect(run.status).toBe("completed");
-    expect(stepIds(world.host, runId)).toContain("update-retry:0");
+    expect(stepIds(world.host, runId)).toContain("update-backoff:0");
     expect(world.host.gates.get(gateId(runId, "approve-merge", 1))).toBeUndefined();
     expect(world.fake.effects.merge).toBe(1);
     expect(world.outcomes.at(-1)).toMatchObject({ kind: "merged" });
