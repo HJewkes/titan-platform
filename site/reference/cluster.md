@@ -48,7 +48,8 @@ hasErrorSignal("Bash", "ok");                           // false
 
 1. **`extractSignature`** reduces a multi-line blob to one anchor line plus a line-count
    bucket, because Drain is per-line and stack traces vary in length. `hasErrorSignal`
-   reports whether that anchor came from a recognised failure shape.
+   reports whether that anchor came from a recognised failure shape. Anchor rules are
+   frozen data (`AnchorConfigs`), one per partition, with a generic fallback.
 2. **`applyMasks`** replaces UUIDs, hashes, paths, durations, line numbers, exit codes, and
    digit runs with typed placeholders, recording the first match of each as a parameter.
    Configs are frozen data (`MaskConfigs`), one per partition, with a generic fallback.
@@ -71,6 +72,19 @@ wildcards and cluster-to-template bindings; `Clusterer.fromSnapshot(snapshot)` r
 them. Storing the snapshot and the occurrences is the caller's job. A chunked sequence of
 runs converges on the same templates and ids as one all-at-once run over the same input
 order.
+
+**Only `test` and `git` have special anchor rules.** `DEFAULT_ANCHOR_CONFIGS` gives
+`test` the test-runner shapes (pass/fail counts, `error TS…`, eslint rule ids) ahead of
+the shell ones, and anchors `git` on its first line, never as an error signal. Every other
+partition, `Bash` included, gets `generic`: shell diagnostics, then the last non-blank
+line, so a `tsc` failure in a `Bash` partition anchors on `Found 1 error.` Map your own
+partition onto the test-runner rules:
+
+```ts
+const anchors = { ...DEFAULT_ANCHOR_CONFIGS, Bash: DEFAULT_ANCHOR_CONFIGS.test! };
+new Clusterer({ anchors });
+hasErrorSignal("Bash", text, anchors);  // extractSignature takes the same third argument
+```
 
 **Only the generic mask config exists today.** Per-tool configs (`Bash.ts`, `test.ts`, …)
 were meant to come from a DeepParse mask-bootstrap script, which is not built.
