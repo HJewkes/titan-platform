@@ -115,11 +115,16 @@ export abstract class BaseGateStore implements GateStore {
     throw notPending(record.id, current);
   }
 
-  /** The default check (or a listed allowance, or the evidence policy) runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
+  /**
+   * The default check (or a listed allowance, the evidence policy, or a rule-named delegate) runs first, the gate's rule
+   * second and `authorize` last, so each can only narrow who may resolve. A delegate needs `authorize` to exist, so it
+   * never skips that last check.
+   */
   private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>, payload: unknown, evidence: Readonly<GateEvidence> | undefined): void {
-    const refusal = resolverRefusal(record, resolver, payload, { allowances: this.allowances, evidence, evidencePolicy: this.evidencePolicy });
+    const hasAuthorize = this.authorize !== undefined;
+    const refusal = resolverRefusal(record, resolver, payload, { allowances: this.allowances, evidence, evidencePolicy: this.evidencePolicy, hasAuthorize });
     if (refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
-    const ruleRefusal = ruleResolverRefusal(record, resolver);
+    const ruleRefusal = ruleResolverRefusal(record, resolver, hasAuthorize);
     if (ruleRefusal) throw new GateResolverRefused(record.id, resolver.class, ruleRefusal);
     if (!this.authorize) return;
     const decision = readDecision(record.id, this.authorize(Object.freeze({ ...record }), resolver));
