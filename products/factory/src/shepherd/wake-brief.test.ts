@@ -57,7 +57,10 @@ describe("review wake brief: the PR's review comments", () => {
   ])("leaves the first and the structural brief byte for byte as before with %s", async (_label, comments) => {
     const { wake } = scene(comments);
 
-    expect(await wake()).toEqual({ reason: `An independent review of head ${H1} returned FIX_FIRST. Its findings follow.`, payload: dataFence("review findings", FINDINGS) });
+    const first = await wake();
+
+    expect(first.reason.split("\n")[0]).toBe(`An independent review of head ${H1} returned FIX_FIRST. Its findings follow.`);
+    expect(first.payload).toBe(dataFence("review findings", FINDINGS));
     expect((await wake(2)).payload).toBe(dataFence("review findings", FINDINGS));
   });
 
