@@ -302,8 +302,10 @@ through a writable connection; `titan-miner` does so on every open, other opener
 The default action rules are generic. Rules that name a seat's own journal files or scorer
 scripts belong in the caller's config, passed as `actionRules`, never in this package. The
 defaults read session-read's `command_heads` signal, which keeps only a path's shape, so
-`gh api -X PUT repos/o/r/pulls/5/merge` reaches the classifier as `gh api PUT pulls/merge`. No
-default rule matches that head yet, so it is not a merge.
+`gh api -X PUT repos/o/r/pulls/5/merge` reaches the classifier as `gh api PUT pulls/merge`. The
+default rules classify that head as `merge`. Other `gh api` heads stay `other`, except the two
+`GET` heads `gh api GET commits/check-runs` and `gh api GET commits/status`, which are
+`pr-ci-check`.
 
 A tool call belongs to the latest request at or before it in its transcript, the request that
 issued it. The `context_contribution` view maps the other way, to the request a block feeds.
