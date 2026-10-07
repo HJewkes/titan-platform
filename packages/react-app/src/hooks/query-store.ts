@@ -47,8 +47,10 @@ export function createQueryStore(source: DataSource): QueryStore {
   };
 
   const drop = (key: string, entry: Entry): void => {
+    clearTimeout(entry.dropTimer);
     entry.controller?.abort();
-    entries.delete(key);
+    // A newer entry may own the key by now; only delete the one this drop was armed for.
+    if (entries.get(key) === entry) entries.delete(key);
   };
 
   return {

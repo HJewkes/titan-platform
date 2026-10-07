@@ -21,7 +21,7 @@ import {
 } from "@titan-design/session-analytics";
 import { z } from "zod";
 import { fetchPulls, readDenials, readJournal, readPullSnapshot, readVerdicts } from "./blocked-flow-sources.js";
-import { defineInsight, isoTime, type AnyInsight } from "./define.js";
+import { defineInsight, isoTime, utc, type AnyInsight } from "./define.js";
 import { readBrokerLog, readLastPrompts, readSpawns } from "./liveness-sources.js";
 
 const reportFrame = { window: true, priceTableVersion: true, totals: true, coverage: true } as const;
@@ -140,7 +140,7 @@ export const blockedFlow = defineInsight<BlockedFlowOptions, BlockedFlowReport>(
     const denials = (options.transcript ?? []).flatMap(readDenials);
     const journals = (options.journal ?? []).map(readJournal);
     const asOf = report.until ?? new Date().toISOString();
-    const data = blockedFlowReport({ verdicts, unparsedVerdicts: unparsed, pulls, denials, journals, asOf, window, splitAt: options.splitAt && new Date(options.splitAt).toISOString(), seats: options.seat });
+    const data = blockedFlowReport({ verdicts, unparsedVerdicts: unparsed, pulls, denials, journals, asOf, window, splitAt: utc(options.splitAt), seats: options.seat });
     return { data, text: renderBlockedFlowText(data) };
   },
 });

@@ -13,8 +13,10 @@ name: Release
 # by hand from the owner's own terminal (see CLAUDE.md). Setup: site/guides/autonomous-loop-setup.md.
 #
 # Release runs after a green CI run for a push to main, so it doesn't repeat CI's
-# build, typecheck, lint and test. CI cancels a superseded main run. A cancelled run
-# starts no Release, and the next merge's CI run releases everything pending.
+# build, typecheck, lint and test. Every main push's CI run completes and starts a
+# Release run. A run for a sha that is no longer the main tip skips its job, and a queued
+# run a newer one replaces never starts; pending changesets stay pending either way, so
+# the next Release for the tip releases them.
 on:
   workflow_run:
     workflows: [CI]

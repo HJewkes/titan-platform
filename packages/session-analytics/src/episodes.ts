@@ -5,7 +5,7 @@ import { FIRST_COPY, readSessionContexts } from "./cost-report-queries.js";
 
 /** Two rule sets on purpose (design section 18): workers segment by assignment, coordinators by work phase. */
 export type Heuristic = "worker-v1" | "coordinator-v1";
-export const HEURISTIC_VERSIONS: Readonly<Record<Heuristic, number>> = { "worker-v1": 1, "coordinator-v1": 1 };
+export const HEURISTIC_VERSIONS: Readonly<Record<Heuristic, number>> = { "worker-v1": 1, "coordinator-v1": 2 };
 
 export interface EpisodeRequest {
   offset: number;
@@ -148,7 +148,7 @@ function timeline(input: EpisodeInput): Event[] {
     ...input.inbounds.map((i) => ({ kind: "inbound" as const, offset: i.offset, ts: i.ts, ms: Date.parse(i.ts), transcriptId: i.transcriptId, cause: i.cause })),
     ...input.signals.map((s) => ({ kind: "signal" as const, offset: s.offset, ts: s.ts, ms: Date.parse(s.ts), transcriptId: s.transcriptId, signal: s.signal })),
   ];
-  return events.sort((a, b) => a.ms - b.ms || a.transcriptId - b.transcriptId || a.offset - b.offset);
+  return events.sort((a, b) => compareAt(a, a.ms, b, b.ms));
 }
 
 // ---------------------------------------------------------------- coordinator-v1
@@ -238,16 +238,23 @@ function dropShort(bounds: readonly Boundary[], total: number): Boundary[] {
 function toTurns(input: EpisodeInput): Turn[] {
   const turns = input.requests
     .map((request) => ({ request, ms: Date.parse(request.ts), signals: new Set<string>() }))
-    .sort((a, b) => a.ms - b.ms || a.request.transcriptId - b.request.transcriptId || a.request.offset - b.request.offset);
+    .sort((a, b) => compareAt(a.request, a.ms, b.request, b.ms));
   for (const signal of input.signals) ownerOf(turns, signal)?.signals.add(signal.signal);
   return turns;
+}
+
+type Positioned = { transcriptId: number; offset: number };
+
+/** The episode ordering rule:timestamp, then transcript id, then byte offset. */
+function compareAt(a: Positioned, aMs: number, b: Positioned, bMs: number): number {
+  return aMs - bMs || a.transcriptId - b.transcriptId || a.offset - b.offset;
 }
 
 function ownerOf(turns: readonly Turn[], signal: EpisodeSignal): Turn | undefined {
   const ms = Date.parse(signal.ts);
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i]!;
-    if (turn.ms < ms || (turn.ms === ms && turn.request.offset <= signal.offset)) return turn;
+    if (compareAt(turn.request, turn.ms, signal, ms) <= 0) return turn;
   }
   return turns[0];
 }
