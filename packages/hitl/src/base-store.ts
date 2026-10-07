@@ -1,6 +1,6 @@
 import { snapshotBrief } from "./gate-brief.js";
 import { checkAgainstJsonSchema } from "./json-schema.js";
-import { jsonEqual, readDecision, resolverRefusal, ruleResolverRefusal, snapshotAllowances, snapshotResolver, snapshotRule } from "./resolver-policy.js";
+import { jsonEqual, readDecision, resolverRefusal, ruleResolverRefusal, snapshotAllowances, snapshotEvidence, snapshotResolver, snapshotRule } from "./resolver-policy.js";
 import {
   GateAlreadyExists,
   GateAlreadySettled,
@@ -10,6 +10,8 @@ import {
   GateResolverRefused,
   type GateAnswerAllowance,
   type GateAuthorize,
+  type GateEvidence,
+  type GateEvidencePolicy,
   type GateInput,
   type GateRecord,
   type GateResolver,
@@ -26,6 +28,7 @@ export abstract class BaseGateStore implements GateStore {
     private readonly authorize?: GateAuthorize,
     private readonly requireBrief = false,
     allowances?: readonly GateAnswerAllowance[],
+    private readonly evidencePolicy?: GateEvidencePolicy,
   ) {
     this.allowances = snapshotAllowances(allowances);
   }
@@ -54,6 +57,7 @@ export abstract class BaseGateStore implements GateStore {
       resolvedAt: undefined,
       expiresAt: toIso(input.expiresAt),
       resolvedBy: undefined,
+      resolvedEvidence: undefined,
       rule,
       ...brief,
     };
@@ -66,16 +70,17 @@ export abstract class BaseGateStore implements GateStore {
     return record ? this.lapseIfExpired(record) : undefined;
   }
 
-  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver, evidence?: GateEvidence): GateRecord {
     if (!resolvedBy) throw new GateResolverRefused(id, undefined, "a resolver is required");
     const resolver = snapshotResolver(id, resolvedBy);
+    const facts = evidence === undefined ? undefined : snapshotEvidence(id, evidence);
     const record = this.requirePending(id);
-    this.requireAuthorized(record, resolver, payload);
+    this.requireAuthorized(record, resolver, payload, facts);
     if (record.schema) {
       const issues = checkAgainstJsonSchema(record.schema, payload);
       if (issues.length > 0) throw new GatePayloadInvalid(id, issues);
     }
-    const resolved: GateRecord = { ...record, status: "resolved", payload, resolvedAt: this.nowIso(), resolvedBy: resolver };
+    const resolved: GateRecord = { ...record, status: "resolved", payload, resolvedAt: this.nowIso(), resolvedBy: resolver, resolvedEvidence: facts };
     return this.settle(resolved);
   }
 
@@ -109,9 +114,9 @@ export abstract class BaseGateStore implements GateStore {
     throw notPending(record.id, current);
   }
 
-  /** The default check (or a listed allowance) runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
-  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>, payload: unknown): void {
-    const refusal = resolverRefusal(record.id, resolver, payload, this.allowances);
+  /** The default check (or a listed allowance, or the evidence policy) runs first, the gate's rule second and `authorize` last, so each can only narrow who may resolve. */
+  private requireAuthorized(record: GateRecord, resolver: Readonly<GateResolver>, payload: unknown, evidence: Readonly<GateEvidence> | undefined): void {
+    const refusal = resolverRefusal(record, resolver, payload, { allowances: this.allowances, evidence, evidencePolicy: this.evidencePolicy });
     if (refusal) throw new GateResolverRefused(record.id, resolver.class, refusal);
     const ruleRefusal = ruleResolverRefusal(record, resolver);
     if (ruleRefusal) throw new GateResolverRefused(record.id, resolver.class, ruleRefusal);
