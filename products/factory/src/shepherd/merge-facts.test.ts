@@ -10,7 +10,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { MERGE_EVIDENCE_STEP, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
@@ -119,6 +119,25 @@ describe("locatorReference", () => {
     expect(reference).toMatchObject({ sessionId: "s-1", textIndex: 3 });
     expect(reference).not.toHaveProperty("byteOffset");
     expect(reference).not.toHaveProperty("subrecordIndex");
+  });
+});
+
+describe("collectMergeFacts check apps", () => {
+  const SHEPHERD_APP = 4242;
+  const observe = (reviewAppId?: number) => collectMergeFacts(githubPort(world().wire), input, noFreezeStoreUntilTp523, {}, undefined, reviewAppId);
+
+  it("trusts GitHub Actions and gives shepherd/review no app when none is configured", async () => {
+    const { merge } = await observe();
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [] });
+  });
+
+  it("binds shepherd/review to the configured App and leaves allowedApps alone", async () => {
+    const { merge } = await observe(SHEPHERD_APP);
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [SHEPHERD_APP] });
   });
 });
 

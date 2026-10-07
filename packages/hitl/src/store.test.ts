@@ -12,6 +12,7 @@ import {
   GateAuthorizeInvalid,
   GateBriefInvalid,
   GateExpired,
+  GateExpiryInvalid,
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
@@ -192,6 +193,33 @@ describe.each([
     store.create({ id: "g1", prompt: "ship it?", expiresAt: new Date(T0 + 60_000) });
     harness.setNow(T0 + 30_000);
     expect(store.resolve("g1", "in time", OWNER).status).toBe("resolved");
+  });
+
+  it("refuses an unparseable expiresAt and stores nothing", () => {
+    expect(() => store.create({ id: "g1", prompt: "ship it?", expiresAt: "next tuesday-ish" })).toThrow(GateExpiryInvalid);
+    expect(() => store.create({ id: "g2", prompt: "ship it?", expiresAt: new Date("nope") })).toThrow(GateExpiryInvalid);
+    expect(store.get("g1")).toBeUndefined();
+    expect(store.get("g2")).toBeUndefined();
+  });
+
+  it("normalises a valid expiresAt string to ISO-8601 with milliseconds", () => {
+    const created = store.create({ id: "g1", prompt: "ship it?", expiresAt: "2030-01-02T03:04:05Z" });
+    expect(created.expiresAt).toBe("2030-01-02T03:04:05.000Z");
+    expect(store.get("g1")?.expiresAt).toBe("2030-01-02T03:04:05.000Z");
+  });
+
+  it("keeps a caller's mutation of a resolved payload out of the stored gate", () => {
+    store.create({ id: "g1", prompt: "ship it?" });
+    const resolved = store.resolve("g1", { approved: true, tags: ["a"] }, OWNER);
+    (resolved.payload as { tags: string[] }).tags.push("tampered");
+    expect(store.get("g1")?.payload).toEqual({ approved: true, tags: ["a"] });
+  });
+
+  it("keeps a caller's mutation of a read schema out of the stored gate", () => {
+    store.create({ id: "g1", prompt: "ship it?", schema: APPROVAL_SCHEMA });
+    const read = store.get("g1");
+    (read?.schema as { required: string[] }).required.push("tampered");
+    expect(store.get("g1")?.schema).toEqual(APPROVAL_SCHEMA);
   });
 
   it("records who resolved the gate and reads it back", () => {
