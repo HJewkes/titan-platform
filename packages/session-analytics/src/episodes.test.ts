@@ -177,6 +177,22 @@ describe("coordinator-v1", () => {
     expect(rows.at(-1)!.endedAt).toBe(at(86));
   });
 
+  it("lands a merge on a timestamp tie with the earlier transcript's turn, not by cross-transcript byte offset", () => {
+    const turn = (minute: number, transcriptId: number, offset: number) => ({ offset, ts: at(minute), transcriptId, contextTokens: 1_000, wakeCause: null });
+    const resumed = Array.from({ length: 10 }, (_, i) => turn(10 + i, 2, i + 1));
+    const input: EpisodeInput = {
+      requests: [...Array.from({ length: 10 }, (_, i) => turn(i, 1, 100 + i)), ...resumed],
+      inbounds: [],
+      signals: [{ offset: 500, ts: at(10), transcriptId: 1, signal: "pr_merge" }],
+      spawned: true,
+    };
+
+    const rows = buildEpisodes(input, "coordinator-v1");
+
+    expect(rows.map((row) => row.openedBy)).toEqual(["session_start", "pr_merge"]);
+    expect(rows[1]!.startedAt).toBe(at(10));
+  });
+
   it("opens when a spawn wave has gone 15 requests without agent-chat traffic", () => {
     const t = transcript();
     t.requests(0, 5);
@@ -213,7 +229,7 @@ describe("writeEpisodes", () => {
 
     expect(written.map((w) => w.sessionId).sort()).toEqual(["human", "worker"]);
     expect(stored).toEqual([
-      { session_id: "human", heuristic: "coordinator-v1", heuristic_version: 1, opened_by: "session_start", first_status_offset: null },
+      { session_id: "human", heuristic: "coordinator-v1", heuristic_version: 2, opened_by: "session_start", first_status_offset: null },
       { session_id: "worker", heuristic: "worker-v1", heuristic_version: 1, opened_by: "brief", first_status_offset: expect.any(Number) },
     ]);
   });
