@@ -14,7 +14,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "turbo run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
     "test": "vitest run --passWithNoTests",
@@ -46,6 +46,7 @@
     "globals": "^16.0.0",
     "mermaid": "^11.17.2",
     "tsup": "^8.0.0",
+    "turbo": "2.11.7",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.46.0",
     "vitepress": "^1.6.4",
