@@ -192,18 +192,16 @@ export function gateEvidenceMigration(version: number, name: string = DEFAULT_GA
 }
 
 /**
- * Reinstalls the rule triggers so a resolve by a delegate class the row's own rule names is no longer aborted. A
- * pending row's rule, delegates included, still cannot change. Adds `resolved_by` and `rule` if missing, so the
- * delegate-aware form is the one installed and a later rule or resolver migration keeps it. Idempotent and backfill-free.
+ * Reinstalls the rule triggers to admit a delegate class the row's own rule names; a pending row's rule still cannot change. A
+ * store refuses a gate with delegates until this runs, since no delegate could resolve it. Idempotent and backfill-free.
  */
 export function gateDelegateMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
   return {
     version,
     name: `hitl:delegate:${name}`,
     up: (db) => {
-      for (const column of ["resolved_by", "rule"]) {
-        if (!hasColumn(db, name, column)) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN ${column} TEXT`);
-      }
+      const missing = ["resolved_by", "rule"].filter((column) => !hasColumn(db, name, column));
+      missing.forEach((column) => db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN ${column} TEXT`));
       db.exec(resolverRequiredTriggerDdl(name));
       db.exec(ruleTriggerDdl(db, name, true));
     },
@@ -279,7 +277,7 @@ export class SqliteGateStore extends BaseGateStore {
     const optional = new Map<string, string | null>();
     if (record.rule) {
       this.requireColumn(record.id, "rule", "gateRuleMigration");
-      if (record.rule.delegates) this.requireDelegateTriggers(record.id);
+      if (record.rule.delegates && !hasDelegateTriggers(this.db, this.table)) throw new GateStoreSchemaOutdated(record.id, this.table, "gateDelegateMigration");
       optional.set("rule", JSON.stringify(record.rule));
     }
     if (hasBrief(record)) {
@@ -319,11 +317,6 @@ export class SqliteGateStore extends BaseGateStore {
     if (this.columnsSeen.has(column)) return;
     if (!hasColumn(this.db, this.table, column)) throw new GateStoreSchemaOutdated(gateId, this.table, migration);
     this.columnsSeen.add(column);
-  }
-
-  /** A gate with delegates on a table without the delegate triggers could never be resolved by one, so refuse it at `create`. */
-  private requireDelegateTriggers(gateId: string): void {
-    if (!hasDelegateTriggers(this.db, this.table)) throw new GateStoreSchemaOutdated(gateId, this.table, "gateDelegateMigration");
   }
 
   protected readByStatus(status: GateStatus): GateRecord[] {
