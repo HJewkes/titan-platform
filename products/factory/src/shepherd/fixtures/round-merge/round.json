@@ -1,0 +1,116 @@
+{
+  "unit": "example-unit",
+  "round": 1,
+  "questions": [
+    {
+      "id": "tb-ship",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 101,
+        "headSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-icon",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 102,
+        "headSha": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-extra",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 102,
+        "headSha": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-moved",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 103,
+        "headSha": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-conflict",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 104,
+        "headSha": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-nogate",
+      "kind": "pick-one",
+      "options": [
+        "Ship it",
+        "Revise"
+      ],
+      "revisionOption": "Revise",
+      "merge": {
+        "repo": "example-org/example-repo",
+        "pr": 105,
+        "headSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "ship": [
+          "Ship it"
+        ]
+      }
+    },
+    {
+      "id": "tb-free",
+      "kind": "pick-one",
+      "options": [
+        "a",
+        "b"
+      ]
+    }
+  ]
+}

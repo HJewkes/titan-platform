@@ -104,6 +104,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-late-verdict": "review",
+  "sh-correct-verdict": "review",
   "sh-release-preflight": "review",
   "sh-observe": "review",
   "sh-merge-evidence": "review",
