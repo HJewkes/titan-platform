@@ -255,12 +255,22 @@ the file is unreadable.
 
 ## Checks and diffs
 
-The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
+The rules engine turns a snapshot into pass/fail against a `check.json`. Eight rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
-`layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
+`layered-deps`, `no-internal-only-barrels`, and `no-import-cycles`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
 destination file has an excluded role. `forbid-import` takes `except`: destination patterns
 that `to` matches but the rule allows, such as one sanctioned entry file.
+
+`no-import-cycles` reports each strongly connected component of the file import graph once,
+as one violation whose `members` are the cycle's files, sorted; a file importing itself is a
+cycle of one. `import type` and `export type … from` edges are left out unless
+`includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
+`verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
+`excludeRoles` take files out of the graph.
+The baseline key is the rule id plus every member, so it does not depend on edge order. Against
+a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
+split cycle passes, while a cycle that gains a file or merges two known cycles is new.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -467,7 +477,9 @@ three are deterministic projections of rows the caller has already read; no LLM 
 - `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
   churn, centrality, ownership, consumers split into source and test files, coupling
   partners, and blast radius. A file target lists its symbols, exports first, each with an
-  `importance` that splits the file's centrality by utilization share. The record carries
+  `importance` that splits the file's centrality by utilization share. Symbol lines, the
+  symbol target and blast-radius entries carry an optional `loc` read from the `symbol_loc`
+  metric, which `collectNodeMetrics` folds onto the symbol's `loc`. The record carries
   `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
 - `renderContextMarkdown(dossier)` renders the same facts as markdown.
 - `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
