@@ -211,3 +211,33 @@ describe("a reading under a plain name after a command that exempts its argument
     expect(spellings(command)).toContain(spelling);
   });
 });
+
+describe("a script that more than one reading of a line runs", () => {
+  const scripts: Record<string, string> = { [`${REPO}/a.sh`]: "echo hi", [`${REPO}/b.sh`]: "git push origin HEAD:main", [`${REPO}/c.sh`]: "git push origin HEAD" };
+  const reading = (readHead: ClassifyContext["readHead"]) => {
+    const reads: string[] = [];
+    const context: ClassifyContext = { ...ctx, foldCase: true, readHead, readScript: (path) => (reads.push(path), scripts[path] ?? null) };
+    return { reads, run: (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, context).map((a) => a.spelling) };
+  };
+
+  it("is read and classified once, though the as-written, unsure and folded readings all run it", () => {
+    const { reads, run } = reading(() => "feat/x");
+
+    run("timeout $P . a.sh");
+
+    expect(reads).toEqual([`${REPO}/a.sh`]);
+  });
+
+  it("never lends its verdicts to a different script in the same line", () => {
+    const { run } = reading(() => "feat/x");
+
+    expect(run("timeout $P . a.sh; timeout $P . b.sh")).toContain(PROTECTED_PUSH);
+  });
+
+  it("is classified again after a branch switch moves the head it pushes", () => {
+    const { run } = reading((dir) => (dir === REPO ? "feat/x" : null));
+
+    expect(run(". c.sh")).toEqual([]);
+    expect(run(". c.sh; git checkout main && timeout $P . c.sh")).toContain(PROTECTED_PUSH);
+  });
+});

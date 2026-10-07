@@ -26,15 +26,21 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, true);
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, new Map());
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
 }
 
-function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
-  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home, guarded: GUARDED }), ctx, followScripts);
-  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, followScripts)]) : asWritten;
+/**
+ * The verdicts of the shell scripts one line runs, by the line state they were read in, then by `scriptKey`. Null inside
+ * a script, which follows no script of its own.
+ */
+type ScriptMemo = Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
+
+function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home, guarded: GUARDED }), ctx, scripts);
+  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, scripts)]) : asWritten;
 }
 
 /**
@@ -43,34 +49,34 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
  * reading, as on a case-sensitive filesystem, still decides alone what an error in the folded one drops,
  * except the reading limit, which a folded command word can reach first.
  */
-function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true, guarded: GUARDED }), ctx, followScripts);
+    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true, guarded: GUARDED }), ctx, scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
   }
 }
 
-function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   const out: ClassifiedAction[] = [];
   let line = ctx;
   for (const cmd of commands) {
     if (cmd.added) {
-      out.push(...addedActions(cmd, line, followScripts));
+      out.push(...addedActions(cmd, line, scripts));
       continue;
     }
     out.push(...classifySimple(cmd, line));
-    if (followScripts) out.push(...scriptActions(cmd, line));
+    if (scripts) out.push(...scriptActions(cmd, line, scripts));
     line = afterDynamic(cmd, afterAll(cmd, line));
   }
   return unique(out);
 }
 
 /** A command only an added xargs reading runs adds its actions, but an error other than the reading limit drops it, and it never moves the line's state. */
-function addedActions(cmd: SimpleCommand, line: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
+function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    return [...classifySimple(cmd, line), ...(followScripts ? scriptActions(cmd, line) : [])];
+    return [...classifySimple(cmd, line), ...(scripts ? scriptActions(cmd, line, scripts) : [])];
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
@@ -116,18 +122,41 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
 }
 
 /** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
-function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
+function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   const target = scriptTarget(cmd, ctx.home);
-  const text = target && readScript(ctx, target.path);
-  if (!target || text === null) return [];
-  const actions = scriptText(cmd, target, text, ctx);
+  if (!target) return [];
+  const actions = target.kind === "shell" ? memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx)) : scriptVerdicts(cmd, target, ctx);
   return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
+}
+
+function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): ClassifiedAction[] {
+  const text = readScript(ctx, target.path);
+  return text === null ? [] : scriptText(cmd, target, text, ctx);
+}
+
+/**
+ * Readings of one command often run the same script (`timeout $P . a.sh` also runs `a.sh` under timeout), and the
+ * case-folded reading runs it again; classifying a 64 KiB script each time passes the hook's timeout. A shell script's
+ * verdicts depend only on its text, its directory and the line state, and a state change makes a new context object.
+ */
+function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path]);
+}
+
+function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {
+  const byKey = scripts.get(ctx) ?? new Map<string, ClassifiedAction[]>();
+  scripts.set(ctx, byKey);
+  const hit = byKey.get(key);
+  if (hit) return hit;
+  const actions = compute();
+  byKey.set(key, actions);
+  return actions;
 }
 
 function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext): ClassifiedAction[] {
   if (target.kind === "shell") {
     try {
-      return classifyCommand(text, cmd.dir, ctx, false);
+      return classifyCommand(text, cmd.dir, ctx, null);
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }
