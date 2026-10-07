@@ -83,4 +83,25 @@ describe("liveSource when the dial is refused", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(reasons).toEqual(["fetch failed"]);
   });
+
+  it("keeps redialling, one report per dial, when onDialFailure throws", async () => {
+    const reasons: string[] = [];
+    const uncaught: unknown[] = [];
+    const onUncaught = (err: unknown): void => void uncaught.push(err);
+    process.on("uncaughtException", onUncaught);
+    const source = liveSource({ fetch: answering("no", 403), reconnectDelayMs: 1, maxReconnectDelayMs: 2 });
+    const sub = source.subscribe({
+      onEvent: () => {},
+      onDialFailure: (reason) => {
+        reasons.push(reason);
+        throw new Error("handler broke");
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    sub.close();
+    process.off("uncaughtException", onUncaught);
+    expect(reasons.length).toBeGreaterThan(1);
+    expect(new Set(reasons)).toEqual(new Set(["HTTP 403"]));
+    expect(uncaught).toHaveLength(reasons.length);
+  });
 });

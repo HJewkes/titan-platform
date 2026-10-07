@@ -11,7 +11,7 @@ export interface EventHandlers {
   /** Product broadcasts only; the reserved `ready` and `ping` frames never reach here. */
   onEvent(message: SseMessage): void;
   onStatus?(status: LiveStatus): void;
-  /** Why a dial failed: `HTTP <status>` for a refusal, else the fetch error's message. Not called for a caller's abort. */
+  /** Why a dial failed before `ready`: `HTTP <status>` for a refusal, else the fetch error's message. Not called for a caller's abort or a drop after `ready`. */
   onDialFailure?(reason: string): void;
 }
 

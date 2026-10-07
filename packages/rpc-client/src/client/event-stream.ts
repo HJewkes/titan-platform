@@ -41,7 +41,7 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
   try {
     const response = await options.fetch(options.url, { headers: { accept: "text/event-stream" }, signal });
     if (!response.ok || !response.body) {
-      options.handlers.onDialFailure?.(`HTTP ${response.status}`);
+      reportDialFailure(options.handlers, `HTTP ${response.status}`);
       return false;
     }
     const reader = response.body.getReader();
@@ -54,10 +54,21 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
     }
   } catch (err) {
     // A refused dial, a dropped socket, and an abort all end this connection the same way;
-    // only an abort the caller did not ask for is worth reporting.
-    if (!signal.aborted) options.handlers.onDialFailure?.(err instanceof Error ? err.message : String(err));
+    // only a dial that failed before `ready`, and not by the caller's abort, is worth reporting.
+    if (!opened && !signal.aborted) reportDialFailure(options.handlers, err instanceof Error ? err.message : String(err));
   }
   return opened;
+}
+
+function reportDialFailure(handlers: EventHandlers, reason: string): void {
+  try {
+    handlers.onDialFailure?.(reason);
+  } catch (err) {
+    // Same isolation as `dispatch`: a bad handler must not end the redial loop.
+    queueMicrotask(() => {
+      throw err;
+    });
+  }
 }
 
 function dispatch(message: SseMessage, handlers: EventHandlers): boolean {
