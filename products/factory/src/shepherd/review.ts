@@ -13,8 +13,8 @@ import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVet
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, type OwnerBrief } from "./review-schemas.js";
 import type { Presence } from "./presence.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
-import type { NoVerdictCause, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import { dispatchedNoVerdictCause } from "./depth-floor.js";
+import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
@@ -371,12 +371,6 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 
-/** A verdict below the depth floor was written, so it is no verdict rather than a reviewer that ran out of time. */
-function noVerdictCause(reason: unknown, dispatchedReviewer: AgentIdentity | undefined): NoVerdictCause {
-  if (!dispatchedReviewer) return "external-hold";
-  return reason === DEPTH_FLOOR_REASON ? "no-verdict" : "timeout";
-}
-
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
  * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate, and one whose
@@ -387,7 +381,7 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
-  if (awaited.kind !== "verdict") return { kind: "none", cause: noVerdictCause(awaited.reason, dispatchedReviewer), ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
+  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? dispatchedNoVerdictCause(awaited.reason) : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
