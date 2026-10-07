@@ -6,12 +6,12 @@ const CHECKS_POLICY_PATH = ".github/required-checks.json";
 
 const policyFile = z.strictObject({
   version: z.literal(1),
-  branches: z.record(z.string(), z.strictObject({ contexts: z.array(z.string()) })),
+  branches: z.record(z.string(), z.strictObject({ contexts: z.array(z.string().trim().min(1)).min(1) })),
 });
 
-type ChecksPolicyRead = { readable: true; contexts: string[] } | { readable: false; reason: string };
+export type ChecksPolicyRead = { readable: true; contexts: string[] } | { readable: false; reason: string };
 
-interface ChecksDrift {
+export interface ChecksDrift {
   missing: string[];
   extra: string[];
 }
@@ -33,7 +33,7 @@ function parseContexts(content: string, baseRef: string): { contexts: string[] }
   return branch ? { contexts: branch.contexts } : { why: `the file does not list branch ${baseRef}` };
 }
 
-/** Read at the PR's base ref so the PR under review never decides its own policy. Absent, malformed or unlisted is unreadable, never "no policy". */
+/** A policy naming no real check would let S2 pass a repo that requires none, so an empty list or a blank name is unreadable. Read at the PR's base ref so the PR under review never decides its own policy. Absent, malformed or unlisted is unreadable, never "no policy". */
 export async function readChecksPolicy(port: GitHubPort, repo: RepoSlug, baseRef: string): Promise<ChecksPolicyRead> {
   let file;
   try {

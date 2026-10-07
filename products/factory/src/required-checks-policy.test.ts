@@ -1,6 +1,6 @@
 import { FakeHttpError, fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { checksDrift, readChecksPolicy } from "./required-checks-policy.js";
+import { checksDrift, readChecksPolicy, type ChecksDrift, type ChecksPolicyRead } from "./required-checks-policy.js";
 
 const REPO = "octo/demo";
 const PATH = ".github/required-checks.json";
@@ -24,7 +24,7 @@ describe("readChecksPolicy", () => {
   it("reads unreadable, naming the path, when the file is absent at the base ref", async () => {
     const fake = worldWith(null);
 
-    const result = await read(fake);
+    const result: ChecksPolicyRead = await read(fake);
 
     expect(result.readable).toBe(false);
     expect(!result.readable && result.reason).toContain(PATH);
@@ -37,6 +37,12 @@ describe("readChecksPolicy", () => {
     ["a wrong version", JSON.stringify({ version: 2, branches: { main: { contexts: ["validate"] } } })],
     ["a branch the file does not list", policy({ develop: { contexts: ["validate"] } })],
     ["an empty branch map", policy({})],
+    ["an empty contexts list", policy({ main: { contexts: [] } })],
+    ["an empty-string context", policy({ main: { contexts: [""] } })],
+    ["a whitespace-only context", policy({ main: { contexts: ["  "] } })],
+    ["a blank context beside a real one", policy({ main: { contexts: ["validate", " "] } })],
+    ["a non-string context", policy({ main: { contexts: [1] } })],
+    ["a branch entry with no contexts key", policy({ main: {} })],
   ])("reads unreadable for %s", async (_name, content) => {
     const fake = worldWith(content);
 
@@ -49,7 +55,7 @@ describe("readChecksPolicy", () => {
       throw new FakeHttpError(502, "secret-token-in-body");
     };
 
-    const result = await read(fake);
+    const result: ChecksPolicyRead = await read(fake);
 
     expect(result).toEqual({ readable: false, reason: `required-checks policy ${PATH} of ${REPO}@main is unreadable: HTTP 502` });
   });
@@ -70,7 +76,13 @@ describe("checksDrift", () => {
     expect(checksDrift(["validate", "dag-check", "egress-scan", "hub-compose"], live)).toEqual({ missing: [], extra: [] });
   });
 
+  it("does not count duplicates in the expected list as drift or repeat a missing check", () => {
+    expect(checksDrift(["validate", "validate", "dag-check", "dag-check"], ["validate"])).toEqual({ missing: ["dag-check"], extra: [] });
+  });
+
   it("returns no drift for equal sets", () => {
-    expect(checksDrift(["b", "a"], ["a", "b"])).toEqual({ missing: [], extra: [] });
+    const drift: ChecksDrift = checksDrift(["b", "a"], ["a", "b"]);
+
+    expect(drift).toEqual({ missing: [], extra: [] });
   });
 });
