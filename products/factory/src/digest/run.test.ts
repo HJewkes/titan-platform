@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { DigestSlot } from "./model.js";
 import { deliverDigest } from "./run.js";
 
 const roots: string[] = [];
@@ -12,7 +13,7 @@ afterEach(() =>
   }),
 );
 
-const SLOT = { date: "2026-03-10", hour: 12 } as never;
+const SLOT: DigestSlot = { date: "2026-03-10", hour: "12" };
 
 function root(): string {
   const dir = mkdtempSync(join(tmpdir(), "factory-run-"));
