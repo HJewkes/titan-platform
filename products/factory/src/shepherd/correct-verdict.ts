@@ -25,7 +25,7 @@ export const CorrectVerdictInputSchema = z.object({
 export type CorrectVerdictInput = z.infer<typeof CorrectVerdictInputSchema>;
 
 /** `asked` means the reviewer's session is running its correction turn since `startedAt`, epoch milliseconds. */
-export const Corrected = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("asked"), startedAt: z.number() }), z.looseObject({ kind: z.literal("none"), reason: z.string() })]);
+const Corrected = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("asked"), startedAt: z.number() }), z.looseObject({ kind: z.literal("none"), reason: z.string() })]);
 type NoCorrection = { kind: "none"; reason: string };
 export type CorrectedResult = { kind: "asked"; startedAt: number } | NoCorrection;
 
