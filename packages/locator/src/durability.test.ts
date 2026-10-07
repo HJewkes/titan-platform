@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -53,8 +61,14 @@ describe("atomicWrite", () => {
     await atomicWrite(target, "one");
     await atomicWrite(target, "two");
     expect(readFileSync(target, "utf8")).toBe("two");
-    expect(existsSync(target)).toBe(true);
-    const leftovers = readFileSync(target, "utf8") === "two" && !existsSync(`${target}.tmp`);
-    expect(leftovers).toBe(true);
+    expect(readdirSync(dir)).toEqual(["state.json"]);
+  });
+
+  it("removes the temp file and rethrows when the rename fails", async () => {
+    const target = path.join(dir, "state.json");
+    mkdirSync(target);
+    writeFileSync(path.join(target, "keep"), "x");
+    await expect(atomicWrite(target, "one")).rejects.toThrow();
+    expect(readdirSync(dir)).toEqual(["state.json"]);
   });
 });

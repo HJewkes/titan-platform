@@ -19,8 +19,8 @@ projections of that one definition.
 ## When to reach for it
 
 You are building anything with more than one surface, or you expect a second surface later.
-It is 65 lines of concept and the cheapest package here to adopt: it depends on nothing but
-zod, and the [binding pattern](/guides/binding-pattern) keeps your call sites unchanged.
+It is a small package and cheap to adopt: it depends only on
+[`rpc-protocol`](/reference/rpc-protocol) and zod (peer), and the [binding pattern](/guides/binding-pattern) keeps your call sites unchanged.
 
 ## Example
 
@@ -114,6 +114,6 @@ lives in this package.
 
 ## Where it came from
 
-active-work's `src/registry/` (~65 lines, zod to CLI/MCP/HTTP) — the cleanest unit in the
+active-work's `src/registry/` (~65 lines at extraction, zod to CLI/MCP/HTTP) — the cleanest unit in the
 audit. active-work now consumes it; see
 [the adoption case study](/guides/adopting-a-package).
