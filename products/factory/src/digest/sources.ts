@@ -37,12 +37,13 @@ export async function readAgentChat(exec: Exec, bin: string, windowMinutes: numb
 
 export interface Directories {
   outDir: string;
-  icloudDir?: string;
+  copyDirs: string[];
 }
 
 export function digestDirectories(config: FactoryConfig, env: NodeJS.ProcessEnv): Directories {
   const outDir = config.digest?.outDir ?? join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "titan-factory", "digests");
-  return { outDir, ...(config.digest?.icloudDir && { icloudDir: config.digest.icloudDir }) };
+  const copyDirs = [...new Set([...(config.digest?.copyDirs ?? []), ...(config.digest?.icloudDir ? [config.digest.icloudDir] : [])])];
+  return { outDir, copyDirs };
 }
 
 /** Queue and dispatch files for every seat in the seat book; an unset seats dir is a gap, not a guess. */
