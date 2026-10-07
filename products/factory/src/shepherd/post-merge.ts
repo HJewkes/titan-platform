@@ -16,7 +16,7 @@ import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
 /** Extra full waits granted, one at a time, while a run at the merge sha is still queued or in progress: at most 4 hours in all. */
-export const SH_MAIN_CI_RECHECKS = 3;
+const SH_MAIN_CI_RECHECKS = 3;
 
 /** Stages a merge may be followed by. This slice runs none of them; a non-empty list goes to the owner. */
 export const AFTER_STAGES = ["deploy", "release", "activation"] as const;
