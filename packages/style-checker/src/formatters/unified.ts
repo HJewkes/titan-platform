@@ -1,3 +1,4 @@
+import { excerpt } from "../runners/failures.js";
 import type { CheckDiagnostic } from "../orchestrator/types.js";
 
 const RUFF_CODE_CATEGORY: Record<string, string> = {
@@ -71,7 +72,7 @@ export function parseEslintJsonOutput(jsonStr: string): CheckDiagnostic[] {
     entries = JSON.parse(jsonStr);
   } catch {
     throw new Error(
-      `Failed to parse ESLint JSON output. Raw output:\n${jsonStr.slice(0, 500)}`,
+      `Failed to parse ESLint JSON output. Raw output:\n${excerpt(jsonStr)}`,
     );
   }
   const diagnostics: CheckDiagnostic[] = [];
@@ -107,7 +108,7 @@ export function parseRuffJsonOutput(jsonStr: string): CheckDiagnostic[] {
     entries = JSON.parse(jsonStr);
   } catch {
     throw new Error(
-      `Failed to parse Ruff JSON output. Raw output:\n${jsonStr.slice(0, 500)}`,
+      `Failed to parse Ruff JSON output. Raw output:\n${excerpt(jsonStr)}`,
     );
   }
   return entries.flatMap((entry) => isRuffSyntaxError(entry.code) ? [] : [{
