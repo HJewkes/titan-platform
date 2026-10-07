@@ -1,5 +1,11 @@
 # @titan-design/daemon
 
+## 0.4.1
+
+### Patch Changes
+
+- 179706a: Correct the watchTree platform-split docs and three stale comments (TP-1353, TP-1354).
+
 ## 0.4.0
 
 ### Minor Changes

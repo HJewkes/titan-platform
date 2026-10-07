@@ -2,6 +2,7 @@ import type { GitHubPort, RepoSlug, WriteResult } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { defineWorkflow, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
+import { ciFailedDecision } from "../gate-brief.js";
 import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
@@ -77,13 +78,9 @@ function isTransient(failing: FailingCheck[]): boolean {
   return failing.length > 0 && failing.every((check) => check.workflowRunId !== null && TRANSIENT_CONCLUSIONS.has(check.conclusion ?? ""));
 }
 
-async function rerun(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<undefined> {
+export async function rerun(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<undefined> {
   await step(ctx, `rerun:${state.reruns++}`, { repo: params.repo, pr: params.pr, headSha: red.headSha, failing: red.failing }, RerunResult);
   return undefined;
-}
-
-function ciFailedAnswer(headSha: string) {
-  return z.object({ decision: z.enum(["rerun", "abandon", "await-fix"]), headSha: z.literal(headSha) });
 }
 
 /**
@@ -91,10 +88,10 @@ function ciFailedAnswer(headSha: string) {
  * sweep superseded because the PR moved past that head reads as await-fix, so the run lands the new head unanswered.
  */
 async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead): Promise<"rerun" | "abandon" | "await-fix"> {
-  const schema = ciFailedAnswer(red.headSha);
+  const { schema, brief } = ciFailedDecision({ repo: params.repo, pr: params.pr, headSha: red.headSha, failing: red.failing });
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"}) ${check.url}`).join("; ");
   const prompt = `CI failed on PR #${params.pr} in ${params.repo} at head ${red.headSha}: ${checks || "no failing check named"}. Rerun, abandon, or await a fix?`;
-  const answered = await askAtHead(ctx, "ci-failed", prompt, { schema });
+  const answered = await askAtHead(ctx, "ci-failed", prompt, { schema, brief });
   if (!answered) return "await-fix";
   const answer = schema.safeParse(answered.data);
   if (!answer.success) throw new Error(`ci-failed answer does not name head ${red.headSha}: ${answer.error.message}`);
