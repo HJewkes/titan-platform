@@ -13,6 +13,7 @@ import {
   type SweepOptions,
   type SweepOwner,
 } from "./sweep.js";
+import { seedRepo } from "./git-fixture.js";
 import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
@@ -38,13 +39,7 @@ const lister: GitLister = async (gitRoot) => git(["worktree", "list", "--porcela
 function makeRepo(): string {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sweep-")));
   tmpDirs.push(dir);
-  git(["init", "-b", "main"], dir);
-  git(["config", "user.email", "test@example.com"], dir);
-  git(["config", "user.name", "Test"], dir);
-  git(["config", "commit.gpgsign", "false"], dir);
-  fs.writeFileSync(path.join(dir, "README.md"), "seed\n");
-  git(["add", "."], dir);
-  git(["commit", "-m", "seed"], dir);
+  seedRepo(dir);
   return dir;
 }
 
