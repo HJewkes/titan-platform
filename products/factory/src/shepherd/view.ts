@@ -127,6 +127,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-main-ci": "post-merge",
   "sh-redeploy": "post-merge",
   "main-red": "post-merge",
+  "main-ci-timeout": "post-merge",
   "main-red-again": "post-merge",
   "main-frozen": "post-merge",
   "sh-unfreeze": "post-merge",
