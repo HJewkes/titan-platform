@@ -172,6 +172,32 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   }, 30_000);
 
+  const pads = (...names: string[]) => ({ ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => (names.some((n) => p === `${REPO}/${n}`) ? PAD : null) });
+  const MAIN = "git push origin HEAD:main";
+  it.each([
+    `sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh; ${MAIN}`,
+    `$b a1.sh; $b a2.sh; $b a3.sh; $b a4.sh; ${MAIN}`,
+    `timeout $O 5 timeout $P a1.sh a2.sh; env $E a3.sh; nohup $a a4.sh; ${MAIN}`,
+    `${MAIN}; timeout $O 5 timeout $P a1.sh a2.sh; env $E a3.sh; nohup $a a4.sh`,
+    `sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; ${MAIN}`,
+    `sh -c 'sudo $a a1.sh; sh -c "sudo \\$a a2.sh"'; ${MAIN}`,
+    `xargs sudo $a a1.sh; xargs sudo $a a2.sh; ${MAIN}`,
+  ])("denies `%s`, each script 63 KB, case folding on", async (line) => {
+    const result = await handle(bash(line), {}, port({ context: pads("a1.sh", "a2.sh", "a3.sh", "a4.sh") }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  }, 30_000);
+
+  it("reads four distinct scripts behind dynamic wrappers when together they are small", async () => {
+    const small: Record<string, string> = { a1: "echo hi; ".repeat(1000), a2: "echo hi; ".repeat(1000), a3: "echo hi; ".repeat(1000), a4: MAIN };
+    const context = { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => small[path.basename(p, ".sh")] ?? null };
+
+    const result = await handle(bash("sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh"), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
   it("passes a command past the reading budget under the bypass and logs it", async () => {
     const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
 
