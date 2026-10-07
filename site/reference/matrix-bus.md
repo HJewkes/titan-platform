@@ -89,7 +89,9 @@ means `allow` on a permission and `approve` on an endorsement.
 Replies match on the last non-empty line, trimmed and case-insensitive, after a legacy
 reply fallback is stripped. An `io.titan.resolution` event with `content.decision` (one
 of the four words, or `answer` with `content.text`) and an `m.relates_to.event_id` folds
-the same way. The sender must equal `ownerUserId`, and the reaction (`m.annotation`),
+by the same table, except that a reply's free text is never an answer: a decision word the
+kind's row gives no verdict, such as `allow` on a question, folds to null, and only
+`decision: "answer"` with `text` answers a question. The sender must equal `ownerUserId`, and the reaction (`m.annotation`),
 reply (`m.in_reply_to`) or resolution must point at a key of `itemEventIds`. Everything
 else is null.
 

@@ -80,6 +80,11 @@ function pickComplexityMetric(ctx: ReportContext): string {
   return "cyclomatic_max";
 }
 
+/**
+ * Files ranked by hotspot score: change frequency × complexity, the idea from
+ * Adam Tornhill's "Your Code as a Crime Scene" and CodeScene. High scores mark
+ * where change and complexity meet, a good place to look first.
+ */
 export function topHotspots(
   ctx: ReportContext,
   limit: number,
