@@ -120,11 +120,13 @@ describe("watchTree", () => {
 
   it("resolves whenWatching false once the watcher is closed", async () => {
     const w = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
-    const pending = w.whenWatching(path.join(root, "never"), 4000);
+    // The attach timeout is far past the bound below, so only close() can settle this in time.
+    const pending = w.whenWatching(path.join(root, "never"), 60_000);
 
     w.close();
 
-    await expect(pending).resolves.toBe(false);
+    const outcome = await Promise.race([pending, sleep(500).then(() => "still pending")]);
+    expect(outcome).toBe(false);
   });
 
   it("stops firing after close", async () => {
