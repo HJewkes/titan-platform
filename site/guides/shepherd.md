@@ -219,7 +219,7 @@ resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own.
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
 implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
 
-`approve-merge` opens for four reasons only, and its prompt names the reason:
+`approve-merge` opens for five reasons only, and its prompt names the reason:
 
 - `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
   have Shepherd land the next resolved head, or `abandon`.
@@ -227,6 +227,9 @@ implementer. Shepherd never reads a reviewer's name out of the hold's reason tex
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
   conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
 - `shepherd-route/fix-first-runaway`: 6 `FIX_FIRST` reviews at this task.
+- `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
+  the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
+  Closer line, and any other round, resets the count. It is checked before the runaway cap.
 - a policy that did not allow an automated merge, such as an `owner-gate` seat or an unmet
   `MRG-AU-RV` fact. The prompt starts `the authority policy did not allow an automated merge`.
 

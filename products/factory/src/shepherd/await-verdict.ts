@@ -82,7 +82,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text), ...(block.closer && { closer: block.closer }) };
 }
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */

@@ -1,0 +1,17 @@
+{
+  "src/mine/spawn-arm.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/served/format.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/uptake.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}
