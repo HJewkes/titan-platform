@@ -1,4 +1,5 @@
 import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
+import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 
 /**
@@ -136,17 +137,14 @@ export function sessionsNeedingOrigin(graph: SessionGraph): string[] {
 export async function resolveOrigins(graph: SessionGraph, resolver: OriginResolver | undefined): Promise<OriginEnrichment> {
   if (!resolver) return NO_ORIGINS;
   const sessionIds = sessionsNeedingOrigin(graph);
-  let resolved: readonly string[] = [];
-  try {
-    const resolution = await resolver(sessionIds);
-    const written = writeResolution(graph, resolution, new Date().toISOString());
-    resolved = Object.keys(resolution.origins);
-    return { requested: sessionIds.length, ...written, failed: false };
-  } catch (err) {
-    return { requested: sessionIds.length, applied: 0, events: 0, failed: true, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    projectOrigins(graph, resolved);
+  const outcome = await callResolver(sessionIds.length, () => resolver(sessionIds));
+  if (!outcome.ok) {
+    projectOrigins(graph, []);
+    return { ...outcome.failure, events: 0 };
   }
+  const written = writeResolution(graph, outcome.value, new Date().toISOString());
+  projectOrigins(graph, Object.keys(outcome.value.origins));
+  return { requested: sessionIds.length, ...written, failed: false };
 }
 
 function writeResolution(graph: SessionGraph, resolution: OriginResolution, resolvedAt: string): { applied: number; events: number } {

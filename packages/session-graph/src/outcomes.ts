@@ -1,4 +1,5 @@
 import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 import { countRounds } from "./review-rounds.js";
 
@@ -93,12 +94,9 @@ export async function enrichPrs(graph: SessionGraph, resolver: PrResolver | unde
   if (!resolver) return NO_PR_OUTCOMES;
   const prs = prsNeedingOutcome(graph);
   if (prs.length === 0) return NO_PR_OUTCOMES;
-  try {
-    const resolved = await resolver(prs);
-    return { requested: prs.length, applied: write(graph, resolved, new Date().toISOString()), failed: false };
-  } catch (err) {
-    return { requested: prs.length, applied: 0, failed: true, error: err instanceof Error ? err.message : String(err) };
-  }
+  const outcome = await callResolver(prs.length, () => resolver(prs));
+  if (!outcome.ok) return outcome.failure;
+  return { requested: prs.length, applied: write(graph, outcome.value, new Date().toISOString()), failed: false };
 }
 
 function write(graph: SessionGraph, resolved: PrResolution, checkedAt: string): number {
