@@ -6,7 +6,7 @@ import { authorityGate, seatPolicyHead } from "./head-moved.js";
 import { gateHead } from "./stale-gates.js";
 
 /** A submit older than this resolves nothing; the owner's click and the dialog it leads to are seconds apart. */
-export const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /**
  * What round.json must carry per pick-one question that decides a merge. The review harness (TP-1844) writes it:
@@ -34,14 +34,14 @@ export interface RoundFeedback {
   answers: { questionId: string; pick?: string; revisionRequested?: boolean }[];
 }
 
-export type RoundMergeOutcome =
+type RoundMergeOutcome =
   | { kind: "resolve"; runId: string; stepId: string; payload: { decision: "merge"; headSha: string } }
   | { kind: "pending"; reason: string }
   | { kind: "no-gate" };
 
-export type RoundMergeDecision = { repo: string; pr: number; headSha: string } & RoundMergeOutcome;
+type RoundMergeDecision = { repo: string; pr: number; headSha: string } & RoundMergeOutcome;
 
-export interface RoundMergeResult {
+interface RoundMergeResult {
   /** Why the whole round answers nothing; undefined when it was read. */
   refused: string | undefined;
   decisions: RoundMergeDecision[];
