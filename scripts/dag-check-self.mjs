@@ -84,11 +84,20 @@ function formatText({ snapshot, baselineSnapshot, result }) {
   return lines.join("\n");
 }
 
+/**
+ * A seeded snapshot may feed the reuse basis but never snapshot identity: with a commit it becomes the alias base
+ * of the head index, so rename aliases (and the baseline's carry-over) would differ from a cold run's.
+ */
+export function forgetSeedCommits(store) {
+  store.db.prepare("UPDATE snapshot SET commit_hash = NULL").run();
+}
+
 // A cache written by another schema or truncated mid-save must cost a cold index, never a failed check.
 function openWorkStore(graph) {
   try {
     const store = graph.openCodeGraph(WORK_DB);
     store.listSnapshots({ limit: 1 });
+    if (seedDbPath(process.argv.slice(2))) forgetSeedCommits(store);
     return store;
   } catch (err) {
     console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
