@@ -28,8 +28,9 @@ with the caller. An empty list folds to no measurements on a `snapshot` basis.
 
 The lifecycle protocol records one invocation from durable preparation through terminal
 evidence. Every transition carries an event ID and expected revision, while owner
-generations and leases fence stale supervisors. `cancel_requested` records intent;
-`cancelled` requires observed terminal evidence, and `cancellation_unknown` remains an
+generations and leases fence stale supervisors. `cancel_requested` records intent,
+and a recovery keeps a requested cancellation, so an observed run after it stays
+`cancel_requested`; `cancelled` requires observed terminal evidence, and `cancellation_unknown` remains an
 absorbing honest outcome. `recovery_required` blocks automatic resubmission until a
 reconciler supplies positive running, terminal, or retry-safe absence evidence.
 The record keeps the caller's durable execution identity separate from an adapter's
