@@ -179,3 +179,25 @@ describe("a wrapper or xargs that runs nothing guarded", () => {
     expect(verdicts(command)).toEqual([]);
   });
 });
+
+describe("a script runner behind a dynamic wrapper word", () => {
+  const scripts: Record<string, string> = {
+    [`${REPO}/deploy.sh`]: "git push origin HEAD:main",
+    [`${REPO}/x.py`]: "open('/home/you/.ssh/id_rsa').read()",
+  };
+  const withScripts = { ...ctx, readScript: (path: string) => scripts[path] ?? null };
+  const scripted = (command: string) =>
+    classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, withScripts).map((a) => a.spelling);
+
+  it.each([
+    ["a script by path after timeout", "timeout $O 5 ./deploy.sh", PROTECTED_PUSH],
+    ["a script by path after sudo", "sudo $a ./deploy.sh", PROTECTED_PUSH],
+    ["source", "timeout $O 5 source deploy.sh", PROTECTED_PUSH],
+    ["dot", "timeout $O 5 . deploy.sh", PROTECTED_PUSH],
+    ["an interpreter's inline text", `timeout $O ls python3 -c "open('~/.ssh/id_rsa')"`, "bash.secret.inline-interpreter"],
+    ["an interpreter's script", "timeout $O ls python3 x.py", "bash.secret.script-by-path"],
+    ["an interpreter's inline config write", `timeout $O ls python3 -c "open('~/.claude/settings.json', 'w')"`, "bash.config.interpreter"],
+  ])("is walked: %s", (_how, command, spelling) => {
+    expect(scripted(command)).toContain(spelling);
+  });
+});

@@ -5,7 +5,8 @@ import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
-import { scriptTarget } from "./scripts.js";
+import { INTERPRETERS } from "./mentions.js";
+import { scriptTarget, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { SimpleCommand } from "./shell/commands.js";
@@ -16,7 +17,8 @@ import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
 const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
-const GUARDED = new Set(FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.verbs ?? [])]));
+/** Names a reading of dynamic wrapper words is walked for: those a family reads differently, and those whose script `scriptActions` reads. */
+const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.verbs ?? [])]), ...SOURCERS, ...INTERPRETERS]);
 
 /**
  * What an event would do. Pure: the filesystem is reached only through `ctx`. Throws the

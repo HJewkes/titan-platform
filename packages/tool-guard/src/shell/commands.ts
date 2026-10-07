@@ -64,8 +64,9 @@ export interface ExtractOptions {
   /** Reads every command word lower-cased, as a filesystem that finds `GIT` as git runs it; arguments stay as written. */
   foldCase?: boolean;
   /**
-   * Command names classify reads as more than their arguments. A reading of dynamic wrapper words run as any other name is
-   * skipped: its arguments are a suffix of the command's as written, which is always read. Omitted: every name.
+   * Command names classify reads as more than their arguments: guarded programs, credential verbs, interpreters and
+   * `source`. A reading of dynamic wrapper words run as any other name is skipped, since its arguments are a suffix of
+   * the command's as written, which is always read; only a name in this set reads them differently. Omitted: every name.
    */
   guarded?: ReadonlySet<string>;
 }
@@ -195,9 +196,9 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
   addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
 }
 
-/** A dynamic or guarded command word, or one that runs more commands: shell text, `xargs` or `find -exec`. */
+/** A dynamic or guarded command word, or one that runs more commands: shell text, a `.sh` script, `xargs` or `find -exec`. */
 function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => boolean {
-  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || (guarded?.has(cmd.name) ?? true);
+  return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
