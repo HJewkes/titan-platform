@@ -19,6 +19,7 @@ export { CHANGES_ROWS_MAX, CoChangePair, FindingChange, NewFile, Regression, Sco
 export {
   Capabilities,
   MetricDescriptor,
+  MISSING_REASONS,
   MissingReason,
   NodeKind,
   NodeRef,
@@ -42,10 +43,11 @@ export type {
   ReadModelParts,
 } from "./model.js";
 export { buildReadModel } from "./model.js";
-export type { ReadSource, SourceFacts, SourceOrigin, SourceRead, SourceWindow } from "./source.js";
-export { ReadError, findingNotFound, invalidArgs, nodeNotFound, snapshotNotFound } from "./source.js";
+export type { ExcerptMissing, ReadSource, SourceFacts, SourceOrigin, SourceRead, SourceWindow } from "./source.js";
+export { EXCERPT_MISSING, ReadError, findingNotFound, invalidArgs, nodeNotFound, snapshotNotFound } from "./source.js";
 export { resolveSnapshot } from "./snapshot-ref.js";
-export type { Missing, MetricValue } from "./rollup.js";
+export type { Missing } from "./schemas.js";
+export type { MetricValue } from "./rollup.js";
 export type { QueryFn } from "./commands.js";
 export { QUERIES, describeApi, listSnapshots } from "./commands.js";
 export { getHierarchy } from "./hierarchy.js";

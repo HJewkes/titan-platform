@@ -51,7 +51,11 @@ export const NodeRef = z.object({
   span: Span.optional(),
 });
 
-/** Open string: "no-rollup" | "not-measured" | "not-in-snapshot" today; why a value is null. */
+/** Why a value is null: the rollup rule forbids one, the node has no measurement, the metric does not describe the node, or the snapshot lacks the metric. */
+export const MISSING_REASONS = ["no-rollup", "not-measured", "not-applicable", "not-in-snapshot"] as const;
+export type Missing = (typeof MISSING_REASONS)[number];
+
+/** An open string on the wire, so an older reader survives a new reason; `MISSING_REASONS` lists today's. */
 export const MissingReason = z.string();
 
 export const Capabilities = z.object({
