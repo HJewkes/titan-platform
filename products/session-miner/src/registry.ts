@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { createRegistry, type CommandRegistry } from "@titan-design/registry";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
 import { playbookAdd, playbookRecall, playbookReflect, playbookStatus } from "./commands/playbook.js";
@@ -9,7 +10,7 @@ import type { MinerContext } from "./context.js";
 import { insightCommand } from "./insights/define.js";
 import { AGENT_CHAT_QUESTIONS, INSIGHT_QUESTIONS } from "./insights/questions.js";
 
-export const MINER_VERSION = "0.1.0";
+export const MINER_VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 export const TOOL_PREFIX = "miner__";
 
 /** Every command the miner exposes, on every surface. Serve/mcp are wired by the CLI, not registered. */
