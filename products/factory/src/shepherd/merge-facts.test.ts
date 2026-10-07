@@ -197,30 +197,23 @@ describe("mergeEvidence", () => {
     expect((await collect(fake)).record.decision.outcome).toBe("gate");
   });
 
-  it("gates a diff under .github/ even when authority allows everything", async () => {
-    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }]);
+  it("allows a release workflow change when authority allows and required checks are green (TP-1886)", async () => {
+    const fake = world([{ path: ".github/workflows/release.yml", status: "modified" }]);
     vi.mocked(evaluate).mockReturnValue(ALLOW_ALL);
 
     const evidence = await collect(fake);
 
-    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
   });
 
-  it("collects the source of a rename, so moving a file out of .github/ gates even when authority allows everything", async () => {
+  it("collects the source of a rename, so a move out of .github/ is visible to authority", async () => {
     const fake = world([{ path: "tools/x.yml", previousPath: ".github/actions/x.yml", status: "renamed" }]);
 
     const evidence = await collect(fake);
 
     expect(evidence.merge.changedPaths).toEqual(["tools/x.yml", ".github/actions/x.yml"]);
     vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
-  });
-
-  it("folds case and trailing dots when it looks for .github", () => {
-    const evidence = { head: HEAD, merge: { head: HEAD, changedPaths: [".GitHub./workflows/x.yml"] }, record: { repo: REPO, pr: 1 } } as unknown as MergeEvidence;
-    vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-
-    expect(decideAutoMerge(HEAD, evidence).rule.rowId).toBe("github-path");
+    expect(decideAutoMerge(HEAD, evidence).outcome).toBe("allow");
   });
 
   it("gates facts collected at one head when the decision is for another", async () => {

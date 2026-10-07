@@ -150,8 +150,6 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (pathGate) return pathGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule("merge-state-unsettled"), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
-  const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
-  if (workflowPaths.length > 0) return { outcome: "gate", rule: guardRule("github-path"), reason: `the owner decides changes under .github/: ${workflowPaths.join(", ")}` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}` };

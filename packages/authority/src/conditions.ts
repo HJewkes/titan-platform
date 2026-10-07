@@ -53,8 +53,7 @@ const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 const CARRYING_KINDS = new Set(["correctness", "feature", "refactor"]);
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
-const PROTECTED_DIRS = new Set([".github"]);
-const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".gitmodules"]);
+const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".github/codeowners", ".gitmodules"]);
 const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
 const TRAILING_SPACE_OR_DOT = /[ .]$/;
 
@@ -95,7 +94,7 @@ function isNonCanonical(path: string): boolean {
 function isProtectedPath(path: unknown): boolean {
   if (typeof path !== "string" || isNonCanonical(path)) return true;
   const folded = path.toLowerCase();
-  return PROTECTED_FILES.has(folded) || PROTECTED_DIRS.has(folded.split("/")[0]!);
+  return PROTECTED_FILES.has(folded);
 }
 
 function isWellFormedRun(run: CheckRunFact): boolean {
