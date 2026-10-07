@@ -57,6 +57,16 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
   });
 
+  it("reads the digest copy dirs and still accepts the legacy icloudDir", () => {
+    const env = xdg({ digest: { copyDirs: ["/a", "/b"], icloudDir: "/legacy" } });
+
+    expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
+  });
+
+  it("refuses an unknown digest key", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
+  });
+
   it("rejects an empty checks list and a wait beyond the cap", () => {
     const flaky = (rule: object) => configPath(xdg({ shepherd: { flakyChecks: { "acme/web": rule } } }));
 

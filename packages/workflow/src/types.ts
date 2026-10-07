@@ -147,6 +147,11 @@ export interface WorkflowContext {
   expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[];
   /** How many times `stepId` has completed so far; loop guards read this. */
   iteration(stepId: string): number;
+  /**
+   * While the call just made was answered from the record, the step id the record holds next, so a workflow whose code
+   * changed since the record can follow the path the run already took; undefined once the run is live.
+   */
+  historyNext(): string | undefined;
   /** Aborts when the run is cancelled; pass it to anything long-running. */
   readonly signal: AbortSignal;
 }
