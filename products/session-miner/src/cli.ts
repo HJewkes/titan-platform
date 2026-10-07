@@ -34,6 +34,13 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--codex-home <dir>", "also index Codex sessions and archives (TITAN_MINER_CODEX_HOME)");
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
+  program.hook("preAction", () => {
+    const root = program.opts() as RootOptions;
+    if (root.namespace !== undefined && root.codexHome === undefined) {
+      io.stderr("error: --namespace names a Codex corpus and has no effect without --codex-home\n");
+      throw new CommanderError(EXIT.USAGE, "miner.namespaceWithoutCodexHome", "--namespace requires --codex-home");
+    }
+  });
   let exitCode: number = EXIT.OK;
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));

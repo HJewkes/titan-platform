@@ -28,7 +28,12 @@ export interface ConfigOverrides {
   graph?: string;
 }
 
-/** Explicit overrides win, then `TITAN_MINER_STATE` / `TITAN_MINER_CORPUS` / `TITAN_MINER_GRAPH` / `TITAN_MINER_EVENTS_DB` / `TITAN_MINER_BROKER_LOG`, then the defaults. */
+/**
+ * Explicit overrides win, then the environment, then the defaults. The variables read are
+ * `TITAN_MINER_STATE`, `TITAN_MINER_CORPUS`, `TITAN_MINER_CODEX_HOME`, `TITAN_MINER_NAMESPACE`,
+ * `TITAN_MINER_GRAPH`, `TITAN_MINER_EVENTS_DB` and `TITAN_MINER_BROKER_LOG`.
+ * The namespace applies only when a Codex home is set.
+ */
 export function resolveConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessEnv = process.env): MinerConfig {
   const stateDir = expandHome(overrides.stateDir ?? env.TITAN_MINER_STATE ?? path.join(os.homedir(), ".local", "state", "titan-session-miner"));
   const corpusRoot = expandHome(overrides.corpusRoot ?? env.TITAN_MINER_CORPUS ?? transcriptsRoot());

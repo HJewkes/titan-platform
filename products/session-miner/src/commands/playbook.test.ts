@@ -180,3 +180,28 @@ describe("playbook.reflect", () => {
     expect(countRows()).toEqual(before);
   });
 });
+
+describe("CLI option clarity", () => {
+  const cli = async (args: string[]) => {
+    let stderr = "";
+    const io = { stdout: () => undefined, stderr: (t: string) => void (stderr += t), env: {} };
+    const code = await runCli(["--state", config.stateDir, "--corpus", config.corpusRoot, ...args], io);
+    return { code, stderr };
+  };
+
+  it("rejects --namespace without --codex-home as a usage error naming --codex-home", async () => {
+    const { code, stderr } = await cli(["--namespace", "host", "playbook", "status"]);
+    expect(code).toBe(64);
+    expect(stderr).toContain("--codex-home");
+  });
+
+  it("accepts --namespace alongside --codex-home", async () => {
+    const codexHome = path.join(dir, "codex");
+    mkdirSync(codexHome, { recursive: true });
+    expect((await cli(["--codex-home", codexHome, "--namespace", "host", "playbook", "status"])).code).toBe(0);
+  });
+
+  it("no longer offers a --dry-run flag on playbook reflect", async () => {
+    expect((await cli(["playbook", "reflect", "s1", "--dry-run"])).code).toBe(64);
+  });
+});
