@@ -66,6 +66,7 @@ function symbolRows(rows: Pick<ReportContextInput, "nodes" | "metrics">, ctx: Re
     nodeId: b.symbolId,
     churn: b.churn,
     complexity: b.complexity,
+    loc: ctx.metricsByName.get("symbol_loc")?.get(b.symbolId) ?? 0,
     recency: 1,
     score: b.score,
     utilization: b.utilization,

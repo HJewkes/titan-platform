@@ -50,6 +50,7 @@ export function topUnusedExports(
       name: n.name,
       fileId,
       cognitive: lookupMetric(ctx, "symbol_cognitive", n.id) ?? 0,
+      loc: lookupMetric(ctx, "symbol_loc", n.id) ?? 0,
       publicApi: publicApi.has(fileId),
     });
   }
