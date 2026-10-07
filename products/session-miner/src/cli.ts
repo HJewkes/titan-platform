@@ -35,10 +35,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   program.option("--namespace <name>", "stable host/account corpus identity (TITAN_MINER_NAMESPACE)");
   program.option("--graph <file>", "read another owner's session graph, read-only, such as active-work's (TITAN_MINER_GRAPH)");
   program.hook("preAction", () => {
-    const root = program.opts() as RootOptions;
-    if (root.namespace !== undefined && root.codexHome === undefined) {
-      io.stderr("error: --namespace names a Codex corpus and has no effect without --codex-home\n");
-      throw new CommanderError(EXIT.USAGE, "miner.namespaceWithoutCodexHome", "--namespace requires --codex-home");
+    try {
+      resolveConfig(configOverrides(program.opts() as RootOptions), io.env);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      io.stderr(`error: ${message}\n`);
+      throw new CommanderError(EXIT.USAGE, "miner.invalidConfig", message);
     }
   });
   let exitCode: number = EXIT.OK;
