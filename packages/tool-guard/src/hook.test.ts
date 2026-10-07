@@ -122,6 +122,19 @@ describe("handle: failure policy", () => {
     expect(plain).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
   });
 
+  it("denies a protected push that a chain of dynamic wrapper words follows", async () => {
+    const result = await handle(bash(`git push origin HEAD:main; ${"timeout $T 5 ".repeat(9)}true`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("denies a protected push behind a chain of dynamic wrapper words past the reading limits", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(9)}git push origin HEAD:main`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
   it("denies a credential read padded past the size cap without classifying it", async () => {
     const padded = `${"x ".repeat(20_000)}; cat ~/.npmrc`;
     const start = performance.now();

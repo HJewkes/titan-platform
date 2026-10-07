@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
-import { ParseError } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
 const ctx: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: () => "feat/x", readScript: () => null };
@@ -78,26 +77,39 @@ describe("dynamic words behind several wrappers", () => {
   });
 });
 
-describe("a chain of dynamic wrapper words too long to read", () => {
-  const tails = ["git push origin HEAD:main", "npm publish", "pnpm publish", "gh pr merge 5"];
+describe("a chain of dynamic wrapper words past the reading limits", () => {
+  const tails = [
+    ["git push origin HEAD:main", MAIN_PUSH],
+    ["npm publish", ["bash.release.npm-publish", { tool: "npm" }]],
+    ["pnpm publish", ["bash.release.pnpm-publish", { tool: "pnpm" }]],
+    ["gh pr merge 5", ["bash.merge.gh-pr-merge", { pr: "5" }]],
+  ] as const;
   const deep = [
     ...[9, 10].map((n) => [`${n} x timeout $O 5`, Array(n).fill("timeout $O 5").join(" ")]),
     ...["sudo", "env", "nohup", "stdbuf", "command", "exec"].flatMap((w) => [9, 10].map((n) => [`${n} x ${w} $a`, Array(n).fill(`${w} $a`).join(" ")])),
   ];
 
-  it.each(deep.flatMap(([how, prefix]) => tails.map((tail) => [`${tail} after ${how}`, `${prefix} ${tail}`])))(
-    "fails as nesting too deep does, never open: %s",
-    (_how, command) => {
-      expect(() => verdicts(command as string)).toThrow(ParseError);
+  it.each(deep.flatMap(([how, prefix]) => tails.map(([tail, verdict]) => [`${tail} after ${how}`, `${prefix} ${tail}`, verdict])))(
+    "still reads the command with every dynamic word dropped: %s",
+    (_how, command, verdict) => {
+      expect(verdicts(command as string)).toContainEqual(verdict);
     },
   );
 
-  it("still reads a chain at the depth limit", () => {
-    expect(verdicts(`${Array(8).fill("timeout $O 5").join(" ")} git push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
+  it("keeps the verdicts of the rest of the line", () => {
+    expect(verdicts(`git push origin HEAD:main; ${Array(9).fill("timeout $T 5").join(" ")} true`)).toContainEqual(MAIN_PUSH);
   });
 
-  it("fails rather than reading a padded line once per dynamic word", () => {
-    expect(() => verdicts(`${Array(1000).fill("sudo $a").join(" ")} git push origin HEAD:main`)).toThrow(ParseError);
+  it("keeps what the reading as written gives", () => {
+    expect(spellings(`${Array(10).fill("sudo $a").join(" ")} git status`)).toContain("bash.egress.raw-socket");
+  });
+
+  it("reads a dynamic command word late in the chain as the command", () => {
+    expect(verdicts(`${Array(9).fill("sudo $a").join(" ")} sudo $b push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
+  });
+
+  it("reads a padded line to its command", () => {
+    expect(verdicts(`${Array(1000).fill("sudo $a").join(" ")} git push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
   });
 });
 

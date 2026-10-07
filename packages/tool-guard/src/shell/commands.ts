@@ -184,20 +184,29 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
 
 /**
  * Reads a command's `unsure` words as an added reading, then theirs in turn, since each wrapper may hide its own
- * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, so a chain past
- * MAX_DEPTH steps or MAX_UNSURE_WORDS words fails as nesting too deep does in `walk`: outside the added reading's
- * catch, so it can neither fail open nor run past the hook's timeout.
+ * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, so past MAX_DEPTH
+ * steps or MAX_UNSURE_WORDS words only two more readings are walked: the last whose command word is still dynamic,
+ * and the last, with every such word dropped. A deep chain still reaches its command, and nothing else on the line is lost.
  */
 function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null): void {
+  const late = new Map<"dynamic" | "last", Unwrapped[]>();
   let unsure = cmd?.unsure;
   let words = 0;
   for (let depth = 0; unsure; depth++) {
-    words += unsure.length;
-    if (depth >= MAX_DEPTH || words > MAX_UNSURE_WORDS) throw new ParseError("too many dynamic wrapper words");
     const runs = caseNamed(unsure);
-    addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
+    words += unsure.length;
+    if (depth < MAX_DEPTH && words <= MAX_UNSURE_WORDS) walkAdded(runs, redirects, w, next);
+    else {
+      if (runs[0]?.name === null) late.set("dynamic", runs);
+      late.set("last", runs);
+    }
     unsure = runs[0]?.unsure;
   }
+  for (const runs of new Set(late.values())) walkAdded(runs, redirects, w, next);
+}
+
+function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next: string | null): void {
+  addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
