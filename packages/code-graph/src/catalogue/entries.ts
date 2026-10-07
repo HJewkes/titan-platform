@@ -105,6 +105,21 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "symbol_cognitive minus symbol_markup_cognitive: the component's own logic, hook callbacks included. Written only when symbol_jsx_depth > 0.",
   },
   {
+    name: "symbol_prop_count", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared props of a component (a PascalCase function with symbol_jsx_depth > 0): members of its first parameter's type, resolved within the file through extends and & clauses; types the file does not declare (HTMLAttributes<…>) add none. Absent when the props type is imported.",
+  },
+  {
+    name: "symbol_bool_prop_count", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared component props typed boolean, or a union of true/false/boolean with undefined. Absent where symbol_prop_count is.",
+  },
+  {
+    name: "symbol_unread_props", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared component props never read in the body: a destructured binding with no references, or a name no props.<name> access reads. 0 when a ...rest element or the whole props object forwards them. Absent where symbol_prop_count is.",
+  },
+  {
     name: "symbol_comment_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
     absent: "exclude", source: "source-metrics",
     description: "Rows holding a comment inside the function a symbol names, the docstring excluded; the max when several share the name.",

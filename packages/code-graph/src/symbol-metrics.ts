@@ -2,6 +2,7 @@ import type { Node } from "web-tree-sitter";
 import { commentLineStats, type CommentLineStats } from "./analysis/comment-lines.js";
 import { countNarratingComments } from "./analysis/narrating-comments.js";
 import { isPassThrough } from "./analysis/pass-through.js";
+import type { PropStats } from "./analysis/prop-metrics.js";
 import { symbolId } from "./extractors/ids.js";
 import type { GraphMetric } from "./types.js";
 
@@ -24,6 +25,8 @@ export interface FunctionStats extends FunctionShapeStats {
   logicCognitive: number;
   /** Lines spanned by the whole function node, signature included. */
   loc: number;
+  /** Own-declared prop counts of a component (C-97 S3); null when it is no component or its props type is not in this file. */
+  props: PropStats | null;
 }
 
 type NumericStat =
@@ -62,13 +65,22 @@ const SYMBOL_METRICS: readonly {
   { name: "symbol_pass_through", stat: "passThrough", unit: "count" },
 ];
 
-export const SYMBOL_METRIC_NAMES: readonly string[] = SYMBOL_METRICS.map((m) => m.name);
+/** Component prop metrics; all three are absent where `props` is null. */
+const PROP_METRICS: readonly { name: string; stat: keyof PropStats }[] = [
+  { name: "symbol_prop_count", stat: "propCount" },
+  { name: "symbol_bool_prop_count", stat: "boolPropCount" },
+  { name: "symbol_unread_props", stat: "unreadProps" },
+];
+
+export const SYMBOL_METRIC_NAMES: readonly string[] = [...SYMBOL_METRICS, ...PROP_METRICS].map((m) => m.name);
+
+type SymbolValues = Record<NumericStat, number> & { props: PropStats | null };
 
 /**
  * Per-symbol metrics (C-58, C-64, TP-317): for each named function whose qualified
  * name has a `symbol` node on this file, emit every SYMBOL_METRICS entry on that
  * node (`<fileId>#<qualifiedName>`), skipping an `omitZero` entry whose value is 0 and a
- * `jsxOnly` entry where the symbol renders no JSX. Model B (C-64) gives non-exported helpers a
+ * `jsxOnly` entry where the symbol renders no JSX, plus PROP_METRICS where `props` resolved. Model B (C-64) gives non-exported helpers a
  * node too, so internal functions get their own values here, not just exports. A
  * qualified name shared by several functions (a getter/setter pair) takes the max
  * of each stat independently; a declared name with no function (a bare class) emits nothing.
@@ -79,7 +91,22 @@ export function symbolMetrics(
   symbolNames: ReadonlySet<string>,
 ): GraphMetric[] {
   if (symbolNames.size === 0) return [];
-  const byName = new Map<string, Record<NumericStat, number>>();
+  const out: GraphMetric[] = [];
+  for (const [name, values] of mergeByName(stats, symbolNames)) {
+    const nodeId = symbolId(fileId, name);
+    for (const m of SYMBOL_METRICS) {
+      if (m.omitZero && values[m.stat] === 0) continue;
+      if (m.jsxOnly && values.jsxDepth === 0) continue;
+      out.push({ nodeId, name: m.name, value: values[m.stat], unit: m.unit });
+    }
+    const props = values.props;
+    if (props) out.push(...PROP_METRICS.map((m) => ({ nodeId, name: m.name, value: props[m.stat], unit: "count" })));
+  }
+  return out;
+}
+
+function mergeByName(stats: readonly FunctionStats[], symbolNames: ReadonlySet<string>): Map<string, SymbolValues> {
+  const byName = new Map<string, SymbolValues>();
   for (const s of stats) {
     if (!s.name || !symbolNames.has(s.name)) continue;
     const prev = byName.get(s.name);
@@ -88,17 +115,18 @@ export function symbolMetrics(
       continue;
     }
     for (const { stat } of SYMBOL_METRICS) prev[stat] = Math.max(prev[stat], s[stat]);
+    prev.props = maxProps(prev.props, s.props);
   }
-  const out: GraphMetric[] = [];
-  for (const [name, values] of byName) {
-    const nodeId = symbolId(fileId, name);
-    for (const m of SYMBOL_METRICS) {
-      if (m.omitZero && values[m.stat] === 0) continue;
-      if (m.jsxOnly && values.jsxDepth === 0) continue;
-      out.push({ nodeId, name: m.name, value: values[m.stat], unit: m.unit });
-    }
-  }
-  return out;
+  return byName;
+}
+
+function maxProps(a: PropStats | null, b: PropStats | null): PropStats | null {
+  if (!a || !b) return a ?? b;
+  return {
+    propCount: Math.max(a.propCount, b.propCount),
+    boolPropCount: Math.max(a.boolPropCount, b.boolPropCount),
+    unreadProps: Math.max(a.unreadProps, b.unreadProps),
+  };
 }
 
 /** `fn` is the function node, `body` its body, `lines` the file's content split on newlines. */
