@@ -2,16 +2,32 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { compileGlobs } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
 
 export { isRepo as isRepoKey } from "@titan-design/github";
+
+export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 
 /** Every repo reference is canonicalised here, so denies and lookups compare one form. */
 const RemoteSchema = z
   .string()
   .refine(isRepo, "must be a bare owner/name")
   .transform((remote) => remote.toLowerCase());
+
+/** A glob that cannot compile would match nothing, so it is refused rather than read as no visual path. */
+const VisualPathsSchema = z
+  .array(z.string().min(1))
+  .min(1, "list at least one glob, or leave visual_paths out")
+  .refine((globs) => {
+    try {
+      compileGlobs(globs);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "every glob must compile");
 
 /** A path as written (slashes tidied, case kept, for spawn cwds) and its one comparison key. */
 export interface RepoPath {
@@ -68,6 +84,7 @@ function seatFileSchema(home: string) {
     repos: z.array(z.object({ path: path.optional(), remote: RemoteSchema.optional(), read_only: z.boolean().optional() })).default([]),
     deny_repos: z.array(path).default([]),
     grants_extra: z.array(z.string()).default([]),
+    visual_paths: VisualPathsSchema.optional(),
   });
 }
 
@@ -80,6 +97,8 @@ export interface Seat {
   /** Lowercased remote to the seat's checkout path as written, slashes tidied (`~` unexpanded); the cwd for spawns. */
   paths: Record<string, string>;
   grants: string[];
+  /** Repo-relative globs a PR must touch none of to merge without the owner; absent means the seat has not opted in. */
+  visualPaths?: string[];
 }
 
 export interface SeatBook {
@@ -122,7 +141,7 @@ export function loadSeatBook(sources: SeatSources): SeatBook {
   return { seats, denied };
 }
 
-/** A malformed key or a deny wins over any seat; a remote several seats list gets the grants they all share. */
+/** A malformed key or a deny wins over any seat; a remote several seats list gets the grants they all share and the visual paths of all of them. */
 export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   if (!isRepo(repo)) return { kind: "denied", reason: `${JSON.stringify(repo)} is not an owner/name repo` };
   const remote = repo.toLowerCase();
@@ -136,7 +155,18 @@ function narrowest(seats: Seat[]): Seat {
   if (seats.length === 1) return seats[0]!;
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));
   const paths = Object.assign({}, ...seats.map((s) => s.paths)) as Record<string, string>;
-  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants };
+  const visualPaths = sharedVisualPaths(seats);
+  return { name: seats.map((s) => s.name).join("+"), remotes: [...new Set(seats.flatMap((s) => s.remotes))], paths, grants, ...(visualPaths && { visualPaths }) };
+}
+
+/**
+ * The union of every seat's visual paths, so a path any seat calls visual gates. A seat that neither opted in nor holds
+ * the merge grant would merge nothing alone, so the shared seat gets no visual paths and stays at the owner gate.
+ */
+function sharedVisualPaths(seats: Seat[]): string[] | undefined {
+  const autoCapable = seats.every((s) => s.visualPaths !== undefined || s.grants.includes(MERGE_ON_GREEN_GRANT));
+  const lists = seats.flatMap((s) => s.visualPaths ?? []);
+  return autoCapable && seats.some((s) => s.visualPaths !== undefined) ? [...new Set(lists)] : undefined;
 }
 
 type SeatFile = z.infer<ReturnType<typeof seatFileSchema>>;
@@ -207,7 +237,7 @@ function toSeat(data: SeatFile): Seat {
   const owned = data.repos.filter((r) => r.read_only !== true);
   const remotes = owned.flatMap((r) => (r.remote ? [r.remote] : []));
   const paths = Object.fromEntries(owned.flatMap((r) => (r.remote && r.path ? [[r.remote, r.path.written]] : [])));
-  return { name: data.name, remotes, paths, grants: data.grants_extra };
+  return { name: data.name, remotes, paths, grants: data.grants_extra, ...(data.visual_paths && { visualPaths: data.visual_paths }) };
 }
 
 /** No configured charter means no hard stops; a configured one must exist and parse. */
