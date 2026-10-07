@@ -64,10 +64,34 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @titan-design/code-graph... run build
+      # The indexer re-parses only files that changed since the cached graph (a cold head index is ~250 s).
+      # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
+      # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
+      # Source only: after the build, node_modules and dist sit under the same package directories.
+      - name: Compute the cache key
+        id: key
+        env:
+          SOURCE_HASH: ${{ hashFiles('packages/code-graph/src/**', 'packages/code-graph/package.json', 'packages/code-parser/src/**', 'packages/code-parser/package.json', 'packages/embed/src/**', 'packages/retrieval/src/**', 'packages/store-sqlite/src/**', 'scripts/dag-check-self.mjs', 'pnpm-lock.yaml') }}
+        run: echo "prefix=dag-graph-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
+      - name: Restore the dag-check graph
+        id: graph-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/graph.db
+          key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.key.outputs.prefix }}
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"
+        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
+      # Only main saves, so a pull request never writes a graph built from an unmerged tree.
+      - name: Save the dag-check graph
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.graph-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/graph.db
+          key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
       # On a pull request the report's head is GitHub's merge commit (the tree dag-check indexed), not the PR head.
       - name: Summarize the codewatch report
         if: always()
