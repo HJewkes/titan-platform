@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/egress-scan",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only",
   "type": "module",
   "main": "./dist/index.js",

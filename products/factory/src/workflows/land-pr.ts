@@ -78,7 +78,7 @@ function isTransient(failing: FailingCheck[]): boolean {
   return failing.length > 0 && failing.every((check) => check.workflowRunId !== null && TRANSIENT_CONCLUSIONS.has(check.conclusion ?? ""));
 }
 
-async function rerun(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<undefined> {
+export async function rerun(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<undefined> {
   await step(ctx, `rerun:${state.reruns++}`, { repo: params.repo, pr: params.pr, headSha: red.headSha, failing: red.failing }, RerunResult);
   return undefined;
 }

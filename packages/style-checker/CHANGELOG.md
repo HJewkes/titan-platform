@@ -1,5 +1,13 @@
 # @titan-design/style-checker
 
+## 0.4.3
+
+### Patch Changes
+
+- 23ae9ef: `runRuffAudit` now runs through the shared Python audit runner: with ruff absent it returns no failures and the warning `` ruff not found; install with `pip install ruff`  ``, as the other audit runners do, and `failures[].file` is relative to `cwd` like the diagnostics.
+- Updated dependencies [9e66a85]
+  - @titan-design/style-analyzer@0.1.4
+
 ## 0.4.2
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @titan-design/session-analytics
 
+## 0.9.0
+
+### Minor Changes
+
+- b8da03a: Export `staleEpisodeSessions(db, ids?)`: the sessions `writeEpisodes` would change, newest last request first. It chooses each session's heuristic through the same `readSessionContexts` and `classifySession` step as `writeEpisodes`, so a consumer no longer keeps its own copy of the session-fact query. The README and reference page now document `blockedFlowReport`, `livenessReport` and `reviewFillReport` and the parsers they rest on.
+
+### Patch Changes
+
+- Updated dependencies [6a2c0f8]
+  - @titan-design/session-read@0.10.0
+  - @titan-design/session-graph@0.13.2
+
 ## 0.8.0
 
 ### Minor Changes

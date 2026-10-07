@@ -1,5 +1,15 @@
 # @titan-design/agent-surface
 
+## 0.3.0
+
+### Minor Changes
+
+- 6d2b5e5: Add a `tmux-window` surface for a host with no iTerm2. It opens a detached window named for the plan in the tmux session `fac` (option `tmuxSession`, socket via `tmuxSocket`) running the fixed launcher line, starts the session when it is missing, and closes with `kill-window` followed by a re-read of the server's windows before reporting `closed: true`. `tmuxWindowPresent` lets a host see an agent's window exit. `surfaceFor` now routes every surface name explicitly and refuses an unknown one with `SurfaceRefused`, so no name falls through to AppleScript.
+
+### Patch Changes
+
+- 98943f9: `close()` on a tmux window that already exited now reports `closed: true` instead of failing, and a `tmuxSession` containing `:` or `.` is refused, since tmux would rename it.
+
 ## 0.2.1
 
 ### Patch Changes

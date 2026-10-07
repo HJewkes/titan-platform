@@ -165,3 +165,12 @@ describe("gates in the resume report", () => {
     expect(before).not.toContain("evidence:");
   });
 });
+
+describe("shepherd register with a bare task ID", () => {
+  it("exits with a usage error naming the expected form when no initiative has the ID", async () => {
+    const fetch = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [] } }))) as typeof globalThis.fetch;
+    const result = await cli(["shepherd", "register", "o/r#1", "--task", "CC-784", "--implementer", "agent", "--offline"], { ...landDeps(), fetch });
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.err).toContain("pass --task <initiative>/<ID>");
+  });
+});
