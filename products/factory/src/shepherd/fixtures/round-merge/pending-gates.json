@@ -1,0 +1,57 @@
+[
+  {
+    "runId": "run-101",
+    "stepId": "approve-merge",
+    "gate": {
+      "id": "run-101/approve-merge",
+      "prompt": "Merge PR #101 in example-org/example-repo at head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1? CI is green. Policy shepherd-seat/implementer: visual PRs wait for the owner",
+      "status": "pending",
+      "payload": null,
+      "createdAt": "2026-10-06T10:00:01.000Z"
+    }
+  },
+  {
+    "runId": "run-102",
+    "stepId": "approve-merge",
+    "gate": {
+      "id": "run-102/approve-merge",
+      "prompt": "Merge PR #102 in example-org/example-repo at head b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2? CI is green. Policy authority/MRG-AU: owner merge authority",
+      "status": "pending",
+      "payload": null,
+      "createdAt": "2026-10-06T10:00:01.000Z"
+    }
+  },
+  {
+    "runId": "run-103",
+    "stepId": "approve-merge",
+    "gate": {
+      "id": "run-103/approve-merge",
+      "prompt": "Merge PR #103 in example-org/example-repo at head d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4? CI is green. Policy shepherd-seat/implementer: visual PRs wait for the owner",
+      "status": "pending",
+      "payload": null,
+      "createdAt": "2026-10-06T10:00:01.000Z"
+    }
+  },
+  {
+    "runId": "run-104",
+    "stepId": "approve-merge",
+    "gate": {
+      "id": "run-104/approve-merge",
+      "prompt": "Merge PR #104 in example-org/example-repo at head d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4? CI is green. Policy shepherd-route/conflict: mergeable_state is dirty",
+      "status": "pending",
+      "payload": null,
+      "createdAt": "2026-10-06T10:00:01.000Z"
+    }
+  },
+  {
+    "runId": "run-106",
+    "stepId": "approve-merge",
+    "gate": {
+      "id": "run-106/approve-merge",
+      "prompt": "Merge PR #106 in example-org/example-repo at head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1? CI is green. Policy shepherd-seat/implementer: visual PRs wait for the owner",
+      "status": "pending",
+      "payload": null,
+      "createdAt": "2026-10-06T10:00:01.000Z"
+    }
+  }
+]
