@@ -4,6 +4,7 @@ import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -59,6 +60,7 @@ const bareRecord = (sessionId: string, message: Json): Json => ({ type: "assista
 const text = (value: string): Json => ({ type: "text", text: value });
 const thinking: Json = { type: "thinking", thinking: "weighing it", signature: "synthetic" };
 const toolUse = (id: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command: "pnpm test" } });
+const readUse = (id: string): Json => ({ type: "tool_use", id, name: "Read", input: { file_path: "src/a.ts" } });
 
 const assistant = (sessionId: string, texts: readonly string[], timestamp: string | null = LATER): Json => assistantRecord(sessionId, texts.map(text), timestamp);
 
@@ -90,11 +92,14 @@ const row = (transcriptPath: string | null, overrides: Partial<Row> = {}): Row =
 const read = (rows: readonly Row[], request: AwaitVerdictInput = input) =>
   transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE }).read(request);
 
+/** The reviewer reads one file, so its verdict clears the depth floor. */
+const looked = (sessionId = SESSION): Json[] => [assistantRecord(sessionId, [readUse("tool-read")]), toolResult(sessionId, "tool-read", "export const a = 1;")];
+
 const reviewed = (sessionId = SESSION) => [user(sessionId, "review it"), assistant(sessionId, [BLOCK])];
 
 describe("transcriptReviewerReader", () => {
   it("returns each assistant text part of the finished session, oldest first, with a locator that reads back its text", async () => {
-    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, ["Reading.", "Still reading."]), user(SESSION, "go on"), assistant(SESSION, [BLOCK])]);
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, ["Reading.", "Still reading."]), user(SESSION, "go on"), ...looked(), assistant(SESSION, [BLOCK])]);
 
     const messages = await read([row(transcript)]);
 
@@ -218,7 +223,7 @@ describe("transcriptReviewerReader", () => {
       { type: "last-prompt", sessionId: SESSION, lastPrompt: "review it" },
       { type: "file-history-snapshot", sessionId: SESSION },
     ];
-    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, ["Reading."]), assistantRecord(SESSION, [thinking, text(BLOCK)]), ...bookkeeping]);
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, ["Reading."]), ...looked(), assistantRecord(SESSION, [thinking, text(BLOCK)]), ...bookkeeping]);
 
     const messages = await read([row(transcript)]);
 
@@ -504,7 +509,7 @@ describe("a seat reviewer's transcript read once per roster change", () => {
 describe("an owner brief beside the verdict", () => {
   const BRIEF = ["OWNER-BRIEF", "What: Adds a widget retry.", "Why: It reaches the owner.", "Pros:", "- Fewer drops.", "Cons:", "- Timing is unreviewed.", "Door: two-way", "END-OWNER-BRIEF"].join("\n");
   const accepted = async (message: string) => {
-    const messages = await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), assistant(SESSION, [message])]))]);
+    const messages = await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), ...looked(), assistant(SESSION, [message])]))]);
     return acceptVerdict(input, messages);
   };
 
@@ -524,5 +529,62 @@ describe("an owner brief beside the verdict", () => {
 
     expect(malformed).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, ownerBrief: null });
     expect(malformed.kind === "verdict" && plain.kind === "verdict" && malformed.locator.selector).toEqual(plain.kind === "verdict" && plain.locator.selector);
+  });
+});
+
+describe("the review depth floor", () => {
+  const FIX_FIRST = BLOCK.replace("MERGE", "FIX_FIRST");
+  const bash = (id: string, command: string): Json => ({ type: "tool_use", id, name: "Bash", input: { command } });
+  const ran = (call: Json): Json[] => [assistantRecord(SESSION, [call]), toolResult(SESSION, call.id as string, "output")];
+  const judged = async (records: readonly Json[]) => acceptVerdict(input, await read([row(writeTranscript(SESSION, [user(SESSION, "review it"), ...records]))]));
+
+  it("sets aside a MERGE from a session that made no tool call at all", async () => {
+    expect(await judged([assistant(SESSION, [BLOCK])])).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
+  });
+
+  it("sets aside a FIX_FIRST from a session that made no tool call at all", async () => {
+    expect(await judged([assistant(SESSION, [FIX_FIRST])])).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
+  });
+
+  it("keeps a MERGE from a session that read one file first", async () => {
+    expect(await judged([...looked(), assistant(SESSION, [BLOCK])])).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD });
+  });
+
+  it("keeps a MERGE from a session whose only call was a Bash read verb", async () => {
+    expect(await judged([...ran(bash("tool-diff", "git diff main...HEAD")), assistant(SESSION, [BLOCK])])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("sets aside a MERGE whose only calls run a command that reads nothing named in the floor", async () => {
+    expect(await judged([...ran(bash("tool-test", "pnpm test")), ...ran(bash("tool-cat", "category list")), assistant(SESSION, [BLOCK])])).toEqual({ kind: "none", reason: DEPTH_FLOOR_REASON });
+  });
+});
+
+describe("isInvestigativeCall", () => {
+  const observed = async (call: Json) => {
+    const observations: NormalizedSessionObservation[] = [];
+    const transcript = writeTranscript(SESSION, [assistantRecord(SESSION, [call])], String(call.id));
+    for await (const observation of readSessionObservations(claudeSourceFromPath(transcript, NAMESPACE))) observations.push(observation);
+    return observations.filter((observation) => observation.kind === "tool_call").map(isInvestigativeCall);
+  };
+
+  it("counts each named read tool and each Bash read verb", async () => {
+    const calls = [...INVESTIGATIVE_CALLS.tools.map((name) => ({ type: "tool_use", id: `t-${name}`, name, input: {} })), ...INVESTIGATIVE_CALLS.bashVerbs.map((verb, index) => ({ type: "tool_use", id: `b-${index}`, name: "Bash", input: { command: `  ${verb} x` } }))];
+
+    const counted = (await Promise.all(calls.map((call) => observed(call)))).flat();
+
+    expect(counted).toEqual(calls.map(() => true));
+  });
+
+  it("does not count a write, an agent-chat call or a Bash command outside the read verbs", async () => {
+    const calls = [
+      { type: "tool_use", id: "w", name: "Write", input: { file_path: "a.ts", content: "" } },
+      { type: "tool_use", id: "c", name: "mcp__plugin_agent-chat_agent-chat__chat_send", input: { to: "coord", text: "hi" } },
+      { type: "tool_use", id: "g", name: "Bash", input: { command: "git push origin HEAD" } },
+      { type: "tool_use", id: "r", name: "Bash", input: { command: "rgx" } },
+    ];
+
+    const counted = (await Promise.all(calls.map((call) => observed(call)))).flat();
+
+    expect(counted).toEqual([false, false, false, false]);
   });
 });

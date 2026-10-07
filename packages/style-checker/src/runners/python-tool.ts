@@ -1,4 +1,4 @@
-import { parseOrFail, runAndClassify } from "./failures.js";
+import { excerpt, parseOrFail, runAndClassify } from "./failures.js";
 import type { RunExpectations, ToolRun } from "./failures.js";
 import { auditRoot, relativeTo } from "./paths.js";
 import type { CheckDiagnostic, ToolFailure, ToolName } from "../orchestrator/types.js";
@@ -67,5 +67,5 @@ export async function runPythonTool(
 export function unrecognisedStderr(tool: ToolName, lines: string[]): ToolFailure[] {
   if (lines.length === 0) return [];
   const message = lines.join("\n");
-  return [{ tool, kind: "unparseable-output", message: message.length > 500 ? `${message.slice(0, 500)}…` : message }];
+  return [{ tool, kind: "unparseable-output", message: excerpt(message) }];
 }

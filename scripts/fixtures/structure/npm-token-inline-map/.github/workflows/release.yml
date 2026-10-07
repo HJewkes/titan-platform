@@ -1,0 +1,8 @@
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm publish
+        env: { NOTE: "x #y", NODE_AUTH_TOKEN: x }

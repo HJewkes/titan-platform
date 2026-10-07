@@ -147,6 +147,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:*
         version: link:../../packages/rpc-client
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -555,9 +558,6 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
-      '@titan-design/cluster':
-        specifier: workspace:^
-        version: link:../cluster
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator

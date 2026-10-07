@@ -1,5 +1,5 @@
 import type { GateRecord, GateStore } from "@titan-design/hitl";
-import type { StepOperation, WorkflowRun } from "./types.js";
+import type { StepOperation, StepResult, WorkflowRun } from "./types.js";
 
 export function gateIdFor(runId: string, stepId: string): string {
   return `${runId}/${stepId}`;
@@ -8,6 +8,12 @@ export function gateIdFor(runId: string, stepId: string): string {
 /** Where call `index` of `stepId` records its result: the keys earlier releases wrote, so one call position never has two homes. */
 export function memoKey(operation: StepOperation, stepId: string, index: number): string {
   return index === 0 && operation !== "dispatch" ? stepId : `${stepId}:${index}`;
+}
+
+/** The step recorded right after `result`. Recording order, not completion time, so steps recorded in one millisecond keep their order. */
+export function recordedAfter(results: WorkflowRun["stepResults"], result: StepResult | undefined): string | undefined {
+  const recorded = Object.values(results);
+  return result === undefined ? undefined : recorded[recorded.indexOf(result) + 1]?.stepId;
 }
 
 /** The first call position has two key shapes, bare and `:0`, so a lookup checks the one this operation does not write. */

@@ -191,4 +191,23 @@ describe("fingerprint-based incremental indexing", () => {
     expect(snapshot(second.snapshotId)).toEqual(snapshot(first.snapshotId));
     expect(SOURCE_METRIC_NAMES.has("jsx_depth_max") && SOURCE_METRIC_NAMES.has("symbol_jsx_depth")).toBe(true);
   });
+
+  it("carries a component's prop metrics forward unchanged on reuse (C-97 S3)", async () => {
+    await fs.writeFile(
+      src("chip.tsx"),
+      "type Props = { label: string; on?: boolean; tone: string };\n" +
+        "export function Chip({ label, on }: Props) {\n  return <b data-on={on}>{label}</b>;\n}\n",
+    );
+    const first = await index();
+    const second = await index();
+
+    expect(second.reparsed).toBe(0);
+    const propRows = snapshot(second.snapshotId).metrics.filter((row) => row.includes("prop"));
+    expect(propRows).toEqual([
+      JSON.stringify({ nodeId: "src/chip.tsx#Chip", name: "symbol_bool_prop_count", value: 1, unit: "count" }),
+      JSON.stringify({ nodeId: "src/chip.tsx#Chip", name: "symbol_prop_count", value: 3, unit: "count" }),
+      JSON.stringify({ nodeId: "src/chip.tsx#Chip", name: "symbol_unread_props", value: 1, unit: "count" }),
+    ]);
+    expect(snapshot(second.snapshotId)).toEqual(snapshot(first.snapshotId));
+  });
 });
