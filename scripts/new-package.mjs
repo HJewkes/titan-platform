@@ -7,7 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_JSON = join(ROOT, ".codewatch", "check.json");
-const TIER_ORDER = ["0", "1", "2", "ui", "product"];
+export const TIERS = ["0", "1", "2", "ui", "product"];
+
+/** The rule in a parsed check.json that carries `$tiers`, the source of truth for the DAG. */
+export function findTiersRule(config) {
+  return config.rules.find((r) => r.type === "layered-deps" && r.$tiers);
+}
 
 export function parseArgs(argv) {
   const [name, ...rest] = argv;
@@ -17,7 +22,7 @@ export function parseArgs(argv) {
     if (key in opts) opts[key] = rest[i + 1];
   }
   if (!name || !/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`invalid package name: ${name}`);
-  if (!TIER_ORDER.includes(opts.tier)) throw new Error(`--tier must be one of ${TIER_ORDER.join("|")}`);
+  if (!TIERS.includes(opts.tier)) throw new Error(`--tier must be one of ${TIERS.join("|")}`);
   return opts;
 }
 
@@ -37,7 +42,7 @@ function substitute(dir, vars) {
 // codewatch rejects empty layers, so `$tiers` holds the full tier list and `layers` drops empties.
 export function registerLayer(checkJsonText, prefix, tier) {
   const config = JSON.parse(checkJsonText);
-  const rule = config.rules.find((r) => r.type === "layered-deps" && r.$tiers);
+  const rule = findTiersRule(config);
   if (!rule?.$tiers) throw new Error("check.json needs a layered-deps rule with $tiers");
   const tierPackages = (rule.$tiers[tier] ??= []);
   if (!tierPackages.includes(prefix)) tierPackages.push(prefix);
@@ -49,7 +54,7 @@ export function registerLayer(checkJsonText, prefix, tier) {
 }
 
 export function layersFromTiers(tiers) {
-  return TIER_ORDER.map((t) => tiers[t] ?? []).filter((layer) => layer.length > 0);
+  return TIERS.map((t) => tiers[t] ?? []).filter((layer) => layer.length > 0);
 }
 
 const PRODUCT_ISOLATION = "product-isolation:";
