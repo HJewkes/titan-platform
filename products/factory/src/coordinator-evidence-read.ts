@@ -83,7 +83,7 @@ function runFacts(sources: EvidenceSources, run: WorkflowRun, gate: GateRecord, 
   if (!registration || registration.pr === null || !rule) return undefined;
   const policy = stricterPolicy(registration.policy, runPolicy(run));
   const { repo, pr, held } = registration;
-  return { workflow: run.workflowName, repo, pr, rule: `${rule.table}/${rule.rowId}`, merge: policy.merge, visualPaths: policy.visualPaths !== undefined, held, frozen: sources.frozen(land.repo) };
+  return { workflow: run.workflowName, repo, pr, rule: `${rule.table}/${rule.rowId}`, reason: rule.reason, merge: policy.merge, visualPaths: policy.visualPaths !== undefined, held, frozen: sources.frozen(land.repo) };
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {

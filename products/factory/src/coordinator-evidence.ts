@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
+import { escalationReason } from "./shepherd/route-table.js";
 
 /**
  * Owner decision 2026-10-07 (TP-1904), "mechanical only": a coordinator may resolve three gate classes without the
@@ -22,6 +23,8 @@ const RunFacts = z.strictObject({
   pr: PR,
   /** `table/rowId` of the merge decision the run recorded at the gated head. */
   rule: z.string(),
+  /** That decision's recorded reason, which names every authority condition that did not hold. */
+  reason: z.string(),
   merge: z.string(),
   visualPaths: z.boolean(),
   held: z.boolean(),
@@ -84,17 +87,20 @@ export function stepOf(gateId: string): string {
 
 /** GitHub's REST `mergeable_state` in the GraphQL `mergeable` vocabulary; `behind`, `draft` and anything new are not MERGEABLE. */
 export function mergeableOf(mergeableState: string): "MERGEABLE" | "CONFLICTING" | "UNKNOWN" {
+  // `blocked` passes because the required checks are verified on their own and the factory's repos require no approvals.
   if (["clean", "unstable", "has_hooks", "blocked"].includes(mergeableState)) return "MERGEABLE";
   return mergeableState === "dirty" ? "CONFLICTING" : "UNKNOWN";
 }
 
-const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is green\. Policy ([\w-]+)\/([\w-]+): /;
+const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is green\. Policy ([\w-]+)\/([\w-]+): (.*)$/;
 
 export interface LandGate {
   repo: string;
   pr: number;
   head: string;
   rule: string;
+  /** The decision's reason as the prompt shows it. */
+  reason: string;
 }
 
 /**
@@ -104,7 +110,7 @@ export interface LandGate {
 export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): LandGate | undefined {
   const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt) : null;
   if (!match || pinnedHead(gate.schema) !== match[3]) return undefined;
-  return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}` };
+  return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
 }
 
 function pinnedHead(schema: GateRecord["schema"]): string | undefined {
@@ -135,20 +141,29 @@ export function offersAbandon(gate: Pick<GateRecord, "questions">): boolean {
 }
 
 /**
- * Only an authority rule is decided after every Shepherd guard (visual paths, `.github/`, unread facts), so no visual
- * change can hide behind it; a seat owner-gate, a route escalation, a release or any guard rule stays the owner's.
+ * Only an MRG-AU gate whose recorded reason the owner classed as mechanical qualifies: authority is decided after every
+ * Shepherd guard, so no visual change hides behind it, and the reason names each condition that did not hold. A seat
+ * owner-gate, a route escalation, a release or any guard rule stays the owner's.
  */
 function runEligible(run: RunFacts, land: LandGate): boolean {
-  return (
-    run.workflow === "shepherd-pr" &&
-    run.repo === land.repo &&
-    run.pr === land.pr &&
-    run.rule === land.rule &&
-    run.rule.startsWith("authority/") &&
-    run.merge === "auto" &&
-    !run.held &&
-    !run.frozen
-  );
+  const matches = run.workflow === "shepherd-pr" && run.repo === land.repo && run.pr === land.pr && run.rule === land.rule && run.reason === land.reason;
+  return matches && run.rule === "authority/MRG-AU" && mechanicalAuthorityReason(run.reason) && run.merge === "auto" && !run.held && !run.frozen;
+}
+
+const POLICY_DENIAL = escalationReason("policy-denial", "");
+const CONDITION_LIST = "[a-z-]+(?:, [a-z-]+)*";
+const MRG_AU_REASON = new RegExp(`^MRG-AU gates merge by automation; MRG-AU-RV unmet: (${CONDITION_LIST})(?:; MRG-AU-RC unmet: ${CONDITION_LIST})?$`);
+/** Owner decision 2026-10-07: a reviewer MERGE at the head, green required checks and MERGEABLE, each re-read at resolve time. */
+const MECHANICAL_CONDITIONS: ReadonlySet<string> = new Set(["verdict-merge-at-head", "required-contexts-green", "no-non-green-run", "merge-tree-clean"]);
+
+/**
+ * True only for authority's own wording of an MRG-AU gate whose unmet MRG-AU-RV conditions are all mechanical. Authority
+ * lists every condition that fails, so a protected path, a missing seat grant, a frozen repo, a tainted request, facts
+ * read closed, or a condition added later never reads as mechanical.
+ */
+export function mechanicalAuthorityReason(reason: string): boolean {
+  const match = reason.startsWith(POLICY_DENIAL) ? MRG_AU_REASON.exec(reason.slice(POLICY_DENIAL.length)) : null;
+  return match !== null && match[1]!.split(", ").every((condition) => MECHANICAL_CONDITIONS.has(condition));
 }
 
 /**

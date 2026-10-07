@@ -60,7 +60,7 @@ gate classes, each only on evidence the command reads fresh through the GitHub p
 
 | Gate and answer | Evidence the command reads |
 |---|---|
-| `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is an `authority/*` rule, the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
+| `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .gitmodules, `.github/`, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
 | `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every Actions run on it passing |
 | `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
 

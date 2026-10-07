@@ -2,14 +2,16 @@ import { fakeSha } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
 import { toJSONSchema, z } from "zod";
-import { coordinatorEvidencePolicy, gatePr, landGate, mainGate, mergeableOf, type CoordinatorEvidence } from "./coordinator-evidence.js";
+import { coordinatorEvidencePolicy, gatePr, landGate, mainGate, mechanicalAuthorityReason, mergeableOf, type CoordinatorEvidence } from "./coordinator-evidence.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision } from "./gate-brief.js";
+import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 
 const HEAD = fakeSha("head");
 const MERGE_SHA = fakeSha("merge");
 const TIP = fakeSha("tip");
 const COORDINATOR: GateResolver = { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" };
 const MERGE = { decision: "merge", headSha: HEAD };
+const MECHANICAL = authorityGateReason(HEAD, pendingCheck(HEAD));
 
 function gate(fields: Partial<GateRecord> & Pick<GateRecord, "id" | "prompt">): GateRecord {
   return {
@@ -19,13 +21,13 @@ function gate(fields: Partial<GateRecord> & Pick<GateRecord, "id" | "prompt">): 
   };
 }
 
-function mergeGate(rule = "authority/MRG-AU"): GateRecord {
-  const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason: "synthetic", reviewedMerge: true });
-  const prompt = `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: synthetic`;
+function mergeGate(rule = "authority/MRG-AU", reason = MECHANICAL): GateRecord {
+  const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason, reviewedMerge: true });
+  const prompt = `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: ${reason}`;
   return gate({ id: "run-1/approve-merge", prompt, schema: toJSONSchema(schema) as Record<string, unknown>, ...brief });
 }
 
-const RUN = { workflow: "shepherd-pr", repo: "o/r", pr: 1, rule: "authority/MRG-AU", merge: "auto", visualPaths: false, held: false, frozen: false };
+const RUN = { workflow: "shepherd-pr", repo: "o/r", pr: 1, rule: "authority/MRG-AU", reason: MECHANICAL, merge: "auto", visualPaths: false, held: false, frozen: false };
 const CHECK = (id: number, name: string, conclusion = "success") => ({ id, name, conclusion, headSha: HEAD });
 
 function mergeEvidence(overrides: Partial<Extract<CoordinatorEvidence, { kind: "approve-merge" }>> = {}): CoordinatorEvidence {
@@ -59,6 +61,7 @@ describe("coordinatorEvidencePolicy over an approve-merge gate", () => {
     ["a frozen repo", { run: { ...RUN, frozen: true } }],
     ["a seat owner-gate policy", { run: { ...RUN, merge: "owner-gate" } }],
     ["a recorded rule other than the prompt's", { run: { ...RUN, rule: "authority/MRG-AU-RV" } }],
+    ["a recorded reason other than the prompt's", { run: { ...RUN, reason: authorityGateReason(HEAD, { ...pendingCheck(HEAD), changedPaths: ["CODEOWNERS"] }) } }],
   ])("refuses %s", (_case, overrides) => {
     expect(admits(mergeGate(), MERGE, mergeEvidence(overrides as never))).toBe(false);
   });
@@ -116,6 +119,33 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
     expect(admits(ciFailed, abandon, { ...gone, pr: 2 })).toBe(false);
     expect(admits(ciFailed, { ...abandon, decision: "rerun" }, gone)).toBe(false);
     expect(admits({ ...ciFailed, schema: undefined }, abandon, gone)).toBe(false);
+  });
+});
+
+describe("mechanicalAuthorityReason", () => {
+  it("reads a gate on a reviewer verdict, required checks or the merge tree alone as mechanical", () => {
+    expect(mechanicalAuthorityReason(MECHANICAL)).toBe(true);
+    expect(mechanicalAuthorityReason(authorityGateReason(HEAD, { verdict: { value: "FIX_FIRST", head: HEAD }, mergeTreeClean: false }))).toBe(true);
+  });
+
+  it.each([
+    ["CODEOWNERS", { changedPaths: ["CODEOWNERS"] }],
+    ["docs/CODEOWNERS", { changedPaths: ["docs/CODEOWNERS"] }],
+    [".gitmodules", { changedPaths: [".gitmodules"] }],
+    [".github/", { changedPaths: [".github/workflows/ci.yml"] }],
+    ["a non-canonical path", { changedPaths: ["src/./a.ts"] }],
+    ["a missing seat grant", { seatGrants: [] }],
+    ["a frozen repo", { repoFrozen: true }],
+    ["another dispatched reviewer", { dispatchedReviewer: { agentId: "rv-other", sessionId: "s" } }],
+  ])("refuses a gate that also names %s", (_case, overrides) => {
+    expect(mechanicalAuthorityReason(authorityGateReason(HEAD, { ...pendingCheck(HEAD), ...overrides }))).toBe(false);
+  });
+
+  it("refuses a tainted request, facts read closed, a bare authority reason and anything unrecognised", () => {
+    expect(mechanicalAuthorityReason(authorityGateReason(HEAD, {}, true))).toBe(false);
+    expect(mechanicalAuthorityReason(`${MECHANICAL}; read closed: mergeable_state`)).toBe(false);
+    expect(mechanicalAuthorityReason(MECHANICAL.slice(MECHANICAL.indexOf("MRG-AU gates")))).toBe(false);
+    expect(mechanicalAuthorityReason("the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: some-new-condition")).toBe(false);
   });
 });
 
