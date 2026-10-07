@@ -242,7 +242,7 @@ It is pure and opens nothing. The caller reads four sources and passes the recor
 
 | Input | From | Parser |
 |---|---|---|
-| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` reads the `Verdict:`, `PR:` and `Head:` lines; the caller adds the row's id, time, target seat and sender |
+| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` reads the block with session-read's gate parser (full 40-hex head, `owner/name#n` PR; null otherwise, which the caller counts in `unparsedVerdicts`); the caller adds the row's id, time, target seat and sender |
 | `pulls` | `gh api repos/<owner>/<repo>/pulls/<n>`, one per PR a verdict names | none; map `.state`, `.merged_at`, `.head.sha` |
 | `denials` | each seat's transcript JSONL | `parseDenials(lines, seat)`, which joins each refusal to the tool call it refused |
 | `journals` | each seat's dated journal file | `parseSeatJournal(text, seat, date, utcOffsetMin)` reads `HH:MM` lines with `impl <used>/<cap>` and `No dispatch: <reason>` |
