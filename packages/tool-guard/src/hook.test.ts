@@ -431,3 +431,76 @@ describe("nodeContext over a real temp directory", () => {
     expect(decisionOf(stdout)).toBe("deny");
   });
 });
+
+describe("handle over real script files behind dynamic wrapper words, case folding on", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
+  const PATHS = "/a /b /c /d /e /f /g /h ";
+  const MAIN = "git push origin HEAD:main";
+  /** Well inside Claude Code's 5 s hook timeout, past which the command runs unchecked. */
+  const WITHIN_MS = 2000;
+
+  /** Runs `command` from a checkout on feat/x that holds `files`, read through the real filesystem. */
+  async function inRepo(command: string, files: Record<string, string>) {
+    const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "tool-guard-home-")));
+    dirs.push(home);
+    const repo = path.join(home, "app");
+    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".git/HEAD"), "ref: refs/heads/feat/x\n");
+    for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(repo, name), text);
+    return handle(bash(command, { cwd: repo }), {}, port({ context: { ...nodeContext(home), foldCase: true } }));
+  }
+
+  it.each([
+    ["python3", "a.py", 64 * 1024],
+    ["node", "a.js", 32 * 1024],
+  ])("denies a push after `sudo $a %s` running a script of paths", async (interpreter, script, bytes) => {
+    const start = performance.now();
+
+    const result = await inRepo(`sudo $a ${interpreter} ${script}; ${MAIN}`, { [script]: fill(PATHS, bytes) });
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+  });
+
+  it("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", async () => {
+    const start = performance.now();
+
+    const result = await inRepo(`sudo $a b.sh; ${fill("cat x; ", 8000)}${MAIN}`, { "b.sh": fill("cat x\n", 8192) });
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+  });
+
+  it("passes a lone `$SUDO ./install.sh` of 12 KB, as main does", async () => {
+    const result = await inRepo("$SUDO ./install.sh", { "install.sh": fill("echo installing\n", 12_000) });
+
+    expect(result).toEqual({ stdout: "", log: [] });
+  });
+
+  it("refuses a large script behind a dynamic wrapper with the limit, its size and a command that passes", async () => {
+    const files = { "install.sh": fill("echo installing\n", 40_000) };
+
+    const refused = await inRepo("$SUDO ./install.sh", files);
+    const advised = await inRepo("sudo ./install.sh", files);
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/16 KiB.*install\.sh holds 40 KiB.*write the wrapper out/);
+    expect(advised).toEqual({ stdout: "", log: [] });
+  });
+
+  it("refuses scripts past the line's budget, names the script to split off, and each half then passes", async () => {
+    const files = { "a1.sh": fill("echo hi\n", 34 * 1024), "a2.sh": fill("echo hi\n", 34 * 1024) };
+
+    const refused = await inRepo("bash a1.sh; bash a2.sh", files);
+    const halves = [await inRepo("bash a1.sh", files), await inRepo("bash a2.sh", files)];
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/64 KiB.*reach 68 KiB at a2\.sh.*run a2\.sh in its own command/);
+    expect(halves).toEqual([{ stdout: "", log: [] }, { stdout: "", log: [] }]);
+  }, 30_000);
+});
