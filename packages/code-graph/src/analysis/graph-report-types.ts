@@ -82,7 +82,7 @@ export interface UntestedRiskRow {
   coverage: number;
   /** Hotspot score (churn × complexity × recency) for context. */
   hotspot: number;
-  /** hotspot × (1 − coverage/100): load-bearing, complex, churning, AND untested. */
+  /** hotspot × (1 − coverage/100): a load-bearing, complex, frequently changed file with little test coverage. */
   score: number;
 }
 
