@@ -418,16 +418,25 @@ describe("visual_paths", () => {
     expect(() => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}${field}`) }) })).toThrow(/visual_paths/);
   });
 
-  it.each(["./site/**", "/site/**"])("refuses %s, naming the seat and the glob, since no repo-relative path starts that way", (glob) => {
-    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**", "${glob}"]\n`) }) });
+  it.each([
+    ["./site/**", "has a . or .. segment"],
+    ["/site/**", "has an empty segment (a leading, doubled or trailing /)"],
+    ["site/../.github/**", "has a . or .. segment"],
+    ["**/./x", "has a . or .. segment"],
+    [" site/**", "has leading or trailing whitespace"],
+    ["\\site", "has a backslash"],
+    ["site//**", "has an empty segment (a leading, doubled or trailing /)"],
+    ["site/**/", "has an empty segment (a leading, doubled or trailing /)"],
+  ])("refuses %j, naming the seat, the glob and why, since it matches no repo-relative path", (glob, reason) => {
+    const load = () => loadSeatBook({ seatsDir: writeSeats({ "a.md": seat("design-seat", `${remote}visual_paths: ["packages/ui/**", ${JSON.stringify(glob)}]\n`) }) });
 
     expect(load).toThrow(SeatBookInvalid);
-    expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} must be repo-relative, with no leading ./ or /`);
+    expect(load).toThrow(`seat design-seat visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path`);
   });
 
   it("still reads repo-relative globs", () => {
-    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["site/**", "docs/**/*.png"]\n`) });
+    const lookup = lookupDesign({ "a.md": seat("design-seat", `${remote}visual_paths: ["site/**", "docs/**/*.png", ".storybook/**", "a..b/**"]\n`) });
 
-    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["site/**", "docs/**/*.png"] } });
+    expect(lookup).toMatchObject({ kind: "seat", seat: { visualPaths: ["site/**", "docs/**/*.png", ".storybook/**", "a..b/**"] } });
   });
 });

@@ -213,14 +213,26 @@ function checkRemotePaths(files: NamedSeatFile[]): void {
   }
 }
 
+/** Why a glob can match no changed path, which GitHub spells as plain `/`-joined segments; undefined when it can. */
+function unmatchableReason(glob: string): string | undefined {
+  if (glob.trim() !== glob) return "has leading or trailing whitespace";
+  if (glob.includes("\\")) return "has a backslash";
+  const segments = glob.split("/");
+  if (segments.includes("")) return "has an empty segment (a leading, doubled or trailing /)";
+  if (segments.some((segment) => segment === "." || segment === "..")) return "has a . or .. segment";
+  return undefined;
+}
+
 /**
- * Changed files are repo-relative, so a glob anchored at `./` or `/` matches none of them and its visual paths would never
- * gate. It is refused rather than normalised, so the seat owner sees what they wrote did nothing.
+ * Changed files are repo-relative paths in one spelling, so a glob outside it matches none of them and its visual paths
+ * would never gate. It is refused rather than normalised, so the seat owner sees what they wrote did nothing.
  */
 function checkVisualPathsRelative(files: NamedSeatFile[]): void {
   for (const { file, data } of files) {
-    const anchored = data.visual_paths?.find((glob) => glob.startsWith("./") || glob.startsWith("/"));
-    if (anchored !== undefined) throw new SeatBookInvalid(`seat ${data.name} visual_paths glob ${JSON.stringify(anchored)} must be repo-relative, with no leading ./ or / (${file})`);
+    for (const glob of data.visual_paths ?? []) {
+      const reason = unmatchableReason(glob);
+      if (reason !== undefined) throw new SeatBookInvalid(`seat ${data.name} visual_paths glob ${JSON.stringify(glob)} ${reason}, so it matches no repo-relative path (${file})`);
+    }
   }
 }
 
