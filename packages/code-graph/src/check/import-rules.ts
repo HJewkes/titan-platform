@@ -47,15 +47,23 @@ export function runLayeredDepsRule(rule: LayeredDepsRule, ctx: RuleContext): Che
   return out;
 }
 
+/** Glob entries match as everywhere else; an entry without `*` names one exact path. */
+function exceptMatcher(except: readonly string[] | undefined): (id: string) => boolean {
+  const entries = except ?? [];
+  const exact = new Set(entries.filter((e) => !e.includes("*")));
+  const globs = compilePatterns(entries.filter((e) => e.includes("*")));
+  return (id) => exact.has(id) || matchesAny(id, globs);
+}
+
 export function runForbidImportRule(rule: ForbidImportRule, ctx: RuleContext): CheckViolation[] {
   const fromRx = compilePatterns([rule.from]);
   const toRx = compilePatterns([rule.to]);
-  const exceptRx = compilePatterns(rule.except);
+  const isExcepted = exceptMatcher(rule.except);
   const out: CheckViolation[] = [];
   for (const edge of ctx.edges) {
     if (!isImportEdge(edge)) continue;
     if (!matchesAny(edge.srcId, fromRx)) continue;
-    if (!matchesAny(edge.dstId, toRx) || matchesAny(edge.dstId, exceptRx)) continue;
+    if (!matchesAny(edge.dstId, toRx) || isExcepted(edge.dstId)) continue;
     out.push({
       ruleId: rule.id,
       severity: severityOf(rule),
