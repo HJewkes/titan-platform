@@ -158,4 +158,32 @@ describe("component prop metrics (C-97 S3)", () => {
 
     expect(propsOf(metrics, "A").unread).toBe(0);
   });
+
+  it.each([
+    ["a function parameter", "const f = (label: string) => label;"],
+    ["a const in a block", "{ const label = 1; use(label); }"],
+    ["a switch case declaration", "switch (x) { case 1: const label = 2; use(label); }"],
+    ["a for-of variable", "for (const label of xs) use(label);"],
+    ["a for-in variable", "for (const label in xs) use(label);"],
+    ["a classic for variable", "for (let label = 0; label < 2; label++) use(label);"],
+    ["a catch parameter", "try { go(); } catch (label) { use(label); }"],
+    ["an inner function name", "function label() {} use(label);"],
+    ["an inner class name", "class label {} use(label);"],
+    ["a named function expression", "const g = function label() { return label; };"],
+  ])("does not count %s that shadows a prop as a read of it", async (_kind, inner) => {
+    const metrics = await metricsOf(
+      "export function Item({ label, x }: { label: string; x: number }) {\n" +
+        `  ${inner}\n  return <i>{x}</i>;\n}\n`,
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(1);
+  });
+
+  it("still counts a for-of that assigns to the prop binding without declaring one as no shadow", async () => {
+    const metrics = await metricsOf(
+      "export function Item({ label }: { label: string }) {\n  for (label of []) use(label);\n  return <i />;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(0);
+  });
 });

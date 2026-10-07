@@ -36,7 +36,8 @@ export function collectTypeDecls(root: Node): TypeDecls {
  * Prop counts of the component function `fn`, whose props are its first parameter. The
  * props type resolves syntactically within the file only, so these stay a pure function of
  * one parse: null when the annotation is missing or names a type this file does not
- * declare; `FC<P>` and `Readonly<P>` are never unwrapped, so they stay absent. Inherited types this file does not declare (`HTMLAttributes<…>`) add nothing.
+ * declare. `FC<P>` and `Readonly<P>` are never unwrapped, so they stay absent. Inherited
+ * types this file does not declare (`HTMLAttributes<…>`) add nothing.
  */
 export function propStatsOf(fn: Node, types: TypeDecls): PropStats | null {
   if (fn.type === "method_definition") return null;
@@ -237,28 +238,57 @@ function countReferences(fn: Node, declIds: ReadonlySet<number>): Map<string, nu
 }
 
 const SCOPE_FUNCTIONS = new Set(["arrow_function", "function_expression", "function_declaration", "method_definition"]);
+const BINDING_LEAVES = new Set(["identifier", "type_identifier", "shorthand_property_identifier_pattern"]);
+const DECLARATIONS =new Set(["lexical_declaration", "variable_declaration"]);
+const NAMED_DECLARATIONS = new Set(["function_declaration", "generator_function_declaration", "class_declaration"]);
 
-/** `shadowed` plus the names a nested function's parameters or a block's declarations bind. */
+/** `shadowed` plus every name a scope-creating `node` binds for its own subtree. */
 function withScopeBindings(node: Node, shadowed: ReadonlySet<string>): ReadonlySet<string> {
+  const names = scopeBindings(node);
+  return names.length === 0 ? shadowed : new Set([...shadowed, ...names]);
+}
+
+function scopeBindings(node: Node): string[] {
   const names: string[] = [];
+  const bind = (target: Node | null): void => {
+    if (target) patternNames(target, names);
+  };
   if (SCOPE_FUNCTIONS.has(node.type)) {
-    const params = node.childForFieldName("parameters") ?? node.childForFieldName("parameter");
-    if (params) patternNames(params, names);
+    bind(node.childForFieldName("parameters") ?? node.childForFieldName("parameter"));
+    if (node.type === "function_expression") bind(node.childForFieldName("name"));
   } else if (node.type === "statement_block") {
-    for (const stmt of node.namedChildren) {
-      if (stmt?.type !== "lexical_declaration" && stmt?.type !== "variable_declaration") continue;
+    declaredIn(node.namedChildren, names);
+  } else if (node.type === "switch_body") {
+    declaredIn(node.namedChildren.flatMap((clause) => clause?.namedChildren ?? []), names);
+  } else if (node.type === "for_statement") {
+    declaredIn([node.childForFieldName("initializer")], names);
+  } else if (node.type === "for_in_statement") {
+    if (node.childForFieldName("kind")) bind(node.childForFieldName("left"));
+  } else if (node.type === "catch_clause") {
+    bind(node.childForFieldName("parameter"));
+  }
+  return names;
+}
+
+/** Names bound by the declarations and named function/class declarations among `statements`. */
+function declaredIn(statements: readonly (Node | null)[], out: string[]): void {
+  for (const stmt of statements) {
+    if (!stmt) continue;
+    if (NAMED_DECLARATIONS.has(stmt.type)) {
+      const name = stmt.childForFieldName("name");
+      if (name) patternNames(name, out);
+    } else if (DECLARATIONS.has(stmt.type)) {
       for (const decl of stmt.namedChildren) {
         const target = decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null;
-        if (target) patternNames(target, names);
+        if (target) patternNames(target, out);
       }
     }
   }
-  return names.length === 0 ? shadowed : new Set([...shadowed, ...names]);
 }
 
 /** Identifiers a binding pattern or parameter list introduces; skips keys and default values. */
 function patternNames(node: Node, out: string[]): void {
-  if (node.type === "identifier" || node.type === "shorthand_property_identifier_pattern") {
+  if (BINDING_LEAVES.has(node.type)) {
     out.push(node.text);
     return;
   }
