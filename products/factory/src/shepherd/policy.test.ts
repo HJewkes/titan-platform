@@ -15,7 +15,9 @@ afterEach(() => vi.mocked(evaluate).mockReset());
 
 const GATED: Seat = { name: "gated-seat", remotes: ["acme/widgets"], paths: {}, grants: ["some-other-grant"] };
 const TRUSTED: Seat = { name: "trusted-seat", remotes: ["acme/gizmos"], paths: {}, grants: ["merge-on-green-approve"] };
-const BOOK: SeatBook = { seats: [GATED, TRUSTED], denied: ["parked-app", "acme/retired"] };
+const VISUAL_GLOBS = ["packages/ui/src/components/**", "**/*.stories.tsx"];
+const DESIGN: Seat = { name: "design-seat", remotes: ["acme/design"], paths: {}, grants: [], visualPaths: VISUAL_GLOBS };
+const BOOK: SeatBook = { seats: [GATED, TRUSTED, DESIGN], denied: ["parked-app", "acme/retired"] };
 
 function effective(repo: string, requested?: unknown) {
   return resolveEffectivePolicy(lookupSeat(BOOK, repo), requested);
@@ -185,5 +187,79 @@ describe("shepherdGatePolicy under merge:auto", () => {
     const decision = options.policy.decide("merge", { headSha: HEAD });
 
     expect(options.allowEvidence!({ repo: "acme/gizmos", pr: 3, headSha: HEAD, decision })).toEqual(evidence.record);
+  });
+});
+
+describe("a seat with visual paths", () => {
+  const NEXT_HEAD = "f".repeat(40);
+  const decideAt = (head: string, changedPaths: string[], requested?: unknown) =>
+    shepherdGatePolicy(effective("acme/design", requested), reviewed(evidenceAt(head, changedPaths))).decide("merge", { headSha: head });
+
+  it("reaches merge:auto without the merge grant and carries its visual paths", () => {
+    expect(effective("acme/design")).toMatchObject({ merge: "auto", visualPaths: VISUAL_GLOBS });
+  });
+
+  it("merges a non-visual PR on MERGE at the head and green checks, with no owner gate", () => {
+    expect(decideAt(HEAD, ["scripts/build-tokens.ts", "package.json"])).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
+  it("gates a PR touching a component path and names the matched paths, before authority is asked", () => {
+    const decision = decideAt(HEAD, ["scripts/a.ts", "packages/ui/src/components/Button.tsx", "src/Card.stories.tsx"]);
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(decision.reason).toContain("packages/ui/src/components/Button.tsx, src/Card.stories.tsx");
+    expect(decision.reason).not.toContain("scripts/a.ts");
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("gates the head a later push added a visual file at, on the policy resolved at registration", () => {
+    const reviews = new Map([HEAD, NEXT_HEAD].map((head, i) => [head, evidenceAt(head, i === 0 ? ["scripts/a.ts"] : ["scripts/a.ts", "packages/ui/src/components/Modal.tsx"])]));
+    const options = shepherdLandOptions(() => effective("acme/design"), (head) => ({ kind: "MERGE", headSha: head, evidence: reviews.get(head) }));
+
+    expect(options.policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+    expect(options.policy.decide("merge", { headSha: NEXT_HEAD })).toMatchObject({ outcome: "gate", reason: expect.stringContaining("packages/ui/src/components/Modal.tsx") });
+  });
+
+  it("gates a head whose changed files could not be read, and says it counts as visual", () => {
+    const evidence = { ...evidenceAt(HEAD, []), changedFilesUnread: "the changed files of acme/design#3 are unknown: the list is truncated" };
+
+    const decision = shepherdGatePolicy(effective("acme/design"), reviewed(evidence)).decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" }, reason: expect.stringContaining("the list is truncated, so the PR counts as visual") });
+  });
+
+  it("gates an empty changed-file list as unread", () => {
+    expect(decideAt(HEAD, [])).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
+  });
+
+  it("still gates a non-visual PR whose registration asked for owner-gate", () => {
+    expect(decideAt(HEAD, ["scripts/a.ts"], { merge: "owner-gate" }).outcome).toBe("gate");
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("leaves a seat without visual paths at today's ceiling, gating even a non-visual PR", () => {
+    expect(effective("acme/widgets")).not.toHaveProperty("visualPaths");
+    expect(shepherdGatePolicy(effective("acme/widgets"), reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("gates every path when the policy's globs cannot compile", () => {
+    const policy: EffectivePolicy = { ...effective("acme/design"), visualPaths: ["{a,b}".repeat(40)] };
+
+    expect(shepherdGatePolicy(policy, reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+  });
+
+  it("keeps the union of visual paths when a stricter policy narrows another", () => {
+    const base: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "t" };
+
+    expect(stricterPolicy({ ...base, visualPaths: ["a/**"] }, { ...base, visualPaths: ["b/**", "a/**"] }).visualPaths).toEqual(["a/**", "b/**"]);
+    expect(stricterPolicy(base, { ...base, visualPaths: ["b/**"] }).visualPaths).toEqual(["b/**"]);
+    expect(stricterPolicy(base, base)).not.toHaveProperty("visualPaths");
+  });
+
+  it("round-trips visual paths through the stored policy schema", () => {
+    const policy = effective("acme/design");
+
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
   });
 });

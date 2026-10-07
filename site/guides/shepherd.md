@@ -316,7 +316,9 @@ Every registration resolves a policy before anything starts
 | `auto` | a merge may go through without the owner when the authority row holds; otherwise it gates |
 
 The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
-`grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. `--policy`
+`grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
+lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
+(see [Visual paths](#visual-paths)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
 `rebase`; default `squash`), `reviewer`, `priority` and `fixer`. An unknown key is refused.
@@ -336,11 +338,16 @@ deny_repos:
   - ~/projects/dotfiles
 grants_extra:
   - merge-on-green-approve
+visual_paths:
+  - packages/ui/src/components/**
+  - "**/*.stories.tsx"
 ---
 ```
 
 - **`repos`** lists the remotes the seat owns. A remote that several seats list gets only
   the grants they all share.
+- **`visual_paths`** lists repo-relative globs (`**`, `*`, `?`, `{a,b}`) for files the owner
+  reviews by eye. An empty list or a glob that cannot compile makes the seat file invalid.
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
@@ -349,6 +356,25 @@ grants_extra:
 - A deny wins over any seat. The refusal is
   `registration refused: owner/repo is on a seat deny list or a charter hard stop`, and no
   run starts.
+
+### Visual paths {#visual-paths}
+
+A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
+head Shepherd decides, it matches the changed files the merge evidence read at that head
+(both sides of a rename) against the globs:
+
+- no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
+  and green required checks;
+- a file matches: the merge gates on `visual-path`, and the reason lists the files;
+- the file list failed to read, was truncated or came back empty: the merge gates on
+  `files-unread`, and the reason says the pull request counts as visual.
+
+A push after registration is judged at its own head, so a later commit that adds a visual
+file gates. A remote that several seats list gets the union of their `visual_paths`, so a
+file any of them calls visual gates. If one of those seats has neither `visual_paths` nor
+the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
+`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate"}'` still gates
+every merge. A seat without `visual_paths` behaves as before.
 
 The seat book is read again on every `register`, so a change applies without a restart. An
 invalid seat file or charter fails every registration until it is fixed. Path spelling
@@ -506,12 +532,13 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 - GitHub's test merge of this head is clean;
 - the repo is not frozen;
 - no protected path changed;
-- the seat grants `merge-on-green-approve`.
+- the seat grants `merge-on-green-approve`. Shepherd passes this grant for every run whose
+  ceiling is `auto`, including one that a seat's `visual_paths` raised.
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
 another head, or any changed path under `.github/` sends the merge to the owner. A file list
-that GitHub truncated counts as no list. Every fact is read from GitHub or from the run's
+that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
 
