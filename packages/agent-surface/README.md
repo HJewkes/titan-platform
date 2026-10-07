@@ -31,9 +31,9 @@ count of the anchor's tab, on its handle. `iterm-window` ignores all of them.
 `tmux-window` is for a host with no iTerm2, such as a Linux factory server. It runs
 `tmux new-window -d -t =fac: -n <title> '<launcher line>'` and records the window id (`@N`)
 as `paneRef`; a missing session is started with `new-session`, with a notice. `tmuxSession`
-overrides `fac` and `tmuxSocket` adds `-L <name>`. The window closes when the agent exits,
+overrides `fac` (a name with `:` or `.` is refused, as tmux would rename it) and `tmuxSocket` adds `-L <name>`. The window closes when the agent exits,
 so the host infers that exit with `tmuxWindowPresent`. `close()` runs `kill-window` and then
-re-lists the server's windows before it reports `closed: true`. Resume is an ordinary launch
+re-lists the server's windows before it reports `closed: true`. A failed `kill-window` also counts as closed when that re-list shows the window gone (or no server running). Resume is an ordinary launch
 into a new window. The line runs through the tmux server's `default-shell`, which must be a
 POSIX shell, and tmux's own `remain-on-exit` must stay off.
 

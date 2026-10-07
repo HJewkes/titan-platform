@@ -1,5 +1,12 @@
 # @titan-design/decider
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [6a2c0f8]
+  - @titan-design/session-read@0.10.0
+
 ## 0.5.0
 
 ### Minor Changes

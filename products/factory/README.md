@@ -28,10 +28,10 @@ titan-factory serve [--port <n>]                              # own the database
 titan-factory land owner/repo#N [--task <t>]                  # start land-pr on serve, or drive it here when none answers
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
-titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist, load it, wait for /health
+titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist (systemd unit on Linux), load it, wait for /health
 titan-factory service status|check|restart|uninstall               # macOS only, like install
 titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
-titan-factory service plist                                   # print the LaunchAgent plist for titan-factory serve
+titan-factory service plist                                   # print the LaunchAgent plist (systemd unit on Linux) for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
@@ -162,7 +162,7 @@ relink, and it needs neither sudo nor `pnpm setup`. A link that already points a
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
 script says so when the directory is not on `PATH`.
 
-`service install [--port <n>] [--node <path>] [--mcp]` does these in order:
+`service install [--port <n>] [--node <path>] [--mcp] [--dry-run]` does these in order on macOS:
 
 1. Boots out `dev.hjewkes.titan-factory` when launchd already holds it, and waits until the
    label is gone.
@@ -194,10 +194,37 @@ checkout that should serve, not from a worktree that will be removed.
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
-| `service plist [--port <n>] [--node <path>]` | Prints the plist and touches nothing | always |
+| `service plist [--port <n>] [--node <path>]` | Prints the plist, or the unit on Linux, and touches nothing | always |
 
-Every verb except `plist` needs launchd and fails with one line on another platform. A server
-installed with `--port` needs the same `--port` on `status` and `restart`.
+Every verb except `plist` needs launchd or systemd and fails with one line on another platform;
+`check` needs launchd. A server installed with `--port` needs the same `--port` on `status` and
+`restart`.
+
+### On Linux
+
+On Linux the same verbs manage the systemd --user unit `titan-factory.service` (the launchd
+label without its `dev.hjewkes.` prefix, the rule `active-work.service` follows). The unit lives
+in `$XDG_CONFIG_HOME/systemd/user/`, else `~/.config/systemd/user/`, and mirrors the plist:
+
+| Plist | Unit |
+| --- | --- |
+| `ProgramArguments` | `ExecStart=`, the same argv, quoted where an argument holds a space |
+| `KeepAlive` | `Type=simple`, `Restart=always`, `RestartSec=5` |
+| `RunAtLoad` | `WantedBy=default.target`, enabled by install |
+| `EnvironmentVariables` `PATH` | `Environment=PATH=...`, the same `servicePath` value, since a user manager starts jobs with its own minimal `PATH` |
+| `StandardOutPath`, `StandardErrorPath` | `StandardOutput=append:`, `StandardError=append:` on the same log files |
+| `ProcessType` `Interactive` | nothing: systemd does not throttle a user unit the way macOS throttles a Background job |
+
+`service install` writes the unit, runs `systemctl --user daemon-reload` and
+`systemctl --user enable --now titan-factory.service`, adds `systemctl --user restart` when the
+unit was already running, then does the same `/health` wait (the answer must come from the
+unit's `MainPID`). `status` reads `systemctl --user show` (`ActiveState`, `SubState`,
+`MainPID`). `uninstall` runs `disable --now`, removes the unit and runs `daemon-reload`.
+`restart` and `deploy` restart with `systemctl --user restart`. `service plist` prints the unit.
+`service install --dry-run` prints the unit or plist and the `systemctl` or `launchctl` calls
+install would make, and changes nothing. For the unit to run without a login session, enable
+lingering once: `loginctl enable-linger "$USER"`. `service check` reads launchd's run counters
+and still needs macOS.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
@@ -284,8 +311,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/definition.ts` | `defineWorkflow`: a workflow declares each step id with one kind (`dispatch`, `seed`, `assisted`). Registration rejects an id with two kinds, and a guarded context fails a run whose code calls an undeclared id or kind. This is the guard for TP-255, where `seed(x)` and `assisted(x)` share a memo key |
 | `src/evidence.ts` | **The F3 seam** (see below) |
 | `src/gate-policy.ts` | **The F5 seam** (see below) |
-| `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist renderer, and the cached `gh api rate_limit` probe behind health's `github` field |
-| `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `claude`, `/health`, the filesystem, the clock). Tests pass fake ports, so none reaches launchd |
+| `src/service.ts`, `src/github-health.ts` | The LaunchAgent plist and systemd unit renderers, and the cached `gh api rate_limit` probe behind health's `github` field |
+| `src/service-control.ts`, `src/service-ports.ts` | `service install`, `uninstall`, `status` and `restart` over a `ServicePorts` value, and the real ports (`launchctl`, `systemctl`, `claude`, `/health`, the filesystem, the clock). Tests pass fake ports, so none reaches launchd |
 | `src/restart-drain.ts` | The busy runs on `/health`, and the drain `service restart` waits on before it kickstarts |
 | `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
