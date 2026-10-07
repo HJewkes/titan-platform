@@ -100,7 +100,7 @@ match wins, in this order:
 2. A configured glob from `.codewatch/roles.json` (below).
 3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
    so a story under `fixtures/` is still a story.
-4. `fixture`, `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+4. `fixture` (a `fixtures/` path or a `*.fixture.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
 
 `UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
 `config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
