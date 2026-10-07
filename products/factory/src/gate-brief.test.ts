@@ -17,7 +17,7 @@ const decisions = {
   frozen: frozenDecision({ repo: "octo/demo", mergeSha: HEAD, situation: "main is red" }),
 };
 
-const enumOf = (schema: z.ZodType): unknown => (z.toJSONSchema(schema) as { properties: { decision: { enum: unknown } } }).properties.decision.enum;
+const enumOf = (schema: z.ZodType): unknown => (z.toJSONSchema(schema) as unknown as { properties: { decision: { enum: unknown } } }).properties.decision.enum;
 
 describe("a gate's question options and its answer schema's decision enum", () => {
   it.each(Object.entries(decisions))("%s: come from one list", (_name, { schema, brief }) => {

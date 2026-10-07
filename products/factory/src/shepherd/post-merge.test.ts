@@ -521,7 +521,7 @@ describe("post-merge gate briefs", () => {
 
     await gateOpened(w.host, gateId(runId, "main-red"));
 
-    const sha = w.fake.pr(1).mergeSha;
+    const sha = w.fake.pr(1).mergeSha!;
     expectBrief(w.host.gates.get(gateId(runId, "main-red")), sha, MAIN_RUNS(sha));
   });
 
@@ -531,7 +531,7 @@ describe("post-merge gate briefs", () => {
 
     await gateOpened(w.host, gateId(runId, "after-stages"));
 
-    const sha = w.fake.pr(1).mergeSha;
+    const sha = w.fake.pr(1).mergeSha!;
     const gate = w.host.gates.get(gateId(runId, "after-stages"));
     expectBrief(gate, sha, MAIN_RUNS(sha));
     expect(gate?.summary).toContain("deploy, release");
@@ -543,7 +543,7 @@ describe("post-merge gate briefs", () => {
 
     await gateOpened(w.host, gateId(runId, "main-frozen"));
 
-    const sha = w.fake.pr(1).mergeSha;
+    const sha = w.fake.pr(1).mergeSha!;
     const gate = w.host.gates.get(gateId(runId, "main-frozen"));
     expectBrief(gate, sha, MAIN_RUNS(sha));
     expect(gate?.questions?.[0]?.options.find((option) => option.recommended)?.id).toBe("stay-frozen");
@@ -556,7 +556,7 @@ describe("post-merge gate briefs", () => {
 
     await gateOpened(w.host, gateId(runId, "main-red-again"));
 
-    const sha = w.fake.pr(1).mergeSha;
+    const sha = w.fake.pr(1).mergeSha!;
     expectBrief(w.host.gates.get(gateId(runId, "main-red-again")), sha, MAIN_RUNS(sha));
   });
 });
