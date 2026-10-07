@@ -26,8 +26,16 @@ describe("parseVerdict", () => {
     expect(parseVerdict(body)).toEqual({ verdict: "MERGE", repo: "acme/widgets", pr: 12, head: HEAD_A });
   });
 
-  it("accepts a PR URL and a short head", () => {
-    expect(parseVerdict("Verdict: FIX_FIRST\nPR: https://github.com/acme/widgets/pull/7\nHead: abc1234")).toMatchObject({ verdict: "FIX_FIRST", pr: 7, head: "abc1234" });
+  it("refuses a short head, as the merge gate does", () => {
+    expect(parseVerdict("Verdict: MERGE\nPR: acme/widgets#7\nHead: abc1234")).toBeNull();
+  });
+
+  it("refuses the PR URL form, which the gate parser does not read", () => {
+    expect(parseVerdict(`Verdict: FIX_FIRST\nPR: https://github.com/acme/widgets/pull/7\nHead: ${HEAD_A}`)).toBeNull();
+  });
+
+  it("still reads a WAIT verdict so it is never taken for a MERGE", () => {
+    expect(parseVerdict(`Verdict: WAIT\nPR: acme/widgets#7\nHead: ${HEAD_A}`)).toMatchObject({ verdict: "WAIT", pr: 7 });
   });
 
   it("returns null when the head line is missing", () => {
@@ -189,6 +197,16 @@ describe("blockedFlowReport", () => {
     expect(blockedFlowSchema.safeParse(report).success).toBe(true);
     expect([all.before!.medianMin, all.after!.medianMin, all.after!.censored]).toEqual([90, 1, 1]);
     expect(report.openHoldingMerge.rows).toMatchObject([{ repo: "acme/g", pr: 3, ageMin: 90 }]);
+  });
+
+  it("counts a MERGE with a 7-char head as refused and never as holding MERGE", () => {
+    const short = verdict("acme/g", 3, "2026-09-10T10:30:00Z", HEAD_A.slice(0, 7));
+    const report = blockedFlowReport({ verdicts: [short], unparsedVerdicts: 2, pulls: [pull("acme/g", 3, null)], denials: [], journals: [], asOf: AS_OF });
+
+    expect(report.openHoldingMerge.rows).toEqual([]);
+    expect(report.verdictToMerge.rows.find((r) => r.repo === ALL_REPOS)!.prs).toBe(0);
+    expect(report.refusedVerdicts.count).toBe(3);
+    expect(blockedFlowSchema.safeParse(report).success).toBe(true);
   });
 
   it("counts a refusal repeated by a forked transcript once", () => {
