@@ -77,6 +77,7 @@ export interface SymbolLine {
   signature?: string;
   cognitive?: number;
   cyclomatic?: number;
+  loc?: number;
   utilization: number;
   /** Distinct files that reference this symbol (inbound `references`). */
   consumers: number;
@@ -95,6 +96,7 @@ export interface SymbolDossier {
   /** G2 slot — leading docstring / intent. Null today. */
   purpose: string | null;
   complexity: { cognitive?: number; cyclomatic?: number };
+  loc?: number;
   utilization: number;
   consumers: Consumers;
   blastRadius: number;
@@ -176,6 +178,7 @@ function buildSymbolDossier(input: ContextBuildInput): SymbolDossier {
     signature: attrString(input.target.attrs?.signature),
     purpose: attrString(input.target.attrs?.purpose),
     complexity: { cognitive: m?.cognitiveMax, cyclomatic: m?.cyclomaticMax },
+    loc: m?.loc,
     utilization: m?.utilization ?? 0,
     consumers: splitConsumers(consumers, input.roleByFile),
     blastRadius: (m?.utilization ?? 0) * complexity * churn,
@@ -210,6 +213,7 @@ function fileSymbols(
       signature: attrString(n.attrs?.signature) ?? undefined,
       cognitive: m?.cognitiveMax,
       cyclomatic: m?.cyclomaticMax,
+      loc: m?.loc,
       utilization: m?.utilization ?? 0,
       consumers: (consumers.get(n.id) ?? []).length,
       rank: exported ? (m?.utilization ?? 0) : -(m?.cognitiveMax ?? 0),

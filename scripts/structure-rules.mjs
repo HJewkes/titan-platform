@@ -5,13 +5,13 @@ import { basename, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
+const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
+
 const WORKSPACE_GROUPS = ["packages", "products", "apps"];
 const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
-const SCAFFOLD_SCRIPTS = ["build", "typecheck", "lint"];
+const SCAFFOLD_SCRIPTS = readJson(new URL("../templates/package/package.json", import.meta.url)).scripts;
 const SCAFFOLD_FILES = ["README.md", "CAPABILITY.md", "tsconfig.json", "tsup.config.ts", "src/index.ts"];
 const PNPM_PIN = "pnpm@9.15.0";
-
-const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
 function subdirs(dir) {
   if (!existsSync(dir)) return [];
@@ -71,12 +71,15 @@ export function checkScaffold(root) {
   return workspaceDirs(root, ["packages"]).flatMap((dir) => {
     const scripts = readJson(join(dir, "package.json")).scripts ?? {};
     const missing = [
-      ...SCAFFOLD_SCRIPTS.filter((s) => !scripts[s]).map((s) => `script ${s}`),
+      ...Object.keys(SCAFFOLD_SCRIPTS).filter((s) => !scripts[s]).map((s) => `script ${s}`),
       ...SCAFFOLD_FILES.filter((f) => !existsSync(join(dir, f))),
-    ];
-    return missing.map(
-      (entry) =>
-        `\`${basename(dir)}\` lacks \`${entry}\` from the scaffold. Re-stamp with \`pnpm new:package\`, or add the missing entry.`,
+    ].map((entry) => `lacks \`${entry}\` from the scaffold`);
+    const drifted = Object.entries(SCAFFOLD_SCRIPTS)
+      .filter(([name, command]) => scripts[name] && scripts[name] !== command)
+      .map(([name, command]) => `has \`script ${name}\` that differs from the scaffold (expected \`${command}\`)`);
+    return [...missing, ...drifted].map(
+      (problem) =>
+        `\`${basename(dir)}\` ${problem}. Re-stamp with \`pnpm new:package\`, or fix the entry.`,
     );
   });
 }
@@ -104,7 +107,7 @@ export function checkZodIsPeer(root) {
     );
 }
 
-const stripYamlComment = (line) => line.replace(/(^|\s)#.*$/, "");
+const isYamlComment = (line) => line.trimStart().startsWith("#");
 
 /** R49: no workflow names an npm token; publishing uses the trusted publisher. */
 export function checkNoNpmToken(root) {
@@ -115,7 +118,7 @@ export function checkNoNpmToken(root) {
     .filter((file) =>
       readFileSync(join(dir, file), "utf8")
         .split("\n")
-        .some((line) => /\b(NPM_TOKEN|NODE_AUTH_TOKEN)\b/.test(stripYamlComment(line))),
+        .some((line) => !isYamlComment(line) && /\b(NPM_TOKEN|NODE_AUTH_TOKEN)\b/.test(line)),
     )
     .map((file) => `\`${file}\` names an npm token. Publishing uses the trusted publisher. Remove the secret.`);
 }

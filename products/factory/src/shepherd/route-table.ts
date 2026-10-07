@@ -59,6 +59,7 @@ export const MAX_REPAIRS = 10;
 
 /** The only reasons Shepherd opens approve-merge; the gate's prompt names one. */
 export const ESCALATIONS = {
+  /** The fixer already had the conflict files and its head still conflicts, so a second wake would likely repeat it; by design (TP-1753). */
   conflict: "a merge conflict survived one fixer attempt",
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,

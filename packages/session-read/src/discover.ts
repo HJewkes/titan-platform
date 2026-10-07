@@ -2,6 +2,7 @@ import { promises as fs, readdirSync, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isMissing } from './absent.js';
+import { expandHome } from './expand-home.js';
 
 export interface DiscoveredTranscript {
   /** The project directory name Claude Code derives from the session's cwd. */
@@ -59,7 +60,7 @@ function toDisplayPath(absolutePath: string): string {
  * `transcripts.path` and need to touch the file it names.
  */
 export function toAbsolutePath(displayPath: string): string {
-  return displayPath.startsWith('~/') ? path.join(os.homedir(), displayPath.slice(2)) : displayPath;
+  return expandHome(displayPath);
 }
 
 /**

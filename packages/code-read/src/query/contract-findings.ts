@@ -9,6 +9,8 @@ export const EXCERPT_LINE_CAP = 80;
 
 export const FindingStatus = z.enum(["new", "carryover", "resolved", "worsened", "improved"]);
 
+export const FindingSort = z.enum(["severity", "excess", "value", "path", "rule"]);
+
 export const BaselineFields = {
   baselineSnapshotId: z.number().int().optional(),
   comparable: z.boolean().optional(),
@@ -47,7 +49,7 @@ const findingsListArgs = z.object({
   provenance: z.array(ProvenanceKind).default([]),
   kind: z.array(z.string()).default([]),
   status: z.array(FindingStatus).default([]),
-  sort: z.enum(["severity", "excess", "value", "path", "rule"]).default("severity"),
+  sort: FindingSort.default("severity"),
   order: z.enum(["asc", "desc"]).default("desc"),
   offset: z.number().int().min(0).default(0),
   limit: z.number().int().min(0).max(FINDINGS_PAGE_MAX).default(20),

@@ -81,6 +81,19 @@ export interface NoInternalOnlyBarrelsRule {
   exclude?: string[];
 }
 
+/** One violation per strongly connected component of the file import graph, naming every member file. */
+export interface NoImportCyclesRule {
+  type: "no-import-cycles";
+  id: string;
+  severity?: Severity;
+  /** Globs or substrings; a matching file leaves the graph, so a cycle through it is not reported. */
+  exclude?: string[];
+  /** A file with one of these roles leaves the graph. */
+  excludeRoles?: NodeRole[];
+  /** Count `import type` edges too; defaults to false because type-only imports are erased at runtime. */
+  includeTypeOnly?: boolean;
+}
+
 export type CheckRule =
   | MetricMaxRule
   | MetricMinRule
@@ -88,7 +101,8 @@ export type CheckRule =
   | MetricOutlierRule
   | ForbidImportRule
   | LayeredDepsRule
-  | NoInternalOnlyBarrelsRule;
+  | NoInternalOnlyBarrelsRule
+  | NoImportCyclesRule;
 
 export interface CheckRulesFile {
   rules: CheckRule[];
@@ -103,6 +117,8 @@ export interface CheckViolation {
   value?: number;
   threshold?: number;
   destinationId?: string;
+  /** Sorted member files of a cycle; part of the violation's identity, so a changed cycle keys differently. */
+  members?: string[];
   isCarryover?: boolean;
   /** Repo-relative file the violation sits in; a symbol's parent file. */
   path?: string;

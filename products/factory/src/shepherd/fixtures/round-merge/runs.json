@@ -1,0 +1,132 @@
+[
+  {
+    "id": "run-101",
+    "workflowName": "shepherd-pr",
+    "params": {
+      "repo": "example-org/example-repo",
+      "pr": "101"
+    },
+    "status": "waiting",
+    "currentStep": "approve-merge",
+    "stepResults": {
+      "merge-policy:0": {
+        "stepId": "merge-policy:0",
+        "iteration": 0,
+        "agentId": null,
+        "signal": null,
+        "completedAt": "2026-10-06T10:00:00.000Z",
+        "output": "{\"result\": {\"outcome\": \"gate\", \"headSha\": \"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\", \"rule\": {\"table\": \"shepherd-seat\", \"rowId\": \"implementer\"}}}"
+      }
+    },
+    "activeSteps": {},
+    "revision": 3,
+    "ownerGeneration": 1,
+    "startedAt": "2026-10-06T09:00:00.000Z",
+    "completedAt": null,
+    "error": null
+  },
+  {
+    "id": "run-102",
+    "workflowName": "shepherd-pr",
+    "params": {
+      "repo": "example-org/example-repo",
+      "pr": "102"
+    },
+    "status": "waiting",
+    "currentStep": "approve-merge",
+    "stepResults": {
+      "merge-policy:0": {
+        "stepId": "merge-policy:0",
+        "iteration": 0,
+        "agentId": null,
+        "signal": null,
+        "completedAt": "2026-10-06T10:00:00.000Z",
+        "output": "{\"result\": {\"outcome\": \"gate\", \"headSha\": \"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\", \"rule\": {\"table\": \"authority\", \"rowId\": \"MRG-AU\"}}}"
+      }
+    },
+    "activeSteps": {},
+    "revision": 3,
+    "ownerGeneration": 1,
+    "startedAt": "2026-10-06T09:00:00.000Z",
+    "completedAt": null,
+    "error": null
+  },
+  {
+    "id": "run-103",
+    "workflowName": "shepherd-pr",
+    "params": {
+      "repo": "example-org/example-repo",
+      "pr": "103"
+    },
+    "status": "waiting",
+    "currentStep": "approve-merge",
+    "stepResults": {
+      "merge-policy:0": {
+        "stepId": "merge-policy:0",
+        "iteration": 0,
+        "agentId": null,
+        "signal": null,
+        "completedAt": "2026-10-06T10:00:00.000Z",
+        "output": "{\"result\": {\"outcome\": \"gate\", \"headSha\": \"d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4\", \"rule\": {\"table\": \"shepherd-seat\", \"rowId\": \"implementer\"}}}"
+      }
+    },
+    "activeSteps": {},
+    "revision": 3,
+    "ownerGeneration": 1,
+    "startedAt": "2026-10-06T09:00:00.000Z",
+    "completedAt": null,
+    "error": null
+  },
+  {
+    "id": "run-104",
+    "workflowName": "shepherd-pr",
+    "params": {
+      "repo": "example-org/example-repo",
+      "pr": "104"
+    },
+    "status": "waiting",
+    "currentStep": "approve-merge",
+    "stepResults": {
+      "merge-policy:0": {
+        "stepId": "merge-policy:0",
+        "iteration": 0,
+        "agentId": null,
+        "signal": null,
+        "completedAt": "2026-10-06T10:00:00.000Z",
+        "output": "{\"result\": {\"outcome\": \"gate\", \"headSha\": \"d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4\", \"rule\": {\"table\": \"shepherd-route\", \"rowId\": \"conflict\"}}}"
+      }
+    },
+    "activeSteps": {},
+    "revision": 3,
+    "ownerGeneration": 1,
+    "startedAt": "2026-10-06T09:00:00.000Z",
+    "completedAt": null,
+    "error": null
+  },
+  {
+    "id": "run-106",
+    "workflowName": "shepherd-pr",
+    "params": {
+      "repo": "example-org/example-repo",
+      "pr": "106"
+    },
+    "status": "waiting",
+    "currentStep": "approve-merge",
+    "stepResults": {
+      "merge-policy:0": {
+        "stepId": "merge-policy:0",
+        "iteration": 0,
+        "agentId": null,
+        "signal": null,
+        "completedAt": "2026-10-06T10:00:00.000Z",
+        "output": "{\"result\": {\"outcome\": \"gate\", \"headSha\": \"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\", \"rule\": {\"table\": \"shepherd-seat\", \"rowId\": \"implementer\"}}}"
+      }
+    },
+    "activeSteps": {},
+    "revision": 3,
+    "ownerGeneration": 1,
+    "startedAt": "2026-10-06T09:00:00.000Z",
+    "completedAt": null,
+    "error": null
+  }
+]

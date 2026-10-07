@@ -1,6 +1,7 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
+import type { GateSummary } from "../registry.js";
 import type { WatchRow } from "../shepherd/view.js";
 import type { DigestSources, GateFact } from "./collect.js";
 import { buildDigest, deliverDigest } from "./run.js";
@@ -45,6 +46,11 @@ export function parseSinceOption(value: string): number {
   }
 }
 
+/** Only the fields a digest ask reads; `questions` and `schema` stay on the gates list. */
+function gateFact({ runId, stepId, gateId, prompt, resolve, summary, evidenceRef, createdAt }: GateSummary): GateFact {
+  return { runId, stepId, gateId, prompt, resolve, createdAt, ...(summary !== undefined && { summary }), ...(evidenceRef !== undefined && { evidenceRef }) };
+}
+
 function factorySources(call: FactoryCall): Pick<DigestSources, "rows" | "gates"> {
   const data = async <T>(name: string, args: object): Promise<T> => {
     const envelope = await call(name, args);
@@ -53,7 +59,7 @@ function factorySources(call: FactoryCall): Pick<DigestSources, "rows" | "gates"
   };
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
-    gates: async () => (await data<{ gates: GateFact[] }>("factory.gates", {})).gates,
+    gates: async () => (await data<{ gates: GateSummary[] }>("factory.gates", {})).gates.map(gateFact),
   };
 }
 

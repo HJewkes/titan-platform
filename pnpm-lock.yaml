@@ -147,6 +147,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:*
         version: link:../../packages/rpc-client
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -313,6 +316,12 @@ importers:
       esbuild:
         specifier: ^0.27.0
         version: 0.27.7
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/coordinator:
+    devDependencies:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -549,9 +558,6 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
-      '@titan-design/cluster':
-        specifier: workspace:^
-        version: link:../cluster
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
@@ -701,6 +707,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github

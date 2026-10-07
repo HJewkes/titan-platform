@@ -10,6 +10,7 @@ import { WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 import { findGitRoot } from "./git.js";
 import { RECLAIM_GRACE_MS } from "./options.js";
 import type { WorktreeAllocation } from "./reattach.js";
+import { seedRepo } from "./git-fixture.js";
 import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
@@ -36,13 +37,7 @@ const git = (args: string[], cwd: string): string =>
 function makeRepo(): string {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "iso-")));
   tmpdirs.push(dir);
-  git(["init", "-b", "main"], dir);
-  git(["config", "user.email", "test@example.com"], dir);
-  git(["config", "user.name", "Test"], dir);
-  git(["config", "commit.gpgsign", "false"], dir);
-  fs.writeFileSync(path.join(dir, "README.md"), "seed\n");
-  git(["add", "."], dir);
-  git(["commit", "-m", "seed"], dir);
+  seedRepo(dir);
   return dir;
 }
 
@@ -354,12 +349,12 @@ describe("worktree branch base", () => {
     fs.writeFileSync(hang, HANG_UNTIL_GIT_DIES, { mode: 0o755 });
     git(["config", "protocol.ext.allow", "always"], local);
     git(["remote", "add", "origin", `ext::${hang}`], local);
-    const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_500 });
+    const strategy = createWorktreeAllocator({ fetchTimeoutMs: 1_000 });
 
     const started = Date.now();
     const alloc = await strategy.allocate(ctxFor(local));
 
-    expect(Date.now() - started).toBeLessThan(2_900);
+    expect(Date.now() - started).toBeLessThan(1_950);
     expect(alloc.warnings?.[0]).toContain("failed or timed out");
   });
 

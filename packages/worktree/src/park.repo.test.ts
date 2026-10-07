@@ -7,6 +7,7 @@ import { createWorktreeAllocator } from "./allocator.js";
 import { WorktreeBudgetExhaustedError } from "./errors.js";
 import { parkWorktree } from "./park.js";
 import { recreateWorktree, type WorktreeRecord } from "./reattach.js";
+import { seedRepo, seedRepoWithOrigin } from "./git-fixture.js";
 import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
@@ -30,22 +31,13 @@ const git = (args: string[], cwd: string): string =>
 
 function makeRepo(): string {
   const dir = tmp("park-repo-");
-  git(["init", "-b", "main"], dir);
-  git(["config", "user.email", "test@example.com"], dir);
-  git(["config", "user.name", "Test"], dir);
-  git(["config", "commit.gpgsign", "false"], dir);
-  fs.writeFileSync(path.join(dir, "README.md"), "seed\n");
-  git(["add", "."], dir);
-  git(["commit", "-m", "seed"], dir);
+  seedRepo(dir);
   return dir;
 }
 
 function repoWithOrigin(): string {
-  const repo = makeRepo();
-  const origin = tmp("park-origin-");
-  git(["init", "--bare", "-b", "main"], origin);
-  git(["remote", "add", "origin", origin], repo);
-  git(["push", "-q", "origin", "main"], repo);
+  const repo = tmp("park-repo-");
+  seedRepoWithOrigin(repo, tmp("park-origin-"));
   return repo;
 }
 

@@ -61,8 +61,8 @@ source answers for the same absolute paths a checkout would, so node ids do not 
 
 Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
 glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
-`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture`, `script`, `entry`, `barrel`, `types`,
-`config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` and `*.fixture.*`),
+`script`, `entry`, `barrel`, `types`, `config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
 `.gitattributes` syntax:
 
 ```json
@@ -101,7 +101,12 @@ nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over t
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
 absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
-zero-valued node is never flagged. Severity defaults to `error`.
+zero-valued node is never flagged. An eighth, `no-import-cycles`, reports each strongly
+connected component of the file import graph once, with its sorted member files in `members`;
+`import type` and `export type … from` edges are left out unless `includeTypeOnly: true` (an
+all-inline `{ type T }` import still loads the module, so it counts), and `exclude` and `excludeRoles`
+take files out of the graph. Against a baseline, a cycle inside one known cycle carries over,
+and a cycle that gains a file is new. Severity defaults to `error`.
 
 `validateRules` and `loadCheckRules` throw on a `severity` other than `error` or `warning`, a
 `kind` outside the node kinds, and an `exclude` that is not a string array. Before this

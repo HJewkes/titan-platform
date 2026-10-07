@@ -7,6 +7,7 @@ import type {
   MetricMinRule,
   MetricOutlierRule,
   MetricProductMaxRule,
+  NoImportCyclesRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./types.js";
@@ -70,6 +71,8 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
       return assertLayeredDeps(r, warn);
     case "no-internal-only-barrels":
       return assertNoInternalOnlyBarrels(r);
+    case "no-import-cycles":
+      return assertNoImportCycles(r, warn);
     default:
       throw new Error(`rule[${index}] (${r.id}) unknown type "${r.type}"`);
   }
@@ -94,6 +97,20 @@ function assertNoInternalOnlyBarrels(
     packageRoots: r.packageRoots as string[],
     severity: parseSeverity(r),
     exclude: parseExclude(r),
+  };
+}
+
+function assertNoImportCycles(r: Record<string, unknown>, warn: Warn): NoImportCyclesRule {
+  if (r.includeTypeOnly !== undefined && typeof r.includeTypeOnly !== "boolean") {
+    throw new Error(`${r.id}: includeTypeOnly must be a boolean`);
+  }
+  return {
+    type: "no-import-cycles",
+    id: r.id as string,
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
+    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    includeTypeOnly: r.includeTypeOnly,
   };
 }
 
@@ -224,7 +241,7 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
     id: r.id as string,
     from: r.from,
     to: r.to,
-    except: parseStringList(r, "except"),
+    except: parseExcept(r),
     severity: parseSeverity(r),
   };
 }
@@ -254,6 +271,15 @@ function parseSeverity(r: Record<string, unknown>): Severity | undefined {
 
 function parseExclude(r: Record<string, unknown>): string[] | undefined {
   return parseStringList(r, "exclude");
+}
+
+/** An empty entry would match every destination and silently disable the rule. */
+function parseExcept(r: Record<string, unknown>): string[] | undefined {
+  const list = parseStringList(r, "except");
+  if (list?.some((e) => e === "")) {
+    throw new Error(`${r.id}: each except entry must be a non-empty string`);
+  }
+  return list;
 }
 
 function parseStringList(r: Record<string, unknown>, key: string): string[] | undefined {

@@ -133,4 +133,36 @@ describe("StructureExtractor", () => {
       expect(relative.length).toBe(2);
     });
   });
+
+  describe("builtin module lists", () => {
+    async function importGroups(source: string, language: string): Promise<unknown[]> {
+      const ext = language === "python" ? "py" : "ts";
+      const parsed = await parseFile(source, `inline.${ext}`, language);
+      return extractor
+        .extract(parsed)
+        .filter((o) => o.type === "structure.import-group")
+        .map((o) => o.value);
+    }
+
+    it("classifies an unprefixed Node builtin and its subpath as builtin", async () => {
+      const groups = await importGroups(
+        'import fs from "fs";\nimport { readFile } from "fs/promises";\n',
+        "typescript",
+      );
+      expect(groups).toEqual(["builtin", "builtin"]);
+    });
+
+    it("keeps an npm package named like a node:-only module external", async () => {
+      const groups = await importGroups('import test from "test";\n', "typescript");
+      expect(groups).toEqual(["external"]);
+    });
+
+    it("classifies Python stdlib modules beyond the common ones as builtin", async () => {
+      const groups = await importGroups(
+        "import asyncio\nimport sqlite3\nfrom concurrent.futures import Future\n",
+        "python",
+      );
+      expect(groups).toEqual(["builtin", "builtin", "builtin"]);
+    });
+  });
 });
