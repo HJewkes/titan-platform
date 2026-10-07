@@ -1,5 +1,5 @@
 import { noCommentedCode } from "./no-commented-code.js";
-import { ruleTester } from "./test-fixtures.js";
+import { ruleTester, tsRuleTester } from "./test-fixtures.js";
 
 const message = "This comment is code. Delete it; git history keeps it. If it explains why, rewrite it as a sentence.";
 const flagged = (name: string, code: string, line = 1) => ({ name, code, errors: [{ message, line }] });
@@ -61,3 +61,22 @@ ruleTester.run("no-commented-code", noCommentedCode, {
     flagged("commented code before real code", "// await run();\nconst a = 1;"),
   ],
 });
+
+const keywordCases = {
+  valid: [
+    { name: "a lone continue in an empty catch", code: "try { a(); } catch {\n  // continue\n}" },
+    { name: "a lone break in an empty catch", code: "try { a(); } catch {\n  // break\n}" },
+    { name: "a lone return in an empty catch", code: "try { a(); } catch {\n  // return\n}" },
+    { name: "a lone debugger note", code: "// debugger" },
+    { name: "a type-argument note", code: "// Map<string, number>" },
+  ],
+  invalid: [
+    flagged("a continue with a semicolon", "// continue;"),
+    flagged("a return with a value", "// return x"),
+    flagged("a break with a semicolon", "// break;"),
+    flagged("a call under this parser", "// foo(bar);"),
+  ],
+};
+
+ruleTester.run("no-commented-code with the default parser", noCommentedCode, keywordCases);
+tsRuleTester.run("no-commented-code with typescript-eslint", noCommentedCode, keywordCases);

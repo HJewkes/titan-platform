@@ -6,7 +6,13 @@ type ParserLike = {
   parseForESLint?: (text: string, options: object) => { ast: unknown };
 };
 type Expression = { type: string; callee?: Expression; arguments?: Expression[]; value?: unknown };
-type Statement = { type: string; expression?: Expression; body?: Statement };
+type Statement = {
+  type: string;
+  expression?: Expression;
+  body?: Statement;
+  label?: unknown;
+  argument?: unknown;
+};
 type Body = Statement[];
 
 const DIRECTIVE =
@@ -35,11 +41,20 @@ function isCodeExpression(expression: Expression | undefined): boolean {
   return expression !== undefined && CODE_EXPRESSIONS.has(expression.type) && !isManPageReference(expression);
 }
 
+// `continue`, `break`, `return` and `debugger` alone are notes in an empty block, not code; espree and
+// typescript-estree disagree on whether `continue` parses outside a loop, so both must land on prose.
+function isBareKeyword({ type, label, argument }: Statement): boolean {
+  if (type === "DebuggerStatement") return true;
+  if (type === "ContinueStatement" || type === "BreakStatement") return !label;
+  return type === "ReturnStatement" && !argument;
+}
+
+// Every statement needs a positive signal: a body, a declaration, an argument, a code expression or a `;`.
 function isCodeStatement(statement: Statement, endsWithSemicolon: boolean): boolean {
   if (statement.type === "LabeledStatement" && statement.body) return isCodeStatement(statement.body, endsWithSemicolon);
   if (statement.type === "EmptyStatement") return false;
-  if (statement.type !== "ExpressionStatement") return true;
-  return endsWithSemicolon || isCodeExpression(statement.expression);
+  if (statement.type === "ExpressionStatement") return endsWithSemicolon || isCodeExpression(statement.expression);
+  return endsWithSemicolon || !isBareKeyword(statement);
 }
 
 function parseBody(parser: ParserLike, text: string, options: object): Body | null {
@@ -51,13 +66,21 @@ function parseBody(parser: ParserLike, text: string, options: object): Body | nu
   }
 }
 
-// Module first so `import` parses; the function wrapper lets `return` and `await` parse.
+type Wrapped = { body?: { body?: Wrapped[] } };
+
+// The wrapper is a function around a loop, so `return`, `await`, `continue` and `break` all parse.
+function unwrap(body: Body): Body {
+  const loop = (body[0] as Wrapped | undefined)?.body?.body?.[0];
+  return (loop?.body?.body ?? []) as unknown as Body;
+}
+
+// Module first so `import` parses; the wrapper lets statements that need a function or loop parse.
 function parsesAsStatements(parser: ParserLike, text: string, options: object): boolean {
-  const attempts = [text, `async function* wrapper() {\n${text}\n}`];
+  const attempts = [text, `async function* wrapper() {\nwhile (true) {\n${text}\n}\n}`];
   return attempts.some((source) => {
     const body = parseBody(parser, source, options);
     if (!body) return false;
-    const statements = source === text ? body : ((body[0] as { body?: { body?: Body } } | undefined)?.body?.body ?? []);
+    const statements = source === text ? body : unwrap(body);
     return statements.some((statement) => isCodeStatement(statement, /;\s*$/.test(text)));
   });
 }
