@@ -40,7 +40,10 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
   let opened = false;
   try {
     const response = await options.fetch(options.url, { headers: { accept: "text/event-stream" }, signal });
-    if (!response.ok || !response.body) return false;
+    if (!response.ok || !response.body) {
+      options.handlers.onDialFailure?.(`HTTP ${response.status}`);
+      return false;
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const parse = createSseParser();
@@ -49,8 +52,10 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
         opened = dispatch(message, options.handlers) || opened;
       }
     }
-  } catch {
-    // A refused dial, a dropped socket, and an abort all end this connection the same way.
+  } catch (err) {
+    // A refused dial, a dropped socket, and an abort all end this connection the same way;
+    // only an abort the caller did not ask for is worth reporting.
+    if (!signal.aborted) options.handlers.onDialFailure?.(err instanceof Error ? err.message : String(err));
   }
   return opened;
 }
