@@ -1,5 +1,6 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
+import { readProcessSubstitution } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -60,7 +61,7 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
-interface LexState {
+export interface LexState {
   src: string;
   i: number;
   nested: boolean;
@@ -91,11 +92,11 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
   return s.tokens;
 }
 
-function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
+export function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
   return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
 }
 
-function lex(s: LexState): void {
+export function lex(s: LexState): void {
   while (s.i < s.src.length) {
     if (s.nested && s.depth === 0 && s.src[s.i] === ")") return endWord(s);
     step(s);
@@ -298,18 +299,6 @@ function pushRef(w: WordToken, name: string, text: string): void {
 function readSubstitution(s: LexState, start: number): Token[] {
   const inner = newState(s.src, start, true, s.trials);
   lex(inner);
-  s.i = inner.i + 1;
-  return inner.tokens;
-}
-
-/**
- * A heredoc still pending when a process substitution closes takes its body from the lines after
- * the current one in bash 5 and not at all in bash 3.2. No reading is safe for both, so it fails closed.
- */
-function readProcessSubstitution(s: LexState, start: number): Token[] {
-  const inner = newState(s.src, start, true, s.trials);
-  lex(inner);
-  if (inner.heredocs.length > 0) throw new ParseError("heredoc body outside its process substitution");
   s.i = inner.i + 1;
   return inner.tokens;
 }
