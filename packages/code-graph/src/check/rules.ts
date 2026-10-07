@@ -1,4 +1,5 @@
 import type { RuleContext } from "./context.js";
+import { runNoImportCyclesRule } from "./cycle-rule.js";
 import { runForbidImportRule, runLayeredDepsRule, runNoInternalOnlyBarrelsRule } from "./import-rules.js";
 import { runMetricOutlierRule } from "./outlier-rule.js";
 import { runMetricMaxRule, runMetricMinRule, runMetricProductMaxRule } from "./metric-rules.js";
@@ -20,5 +21,7 @@ export function runRule(rule: CheckRule, ctx: RuleContext): CheckViolation[] {
       return runLayeredDepsRule(rule, ctx);
     case "no-internal-only-barrels":
       return runNoInternalOnlyBarrelsRule(rule, ctx);
+    case "no-import-cycles":
+      return runNoImportCyclesRule(rule, ctx);
   }
 }

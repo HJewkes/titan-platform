@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import * as path from "node:path";
-import { detectGitToplevel, runGitLarge } from "./git.js";
+import { detectGitToplevel, hasNoCommits, runGitLargeResult, valueOrNull, type GitLargeResult, type HistoryLoad } from "./git.js";
 import { revArgs, sinceArgs, windowCutoff, type ChurnWindow } from "./window.js";
 
 export interface ChurnEntry {
@@ -31,20 +31,29 @@ const NUMSTAT_FIRST_RE = /^(\d+|-)$/;
 
 /**
  * Parse the last `windowDays` of git history up to `rev` (default HEAD) into ChurnEntry[] rebased onto
- * `repoRoot`. Returns null if git isn't available; [] if no commits matched.
- * Used both for churn metrics and for change-coupling.
+ * `repoRoot`. Returns null when `repoRoot` is not a git checkout or git is missing; [] if no commits matched.
+ * Throws a `GitHistoryError` when git ran but failed or its log overflowed the buffer, because the
+ * history exists and a null would silently pass for "no history". Use {@link loadChurnResult} to branch
+ * on the outcome instead. Used both for churn metrics and for change-coupling.
  */
 export function loadChurnEntries(options: LoadChurnOptions): ChurnEntry[] | null {
+  return valueOrNull(loadChurnResult(options));
+}
+
+/** {@link loadChurnEntries} with the failure kind (`not-git`, `overflow`, `git-error`) kept apart. */
+export function loadChurnResult(options: LoadChurnOptions): HistoryLoad<ChurnEntry[]> {
   const windowDays = options.windowDays ?? DEFAULT_WINDOW_DAYS;
   const gitRoot = detectGitToplevel(options.repoRoot);
-  if (gitRoot === null) return null;
+  if (gitRoot === null) return { ok: false, reason: "not-git", detail: `${options.repoRoot} is not a git checkout` };
+  if (options.rev === undefined && hasNoCommits(options.repoRoot)) return { ok: true, value: [] };
   const log = runChurnLog(options.repoRoot, windowDays, options.rev, options.untilEpoch);
-  if (log === null) return null;
+  if (!log.ok) return log;
   const canonicalRoot = canonicalize(options.repoRoot);
-  return parseChurnLog(log).flatMap((entry) => {
+  const value = parseChurnLog(log.out).flatMap((entry) => {
     const rel = rebasePath(entry.filePath, gitRoot, canonicalRoot);
     return rel === null ? [] : [{ ...entry, filePath: rel }];
   });
+  return { ok: true, value };
 }
 
 /** A toplevel-relative git path re-expressed relative to `rootDir`, or null when outside it. */
@@ -105,9 +114,9 @@ export function entriesWithin(entries: readonly ChurnEntry[], windowDays: number
   return entries.filter((e) => e.epoch >= cutoff);
 }
 
-function runChurnLog(repoRoot: string, windowDays: ChurnWindow, rev?: string, untilEpoch?: number): string | null {
+function runChurnLog(repoRoot: string, windowDays: ChurnWindow, rev?: string, untilEpoch?: number): GitLargeResult {
   // %ae is a steadier identity than %an; %ct lets one wide log be sliced into narrower windows.
   const format = "--pretty=format:%H%x09%ae%x09%ct";
   const args = ["log", ...sinceArgs(windowDays, untilEpoch), "--no-merges", "--numstat", "-M", format, ...revArgs(rev)];
-  return runGitLarge(repoRoot, args, 64 * 1024 * 1024);
+  return runGitLargeResult(repoRoot, args, 64 * 1024 * 1024);
 }
