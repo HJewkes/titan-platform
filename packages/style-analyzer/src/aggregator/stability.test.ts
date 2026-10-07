@@ -13,9 +13,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACTORS_DIR = path.join(__dirname, "../extractors");
 const FIXTURES_DIR = path.join(__dirname, "../../fixtures");
 
-// Dotted string literals in extractor sources that are not observation types.
-const NOT_OBSERVATION_TYPES = new Set(["prettier.config"]);
-
 function scanEmittedTypes(): Set<string> {
   const literal = /"([A-Za-z][A-Za-z-]*\.[A-Za-z][A-Za-z-]*)"/g;
   const types = new Set<string>();
@@ -25,7 +22,7 @@ function scanEmittedTypes(): Set<string> {
   for (const source of sources) {
     const text = fs.readFileSync(path.join(EXTRACTORS_DIR, source), "utf-8");
     for (const match of text.matchAll(literal)) {
-      if (!NOT_OBSERVATION_TYPES.has(match[1]!)) types.add(match[1]!);
+      types.add(match[1]!);
     }
   }
   return types;

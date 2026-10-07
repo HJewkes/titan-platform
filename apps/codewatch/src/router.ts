@@ -1,9 +1,10 @@
+import { FindingSort } from "@titan-design/code-read/query";
 import { useSyncExternalStore } from "react";
+import type { SortKey } from "./data/calls.js";
 
 export const FILTER_KEYS = ["rule", "severity", "kind", "provenance"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
-export const SORT_KEYS = ["severity", "excess", "value", "path", "rule"] as const;
-export type SortKey = (typeof SORT_KEYS)[number];
+export const SORT_KEYS: readonly SortKey[] = FindingSort.options;
 
 export interface PrioritiesQuery {
   filters: Partial<Record<FilterKey, string[]>>;
