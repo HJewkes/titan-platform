@@ -1,7 +1,7 @@
 import { EPISODE_TABLE, replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import { classifySession, type SessionClass } from "./classify-session.js";
-import { readSessionContexts } from "./cost-report-queries.js";
+import { FIRST_COPY, readSessionContexts } from "./cost-report-queries.js";
 
 /** Two rule sets on purpose (design section 18): workers segment by assignment, coordinators by work phase. */
 export type Heuristic = "worker-v1" | "coordinator-v1";
@@ -314,11 +314,25 @@ export function writeEpisodes(graph: SessionGraph, sessionIds: readonly string[]
   });
 }
 
-// request_dedup, not request: a copied request belongs only to the session the view keeps it for.
-const LAST_MAIN_REQUESTS = `
+// Deduped, not raw request: a copied request belongs only to the session request_dedup keeps it for.
+const LAST_MAIN_REQUESTS_ORDER = "GROUP BY session_id ORDER BY lastRequestAt DESC, session_id";
+
+const ALL_LAST_MAIN_REQUESTS = `
   SELECT session_id AS sessionId, MAX(ts) AS lastRequestAt FROM request_dedup
-  WHERE is_sidechain = 0 AND (@ids IS NULL OR session_id IN (SELECT value FROM json_each(@ids)))
-  GROUP BY session_id ORDER BY lastRequestAt DESC, session_id`;
+  WHERE is_sidechain = 0 ${LAST_MAIN_REQUESTS_ORDER}`;
+
+/** A scoped call skips the view, whose window would rank every request in the graph. */
+const SCOPED_LAST_MAIN_REQUESTS = `
+  SELECT r.session_id AS sessionId, MAX(r.ts) AS lastRequestAt FROM request r
+  WHERE r.is_sidechain = 0 AND r.session_id IN (SELECT value FROM json_each(@ids)) AND ${FIRST_COPY}
+  ${LAST_MAIN_REQUESTS_ORDER}`;
+
+type LastMainRequest = { sessionId: string; lastRequestAt: string };
+
+function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
+  if (!ids) return db.prepare(ALL_LAST_MAIN_REQUESTS).all() as LastMainRequest[];
+  return db.prepare(SCOPED_LAST_MAIN_REQUESTS).all({ ids: JSON.stringify(ids) }) as LastMainRequest[];
+}
 
 const EPISODE_ENDS = `SELECT session_id AS sessionId, heuristic, MAX(ended_at) AS endedAt FROM "${EPISODE_TABLE}" GROUP BY session_id, heuristic`;
 
@@ -336,7 +350,7 @@ const endKey = (sessionId: string, heuristic: Heuristic): string => `${sessionId
  * compare parsed, because a worker episode can end on an inbound whose ISO form differs from the request's.
  */
 export function staleEpisodeSessions(db: Db, ids?: readonly string[]): string[] {
-  const rows = db.prepare(LAST_MAIN_REQUESTS).all({ ids: ids ? JSON.stringify(ids) : null }) as { sessionId: string; lastRequestAt: string }[];
+  const rows = lastMainRequests(db, ids);
   const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
   const ends = episodeEnds(db);
   const isStale = ({ sessionId, heuristic }: SegmentedSession): boolean => {

@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readSessionContexts } from "./cost-report-queries.js";
 import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, writeEpisodes, type EpisodeInput } from "./episodes.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
@@ -263,6 +264,98 @@ describe("staleEpisodeSessions", () => {
 
     expect(staleEpisodeSessions(fixture.graph.db)).toEqual(["human", "worker"]);
     expect(staleEpisodeSessions(fixture.graph.db, ["worker", "absent"])).toEqual(["worker"]);
+  });
+
+  it("a cron-prompted session turns stale once its typed human turns pass two", () => {
+    const db = fixture.graph.db;
+    insertSession(db, { sessionId: "cron", seedPrompt: '[{"type":"text"}]' });
+    insertRequest(db, { sessionId: "cron", ts: at(0) });
+    for (const minute of [1, 2]) insertInbound(db, { sessionId: "cron", ts: at(minute), cause: "human_typed" });
+    const before = staleEpisodeSessions(db);
+    insertInbound(db, { sessionId: "cron", ts: at(3), cause: "human_typed" });
+
+    expect(before).toEqual([]);
+    expect(staleEpisodeSessions(db)).toEqual(["cron"]);
+  });
+
+  it("a human session with coordinator signals is stale under coordinator-v1 until its episodes are written", () => {
+    const db = fixture.graph.db;
+    insertSession(db, { sessionId: "coord" });
+    insertRequest(db, { sessionId: "coord", ts: at(0) });
+    insertSignal(db, { sessionId: "coord", ts: at(1), signal: "agent_spawn" });
+    const before = staleEpisodeSessions(db);
+    const written = writeEpisodes(fixture.graph, ["coord"]);
+
+    expect(before).toEqual(["coord"]);
+    expect(written.map((w) => w.heuristic)).toEqual(["coordinator-v1"]);
+    expect(staleEpisodeSessions(db)).toEqual([]);
+  });
+});
+
+describe("scoped request dedup", () => {
+  let fixture: FixtureGraph;
+  beforeEach(() => {
+    fixture = createFixtureGraph();
+  });
+  afterEach(() => fixture.close());
+
+  /** Workers with written episodes, then request copies whose first copy is always in "resumed". */
+  function copiesAcrossSessions() {
+    const db = fixture.graph.db;
+    for (const sessionId of ["original", "resumed"]) {
+      insertSession(db, { sessionId, startType: "sdk-cli" });
+      insertOrigin(db, { sessionId, depth: 1, profile: "implementer" });
+      insertInbound(db, { sessionId, ts: at(0), cause: "human_typed" });
+      insertRequest(db, { sessionId, transcriptId: sessionId === "original" ? 1 : 2, ts: at(0) });
+    }
+    writeEpisodes(fixture.graph, ["original", "resumed"]);
+    insertRequest(db, { sessionId: "resumed", transcriptId: 2, requestId: "shared", ts: at(5) });
+    insertRequest(db, { sessionId: "original", transcriptId: 1, requestId: "shared", ts: at(6) });
+    insertRequest(db, { sessionId: "resumed", transcriptId: 3, requestId: "tied", ts: at(7) });
+    insertRequest(db, { sessionId: "original", transcriptId: 4, requestId: "tied", ts: at(7) });
+  }
+
+  function preparedSql(run: () => void): string[] {
+    const prepare = vi.spyOn(fixture.graph.db, "prepare");
+    run();
+    const sql = prepare.mock.calls.map(([text]) => String(text));
+    prepare.mockRestore();
+    return sql;
+  }
+
+  function viewLifetimeMs(sessionId: string): number {
+    const row = fixture.graph.db
+      .prepare("SELECT MIN(ts) AS first, MAX(ts) AS last FROM request_dedup WHERE session_id = ? AND is_sidechain = 0")
+      .get(sessionId) as { first: string; last: string };
+    return Date.parse(row.last) - Date.parse(row.first);
+  }
+
+  it("a scoped staleness check prepares no request_dedup statement", () => {
+    copiesAcrossSessions();
+
+    const sql = preparedSql(() => staleEpisodeSessions(fixture.graph.db, ["original", "resumed"]));
+
+    expect(sql.some((text) => /\bFROM request r\b/.test(text))).toBe(true);
+    expect(sql.filter((text) => text.includes("request_dedup"))).toEqual([]);
+  });
+
+  it("a scoped staleness check matches the full sweep when request copies span sessions", () => {
+    copiesAcrossSessions();
+
+    const full = staleEpisodeSessions(fixture.graph.db);
+
+    expect(staleEpisodeSessions(fixture.graph.db, ["original", "resumed"])).toEqual(full);
+    expect(full).toEqual(["resumed"]);
+  });
+
+  it("session lifetimes count only the copy request_dedup keeps", () => {
+    copiesAcrossSessions();
+
+    const contexts = readSessionContexts(fixture.graph.db, ["original", "resumed"]);
+
+    expect(contexts.get("original")!.lifetimeMs).toBe(viewLifetimeMs("original"));
+    expect(contexts.get("resumed")!.lifetimeMs).toBe(viewLifetimeMs("resumed"));
+    expect(contexts.get("resumed")!.lifetimeMs).toBe(7 * 60_000);
   });
 });
 
