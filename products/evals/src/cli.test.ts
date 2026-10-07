@@ -74,6 +74,14 @@ describe("titan-evals", () => {
     expect(await runCli(["validate"])).toBe(2);
   });
 
+  it("returns 0 for the help subcommand and the --help flag", async () => {
+    captureStdout();
+
+    expect(await runCli(["help"])).toBe(0);
+    expect(await runCli(["help", "validate"])).toBe(0);
+    expect(await runCli(["validate", "--help"])).toBe(0);
+  });
+
   it("exits 1 and marks the spec stale when a prompt file was edited", async () => {
     scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
     cpSync(FIXTURE_ROOT, scratch, { recursive: true });

@@ -52,7 +52,7 @@ export function buildProgram(onResult: (code: number) => void = () => undefined)
 
 function exitCodeOf(error: unknown): number {
   if (!(error instanceof CommanderError)) throw error;
-  return error.code === "commander.helpDisplayed" || error.code === "commander.version" ? EXIT.OK : EXIT.USAGE;
+  return error.exitCode === 0 ? EXIT.OK : EXIT.USAGE;
 }
 
 export async function runCli(argv: string[]): Promise<number> {
