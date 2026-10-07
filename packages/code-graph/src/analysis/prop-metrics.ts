@@ -273,16 +273,22 @@ function scopeBindings(node: Node): string[] {
 /** Names bound by the declarations and named function/class declarations among `statements`. */
 function declaredIn(statements: readonly (Node | null)[], out: string[]): void {
   for (const stmt of statements) {
-    if (!stmt) continue;
-    if (NAMED_DECLARATIONS.has(stmt.type)) {
-      const name = stmt.childForFieldName("name");
-      if (name) patternNames(name, out);
-    } else if (DECLARATIONS.has(stmt.type)) {
-      for (const decl of stmt.namedChildren) {
-        const target = decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null;
-        if (target) patternNames(target, out);
-      }
-    }
+    if (stmt) declaredNames(stmt, out);
+  }
+}
+
+function declaredNames(stmt: Node, out: string[]): void {
+  if (NAMED_DECLARATIONS.has(stmt.type)) {
+    const name = stmt.childForFieldName("name");
+    if (name) patternNames(name, out);
+    return;
+  }
+  if (!DECLARATIONS.has(stmt.type)) return;
+  const targets = stmt.namedChildren.map((decl) =>
+    decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null,
+  );
+  for (const target of targets) {
+    if (target) patternNames(target, out);
   }
 }
 
