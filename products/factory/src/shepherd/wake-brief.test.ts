@@ -30,6 +30,17 @@ const verdictLike = (text: string): string[] => visibleLines(text).filter((line)
 const OPENER = "```review comments\n";
 const fencedComments = (payload: string): string => payload.slice(payload.indexOf(OPENER) + OPENER.length, payload.lastIndexOf("\n```"));
 
+describe("fix-round brief: where tests run", () => {
+  it("keeps the full suite off the Mac", async () => {
+    const { wake } = scene([]);
+
+    const { reason } = await wake();
+
+    expect(reason).toContain("ssh basement basement-suite");
+    expect(reason).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+});
+
 describe("review wake brief: the PR's review comments", () => {
   it("renders three unresolved comments from two reviewers in two groups, each in path:line order", async () => {
     const { wake } = scene([comment("bob", "src/z.ts", 4, "Rename this."), comment("alice", "src/b.ts", 9, "Off by one."), comment("bob", "src/a.ts", 30, "Missing test."), comment("alice", "src/a.ts", 1, "Stale.", true)]);
@@ -46,7 +57,10 @@ describe("review wake brief: the PR's review comments", () => {
   ])("leaves the first and the structural brief byte for byte as before with %s", async (_label, comments) => {
     const { wake } = scene(comments);
 
-    expect(await wake()).toEqual({ reason: `An independent review of head ${H1} returned FIX_FIRST. Its findings follow.`, payload: dataFence("review findings", FINDINGS) });
+    const first = await wake();
+
+    expect(first.reason.split("\n")[0]).toBe(`An independent review of head ${H1} returned FIX_FIRST. Its findings follow.`);
+    expect(first.payload).toBe(dataFence("review findings", FINDINGS));
     expect((await wake(2)).payload).toBe(dataFence("review findings", FINDINGS));
   });
 
