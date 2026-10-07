@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { GhExec } from "@titan-design/github";
 import type { BlockedFlowReport } from "@titan-design/session-analytics";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { startMiner } from "../serve.js";
@@ -90,6 +90,23 @@ describe("insights blocked-flow", () => {
     expect(all).toMatchObject({ repo: "all", prs: 4, staleHead: 1 });
     expect([all.before!.medianMin, all.after!.medianMin, all.after!.censored]).toEqual([90, 1, 1]);
     expect(answer.openHoldingMerge.rows).toMatchObject([{ repo: "acme/gadgets", pr: 3, seat: "seat-a", ageMin: 60 }]);
+  });
+
+  describe("a zone-less --split-at", () => {
+    const originalTz = process.env.TZ;
+    afterEach(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+
+    it.each(["UTC", "America/New_York"])("splits at the UTC instant under TZ=%s", async (zone) => {
+      const expected = await ask([...WINDOW, "--seat", "seat-a", "--split-at", "2026-09-12T10:00:00Z"]);
+      process.env.TZ = zone;
+
+      const answer = await ask([...WINDOW, "--seat", "seat-a", "--split-at", "2026-09-12T10:00"]);
+
+      expect(answer.verdictToMerge).toEqual(expected.verdictToMerge);
+    });
   });
 
   it("never counts a WAIT verdict as a MERGE: its PR has no wait, no row and no open hold", async () => {
