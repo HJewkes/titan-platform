@@ -17,7 +17,7 @@ export interface RankedDigest extends DigestModel {
   overflow: number;
 }
 
-/** The first source to name a PR or run wins, so a factory gate (exact command) beats a queue line about the same PR; an ask that also names something new stays. */
+/** The first source to name a PR or run wins, so a factory gate (exact command) beats a queue line about the same PR; an ask that also names something new stays, so two gates on one PR, keyed `gate:<id>`, stay two asks. */
 export function dedupeAsks(asks: readonly Ask[]): Ask[] {
   const kept: Ask[] = [];
   const seen = new Set<string>();

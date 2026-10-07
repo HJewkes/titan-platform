@@ -27,13 +27,21 @@ function pgrepCount(): number {
   }
 }
 
+// cp writes in a process that has exited before the first exec, so no forked sibling can hold a write fd (ETXTBSY).
+function installExecutable(path: string, contents: string): void {
+  const staging = `${path}.staging`;
+  writeFileSync(staging, contents);
+  chmodSync(staging, 0o755);
+  execFileSync("cp", ["-p", staging, path]);
+  rmSync(staging);
+}
+
 /** Puts a `gh` on PATH that sleeps far longer than any test waits; the marker in its directory name lets pgrep find it. */
 function installHungGh(): void {
   const dir = mkdtempSync(join(tmpdir(), `${MARKER}-`));
   dirs.push(dir);
   const script = join(dir, "gh");
-  writeFileSync(script, `#!${process.execPath}\nprocess.on("SIGTERM", () => {});\nsetTimeout(() => undefined, 60000);\n`);
-  chmodSync(script, 0o755);
+  installExecutable(script, `#!${process.execPath}\nprocess.on("SIGTERM", () => {});\nsetTimeout(() => undefined, 60000);\n`);
   process.env.PATH = `${dir}:${savedPath}`;
 }
 
@@ -50,8 +58,7 @@ describe("execGh timeoutMs", () => {
   it("rejects with an output-limit error, not a timeout, when output overflows maxBufferBytes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "exec-gh-"));
     dirs.push(dir);
-    writeFileSync(join(dir, "gh"), `#!${process.execPath}\nprocess.stdout.write("x".repeat(4096));\n`);
-    chmodSync(join(dir, "gh"), 0o755);
+    installExecutable(join(dir, "gh"), `#!${process.execPath}\nprocess.stdout.write("x".repeat(4096));\n`);
     process.env.PATH = `${dir}:${savedPath}`;
 
     const run = execGh(["api", "big"], undefined, { timeoutMs: 5_000, maxBufferBytes: 64 });
@@ -73,8 +80,7 @@ describe("execGh timeoutMs", () => {
   it("resolves normally when gh finishes inside the timeout", async () => {
     const dir = mkdtempSync(join(tmpdir(), "exec-gh-"));
     dirs.push(dir);
-    writeFileSync(join(dir, "gh"), `#!${process.execPath}\nprocess.stdout.write("hi");\n`);
-    chmodSync(join(dir, "gh"), 0o755);
+    installExecutable(join(dir, "gh"), `#!${process.execPath}\nprocess.stdout.write("hi");\n`);
     process.env.PATH = `${dir}:${savedPath}`;
 
     expect(await execGh([], undefined, { timeoutMs: 5_000 })).toEqual({ code: 0, stdout: "hi", stderr: "" });

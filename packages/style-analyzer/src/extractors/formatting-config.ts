@@ -111,25 +111,42 @@ export function parseEditorConfig(
   return observations;
 }
 
+// Only `[*]` applies to every file; a later `[Makefile]` or `[*.md]` section
+// describes a subset and must not override the project-wide default.
 function parseEditorConfigGlobal(raw: string): EditorConfigSection {
-  const result: EditorConfigSection = {};
-  const lines = raw.split("\n");
+  const result: Record<string, string> = {};
+  let inGlobal = false;
 
-  for (const line of lines) {
+  for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed.startsWith("#") || trimmed.startsWith("[") || !trimmed) {
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
+    if (trimmed.startsWith("[")) {
+      inGlobal = trimmed === "[*]";
       continue;
     }
+    if (!inGlobal) continue;
     const eqIndex = trimmed.indexOf("=");
     if (eqIndex === -1) continue;
-    const key = trimmed.substring(0, eqIndex).trim();
-    const value = trimmed.substring(eqIndex + 1).trim();
-    if (key && value) {
-      (result as Record<string, string>)[key] = value;
-    }
+    const key = trimmed.substring(0, eqIndex).trim().toLowerCase();
+    const value = trimmed.substring(eqIndex + 1).trim().toLowerCase();
+    if (key && value) result[key] = value;
   }
 
-  return result;
+  return toEditorConfigSection(result);
+}
+
+function toEditorConfigSection(raw: Record<string, string>): EditorConfigSection {
+  const section: EditorConfigSection = {};
+  if (raw.indent_style === "space" || raw.indent_style === "tab") {
+    section.indent_style = raw.indent_style;
+  }
+  if (raw.indent_size && /^\d+$/.test(raw.indent_size)) {
+    section.indent_size = raw.indent_size;
+  }
+  if (raw.insert_final_newline) {
+    section.insert_final_newline = raw.insert_final_newline;
+  }
+  return section;
 }
 
 export function makeFormattingObs(

@@ -10,7 +10,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { MERGE_EVIDENCE_STEP, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
@@ -122,6 +122,25 @@ describe("locatorReference", () => {
   });
 });
 
+describe("collectMergeFacts check apps", () => {
+  const SHEPHERD_APP = 4242;
+  const observe = (reviewAppId?: number) => collectMergeFacts(githubPort(world().wire), input, noFreezeStoreUntilTp523, {}, undefined, reviewAppId);
+
+  it("trusts GitHub Actions and gives shepherd/review no app when none is configured", async () => {
+    const { merge } = await observe();
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [] });
+  });
+
+  it("binds shepherd/review to the configured App and leaves allowedApps alone", async () => {
+    const { merge } = await observe(SHEPHERD_APP);
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [SHEPHERD_APP] });
+  });
+});
+
 describe("mergeEvidence", () => {
   it("allows by authority/MRG-AU-RV when all eight conditions hold, and posts one comment carrying the record", async () => {
     const fake = world();
@@ -178,30 +197,23 @@ describe("mergeEvidence", () => {
     expect((await collect(fake)).record.decision.outcome).toBe("gate");
   });
 
-  it("gates a diff under .github/ even when authority allows everything", async () => {
-    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }]);
+  it("allows a release workflow change when authority allows and required checks are green (TP-1886)", async () => {
+    const fake = world([{ path: ".github/workflows/release.yml", status: "modified" }]);
     vi.mocked(evaluate).mockReturnValue(ALLOW_ALL);
 
     const evidence = await collect(fake);
 
-    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
   });
 
-  it("collects the source of a rename, so moving a file out of .github/ gates even when authority allows everything", async () => {
+  it("collects the source of a rename, so a move out of .github/ is visible to authority", async () => {
     const fake = world([{ path: "tools/x.yml", previousPath: ".github/actions/x.yml", status: "renamed" }]);
 
     const evidence = await collect(fake);
 
     expect(evidence.merge.changedPaths).toEqual(["tools/x.yml", ".github/actions/x.yml"]);
     vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
-  });
-
-  it("folds case and trailing dots when it looks for .github", () => {
-    const evidence = { head: HEAD, merge: { head: HEAD, changedPaths: [".GitHub./workflows/x.yml"] }, record: { repo: REPO, pr: 1 } } as unknown as MergeEvidence;
-    vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-
-    expect(decideAutoMerge(HEAD, evidence).rule.rowId).toBe("github-path");
+    expect(decideAutoMerge(HEAD, evidence).outcome).toBe("allow");
   });
 
   it("gates facts collected at one head when the decision is for another", async () => {
@@ -221,14 +233,56 @@ describe("mergeEvidence", () => {
     expect(evidence.record.decision.outcome).toBe("gate");
   });
 
+  describe("a push between the PR read and the changed-files read", () => {
+    /** The push lands as the file list is read, so GitHub answers with the new head's files. */
+    function pushedDuringRead(fake: FakeGitHub, nextFiles: PrFile[]): GitHubPort {
+      const port = githubPort(fake.wire);
+      return {
+        ...port,
+        listPrFiles: async (repo, number) => {
+          fake.pushHead(1, OTHER_HEAD);
+          fake.prFiles.set(1, nextFiles);
+          return port.listPrFiles(repo, number);
+        },
+      };
+    }
+
+    it.each([
+      ["a visual change", [{ path: "packages/ui/src/Button.tsx", status: "modified" }], { visualPaths: ["packages/ui/**"] }],
+      ["a .github change", [{ path: ".github/workflows/ci.yml", status: "modified" }], {}],
+    ])("gates %s at the reviewed head instead of judging the pushed head's files", async (_case, headFiles: PrFile[], overrides: Partial<MergeEvidenceInput>) => {
+      const fake = world(headFiles);
+      const port = pushedDuringRead(fake, [{ path: "src/a.ts", status: "modified" }]);
+
+      const evidence = await mergeEvidence(port, { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+      expect(evidence.merge.changedPaths).toEqual([]);
+      expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the head moved to ${OTHER_HEAD} during the read`);
+      expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
+    });
+
+    it("reads no file list when the PR is already at another head", async () => {
+      const fake = world();
+      fake.pushHead(1, OTHER_HEAD);
+
+      const evidence = await collect(fake);
+
+      expect(fake.calls).not.toContain("listPrFiles");
+      expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the PR is at ${OTHER_HEAD}, not ${HEAD}`);
+    });
+  });
+
   describe("an unknown mergeable_state", () => {
     function scripted(states: string[]): { port: GitHubPort; reads: () => number; sleeps: number[] } {
       const fake = world();
       fake.reviewBypass = true;
       const real = githubPort(fake.wire);
       let reads = 0;
+      let settleReads: number | undefined;
       const getPr: GitHubPort["getPr"] = async (repo, number) => ({ ...(await real.getPr(repo, number)), mergeableState: states[Math.min(reads++, states.length - 1)]! });
-      return { port: { ...real, getPr }, reads: () => reads, sleeps: [] };
+      // The changed-files read re-reads the head afterwards; that read is not part of settling.
+      const listPrFiles: GitHubPort["listPrFiles"] = async (repo, number) => ((settleReads ??= reads), real.listPrFiles(repo, number));
+      return { port: { ...real, getPr, listPrFiles }, reads: () => settleReads ?? reads, sleeps: [] };
     }
     const settle = (rig: ReturnType<typeof scripted>) => mergeEvidence(rig.port, input, noFreezeStoreUntilTp523, { kind: "correctness" }, { sleep: async (ms) => void rig.sleeps.push(ms) });
 

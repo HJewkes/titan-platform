@@ -76,7 +76,8 @@ export { computeMetrics } from "./metrics.js";
 export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
 export { SYMBOL_METRIC_NAMES } from "./symbol-metrics.js";
 export { EXCEPTION_METRIC_NAMES } from "./analysis/exception-handling.js";
-export { buildIndexerMetrics } from "./index-metrics.js";
+export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js";
+export type { AssembledIndexerMetrics } from "./index-metrics.js";
 export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
@@ -259,6 +260,7 @@ export type {
   MetricMinRule,
   MetricOutlierRule,
   MetricProductMaxRule,
+  NoImportCyclesRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./check/types.js";

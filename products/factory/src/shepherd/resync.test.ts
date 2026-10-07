@@ -21,6 +21,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { REREVIEW } from "./stale-gates.js";
 import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditions } from "./resync.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -564,14 +565,14 @@ interface AuthorityRun {
   reviewed: string[];
 }
 
-/** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first review reads `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false } = {}): Promise<AuthorityRun> {
+/** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false } = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
   const phases: ShepherdPhases = {
-    wake: async () => ({ kind: "unhandled", reason: "test" }),
-    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) === 1 ? unmet : {}) }),
+    wake: async () => (wokenAgent ? { kind: "woken", agent: "impl-a" } : { kind: "unhandled", reason: "test" }),
+    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
   };
   const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
@@ -596,6 +597,66 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
     expect(reviewed).toEqual([REVIEWED, PUSHED]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
+  });
+
+  it("cancels a second cycle's approve-merge:1 gate for review again, and the run reviews that head again instead of failing", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ mergeTreeClean: false }, { unmetReviews: 2 });
+    fake.pushHead(1, PUSHED);
+    await resyncShepherd(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge:1"));
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge:1"), from: PUSHED, to: PUSHED, condition: "merge-tree-only" }]);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
+    expect(reviewed).toEqual([REVIEWED, PUSHED, PUSHED]);
+    expect(host.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
+  it("a restart between the review-again cancel of approve-merge:1 and the run's reaction replays it back to review at that head", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp1752-")), "factory.db");
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const reviewed: string[] = [];
+    const phases: ShepherdPhases = {
+      wake: async () => ({ kind: "unhandled", reason: "test" }),
+      review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= 2 ? { mergeTreeClean: false } : {}) }),
+    };
+    const store = shepherdStoreRef();
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+    const open = () => openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+    const first = open();
+    fake.addPr({ headSha: REVIEWED });
+    const runId = first.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
+    await gateOpened(first, gateId(runId, "approve-merge"));
+    fake.pushHead(1, PUSHED);
+    await resyncShepherd(first, routes.shepherd!);
+    await gateOpened(first, gateId(runId, "approve-merge:1"));
+    first.gates.cancel(gateId(runId, "approve-merge:1"), `${REREVIEW}merge-tree-clean was the only unmet condition at head ${PUSHED}`);
+    first.close();
+
+    const second = open();
+    cleanups.push(() => second.close());
+    await second.adopt();
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }));
+    expect(reviewed.filter((head) => head === PUSHED)).toHaveLength(3);
+    expect(second.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
+  it("leaves the conflict gate the run opens at the same head after a review-again cancel with the owner, and the run does not fail", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { wokenAgent: true });
+    Object.assign(fake.pr(1), { mergeableState: "dirty" });
+    await resyncShepherd(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge:1"));
+    expect(host.gates.get(gateId(runId, "approve-merge:1"))?.prompt).toContain(`at head ${REVIEWED}? Policy shepherd-route/conflict`);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge:1"))?.status).toBe("pending");
+    expect(host.runtime.status(runId)?.status).not.toBe("failed");
   });
 
   it("cancels a gate whose only unmet condition was merge-tree-clean, and the run reviews the same head again and merges it", async () => {
@@ -773,7 +834,7 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
 });
 
 describe("which recorded gate decisions are authority/MRG-AU gates", () => {
-  const PROMPT = `Merge PR #1 in ${REPO} at head ${REVIEWED}? CI is green.`;
+  const PROMPT = `Merge PR #1 in ${REPO} at head ${REVIEWED}? CI is green. Policy authority/MRG-AU: gated`;
   const MERGE_TREE_ONLY = "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: merge-tree-clean";
 
   function runDeciding(result: object): WorkflowRun {

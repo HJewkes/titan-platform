@@ -1,3 +1,4 @@
+import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 
 /** One reviewer verdict message, as agent-chat's events table records it. */
@@ -24,17 +25,18 @@ export interface PullState {
 
 export type ParsedVerdict = Pick<VerdictRecord, "verdict" | "repo" | "pr" | "head">;
 
-const VERDICT_LINE = /^Verdict:\s*([A-Z_]+)/;
-const PR_LINE = /^PR:\s*(?:https:\/\/github\.com\/)?([\w.-]+\/[\w.-]+)(?:#|\/pull\/)(\d+)/m;
-const HEAD_LINE = /^Head:\s*`?([0-9a-f]{7,40})\b/m;
-
-/** Reads a `Verdict:` message's first three lines; null when any of them is missing. */
+/** Reads a reviewer message with session-read's gate parser; null when the merge gate would refuse it (short head, URL-form PR, a second block). */
 export function parseVerdict(body: string): ParsedVerdict | null {
-  const verdict = VERDICT_LINE.exec(body)?.[1];
-  const pr = PR_LINE.exec(body);
-  const head = HEAD_LINE.exec(body)?.[1];
-  if (!verdict || !pr || !head) return null;
-  return { verdict, repo: pr[1]!, pr: Number(pr[2]), head };
+  const block = parseVerdictBlock(body);
+  if (block.ok) return { verdict: block.verdict, repo: block.repo, pr: block.pr, head: block.head };
+  return block.reason === "wait" ? { verdict: "WAIT", repo: block.repo, pr: block.pr, head: block.head } : null;
+}
+
+const FULL_HEAD = /^[0-9a-f]{40}$/;
+
+/** True when the merge gate would refuse this record's head: it counts a verdict only on an exact 40-hex head. */
+export function hasRefusedHead(record: Pick<VerdictRecord, "head">): boolean {
+  return !FULL_HEAD.test(record.head);
 }
 
 export type MergeStatus = "merged" | "open" | "stale-head" | "closed" | "unknown";
@@ -66,16 +68,12 @@ export function prKey(row: { repo: string; pr: number }): string {
 function outcome(held: VerdictRecord[], pull: PullState | undefined, asOf: string): MergeOutcome {
   const { repo, pr } = held[0]!;
   if (!pull) return { repo, pr, status: "unknown", verdict: null, minutes: null };
-  const atHead = held.filter((v) => sameSha(v.head, pull.headSha)).sort((a, b) => a.at.localeCompare(b.at))[0];
+  const atHead = held.filter((v) => v.head === pull.headSha).sort((a, b) => a.at.localeCompare(b.at))[0];
   const mergedBy = pull.mergedAt !== null && pull.mergedAt <= asOf;
   if (!atHead) return { repo, pr, status: pull.mergedAt !== null || pull.state === "open" ? "stale-head" : "closed", verdict: null, minutes: null };
   if (mergedBy) return { repo, pr, status: "merged", verdict: atHead, minutes: Math.max(0, minutesBetween(atHead.at, pull.mergedAt!)) };
   if (pull.state === "open" || pull.mergedAt !== null) return { repo, pr, status: "open", verdict: atHead, minutes: minutesBetween(atHead.at, asOf) };
   return { repo, pr, status: "closed", verdict: atHead, minutes: null };
-}
-
-function sameSha(a: string, b: string): boolean {
-  return a.startsWith(b) || b.startsWith(a);
 }
 
 function minutesBetween(from: string, to: string): number {

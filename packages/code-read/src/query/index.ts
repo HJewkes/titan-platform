@@ -10,7 +10,7 @@ export type {
 export { AGENT_COMMANDS, CODE_READ_API_VERSION, COMMAND_NAMES, CONTRACT, serializeContract } from "./contract.js";
 export { HIERARCHY_ROW_CAP } from "./contract-nodes.js";
 export { Centrality, CoupledPartners, ExportRow, LinkedTests, NodeLens, NodeLenses, ScoreBreakdown } from "./contract-node-lenses.js";
-export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
+export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingSort, FindingStatus, SourceExcerpt } from "./contract-findings.js";
 export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
 export { AttentionSignal, LookFirstRow, OVERVIEW_ROWS_MAX, ReadingOrderRow } from "./contract-overview.js";
 export { FindingDelta, ImpactRollup, PATHS_IMPACT_MAX, PathDelta, PathHotspot, PathImpact } from "./contract-paths-impact.js";
@@ -19,6 +19,7 @@ export { CHANGES_ROWS_MAX, CoChangePair, FindingChange, NewFile, Regression, Sco
 export {
   Capabilities,
   MetricDescriptor,
+  MISSING_REASONS,
   MissingReason,
   NodeKind,
   NodeRef,
@@ -28,7 +29,9 @@ export {
   Severity,
   SnapshotInfo,
   SnapshotRef,
+  SYNTHESIZED_KINDS,
   Span,
+  isStoredKind,
 } from "./schemas.js";
 export type {
   CatalogueEntry,
@@ -42,10 +45,11 @@ export type {
   ReadModelParts,
 } from "./model.js";
 export { buildReadModel } from "./model.js";
-export type { ReadSource, SourceFacts, SourceOrigin, SourceRead, SourceWindow } from "./source.js";
-export { ReadError, findingNotFound, invalidArgs, nodeNotFound, snapshotNotFound } from "./source.js";
+export type { ExcerptMissing, ReadSource, SourceFacts, SourceOrigin, SourceRead, SourceWindow } from "./source.js";
+export { EXCERPT_MISSING, ReadError, findingNotFound, invalidArgs, nodeNotFound, snapshotNotFound } from "./source.js";
 export { resolveSnapshot } from "./snapshot-ref.js";
-export type { Missing, MetricValue } from "./rollup.js";
+export type { Missing } from "./schemas.js";
+export type { MetricValue } from "./rollup.js";
 export type { QueryFn } from "./commands.js";
 export { QUERIES, describeApi, listSnapshots } from "./commands.js";
 export { getHierarchy } from "./hierarchy.js";

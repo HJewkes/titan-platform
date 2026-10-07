@@ -1,9 +1,6 @@
 import type { ReadModel } from "./model.js";
-import type { MetricDescriptor } from "./schemas.js";
+import type { MetricDescriptor, Missing } from "./schemas.js";
 import type { Tree, TreeNode } from "./tree.js";
-
-/** Why a value is null: the rollup rule forbids one, the node has no measurement, the metric does not describe the node, or the snapshot lacks the metric. */
-export type Missing = "no-rollup" | "not-measured" | "not-applicable" | "not-in-snapshot";
 
 export interface MetricValue {
   value: number | null;

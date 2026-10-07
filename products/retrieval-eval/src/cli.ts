@@ -11,7 +11,7 @@ import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
 import { defaultActiveRoot } from "./mine/labels.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
 import { formatPairs, parsePairs } from "./pairs.js";
-import { QUERY_VARIANTS, type QueryVariant } from "./query/variants.js";
+import { QUERY_VARIANTS } from "./query/variants.js";
 import { formatRows, runEval } from "./run.js";
 import { formatServed } from "./served/format.js";
 import { buildReport, collectServed } from "./served/report.js";
@@ -29,6 +29,18 @@ interface CommonOptions {
   embedder: string;
 }
 
+const ARMS = ["spawn", "bootstrap", "both"] as const;
+type Arm = (typeof ARMS)[number];
+
+function parseChoice<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
+  if ((allowed as readonly string[]).includes(value)) return value as T;
+  throw new Error(`${flag} must be one of ${allowed.join(", ")}, got ${value}`);
+}
+
+function parseChoices<T extends string>(flag: string, list: string, allowed: readonly T[]): T[] {
+  return list.split(",").map((value) => parseChoice(flag, value, allowed));
+}
+
 function mineCommand(): Command {
   return new Command("mine")
     .description("Mine query/label pairs from transcripts into JSONL")
@@ -37,9 +49,10 @@ function mineCommand(): Command {
     .option("--active-root <dir>", "active-work root", defaultActiveRoot())
     .option("--graph <file>", "session graph, read-only", defaultGraphPath())
     .action(async (options) => {
+      const arm = parseChoice("--arm", options.arm, ARMS);
       const files = discoverTranscripts(defaultTranscriptRoots());
       const heads = await Promise.all(files.map((file) => readHead(file)));
-      const report = await mine(options.arm, files, heads, options.activeRoot);
+      const report = await mine(arm, files, heads, options.activeRoot);
       const jsonl = formatPairs(report.pairs);
       if (options.out) writeFileSync(options.out, jsonl);
       else process.stdout.write(jsonl);
@@ -49,12 +62,12 @@ function mineCommand(): Command {
 }
 
 async function mine(
-  arm: string,
+  arm: Arm,
   files: string[],
   heads: Awaited<ReturnType<typeof readHead>>[],
   activeRoot: string,
 ) {
-  const spawn = arm === "bootstrap" ? undefined : await mineSpawnArm(files, activeRoot);
+  const spawn = arm === "bootstrap" ? undefined : await mineSpawnArm(files, activeRoot, heads);
   const bootstrap = arm === "spawn" ? undefined : await mineBootstrapArm(activeRoot, heads);
   return {
     pairs: [...(spawn?.pairs ?? []), ...(bootstrap?.pairs ?? [])],
@@ -65,7 +78,7 @@ async function mine(
   };
 }
 
-async function buildCandidates(names: string[], common: CommonOptions): Promise<Candidate[]> {
+async function buildCandidates(names: readonly string[], common: CommonOptions): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
   // Baseline first, so the row everything else has to beat is the row above them.
   if (names.includes("date-order-notes")) candidates.push(dateOrderNotes({ activeRoot: common.activeRoot }));
@@ -84,7 +97,7 @@ function hybridEmbedder(backend: string) {
   throw new Error(`--embedder must be hash or ollama, got ${backend}`);
 }
 
-const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"];
+const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"] as const;
 
 function runCommand(): Command {
   return new Command("run")
@@ -97,13 +110,15 @@ function runCommand(): Command {
     .option("--active-root <dir>", "active-work root", defaultActiveRoot())
     .option("--graph <file>", "session graph, read-only", defaultGraphPath())
     .action(async (pairsFile, options) => {
+      const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
+      const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
       const pairs = parsePairs(readFileSync(pairsFile, "utf8"));
-      const candidates = await buildCandidates(String(options.candidates).split(","), options);
+      const candidates = await buildCandidates(names, options);
       try {
         const rows = await runEval({
           pairs,
           candidates,
-          variants: String(options.variants).split(",") as QueryVariant[],
+          variants,
           onProgress: (done, total) => process.stderr.write(`\r${done}/${total} cells`),
         });
         process.stderr.write("\n");

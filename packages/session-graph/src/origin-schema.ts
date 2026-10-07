@@ -28,7 +28,7 @@ export const ORIGIN_DDL = `
     PRIMARY KEY (session_id, ts, kind)
   ) WITHOUT ROWID;
 
-  CREATE TABLE IF NOT EXISTS episode (               -- provisional, see section 9
+  CREATE TABLE IF NOT EXISTS episode (               -- heuristic-derived
     session_id TEXT NOT NULL, episode_index INTEGER NOT NULL,
     heuristic TEXT NOT NULL, heuristic_version INTEGER NOT NULL,
     started_at TEXT NOT NULL, ended_at TEXT NOT NULL,

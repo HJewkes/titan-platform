@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
+import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
@@ -49,6 +50,72 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
   return { admit: true };
 }
 
+/** What a review spawn tells the gate: whether its PR is the fix for its repo's red main, and which PR it is, so status can name its place. */
+export interface ReviewAsk {
+  fixer: boolean;
+  target?: { repo: string; pr: number };
+}
+
+/** A review spawn the gate has refused and that is still asking. */
+interface WaitingReview extends ReviewAsk {
+  name: string;
+  firstAsk: number;
+  lastAsk: number;
+}
+
+/** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for two of those has stopped asking. */
+export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
+
+/** Pure: the reviews that asked within `staleMs`, fixers first, then by first ask. */
+function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
+  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || a.firstAsk - b.firstAsk);
+}
+
+/** Pure: a review that is no fixer waits while a fixer's review is queued, so a red main's fix takes the next slot; any other spawn is untouched. */
+function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
+  if (!verdict.admit || review === undefined || review.fixer) return verdict;
+  const fixer = queue.find((waiting) => waiting.fixer && waiting.name !== name);
+  return fixer ? { admit: false, reason: `the review ${fixer.name} of a red main's fix waits ahead` } : verdict;
+}
+
+/** Each waiting review's place by `repo#pr`; in memory, because only the live host's steps can be waiting. */
+const positions = new Map<string, string>();
+const positionKey = (repo: string, pr: number) => `${repo}#${pr}`;
+
+/** "position 2 of 3" while the review of `repo#pr` waits on the gate; undefined otherwise. */
+export function spawnQueuePosition(repo: string, pr: number | null): string | undefined {
+  return pr === null ? undefined : positions.get(positionKey(repo, pr));
+}
+
+/** The reviews one gate has refused, kept until each is admitted or stops asking; every change republishes the positions it owns. */
+function reviewWaitList(staleMs: number) {
+  const entries = new Map<string, WaitingReview>();
+  const published = new Set<string>();
+  const publish = (at: number): WaitingReview[] => {
+    const queue = reviewQueue([...entries.values()], at, staleMs);
+    entries.clear();
+    queue.forEach((review) => entries.set(review.name, review));
+    published.forEach((key) => positions.delete(key));
+    published.clear();
+    queue.forEach(({ target }, index) => {
+      if (!target) return;
+      const key = positionKey(target.repo, target.pr);
+      published.add(key);
+      positions.set(key, `position ${index + 1} of ${queue.length}`);
+    });
+    return queue;
+  };
+  return {
+    ask(name: string, review: ReviewAsk, at: number): WaitingReview[] {
+      entries.set(name, { ...review, name, firstAsk: entries.get(name)?.firstAsk ?? at, lastAsk: at });
+      return publish(at);
+    },
+    admitted(name: string, at: number): void {
+      if (entries.delete(name)) publish(at);
+    },
+  };
+}
+
 const SYSCTL = "/usr/sbin/sysctl";
 
 function sysctlNumber(name: string): number | undefined {
@@ -79,34 +146,39 @@ export class SpawnDeferred extends Error {
 }
 
 export interface SpawnGate {
-  /** Resolves when the spawn of `name` is admitted; throws `SpawnDeferred` when it is not. */
-  admit(name: string, runningReviews?: readonly number[]): void;
+  /** Resolves when the spawn of `name` is admitted; throws `SpawnDeferred` when it is not. Only a review spawn passes `review`. */
+  admit(name: string, runningReviews?: readonly number[], review?: ReviewAsk): void;
 }
 
 interface SpawnGateOptions {
   limits?: Partial<SpawnLimits>;
   read?: () => MachineReadings;
   now?: () => number;
+  /** How long a refused review stays queued without asking again. */
+  reviewStaleMs?: number;
   /** One line per admitted or deferred spawn; defaults to the factory log. */
   log?: (line: string) => void;
 }
 
-/** Remembers the admissions of this process, so every spawn site shares one window. */
+/** Remembers the admissions and the waiting reviews of this process, so every spawn site shares one window and one queue. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
   const { read = () => readMachine(), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
+  const reviews = reviewWaitList(options.reviewStaleMs ?? REVIEW_STALE_MS);
   return {
-    admit(name, runningReviews = []) {
+    admit(name, runningReviews = [], review) {
       const at = now();
       const readings = read();
-      const verdict = admitSpawn(readings, limits, starts, at, runningReviews);
+      const queue = review ? reviews.ask(name, review, at) : [];
+      const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review);
       const seen = `load5 ${readings.load5}, pressure ${readings.pressureLevel ?? "unread"}, free ${readings.freeMemoryPct ?? "unread"}%`;
       if (!verdict.admit) {
         log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})`);
         throw new SpawnDeferred(verdict.reason);
       }
       starts.splice(0, starts.length, at);
+      reviews.admitted(name, at);
       log(`shepherd: spawn_gate admitted ${name} (${seen})`);
     },
   };

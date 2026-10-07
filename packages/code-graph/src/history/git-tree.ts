@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { discoveryEnv, runGit, runGitLarge } from "./git.js";
+import { discoveryEnv, runGit, runGitLargeResult } from "./git.js";
 
 /** A regular file or symlink in a commit's tree: its repo-relative path and blob id. */
 export interface TreeBlob {
@@ -31,9 +31,9 @@ export function resolveCommit(repoRoot: string, rev: string): ResolvedCommit {
 
 /** Every regular file and symlink in `commit`'s tree, via `git ls-tree -r -z`. */
 export function listTreeBlobs(repoRoot: string, commit: string): TreeBlob[] {
-  const out = runGitLarge(repoRoot, ["ls-tree", "-r", "-z", "--full-tree", commit], TREE_LIST_BUFFER);
-  if (out === null) throw new Error(`git ls-tree failed for ${commit} in ${repoRoot}`);
-  return parseLsTree(out);
+  const result = runGitLargeResult(repoRoot, ["ls-tree", "-r", "-z", "--full-tree", commit], TREE_LIST_BUFFER);
+  if (!result.ok) throw new Error(`git ls-tree failed for ${commit} in ${repoRoot} (${result.reason}): ${result.detail}`);
+  return parseLsTree(result.out);
 }
 
 /** Parse NUL-terminated `<mode> <type> <oid>\t<path>` records, keeping regular files and symlinks; submodules are dropped. */

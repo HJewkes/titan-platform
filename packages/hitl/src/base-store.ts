@@ -5,6 +5,7 @@ import {
   GateAlreadyExists,
   GateAlreadySettled,
   GateExpired,
+  GateExpiryInvalid,
   GateNotFound,
   GatePayloadInvalid,
   GateResolverRefused,
@@ -52,7 +53,7 @@ export abstract class BaseGateStore implements GateStore {
       reason: undefined,
       createdAt: this.nowIso(),
       resolvedAt: undefined,
-      expiresAt: toIso(input.expiresAt),
+      expiresAt: toIso(id, input.expiresAt),
       resolvedBy: undefined,
       rule,
       ...brief,
@@ -143,7 +144,9 @@ function notPending(id: string, record: GateRecord | undefined): Error {
   return new GateAlreadySettled(id, record.status);
 }
 
-function toIso(value: Date | string | undefined): string | undefined {
+function toIso(gateId: string, value: Date | string | undefined): string | undefined {
   if (value === undefined) return undefined;
-  return typeof value === "string" ? value : value.toISOString();
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) throw new GateExpiryInvalid(gateId, String(value));
+  return date.toISOString();
 }

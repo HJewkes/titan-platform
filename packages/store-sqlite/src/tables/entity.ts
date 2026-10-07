@@ -42,7 +42,12 @@ export function snapshotTableDdl({ name = "snapshot" }: TableName = {}): string 
   `;
 }
 
-/** Interval bi-temporal entity keyed by its cross-domain ref. */
+/**
+ * Current-state entity keyed by its cross-domain ref, with soft expiry. Not
+ * interval bi-temporal like the edge table: one row per ref, an upsert
+ * overwrites it in place and keeps no history, and a revived ref keeps its
+ * first `t_valid` and `t_created`.
+ */
 export function entityTableDdl({ name = "entity" }: TableName = {}): string {
   const t = quoteIdent(name);
   return `
@@ -109,7 +114,7 @@ function toEntityRow(raw: RawEntityRow): EntityRow {
   };
 }
 
-/** Prepared helpers over one interval entity table. */
+/** Prepared helpers over one current-state entity table. */
 export class EntityTable {
   private readonly upsertStmt;
   private readonly getStmt;
@@ -130,7 +135,7 @@ export class EntityTable {
     this.byKindStmt = db.prepare(`SELECT * FROM ${t} WHERE kind = ? AND t_expired IS NULL ORDER BY ref`);
   }
 
-  /** Insert or refresh the entity; a previously expired ref comes back live. */
+  /** Insert or overwrite the entity; a previously expired ref comes back live with its original `t_valid`. */
   upsert(entity: EntityInput): void {
     this.upsertStmt.run({
       ref: entity.ref,
