@@ -173,6 +173,8 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const runs = caseNamed(words);
   const cut = cutReading(words);
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
+  const unsure = runs[0]?.unsure;
+  if (unsure) addedReading(w, (copy) => caseNamed(unsure).forEach((cmd) => run(cmd, redirects, copy, next)));
   return runs[0] ?? null;
 }
 
@@ -196,9 +198,14 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
  * reading set, an error drops what is left of it, and every command it emits is marked `added` for the classifier to drop on error.
  */
 function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
+  addedReading(w, (copy) => runOnce(cmd, redirects, copy, next, stdin));
+}
+
+/** Walks a reading on a copy of the scope, so a `cd` or an assignment in it moves nothing, and marks what it emits `added`. */
+function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    runOnce(cmd, redirects, { ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }, next, stdin);
+    read({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
   } catch {
     // Main's runs of the same command still decide; this reading is dropped.
   } finally {

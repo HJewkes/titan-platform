@@ -115,6 +115,11 @@ export interface Unwrapped {
   };
   /** Set when `!` negates the command's status. */
   negated?: true;
+  /**
+   * The words without each dynamic word read as a wrapper's positional or as the command word, set only when there is one.
+   * Such a word may expand to nothing, an option or a wrapper, so `timeout $O 5 git push` may run git.
+   */
+  unsure?: WordToken[];
 }
 
 /** Program name a command word runs: a path's basename, a scoped package whole, any `@version` dropped. */
@@ -126,6 +131,7 @@ export function commandName(value: string): string {
 /** Strips keywords, assignments and wrappers. Returns null for a wrapper that does not run its command. */
 export function unwrap(words: WordToken[]): Unwrapped | null {
   const assigned: Assignment[] = [];
+  const loose: WordToken[] = [];
   let xargs: Unwrapped["xargs"];
   let negated = false;
   let i = 0;
@@ -150,10 +156,14 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       if (script !== null) return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script };
       i = skipWrapper(words, start, spec);
       if (i < 0) return null;
+      loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
       if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
     } else break;
   }
-  return { ...command(words, i, assigned), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}) };
+  const cmd = command(words, i, assigned);
+  if (cmd.name === null && cmd.args[0]) loose.push(cmd.args[0]);
+  const unsure = loose.length > 0 ? words.filter((w) => !loose.includes(w)) : null;
+  return { ...cmd, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
