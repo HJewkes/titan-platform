@@ -4,7 +4,7 @@ import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
 import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
-import type { ContextDeps, RecoveredStep } from "./context-deps.js";
+import type { CompletedStep, ContextDeps, Memo, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
 import { isRecoverable, runLegacyStep } from "./recovery.js";
 import { messageOf } from "./runtime-values.js";
@@ -38,18 +38,6 @@ import {
 
 export type { ContextDeps, RecoveredStep } from "./context-deps.js";
 export { assistedGateId, gateIdFor, gateIsPending, memoKey, pendingGateId, type GatePredicate } from "./gate-ids.js";
-
-interface CompletedStep {
-  output: string;
-  runnerRef: string | null;
-  usage?: StepUsage;
-}
-
-interface Memo {
-  index: number;
-  key: string;
-  cached: StepResult | undefined;
-}
 
 
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
