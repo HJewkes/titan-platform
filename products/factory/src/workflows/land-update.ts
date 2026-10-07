@@ -3,7 +3,7 @@ import { deadline } from "./deadline.js";
 import { conflictOrThrow } from "./land-steps.js";
 import type { Timing } from "./land.js";
 
-export interface UpdateResult {
+interface UpdateResult {
   headSha: string;
   /** The new head is GitHub's merge of the expected head and the base, so it adds nothing a human has not seen. */
   own: boolean;

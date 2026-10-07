@@ -22,7 +22,7 @@ export interface UpdateBound {
 
 /** Extra update rounds, each after a longer wait, before a stuck-behind gate opens. */
 export const MAX_UPDATE_RETRIES = 3;
-export const UPDATE_RETRY_BASE_MS = 2 * 60_000;
+const UPDATE_RETRY_BASE_MS = 2 * 60_000;
 
 /** The wait before retry `n` (0-based) doubles each time. */
 export function retryBackoffMs(n: number): number {
