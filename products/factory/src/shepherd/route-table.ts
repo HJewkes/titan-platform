@@ -100,6 +100,18 @@ export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
   return outcome === "FIX_FIRST" ? "fix-first" : "stuck";
 }
 
+/** The streak of FIX_FIRST rounds that said Closer: no; any other round, or a missing or yes answer, resets it. */
+export function nextNoCloserStreak(streak: number, kind: RoundKind, verdict: { kind: string; closer?: string }): number {
+  return kind === "fix-first" && verdict.kind === "FIX_FIRST" && verdict.closer === "no" ? streak + 1 : 0;
+}
+
+/** The owner is asked once the streak reaches its cap, ahead of the runaway cap; `fixFirsts` includes this round. */
+export function fixFirstEscalation(fixFirsts: number, streak: number, headSha: string): Escalated | undefined {
+  const detail = `the last at ${headSha}`;
+  if (streak >= MAX_NO_CLOSER_STREAK) return { escalation: "no-progress", detail };
+  return fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail } : undefined;
+}
+
 /** The gate reason: which escalation, then the detail. */
 export function escalationReason(escalation: Escalation, detail: string): string {
   return `${ESCALATIONS[escalation]}: ${detail}`;

@@ -25,7 +25,7 @@ import { recordedRoute } from "./recorded-route.js";
 import { expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, MAX_NO_CLOSER_STREAK, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextNoCloserStreak, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -92,10 +92,8 @@ interface ShepherdRun extends WakeRun {
   lastCi?: CiSnapshot;
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
-  /** FIX_FIRST reviews at this task; each is progress until the runaway cap. */
-  fixFirsts: number;
-  /** Consecutive FIX_FIRST reviews that answered Closer: no; any other round resets it. */
-  noCloserStreak: number;
+  /** FIX_FIRST reviews at this task, and the consecutive ones that said Closer: no; each is progress until a cap. */
+  fixFirsts: number; noCloserStreak: number;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   conflictChecks: number;
@@ -250,20 +248,13 @@ interface Routed {
 function countRound(run: ShepherdRun, routed: Routed): Escalated | undefined {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
-  run.noCloserStreak = kind === "fix-first" && routed.verdict.kind === "FIX_FIRST" && routed.verdict.closer === "no" ? run.noCloserStreak + 1 : 0;
-  if (kind === "fix-first") return countFixFirst(run, headSha);
+  run.noCloserStreak = nextNoCloserStreak(run.noCloserStreak, kind, routed.verdict);
+  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.noCloserStreak, headSha);
   if (kind !== "stuck") return undefined;
   run.failedRounds += 1;
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
   const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
   return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
-}
-
-function countFixFirst(run: ShepherdRun, headSha: string): Escalated | undefined {
-  run.fixFirsts += 1;
-  const detail = `the last at ${headSha}`;
-  if (run.noCloserStreak >= MAX_NO_CLOSER_STREAK) return { escalation: "no-progress", detail };
-  return run.fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail } : undefined;
 }
 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
