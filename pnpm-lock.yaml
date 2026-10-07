@@ -555,9 +555,6 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
-      '@titan-design/cluster':
-        specifier: workspace:^
-        version: link:../cluster
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
