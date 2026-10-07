@@ -1,7 +1,9 @@
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 export const SERVICE_LABEL = "dev.hjewkes.titan-factory";
+/** The launchd label without its owner prefix, the rule active-work's `active-work.service` follows too. */
+export const UNIT_NAME = `${SERVICE_LABEL.replace(/^dev\.hjewkes\./, "")}.service`;
 
 export interface PlistOptions {
   /** Absolute path of the built `bin.js`. */
@@ -42,6 +44,12 @@ export function plistPath(home: string): string {
   return join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
 }
 
+/** XDG says a relative XDG_CONFIG_HOME is invalid and must be ignored. */
+export function unitPath(home: string, xdgConfigHome?: string): string {
+  const config = xdgConfigHome && isAbsolute(xdgConfigHome) ? xdgConfigHome : join(home, ".config");
+  return join(config, "systemd", "user", UNIT_NAME);
+}
+
 export interface NodeProbe {
   exists: (path: string) => boolean;
   realpath: (path: string) => string;
@@ -63,9 +71,11 @@ function escapeXml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+const serveArgv = (options: PlistOptions): string[] => [options.nodePath, options.binPath, "serve", ...(options.port === undefined ? [] : ["--port", String(options.port)])];
+
 /** `Interactive`, not `Background`: macOS throttles a Background job's CPU and I/O, which starved the active-work daemon's index pass. */
 export function renderPlist(options: PlistOptions): string {
-  const argv = [options.nodePath, options.binPath, "serve", ...(options.port === undefined ? [] : ["--port", String(options.port)])];
+  const argv = serveArgv(options);
   const strings = (values: readonly string[]): string => values.map((v) => `    <string>${escapeXml(v)}</string>`).join("\n");
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -95,6 +105,42 @@ export function renderPlist(options: PlistOptions): string {
     `  <string>${escapeXml(join(options.logDir, "serve.err.log"))}</string>`,
     "</dict>",
     "</plist>",
+    "",
+  ].join("\n");
+}
+
+/** systemd expands `%` specifiers in every value below, so a literal one is doubled. */
+const noSpecifiers = (value: string): string => value.replace(/%/g, "%%");
+
+/** systemd splits on whitespace and reads C escapes inside double quotes. */
+function quoteIfNeeded(value: string): string {
+  return /[\s"'\\]/.test(value) ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : value;
+}
+
+/** ExecStart also expands `$VAR`, so a literal `$` is doubled there. */
+const execArg = (value: string): string => quoteIfNeeded(noSpecifiers(value).replace(/\$/g, "$$$$"));
+
+/**
+ * The systemd --user twin of renderPlist: Restart=always is KeepAlive, enabling under default.target is RunAtLoad.
+ * A user manager starts jobs with its own minimal PATH, so the unit sets the same PATH the plist does.
+ * `append:` takes the rest of the line as the path, so a log path is never quoted.
+ */
+export function renderUnit(options: PlistOptions): string {
+  return [
+    "[Unit]",
+    "Description=titan-factory serve",
+    "",
+    "[Service]",
+    "Type=simple",
+    `ExecStart=${serveArgv(options).map(execArg).join(" ")}`,
+    "Restart=always",
+    "RestartSec=5",
+    `Environment=${quoteIfNeeded(noSpecifiers(`PATH=${options.path}`))}`,
+    `StandardOutput=append:${noSpecifiers(join(options.logDir, "serve.out.log"))}`,
+    `StandardError=append:${noSpecifiers(join(options.logDir, "serve.err.log"))}`,
+    "",
+    "[Install]",
+    "WantedBy=default.target",
     "",
   ].join("\n");
 }
