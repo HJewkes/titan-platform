@@ -360,7 +360,7 @@ describe("a pending ci-failed gate whose pull request head moved", () => {
 });
 
 describe("seatPolicyHead", () => {
-  const PROMPT = `Merge PR #1 in ${REPO} at head ${GATED}? CI is green.`;
+  const PROMPT = `Merge PR #1 in ${REPO} at head ${GATED}? CI is green. Policy shepherd-seat/trusted-seat: gated`;
 
   function decision(stepId: string, result: object, completedAt: string): StepResult {
     return { stepId, iteration: 0, operation: "dispatch", agentId: null, signal: null, completedAt, output: JSON.stringify({ result }) };

@@ -40,7 +40,8 @@ without ever re-deriving history.
 `parseVerdictBlock(text)` reads a reviewer's three-line `Verdict: MERGE|FIX_FIRST`, `PR: owner/name#n`,
 `Head: <40 lowercase hex>` block and returns `{ ok: true, verdict, repo, pr, head, lineOffset }` or
 `{ ok: false, reason }`. It fails closed: two blocks, quoted or fenced blocks, `APPROVE`, `CHANGES` and
-any short, upper-case or over-long head are refused. Rules and reasons are in
+any short, upper-case or over-long head are refused. A `FIX_FIRST` block may add a fourth line,
+`Closer: yes|no`, directly after `Head`; it is returned as `closer` and is otherwise ignored. Rules and reasons are in
 `site/reference/session-read.md`.
 
 ## Review verdicts and assigned tasks

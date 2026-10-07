@@ -134,6 +134,9 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   timeout or an unanswered hold. Retrying again would only repeat the stall.
 - `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
   progress, so this cap only stops a loop between the reviewer and the fixer.
+- `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
+  closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
+  other round, resets the count. It is checked before `fix-first-runaway`.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
@@ -213,7 +216,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd pid with `github` `ok`, and the burndown tick is not failing or stale |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, and the burndown tick is not failing or stale |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -246,8 +249,10 @@ unit's `MainPID`). `status` reads `systemctl --user show` (`ActiveState`, `SubSt
 `restart` and `deploy` restart with `systemctl --user restart`. `service plist` prints the unit.
 `service install --dry-run` prints the unit or plist and the `systemctl` or `launchctl` calls
 install would make, and changes nothing. For the unit to run without a login session, enable
-lingering once: `loginctl enable-linger "$USER"`. `service check` reads launchd's run counters
-and still needs macOS.
+lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
+on Linux: `MainPID` (no process unless `ActiveState` is `active`), `NRestarts` in place of
+launchd's run count and `ExecMainStatus` in place of its last exit code, with the same causes
+and exit codes as on macOS.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its

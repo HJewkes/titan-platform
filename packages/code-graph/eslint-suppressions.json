@@ -1,0 +1,62 @@
+{
+  "src/analysis/dashboard-node-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/analysis/graph-report-drift.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "src/analysis/partition-quality.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/barrel-resolve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/check/validate.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/extractors/reexport-resolve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/extractors/ts-morph-extractor.test-helpers.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/incremental.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/indexer.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/source-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/store.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}
