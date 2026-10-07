@@ -45,6 +45,16 @@ async function tmux(options: SurfaceOptions, args: string[]): Promise<string> {
  */
 const tmuxLiteral = (text: string): string => text.replaceAll("#", "##");
 
+/**
+ * tmux renames a session whose name holds `:` or `.` (to `_`), so the `=name:`
+ * target would never match the session it created. Refused rather than escaped:
+ * no escape exists in a target, and a renamed session is not the one asked for.
+ */
+function checkSessionName(session: string): void {
+  if (/[:.]/.test(session))
+    throw new SurfaceRefused(`tmux session name '${session}' may not contain ':' or '.'; tmux would rename it`);
+}
+
 async function hasSession(options: SurfaceOptions, session: string): Promise<boolean> {
   try {
     await tmux(options, ["has-session", "-t", `=${session}`]);
@@ -63,6 +73,7 @@ async function hasSession(options: SurfaceOptions, session: string): Promise<boo
  */
 async function launchTmux(plan: LaunchPlan, launcher: Launcher, options: SurfaceOptions): Promise<LaunchHandle> {
   const session = options.tmuxSession ?? TMUX_SESSION;
+  checkSessionName(session);
   const command = launchCommand(launcher, plan.agentId);
   const name = tmuxLiteral(plan.title === "" ? plan.agentId : plan.title);
   const detached = ["-d", "-P", "-F", "#{window_id}", "-n", name];
@@ -98,7 +109,11 @@ async function closeTmux(handle: LaunchHandle, options: SurfaceOptions): Promise
   try {
     await tmux(options, ["kill-window", "-t", windowId]);
   } catch (err) {
-    return { closed: false, reason: `tmux could not kill window ${windowId}: ${(err as Error).message}` };
+    // A window that exited on its own is already what close wanted; only a
+    // confirmed absence says so, and an unreadable server does not.
+    if ((await tmuxWindowPresent(windowId, options)) !== false)
+      return { closed: false, reason: `tmux could not kill window ${windowId}: ${(err as Error).message}` };
+    return { closed: true };
   }
   const present = await tmuxWindowPresent(windowId, options);
   if (present === true) return { closed: false, reason: `tmux still lists window ${windowId} after killing it` };

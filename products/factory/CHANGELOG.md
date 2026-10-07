@@ -1,5 +1,30 @@
 # @titan-design/factory
 
+## 0.8.0
+
+### Minor Changes
+
+- 49db03d: Shepherd publishes a `shepherd/review` check run per head through a new `sh-publish-review` step: `success` only for a MERGE at that exact head or carried to it across a verified tree-equal update, `failure` for FIX_FIRST, and `action_required` for every other outcome, including a moved head, which is posted at the new head. The App comes from the optional `shepherd.reviewCheck` config (`appId`, `installationId`, `privateKeyPath`); without it, or when a post fails, the step records `published: false` and the run continues.
+- 827a363: On Linux, `titan-factory service install`, `status`, `uninstall`, `restart`, `deploy` and `plist` manage the systemd --user unit `titan-factory.service`, the launchd plist's twin (TP-1835). `service install --dry-run` prints the file and the calls install would make. macOS behaviour is unchanged, and `service check` still needs macOS.
+
+### Patch Changes
+
+- c110a59: The spawn gate counts only live reviewers and adds review load only for reviews younger than load5's window (TP-1770).
+- fa24af1: A review that never started because every spawn was deferred now returns to review intent on a behind head too, instead of going to the merge decision and opening an approve-merge gate. The wait names reviewer admission.
+- 82ae970: The spawn gate reads free memory and PSI memory pressure from /proc on Linux, with the same thresholds as agent-chat's machine guard (TP-1778).
+- 7776398: Merge policy's freeze read and `shepherd resync` now re-read the default branch through the freeze guard's green-after-red recheck, sharing its five-minute per-repo limit, so a main fixed outside Shepherd thaws a stale freeze without an owner gate. A failed read leaves the repo frozen.
+- Updated dependencies [179706a]
+- Updated dependencies [9891e0d]
+- Updated dependencies [f2e4abf]
+- Updated dependencies [6a2c0f8]
+- Updated dependencies [816d492]
+  - @titan-design/daemon@0.4.1
+  - @titan-design/github@0.5.1
+  - @titan-design/hitl@0.7.0
+  - @titan-design/session-read@0.10.0
+  - @titan-design/worktree@0.1.4
+  - @titan-design/workflow@0.9.1
+
 ## 0.7.0
 
 ### Minor Changes

@@ -41,11 +41,11 @@ export interface CliDeps {
   logger?: Logger;
   /** Stops the serve verb as SIGTERM would. */
   stop?: AbortSignal;
-  /** What the service verbs run launchctl, claude, fetch and the filesystem through; defaults to the real machine. */
+  /** What the service verbs run launchctl, systemctl, claude, fetch and the filesystem through; defaults to the real machine. */
   service?: ServicePorts;
   /** What `service check` reads launchd, ps, /health and the build through; defaults to the real machine. */
   check?: CheckPorts;
-  /** What `service deploy` runs git, pnpm and launchctl through; defaults to the real machine in this bin's own checkout. */
+  /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
   /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
   presence?: OwnerPresence;

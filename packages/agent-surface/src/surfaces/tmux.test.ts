@@ -25,6 +25,7 @@ case "$1" in
     touch "$d/session"; n=$(( $(cat "$d/next" 2>/dev/null || echo 7) )); echo $((n + 1)) > "$d/next"
     echo "@$n" >> "$d/windows"; echo "@$n" ;;
   kill-window)
+    [ -f "$d/unkillable" ] && { echo "refused to kill $3" >&2; exit 1; }
     grep -qx -- "$3" "$d/windows" 2>/dev/null || { echo "can't find window: $3" >&2; exit 1; }
     [ -f "$d/stubborn" ] && exit 0
     grep -vx -- "$3" "$d/windows" > "$d/rest"; mv "$d/rest" "$d/windows"
@@ -33,7 +34,7 @@ case "$1" in
     [ -f "$d/noserver" ] && { echo "no server running on /tmp/tmux-0/default" >&2; exit 1; }
     [ -f "$d/unreadable" ] && { echo "server wedged" >&2; exit 1; }
     [ -f "$d/denied" ] && { echo "error connecting to /tmp/tmux-0/default (Permission denied)" >&2; exit 1; }
-    cat "$d/windows" 2>/dev/null ;;
+    cat "$d/windows" 2>/dev/null || true ;;
 esac
 `
 
@@ -201,6 +202,11 @@ describe('launching into a tmux window', () => {
     expect(fs.existsSync(path.join(dir, 'pwned'))).toBe(false)
   })
 
+  it.each(['a:b', 'a.b'])('refuses session %s, which tmux would rename', async name => {
+    await expect(tmuxFor({ tmuxSession: name }).launch(plan())).rejects.toThrow(SurfaceRefused)
+    expect(calls()).toEqual([])
+  })
+
   it('refuses, naming headless, when tmux is not installed', async () => {
     process.env.PATH = path.join(dir, 'empty')
 
@@ -270,10 +276,37 @@ describe('closing a tmux window', () => {
     })
   })
 
-  it('says why when the window was already gone', async () => {
+  it('reads a window that already exited as closed', async () => {
     const outcome = await tmuxFor().close({ surface: 'tmux-window', paneRef: '@9', ownsSurface: true })
 
-    expect(outcome).toEqual({ closed: false, reason: 'tmux could not kill window @9: can\'t find window: @9' })
+    expect(outcome).toEqual({ closed: true })
+  })
+
+  it('reads an exited window as closed when its exit took the server too', async () => {
+    touch('noserver')
+
+    const outcome = await tmuxFor().close({ surface: 'tmux-window', paneRef: '@9', ownsSurface: true })
+
+    expect(outcome).toEqual({ closed: true })
+  })
+
+  it('says why when the kill failed and the window is still there', async () => {
+    const surface = tmuxFor()
+    const handle = await surface.launch(plan())
+    touch('unkillable')
+
+    await expect(surface.close(handle)).resolves.toEqual({
+      closed: false,
+      reason: 'tmux could not kill window @7: refused to kill @7',
+    })
+  })
+
+  it('does not read a failed kill as closed when tmux cannot be re-read', async () => {
+    touch('unreadable')
+
+    const outcome = await tmuxFor().close({ surface: 'tmux-window', paneRef: '@9', ownsSurface: true })
+
+    expect(outcome).toEqual({ closed: false, reason: "tmux could not kill window @9: can't find window: @9" })
   })
 })
 
