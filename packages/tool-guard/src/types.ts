@@ -11,6 +11,8 @@ export interface ClassifyContext {
   readHead(dir: string): string | null;
   /** Text of a script run by path, null when it cannot be read. */
   readScript(path: string): string | null;
+  /** Whether a PATH lookup finds a program whatever the case of its name, so `GIT push` runs git. */
+  foldCase?: boolean;
 }
 
 export type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
