@@ -23,4 +23,9 @@ describe("hash routes", () => {
     expect(CONTRACT["findings.list"].args.safeParse({ sort }).success).toBe(true);
     expect(parseRoute(`#/priorities?sort=${sort}`)).toMatchObject({ query: { sort } });
   });
+
+  it("keeps the raw tail when a node or finding id has a malformed escape", () => {
+    expect(parseRoute("#/node/%")).toEqual({ page: "node", id: "%" });
+    expect(parseRoute("#/finding/50%")).toEqual({ page: "finding", id: "50%" });
+  });
 });
