@@ -38,6 +38,21 @@ async function writeUntilChanged(dir: string, counter: { count: number }): Promi
   if (counter.count === 0) throw new Error(`no change fired for ${dir}`);
 }
 
+/**
+ * Wait until no change has fired for several debounce windows.
+ *
+ * Creating a directory fires its own debounced change (and attaching it fires another), so a
+ * counter reset right after `whenWatching` can be refilled by that leftover timer instead of by
+ * the write under test.
+ */
+async function settle(counter: { count: number }): Promise<void> {
+  let last = -1;
+  while (counter.count !== last) {
+    last = counter.count;
+    await sleep(DEBOUNCE_MS * 5);
+  }
+}
+
 describe("watchTree", () => {
   it("fires one debounced callback for a write inside a nested subdirectory", { timeout: 15_000 }, async () => {
     const nested = path.join(root, "a", "b");
@@ -68,6 +83,7 @@ describe("watchTree", () => {
     await mkdir(fresh);
 
     expect(await watcher.whenWatching(fresh, 4000)).toBe(true);
+    await settle(counter);
     counter.count = 0;
     await writeUntilChanged(fresh, counter);
 
@@ -84,6 +100,7 @@ describe("watchTree", () => {
     await mkdir(tasks);
 
     expect(await watcher.whenWatching(tasks, 4000)).toBe(true);
+    await settle(counter);
     counter.count = 0;
     await writeUntilChanged(tasks, counter);
 
