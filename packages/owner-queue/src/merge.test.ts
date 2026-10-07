@@ -54,6 +54,29 @@ describe("mergeByKeys", () => {
     expect(merged).toHaveLength(2);
   });
 
+  it.each([
+    ["one sha is uppercase", PR_AT_A, `pr:org-a/repo-1#12@${SHA_B.toUpperCase()}`],
+    ["the owner/repo case differs", `pr:Org-A/Repo-1#12@${SHA_A}`, PR_AT_B],
+    ["one PR key has no sha", PR_AT_A, "pr:org-a/repo-1#12"],
+    ["both carry the same short sha", `pr:org-a/repo-1#12@${SHA_A.slice(0, 7)}`, `pr:org-a/repo-1#12@${SHA_A.slice(0, 7)}`],
+  ])("keeps one PR apart through a shared task key when %s", (_label, first, second) => {
+    const merged = mergeByKeys([gate([first, "task:PRJ1-7"]), chat([second, "task:PRJ1-7"])]);
+
+    expect(merged).toHaveLength(2);
+  });
+
+  it("never merges on two identical short shas", () => {
+    const short = `pr:org-a/repo-1#12@${SHA_A.slice(0, 7)}`;
+
+    expect(mergeByKeys([gate([short]), chat([short])])).toHaveLength(2);
+  });
+
+  it("merges one head written in two cases", () => {
+    const merged = mergeByKeys([gate([`pr:Org-A/Repo-1#12@${SHA_A.toUpperCase()}`]), chat([PR_AT_A])]);
+
+    expect(merged).toHaveLength(1);
+  });
+
   it("merges transitively through a shared task key and a shared gate key", () => {
     const morning = item({ id: "morning:seat-a:1", sources: [{ system: "morning", ref: "seat-a:1" }], keys: ["gate:g-1"] });
 

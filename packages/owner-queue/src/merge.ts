@@ -1,33 +1,43 @@
 import type { OwnerItem, SourceRef } from "./schema.js";
 
-const PR_KEY = /^pr:([\w.-]+\/[\w.-]+#\d+)@([0-9a-f]{7,64})$/;
+const PR_KEY = /^pr:[\w.-]+\/[\w.-]+#\d+@[0-9a-f]{40}$/;
+const FULL_SHA = /^[0-9a-f]{40}$/;
 const ID_KEY = /^(task|gate|run):\S+$/;
 
-/** A key merges only in its exact, complete form: a PR ref without its head sha is partial and never merges. */
+/** GitHub owner, repo and sha compare case-insensitively; task, gate and run ids are exact. */
+function canonical(key: string): string {
+  return /^pr:/i.test(key) ? key.toLowerCase() : key;
+}
+
+/** A key merges only in its exact, complete form: a PR ref needs its full 40-hex head sha. */
 export function isMergeKey(key: string): boolean {
-  return PR_KEY.test(key) || ID_KEY.test(key);
+  const normal = canonical(key);
+  return PR_KEY.test(normal) || ID_KEY.test(normal);
 }
 
 interface Group {
   items: OwnerItem[];
   keys: Set<string>;
-  /** PR ref to head sha: two heads of one PR never share an answer, whatever other key they share. */
-  heads: Map<string, string>;
+  /** PR ref to its full head sha, or null when unpinned, short or ambiguous: such a PR shares no answer. */
+  heads: Map<string, string | null>;
 }
 
-function headsOf(keys: Iterable<string>): Map<string, string> {
-  const heads = new Map<string, string>();
-  for (const key of keys) {
-    const match = PR_KEY.exec(key);
-    if (match) heads.set(match[1]!, match[2]!);
+function headsOf(keys: readonly string[]): Map<string, string | null> {
+  const heads = new Map<string, string | null>();
+  for (const key of keys.map(canonical).filter((each) => each.startsWith("pr:"))) {
+    const at = key.lastIndexOf("@");
+    const pr = at < 0 ? key : key.slice(0, at);
+    const sha = at >= 0 && FULL_SHA.test(key.slice(at + 1)) ? key.slice(at + 1) : null;
+    heads.set(pr, heads.has(pr) && heads.get(pr) !== sha ? null : sha);
   }
   return heads;
 }
 
-function compatible(a: Map<string, string>, b: Map<string, string>): boolean {
+/** Any PR both sides name must carry the same full head sha on both. */
+function compatible(a: Map<string, string | null>, b: Map<string, string | null>): boolean {
   for (const [pr, sha] of a) {
-    const other = b.get(pr);
-    if (other !== undefined && other !== sha) return false;
+    if (!b.has(pr)) continue;
+    if (sha === null || b.get(pr) !== sha) return false;
   }
   return true;
 }
@@ -43,8 +53,8 @@ function absorb(into: Group, from: Group): void {
 }
 
 function place(groups: Group[], item: OwnerItem): Group[] {
-  const keys = item.keys.filter(isMergeKey);
-  const merged: Group = { items: [item], keys: new Set(keys), heads: headsOf(keys) };
+  const keys = item.keys.filter(isMergeKey).map(canonical);
+  const merged: Group = { items: [item], keys: new Set(keys), heads: headsOf(item.keys) };
   const rest: Group[] = [];
   for (const group of groups) {
     if (sharesKey(group, [...merged.keys]) && compatible(group.heads, merged.heads)) absorb(merged, group);
