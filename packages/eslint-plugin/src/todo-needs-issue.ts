@@ -6,12 +6,13 @@ const ISSUE_NUMBER = String.raw`#\d+`;
 const PARENTHESIZED = new RegExp(`^\\((?:${KEY}|${ISSUE_NUMBER})\\)`);
 // A bare token must end the sentence: "TODO UTF-8 support" and "TODO ES-2022" are prose, not keys.
 const BARE = new RegExp(`^:?\\s+(?:${KEY}|${ISSUE_NUMBER})(?![\\w-])(?=\\s*(?::|[.,;)]|$))`);
-const YEAR_SUFFIX = /-(?:19|20)\d{2}\b/;
+// Standards and encodings that look like tracker keys; digits alone cannot tell a year from a task number.
+const PROSE_PREFIX = /^:?\s+(?:UTF|ES|ISO|RFC|SHA|MD|TLS|SSL|IPV|ECMA|HTTP)-/;
 
 function namesTask(afterMarker: string): boolean {
   if (PARENTHESIZED.test(afterMarker)) return true;
   const bare = BARE.exec(afterMarker);
-  return bare !== null && !YEAR_SUFFIX.test(bare[0]);
+  return bare !== null && !PROSE_PREFIX.test(bare[0]);
 }
 
 export function needsTaskId(commentText: string): boolean {

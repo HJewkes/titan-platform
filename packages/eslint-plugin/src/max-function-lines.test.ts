@@ -31,6 +31,11 @@ ruleTester.run("max-function-lines", maxFunctionLines, {
   ],
   invalid: [
     {
+      name: "an outer function fails only because of its nested function",
+      code: `function outer() {\n  function inner() {\n${statements(27).join("\n")}\n  }\n}`,
+      errors: [{ message: message("outer", 31) }],
+    },
+    {
       name: "a 31-line function fails with its name and line count",
       code: declaration("thirtyOne", 31),
       errors: [{ message: message("thirtyOne", 31) }],
@@ -51,7 +56,7 @@ ruleTester.run("max-function-lines", maxFunctionLines, {
       errors: [{ message: message("load", 32) }],
     },
     {
-      name: "an assigned member function takes its target's name",
+      name: "an assigned member function reports as anonymous",
       code: `obj.m = function () {\n${statements(30).join("\n")}\n};`,
       errors: [{ message: message("anonymous function", 32) }],
     },

@@ -28,7 +28,7 @@ To run ESLint against a style profile and get normalized diagnostics, use `style
 | default export | the plugin: `meta.name` and `rules` with `max-function-lines` and `todo-needs-issue` |
 | `maxFunctionLines` | reports a function, arrow function or method with more than `max` (default 30) non-blank lines, naming it by its id, variable, key or as `anonymous function` |
 | `DEFAULT_MAX_LINES` | `30` |
-| `todoNeedsIssue` | reports each `TODO` in a comment that is not immediately followed by a tracker key (`TODO(TP-123)`, `TODO: TP-123`) or an issue number (`TODO(#123)`, `TODO #123`); a bare token must end the sentence, so `TODO UTF-8 support` is reported |
+| `todoNeedsIssue` | reports each `TODO` in a comment that is not immediately followed by a tracker key (`TODO(TP-123)`, `TODO: TP-123`) or an issue number (`TODO(#123)`, `TODO #123`); a bare token must end the sentence, so `TODO UTF-8 support` is reported, as is any bare key with a standards prefix (`UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP`) |
 
 ## Example
 

@@ -12,6 +12,8 @@ ruleTester.run("todo-needs-issue", todoNeedsIssue, {
     { name: "a TODO with a colon, a bare key and a following colon", code: "// TODO: KEY-123: drop the shim" },
     { name: "a TODO with a bare issue number", code: "// TODO #123" },
     { name: "a JSDoc TODO with a task id", code: "/**\n * TODO(TP-9): document this\n */" },
+    { name: "a task number that looks like a year is still a key", code: "// TODO: TP-2024" },
+    { name: "a task number of 1900 is still a key", code: "// TODO: TP-1900" },
     { name: "FIXME is not checked", code: "// FIXME: later" },
     { name: "a block comment TODO with a task id", code: "/* TODO(ABC-7): batch these */" },
     { name: "a comment without TODO", code: "// todo lists are out of scope here" },
@@ -19,7 +21,7 @@ ruleTester.run("todo-needs-issue", todoNeedsIssue, {
   ],
   invalid: [
     { name: "a key-shaped standard name is prose", code: "// TODO UTF-8 support", errors: [{ message }] },
-    { name: "a year-suffixed name is prose", code: "// TODO ES-2022", errors: [{ message }] },
+    { name: "a standard name with a year is prose", code: "// TODO ES-2022", errors: [{ message }] },
     { name: "a key only inside a URL does not count", code: "// TODO: https://example.com/browse/TP-123", errors: [{ message }] },
     { name: "a key later in the sentence does not count", code: "// TODO: see TP-123", errors: [{ message }] },
     { name: "a JSDoc TODO without a task id", code: "/**\n * TODO: document this\n */", errors: [{ message }] },
