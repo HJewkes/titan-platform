@@ -31,7 +31,7 @@ export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-s
 
 export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown }
-  | { kind: "FIX_FIRST"; headSha: string; text: string }
+  | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };
 

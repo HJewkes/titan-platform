@@ -152,6 +152,9 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   timeout or an unanswered hold. Retrying again would only repeat the stall.
 - `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
   progress, so this cap only stops a loop between the reviewer and the fixer.
+- `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
+  closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
+  other round, resets the count. It is checked before `fix-first-runaway`.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
