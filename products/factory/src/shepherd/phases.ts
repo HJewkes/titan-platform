@@ -19,7 +19,7 @@ export interface WakeRequest extends PhaseTarget {
   payload: unknown;
 }
 
-export type WakeOutcome = { kind: "woken"; agent: string; sessionId?: string } | { kind: "unhandled"; reason: string };
+export type WakeOutcome = { kind: "woken"; agent: string; sessionId?: string } | { kind: "unhandled"; reason: string; /** The woken agent exited with the head unchanged and the PR open. */ exited?: true };
 
 export interface ReviewRequest extends PhaseTarget {
   /** Spawn a reviewer under a never-held name, so a reviewer that went silent at this head is not asked again. */
