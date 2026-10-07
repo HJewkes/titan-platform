@@ -3,6 +3,14 @@ import { z } from "zod";
 /** Open string: "repo" | "package" | "directory" | "file" | "symbol" today; consumers tolerate unknown kinds. */
 export const NodeKind = z.string();
 
+/** Kinds code-read derives from file paths instead of reading from code-graph; such a node has no edges of its own. */
+export const SYNTHESIZED_KINDS = ["repo", "directory"] as const;
+
+/** Whether code-graph stores nodes of this kind, so `node.neighbors` accepts them. */
+export function isStoredKind(kind: string): boolean {
+  return !(SYNTHESIZED_KINDS as readonly string[]).includes(kind);
+}
+
 /** Open string: "error" | "warning" | "info" today. */
 export const Severity = z.string();
 
