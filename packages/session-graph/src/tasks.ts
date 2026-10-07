@@ -1,4 +1,5 @@
 import { taskRef } from "@titan-design/session-read";
+import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 
 /**
@@ -66,12 +67,9 @@ export function allTaskIds(graph: SessionGraph): string[] {
 export async function enrichTasks(graph: SessionGraph, resolver: TaskResolver | undefined, taskIds: readonly string[]): Promise<TaskEnrichment> {
   const unique = [...new Set(taskIds)];
   if (!resolver) return NO_ENRICHMENT;
-  try {
-    const resolved = await resolver(unique);
-    return { requested: unique.length, applied: write(graph, resolved), failed: false };
-  } catch (err) {
-    return { requested: unique.length, applied: 0, failed: true, error: err instanceof Error ? err.message : String(err) };
-  }
+  const outcome = await callResolver(unique.length, () => resolver(unique));
+  if (!outcome.ok) return outcome.failure;
+  return { requested: unique.length, applied: write(graph, outcome.value), failed: false };
 }
 
 function write(graph: SessionGraph, resolved: TaskResolution): number {
