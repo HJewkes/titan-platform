@@ -38,6 +38,7 @@
   "dependencies": {
     "@jscpd/core": "3.5.10",
     "@jscpd/tokenizer": "3.5.4",
+    "@titan-design/code-graph": "workspace:^",
     "@titan-design/code-parser": "workspace:^",
     "@titan-design/style-profile": "workspace:^"
   },

@@ -14,6 +14,12 @@ export const TS_FUNCTION_DECL_TYPES: ReadonlySet<string> = new Set([
   "method_definition",
 ]);
 
+/** Plain function and method declarations; generators are left out on purpose, matching style-analyzer's complexity metric. */
+export const TS_FUNCTION_AND_METHOD_DECL_TYPES: ReadonlySet<string> = new Set([
+  TS_FUNCTION_DECLARATION,
+  "method_definition",
+]);
+
 /** Function values that take the name of the `const`/`let` they are bound to. */
 export const TS_BOUND_FUNCTION_TYPES: ReadonlySet<string> = new Set([
   "arrow_function",

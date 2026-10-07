@@ -6,6 +6,7 @@ import {
   TS_BOUND_FUNCTION_TYPES,
   TS_CLASS_TYPES,
   TS_DECL_TYPES,
+  TS_FUNCTION_AND_METHOD_DECL_TYPES,
   TS_FUNCTION_DECLARATION,
   TS_FUNCTION_DECL_TYPES,
   TS_FUNCTION_TYPES,
@@ -26,6 +27,7 @@ describe("shared node-kind table keeps each caller's former set", () => {
     ["scope-path and source-metrics named TS functions", TS_FUNCTION_DECL_TYPES, [
       "function_declaration", "generator_function_declaration", "method_definition",
     ]],
+    ["style-analyzer complexity TS functions", TS_FUNCTION_AND_METHOD_DECL_TYPES, ["function_declaration", "method_definition"]],
     ["scope-path and source-metrics bound TS functions", TS_BOUND_FUNCTION_TYPES, [
       "arrow_function", "function_expression", "generator_function",
     ]],

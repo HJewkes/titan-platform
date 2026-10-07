@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { PY_FUNCTION_TYPES, TS_FUNCTION_AND_METHOD_DECL_TYPES } from "@titan-design/code-graph/analysis";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 interface FunctionInfo {
@@ -8,15 +9,6 @@ interface FunctionInfo {
   cyclomaticComplexity: number;
   line: number;
 }
-
-const TS_FUNCTION_TYPES = new Set([
-  "function_declaration",
-  "method_definition",
-]);
-
-const PY_FUNCTION_TYPES = new Set([
-  "function_definition",
-]);
 
 const TS_NESTING_TYPES = new Set([
   "if_statement",
@@ -101,13 +93,13 @@ export class ComplexityExtractor implements StyleExtractor {
     }));
   }
 
-  private getFunctionTypes(language: string): Set<string> {
-    return language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
+  private getFunctionTypes(language: string): ReadonlySet<string> {
+    return language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_AND_METHOD_DECL_TYPES;
   }
 
   private findFunctions(
     root: Node,
-    functionTypes: Set<string>,
+    functionTypes: ReadonlySet<string>,
     language: string,
   ): FunctionInfo[] {
     const functions: FunctionInfo[] = [];
