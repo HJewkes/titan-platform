@@ -3,8 +3,8 @@ import {
   authorLinesByPath,
   computeOwnership,
   entriesWithin,
-  loadChurnEntries,
-  loadFileFirstSeen,
+  loadChurnResult,
+  loadFirstSeenResult,
   type ChurnEntry,
   type ChurnWindow,
   type PathChurn,
@@ -45,13 +45,19 @@ export interface LoadedHistory {
   metrics: GraphMetric[];
   /** Churn entries inside the primary window, which also scopes test-coverage linking and ownership. */
   primaryEntries: readonly ChurnEntry[];
+  /**
+   * Why history is missing or partial: the churn log overflowed or git failed (no metrics, no entries),
+   * or the first-seen log did (metrics without age discount). Empty when everything loaded.
+   */
+  warnings: readonly string[];
 }
 
 /**
  * Git-history metrics for a snapshot's file nodes: churn and recency per window,
  * ownership for the primary window (and lifetime when requested). Node ids are
  * the history engine's repo-relative paths, because both are rooted at `idRoot`.
- * Returns [] when git or history is unavailable.
+ * Returns [] when git or history is unavailable; a log that overflowed or failed is reported by
+ * {@link loadHistoryMetrics} as a warning, which this metrics-only view drops.
  */
 export function buildHistoryMetrics(
   nodes: Iterable<GraphNode>,
@@ -61,7 +67,8 @@ export function buildHistoryMetrics(
   return loadHistoryMetrics(nodes, idRoot, options)?.metrics ?? [];
 }
 
-/** {@link buildHistoryMetrics} plus the primary-window entries it read; null when git or history is unavailable. */
+/** {@link buildHistoryMetrics} plus the primary-window entries it read. Null when `idRoot` is not a git checkout;
+ * `warnings` (and no metrics) when git ran but its log overflowed or failed. */
 export function loadHistoryMetrics(
   nodes: Iterable<GraphNode>,
   idRoot: string,
@@ -71,24 +78,26 @@ export function loadHistoryMetrics(
   const primaryWindow = options.churnWindowDays ?? 30;
   const windows = resolveChurnWindows(options.churnWindows, primaryWindow, options.includeLifetime === true);
   // Load the widest window once and slice it per window; lifetime sorts widest.
-  const wide = loadChurnEntries({
+  const load = loadChurnResult({
     repoRoot: idRoot,
     windowDays: windows[windows.length - 1]!,
     rev: options.rev,
     untilEpoch: options.nowEpoch,
   });
-  if (wide === null) return null;
+  if (!load.ok) return load.reason === "not-git" ? null : { metrics: [], primaryEntries: [], warnings: [historyWarning("churn", load)] };
+  const wide = load.value;
   const nowEpoch = options.nowEpoch ?? Math.floor(Date.now() / 1000);
   const churnByWindow = aggregateChurnWindows(wide, windows, nowEpoch, knownPaths);
   const primaryEntries = windows.at(-1) === primaryWindow ? wide : entriesWithin(wide, primaryWindow, nowEpoch);
+  const warnings: string[] = [];
   const metrics = [
     ...churnMetrics(churnByWindow),
     ...ownershipMetrics(primaryEntries, primaryWindow, knownPaths),
-    ...recencyMetrics({ idRoot, rev: options.rev, knownPaths, nowEpoch }, churnByWindow),
+    ...recencyMetrics({ idRoot, rev: options.rev, knownPaths, nowEpoch, warnings }, churnByWindow),
   ];
   // Lifetime ownership is the dominant owner over full history; `wide` is full history when lifetime is on.
   if (options.includeLifetime === true) metrics.push(...ownershipMetrics(wide, "lifetime", knownPaths));
-  return { metrics, primaryEntries };
+  return { metrics, primaryEntries, warnings };
 }
 
 export function collectFileIds(nodes: Iterable<GraphNode>): Set<string> {
@@ -189,7 +198,7 @@ function mergeAuthorChurn(
 
 /** Recency for files that churned in each window; an unknown first-seen date still yields recency 1. */
 function recencyMetrics(
-  at: { idRoot: string; rev: string | undefined; knownPaths: ReadonlySet<string>; nowEpoch: number },
+  at: { idRoot: string; rev: string | undefined; knownPaths: ReadonlySet<string>; nowEpoch: number; warnings: string[] },
   churnByWindow: ReadonlyMap<ChurnWindow, ReadonlyMap<string, PathChurn>>,
 ): GraphMetric[] {
   const churnedByWindow = new Map<ChurnWindow, ReadonlySet<string>>();
@@ -197,7 +206,11 @@ function recencyMetrics(
     if (byPath.size > 0) churnedByWindow.set(window, new Set(byPath.keys()));
   }
   if (churnedByWindow.size === 0) return [];
-  const firstSeen =
-    loadFileFirstSeen({ repoRoot: at.idRoot, knownPaths: at.knownPaths, rev: at.rev }) ?? new Map<string, number>();
-  return computeRecencyWindows(firstSeen, churnedByWindow, at.nowEpoch);
+  const load = loadFirstSeenResult({ repoRoot: at.idRoot, knownPaths: at.knownPaths, rev: at.rev });
+  if (!load.ok && load.reason !== "not-git") at.warnings.push(historyWarning("first-seen", load));
+  return computeRecencyWindows(load.ok ? load.value : new Map<string, number>(), churnedByWindow, at.nowEpoch);
+}
+
+function historyWarning(log: "churn" | "first-seen", failure: { reason: string; detail: string }): string {
+  return `git ${log} log ${failure.reason}: ${failure.detail}; history metrics are incomplete`;
 }

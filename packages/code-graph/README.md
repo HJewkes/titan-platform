@@ -255,12 +255,22 @@ the file is unreadable.
 
 ## Checks and diffs
 
-The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
+The rules engine turns a snapshot into pass/fail against a `check.json`. Eight rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
-`layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
+`layered-deps`, `no-internal-only-barrels`, and `no-import-cycles`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
 destination file has an excluded role. `forbid-import` takes `except`: destination patterns
 that `to` matches but the rule allows, such as one sanctioned entry file.
+
+`no-import-cycles` reports each strongly connected component of the file import graph once,
+as one violation whose `members` are the cycle's files, sorted; a file importing itself is a
+cycle of one. `import type` and `export type … from` edges are left out unless
+`includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
+`verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
+`excludeRoles` take files out of the graph.
+The baseline key is the rule id plus every member, so it does not depend on edge order. Against
+a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
+split cycle passes, while a cycle that gains a file or merges two known cycles is new.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -467,7 +477,9 @@ three are deterministic projections of rows the caller has already read; no LLM 
 - `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
   churn, centrality, ownership, consumers split into source and test files, coupling
   partners, and blast radius. A file target lists its symbols, exports first, each with an
-  `importance` that splits the file's centrality by utilization share. The record carries
+  `importance` that splits the file's centrality by utilization share. Symbol lines, the
+  symbol target and blast-radius entries carry an optional `loc` read from the `symbol_loc`
+  metric, which `collectNodeMetrics` folds onto the symbol's `loc`. The record carries
   `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
 - `renderContextMarkdown(dossier)` renders the same facts as markdown.
 - `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
@@ -603,7 +615,7 @@ records out, no node ids or snapshots.
 ```ts
 import { computeChangeCoupling, couplingFor, loadChurnEntries } from "@titan-design/code-graph/history";
 
-const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git
+const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git; throws if the log overflows
 const { pairs, skippedLargeCommits } = computeChangeCoupling(entries);
 couplingFor(pairs, "packages/code-graph/src/indexer.ts"); // partners by co-edit count
 ```
@@ -615,12 +627,15 @@ plus `top_author_share_{w}` for the primary window. Windows default to 30, 90 an
 plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the defaults and
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
-metrics.
+metrics. A git log that overflows its buffer (64 MiB for churn, 128 MiB for first-seen) or makes
+git fail is not "outside git": `loadChurnEntries` and `loadFileFirstSeen` throw a `GitHistoryError`,
+and `loadHistoryMetrics` returns it as `LoadedHistory.warnings`. `loadChurnResult` and
+`loadFirstSeenResult` return `{ ok: false, reason: "not-git" | "overflow" | "git-error", detail }`.
 
 The adapter is exported from the package root, not from `./history`, because it speaks
 `GraphMetric` and the seam below does not. A product that indexes on its own terms calls
 `loadHistoryMetrics(nodes, idRoot, options)` for both the metric rows and the primary-window
-churn entries they were built from (`LoadedHistory`), with `HistoryMetricsOptions`,
+churn entries they were built from (`LoadedHistory`, whose `warnings` say why history is missing or partial), with `HistoryMetricsOptions`,
 `DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.
