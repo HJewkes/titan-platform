@@ -109,7 +109,7 @@ describe("a ci-red wake under a frozen main", () => {
     expect(stepIds(w, runId)).not.toContain("sh-freeze-wait:0");
   });
 
-  it("re-reads CI after the thaw and decides afresh", async () => {
+  it("reruns the same red head after a thaw that left main's base unmoved, then decides afresh", async () => {
     const w = world(["validate"], ["validate"]);
     const { episode } = w.freeze.get().freeze(REPO, RED);
     const runId = start(w);
@@ -118,7 +118,10 @@ describe("a ci-red wake under a frozen main", () => {
     w.freeze.get().release(REPO, episode);
     await gateOpened(w.host, gateId(runId, "ci-failed"));
 
-    expect(stepIds(w, runId)).toEqual(expect.arrayContaining(["sh-freeze-wait:0", "land-rules:r1", "sh-freeze-hold:1", "sh-repair"]));
+    const ids = stepIds(w, runId);
+    expect(ids).toEqual(expect.arrayContaining(["sh-freeze-wait:0", "rerun:sh-freeze-hold:0", "land-rules:r1", "sh-freeze-hold:1", "sh-repair"]));
+    expect(ids.indexOf("rerun:sh-freeze-hold:0")).toBeLessThan(ids.indexOf("land-rules:r1"));
+    expect(w.fake.effects).toMatchObject({ updateBranch: 0, rerunFailedJobs: 1 });
     expect(w.wakes.map((wake) => [wake.kind, wake.round])).toEqual([["ci-red", 1]]);
   });
 
