@@ -1,0 +1,113 @@
+{
+  "schema": "autonomy-seat/v1",
+  "name": "seat-a",
+  "prefix": "pa",
+  "role": "coordinator",
+  "attended": true,
+  "profile": "profile-a",
+  "surface": "surface-a",
+  "model": "model-a",
+  "effort": "high",
+  "pool": "pool-a",
+  "config_dir": "/home/user/cfg/pool-a",
+  "overflow_pool": "pool-b",
+  "cwd": "/home/user/work/dir-a",
+  "heartbeat_cron": "17,47 * * * *",
+  "backlog": "backlog.md",
+  "initiatives": {
+    "init-a": 1.0,
+    "init-b": 1.0
+  },
+  "scope_tags": [
+    "scope-a",
+    "scope-b",
+    "scope-c",
+    "scope-d",
+    "scope-e"
+  ],
+  "unclaimed_engineering": false,
+  "task_sources": [
+    "source-a"
+  ],
+  "repos": [
+    {
+      "path": "~/work/repo-1",
+      "remote": "org-a/repo-1",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ],
+      "live_after": "event-a"
+    },
+    {
+      "path": "~/work/repo-2",
+      "remote": "org-a/repo-2",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ]
+    },
+    {
+      "path": "~/work/repo-3",
+      "remote": "org-a/repo-3",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ]
+    },
+    {
+      "path": "~/work/repo-4",
+      "remote": "org-a/repo-4",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ],
+      "live_after": "event-a"
+    },
+    {
+      "path": "~/work/repo-5",
+      "git": false,
+      "initiatives": [
+        "init-a"
+      ]
+    }
+  ],
+  "kind_weights": {
+    "kind-a": 1.0
+  },
+  "share_caps": {
+    "kind-a": 1.0,
+    "kind-b": 0.2
+  },
+  "spend": {
+    "per_run_points": 100,
+    "per_day_points": 100
+  },
+  "concurrency": {
+    "implementers": 4,
+    "reviewers": 3,
+    "planners": 2,
+    "analysts": 1
+  },
+  "excluded_tags": [
+    "tag-a",
+    "tag-b",
+    "tag-c",
+    "tag-d"
+  ],
+  "extra_hard_stops": [],
+  "grants_extra": [
+    "grant-a",
+    "grant-b",
+    "grant-c",
+    "grant-d",
+    "grant-e",
+    "grant-f",
+    "grant-g",
+    "grant-h"
+  ],
+  "log": "logs/seat-a/",
+  "queue": "queues/seat-a.md",
+  "dispatch_log": "logs/seat-a/dispatch.jsonl",
+  "digest_to": null
+}
