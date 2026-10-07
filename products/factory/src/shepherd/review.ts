@@ -5,12 +5,12 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
-import { CORRECT_VERDICT_STEP, Corrected, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
+import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { Awaited, Dispatched, Intended, MergeEvidenceSchema, readMalformed, type OwnerBrief } from "./review-schemas.js";
+import { Awaited, Dispatched, Intended, MergeEvidenceSchema, type OwnerBrief } from "./review-schemas.js";
 import type { Presence } from "./presence.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -365,24 +365,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
 };
 
-type AwaitedOutput = z.infer<typeof Awaited>;
 type ExternalAwaiting = ReviewTarget & { external: string };
-
-/**
- * A malformed final message gets one correction turn in the reviewer's own session, read from the message written after it.
- * Only the first await's result reaches here, never the `:corrected` one, so a reviewer is corrected at most once per head.
- */
-async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput): Promise<AwaitedOutput> {
-  const malformed = readMalformed(awaited);
-  if (!malformed) return awaited;
-  const ownerBrief = effectivePolicy(ctx).merge === "owner-gate";
-  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(ownerBrief && { ownerBrief }) }, Corrected);
-  if (asked.kind !== "asked") return asked;
-  const reply = await step(ctx, `${AWAIT_VERDICT_STEP}:${awaiting.head}:corrected`, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
-  if (reply.kind === "verdict") return reply;
-  const again = readMalformed(reply);
-  return { kind: "none", reason: again ? `the reviewer's verdict did not parse after one correction (${again.refusal})` : "the reviewer wrote no verdict after its correction" };
-}
 
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
@@ -392,7 +375,8 @@ async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, aw
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late) : late;
+  const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
+  const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
   if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };

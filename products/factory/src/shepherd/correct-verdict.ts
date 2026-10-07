@@ -1,8 +1,10 @@
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { DeadlineTiming } from "../workflows/deadline.js";
+import { step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
-import type { ReviewerAgent, ReviewerDispatch } from "./review.js";
-import { MalformedSchema } from "./review-schemas.js";
+import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
+import { Awaited, MalformedSchema, readMalformed } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
 import { correctionPrompt } from "./reviewer-brief.js";
 
@@ -67,4 +69,21 @@ async function resumeShown(dispatch: ReviewerDispatch, input: CorrectVerdictInpu
 export async function correctVerdict(dispatch: ReviewerDispatch, input: CorrectVerdictInput, timing: CorrectTiming, signal: AbortSignal, repeat: boolean): Promise<CorrectedResult> {
   const refused = (await askOnce(dispatch, input, timing, signal, repeat)) ?? (await resumeShown(dispatch, input, timing, signal));
   return refused ?? { kind: "asked", startedAt: timing.now() };
+}
+
+type AwaitedOutput = z.infer<typeof Awaited>;
+
+/**
+ * A malformed final message gets one correction turn in the reviewer's own session, read by `replyStep` from the message written
+ * after it. Only the first await's result reaches here, never the reply's, so a reviewer is corrected at most once per head.
+ */
+export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedOutput, options: { ownerBrief: boolean; replyStep: string }): Promise<AwaitedOutput> {
+  const malformed = readMalformed(awaited);
+  if (!malformed) return awaited;
+  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
+  if (asked.kind !== "asked") return asked;
+  const reply = await step(ctx, options.replyStep, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
+  if (reply.kind === "verdict") return reply;
+  const again = readMalformed(reply);
+  return { kind: "none", reason: again ? `the reviewer's verdict did not parse after one correction (${again.refusal})` : "the reviewer wrote no verdict after its correction" };
 }
