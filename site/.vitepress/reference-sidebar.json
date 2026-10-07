@@ -124,6 +124,10 @@
         "link": "/reference/code-read"
       },
       {
+        "text": "coordinator",
+        "link": "/reference/coordinator"
+      },
+      {
         "text": "decider",
         "link": "/reference/decider"
       },
