@@ -1,6 +1,6 @@
 /**
  * Reduces a multi-line tool-result blob to one deterministic signature line
- * before it reaches Drain (§C1: "per-blob via an extracted signature line").
+ * before it reaches Drain, so each blob is clustered by one extracted line.
  * Drain is inherently per-line; stack traces and multi-line summaries break
  * it if fed whole, since line count varies with recursion depth. The
  * signature captures the blob's *shape* — the anchor line that identifies
@@ -50,19 +50,19 @@ function classifyError(anchorLine: string): string {
 }
 
 /**
- * Reduce a raw tool-result blob to its `Signature` for a given `toolType`
+ * Reduce a raw tool-result blob to its `Signature` for a given `partition`
  * (the Drain partition key). Never stores or returns the full
  * blob — only the anchor line survives.
  */
 export function extractSignature(
-  toolType: string,
+  partition: string,
   blobText: string,
   anchors: AnchorConfigs = DEFAULT_ANCHOR_CONFIGS,
 ): Signature {
   const lines = blobText.split('\n');
   const nonBlankCount = lines.filter((l) => l.trim().length > 0).length;
 
-  const { line: anchorLine, anchored } = anchorFor(toolType, lines, anchors);
+  const { line: anchorLine, anchored } = anchorFor(partition, lines, anchors);
   const errorClass = classifyError(anchorLine);
   const lineCountBucket = bucketLineCount(nonBlankCount);
 
@@ -87,9 +87,9 @@ export function extractSignature(
  * permanent singleton cluster, and the template count never flattened.
  */
 export function hasErrorSignal(
-  toolType: string,
+  partition: string,
   blobText: string,
   anchors: AnchorConfigs = DEFAULT_ANCHOR_CONFIGS,
 ): boolean {
-  return anchorFor(toolType, blobText.split('\n'), anchors).anchored;
+  return anchorFor(partition, blobText.split('\n'), anchors).anchored;
 }
