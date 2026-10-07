@@ -99,7 +99,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           node scripts/codewatch-summary.mjs "$RUNNER_TEMP/codewatch-report.json" >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "$PR_HEAD_SHA" ]; then echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -n "$PR_HEAD_SHA" ]; then echo "" >> "$GITHUB_STEP_SUMMARY"; echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Upload the codewatch report
         if: always()
         uses: actions/upload-artifact@v4
