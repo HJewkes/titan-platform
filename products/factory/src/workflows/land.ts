@@ -11,8 +11,9 @@ import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
+import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
-import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
@@ -91,17 +92,6 @@ interface LandRules {
   base: string;
   contexts: string[];
   strict: boolean;
-}
-
-interface UpdateResult {
-  headSha: string;
-  /** The new head is GitHub's merge of the expected head and the base, so it adds nothing a human has not seen. */
-  own: boolean;
-  skipped?: string;
-  /** GitHub refused the update because the base does not merge into the head; the head is unchanged. */
-  conflict?: boolean;
-  /** GitHub accepted the update but the head never moved, even after the bounded re-reads and re-sends. */
-  unmoved?: boolean;
 }
 
 interface LandState {
@@ -339,47 +329,6 @@ async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal:
       if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${last}`);
     }
     await clock.sleep(timing.pollMs, signal);
-  }
-}
-
-interface UpdateInput {
-  repo: string;
-  pr: number;
-  expectedHeadSha: string;
-}
-
-/** GitHub's update-branch sometimes never moves the head on the first write; each re-send follows a fresh read of the PR. */
-const UPDATE_RESENDS = 2;
-
-/** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
-async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
-  for (let resend = 0; ; resend++) {
-    const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
-    if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
-    if (!write.done && write.skipped !== "head-moved") {
-      const pr = await port.getPr(input.repo, input.pr);
-      return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
-    }
-    const headSha = await waitForHeadChange(port, input, timing, signal);
-    if (headSha !== undefined) return movedHead(port, input, headSha, write.done ? undefined : write.skipped);
-    if (resend === UPDATE_RESENDS) return { headSha: input.expectedHeadSha, own: false, unmoved: true };
-  }
-}
-
-async function movedHead(port: GitHubPort, input: UpdateInput, headSha: string, skipped: string | undefined): Promise<UpdateResult> {
-  const commit = await port.getCommit(input.repo, headSha);
-  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
-  return { headSha, own, ...(skipped === undefined ? {} : { skipped }) };
-}
-
-/** The head that replaced the expected one, or undefined when the wait ran out with it unmoved. */
-async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string | undefined> {
-  const clock = deadline(timing);
-  for (;;) {
-    const pr = await port.getPr(input.repo, input.pr);
-    if (pr.headSha !== input.expectedHeadSha) return pr.headSha;
-    if (clock.expired()) return undefined;
-    await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
 }
 

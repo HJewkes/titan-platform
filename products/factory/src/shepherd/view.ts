@@ -92,8 +92,6 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "land-rules": "ci",
   "ci-wait": "ci",
   "update-branch": "ci",
-  "update-backoff": "ci",
-  "update-retry": "ci",
   rerun: "ci",
   "sh-freeze-hold": "ci",
   "sh-freeze-wait": "ci",
