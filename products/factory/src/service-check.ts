@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import { parsePort } from "./cli-options.js";
 import { FACTORY_PORT } from "./serve.js";
-import { SERVICE_LABEL } from "./service.js";
-import { runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
+import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
+import { MANAGED_PLATFORMS, runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
 import { systemCheckPorts } from "./service-ports.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
@@ -24,7 +24,7 @@ interface CheckResult {
   ok: boolean;
   cause: Cause | null;
   message: string;
-  /** The launchd pid, absent when the job is not loaded or holds no process. */
+  /** The launchd or systemd pid, absent when the job is not loaded or holds no process. */
   pid?: number;
   /** The `/health` body, or null when nothing answered. */
   health: Record<string, unknown> | null;
@@ -37,7 +37,10 @@ export const CRASH_LOOP_WINDOW_MS = 5 * 60_000;
 const UNKNOWN = "unknown";
 const FAILURE = 1;
 
+type Manager = "launchd" | "systemd";
+
 interface Job {
+  manager: Manager;
   loaded: boolean;
   pid?: number;
   runs?: number;
@@ -49,12 +52,31 @@ const field = (text: string, name: string): number | undefined => {
   return value === undefined ? undefined : Number(value);
 };
 
-async function readJob(ports: CheckPorts): Promise<Job> {
-  const printed = await ports.launchctl(["print", `gui/${ports.uid}/${SERVICE_LABEL}`]);
-  if (printed.code !== 0) return { loaded: false };
-  const [pid, runs, lastExit] = [field(printed.stdout, "pid"), field(printed.stdout, "runs"), field(printed.stdout, "last exit code")];
-  return { loaded: true, ...(pid === undefined ? {} : { pid }), ...(runs === undefined ? {} : { runs }), ...(lastExit === undefined ? {} : { lastExit }) };
+function loadedJob(manager: Manager, pid: number | undefined, runs: number | undefined, lastExit: number | undefined): Job {
+  return { manager, loaded: true, ...(pid === undefined ? {} : { pid }), ...(runs === undefined ? {} : { runs }), ...(lastExit === undefined ? {} : { lastExit }) };
 }
+
+async function readLaunchdJob(ports: CheckPorts): Promise<Job> {
+  const printed = await ports.launchctl(["print", `gui/${ports.uid}/${SERVICE_LABEL}`]);
+  if (printed.code !== 0) return { manager: "launchd", loaded: false };
+  return loadedJob("launchd", field(printed.stdout, "pid"), field(printed.stdout, "runs"), field(printed.stdout, "last exit code"));
+}
+
+const UNIT_PROPERTIES = "LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus";
+const integer = (text: string): number | undefined => (/^-?\d+$/.test(text) ? Number(text) : undefined);
+
+/** NRestarts stands in for launchd's runs and ExecMainStatus for its last exit code; a unit that is not active holds no process, whatever MainPID says. */
+async function readUnit(ports: CheckPorts): Promise<Job> {
+  const shown = await ports.systemctl(["--user", "show", UNIT_NAME, `--property=${UNIT_PROPERTIES}`]);
+  const value = (key: string): string => new RegExp(`^${key}=(.*)$`, "m").exec(shown.stdout)?.[1] ?? "";
+  if (shown.code !== 0 || value("LoadState") !== "loaded") return { manager: "systemd", loaded: false };
+  const pid = integer(value("MainPID"));
+  const running = value("ActiveState") === "active" && pid !== undefined && pid > 0;
+  return loadedJob("systemd", running ? pid : undefined, integer(value("NRestarts")), integer(value("ExecMainStatus")));
+}
+
+const readJob = (ports: CheckPorts): Promise<Job> => (ports.platform === "linux" ? readUnit(ports) : readLaunchdJob(ports));
+const jobName = (job: Job): string => (job.manager === "systemd" ? UNIT_NAME : SERVICE_LABEL);
 
 /** `service restart` and `kickstart -k` record the killed run's non-zero exit and bump runs, so a young process that answers /health itself is a restart, not a loop. */
 async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean): Promise<boolean> {
@@ -79,10 +101,10 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
   return { ok: cause === null, cause, message, ...(job.pid === undefined ? {} : { pid: job.pid }), health, detail };
 }
 
-/** Never starts, stops or restarts the job: it reads launchctl, ps, /health and the installed build only. */
+/** Never starts, stops or restarts the job: it reads launchctl or systemctl, ps, /health and the installed build only. */
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const job = await readJob(ports);
-  if (!job.loaded) return verdict("not loaded", `${SERVICE_LABEL} is not loaded; run titan-factory service install`, job, null);
+  if (!job.loaded) return verdict("not loaded", `${jobName(job)} is not loaded; run titan-factory service install`, job, null);
   const health = await settledHealth(ports, port);
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
   const stale = stalePid(ports, job, healthPid, port);
@@ -102,19 +124,19 @@ function withTick(running: CheckResult, ports: CheckPorts): CheckResult {
 
 const RESTART = "stop any other process on the port, then run titan-factory service restart";
 
-/** The pid launchd reports is dead, or a different live process answers /health on the port. */
+/** The pid launchd or systemd reports is dead, or a different live process answers /health on the port. */
 function stalePid(ports: CheckPorts, job: Job, healthPid: number | undefined, port: number): string | undefined {
-  if (job.pid !== undefined && !ports.isAlive(job.pid)) return `launchd pid ${job.pid} is dead; ${RESTART}`;
-  if (job.pid !== undefined && healthPid !== undefined && healthPid !== job.pid) return `port ${port} is answered by pid ${healthPid}, not launchd pid ${job.pid}; ${RESTART}`;
+  if (job.pid !== undefined && !ports.isAlive(job.pid)) return `${job.manager} pid ${job.pid} is dead; ${RESTART}`;
+  if (job.pid !== undefined && healthPid !== undefined && healthPid !== job.pid) return `port ${port} is answered by pid ${healthPid}, not ${job.manager} pid ${job.pid}; ${RESTART}`;
   return undefined;
 }
 
-/** What is left once crash loop is ruled out: launchd has no process, or its process gives no usable /health answer. */
+/** What is left once crash loop is ruled out: launchd or systemd has no process, or its process gives no usable /health answer. */
 const unansweredWhy = (job: Job, port: number): string =>
-  `${job.pid === undefined ? "launchd holds no process" : `launchd pid ${job.pid} does not answer /health on port ${port}`}; ${RESTART}`;
+  `${job.pid === undefined ? `${job.manager} holds no process` : `${job.manager} pid ${job.pid} does not answer /health on port ${port}`}; ${RESTART}`;
 
 function crashLoop(job: Job, health: Record<string, unknown> | null): CheckResult {
-  const message = `${SERVICE_LABEL} is crash-looping: last exit ${job.lastExit}, ${job.runs} runs; read serve.err.log in the service log directory, fix it, then run titan-factory service restart`;
+  const message = `${jobName(job)} is crash-looping: last exit ${job.lastExit}, ${job.runs} ${job.manager === "systemd" ? "restarts" : "runs"}; read serve.err.log in the service log directory, fix it, then run titan-factory service restart`;
   return verdict("crash loop", message, job, health, { lastExitCode: job.lastExit ?? null, runs: job.runs ?? null });
 }
 
@@ -137,11 +159,11 @@ async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json
 export function registerServiceCheck(service: Command, io: ServiceIo, injected: CheckPorts | undefined, setExit: (code: number) => void): void {
   service
     .command("check")
-    .description("exit 0 when /health answers from the launchd pid with github ok; otherwise one line naming the cause, never changing the service")
+    .description("exit 0 when /health answers from the launchd or systemd pid with github ok; otherwise one line naming the cause, never changing the service")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .option("--json", "print cause, pid, health and the cause's details as one JSON object")
     .action(async (opts: { port: number; json?: boolean }) => {
       const ports = injected ?? systemCheckPorts();
-      setExit(await runServiceVerb("check", ports, io, () => checkService(ports, io, opts.port, opts.json === true)));
+      setExit(await runServiceVerb("check", ports, io, () => checkService(ports, io, opts.port, opts.json === true), MANAGED_PLATFORMS));
     });
 }
