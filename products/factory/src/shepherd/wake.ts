@@ -9,7 +9,7 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FLAKE_CHECK_STEPS, flakeCheckRoute } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
-import type { ShepherdDeps, ShepherdPhases, WakeRequest } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
@@ -372,14 +372,24 @@ async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promis
   return (await step(ctx, FIX_FIRST_STEP, record, FixFirstRecord)).fixFirst;
 }
 
-/** Wakes an agent, then waits for the head to move; `woken` means a new head exists. A second wake in one round replays at the next index. */
+/**
+ * Wakes an agent, then waits for the head to move; `woken` means a new head exists, or, after a ci-red wake, that the
+ * same head turned green on a rerun, so the next round's ci-wait collects its merge facts. A second wake in one round replays at the next index.
+ */
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
   if (woke.kind !== "woken") return { kind: "unhandled", reason: woke.reason };
-  const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent };
+  return awaitFixerHead(ctx, request, woke);
+};
+
+/** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
+export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: { agent: string; sessionId?: string }): Promise<WakeOutcome> {
+  const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
+  const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
+  if (head.green) return { ...woken, sameHead: true };
   if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}` };
   if (head.headSha === request.headSha) return { kind: "unhandled", reason: `${request.repo}#${request.pr} closed at head ${request.headSha} before a new head` };
-  return { kind: "woken", agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
-};
+  return woken;
+}

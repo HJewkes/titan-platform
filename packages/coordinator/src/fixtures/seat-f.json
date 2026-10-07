@@ -1,0 +1,29 @@
+{
+  "schema": "autonomy-seat/v1",
+  "name": "seat-f",
+  "prefix": "pf",
+  "role": "attended",
+  "attended": true,
+  "pool": "pool-b",
+  "config_dir": "/home/user/cfg/pool-b",
+  "pools": [
+    "pool-a",
+    "pool-b",
+    "pool-c"
+  ],
+  "cwd": "/home/user/work/dir-f",
+  "initiatives": {
+    "init-a": 1.0,
+    "init-b": 1.0
+  },
+  "spend": {},
+  "concurrency": {
+    "implementers": 3,
+    "reviewers": 3,
+    "planners": 7
+  },
+  "log": "logs/seat-f/",
+  "queue": "queues/seat-f.md",
+  "dispatch_log": "logs/seat-f/dispatch.jsonl",
+  "digest_to": null
+}
